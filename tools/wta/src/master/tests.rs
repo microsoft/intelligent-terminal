@@ -5,6 +5,7 @@
 //! inline `mod tests { ... }` block.
 
 use super::*;
+use crate::coordinator::mock_native_delegate_executables;
 use acp::schema::v1::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
@@ -10296,14 +10297,130 @@ async fn sidebar_activation_uses_exact_collision_row_and_replays_receipt() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
+async fn sidebar_activation_host_shim_capabilities_are_explicit_and_replayed() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+
+    struct Fixture(std::path::PathBuf);
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let fixture = Fixture(
+        std::env::current_dir()
+            .unwrap()
+            .join(format!("wta-sidebar-shims-{}", uuid::Uuid::new_v4())),
+    );
+    std::fs::create_dir(&fixture.0).unwrap();
+    for cli in [
+        CliSource::Copilot,
+        CliSource::Claude,
+        CliSource::Codex,
+        CliSource::Gemini,
+        CliSource::OpenCode,
+    ] {
+        for (extension, exists, companion) in [
+            ("cmd", false, false),
+            ("cmd", true, false),
+            ("bat", true, false),
+            ("cmd", true, true),
+            ("bat", true, true),
+        ] {
+            let provider = cli.canonical_provider_id().unwrap();
+            let directory = fixture.0.join(uuid::Uuid::new_v4().to_string());
+            std::fs::create_dir(&directory).unwrap();
+            let shim = directory.join(format!("{provider}.{extension}"));
+            if exists {
+                std::fs::write(&shim, "@exit /b 99\r\n").unwrap();
+            }
+            if companion {
+                std::fs::write(
+                    shim.with_extension("ps1"),
+                    "throw 'mock must not launch'\r\n",
+                )
+                .unwrap();
+            }
+            let shim_command =
+                crate::coordinator::quote_windows_commandline_arg(shim.to_str().unwrap());
+            let _resolver = crate::coordinator::override_test_executable_resolver(move |command| {
+                assert_eq!(command, provider);
+                shim_command.clone()
+            });
+            let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+                "session_id": "shim-resumed-pane"
+            })));
+            let state = make_state_with_wt(mock.clone());
+            let mut row =
+                SessionInfo::new(SessionId::new("literal & %PATH% ' id"), "C:\\repo".into());
+            row.provider_id = cli.canonical_provider_id();
+            row.cli_source = Some(cli.clone());
+            row.location = SessionLocation::Host;
+            row.origin = Some(SessionOrigin::Unknown);
+            row.status = Some(AgentStatus::Historical);
+            let params = SessionActivateParams {
+                identity: SessionIdentity::from_info(&row),
+                window_id: 42,
+                activation_id: "shim-capability".to_string(),
+            };
+            state.registry.upsert(row.clone()).await;
+            let response = tokio::task::LocalSet::new()
+                .run_until(handle_session_activate(&state, &params))
+                .await
+                .unwrap();
+            let receipt =
+                crate::session_registry::parse_session_activate_response(&response.0).unwrap();
+            assert_eq!(receipt.action, "resume_cli");
+            assert_eq!(receipt.accepted, companion, "{cli:?}: {receipt:?}");
+            let calls = mock.calls();
+            if companion {
+                assert_eq!(calls.len(), 2);
+                assert_eq!(calls[0].0, "create_tab");
+                assert!(calls[0].1["commandline"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("powershell.exe -NoLogo -NoProfile -EncodedCommand "));
+                assert_eq!(calls[1].0, "focus_pane");
+                assert_eq!(calls[1].1["session_id"], "shim-resumed-pane");
+            } else {
+                let detail = if exists {
+                    "without an adjacent PowerShell companion"
+                } else {
+                    "shim not found"
+                };
+                assert!(
+                    receipt.detail.as_deref().unwrap().contains(detail),
+                    "{receipt:?}"
+                );
+                assert!(calls.is_empty());
+                assert_eq!(
+                    state
+                        .registry
+                        .lookup_identity(&params.identity)
+                        .await
+                        .unwrap(),
+                    row
+                );
+            }
+            let replay = handle_session_activate(&state, &params).await.unwrap();
+            assert_eq!(
+                crate::session_registry::parse_session_activate_response(&replay.0).unwrap(),
+                receipt
+            );
+            assert_eq!(mock.calls(), calls);
+        }
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_once() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
     use std::path::PathBuf;
 
+    let _resolver = mock_native_delegate_executables();
     let mut supported_cases = 0;
-    let mut unsupported_cases = 0;
     for (status, bound_pid) in [
         (AgentStatus::Idle, None),
         (AgentStatus::Working, None),
@@ -10345,7 +10462,8 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
             let runtimes =
                 crate::coordinator::default_delegate_agent_runtimes(Some(&provider), None, None);
             let invocation =
-                crate::coordinator::build_delegate_resume_commandline(&runtimes[0], "live-unbound");
+                crate::coordinator::build_delegate_resume_commandline(&runtimes[0], "live-unbound")
+                    .expect("all registered native providers support resume");
             let response = tokio::task::LocalSet::new()
                 .run_until(handle_session_activate(&state, &params))
                 .await
@@ -10353,31 +10471,6 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
             let response =
                 crate::session_registry::parse_session_activate_response(&response.0).unwrap();
             assert_eq!(response.action, "resume_cli");
-            let invocation = match invocation {
-                Ok(invocation) => invocation,
-                Err(error) => {
-                    unsupported_cases += 1;
-                    assert!(!response.accepted, "{cli:?} {status:?}: {response:?}");
-                    assert_eq!(response.detail.as_deref(), Some(error.to_string().as_str()));
-                    assert!(mock.calls().is_empty());
-                    assert_eq!(
-                        state.registry.lookup_identity(&identity).await.unwrap(),
-                        row
-                    );
-                    let replay = handle_session_activate(&state, &params).await.unwrap();
-                    assert_eq!(
-                        response,
-                        crate::session_registry::parse_session_activate_response(&replay.0)
-                            .unwrap()
-                    );
-                    assert!(mock.calls().is_empty());
-                    assert_eq!(
-                        state.registry.lookup_identity(&identity).await.unwrap(),
-                        row
-                    );
-                    continue;
-                }
-            };
             supported_cases += 1;
             assert!(response.accepted, "{cli:?} {status:?}: {response:?}");
             let expected_calls = vec![
@@ -10416,22 +10509,18 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
             assert_eq!(mock.calls(), expected_calls);
         }
     }
-    assert_eq!(supported_cases + unsupported_cases, 40);
-    eprintln!(
-        "Host capability matrix: {supported_cases} supported cases ({} providers), {unsupported_cases} unsupported negative cases",
-        supported_cases / 8
-    );
+    assert_eq!(supported_cases, 40);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn sidebar_activation_resume_quotes_session_and_wsl_distro_through_registered_builders() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
     use std::path::PathBuf;
 
+    let _resolver = mock_native_delegate_executables();
     let session_id = "session \"quoted\" & echo injected; $(echo injected) `echo injected` ' \\";
     let mut supported_cases = 0;
-    let mut unsupported_cases = 0;
     for cli in [
         CliSource::Copilot,
         CliSource::Claude,
@@ -10475,7 +10564,8 @@ async fn sidebar_activation_resume_quotes_session_and_wsl_distro_through_registe
                     })
                 }
                 SessionLocation::Unknown => unreachable!(),
-            };
+            }
+            .expect("all registered providers support host and WSL resume");
             let cwd = if location.is_wsl() {
                 "/home/user/project with spaces"
             } else {
@@ -10501,31 +10591,6 @@ async fn sidebar_activation_resume_quotes_session_and_wsl_distro_through_registe
             let response =
                 crate::session_registry::parse_session_activate_response(&response.0).unwrap();
             assert_eq!(response.action, "resume_cli");
-            let expected = match expected {
-                Ok(expected) => expected,
-                Err(error) => {
-                    unsupported_cases += 1;
-                    assert!(!response.accepted, "{cli:?} {location:?}: {response:?}");
-                    assert_eq!(response.detail.as_deref(), Some(error.to_string().as_str()));
-                    assert!(mock.calls().is_empty());
-                    assert_eq!(
-                        state.registry.lookup_identity(&identity).await.unwrap(),
-                        row
-                    );
-                    let replay = handle_session_activate(&state, &params).await.unwrap();
-                    assert_eq!(
-                        response,
-                        crate::session_registry::parse_session_activate_response(&replay.0)
-                            .unwrap()
-                    );
-                    assert!(mock.calls().is_empty());
-                    assert_eq!(
-                        state.registry.lookup_identity(&identity).await.unwrap(),
-                        row
-                    );
-                    continue;
-                }
-            };
             supported_cases += 1;
             assert!(response.accepted, "{cli:?} {location:?}: {response:?}");
             let calls = mock.calls();
@@ -10553,10 +10618,7 @@ async fn sidebar_activation_resume_quotes_session_and_wsl_distro_through_registe
             assert!(resumed.born_bound_pane);
         }
     }
-    assert_eq!(supported_cases + unsupported_cases, 10);
-    eprintln!(
-        "Quoting capability matrix: {supported_cases} supported cases, {unsupported_cases} unsupported negative cases"
-    );
+    assert_eq!(supported_cases, 10);
 }
 
 #[tokio::test]
@@ -10807,12 +10869,13 @@ async fn sidebar_activation_unbound_agent_pane_keeps_live_guard() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn sidebar_activation_native_hook_unset_origin_resumes_without_reclassifying_owner() {
     use crate::agent_sessions::{CliSource, SessionEvent};
     use crate::session_registry::{SessionActivateParams, SessionIdentity};
     use std::path::PathBuf;
 
+    let _resolver = mock_native_delegate_executables();
     let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
         "session_id": "resumed-native-pane"
     })));
@@ -10916,7 +10979,7 @@ async fn sidebar_activation_unknown_provider_or_location_never_creates_tab() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{
@@ -10924,6 +10987,7 @@ async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
     };
     use std::path::PathBuf;
 
+    let _resolver = mock_native_delegate_executables();
     let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
         "ok": true,
         "session_id": "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"
@@ -11007,7 +11071,7 @@ async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
     assert_eq!(mock.calls().len(), 2);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{
@@ -11017,6 +11081,7 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
     use std::sync::atomic::Ordering;
     use std::time::Duration;
 
+    let _resolver = mock_native_delegate_executables();
     struct PausedCreate {
         entered: tokio::sync::Notify,
         release: tokio::sync::Notify,
@@ -11033,7 +11098,9 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
             self.calls.fetch_add(1, Ordering::SeqCst);
             if method == "create_tab" {
                 self.entered.notify_one();
-                self.release.notified().await;
+                tokio::time::timeout(Duration::from_secs(5), self.release.notified())
+                    .await
+                    .context("test did not release create_tab")?;
             }
             Ok(serde_json::json!({ "session_id": "restored-pane" }))
         }
@@ -11043,8 +11110,9 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
         }
     }
 
-    tokio::task::LocalSet::new()
-        .run_until(async {
+    tokio::time::timeout(
+        Duration::from_secs(15),
+        tokio::task::LocalSet::new().run_until(async {
             let wt = Arc::new(PausedCreate {
                 entered: tokio::sync::Notify::new(),
                 release: tokio::sync::Notify::new(),
@@ -11064,12 +11132,24 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
             };
             state.registry.upsert(row).await;
 
-            let caller = tokio::task::spawn_local({
+            let mut caller = tokio::task::spawn_local({
                 let state = state.clone();
                 let params = params.clone();
                 async move { handle_session_activate(&state, &params).await }
             });
-            wt.entered.notified().await;
+            tokio::time::timeout(Duration::from_secs(5), async {
+                tokio::select! {
+                    _ = wt.entered.notified() => {}
+                    result = &mut caller => {
+                        let response = result.expect("activation caller did not panic")
+                            .expect("activation returns a receipt");
+                        panic!("activation completed before create_tab: {:?}",
+                            parse_session_activate_response(&response.0).unwrap());
+                    }
+                }
+            })
+            .await
+            .expect("activation reaches mocked create_tab");
             for response in [
                 handle_session_activate(&state, &params).await.unwrap(),
                 handle_session_activation_status(&state, &params)
@@ -11133,8 +11213,10 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
                 SessionActivationState::Unknown
             );
             assert_eq!(wt.calls.load(Ordering::SeqCst), 2);
-        })
-        .await;
+        }),
+    )
+    .await
+    .expect("disconnect/retry test finishes within 15 seconds");
 }
 
 #[tokio::test]
@@ -11185,12 +11267,13 @@ async fn sidebar_activation_receipt_capacity_preserves_pending_operations() {
     assert!(receipts.contains_key("new"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn sidebar_cli_resume_reports_creation_and_focus_failures() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
     use std::path::PathBuf;
 
+    let _resolver = mock_native_delegate_executables();
     for (response, fail_method, detail, call_count) in [
         (serde_json::json!({}), Some("create_tab"), "test failure", 1),
         (serde_json::json!({}), None, "did not return a pane ID", 1),
@@ -11269,7 +11352,7 @@ async fn sidebar_cli_resume_reports_creation_and_focus_failures() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn sidebar_cli_resume_updates_only_selected_collision_identity() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{
@@ -11277,6 +11360,7 @@ async fn sidebar_cli_resume_updates_only_selected_collision_identity() {
     };
     use std::path::PathBuf;
 
+    let _resolver = mock_native_delegate_executables();
     let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
         "ok": true,
         "session_id": "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"
