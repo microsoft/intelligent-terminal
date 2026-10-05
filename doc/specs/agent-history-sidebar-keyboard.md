@@ -80,7 +80,7 @@ and focuses ordinary tab search on entry.
   minutes, hours, days, and seven-day weeks are floored; older timestamps use
   completed Gregorian UTC calendar months and years, including month-end and
   leap-year adjustment, rather than fixed 30-day/365-day approximations.
-  Missing, unsupported, or unformattable timestamps retain localized “unknown.”
+  Missing or unsupported timestamps, or timestamps that cannot be formatted, retain localized “unknown.”
   ICU's normal locale fallback applies, including for unsupported pseudo-locales.
 - The Agents view consists of two distinct upper and lower sections separated
   by a horizontal divider:
