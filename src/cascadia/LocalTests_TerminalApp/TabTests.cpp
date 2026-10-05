@@ -34,6 +34,7 @@
 #include <ScopedResourceLoader.h>
 
 #include <cmath>
+#include <icu.h>
 #include <set>
 #include <winrt/Windows.Globalization.NumberFormatting.h>
 #include <winrt/Windows.Storage.Streams.h>
@@ -5678,75 +5679,103 @@ namespace TerminalAppLocalTests
                                        .MainResourceMap()
                                        .GetSubtree(L"TerminalApp/Resources");
             constexpr uint64_t nowMs = 100ULL * 86400 * 1000;
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            const auto justNow = resources.GetValue(L"VerticalTabsHistoryAgeJustNow").ValueAsString();
+            const auto unknown = resources.GetValue(L"VerticalTabsHistoryAgeUnknown").ValueAsString();
             struct AgeCase
             {
                 uint64_t elapsedMs;
-                winrt::hstring resource;
-                uint64_t count;
+                winrt::hstring expected;
             };
             const AgeCase cases[]{
-                { 0, L"VerticalTabsHistoryAgeJustNow", 0 },
-                { 59'999, L"VerticalTabsHistoryAgeJustNow", 0 },
-                { 60'000, L"VerticalTabsHistoryAgeMinute", 0 },
-                { 119'999, L"VerticalTabsHistoryAgeMinute", 0 },
-                { 120'000, L"VerticalTabsHistoryAgeMinutes", 2 },
-                { 3'599'999, L"VerticalTabsHistoryAgeMinutes", 59 },
-                { 3'600'000, L"VerticalTabsHistoryAgeHour", 0 },
-                { 7'199'999, L"VerticalTabsHistoryAgeHour", 0 },
-                { 7'200'000, L"VerticalTabsHistoryAgeHours", 2 },
-                { 86'399'999, L"VerticalTabsHistoryAgeHours", 23 },
-                { 86'400'000, L"VerticalTabsHistoryAgeDay", 0 },
-                { 172'799'999, L"VerticalTabsHistoryAgeDay", 0 },
-                { 172'800'000, L"VerticalTabsHistoryAgeDays", 2 },
-                { 7ULL * 86'400'000 - 1, L"VerticalTabsHistoryAgeDays", 6 },
-                { nowMs, L"VerticalTabsHistoryAgeUnknown", 0 },
+                { 0, justNow },
+                { 1'000, justNow },
+                { 59'999, justNow },
+                { 60'000, L"1 min. ago" },
+                { 119'999, L"1 min. ago" },
+                { 120'000, L"2 min. ago" },
+                { 3'599'999, L"59 min. ago" },
+                { 3'600'000, L"1 hr. ago" },
+                { 7'199'999, L"1 hr. ago" },
+                { 7'200'000, L"2 hr. ago" },
+                { 86'399'999, L"23 hr. ago" },
+                { 86'400'000, L"1 day ago" },
+                { 172'799'999, L"1 day ago" },
+                { 172'800'000, L"2 days ago" },
+                { 7ULL * 86'400'000 - 1, L"6 days ago" },
+                { 7ULL * 86'400'000, L"1 wk. ago" },
+                { 14ULL * 86'400'000, L"2 wk. ago" },
+                { nowMs, unknown },
             };
             for (const auto& test : cases)
             {
-                auto expected = resources.GetValue(test.resource).ValueAsString();
-                if (test.count)
-                {
-                    expected = fmt::format(fmt::runtime(std::wstring_view{ expected }), test.count);
-                }
-                VERIFY_ARE_EQUAL(expected, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(nowMs - test.elapsedMs, nowMs));
+                VERIFY_ARE_EQUAL(test.expected, Page::_SidebarHistoryAgeText(nowMs - test.elapsedMs, nowMs, L"en-US"));
             }
-            const auto justNow = resources.GetValue(L"VerticalTabsHistoryAgeJustNow").ValueAsString();
-            VERIFY_ARE_EQUAL(justNow, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(nowMs + 1, nowMs));
-            VERIFY_ARE_EQUAL(justNow, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(UINT64_MAX, nowMs));
-            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryAgeUnknown").ValueAsString(),
-                             winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(std::nullopt, nowMs));
+            VERIFY_ARE_EQUAL(justNow, Page::_SidebarHistoryAgeText(nowMs + 1, nowMs));
+            VERIFY_ARE_EQUAL(unknown, Page::_SidebarHistoryAgeText(UINT64_MAX, nowMs));
+            VERIFY_ARE_EQUAL(unknown, Page::_SidebarHistoryAgeText(std::nullopt, nowMs));
+            VERIFY_ARE_EQUAL(unknown, Page::_SidebarHistoryAgeText(UINT64_MAX - 60'000, UINT64_MAX));
+            VERIFY_ARE_EQUAL(unknown, Page::_SidebarHistoryAgeText(nowMs - 60'000, nowMs, L"invalid!"));
 
-            const auto context = winrt::Windows::ApplicationModel::Resources::Core::ResourceContext::GetForViewIndependentUse();
-            const auto languages = context.Languages();
-            const auto locale = languages.Size() == 0 ? winrt::hstring{} : languages.GetAt(0);
-            const auto expectedDate = [&](WORD year, WORD month, WORD day) {
-                SYSTEMTIME time{};
-                time.wYear = year;
-                time.wMonth = month;
-                time.wDay = day;
-                wchar_t buffer[256]{};
-                VERIFY_IS_TRUE(GetDateFormatEx(locale.empty() ? LOCALE_NAME_USER_DEFAULT : locale.c_str(),
-                                               DATE_LONGDATE,
-                                               &time,
-                                               nullptr,
-                                               buffer,
-                                               ARRAYSIZE(buffer),
-                                               nullptr) > 0);
-                return winrt::hstring{ buffer };
+            const auto utcMs = [](int year, unsigned month, unsigned day) {
+                const auto time = std::chrono::sys_days{ std::chrono::year{ year } / month / day } + std::chrono::hours{ 12 };
+                return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(time.time_since_epoch()).count());
             };
-            constexpr uint64_t calendarNowMs = 1'790'596'800'000; // 2026-09-28 12:00 UTC
-            constexpr uint64_t weekMs = 7ULL * 86'400'000;
-            const auto oldDate = expectedDate(2026, 9, 21);
-            VERIFY_ARE_EQUAL(oldDate, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(calendarNowMs - weekMs, calendarNowMs));
-            VERIFY_ARE_EQUAL(oldDate, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(calendarNowMs - weekMs - 1, calendarNowMs));
-            VERIFY_ARE_EQUAL(expectedDate(1970, 1, 1),
-                             winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(1, calendarNowMs));
-            const auto midnightMs = calendarNowMs - 12ULL * 3'600'000 - weekMs;
-            VERIFY_ARE_EQUAL(oldDate, winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(midnightMs, calendarNowMs));
-            VERIFY_ARE_EQUAL(expectedDate(2026, 9, 20),
-                             winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(midnightMs - 1, calendarNowMs));
-            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryAgeUnknown").ValueAsString(),
-                             winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(UINT64_MAX - weekMs, UINT64_MAX));
+            const auto calendarAge = [&](int year, unsigned month, unsigned day, uint64_t now) {
+                return Page::_SidebarHistoryAgeText(utcMs(year, month, day), now, L"en-US");
+            };
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"1 wk. ago" }, calendarAge(2026, 9, 21, utcMs(2026, 9, 28)));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"1 mo. ago" }, calendarAge(2026, 1, 31, utcMs(2026, 2, 28)));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"3 wk. ago" }, calendarAge(2026, 1, 31, utcMs(2026, 2, 28) - 1));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"1 mo. ago" }, calendarAge(2024, 1, 31, utcMs(2024, 2, 29)));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"2 mo. ago" }, calendarAge(2026, 7, 28, utcMs(2026, 9, 28)));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"1 yr. ago" }, calendarAge(2024, 2, 29, utcMs(2025, 2, 28)));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"11 mo. ago" }, calendarAge(2024, 2, 29, utcMs(2025, 2, 28) - 1));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"2 yr. ago" }, calendarAge(2024, 9, 28, utcMs(2026, 9, 28)));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"56 yr. ago" }, Page::_SidebarHistoryAgeText(1, utcMs(2026, 9, 28), L"en-US"));
+            VERIFY_IS_TRUE(Page::_SidebarHistoryAgeText(nowMs - 120'000, nowMs, L"en-US").size() < std::wstring_view{ L"2 minutes ago" }.size());
+            VERIFY_ARE_NOT_EQUAL(Page::_SidebarHistoryAgeText(nowMs - 120'000, nowMs, L"en-US"),
+                                 calendarAge(2026, 7, 28, utcMs(2026, 9, 28)));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"2分钟前" }, Page::_SidebarHistoryAgeText(nowMs - 120'000, nowMs, L"zh-CN"));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"2个月前" }, Page::_SidebarHistoryAgeText(utcMs(2026, 7, 28), utcMs(2026, 9, 28), L"zh-CN"));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"2 分前" }, Page::_SidebarHistoryAgeText(nowMs - 120'000, nowMs, L"ja-JP"));
+            const auto arabic = Page::_SidebarHistoryAgeText(nowMs - 120'000, nowMs, L"ar-SA");
+            VERIFY_ARE_NOT_EQUAL(unknown, arabic);
+            VERIFY_IS_TRUE(std::wstring_view{ arabic }.find(L"دقيقتين") != std::wstring_view::npos);
+            VERIFY_IS_TRUE(std::wstring_view{ arabic }.find(L"ago") == std::wstring_view::npos);
+
+            const auto calendarNow = utcMs(2026, 9, 28);
+            struct UnitCase
+            {
+                URelativeDateTimeUnit unit;
+                uint64_t last;
+            };
+            const UnitCase units[]{
+                { UDAT_REL_UNIT_MINUTE, calendarNow - 120'000 },
+                { UDAT_REL_UNIT_HOUR, calendarNow - 7'200'000 },
+                { UDAT_REL_UNIT_DAY, calendarNow - 2 * 86'400'000ULL },
+                { UDAT_REL_UNIT_WEEK, calendarNow - 14 * 86'400'000ULL },
+                { UDAT_REL_UNIT_MONTH, utcMs(2026, 7, 28) },
+                { UDAT_REL_UNIT_YEAR, utcMs(2024, 9, 28) },
+            };
+            // Compare all units against the installed CLDR data, not private translations.
+            for (const auto locale : { L"en-US", L"de-DE", L"zh-CN", L"ja-JP", L"ar-SA" })
+            {
+                UErrorCode status = U_ZERO_ERROR;
+                using Formatter = wistd::unique_ptr<URelativeDateTimeFormatter, wil::function_deleter<decltype(&ureldatefmt_close), &ureldatefmt_close>>;
+                Formatter formatter{ ureldatefmt_open(winrt::to_string(locale).c_str(), nullptr, UDAT_STYLE_SHORT, UDISPCTX_CAPITALIZATION_NONE, &status) };
+                VERIFY_IS_FALSE(U_FAILURE(status) != 0);
+                VERIFY_IS_NOT_NULL(formatter.get());
+                for (const auto& test : units)
+                {
+                    UChar buffer[128]{};
+                    const auto length = ureldatefmt_formatNumeric(formatter.get(), -2, test.unit, buffer, ARRAYSIZE(buffer), &status);
+                    VERIFY_IS_FALSE(U_FAILURE(status) != 0);
+                    VERIFY_IS_TRUE(length > 0 && length < ARRAYSIZE(buffer));
+                    const winrt::hstring expected{ std::wstring{ buffer, buffer + length } };
+                    VERIFY_ARE_EQUAL(expected, Page::_SidebarHistoryAgeText(test.last, calendarNow, locale));
+                }
+            }
         });
     }
 

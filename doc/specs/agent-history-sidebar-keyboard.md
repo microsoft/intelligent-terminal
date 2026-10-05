@@ -72,6 +72,16 @@ and focuses ordinary tab search on entry.
   provider-name text, and shared search.
   Time and provider text share bounded metadata space and may truncate with an ellipsis at the
   minimum sidebar width; status and the ownership action retain reserved space.
+- History ages use Windows ICU's standard, locale-aware **short numeric relative
+  time** format (CLDR), using the UI resource language rather than private unit
+  abbreviations. For example, English uses `2 min. ago`, `2 hr. ago`, `2 wk. ago`,
+  `2 mo. ago`, and `2 yr. ago`; translations and grammar come from the platform.
+  Below a minute, the existing localized “just now” text remains. Whole elapsed
+  minutes, hours, days, and seven-day weeks are floored; older timestamps use
+  completed Gregorian UTC calendar months and years, including month-end and
+  leap-year adjustment, rather than fixed 30-day/365-day approximations.
+  Missing, unsupported, or unformattable timestamps retain localized “unknown.”
+  ICU's normal locale fallback applies, including for unsupported pseudo-locales.
 - The Agents view consists of two distinct upper and lower sections separated
   by a horizontal divider:
   - **Upper section (`AgentTabsHost`)**: contains live/open agent tabs hosting
