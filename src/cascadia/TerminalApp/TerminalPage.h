@@ -1360,7 +1360,8 @@ namespace winrt::TerminalApp::implementation
         void _Find(const Tab& tab);
 
         winrt::Microsoft::Terminal::Control::TermControl _CreateNewControlAndContent(const winrt::Microsoft::Terminal::Settings::TerminalSettingsCreateResult& settings,
-                                                                                     const winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection& connection);
+                                                                                     const winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection& connection,
+                                                                                     const winrt::hstring& nativeAgentProviderId = {});
         winrt::Microsoft::Terminal::Control::TermControl _SetupControl(const winrt::Microsoft::Terminal::Control::TermControl& term);
         winrt::Microsoft::Terminal::Control::TermControl _AttachControlToContent(
             const uint64_t& contentGuid,

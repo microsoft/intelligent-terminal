@@ -18,6 +18,7 @@ pub(crate) async fn run(
     split_session: Option<&str>,
     split_direction: &str,
     split_size: f64,
+    delegate_agent_id: Option<&str>,
 ) -> Result<()> {
     // Log the prompt length, not the text — the prompt is user content.
     // Log only the executable (first token) of agent_cmd, not the full
@@ -99,6 +100,7 @@ pub(crate) async fn run(
         split_pane,
         split_direction,
         split_size,
+        delegate_agent_id,
     )
     .await
     {
@@ -315,15 +317,15 @@ async fn delegate_with_context(
     split_pane: Option<&str>,
     split_direction: &str,
     split_size: f64,
+    delegate_agent_id: Option<&str>,
 ) -> Result<()> {
-    let delegate_agents = crate::coordinator::default_delegate_agent_runtimes(
+    let runtime = crate::coordinator::resolve_delegate_runtime_with_provider(
         delegate_agent_cmd,
         Some(agent_cmd),
         delegate_model,
-    );
-    let runtime = delegate_agents
-        .first()
-        .ok_or_else(|| anyhow::anyhow!("no delegate agent configured"))?;
+        delegate_agent_id,
+    )?;
+    let runtime = &runtime;
 
     // A non-launchable command still gets a tab with the bare command so the
     // real shell error remains visible. It stays out of prompt enrichment,
@@ -484,6 +486,7 @@ async fn delegate_with_context(
 
         let create_resp = create_delegate_target(
             shell_mgr,
+            &runtime.id,
             &wsl_commandline,
             None,
             preserve_sidebar_view,
@@ -538,6 +541,7 @@ async fn delegate_with_context(
 
     let create_resp = create_delegate_target(
         shell_mgr,
+        &runtime.id,
         &commandline,
         sanitized_cwd.as_deref(),
         preserve_sidebar_view,
@@ -566,6 +570,7 @@ async fn delegate_with_context(
 
 async fn create_delegate_target(
     shell_mgr: &ShellManager,
+    provider_id: &str,
     commandline: &str,
     cwd: Option<&str>,
     preserve_sidebar_view: bool,
@@ -584,6 +589,7 @@ async fn create_delegate_target(
                 Some(split_direction),
                 Some(split_size),
                 None,
+                Some(provider_id),
             )
             .await?
     } else {
@@ -594,6 +600,7 @@ async fn create_delegate_target(
                 None,
                 None,
                 preserve_sidebar_view,
+                Some(provider_id),
             )
             .await?
     };
@@ -651,6 +658,7 @@ mod tests {
         super::create_delegate_target(
             &shell,
             "copilot",
+            "copilot",
             None,
             true,
             Some("original-pane"),
@@ -666,6 +674,7 @@ mod tests {
         assert_eq!(requests[0].1["commandline"], "copilot");
         assert_eq!(requests[0].1["direction"], "right");
         assert_eq!(requests[0].1["size"], 0.4);
+        assert_eq!(requests[0].1["native_agent_provider_id"], "copilot");
         assert_eq!(requests[1].0, "focus_pane");
         assert_eq!(requests[1].1["session_id"], "fresh-pane");
     }
@@ -734,6 +743,7 @@ mod tests {
                 Some("sid"),
                 "auto",
                 size,
+                None,
             )
             .await
             .unwrap_err();
@@ -753,6 +763,7 @@ mod tests {
                 let shell = crate::shell::ShellManager::new().with_wt_channel(channel.clone());
                 let created = super::create_delegate_target(
                     &shell,
+                    "copilot",
                     command,
                     Some("C:\\project"),
                     preserve,
@@ -781,6 +792,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delegate_creation_carries_provider_without_fabricating_session_or_status() {
+        for provider in [
+            "copilot",
+            "claude",
+            "codex",
+            "gemini",
+            "opencode",
+            "custom:fixture",
+        ] {
+            let command = if provider.starts_with("custom:") {
+                "pwsh -NoProfile -File fixture.ps1"
+            } else {
+                provider
+            };
+            let runtime = crate::coordinator::resolve_delegate_runtime_with_provider(
+                Some(command),
+                None,
+                None,
+                Some(provider),
+            )
+            .unwrap();
+            assert_eq!(runtime.id, provider);
+            assert_eq!(runtime.commandline, command);
+            for split in [None, Some("original-pane")] {
+                let channel = std::sync::Arc::new(RecordingChannel {
+                    requests: Default::default(),
+                    response: serde_json::json!({"session_id": "new-pane"}),
+                    fail_focus: false,
+                });
+                let shell = crate::shell::ShellManager::new().with_wt_channel(channel.clone());
+                super::create_delegate_target(
+                    &shell,
+                    &runtime.id,
+                    &runtime.commandline,
+                    None,
+                    true,
+                    split,
+                    "auto",
+                    0.5,
+                )
+                .await
+                .unwrap();
+                let requests = channel.requests.lock().unwrap();
+                assert_eq!(requests.len(), 2);
+                assert_eq!(requests[0].1["native_agent_provider_id"], provider);
+                assert!(requests[0].1.get("agent_session_id").is_none());
+                assert!(requests[0].1.get("status").is_none());
+                assert_eq!(requests[1].0, "focus_pane");
+            }
+            assert!(crate::coordinator::resolve_delegate_runtime_with_provider(
+                Some("pwsh -NoProfile -File fixture.ps1"),
+                None,
+                None,
+                None,
+            )
+            .is_err());
+            assert!(crate::coordinator::resolve_delegate_runtime_with_provider(
+                Some("copilot"),
+                None,
+                None,
+                None,
+            )
+            .is_ok());
+        }
+    }
+
+    #[tokio::test]
     async fn delegate_tab_preserve_sidebar_reports_missing_identity_and_focus_failure() {
         for (response, fail_focus) in [
             (serde_json::json!({}), false),
@@ -794,7 +872,7 @@ mod tests {
             });
             let shell = crate::shell::ShellManager::new().with_wt_channel(channel.clone());
             assert!(super::create_delegate_target(
-                &shell, "copilot", None, true, None, "auto", 0.5
+                &shell, "copilot", "copilot", None, true, None, "auto", 0.5
             )
             .await
             .is_err());

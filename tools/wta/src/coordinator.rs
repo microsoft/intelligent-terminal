@@ -138,6 +138,37 @@ pub fn default_delegate_agent_runtimes(
 }
 
 /// Derive a (id, display_name) pair from a delegate agent commandline.
+pub(crate) fn resolve_delegate_runtime_with_provider(
+    delegate_agent_cmd: Option<&str>,
+    agent_cmd: Option<&str>,
+    delegate_model: Option<&str>,
+    provider_id: Option<&str>,
+) -> Result<DelegateAgentRuntime> {
+    let mut runtimes =
+        default_delegate_agent_runtimes(delegate_agent_cmd, agent_cmd, delegate_model);
+    let mut runtime = runtimes
+        .pop()
+        .ok_or_else(|| anyhow::anyhow!("no delegate agent configured"))?;
+    if let Some(provider) = provider_id {
+        anyhow::ensure!(
+            agent_registry::is_known_id(provider)
+                || (provider.starts_with("custom:")
+                    && provider.len() > 7
+                    && provider.trim() == provider
+                    && !provider.contains(['\r', '\n', '\t'])),
+            "invalid delegate provider identity"
+        );
+        runtime.id = provider.to_owned();
+    } else {
+        anyhow::ensure!(
+            agent_registry::is_known_id(&runtime.id),
+            "custom delegate command requires an explicit provider identity"
+        );
+    }
+    Ok(runtime)
+}
+
+/// Derive a (id, display_name) pair from a delegate agent commandline.
 fn derive_agent_identity(commandline: &str) -> (String, String) {
     let profile = agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(
         commandline,
@@ -505,6 +536,7 @@ async fn execute_choice(
                                 direction.as_deref(),
                                 None,
                                 profile.as_deref(),
+                                None,
                             )
                             .await
                             .with_context(|| format!("failed to split pane {}", parent))?;
@@ -620,6 +652,7 @@ async fn execute_choice(
                                 direction.as_deref(),
                                 None,
                                 profile.as_deref(),
+                                None,
                             )
                             .await
                             .with_context(|| format!("failed to split pane {}", parent))?;

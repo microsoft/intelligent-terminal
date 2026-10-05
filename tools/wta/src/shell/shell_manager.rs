@@ -519,7 +519,7 @@ impl ShellManager {
         title: Option<&str>,
         profile: Option<&str>,
     ) -> anyhow::Result<serde_json::Value> {
-        self.wt_create_tab_with_background(commandline, cwd, title, profile, false)
+        self.wt_create_tab_with_background(commandline, cwd, title, profile, false, None)
             .await
     }
 
@@ -530,8 +530,12 @@ impl ShellManager {
         title: Option<&str>,
         profile: Option<&str>,
         background: bool,
+        native_agent_provider_id: Option<&str>,
     ) -> anyhow::Result<serde_json::Value> {
         let mut params = serde_json::Map::new();
+        if let Some(provider) = native_agent_provider_id {
+            params.insert("native_agent_provider_id".into(), provider.into());
+        }
         if background {
             params.insert("background".into(), true.into());
         }
@@ -561,8 +565,12 @@ impl ShellManager {
         direction: Option<&str>,
         size: Option<f64>,
         profile: Option<&str>,
+        native_agent_provider_id: Option<&str>,
     ) -> anyhow::Result<serde_json::Value> {
         let mut params = serde_json::Map::new();
+        if let Some(provider) = native_agent_provider_id {
+            params.insert("native_agent_provider_id".into(), provider.into());
+        }
         params.insert("session_id".into(), pane_id.into());
         if let Some(cmd) = commandline {
             params.insert("commandline".into(), cmd.into());

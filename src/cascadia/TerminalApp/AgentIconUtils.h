@@ -7,9 +7,27 @@
 
 namespace Microsoft::Terminal::UI::AgentIcons
 {
+    inline winrt::hstring IconPathForProvider(const std::wstring_view providerId)
+    {
+        for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents)
+        {
+            if (::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(agent.id, providerId))
+            {
+                return winrt::hstring{ L"ms-appx:///AgentIcons/" } + winrt::hstring{ agent.id } + L".svg";
+            }
+        }
+        return L"ms-appx:///AgentIcons/generic.svg";
+    }
+
     inline winrt::Windows::UI::Xaml::ResourceDictionary& Resources()
     {
         thread_local winrt::Windows::UI::Xaml::ResourceDictionary resources{ nullptr };
+        if (!resources)
+        {
+            winrt::Windows::UI::Xaml::ResourceDictionary dictionary;
+            dictionary.Source(winrt::Windows::Foundation::Uri{ L"ms-appx:///TerminalApp/AgentIconResources.xaml" });
+            resources = dictionary;
+        }
         return resources;
     }
 
@@ -19,6 +37,24 @@ namespace Microsoft::Terminal::UI::AgentIcons
         // Geometry has a single owner; detach it from the temporary template.
         shape.Data(nullptr);
         return geometry;
+    }
+
+    inline winrt::hstring MaskPathForIconPath(const winrt::hstring& iconPath)
+    {
+        constexpr std::wstring_view prefix{ L"ms-appx:///AgentIcons/" };
+        constexpr std::wstring_view suffix{ L".svg" };
+        const std::wstring_view path{ iconPath };
+        if (!path.starts_with(prefix) || !path.ends_with(suffix))
+        {
+            return {};
+        }
+        const auto id = path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
+        if (id != L"generic" && std::ranges::none_of(::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents,
+                                                    [&](const auto& agent) { return agent.id == id; }))
+        {
+            return {};
+        }
+        return winrt::hstring{ L"ms-appx:///AgentIcons/Masks/" } + winrt::hstring{ id } + L".png";
     }
 
     inline winrt::Windows::UI::Xaml::Media::Geometry GeometryForIconPath(const winrt::hstring& iconPath)
@@ -65,21 +101,20 @@ namespace Microsoft::Terminal::UI::AgentIcons
 
     inline winrt::Microsoft::UI::Xaml::Controls::IconSource SourceForIconPath(const winrt::hstring& iconPath, const bool monochrome)
     {
-        if (const auto geometry = GeometryForIconPath(iconPath))
+        if (const auto mask = MaskPathForIconPath(iconPath); !mask.empty())
         {
-            winrt::Microsoft::UI::Xaml::Controls::PathIconSource source;
-            source.Data(geometry);
-            return source;
+            return winrt::Microsoft::Terminal::UI::IconPathConverter::IconSourceMUX(mask, true);
         }
         return winrt::Microsoft::Terminal::UI::IconPathConverter::IconSourceMUX(iconPath, monochrome);
     }
 
     inline winrt::Windows::UI::Xaml::Controls::IconElement ElementForIconPath(const winrt::hstring& iconPath)
     {
-        if (const auto geometry = GeometryForIconPath(iconPath))
+        if (const auto mask = MaskPathForIconPath(iconPath); !mask.empty())
         {
-            winrt::Windows::UI::Xaml::Controls::PathIcon icon;
-            icon.Data(geometry);
+            winrt::Windows::UI::Xaml::Controls::BitmapIcon icon;
+            icon.UriSource(winrt::Windows::Foundation::Uri{ mask });
+            icon.ShowAsMonochrome(true);
             icon.Width(16);
             icon.Height(16);
             return icon;

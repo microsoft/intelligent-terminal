@@ -45,6 +45,9 @@ int wmain(int argc, wchar_t** argv)
         L"\" -LogPath \"" + log + L"\" -RunId " + run + (external ? L" -External" : L" -Canonical") +
         (resume ? L" -Resume" : L"") + L" -SessionId " +
         session + L" -WtcliPath \"" + wtcli + L"\"";
+#ifdef ITE2E_SHIM_SESSION_START_GATE
+    command += L" -SessionStartGate \"" + std::wstring{ ITE2E_SHIM_SESSION_START_GATE } + L"\"";
+#endif
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
     startup.dwFlags = STARTF_USESTDHANDLES;

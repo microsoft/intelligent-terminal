@@ -2051,6 +2051,7 @@ namespace winrt::TerminalApp::implementation
         // its exact execution source; WTA must not infer or fall back from it.
         const auto& globals = _settings.GlobalSettings();
         auto delegateAgent = _ResolveEffectiveDelegateAgent(globals);
+        auto delegateAgentId = globals.EffectiveDelegateAgent();
         auto delegateModel = globals.DelegateModel();
         winrt::hstring delegateSource{ L"host" };
         winrt::hstring delegateWslDistro;
@@ -2084,6 +2085,7 @@ namespace winrt::TerminalApp::implementation
                 else
                 {
                     delegateAgent = winrt::hstring{ backend->agentId };
+                    delegateAgentId = winrt::hstring{ backend->agentId };
                     // There is no profile-scoped model setting — the profile's
                     // commandPaletteAgent selects only the agent and its exact
                     // execution source, so the global DelegateModel still
@@ -2160,6 +2162,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         cmdline += L" --delegate-agent " + quoteArg(std::wstring_view{ delegateAgent });
+        cmdline += L" --delegate-agent-id " + quoteArg(std::wstring_view{ delegateAgentId });
         cmdline += L" --delegate-source " + quoteArg(std::wstring_view{ delegateSource });
         if (!delegateWslDistro.empty())
         {
@@ -10560,7 +10563,8 @@ namespace winrt::TerminalApp::implementation
                          agentSessionId.starts_with("sidekick-") ||
                          (agent.empty() && resumeCommandline.empty())))
                     {
-                         _ApplyTabListProjection(tab);
+                        _UpdateTabIcon(*tabImpl);
+                        _ApplyTabListProjection(tab);
                         return;
                     }
 
@@ -10612,6 +10616,7 @@ namespace winrt::TerminalApp::implementation
                             _agentPaneLog("OnPaneAgentSessionChanged: ignored prompt session " + agentSessionId + " for already-bound pane " + paneId);
                         }
                     }
+                    _UpdateTabIcon(*tabImpl);
                     _ApplyTabListProjection(tab);
                     return;
                 }
@@ -14314,11 +14319,12 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    TermControl TerminalPage::_CreateNewControlAndContent(const Settings::TerminalSettingsCreateResult& settings, const ITerminalConnection& connection)
+    TermControl TerminalPage::_CreateNewControlAndContent(const Settings::TerminalSettingsCreateResult& settings, const ITerminalConnection& connection, const winrt::hstring& nativeAgentProviderId)
     {
         // Do any initialization that needs to apply to _every_ TermControl we
         // create here.
-        const auto content = _manager.CreateCore(*settings.DefaultSettings(), settings.UnfocusedSettings().try_as<IControlAppearance>(), connection);
+        const auto content = winrt::get_self<ContentManager>(_manager)->CreateAgentCliCore(
+            *settings.DefaultSettings(), settings.UnfocusedSettings().try_as<IControlAppearance>(), connection, nativeAgentProviderId);
         const TermControl control{ content };
         return _SetupControl(control);
     }
@@ -14495,7 +14501,7 @@ namespace winrt::TerminalApp::implementation
                 }
                 CATCH_LOG()
             });
-            auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };
+            auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control, _manager) };
             auto resultPane = std::make_shared<Pane>(paneContent);
             createdPane = resultPane;
 
@@ -14611,6 +14617,14 @@ namespace winrt::TerminalApp::implementation
             controlSettings = Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, newTerminalArgs);
         }
 
+        const auto restoredAgent = newTerminalArgs ?
+                                       ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(newTerminalArgs.Commandline()) :
+                                       ::Microsoft::Terminal::AgentPaneRestore::ResumeTarget{};
+        if (newTerminalArgs && newTerminalArgs.NativeAgentProviderId().empty() && !restoredAgent.agent.empty())
+        {
+            newTerminalArgs.NativeAgentProviderId(winrt::hstring{ restoredAgent.agent });
+        }
+
         // Try to handle auto-elevation
         if (_maybeElevate(newTerminalArgs, controlSettings, profile))
         {
@@ -14645,7 +14659,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        const auto control = _CreateNewControlAndContent(controlSettings, connection);
+        const auto control = _CreateNewControlAndContent(controlSettings, connection, newTerminalArgs ? newTerminalArgs.NativeAgentProviderId() : winrt::hstring{});
 
         // Two kinds of pane replay their own history and must not also be
         // seeded from the saved buffer: one running an agent resume command,
@@ -14666,7 +14680,7 @@ namespace winrt::TerminalApp::implementation
             control.RestoreFromPath(path);
         }
 
-        auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };
+        auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control, _manager) };
 
         auto resultPane = std::make_shared<Pane>(paneContent);
 
@@ -14674,7 +14688,7 @@ namespace winrt::TerminalApp::implementation
         {
             auto newControl = _CreateNewControlAndContent(controlSettings, debugConnection);
             // Split (auto) with the debug tap.
-            auto debugContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, newControl) };
+            auto debugContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, newControl, _manager) };
             auto debugPane = std::make_shared<Pane>(debugContent);
 
             // Since we're doing this split directly on the pane (instead of going through Tab,
@@ -14693,8 +14707,7 @@ namespace winrt::TerminalApp::implementation
         // is lost. Retain the binding until its helper's listener is subscribed.
         if (hasSessionId && newTerminalArgs)
         {
-            const auto target = ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(
-                newTerminalArgs.Commandline());
+            const auto& target = restoredAgent;
             if (!target.agent.empty())
             {
                 _paneAgentSessions.insert_or_assign(
@@ -15888,6 +15901,26 @@ namespace winrt::TerminalApp::implementation
         if (!newTerminalArgs)
         {
             return false;
+        }
+
+        if (newTerminalArgs.NativeAgentProviderId().empty())
+        {
+            const auto resume = ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(newTerminalArgs.Commandline());
+            if (!resume.agent.empty())
+            {
+                newTerminalArgs.NativeAgentProviderId(winrt::hstring{ resume.agent });
+            }
+        }
+        if (!newTerminalArgs.NativeAgentProviderId().empty())
+        {
+            namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+            namespace Policy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
+            const auto provider = newTerminalArgs.NativeAgentProviderId();
+            const auto id = Registry::CanonicalNativeAgentProviderId(std::wstring_view{ provider });
+            THROW_HR_IF(E_INVALIDARG, id.empty());
+            Policy::Reload();
+            THROW_HR_IF(E_ACCESSDENIED, !Registry::IsNativeAgentProviderAllowed(id, *Policy::_GetSnapshot()));
+            newTerminalArgs.NativeAgentProviderId(winrt::hstring{ id });
         }
 
         const auto defaultSettings = controlSettings.DefaultSettings();

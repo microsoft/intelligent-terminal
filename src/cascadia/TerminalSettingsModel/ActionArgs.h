@@ -7,6 +7,7 @@
 //          *.g.cpp to ActionArgs.cpp!
 #include "ActionEventArgs.g.h"
 #include "../inc/AgentPaneRestore.h"
+#include "../inc/AgentRegistry.h"
 #include "BaseContentArgs.g.h"
 #include "NewTerminalArgs.g.h"
 #include "CopyTextArgs.g.h"
@@ -399,12 +400,15 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         ACTION_ARG(uint64_t, ContentId);
         // Process-local transfer generation, never included in saved layouts.
         ACTION_ARG(uint64_t, AgentPaneTransferId);
+        // Native CLI identity, independent of any conversation or activity.
+        ACTION_ARG(winrt::hstring, NativeAgentProviderId, L"");
 
         static constexpr std::string_view TypeKey{ "type" };
         static constexpr std::string_view SessionIdKey{ "sessionId" };
         static constexpr std::string_view AppendCommandLineKey{ "appendCommandLine" };
         static constexpr std::string_view ContentKey{ "__content" };
         static constexpr std::string_view AgentPaneTransferKey{ "__agentPaneTransfer" };
+        static constexpr std::string_view NativeAgentProviderIdKey{ "nativeAgentProviderId" };
 
     public:
         // Content types live in `AgentPaneRestore` so the restore path in
@@ -440,7 +444,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                        otherAsUs->_ReloadEnvironmentVariables == _ReloadEnvironmentVariables &&
                        otherAsUs->_Type == _Type &&
                        otherAsUs->_ContentId == _ContentId &&
-                       otherAsUs->_AgentPaneTransferId == _AgentPaneTransferId;
+                       otherAsUs->_AgentPaneTransferId == _AgentPaneTransferId &&
+                       otherAsUs->_NativeAgentProviderId == _NativeAgentProviderId;
             }
             return false;
         };
@@ -462,6 +467,14 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::GetValueForKey(json, ReloadEnvironmentVariablesKey, args->_ReloadEnvironmentVariables);
             JsonUtils::GetValueForKey(json, ContentKey, args->_ContentId);
             JsonUtils::GetValueForKey(json, AgentPaneTransferKey, args->_AgentPaneTransferId);
+            JsonUtils::GetValueForKey(json, NativeAgentProviderIdKey, args->_NativeAgentProviderId);
+            const auto parsedProvider = args->NativeAgentProviderId();
+            if (!parsedProvider.empty())
+            {
+                const auto provider = ::Microsoft::Terminal::Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(std::wstring_view{ parsedProvider });
+                THROW_HR_IF(E_INVALIDARG, provider.empty());
+                args->NativeAgentProviderId(winrt::hstring{ provider });
+            }
             return *args;
         }
         static Json::Value ToJson(const Model::NewTerminalArgs& val)
@@ -486,6 +499,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::SetValueForKey(json, ReloadEnvironmentVariablesKey, args->_ReloadEnvironmentVariables);
             JsonUtils::SetValueForKey(json, ContentKey, args->_ContentId);
             JsonUtils::SetValueForKey(json, AgentPaneTransferKey, args->_AgentPaneTransferId);
+            if (!args->NativeAgentProviderId().empty())
+            {
+                JsonUtils::SetValueForKey(json, NativeAgentProviderIdKey, args->_NativeAgentProviderId);
+            }
             return json;
         }
         Model::NewTerminalArgs Copy() const
@@ -505,6 +522,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             copy->_ReloadEnvironmentVariables = _ReloadEnvironmentVariables;
             copy->_ContentId = _ContentId;
             copy->_AgentPaneTransferId = _AgentPaneTransferId;
+            copy->_NativeAgentProviderId = _NativeAgentProviderId;
             return *copy;
         }
         size_t Hash() const
@@ -528,6 +546,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             h.write(Type());
             h.write(ContentId());
             h.write(AgentPaneTransferId());
+            h.write(NativeAgentProviderId());
         }
     };
 

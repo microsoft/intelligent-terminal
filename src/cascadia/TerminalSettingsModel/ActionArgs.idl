@@ -207,6 +207,8 @@ namespace Microsoft.Terminal.Settings.Model
 
         // Process-local generation paired with ContentId during a live move.
         UInt64 AgentPaneTransferId { get; set; };
+        // Native interactive CLI provider; does not select assistant content.
+        String NativeAgentProviderId;
     };
 
     [default_interface] runtimeclass ActionEventArgs : IActionEventArgs

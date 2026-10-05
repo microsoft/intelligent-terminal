@@ -5,7 +5,8 @@ param(
     [switch]$External,
     [switch]$Resume,
     [string]$SessionId,
-    [string]$WtcliPath
+    [string]$WtcliPath,
+    [string]$SessionStartGate
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,10 +27,27 @@ if ($Canonical) {
         throw 'Canonical fixture requires a fresh explicit UUID, owned native shim and Terminal pane.'
     }
     $session = $SessionId
+    if ($SessionStartGate) {
+        $title = "ITE2E prehook $session"
+        [Console]::Write("$([char]27)]0;$title$([char]7)")
+        @{ pane_session_id = $env:WT_SESSION; session_id = $session; title = $title; phase = 'before-hook' } |
+            ConvertTo-Json -Compress |
+            Set-Content -LiteralPath "$SessionStartGate.waiting-$session.json"
+        $deadline = [DateTimeOffset]::UtcNow.AddSeconds(60)
+        while (-not (Test-Path -LiteralPath $SessionStartGate)) {
+            if ([DateTimeOffset]::UtcNow -ge $deadline) { throw 'Session-start gate was not released.' }
+            Start-Sleep -Milliseconds 100
+        }
+    }
     @{ session_id = $session; cwd = [IO.Directory]::GetCurrentDirectory() } |
         ConvertTo-Json -Compress |
         & $WtcliPath agent-hook --cli-source copilot --event agent.session.start
     if ($LASTEXITCODE -ne 0) { throw "Canonical session-start hook failed: $LASTEXITCODE" }
+    if ($SessionStartGate) {
+        @{ pane_session_id = $env:WT_SESSION; session_id = $session; provider_id = 'copilot'; phase = 'hook-emitted' } |
+            ConvertTo-Json -Compress |
+            Set-Content -LiteralPath "$SessionStartGate.emitted-$session.json"
+    }
 }
 $record = @{
     run_id = $RunId

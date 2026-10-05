@@ -10481,6 +10481,7 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
                         "window_id": 42,
                         "commandline": invocation,
                         "background": true,
+                        "native_agent_provider_id": provider,
                         "cwd": "C:\\repo",
                     }),
                 ),
