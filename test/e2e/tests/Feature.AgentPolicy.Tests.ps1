@@ -151,10 +151,10 @@ Describe 'Feature §0 agent Group Policy locks (AllowAgentSessionHooks, FRE)' -T
     }
 }
 
-Describe 'Feature §0 agent Group Policy locks (AllowYoloMode, FRE)' -Tag 'Feature' -Skip:(-not ($script:Ready -and $script:PolicyControllable)) {
+Describe 'Feature §0 agent Group Policy locks (AllowAutomaticApproval, FRE)' -Tag 'Feature' -Skip:(-not ($script:Ready -and $script:PolicyControllable)) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:policyState = Set-WtAgentPolicy -Policy @{ AllowYoloMode = 'Blocked' }
+        $script:policyState = Set-WtAgentPolicy -Policy @{ AllowAutomaticApproval = 'Blocked' }
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -ShowFre -Settings @{
             acpAgent = 'copilot'
             'agentPane.yoloMode' = $true

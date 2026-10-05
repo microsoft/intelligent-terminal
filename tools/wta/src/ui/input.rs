@@ -298,6 +298,43 @@ fn input_text_width(total_width: u16) -> u16 {
         .max(1)
 }
 
+pub(crate) fn input_cursor_at(
+    input: &str,
+    cursor_pos: usize,
+    area: Rect,
+    column: u16,
+    row: u16,
+) -> Option<usize> {
+    let text_start = area
+        .x
+        .saturating_add(1 + INPUT_LEFT_PAD + INPUT_PROMPT_WIDTH);
+    if column < text_start
+        || column >= area.right().saturating_sub(1)
+        || row <= area.y
+        || row >= area.bottom().saturating_sub(1)
+    {
+        return None;
+    }
+    let viewport = input_viewport_with_max_rows(
+        input,
+        cursor_pos,
+        input_text_width(area.width),
+        area.height.saturating_sub(2) as usize,
+    );
+    let visible_row = usize::from(row - area.y - 1);
+    let line = viewport.visible_lines.get(visible_row)?;
+    let start = viewport.visible_line_starts[visible_row];
+    let target_column = usize::from(column - text_start);
+    let mut display_column = 0;
+    for (offset, ch) in line.char_indices() {
+        display_column += char_display_width(ch);
+        if target_column < display_column {
+            return Some(start + offset);
+        }
+    }
+    Some(start + line.len())
+}
+
 pub(crate) fn adjacent_input_cursor(
     input: &str,
     cursor_pos: usize,

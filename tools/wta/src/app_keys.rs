@@ -56,6 +56,11 @@ impl App {
     }
 
     pub(super) fn handle_key(&mut self, key: KeyEvent) {
+        let typing_key = matches!(key.code, KeyCode::Char(ch) if !ch.is_control())
+            && modifiers_allow_text_input(key.modifiers);
+        if !typing_key || !self.chat_input_has_edit_focus() {
+            self.current_tab_mut().break_input_undo_group();
+        }
         let input_vertical_key = key.modifiers.is_empty()
             && matches!(key.code, KeyCode::Up | KeyCode::Down)
             && self.mode == AppMode::Chat
@@ -98,6 +103,19 @@ impl App {
         }
         if is_ctrl_c && self.mode == AppMode::Chat {
             self.handle_global_ctrl_c();
+            return;
+        }
+
+        if key.modifiers == KeyModifiers::CONTROL
+            && matches!(key.code, KeyCode::Char('z' | 'Z' | 'y' | 'Y'))
+            && self.chat_input_has_edit_focus()
+        {
+            self.text_selection.clear();
+            if matches!(key.code, KeyCode::Char('z' | 'Z')) {
+                self.current_tab_mut().undo_input();
+            } else {
+                self.current_tab_mut().redo_input();
+            }
             return;
         }
 
@@ -279,9 +297,7 @@ impl App {
                                     install_url: String::new(),
                                     auth_hint: profile.auth_hint.to_string(),
                                 },
-                                install_in_progress: false,
-                                install_log: Vec::new(),
-                                install_error: None,
+                                phase: SetupPhase::Ready,
                                 options,
                                 title: t!("setup.title.sign_in").into_owned(),
                                 subtitle: if profile.id == "copilot" {
@@ -923,6 +939,8 @@ impl App {
                     let is_byok = self.current_model_is_byok();
                     let agent_id = self.current_agent_id.clone();
                     let tab = self.current_tab_mut();
+                    // Release historical image references before transferring the payloads.
+                    tab.reset_input_undo_history();
                     let display_text = std::mem::take(&mut tab.input);
                     let (text, images) = tab.attachments.take_for_submission(display_text.clone());
                     tab.record_input_history(&text);
@@ -940,6 +958,7 @@ impl App {
                         .session_id
                         .clone()
                         .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+                    let reattached_session_id = tab.reattached_session_id().map(str::to_string);
                     let pane_context = PaneContext {
                         pane_id: self.pane_id.clone(),
                         tab_id: self.tab_id.clone(),
@@ -954,7 +973,8 @@ impl App {
                     }
                     .with_images(images)
                     .with_byok(is_byok)
-                    .with_agent_id(agent_id);
+                    .with_agent_id(agent_id)
+                    .with_reattached_session(reattached_session_id);
                     prompt_timing_log(
                         prompt.id,
                         prompt.submitted_at_unix_s,

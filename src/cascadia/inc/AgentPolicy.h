@@ -16,7 +16,7 @@
 //   AllowCustomAgents  REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
 //   AllowAutoFix       REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
 //   AllowAgentSessionHooks REG_DWORD  0 = blocked, 1 = allowed. Absent = allowed.
-//   AllowYoloMode      REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
+//   AllowAutomaticApproval REG_DWORD 0 = blocked, 1 = allowed. Absent = allowed.
 //                                    Gates the global agentPane.yoloMode setting
 //                                    and provider-native Yolo config changes.
 
@@ -206,7 +206,7 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         snap->customAgents = _DwordToPolicyState(_ReadDwordPolicy(L"AllowCustomAgents"));
         snap->autoFix = _DwordToPolicyState(_ReadDwordPolicy(L"AllowAutoFix"));
         snap->agentSessionHooks = _DwordToPolicyState(_ReadDwordPolicy(L"AllowAgentSessionHooks"));
-        snap->yoloMode = _DwordToPolicyState(_ReadDwordPolicy(L"AllowYoloMode"));
+        snap->yoloMode = _DwordToPolicyState(_ReadDwordPolicy(L"AllowAutomaticApproval"));
 
         {
             std::lock_guard lock{ s_policyMutex };

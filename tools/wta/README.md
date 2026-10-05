@@ -23,10 +23,13 @@ fallback.
 ### How WTA runs
 
 WTA is normally launched **by Windows Terminal**, not by hand. WT spawns one
-`wta-master` singleton (owns a lazily populated agent CLI pool) and one
+`wta-master` singleton (owns the shared agent CLI pool) and one
 `wta-helper` per agent pane (renders this TUI and speaks ACP to master over a
 named pipe). Helpers selecting the same agent identity, source, and command
-share one agent process. Bare `wta` with no subcommand and neither `--master`
+share one agent process. Master warms installed, policy-allowed native host agents
+other than Gemini in the background at startup; Gemini and other selections
+remain on-demand. Bare `wta` with
+no subcommand and neither `--master`
 nor `--connect-master` exits with an error — there is no standalone agent / TUI
 mode.
 
@@ -56,6 +59,85 @@ the host agent, WTA puts the current package family's alias directory first on
 `PATH`; unpackaged builds use the running binary's directory. Agent prompts can
 therefore use short `wta.exe` commands without selecting another installed
 branding or reproducing a protected package path.
+
+### Sidebar Agent sessions
+
+Master discovers installed, policy-allowed Windows-host agents in the background
+as soon as its named pipe is ready, without waiting for the sidebar to open. It checks
+the native agent CLI and required `npx` prerequisite before starting ACP, reuses
+matching connections in the agent pool, and merges each supported `session/list`
+response into the registry. No chat session or prompt is created by discovery.
+Gemini is excluded before availability checks and ACP startup, even when installed
+and policy-allowed. Explicit Gemini chat selections remain supported, and Gemini
+sessions already registered by other paths are not filtered out of the sidebar.
+
+Discovery never automatically installs a native agent CLI. The pinned Claude and
+Codex ACP adapters are separate: their cache presence is not checked, and the
+existing `npx -y` launch behavior may download and bootstrap an uncached adapter
+during initial startup or a later refresh that starts a provider. This is allowed
+and may require network access; discovery is not an offline-only operation. See
+[Installing dependencies](../../doc/installing-dependencies.md) for the native CLI
+and ACP wrapper prerequisites.
+
+Sidebar Agent sessions runs
+`wta sessions list --origin shell --json --include-status`.
+This only reads the current registry snapshot; it never starts an agent or waits
+for an ACP history query. Master synchronizes initialized, listing-capable pooled
+connections every five seconds, including already-connected WSL and custom agents.
+Each connection has one refresh in flight; history and title updates share its
+single response. Failed queries retain prior rows and back off up to 60 seconds.
+The opt-in JSON object contains `sessions` and `history_status` (`loading`, `ready`,
+or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
+ordinary `--json` output remains one session per line. The initial
+discovery stays `loading` until all eligible host providers finish. Providers that
+do not support listing are skipped, while initialization or listing failures
+produce `error`. Later refreshes retain the last completed status until they finish.
+The sidebar shows available rows immediately, shows a loading indicator while an
+empty snapshot is still loading, and displays "No agent sessions found" only after
+a successful empty result. Non-timeout errors remain visible alongside available
+rows. Query timeouts are logged without an error banner: cached sessions remain
+usable, or the initial loading indicator remains until a result is available.
+Mixed failures are not treated as timeout-only. Failed refreshes do not clear
+previously displayed sessions. This does not depend
+on the agent pane's chat connection or hooks being ready.
+
+History activation keeps an operation ID until its outcome is confirmed.
+If the activation CLI times out, the sidebar checks the receipt using
+`wta sessions activate --status-only` with the same identity, target window, and
+`--activation-id`. This is a read-only status request: `pending` and `unknown`
+never start another focus or restore. Master continues an accepted activation
+after the requesting CLI disconnects. Retrying an unresolved row checks the
+same receipt, including after closing and reopening History; it does not generate
+a fresh activation ID. See
+[session tracking](../../doc/specs/hybrid-agent-session-tracking.md) for receipt
+retention and refresh cancellation/backoff behavior.
+
+These native-provider ACP processes remain in the master pool after History closes;
+there is no History-specific idle timeout or eviction. Further refreshes reuse them,
+and concurrent windows share one discovery pass. Registry and discovery-status changes notify the sidebar,
+with a 60-second snapshot poll while the view is open in vertical layout as a fallback. Opening the
+view still fetches immediately. Unavailable or failed
+providers do not clear other providers' rows or overwrite live activity and pane
+bindings. Failures are logged under `master_history`; listing never installs a native
+agent CLI or starts an interactive login flow.
+
+This discovery covers built-in agents on the Windows host. It does not start WSL
+distributions or discover arbitrary custom commands; sessions already in the registry
+remain visible according to the requested origin filter.
+
+Host discovery runs only at master startup, after a confirmed host-agent
+installation, or on an explicit `wta sessions refresh` request. There is no periodic
+installation scan. `wta sessions refresh --json` schedules discovery and returns the
+current snapshot with `history_status`; it does not wait for discovery to finish.
+The removed `--all-agents` flag is no longer accepted. F5 in a helper's session view
+explicitly refreshes that helper's bound connection without discovering other agents.
+Ordinary helper reads are also snapshot-only. Their 60-second open-view fallback runs
+only in nonvertical layout; vertical layout uses the Sidebar fallback instead.
+Live layout changes and helper-ready runtime configuration update this selection per
+window without reconnecting ACP. Push updates remain immediate in either layout,
+and returning to nonvertical layout immediately refreshes an already-open helper view.
+ACP initialization retry behavior is unchanged; history-query retries do not restart
+or initialize agents.
 
 ### tmux-like CLI
 
@@ -166,8 +248,11 @@ the view clamps to surviving content.
 |-----|--------|
 | Type + Enter | Send prompt to agent |
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
+| Ctrl+Z | Undo the latest edit in the focused chat draft |
+| Ctrl+Y | Redo an undone edit in the focused chat draft |
 | Up / Down | Browse prompt input history |
 | Mouse wheel | Scroll chat (hold Alt to scroll one line) |
+| Click draft text | Move the draft caret to the clicked text cell |
 | Click a tool header | Expand or collapse that tool's details, live or completed |
 | Click a thinking header | Expand or collapse that block, live or completed |
 | Ctrl+O | Expand or collapse thinking in the selected/latest turn (or the active turn), and all live and completed tool details |
@@ -178,6 +263,24 @@ the view clamps to surviving content.
 | Shift+PageUp/Down | Scroll debug panel |
 | Y / N | Quick allow/reject on permission dialog |
 | Up / Down / Enter | Navigate permission options |
+
+Draft undo groups contiguous typing; paste, cut, selection replacement, deletion,
+and idle draft clearing are separate edits. Cursor, selection, focus, and view
+changes separate typing groups without adding text edits. A new edit after undo
+discards redo. Each tab keeps its own in-memory edit history, without a fixed step
+limit; this is separate from submitted prompt history and screen scrollback.
+Browsing prompt history preserves the original draft's edit chain, while editing
+a recalled prompt starts a fresh chain. Submission and session reset discard the
+old edit history: undo does not reverse submitted agent or tool actions.
+
+Undo/redo handles these keys only while the chat draft owns input. Permission
+dialogs retain their existing Y/N and Enter shortcuts, including Ctrl+Y for
+quick allow; a permission choice does not consume the draft's redo history.
+
+Single clicks in draft text follow the visible wrapped or scrolled input row.
+Wide characters and image attachment tokens keep valid editing boundaries.
+Clicking dismisses full-draft selection without editing text or discarding redo;
+dragging and double/triple clicks retain their text-selection behavior.
 
 WTA automatically selects **Allow once** only when the tool matches the exact MCP
 server currently bound to that ACP session by master. Master overwrites provider
@@ -216,16 +319,22 @@ packaged (or bare `%LOCALAPPDATA%\IntelligentTerminal\logs\` unpackaged):
 
 | File | Contents |
 |------|----------|
-| `wta-main_master.log` | `wta-master`: agent CLI pool, pipe accept loop, per-helper routing |
-| `wta-main_helper-{pid}.log` | each `wta-helper`: pipe connect, ACP init, prompts, agent responses, TUI lifecycle |
-| `wta-cli.log` | short-lived CLI helpers (`list-*`, `capture-pane`, `listen`, `sessions`) |
+| `wta-main_master.<UTC-date>.log` | `wta-master`: agent CLI pool, pipe accept loop, per-helper routing |
+| `wta-main_helper-{pid}.<UTC-date>.log` | each `wta-helper`: pipe connect, ACP init, prompts, agent responses, TUI lifecycle |
+| `wta-cli.<UTC-date>.log` | short-lived CLI helpers (`list-*`, `capture-pane`, `listen`, `sessions`) |
 | `terminal-agent-pane.log` | Agent-pane chrome (C++ TerminalApp side) |
 | `wta-ensure-host.log` | Background host startup / COM connection / SharedWta lifecycle |
 | `wta-acp-debug.log` | ACP protocol debug trace |
-| `wta-delegate.log` | `?<prompt>` delegation flow |
-| `wta-probe.log` | Agent/model/session capability probes |
-| `wta-install-hooks.log` | Hook installation and upgrade diagnostics |
+| `wta-delegate.<UTC-date>.log` | `?<prompt>` delegation flow |
+| `wta-probe.<UTC-date>.log` | Agent/model/session capability probes |
+| `wta-install-hooks.<UTC-date>.log` | Hook installation and upgrade diagnostics |
+| `wta-panic.<UTC-date>.log` | Synchronous panic backstop when the normal buffered record may not flush |
 | `hook-trace.log` | Shell-hook event diagnostics |
+
+Rust WTA streams with dated names rotate daily and retain up to three matching
+files. If a daily writer cannot initialize, that stream uses the fixed
+`wta-<stream>.log` name in the same directory. Per-PID helper logs are also
+reclaimed after three days.
 
 Set `WTA_LOG=debug` for verbose output (debug builds default to `debug`, release
 to `info`). The F12 debug panel in the TUI shows protocol traffic live without
@@ -313,6 +422,31 @@ A queued session restore shows the actual connection stage first, followed by
 short resume context; once connected, it shows only "Resuming session" until
 the load completes. The pane does not become connected earlier, and these labels
 do not reduce startup time.
+After loading, the pane header and model picker use the restored session's
+agent-reported model, when available, without switching it to the current
+default model. Settings still supplies the requested model for new sessions
+and later model changes; an existing confirmed selection stays visible until
+the agent confirms the switch.
+
+### Diagnosing a missing current-shell pane
+
+Default logs record failures without requiring `WTA_LOG=debug`:
+
+- `terminal-agent-pane.log`: the actual server PID/window/tab, requested source,
+  and why pane selection failed (for example, `active_agent_without_source`,
+  `selected_pane_has_no_session`, or `explicit_source_unresolved`). Exceptions from
+  the page-context query are logged once at the COM boundary with their HRESULT.
+- `wta-main_helper-{pid}.<UTC-date>.log` (or the fixed
+  `wta-main_helper-{pid}.log` fallback): `pane_context_unavailable` reasons distinguish
+  protocol failure, an agent pane, and unresolved legacy lookup.
+  `pane_context_response_contract_error` records invalid responses.
+  `prompt_has_no_bound_pane` identifies the affected helper/prompt;
+  `terminal_action_no_active_target` records rejection at the action check.
+
+Use **Report a bug** to collect these in the existing log ZIP. These new lines
+omit commands, terminal output, titles, and working directories; other existing
+logs may contain private data, so inspect the ZIP before sharing it. These are
+failure-time observations, not a history of how pane/source state changed.
 
 ### Adding a new WT protocol method
 

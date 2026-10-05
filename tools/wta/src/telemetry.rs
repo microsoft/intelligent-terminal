@@ -10,25 +10,28 @@
 // the `terminal-internals` package in official builds; OSS stub => inert). See
 // `build.rs` for header resolution.
 //
-// Note: the `SessionId` field on WTA events identifies the ACP session
-// (agent-pane backend connection); join to C++-side events only via fields
-// explicitly shared (e.g. `PaneId`).
+// Agent session identifiers must remain local to runtime routing, never telemetry.
 //
 // Events emitted from this module:
 //   - AcpInitializeComplete  (ACP initialize RPC completes)
 //   - AcpNewSessionComplete  (ACP session/new RPC completes)
+//   - AcpLoadSessionComplete (ACP session/load RPC completes)
 //   - AgentPromptSent          (WTA dispatches a prompt over ACP)
 //   - AgentResponseFirstToken  (ACP returns the first text chunk)
 //   - AgentResponseComplete    (ACP prompt request completes)
 //   - ErrorDetected            (classify_wt_event positively classifies an error)
-//   - ErrorFixResolved         (next command's exit code is 0 after a fix attempt)
-//   - SlashCommandInvoked      (a built-in slash command is dispatched)
+//   - AgentSlashCommandUsed    (a built-in slash command is dispatched)
+//   - ErrorFixOffered          (a concrete autofix recommendation is displayed)
+//   - ErrorFixAccepted         (the user confirms running that recommendation)
 //   - SessionsViewOpened       (the agent sessions view is opened)
 //   - SessionResumeInvoked     (a session resume route is dispatched)
 //   - SessionMcpToolCalled     (a session MCP tool is invoked)
 //   - HookOperationCompleted   (a hook install/uninstall operation completes)
 //   - DelegateInvoked          (delegation is triggered by an agent)
 //   - AgentColdStartComplete   (a new agent process is spawned and initialized)
+//
+// ErrorFixResolved was retired: analysis arming and subsequent prompt activity
+// cannot establish that a fix was applied or attribute a successful command to it.
 //
 // Conventions:
 //   - Per-event description: documented in the Rust doc comment above each
@@ -38,7 +41,7 @@
 //     source (and in this module's per-event subsection below) rather than
 //     in the event payload.
 //   - Keyword: MICROSOFT_KEYWORD_MEASURES (stub = 0 in OSS; real value in MS-internal build)
-//   - PartA_PrivTags: per-event — `ErrorDetected` / `ErrorFixResolved` /
+//   - PartA_PrivTags: per-event — `ErrorDetected` /
 //     `AgentPromptSent` use `PDT_ProductAndServiceUsage` (usage-tagged
 //     product signals), while the latency-bearing
 //     `AgentResponseFirstToken` and `AgentResponseComplete` use
@@ -58,6 +61,36 @@ fn sanitize_agent_id(agent_id: &str) -> &str {
     match agent_id {
         "copilot" | "claude" | "codex" | "gemini" | "opencode" => agent_id,
         _ => "custom",
+    }
+}
+
+/// Host-supplied AllowAutoFix policy, independent of the effective user setting.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum AutoFixPolicyState {
+    #[default]
+    Unknown,
+    NotConfigured,
+    Enabled,
+    Disabled,
+}
+
+impl AutoFixPolicyState {
+    pub(crate) fn from_wire(value: &str) -> Self {
+        match value {
+            "notConfigured" => Self::NotConfigured,
+            "enabled" => Self::Enabled,
+            "disabled" => Self::Disabled,
+            _ => Self::Unknown,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::NotConfigured => "notConfigured",
+            Self::Enabled => "enabled",
+            Self::Disabled => "disabled",
+        }
     }
 }
 
@@ -124,15 +157,11 @@ pub fn log_acp_initialize_complete(
 /// Emitted when an ACP `session/new` RPC completes. `duration_ms` is a
 /// monotonic duration measured around the RPC attempt, not wall-clock.
 ///
-/// `session_id` is present only on success. Failed attempts still emit the
-/// event with an empty `SessionId` so the ETW schema remains stable.
-///
 /// `failure_kind` is empty on success, `Timeout` when no response arrived
 /// before the local timeout, or `AcpError` when the agent returned a
 /// JSON-RPC/ACP error. `acp_error_code` is the agent-provided code for
 /// `AcpError`; otherwise it is 0.
 pub fn log_acp_new_session_complete(
-    session_id: Option<&str>,
     duration_ms: f64,
     success: bool,
     route: &str,
@@ -140,18 +169,36 @@ pub fn log_acp_new_session_complete(
     acp_error_code: i32,
 ) {
     let success_i32: i32 = if success { 1 } else { 0 };
-    let session_id = session_id.unwrap_or("");
     tlg::write_event!(
         AGENT_PROVIDER,
         "AcpNewSessionComplete",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
-        str8("SessionId", session_id),
         f64("DurationMs", &duration_ms),
         bool32("Success", &success_i32),
         str8("Route", route),
         str8("FailureKind", failure_kind),
         i32("AcpErrorCode", &acp_error_code),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
+    );
+}
+
+/// Emitted when an ACP `session/load` RPC completes. This covers both a
+/// durable agent-pane restore and an explicit resume from the session view;
+/// the event deliberately does not distinguish those callers.
+///
+/// `duration_ms` is monotonic. The event intentionally records only
+/// completion latency and success so it remains independent of which layer
+/// enforced a timeout or returned an ACP error.
+pub fn log_acp_load_session_complete(duration_ms: f64, success: bool) {
+    let success_i32: i32 = if success { 1 } else { 0 };
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "AcpLoadSessionComplete",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        f64("DurationMs", &duration_ms),
+        bool32("Success", &success_i32),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
     );
 }
@@ -163,24 +210,27 @@ pub fn log_acp_new_session_complete(
 /// (`CommandPaletteDispatchedAgentPrompt` in
 /// `src/cascadia/TerminalApp/CommandPalette.cpp`, under the same provider).
 pub fn log_agent_prompt_sent(
-    session_id: &str,
     prompt_byte_len: u32,
     is_autofix: bool,
     template_kind: &str,
     is_byok: bool,
     agent_id: &str,
+    reattached: bool,
+    user_prompt_ordinal: &str,
 ) {
     let is_autofix_i32: i32 = if is_autofix { 1 } else { 0 };
     let is_byok_i32: i32 = if is_byok { 1 } else { 0 };
+    let reattached_i32: i32 = if reattached { 1 } else { 0 };
     tlg::write_event!(
         AGENT_PROVIDER,
         "AgentPromptSent",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
-        str8("SessionId", session_id),
         u32("PromptLengthBytes", &prompt_byte_len),
         bool32("IsAutofix", &is_autofix_i32),
         bool32("IsByok", &is_byok_i32),
+        bool32("Reattached", &reattached_i32),
+        str8("UserPromptOrdinal", user_prompt_ordinal),
         str8("AgentId", sanitize_agent_id(agent_id)),
         str8("TemplateKind", template_kind),
         str8("Route", "AcpDispatch"),
@@ -199,7 +249,6 @@ pub fn log_agent_prompt_sent(
 /// would yield two metadata definitions for the same event name in ETW
 /// (the schemas differ), which complicates query/decode.
 pub fn log_agent_response_first_token(
-    session_id: &str,
     first_token_latency_ms: f64,
     chunk_byte_len: u32,
     agent_id: &str,
@@ -209,7 +258,6 @@ pub fn log_agent_response_first_token(
         "AgentResponseFirstToken",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
-        str8("SessionId", session_id),
         f64("FirstTokenLatencyMs", &first_token_latency_ms),
         u32("ChunkLengthBytes", &chunk_byte_len),
         str8("AgentId", sanitize_agent_id(agent_id)),
@@ -220,27 +268,13 @@ pub fn log_agent_response_first_token(
 /// Emitted when the agent finishes responding (prompt request completes).
 /// `total_duration_ms` is a monotonic duration (`Instant::elapsed`) from
 /// prompt dispatch to completion, not wall-clock.
-/// `raw_stdout_bytes_after_prompt` was the raw transport byte count read
-/// from the agent CLI's stdout after the prompt was dispatched (JSON-RPC
-/// framing / tool-call payloads included — a transport-level volume metric,
-/// not a measure of the final answer length).
-///
-/// NOTE: this is currently always 0. The stdout-read instrumentation lived
-/// in the direct agent-spawn path (`StartupInstrumentedReader`), which was
-/// removed when WTA moved to the master/helper architecture: a helper speaks
-/// ACP to wta-master over a named pipe and never reads the agent CLI's stdout
-/// directly — master owns that transport. The `raw_stdout_bytes_after_prompt`
-/// argument and the `TotalResponseBytes` ETW field are kept (always 0) for
-/// downstream schema compatibility; reintroducing the metric would mean
-/// accounting bytes at the master↔agent boundary. Until then, treat
-/// `TotalResponseBytes` as unpopulated rather than a per-session byte count.
+/// No response-byte field is emitted: master multiplexes agent stdout across
+/// sessions, so the helper has no attributable transport-byte measurement.
 ///
 /// Uses a distinct event name (`AgentResponseComplete`) — see the note on
 /// `log_agent_response_first_token` for why this is split into two events.
 pub fn log_agent_response_complete(
-    session_id: &str,
     total_duration_ms: f64,
-    raw_stdout_bytes_after_prompt: u64,
     success: bool,
     is_byok: bool,
     agent_id: &str,
@@ -252,9 +286,7 @@ pub fn log_agent_response_complete(
         "AgentResponseComplete",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
-        str8("SessionId", session_id),
         f64("TotalDurationMs", &total_duration_ms),
-        u64("TotalResponseBytes", &raw_stdout_bytes_after_prompt),
         bool32("Success", &success_i32),
         bool32("IsByok", &is_byok_i32),
         str8("AgentId", sanitize_agent_id(agent_id)),
@@ -262,14 +294,57 @@ pub fn log_agent_response_complete(
     );
 }
 
-/// Emitted when WTA dispatches one of its registered slash commands.
-pub fn log_slash_command_invoked(command_name: &str) {
+fn builtin_slash_command(command: &str) -> Option<&'static str> {
+    crate::commands::REGISTRY
+        .iter()
+        .find(|spec| spec.name == command)
+        .map(|spec| spec.name)
+}
+
+/// Emitted on built-in dispatch, before busy guards. Agent-provided names and
+/// arguments are never collected, even if this wrapper receives them.
+pub fn log_agent_slash_command_used(command: &str) {
+    let Some(command) = builtin_slash_command(command) else {
+        return;
+    };
+    #[cfg(test)]
+    capture::record(capture::Event::AgentSlashCommandUsed(command));
     tlg::write_event!(
         AGENT_PROVIDER,
-        "SlashCommandInvoked",
+        "AgentSlashCommandUsed",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
-        str8("CommandName", command_name),
+        str8("command", command),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Emitted once after a concrete, turn-attributed autofix card is painted and
+/// flushed in an open agent pane. The ID is random, not agent-provided content.
+pub fn log_error_fix_offered(offer_id: uuid::Uuid) {
+    #[cfg(test)]
+    capture::record(capture::Event::ErrorFixOffered(offer_id));
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "ErrorFixOffered",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("OfferId", &offer_id.to_string()),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Emitted once when the user confirms Run for a previously displayed autofix
+/// card and its execution request is queued. Not Insert, analysis, or success.
+pub fn log_error_fix_accepted(offer_id: uuid::Uuid) {
+    #[cfg(test)]
+    capture::record(capture::Event::ErrorFixAccepted(offer_id));
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "ErrorFixAccepted",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("OfferId", &offer_id.to_string()),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
     );
 }
@@ -301,12 +376,7 @@ pub fn log_session_resume_invoked(route: &str, agent_id: &str) {
 /// Emitted once for each session MCP function invocation. Unknown function
 /// names are bucketed so model-provided strings never become telemetry fields.
 pub fn log_session_mcp_tool_called(tool_name: &str) {
-    let sanitized = match tool_name {
-        "terminal_send" | "terminal_open" | "terminal_open_and_send" | "request_user_input" => {
-            tool_name
-        }
-        _ => "unknown",
-    };
+    let sanitized = sanitize_session_mcp_tool_name(tool_name);
     tlg::write_event!(
         AGENT_PROVIDER,
         "SessionMcpToolCalled",
@@ -315,6 +385,20 @@ pub fn log_session_mcp_tool_called(tool_name: &str) {
         str8("ToolName", sanitized),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
     );
+}
+
+fn sanitize_session_mcp_tool_name(tool_name: &str) -> &'static str {
+    use crate::agent_tools::action_proposal::schema::McpActionTool;
+    use crate::agent_tools::session_mcp::SessionMcpTool;
+
+    if tool_name == SessionMcpTool::UserInput.name() {
+        SessionMcpTool::UserInput.name()
+    } else {
+        McpActionTool::from_tool_name(tool_name)
+            .map(SessionMcpTool::TerminalAction)
+            .map(SessionMcpTool::name)
+            .unwrap_or("unknown")
+    }
 }
 
 /// Emitted for each supported CLI affected by hook install or uninstall.
@@ -368,7 +452,22 @@ pub fn log_agent_cold_start_complete(
 
 /// Emitted when the WTA event classifier positively identifies an error in
 /// a pane (e.g., connection failed, process exited with non-zero code).
-pub fn log_error_detected(severity: &str, method: &str, pane_id: &str) {
+/// `AllowAutoFixPolicy` comes from the host's raw GPO state; `AutoFixEnabled`
+/// is the independent effective runtime switch. Unknown policy is not inferred
+/// from that switch on manual launches or with older hosts.
+pub fn log_error_detected(
+    severity: &str,
+    method: &str,
+    pane_id: &str,
+    autofix_policy_state: AutoFixPolicyState,
+    autofix_enabled: bool,
+) {
+    let autofix_enabled_i32 = i32::from(autofix_enabled);
+    #[cfg(test)]
+    capture::record(capture::Event::ErrorDetected {
+        policy: autofix_policy_state,
+        enabled: autofix_enabled,
+    });
     tlg::write_event!(
         AGENT_PROVIDER,
         "ErrorDetected",
@@ -377,23 +476,134 @@ pub fn log_error_detected(severity: &str, method: &str, pane_id: &str) {
         str8("Severity", severity),
         str8("Method", method),
         str8("PaneId", pane_id),
+        str8("AllowAutoFixPolicy", autofix_policy_state.as_str()),
+        bool32("AutoFixEnabled", &autofix_enabled_i32),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
     );
 }
 
-/// Emitted when the next command after an attempted fix succeeds (exit 0)
-/// in the same pane where autofix was armed. `time_since_fix_ms` is a
-/// monotonic duration (`Instant::elapsed`) from arming the fix to observing
-/// the successful exit, not wall-clock.
-pub fn log_error_fix_resolved(pane_id: &str, time_since_fix_ms: f64, agent_id: &str) {
-    tlg::write_event!(
-        AGENT_PROVIDER,
-        "ErrorFixResolved",
-        level(Verbose),
-        keyword(MICROSOFT_KEYWORD_MEASURES),
-        str8("PaneId", pane_id),
-        f64("TimeSinceFixMs", &time_since_fix_ms),
-        str8("AgentId", sanitize_agent_id(agent_id)),
-        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
-    );
+#[cfg(test)]
+pub(crate) mod capture {
+    use super::AutoFixPolicyState;
+    use std::cell::RefCell;
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub(crate) enum Event {
+        AgentSlashCommandUsed(&'static str),
+        ErrorFixOffered(uuid::Uuid),
+        ErrorFixAccepted(uuid::Uuid),
+        ErrorDetected {
+            policy: AutoFixPolicyState,
+            enabled: bool,
+        },
+    }
+
+    thread_local! {
+        static EVENTS: RefCell<Vec<Event>> = const { RefCell::new(Vec::new()) };
+    }
+
+    pub(super) fn record(event: Event) {
+        EVENTS.with_borrow_mut(|events| events.push(event));
+    }
+
+    pub(crate) fn take() -> Vec<Event> {
+        EVENTS.with_borrow_mut(std::mem::take)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent_tools::session_mcp::SessionMcpTool;
+
+    #[test]
+    fn slash_telemetry_only_accepts_canonical_builtins() {
+        capture::take();
+        for spec in crate::commands::REGISTRY {
+            assert_eq!(builtin_slash_command(spec.name), Some(spec.name));
+            log_agent_slash_command_used(spec.name);
+        }
+        for name in [
+            "",
+            "private-command",
+            "fix secret",
+            "/fix",
+            "FIX",
+            "custom:help",
+        ] {
+            assert_eq!(builtin_slash_command(name), None);
+            log_agent_slash_command_used(name);
+        }
+        assert_eq!(
+            capture::take(),
+            crate::commands::REGISTRY
+                .iter()
+                .map(|spec| capture::Event::AgentSlashCommandUsed(spec.name))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn autofix_policy_telemetry_is_bounded_and_defaults_to_unknown() {
+        assert_eq!(AutoFixPolicyState::default().as_str(), "unknown");
+        for value in ["notConfigured", "enabled", "disabled", "unknown"] {
+            assert_eq!(AutoFixPolicyState::from_wire(value).as_str(), value);
+        }
+        assert_eq!(
+            AutoFixPolicyState::from_wire("private-value").as_str(),
+            "unknown"
+        );
+    }
+
+    #[test]
+    fn autofix_policy_bootstrap_preserves_host_state_without_inferring_from_setting() {
+        use clap::Parser;
+
+        for value in ["notConfigured", "enabled", "disabled", "unknown"] {
+            let cli = crate::cli::args::Cli::try_parse_from([
+                "wta",
+                "--no-autofix",
+                "--autofix-policy-state",
+                value,
+            ])
+            .unwrap();
+            let config = crate::helper_config(cli);
+            assert!(config.no_autofix);
+            assert_eq!(config.autofix_policy_state.as_str(), value);
+        }
+        let cli = crate::cli::args::Cli::try_parse_from(["wta", "--no-autofix"]).unwrap();
+        assert_eq!(
+            crate::helper_config(cli).autofix_policy_state,
+            AutoFixPolicyState::Unknown
+        );
+        assert!(crate::cli::args::Cli::try_parse_from([
+            "wta",
+            "--autofix-policy-state",
+            "arbitrary-private-value",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn session_mcp_telemetry_uses_canonical_names() {
+        for tool in SessionMcpTool::ALL {
+            assert_eq!(sanitize_session_mcp_tool_name(tool.name()), tool.name());
+        }
+    }
+
+    #[test]
+    fn session_mcp_telemetry_buckets_obsolete_and_arbitrary_names() {
+        for name in [
+            "terminal_send",
+            "terminal_open",
+            "terminal_open_and_send",
+            "",
+            "arbitrary-private-tool-name",
+            " run_command_in_current_shell",
+            "RUN_COMMAND_IN_CURRENT_SHELL",
+            "mcp__intellterm_0123456789abcdef__create_workspace",
+        ] {
+            assert_eq!(sanitize_session_mcp_tool_name(name), "unknown");
+        }
+    }
 }

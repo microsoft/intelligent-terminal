@@ -89,7 +89,8 @@ reports `ManifestChanged`, retry once and require a successful clean reinstall.
    command and canonical `--agent-id`.
 4. Confirm the actual agent process is the native ACP server or intended
    adapter, not the normal TUI or a stale binary.
-5. In `wta-main_master.log` and the current
+5. In `wta-main_master.<UTC-date>.log` or fallback `wta-main_master.log`,
+   and the current `wta-main_helper-<pid>.<UTC-date>.log` or fallback
    `wta-main_helper-<pid>.log`, verify:
    - ACP initialize succeeds;
    - the expected agent/version is reported;
@@ -110,16 +111,21 @@ reports `ManifestChanged`, retry once and require a successful clean reinstall.
 
 Packaged logs live under the app package's
 `LocalCache\Local\IntelligentTerminal\logs\<package-version>` directory.
-Relevant files include `terminal-agent-pane.log`, `wta-main_master.log`,
-`wta-main_helper-<pid>.log`, `wta-probe.log`, and `wta-delegate.log`.
+Relevant files include `terminal-agent-pane.log`,
+`wta-main_master.<UTC-date>.log` or fallback `wta-main_master.log`,
+`wta-main_helper-<pid>.<UTC-date>.log` or fallback
+`wta-main_helper-<pid>.log`, `wta-probe.<UTC-date>.log` or fallback
+`wta-probe.log`, and `wta-delegate.<UTC-date>.log` or fallback
+`wta-delegate.log`.
 
 ## Delegate Verification
 
 Run this section only when the agent is in `BuiltinDelegateAgents`.
 
 1. Delegate a prompt from a Windows shell and, when supported, WSL.
-2. Confirm `wta-delegate.log` shows the intended executable, model, prompt
-   form, and shell path without leaking prompt contents or credentials.
+2. Confirm `wta-delegate.<UTC-date>.log` or fallback `wta-delegate.log`
+   shows the intended executable, model, prompt form, and shell path without
+   leaking prompt contents or credentials.
 3. Confirm the new tab opens an interactive agent TUI with the initial prompt.
 4. Wait for the first task to finish and confirm the tab remains open and can
    accept another prompt.

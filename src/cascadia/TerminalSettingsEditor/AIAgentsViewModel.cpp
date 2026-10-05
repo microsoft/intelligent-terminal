@@ -1233,7 +1233,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             {
                 if (_isAddingCustomAcpAgent && _editingCustomAcpAgentId.empty())
                 {
-                    _editingCustomAcpAgentId = value.Id();
+                    _isAddingCustomAcpAgent = false;
                     _customAcpCommand = value.CustomCommand();
                     _GlobalSettings.AcpCustomCommand(_customAcpCommand);
                     _NotifyChanges(L"IsAddingCustomAcpAgent",
@@ -1250,8 +1250,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 return;
             }
             const bool agentChanged = _GlobalSettings.AcpAgent() != value.Id();
-            _isAddingCustomAcpAgent = true;
-            _editingCustomAcpAgentId = value.Id();
+            _isAddingCustomAcpAgent = false;
+            _editingCustomAcpAgentId = L"";
             _customAcpCommand = value.CustomCommand();
             _GlobalSettings.AcpCustomCommand(_customAcpCommand);
             _GlobalSettings.AcpAgent(value.Id());
@@ -1371,7 +1371,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             {
                 if (_isAddingCustomDelegateAgent && _editingCustomDelegateAgentId.empty())
                 {
-                    _editingCustomDelegateAgentId = value.Id();
+                    _isAddingCustomDelegateAgent = false;
                     _customDelegateCommand = value.CustomCommand();
                     _GlobalSettings.DelegateCustomCommand(_customDelegateCommand);
                     _NotifyChanges(L"IsAddingCustomDelegateAgent",
@@ -1382,8 +1382,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 }
                 return;
             }
-            _isAddingCustomDelegateAgent = true;
-            _editingCustomDelegateAgentId = value.Id();
+            _isAddingCustomDelegateAgent = false;
+            _editingCustomDelegateAgentId = L"";
             _customDelegateCommand = value.CustomCommand();
             _GlobalSettings.DelegateCustomCommand(_customDelegateCommand);
             _GlobalSettings.DelegateAgent(value.Id());
@@ -1455,8 +1455,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _GlobalSettings.AcpCustomCommands(commands);
         _RebuildCustomEntries(_acpAgentList, commands, true);
 
-        _isAddingCustomAcpAgent = true;
-        _editingCustomAcpAgentId = settingsId;
+        _isAddingCustomAcpAgent = false;
+        _editingCustomAcpAgentId = L"";
         _GlobalSettings.AcpAgent(settingsId);
         _GlobalSettings.AcpModel(L"");
         Model::AcpRuntimeState::Current().SetAvailableModels(
@@ -1485,8 +1485,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _GlobalSettings.DelegateCustomCommands(commands);
         _RebuildCustomEntries(_delegateAgentList, commands, false);
 
-        _isAddingCustomDelegateAgent = true;
-        _editingCustomDelegateAgentId = settingsId;
+        _isAddingCustomDelegateAgent = false;
+        _editingCustomDelegateAgentId = L"";
         _GlobalSettings.DelegateAgent(settingsId);
         _NotifyChanges(L"CurrentDelegateAgent", L"IsAddingCustomDelegateAgent", L"IsCustomDelegateAgentSelected", L"ShowDelegateModel", L"CustomDelegateCommandPreview");
     }

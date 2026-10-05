@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::app_contracts::{PermOption, PlanEntry};
 use crate::commands::{CommandSpec, MovePositionSpec};
 
-use super::input_edit::InputHistory;
+use super::input_edit::{InputEditHistory, InputHistory};
 use super::{TabAutofixState, TurnState};
 
 pub(crate) const DEFAULT_TAB_ID: &str = "0";
@@ -572,6 +572,8 @@ impl ConfigPickerState {
 /// mutating shared `App` fields.
 #[derive(Default)]
 pub struct TabSession {
+    pub(crate) last_telemetry_session_id: Option<String>,
+    pub(crate) telemetry_model_pending: Option<(String, uuid::Uuid)>,
     /// Per-tab autofix state machine (see `TabAutofixState`).
     pub autofix: TabAutofixState,
     pub(crate) pending_terminal_action_proposal: Option<PendingTerminalActionProposal>,
@@ -663,6 +665,7 @@ pub struct TabSession {
     pub input: String,
     pub cursor_pos: usize,
     pub(super) input_history: InputHistory,
+    pub(super) input_edits: InputEditHistory,
     pub(crate) input_all_selected: bool,
     /// Preferred display column, valid only for the same input-box width.
     pub(super) input_vertical_goal: Option<(u16, usize)>,
@@ -683,6 +686,7 @@ pub struct TabSession {
     // Filled in Milestone 2 once each tab has its own ACP SessionId.
     #[allow(dead_code)]
     pub session_id: Option<String>,
+    pub(crate) reattached_session_id: Option<String>,
 
     /// Per-pane ACP model override, set by the `/model` picker.
     pub model_override: Option<String>,
@@ -720,6 +724,16 @@ pub struct TabSession {
 
 impl TabSession {
     const MAX_STREAMING_THOUGHT_CHARS: usize = 4000;
+
+    pub(crate) fn is_reattached_session(&self) -> bool {
+        self.reattached_session_id().is_some()
+    }
+
+    pub(crate) fn reattached_session_id(&self) -> Option<&str> {
+        self.reattached_session_id
+            .as_deref()
+            .filter(|id| self.session_id.as_deref() == Some(*id))
+    }
 
     /// Returns the ACP session id only after the conversation is worth restoring.
     pub(crate) fn resumable_session_id(&self) -> Option<&str> {
@@ -1110,6 +1124,7 @@ impl TabSession {
             .map(|prompt_id| TurnState::Cancelling { prompt_id })
             .unwrap_or(TurnState::Idle);
         self.clear_recommendations();
+        self.reset_input_undo_history();
         self.input_vertical_goal = None;
         self.attachments
             .remove_tokens_from_input(&mut self.input, &mut self.cursor_pos);

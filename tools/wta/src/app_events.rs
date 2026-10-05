@@ -7,6 +7,13 @@
 
 use super::*;
 
+pub(super) fn needs_input_owner_tracking(event: &AppEvent) -> bool {
+    !matches!(
+        event,
+        AppEvent::Key(_) | AppEvent::Tick | AppEvent::RevealTick
+    )
+}
+
 pub(super) const AUTH_RECOVERY_CONNECTION_TIMEOUT: std::time::Duration =
     std::time::Duration::from_secs(8);
 // SharedWta grants retirement 16 seconds before replacing the master. Allow
@@ -22,6 +29,7 @@ struct AgentReconnectWire {
     generation: u64,
     agent_id: String,
     acp_model: Option<String>,
+    follows_global_acp_model: Option<bool>,
     custom_model_selection: Option<String>,
     agent_source: String,
     wsl_distro: Option<String>,
@@ -193,6 +201,9 @@ impl App {
         self.last_agent_rebind_window_id = Some(request.window_id.clone());
         self.last_agent_rebind_generation = request.generation;
         self.prepare_agent_reconnect(&request);
+        if let Some(follows_global_acp_model) = wire.follows_global_acp_model {
+            self.follows_global_acp_model = follows_global_acp_model;
+        }
         self.apply_runtime_yolo_config(
             wire.automatic_yolo_target.or(wire.yolo_enabled),
             wire.yolo_policy_blocked,
@@ -283,7 +294,7 @@ impl App {
     fn cancel_completed_turn_click(&mut self) {
         self.pressed_completed_turn = None;
         self.last_completed_turn_click = None;
-        self.pressed_input_dialog_tab = None;
+        self.pressed_input_dialog = None;
     }
 
     fn restore_completed_turn_click(&mut self, column: u16, row: u16) {
@@ -304,12 +315,14 @@ impl App {
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
 
-    fn chat_input_has_edit_focus(&self) -> bool {
-        self.mode == AppMode::Chat
-            && self.pane_focused
+    fn chat_input_context_has_focus(&self) -> bool {
+        self.mode == AppMode::Chat && self.pane_focused && !self.help_overlay_visible
+    }
+
+    pub(super) fn chat_input_has_edit_focus(&self) -> bool {
+        self.chat_input_context_has_focus()
             && self.current_tab().current_view == View::Chat
             && self.current_tab().input_has_nav_focus()
-            && !self.help_overlay_visible
     }
 
     pub(super) fn copy_input_selection(
@@ -317,11 +330,14 @@ impl App {
         cut: bool,
         copy: impl FnOnce(&str) -> std::io::Result<()>,
     ) -> bool {
-        let tab = self.current_tab();
-        if !self.chat_input_has_edit_focus() || !tab.input_all_selected || tab.input.is_empty() {
+        if !self.chat_input_has_edit_focus()
+            || !self.current_tab().input_all_selected
+            || self.current_tab().input.is_empty()
+        {
             return false;
         }
-        match copy(&tab.input) {
+        self.current_tab_mut().break_input_undo_group();
+        match copy(&self.current_tab().input) {
             Ok(()) => {
                 if cut {
                     self.current_tab_mut().delete_input_selection();
@@ -434,6 +450,42 @@ impl App {
     }
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
+        // Async cards can take and release draft ownership without a key/focus event.
+        // Typing targets only the active tab; switching/renaming closes the affected groups.
+        let owned_input = if needs_input_owner_tracking(&event) {
+            self.tab_sessions
+                .get(self.active_tab_key())
+                .filter(|tab| tab.input_undo_group_is_open())
+                .map(|tab| {
+                    self.chat_input_context_has_focus()
+                        && tab.current_view == View::Chat
+                        && tab.input_has_nav_focus()
+                })
+        } else {
+            None
+        };
+        self.handle_event_inner(event);
+        if let Some(owned_input) = owned_input {
+            let owns_input = self.tab_sessions.get(self.active_tab_key()).map(|tab| {
+                self.chat_input_context_has_focus()
+                    && tab.current_view == View::Chat
+                    && tab.input_has_nav_focus()
+            });
+            if owns_input.is_some_and(|owns_input| owned_input != owns_input) {
+                self.current_tab_mut().break_input_undo_group();
+            }
+        }
+    }
+
+    fn handle_event_inner(&mut self, event: AppEvent) {
+        let breaks_typing = match &event {
+            AppEvent::Mouse(mouse) => mouse.kind != crossterm::event::MouseEventKind::Moved,
+            AppEvent::FocusChanged(_) | AppEvent::Resize(_, _) => true,
+            _ => false,
+        };
+        if breaks_typing {
+            self.current_tab_mut().break_input_undo_group();
+        }
         match event {
             AppEvent::Key(key) => {
                 self.cancel_completed_turn_click();
@@ -461,6 +513,7 @@ impl App {
                     return;
                 }
                 if is_copy && self.copy_text_selection() {
+                    self.current_tab_mut().break_input_undo_group();
                     return;
                 }
                 if matches!(key.code, KeyCode::Char('x'))
@@ -473,6 +526,7 @@ impl App {
                     && self.chat_input_has_edit_focus()
                     && self.current_tab().input_all_selected
                 {
+                    self.current_tab_mut().break_input_undo_group();
                     self.current_tab_mut().input_all_selected = false;
                     return;
                 }
@@ -525,6 +579,7 @@ impl App {
                     }
                 }
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                    self.pressed_input_dialog = None;
                     self.current_tab_mut().input_all_selected = false;
                     self.current_tab_mut().input_vertical_goal = None;
                     self.text_selection.handle_mouse(mouse);
@@ -538,7 +593,12 @@ impl App {
                     }
                     self.last_completed_turn_click = None;
                     if self.input_dialog_at(mouse.column, mouse.row) {
-                        self.pressed_input_dialog_tab = Some(self.active_mouse_tab_id());
+                        self.pressed_input_dialog = Some(PressedInputDialog {
+                            tab_id: self.active_mouse_tab_id(),
+                            column: mouse.column,
+                            row: mouse.row,
+                            modifiers: mouse.modifiers,
+                        });
                         self.pressed_completed_turn = None;
                         return;
                     }
@@ -556,14 +616,37 @@ impl App {
                 }
                 crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left) => {
                     let active_tab_id = self.active_mouse_tab_id();
-                    let input_pressed = self.pressed_input_dialog_tab.take();
-                    if input_pressed.as_deref() == Some(active_tab_id.as_str())
+                    let input_pressed = self.pressed_input_dialog.take();
+                    if input_pressed
+                        .as_ref()
+                        .is_some_and(|pressed| pressed.tab_id == active_tab_id)
                         && self.input_dialog_at(mouse.column, mouse.row)
                     {
                         self.text_selection.handle_mouse(mouse);
                         self.pressed_completed_turn = None;
                         self.last_completed_turn_click = None;
                         self.current_tab_mut().clear_completed_turn_selection();
+                        if self.pane_focused
+                            && mouse.modifiers.is_empty()
+                            && input_pressed.as_ref().is_some_and(|pressed| {
+                                pressed.modifiers.is_empty()
+                                    && pressed.column == mouse.column
+                                    && pressed.row == mouse.row
+                            })
+                        {
+                            let tab = self.current_tab();
+                            if let Some(position) = self.input_dialog_area.and_then(|area| {
+                                crate::ui::input_cursor_at(
+                                    &tab.input,
+                                    tab.cursor_pos,
+                                    area,
+                                    mouse.column,
+                                    mouse.row,
+                                )
+                            }) {
+                                self.current_tab_mut().move_cursor_to(position);
+                            }
+                        }
                         return;
                     }
                     let pressed = self.pressed_completed_turn.take();
@@ -821,18 +904,31 @@ impl App {
                 load_session_supported,
                 image_supported,
                 session_capabilities_ready,
+                telemetry_byok_binding,
             } => {
+                self.telemetry_byok_binding = telemetry_byok_binding;
+                self.initial_startup_presentation_eligible = false;
+                self.reconnect_after_transport_retired = false;
                 self.pending_yolo_reconciles.clear();
                 self.agent_name = name;
                 self.agent_model = model;
                 self.agent_version = version;
                 self.session_id = session_id.clone();
                 self.auth_recovery_state = AuthRecoveryState::Idle;
-                let (available_models, current_model_id) = self
-                    .session_model_configs
-                    .entry(session_id.clone())
-                    .or_insert((available_models, current_model_id))
-                    .clone();
+                let (available_models, current_model_id) = if session_capabilities_ready {
+                    self.session_model_configs
+                        .entry(session_id.clone())
+                        .or_insert((available_models, current_model_id))
+                        .clone()
+                } else {
+                    // An initial-load placeholder has no confirmed model metadata.
+                    // Do not cache it ahead of SessionAttached, but preserve any
+                    // real config update that already arrived for this session.
+                    self.session_model_configs
+                        .get(&session_id)
+                        .cloned()
+                        .unwrap_or((available_models, current_model_id))
+                };
                 self.agent_models = available_models;
                 self.agent_current_model_id = current_model_id;
                 self.rebuild_model_catalog_from_agent_state();
@@ -881,6 +977,7 @@ impl App {
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     tab.usage = None;
                     tab.usage_staleness = crate::usage::UsageStaleness::default();
+                    tab.reattached_session_id = None;
                 }
                 tab.session_id = Some(session_id.clone());
                 let has_real_content = !tab.completed_turns.is_empty()
@@ -902,6 +999,9 @@ impl App {
                 }
                 self.publish_agent_status();
                 self.project_tab_state(&bind_tab);
+                if session_capabilities_ready && !loading_session {
+                    self.publish_session_started(&bind_tab, false);
+                }
             }
             AppEvent::SessionAttached {
                 tab_id,
@@ -963,10 +1063,12 @@ impl App {
                     .insert(session_id.clone(), tab_id.clone());
                 self.pending_yolo_session_tabs.remove(&tab_id);
                 let tab = self.tab_mut(&tab_id);
+                tab.telemetry_model_pending = None;
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     tab.config_picker = ConfigPickerState::Closed;
                     tab.config_pending_id = None;
                     tab.native_yolo_config_pending = false;
+                    tab.reattached_session_id = None;
                 }
                 tab.session_id = Some(session_id.clone());
                 if let Some(prompt_id) = prompt_id {
@@ -1020,7 +1122,12 @@ impl App {
                 // already model-applied by the client at startup.
                 if !is_load_target {
                     if let Some(model) = self.effective_model_for_tab(&tab_id) {
-                        self.send_session_model(Some(session_id.clone()), model, false);
+                        if let Some(request_id) =
+                            self.send_session_model(Some(session_id.clone()), model, false)
+                        {
+                            self.tab_mut(&tab_id).telemetry_model_pending =
+                                Some((session_id.clone(), request_id));
+                        }
                     }
                 }
                 let (client_reconciled_target, automatic_target) = {
@@ -1044,6 +1151,7 @@ impl App {
                 }
                 self.publish_agent_status();
                 self.project_tab_state(&tab_id);
+                self.publish_session_started(&tab_id, is_load_target);
             }
             AppEvent::UsageReported {
                 session_id,
@@ -1131,6 +1239,7 @@ impl App {
                 }
             }
             AppEvent::ModelSetCompleted {
+                request_id,
                 session_id,
                 model,
                 pane_override,
@@ -1157,8 +1266,20 @@ impl App {
                     self.rebuild_model_catalog_from_agent_state();
                     self.publish_agent_status();
                 }
+                if self
+                    .tab_mut(&target_tab)
+                    .telemetry_model_pending
+                    .as_ref()
+                    .is_some_and(|(pending_session, pending_request)| {
+                        pending_session == &session_id && pending_request == &request_id
+                    })
+                {
+                    self.tab_mut(&target_tab).telemetry_model_pending = None;
+                    self.publish_session_started(&target_tab, false);
+                }
             }
             AppEvent::ModelSetFailed {
+                request_id,
                 session_id,
                 model,
                 pane_override,
@@ -1180,6 +1301,17 @@ impl App {
                         .into_owned(),
                     ));
                     tab.scroll_to_bottom();
+                }
+                if self
+                    .tab_mut(&target_tab)
+                    .telemetry_model_pending
+                    .as_ref()
+                    .is_some_and(|(pending_session, pending_request)| {
+                        pending_session == &session_id && pending_request == &request_id
+                    })
+                {
+                    self.tab_mut(&target_tab).telemetry_model_pending = None;
+                    self.publish_session_started(&target_tab, false);
                 }
             }
             AppEvent::SessionConfigUpdated {
@@ -1527,9 +1659,7 @@ impl App {
                             install_url: String::new(),
                             auth_hint: profile.auth_hint.to_string(),
                         },
-                        install_in_progress: false,
-                        install_log: Vec::new(),
-                        install_error: None,
+                        phase: SetupPhase::Ready,
                         options,
                         title: t!("setup.title.sign_in").into_owned(),
                         subtitle: if profile.id == "copilot" {
@@ -1544,6 +1674,15 @@ impl App {
                     let tab = self.current_tab_mut();
                     tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
                 } else {
+                    if session_id.is_none()
+                        && self
+                            .setup
+                            .as_ref()
+                            .is_some_and(|setup| setup.phase == SetupPhase::Reconnecting)
+                    {
+                        self.show_connection_failure_setup(message);
+                        return;
+                    }
                     if !session_survives {
                         self.state = ConnectionState::Failed(message.clone());
                         self.publish_agent_status();
@@ -1581,6 +1720,42 @@ impl App {
                     }
                 }
             }
+            AppEvent::InitialAgentStartupFailed { failure, message } => {
+                if !self.initial_startup_presentation_eligible {
+                    if !self.initial_transport_superseded
+                        && self.state == ConnectionState::Connected
+                    {
+                        self.state = ConnectionState::Failed(message.clone());
+                        self.publish_agent_status();
+                        let tab = self.current_tab_mut();
+                        let duplicate = matches!(
+                            tab.messages.last(),
+                            Some(ChatMessage::Error(previous)) if previous == &message
+                        );
+                        if !duplicate {
+                            tab.messages.push(ChatMessage::Error(message));
+                        }
+                        return;
+                    }
+                    tracing::debug!(
+                        target: "preflight",
+                        failure_class = failure.class(),
+                        "ignoring superseded initial startup failure"
+                    );
+                    return;
+                }
+                if self.preflight_setup_active
+                    || self.setup.as_ref().is_some_and(|setup| setup.is_busy())
+                {
+                    tracing::info!(
+                        target: "preflight",
+                        failure_class = failure.class(),
+                        "initial startup failure is covered by the active setup flow"
+                    );
+                    return;
+                }
+                self.show_connection_failure_setup(message);
+            }
             AppEvent::MasterDisconnected => {
                 let agent_rebind_pending = matches!(
                     &self.agent_reconnect_state,
@@ -1595,6 +1770,34 @@ impl App {
                             target: "helper",
                             "master disconnected during auth recovery; explicit restart barrier owns reconnect"
                         );
+                        return;
+                    }
+                    let preserve_setup = self.mode == AppMode::Setup
+                        && (self.preflight_setup_active
+                            || self
+                                .setup
+                                .as_ref()
+                                .is_some_and(SetupState::preserves_install_setup_on_disconnect));
+                    if preserve_setup {
+                        tracing::warn!(
+                            target: "helper",
+                            agent_id = %self.current_agent_id,
+                            source = %self.current_agent_source,
+                            "master disconnected during setup; preserving the active setup operation"
+                        );
+                        if self
+                            .setup
+                            .as_ref()
+                            .is_some_and(|setup| setup.phase == SetupPhase::Reconnecting)
+                        {
+                            self.reconnect_after_transport_retired = true;
+                            self.state = ConnectionState::Connecting(
+                                t!("connection.reconnecting").into_owned(),
+                            );
+                        } else {
+                            self.state = ConnectionState::Disconnected;
+                        }
+                        self.publish_agent_status();
                         return;
                     }
                     tracing::warn!(
@@ -2178,6 +2381,14 @@ impl App {
                 }
             }
             AppEvent::PreflightComplete(result) => {
+                if !self.initial_startup_presentation_eligible {
+                    tracing::debug!(
+                        target: "preflight",
+                        stale_agent = %result.agent_id,
+                        "ignoring superseded startup preflight result"
+                    );
+                    return;
+                }
                 if !matches!(&self.agent_reconnect_state, AgentReconnectState::Idle) {
                     tracing::debug!(
                         target: "preflight",
@@ -2198,6 +2409,19 @@ impl App {
                     );
                     return;
                 }
+                if self.pending_agent_install.is_some()
+                    || self
+                        .setup
+                        .as_ref()
+                        .is_some_and(|setup| matches!(&setup.phase, SetupPhase::Installing))
+                {
+                    tracing::debug!(
+                        target: "preflight",
+                        agent = %result.agent_id,
+                        "ignoring duplicate startup preflight during agent installation"
+                    );
+                    return;
+                }
                 tracing::info!(
                     target: "preflight",
                     agent = %result.agent_id,
@@ -2205,8 +2429,14 @@ impl App {
                     auth_status = ?result.auth_status,
                     "preflight result received"
                 );
+                self.initial_preflight_completed = true;
                 if !result.all_passed() {
                     self.show_preflight_setup(result);
+                    if self.auto_install_selected_agent && !self.try_start_fre_auto_install() {
+                        self.auto_install_selected_agent = false;
+                    }
+                } else {
+                    self.auto_install_selected_agent = false;
                 }
             }
             AppEvent::AgentReconnectPreflightComplete {
@@ -2252,6 +2482,9 @@ impl App {
                 mut wsl_sources,
             } => {
                 if generation != self.agent_source_probe_generation {
+                    return;
+                }
+                if self.setup.as_ref().is_some_and(SetupState::is_busy) {
                     return;
                 }
                 self.refresh_available_agents();
@@ -2340,10 +2573,10 @@ impl App {
                     reg.upsert(info).await;
                 });
             }
-            AppEvent::AliveSessionRemoved(sid) => {
+            AppEvent::AliveSessionRemoved(params) => {
                 tracing::debug!(
                     target: "alive_mirror",
-                    session_id = %sid.0,
+                    session_id = %params.session_id.0,
                     "alive session removed by master"
                 );
                 // Mirror PaneClosed's reducer for this sid synchronously,
@@ -2353,11 +2586,21 @@ impl App {
                 // `apply_alive_pane_snapshot` is only called at startup
                 // and `AliveSessionRemoved` had no path into the reducer
                 // (the bug rubber-duck Finding 2 surfaced post-B-12).
-                self.agent_sessions
-                    .apply_master_session_ended(sid.0.as_ref());
+                if session_removed_matches_scope(
+                    &params,
+                    &self.current_agent_id,
+                    &self.current_agent_source.session_location(),
+                ) {
+                    self.agent_sessions
+                        .apply_master_session_ended(params.session_id.0.as_ref());
+                }
                 let reg = std::sync::Arc::clone(&self.alive);
                 tokio::task::spawn_local(async move {
-                    reg.remove(&sid).await;
+                    if params.history_key.is_some() {
+                        reg.remove_identity(&params.identity()).await;
+                    } else {
+                        reg.remove(&params.session_id).await;
+                    }
                 });
             }
             AppEvent::AliveJoinUpgrade(tuples) => {
@@ -2374,6 +2617,11 @@ impl App {
             }
             AppEvent::SessionsChanged => {
                 self.schedule_agents_refetch_for_open_views();
+            }
+            AppEvent::SessionsFallbackTick => {
+                if !self.sessions_in_sidebar {
+                    self.schedule_agents_refetch_for_open_views();
+                }
             }
             AppEvent::DirectTerminalActionProposal {
                 context,
@@ -2427,9 +2675,40 @@ impl App {
                 params,
             } => {
                 // Per-WT-event (every vt_sequence included) — trace-only; the
-                // single per-event breadcrumb stays at debug in main.rs
-                // (`wt_event_rx: received event`).
+                // receipt log in helper/runtime.rs uses DEBUG with the full
+                // envelope in Debug builds, or INFO with method only in Release.
                 tracing::trace!(target: "autofix", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
+
+                if method == "fre_auto_install_selected_agent" {
+                    let targets_this_helper = tab_id
+                        .as_deref()
+                        .is_some_and(|target| self.agent_routing_tab_id() == Some(target));
+                    if !targets_this_helper
+                        || !matches!(
+                            self.current_agent_source,
+                            crate::agent_source::AgentSource::Host
+                        )
+                        || !self.current_agent_id.eq_ignore_ascii_case("copilot")
+                    {
+                        return;
+                    }
+                    if self.pending_agent_install.is_some()
+                        || self.setup.as_ref().is_some_and(SetupState::is_busy)
+                    {
+                        self.auto_install_selected_agent = false;
+                        return;
+                    }
+                    self.auto_install_selected_agent = true;
+                    if self.try_start_fre_auto_install() {
+                        tracing::info!(
+                            target: "preflight",
+                            "starting one-shot FRE-requested agent installation"
+                        );
+                    } else if self.initial_preflight_completed {
+                        self.auto_install_selected_agent = false;
+                    }
+                    return;
+                }
 
                 if method == "wt_listener_ready" || method == "restore_bindings_available" {
                     // Availability is scoped to the owning helper. A missed
@@ -2461,10 +2740,22 @@ impl App {
                     // from here would apply one real hook once per live helper.
                     // What the helper still needs is the pane→session binding
                     // its OSC 133;A and autofix paths read synchronously.
-                    let _ = route_agent_event_to_registry(
+                    let origin_scope = self
+                        .pane_id
+                        .as_deref()
+                        .filter(|own_pane| own_pane.eq_ignore_ascii_case(pane_id.as_str()))
+                        .and_then(|_| {
+                            crate::agent_pane_origin::OriginScope::new(
+                                &self.current_agent_id,
+                                self.current_agent_source.session_location(),
+                                None,
+                            )
+                        });
+                    let _ = route_agent_event_to_registry_scoped(
                         &mut self.agent_sessions,
                         pane_id.as_str(),
                         &params,
+                        origin_scope.as_ref(),
                     );
                     // Diagnostics aid: surface the raw event payload in the
                     // active tab's chat so a developer can correlate hook
@@ -2662,6 +2953,25 @@ impl App {
                     return;
                 }
 
+                if method == "keep_running_reattached" {
+                    let target_tab = params.get("tab_id").and_then(|value| value.as_str());
+                    let target_window = params.get("window_id").and_then(|value| value.as_str());
+                    if let (Some(target_tab), Some(target_window)) = (target_tab, target_window) {
+                        if self.owner_tab_id.as_deref() == Some(target_tab)
+                            && self.window_id.as_deref() == Some(target_window)
+                        {
+                            let tab = self.tab_mut(target_tab);
+                            tab.reattached_session_id = tab.session_id.clone();
+                        }
+                    }
+                    return;
+                }
+
+                if method == "agent_availability_changed" {
+                    // Native UI and master own the installation-completion broadcast.
+                    return;
+                }
+
                 if method == "agent_config_changed" {
                     // C++ pushes this when the user changes a hot-updatable
                     // agent setting (auto-suggest gate, acp-model, delegate
@@ -2690,6 +3000,21 @@ impl App {
                     if !target_tab.is_empty() && !owner_tab.is_empty() && target_tab != owner_tab {
                         return;
                     }
+                    let targets_owner_binding = !owner_tab.is_empty()
+                        && target_tab == owner_tab
+                        && !owner_window.is_empty()
+                        && target_window == owner_window;
+
+                    if let Some(in_sidebar) = params
+                        .get("sessions_in_sidebar")
+                        .and_then(|value| value.as_bool())
+                    {
+                        let changed = self.sessions_in_sidebar != in_sidebar;
+                        self.sessions_in_sidebar = in_sidebar;
+                        if changed && !in_sidebar {
+                            self.schedule_agents_refetch_for_open_views();
+                        }
+                    }
 
                     if let Some(enabled) = params.get("autofix_enabled").and_then(|v| v.as_bool()) {
                         tracing::info!(
@@ -2699,6 +3024,12 @@ impl App {
                             "autofix_enabled hot-reloaded from settings change",
                         );
                         self.autofix_enabled = enabled;
+                    }
+                    if let Some(policy) =
+                        params.get("autofix_policy_state").and_then(|v| v.as_str())
+                    {
+                        self.autofix_policy_state =
+                            crate::telemetry::AutoFixPolicyState::from_wire(policy);
                     }
 
                     self.apply_runtime_yolo_config(
@@ -2725,14 +3056,23 @@ impl App {
                         self.apply_delegate_config(delegate_agent, delegate_model);
                     }
 
-                    // acp-model is scoped by both the authoritative global agent
-                    // id and this helper's spawn-time follow mode. Helpers pinned
-                    // to another agent/profile, and panes with a local `/model`
-                    // override, keep their existing model.
+                    // The host resolves agent and model inheritance separately.
+                    // Only an exact window/tab/agent target may refresh this helper's
+                    // follow mode; pane-local `/model` overrides still win.
                     if let Some(raw) = params.get("acp_model").and_then(|v| v.as_str()) {
                         if let Some(target_agent_id) =
                             params.get("target_agent_id").and_then(|v| v.as_str())
                         {
+                            if targets_owner_binding
+                                && self.current_agent_id.eq_ignore_ascii_case(target_agent_id)
+                            {
+                                if let Some(follows_global_acp_model) = params
+                                    .get("follows_global_acp_model")
+                                    .and_then(|value| value.as_bool())
+                                {
+                                    self.follows_global_acp_model = follows_global_acp_model;
+                                }
+                            }
                             tracing::info!(
                             target: "autofix",
                             model = raw,
@@ -3255,6 +3595,12 @@ impl App {
 
                     // Apply `pane_open` if present.
                     if let Some(open) = params.get("pane_open").and_then(|v| v.as_bool()) {
+                        if target_tab == self.active_tab_key()
+                            && self.current_tab().pane_open != open
+                        {
+                            self.cancel_completed_turn_click();
+                            self.input_dialog_area = None;
+                        }
                         tracing::info!(
                             target: "set_agent_state",
                             tab = %target_tab,
@@ -3262,6 +3608,9 @@ impl App {
                             "applying pane_open"
                         );
                         let tab = self.tab_mut(&target_tab);
+                        if tab.pane_open != open {
+                            tab.break_input_undo_group();
+                        }
                         if !open {
                             tab.invalidate_pending_paste();
                         }
@@ -3457,7 +3806,13 @@ impl App {
                         WtEventSeverity::Informational => None,
                     };
                     if let Some(severity_str) = severity_str {
-                        crate::telemetry::log_error_detected(severity_str, &method, &pane_id);
+                        crate::telemetry::log_error_detected(
+                            severity_str,
+                            &method,
+                            &pane_id,
+                            self.autofix_policy_state,
+                            self.autofix_enabled,
+                        );
                     }
                 }
 
@@ -3542,20 +3897,12 @@ impl App {
                                 let target_tab = event_tab
                                     .clone()
                                     .expect("armed_in_event_tab requires tab_id present");
-                                // Telemetry: a fix was armed for this pane and the next
-                                // command exited cleanly — the user's problem resolved.
-                                // Elapsed is monotonic (`Instant::elapsed`) from arm to
-                                // clean exit, not wall-clock.
-                                if let Some(armed) =
-                                    self.tab_mut(&target_tab).autofix.armed_at.take()
-                                {
-                                    let elapsed_ms = armed.elapsed().as_secs_f64() * 1000.0;
-                                    crate::telemetry::log_error_fix_resolved(
-                                        pane_id.as_str(),
-                                        elapsed_ms,
-                                        &self.current_agent_id,
-                                    );
-                                }
+                                // This is UI dismissal, not verified fix execution.
+                                // `armed_at` starts at analysis submission and is
+                                // cleared when a recommendation is surfaced/executed.
+                                // Even D;0 here cannot establish that a fix was applied;
+                                // do not emit ErrorFixResolved from this state.
+                                self.tab_mut(&target_tab).autofix.armed_at = None;
                                 // `turn_cancel` owns the full cleanup: bumps
                                 // the tab's autofix_generation, emits cleared
                                 // (resolving the pane from AutofixContext, or
@@ -3607,73 +3954,97 @@ impl App {
                     self.wt_notifications.pop_front();
                 }
             }
-            AppEvent::AgentInstallComplete => {
-                // Check if the agent we were trying to install is now available.
-                let agent_id = self
-                    .setup
-                    .as_ref()
-                    .map(|s| s.preflight.agent_id.clone())
-                    .unwrap_or_default();
+            AppEvent::AgentInstallComplete {
+                request_id,
+                agent_id,
+                outcome,
+            } => {
+                let Some(pending) = self.pending_agent_install.as_ref() else {
+                    tracing::debug!(
+                        request_id,
+                        agent = %agent_id,
+                        "ignoring stale agent install completion"
+                    );
+                    return;
+                };
+                if pending.request_id != request_id || pending.agent_id != agent_id {
+                    tracing::debug!(
+                        request_id,
+                        agent = %agent_id,
+                        "ignoring stale agent install completion"
+                    );
+                    return;
+                }
+                let binding_is_current = pending.binding_generation
+                    == self.agent_binding_generation
+                    && pending.agent_source == self.current_agent_source;
+                self.pending_agent_install = None;
 
-                if !agent_id.is_empty() {
-                    let status = crate::agent_check::check_agent(&agent_id);
+                if !binding_is_current {
+                    tracing::info!(
+                        request_id,
+                        agent = %agent_id,
+                        "installation completed after the Agent binding changed; leaving the current binding untouched"
+                    );
+                    return;
+                }
+
+                let installed = matches!(
+                    outcome,
+                    crate::agent_check::AgentInstallOutcome::Installed
+                        | crate::agent_check::AgentInstallOutcome::AlreadyAvailable
+                );
+                if installed {
+                    let status = crate::agent_check::recheck_agent(&agent_id);
                     if status.cli_found {
-                        // Install succeeded → proceed to connect or auth
-                        let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
-
-                        if agent_id == "copilot" {
-                            // Copilot was just installed by IT. Route directly
-                            // to sign-in instead of probing local credentials or
-                            // paying for a doomed ACP auth roundtrip.
-                            self.show_copilot_auth_screen();
-                        } else {
-                            // Future-proofing: only Copilot has an in-app auth
-                            // screen. If another agent ever becomes
-                            // auto-installable, keep it on the diagnostic setup
-                            // retry path instead of entering Auth mode.
-                            let reason = SetupReason::AgentError;
-                            let options = build_setup_options(&reason, Some(&status));
-                            self.mode = AppMode::Setup;
-                            self.setup = Some(SetupState {
-                                reason,
-                                selected_index: 0,
-                                preflight: PreflightResult {
-                                    agent_id: agent_id.clone(),
-                                    display_name: status.display_name.clone(),
-                                    cli_status: CheckStatus::Passed,
-                                    cli_path: status.cli_path.clone(),
-                                    auth_status: CheckStatus::Failed(
-                                        t!("system.authentication_failed").into_owned(),
-                                    ),
-                                    install_hint: profile.install_hint.to_string(),
-                                    install_url: String::new(),
-                                    auth_hint: profile.auth_hint.to_string(),
-                                },
-                                install_in_progress: false,
-                                install_log: Vec::new(),
-                                install_error: None,
-                                options,
-                                title: t!("setup.title.sign_in").into_owned(),
-                                subtitle: t!(
-                                    "setup.subtitle.agent_auth",
-                                    agent = status.display_name.as_str()
-                                )
-                                .into_owned(),
-                            });
+                        if matches!(
+                            self.current_agent_source,
+                            crate::agent_source::AgentSource::Host
+                        ) {
+                            crate::wt_protocol_events::send(
+                                crate::wt_protocol_events::agent_availability_changed_event(
+                                    &agent_id,
+                                    self.agent_routing_tab_id(),
+                                    true,
+                                ),
+                            );
                         }
+                        if self.state == ConnectionState::Connected
+                            && self.current_agent_id.eq_ignore_ascii_case(&agent_id)
+                        {
+                            self.notify_confirmed_agent_available(&agent_id);
+                            return;
+                        }
+                        self.reconnect_confirmed_available_agent(&agent_id);
                         return;
                     }
                 }
 
-                // Install didn't resolve the issue — stay on setup, refresh options
-                if let Some(ref mut setup) = self.setup {
-                    setup.install_in_progress = false;
-                    let current_status = if !agent_id.is_empty() {
-                        Some(crate::agent_check::check_agent(&agent_id))
-                    } else {
-                        None
-                    };
+                if let Some(setup) = self.setup.as_mut() {
+                    let current_status = Some(crate::agent_check::recheck_agent(&agent_id));
                     setup.options = build_setup_options(&setup.reason, current_status.as_ref());
+                    setup.selected_index = setup
+                        .selected_index
+                        .min(setup.options.len().saturating_sub(1));
+                    let (kind, message) = match outcome {
+                        crate::agent_check::AgentInstallOutcome::Failed(error) => {
+                            (SetupFailureKind::Install, error)
+                        }
+                        crate::agent_check::AgentInstallOutcome::TimedOut => (
+                            SetupFailureKind::Install,
+                            t!("setup.error.install_timed_out").into_owned(),
+                        ),
+                        crate::agent_check::AgentInstallOutcome::DetectionTimedOut => (
+                            SetupFailureKind::Detection,
+                            t!("setup.error.install_detection_timed_out").into_owned(),
+                        ),
+                        crate::agent_check::AgentInstallOutcome::Installed
+                        | crate::agent_check::AgentInstallOutcome::AlreadyAvailable => (
+                            SetupFailureKind::Detection,
+                            t!("setup.error.install_detection_timed_out").into_owned(),
+                        ),
+                    };
+                    setup.phase = SetupPhase::Failed { kind, message };
                 }
             }
             AppEvent::LoginProgress {

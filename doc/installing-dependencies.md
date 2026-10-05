@@ -1,11 +1,11 @@
 # Installing dependencies for Intelligent Terminal
 
 Intelligent Terminal's **first-run experience (FRE)** is designed to install
-the dependencies it owns for you automatically — the default agent
-(GitHub Copilot), Node.js when it is needed, shell integration for the shells
-it supports (PowerShell, bash, and WSL bash), and so on. For most users on a
-typical Windows machine who stay with the default agent, finishing the FRE is
-all you ever need to do.
+the blocking prerequisites it owns for you automatically — Node.js when it is
+needed, shell integration for the shells it supports (PowerShell, bash, and
+WSL bash), and agent session hooks. GitHub Copilot CLI setup is deferred to
+the agent pane so a missing or failed Copilot installation cannot prevent you
+from reaching the terminal.
 
 This document exists for the circumstances where the FRE cannot do the job
 on its own, including:
@@ -25,7 +25,7 @@ on its own, including:
 1. [WinGet (Windows Package Manager)](#1-winget-windows-package-manager)
 2. [Node.js LTS — shared prerequisite](#2-nodejs-lts--shared-prerequisite)
 3. [Agent CLIs](#agent-clis) — install and sign in to an agent
-   - 3.1 [GitHub Copilot CLI](#31-github-copilot-cli) (installed by the FRE)
+   - 3.1 [GitHub Copilot CLI](#31-github-copilot-cli) (installed from the agent pane)
    - 3.2 [Claude Code (bring your own)](#32-claude-code-bring-your-own)
    - 3.3 [OpenAI Codex (bring your own)](#33-openai-codex-bring-your-own)
    - 3.4 [Gemini CLI (bring your own)](#34-gemini-cli-bring-your-own)
@@ -41,9 +41,9 @@ on its own, including:
 ## 1. WinGet (Windows Package Manager)
 
 **Why you need it:** Intelligent Terminal can use `winget` to install
-GitHub Copilot CLI and Node.js for you during the first-run experience,
-depending on which agent you choose. Several sections below also use
-`winget` as the recommended manual install method.
+Node.js during the first-run experience and GitHub Copilot CLI later from the
+agent pane. Several sections below also use `winget` as the recommended manual
+install method.
 
 ### Check whether winget is already installed
 
@@ -127,9 +127,9 @@ finishes, close and reopen your terminal so `PATH` picks up `node.exe`,
 
 Intelligent Terminal supports five agents out of the box — **GitHub
 Copilot**, **Claude Code**, **OpenAI Codex**, **Gemini**, and **OpenCode**. The
-first-run experience installs **GitHub Copilot** (the default) for you;
+agent pane can install **GitHub Copilot** (the default) after the FRE;
 the other four are **bring-your-own** — install the CLI yourself
-(sub-sections below) before selecting it in the FRE.
+(sub-sections below) before selecting it.
 
 Intelligent Terminal talks to all five through the
 [**Agent Client Protocol (ACP)**](https://agentclientprotocol.com/get-started/agents).
@@ -149,14 +149,15 @@ fetched on demand at run time, so its only prerequisite is Node.js.
 ### 3.1 GitHub Copilot CLI
 
 **Why you need it:** GitHub Copilot is the **default agent** in Intelligent
-Terminal and the only agent the first-run experience installs on your
-behalf. It powers the agent pane, the `?<prompt>` command-palette
-delegation, and the auto-fix workflow.
+Terminal. It powers the agent pane, the `?<prompt>` command-palette delegation,
+and the auto-fix workflow.
 
-#### Installed automatically by the first-run experience
+#### Install from the agent pane
 
-When you complete the FRE with Copilot selected, Intelligent Terminal
-installs the Copilot CLI for you (skipped if it is already on `PATH`):
+When you complete the FRE with Copilot selected, Intelligent Terminal opens
+the agent pane. If the Copilot CLI is missing, choose **Install** there.
+The terminal remains usable while Copilot setup is incomplete or fails.
+The installer runs:
 
 ```powershell
 winget install --id GitHub.Copilot --exact --silent `
@@ -167,10 +168,9 @@ winget install --id GitHub.Copilot --exact --silent `
 
 Copilot speaks ACP natively, so no wrapper is required.
 
-#### Install manually (only if you are not using the FRE)
+#### Install manually
 
-If the FRE did not install Copilot CLI for you, run the `winget` command
-above, then verify:
+You can instead run the `winget` command above yourself, then verify:
 
 ```powershell
 copilot --version
@@ -449,11 +449,12 @@ If Session management is off, turn it on to retry automatic reconciliation.
 
 > [!TIP]
 > If `wta hooks install` still fails, diagnostics are written to
-> `wta-install-hooks.log` under the Intelligent Terminal package's log
-> directory:
+> `wta-install-hooks*.log` under the Intelligent Terminal package's log
+> directory. This is normally `wta-install-hooks.<UTC-date>.log`; the fixed
+> `wta-install-hooks.log` name is used if daily logging cannot initialize.
 >
 > ```text
-> %LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\Local\IntelligentTerminal\logs\<version>\wta-install-hooks.log
+> %LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\Local\IntelligentTerminal\logs\<version>\wta-install-hooks*.log
 > ```
 >
 > The most common causes of failure are: the agent CLI was not on
@@ -523,8 +524,10 @@ You can always resolve the exact location from inside either host with:
 $PROFILE.CurrentUserCurrentHost
 ```
 
-The only step you may need to perform by hand is adjusting the PowerShell
-execution policy so the profile is allowed to run.
+During the first-run experience, Intelligent Terminal automatically changes a
+blocking CurrentUser execution policy to `RemoteSigned` before installing shell
+integration. If an organization policy overrides that setting, or automatic
+remediation otherwise fails, use the following steps.
 
 #### Set the PowerShell execution policy
 
@@ -617,10 +620,10 @@ Notes and limitations:
 
 ### Enable auto-error detection and auto-error fix
 
-Once shell integration is in place (and, for PowerShell, the execution policy
-is set), open **Settings → AI Agents** inside Intelligent Terminal and turn on
-**Auto-error detection** (and, optionally, the auto-fix follow-up). With shell
-integration loading correctly, the agent pane will now:
+Once shell integration is in place, open **Settings → AI Agents** inside
+Intelligent Terminal and turn on **Auto-error detection** (and, optionally, the
+auto-fix follow-up). With shell integration loading correctly, the agent pane
+will now:
 
 - Detect failing commands automatically (via the OSC 133 exit-code marks).
 - Offer to diagnose and propose a fix for the most recent failure.

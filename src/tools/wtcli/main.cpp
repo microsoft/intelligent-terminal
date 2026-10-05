@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include <unknwn.h>
+#include <oleauto.h>
 #include <winrt/Windows.Foundation.h>
 
 #include "Formatting.h"
@@ -74,11 +75,18 @@ struct EventSink : ITerminalProtocolEventSink
 
 // ── Helpers ──
 
+enum class TerminalConnectionMode
+{
+    Activate,
+    ExistingOnly,
+};
+
 static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticated = nullptr,
                                                            std::string* outVersion = nullptr,
                                                            bool skipAuthenticate = false,
                                                            bool quiet = false,
-                                                           bool requireProtocolVersion = false)
+                                                           bool requireProtocolVersion = false,
+                                                           TerminalConnectionMode mode = TerminalConnectionMode::Activate)
 {
     if (outAuthenticated)
         *outAuthenticated = false;
@@ -102,7 +110,27 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
     }
 
     winrt::com_ptr<ITerminalProtocol> server;
-    auto hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
+    HRESULT hr;
+    if (mode == TerminalConnectionMode::ExistingOnly)
+    {
+        // Keep the returned factory instead of probing then activating: shutdown
+        // can race either call, but must never launch a replacement Terminal.
+        winrt::com_ptr<IUnknown> running;
+        hr = GetActiveObject(cls, nullptr, running.put());
+        if (SUCCEEDED(hr))
+        {
+            winrt::com_ptr<IClassFactory> factory;
+            hr = running->QueryInterface(__uuidof(IClassFactory), factory.put_void());
+            if (SUCCEEDED(hr))
+            {
+                hr = factory->CreateInstance(nullptr, __uuidof(ITerminalProtocol), server.put_void());
+            }
+        }
+    }
+    else
+    {
+        hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
+    }
     if (FAILED(hr))
     {
         if (!quiet)
@@ -386,8 +414,8 @@ int wmain(int argc, wchar_t** argv)
     app.add_flag("--json", jsonMode, "Output raw JSON");
     app.add_flag("--skip-authenticate", skipAuthenticate, "Skip the compatibility handshake (testing only)");
 
-    auto connect = [&]() -> winrt::com_ptr<ITerminalProtocol> {
-        auto server = ConnectToTerminal(nullptr, nullptr, skipAuthenticate);
+    auto connect = [&](TerminalConnectionMode mode = TerminalConnectionMode::Activate) -> winrt::com_ptr<ITerminalProtocol> {
+        auto server = ConnectToTerminal(nullptr, nullptr, skipAuthenticate, false, false, mode);
         if (!server)
             exitCode = 1;
         return server;
@@ -692,18 +720,22 @@ int wmain(int argc, wchar_t** argv)
 
     // ── new-tab ──
     std::string newTabCommand, newTabTitle, newTabCwd, newTabProfile;
+    uint64_t newTabWindowId = 0;
+    bool newTabBackground = false;
     auto* newTabCmd = app.add_subcommand("new-tab", "Create a new tab")->alias("neww");
     newTabCmd->add_option("-c,--command", newTabCommand, "Command to run");
     newTabCmd->add_option("-n,--title", newTabTitle, "Tab title");
     newTabCmd->add_option("-d,--cwd", newTabCwd, "Starting directory");
     newTabCmd->add_option("-p,--profile", newTabProfile, "Profile");
+    newTabCmd->add_option("-w,--window-id", newTabWindowId, "Target window ID (0 uses the most recent window)");
+    newTabCmd->add_flag("--background", newTabBackground, "Create the tab without selecting it");
     newTabCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
         wil::unique_bstr profile{ Bstr(newTabProfile) }, command{ Bstr(newTabCommand) }, title{ Bstr(newTabTitle) }, cwd{ Bstr(newTabCwd) };
         Json::Value result;
         auto hr = CallJson([&](BSTR* j) {
-            return server->CreateTab(0, profile.get(), command.get(), title.get(), cwd.get(), false, true, j);
+            return server->CreateTab(newTabWindowId, profile.get(), command.get(), title.get(), cwd.get(), false, newTabBackground, j);
         }, result);
         if (FAILED(hr)) { fprintf(stderr, "CreateTab failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
         if (jsonMode)
@@ -1052,7 +1084,8 @@ int wmain(int argc, wchar_t** argv)
     sendEventCmd->add_option("-e,--event", sendEventType, "Event type (e.g. agent.task.started)")->required();
     sendEventCmd->add_option("json", sendEventJson, "Event params as JSON object");
     sendEventCmd->callback([&]() {
-        auto server = connect();
+        // Cached hook bundles still publish agent lifecycle events here.
+        auto server = connect(sendEventType.starts_with("agent.") ? TerminalConnectionMode::ExistingOnly : TerminalConnectionMode::Activate);
         if (!server)
             return;
         // No `--pane` publishes an empty `pane_id`, meaning "this event has no
@@ -1140,7 +1173,7 @@ int wmain(int argc, wchar_t** argv)
                 return;
             }
 
-            auto server = ConnectToTerminal(nullptr, nullptr, skipAuthenticate, true);
+            auto server = ConnectToTerminal(nullptr, nullptr, skipAuthenticate, true, false, TerminalConnectionMode::ExistingOnly);
             if (!server)
             {
                 return;

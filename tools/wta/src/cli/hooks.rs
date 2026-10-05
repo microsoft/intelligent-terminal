@@ -3,8 +3,8 @@ use anyhow::Result;
 use super::args::HooksCliFilter;
 
 pub(crate) fn run_install(cli: HooksCliFilter, force: bool, json_mode: bool) -> Result<()> {
-    // Logging is initialized in `main()`; the install attempt is observable in
-    // %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.
+    // Logging is initialized in `main()`; the install attempt is written under
+    // the canonical `logging::log_dir()` (the packaged cache path when packaged).
     let scope = cli.into_scope();
 
     let (plan, spawn_failures, report, missing) = if force {

@@ -131,9 +131,33 @@ struct ActivePromptTiming {
 #[derive(Default)]
 pub(crate) struct PromptTimingState {
     active: Mutex<HashMap<String, ActivePromptTiming>>,
+    user_prompt_ordinals: Mutex<HashMap<String, u8>>,
 }
 
 impl PromptTimingState {
+    pub(crate) fn record_user_prompt_dispatch(
+        &self,
+        session_id: &str,
+        is_autofix: bool,
+    ) -> &'static str {
+        if is_autofix {
+            return "NotUserPrompt";
+        }
+        let mut ordinals = self.user_prompt_ordinals.lock().unwrap();
+        let ordinal = ordinals.entry(session_id.to_string()).or_default();
+        let category = match *ordinal {
+            0 => "First",
+            1 => "Second",
+            _ => "Later",
+        };
+        *ordinal = ordinal.saturating_add(1).min(2);
+        category
+    }
+
+    pub(crate) fn forget_session(&self, session_id: &str) {
+        self.user_prompt_ordinals.lock().unwrap().remove(session_id);
+    }
+
     pub(crate) fn activate(
         &self,
         session_id: &str,
@@ -278,7 +302,6 @@ impl PromptTimingState {
                 if let Some(sent_mono) = prompt_sent_at_mono {
                     let first_token_latency_ms = sent_mono.elapsed().as_secs_f64() * 1000.0;
                     crate::telemetry::log_agent_response_first_token(
-                        session_id,
                         first_token_latency_ms,
                         u32::try_from(text_len).unwrap_or(u32::MAX),
                         &agent_id,
@@ -504,9 +527,7 @@ impl PromptTimingState {
         if let Some(sent_mono) = active_prompt.prompt_sent_at_mono {
             let total_duration_ms = sent_mono.elapsed().as_secs_f64() * 1000.0;
             crate::telemetry::log_agent_response_complete(
-                session_id,
                 total_duration_ms,
-                active_prompt.bytes_read_after_prompt as u64,
                 success,
                 active_prompt.is_byok,
                 &active_prompt.agent_id,
@@ -533,6 +554,27 @@ fn acp_trace_content(msg: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn user_prompt_ordinals_follow_dispatched_turns_per_session() {
+        let timing = PromptTimingState::default();
+        assert_eq!(
+            timing.record_user_prompt_dispatch("one", true),
+            "NotUserPrompt"
+        );
+        assert_eq!(timing.record_user_prompt_dispatch("one", false), "First");
+        assert_eq!(timing.record_user_prompt_dispatch("two", false), "First");
+        assert_eq!(
+            timing.record_user_prompt_dispatch("one", true),
+            "NotUserPrompt"
+        );
+        assert_eq!(timing.record_user_prompt_dispatch("one", false), "Second");
+        assert_eq!(timing.record_user_prompt_dispatch("one", false), "Later");
+        assert_eq!(timing.record_user_prompt_dispatch("one", false), "Later");
+        timing.forget_session("one");
+        assert_eq!(timing.record_user_prompt_dispatch("one", false), "First");
+        assert_eq!(timing.record_user_prompt_dispatch("two", false), "Second");
+    }
 
     #[test]
     fn prompt_preview_escapes_newlines_and_normalizes_crlf() {

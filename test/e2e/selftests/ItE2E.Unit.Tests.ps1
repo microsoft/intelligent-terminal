@@ -59,6 +59,34 @@ Describe 'Wait-Until / Test-Until' -Tag 'Unit' {
 }
 
 Describe 'JSON helpers' -Tag 'Unit' {
+    It 'settings snapshot releases the read handle before parsing' {
+        $settingsPath = Join-Path $TestDrive 'atomic-settings.json'
+        $replacementPath = "$settingsPath.tmp"
+        [IO.File]::WriteAllText($settingsPath, '{"value":1}')
+        [IO.File]::WriteAllText($replacementPath, '{"value":2}')
+        InModuleScope ItE2E -Parameters @{ settingsPath = $settingsPath; replacementPath = $replacementPath } {
+            $originalParser = (Get-Command ConvertFrom-JsonC).ScriptBlock
+            $script:atomicSettingsPath = $settingsPath
+            $script:atomicReplacementPath = $replacementPath
+            try {
+                function script:ConvertFrom-JsonC {
+                    [CmdletBinding()] param([Parameter(ValueFromPipeline)][string]$Text)
+                    process {
+                        [IO.File]::Move($script:atomicReplacementPath, $script:atomicSettingsPath, $true)
+                        $Text | ConvertFrom-Json
+                    }
+                }
+                { Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-JsonC } | Should -Throw
+                (Get-WtSettingsObject -App ([pscustomobject]@{ SettingsPath = $settingsPath })).value | Should -Be 1
+                (Get-Content -LiteralPath $settingsPath -Raw) | Should -Be '{"value":2}'
+            }
+            finally {
+                Set-Item -Path function:script:ConvertFrom-JsonC -Value $originalParser
+                Remove-Variable atomicSettingsPath, atomicReplacementPath -Scope Script
+            }
+        }
+    }
+
     It 'ConvertFrom-JsonSafe returns $null on garbage' {
         ConvertFrom-JsonSafe -InputObject 'not json {' | Should -BeNullOrEmpty
         ConvertFrom-JsonSafe -InputObject '' | Should -BeNullOrEmpty
@@ -112,7 +140,182 @@ Describe 'Localized WTA text matching' -Tag 'Unit' {
             [regex]::Escape('/allow_all'))
 
         $pattern | Should -Not -BeNullOrEmpty
-        "/allow_all: Yolo mode is disabled by your organization's policy." | Should -Match $pattern
+        "/allow_all: Automatic approval is disabled by your organization's policy." | Should -Match $pattern
+    }
+}
+
+Describe 'Log observation' -Tag 'Unit' {
+    It 'aggregates appended slices across exact-name dated rotation candidates' {
+        $version = 'aggregate-1.0'
+        $dir = Join-Path $TestDrive $version
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $fixedPath = Join-Path $dir 'wta-main_master.log'
+        $oldPath = Join-Path $dir 'wta-main_master.2026-09-10.log'
+        $newPath = Join-Path $dir 'wta-main_master.2026-09-11.log'
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($fixedPath, "fixed-before`n", $utf8)
+        [System.IO.File]::WriteAllText($oldPath, "old-before`n", $utf8)
+        $app = [pscustomobject]@{
+            LogRootDir      = $TestDrive
+            Version         = $version
+            LogStartOffset  = @{}
+        }
+
+        Initialize-LogOffsets -App $app | Out-Null
+        [System.IO.File]::AppendAllText($fixedPath, "fixed-after`n", $utf8)
+        [System.IO.File]::AppendAllText($oldPath, "old-after`n", $utf8)
+        [System.IO.File]::WriteAllText($newPath, "new-after`n", $utf8)
+        [System.IO.File]::SetLastWriteTimeUtc($fixedPath, [DateTime]::Parse('2026-09-09T00:00:00Z'))
+        [System.IO.File]::SetLastWriteTimeUtc($oldPath, [DateTime]::Parse('2026-09-10T00:00:00Z'))
+        [System.IO.File]::SetLastWriteTimeUtc($newPath, [DateTime]::Parse('2026-09-11T00:00:00Z'))
+
+        $text = Get-ItLogText -App $app -Name 'wta-main_master.log' -SinceStart
+
+        $text | Should -Not -Match 'fixed-before'
+        $text | Should -Not -Match 'old-before'
+        $text | Should -Match '(?s)# ==== wta-main_master\.log ====.*fixed-after.*# ==== wta-main_master\.2026-09-10\.log ====.*old-after.*# ==== wta-main_master\.2026-09-11\.log ====.*new-after'
+    }
+
+    It 'matches mixed-case exact-name fixed and dated rotation candidates' {
+        $version = 'case-insensitive-1.0'
+        $dir = Join-Path $TestDrive $version
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $fixedPath = Join-Path $dir 'wta-main_master.log'
+        $datedPath = Join-Path $dir 'WtA-MaIn_MaStEr.2026-09-11.LoG'
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($fixedPath, "fixed-content`n", $utf8)
+        [System.IO.File]::WriteAllText($datedPath, "dated-content`n", $utf8)
+        $app = [pscustomobject]@{
+            LogRootDir     = $TestDrive
+            Version        = $version
+            LogStartOffset = @{}
+        }
+
+        $text = Get-ItLogText -App $app -Name 'WTA-MAIN_MASTER.LOG' -SinceStart
+
+        $text | Should -Match 'fixed-content'
+        $text | Should -Match 'dated-content'
+    }
+
+    It 'keeps exact-name reads without SinceStart limited to the newest candidate' {
+        $version = 'newest-1.0'
+        $dir = Join-Path $TestDrive $version
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $oldPath = Join-Path $dir 'wta-main_master.2026-09-10.log'
+        $newPath = Join-Path $dir 'wta-main_master.2026-09-11.log'
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($oldPath, "old-content`n", $utf8)
+        [System.IO.File]::WriteAllText($newPath, "new-content`n", $utf8)
+        [System.IO.File]::SetLastWriteTimeUtc($oldPath, [DateTime]::Parse('2026-09-10T00:00:00Z'))
+        [System.IO.File]::SetLastWriteTimeUtc($newPath, [DateTime]::Parse('2026-09-11T00:00:00Z'))
+        $app = [pscustomobject]@{
+            LogRootDir     = $TestDrive
+            Version        = $version
+            LogStartOffset = @{}
+        }
+
+        $text = Get-ItLogText -App $app -Name 'wta-main_master.log'
+
+        $text | Should -Match 'new-content'
+        $text | Should -Not -Match 'old-content'
+    }
+
+    It 'ignores a newer dated directory when selecting the newest exact-name file' {
+        $version = 'directory-filter-1.0'
+        $dir = Join-Path $TestDrive $version
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $fixedPath = Join-Path $dir 'wta-main_master.log'
+        $datedDirectory = Join-Path $dir 'wta-main_master.2026-09-11.log'
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($fixedPath, "fixed-content`n", $utf8)
+        New-Item -ItemType Directory -Path $datedDirectory | Out-Null
+        [System.IO.File]::SetLastWriteTimeUtc($fixedPath, [DateTime]::Parse('2026-09-10T00:00:00Z'))
+        [System.IO.Directory]::SetLastWriteTimeUtc($datedDirectory, [DateTime]::Parse('2026-09-11T00:00:00Z'))
+        $app = [pscustomobject]@{
+            LogRootDir     = $TestDrive
+            Version        = $version
+            LogStartOffset = @{}
+        }
+
+        Initialize-LogOffsets -App $app | Out-Null
+        $text = Get-ItLogText -App $app -Name 'wta-main_master.log'
+
+        $text | Should -Match 'fixed-content'
+        $app.LogStartOffset.Keys | Should -Not -Contain 'wta-main_master.2026-09-11.log'
+    }
+
+    It 'excludes malformed and extra-segment exact-name candidates even when newest' {
+        $version = 'candidate-filter-1.0'
+        $dir = Join-Path $TestDrive $version
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $validPath = Join-Path $dir 'wta-main_master.2026-09-10.log'
+        $malformedPath = Join-Path $dir 'wta-main_master.not-a-date.log'
+        $extraSegmentPath = Join-Path $dir 'wta-main_master.2026-09-11.debug.log'
+        $invalidDatePath = Join-Path $dir 'wta-main_master.2026-02-30.log'
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($validPath, "valid-content`n", $utf8)
+        [System.IO.File]::WriteAllText($malformedPath, "malformed-content`n", $utf8)
+        [System.IO.File]::WriteAllText($extraSegmentPath, "extra-segment-content`n", $utf8)
+        [System.IO.File]::WriteAllText($invalidDatePath, "invalid-date-content`n", $utf8)
+        [System.IO.File]::SetLastWriteTimeUtc($validPath, [DateTime]::Parse('2026-09-10T00:00:00Z'))
+        [System.IO.File]::SetLastWriteTimeUtc($malformedPath, [DateTime]::Parse('2026-09-12T00:00:00Z'))
+        [System.IO.File]::SetLastWriteTimeUtc($extraSegmentPath, [DateTime]::Parse('2026-09-13T00:00:00Z'))
+        [System.IO.File]::SetLastWriteTimeUtc($invalidDatePath, [DateTime]::Parse('2026-09-14T00:00:00Z'))
+        $app = [pscustomobject]@{
+            LogRootDir     = $TestDrive
+            Version        = $version
+            LogStartOffset = @{}
+        }
+
+        $text = Get-ItLogText -App $app -Name 'wta-main_master.log'
+
+        $text | Should -Match 'valid-content'
+        $text | Should -Not -Match 'malformed-content'
+        $text | Should -Not -Match 'extra-segment-content'
+        $text | Should -Not -Match 'invalid-date-content'
+    }
+
+    It 'aggregates all files matched by a bracket-only wildcard' {
+        $version = 'bracket-wildcard-1.0'
+        $dir = Join-Path $TestDrive $version
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $masterPath = Join-Path $dir 'wta-main_master.log'
+        $mhsterPath = Join-Path $dir 'wta-main_mhster.log'
+        $nonMatchPath = Join-Path $dir 'wta-main_mxster.log'
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($masterPath, "master-content`n", $utf8)
+        [System.IO.File]::WriteAllText($mhsterPath, "mhster-content`n", $utf8)
+        [System.IO.File]::WriteAllText($nonMatchPath, "non-match-content`n", $utf8)
+        $app = [pscustomobject]@{
+            LogRootDir     = $TestDrive
+            Version        = $version
+            LogStartOffset = @{}
+        }
+
+        $text = Get-ItLogText -App $app -Name 'wta-main_m[ah]ster.log'
+
+        $text | Should -Match 'master-content'
+        $text | Should -Match 'mhster-content'
+        $text | Should -Not -Match 'non-match-content'
+    }
+
+    It 'emits no header or result for a known-offset file with no appended content' {
+        $version = 'empty-slice-1.0'
+        $dir = Join-Path $TestDrive $version
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $path = Join-Path $dir 'wta-main_master.log'
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($path, "before-content`n", $utf8)
+        $app = [pscustomobject]@{
+            LogRootDir     = $TestDrive
+            Version        = $version
+            LogStartOffset = @{}
+        }
+
+        Initialize-LogOffsets -App $app | Out-Null
+        $text = Get-ItLogText -App $app -Name 'wta-main_master.log' -SinceStart
+
+        $text | Should -Be ''
     }
 }
 
@@ -819,12 +1022,23 @@ Describe 'Yolo Settings localization contract' -Tag 'Unit' {
                 Where-Object name -eq 'AIAgents_YoloMode.HelpText' |
                 Select-Object -First 1).value |
             Should -Be 'Your agent in the agent pane runs with full permissions provided by the agent CLI'
+        @($resources.root.data |
+                Where-Object name -eq 'AIAgents_YoloGeminiInfo.Title') |
+            Should -HaveCount 0
+        [string]($resources.root.data |
+                Where-Object name -eq 'AIAgents_YoloGeminiInfo.Message' |
+                Select-Object -First 1).value |
+            Should -Be 'Automatic approval with Gemini is restricted to trusted workspaces'
     }
 
     It 'keeps every Settings locale structurally aligned' {
         $resourceRoot = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\Resources'
         $localeDirectories = @(Get-ChildItem -LiteralPath $resourceRoot -Directory)
-        $keys = @('AIAgents_YoloMode.Header', 'AIAgents_YoloMode.HelpText')
+        $keys = @(
+            'AIAgents_YoloMode.Header',
+            'AIAgents_YoloMode.HelpText',
+            'AIAgents_YoloGeminiInfo.Message'
+        )
         [xml]$english = Get-Content -LiteralPath (Join-Path $resourceRoot 'en-US\Resources.resw') -Raw
 
         foreach ($localeDirectory in $localeDirectories) {
@@ -848,6 +1062,14 @@ Describe 'Yolo Settings localization contract' -Tag 'Unit' {
                 if ($key -eq 'AIAgents_YoloMode.HelpText') {
                     [string]$target[0].comment | Should -MatchExactly '\{Locked="CLI"\}'
                     [string]$target[0].value | Should -MatchExactly '(?<![A-Za-z])CLI(?![A-Za-z])'
+                }
+
+                if ($key -eq 'AIAgents_YoloGeminiInfo.Message') {
+                    [string]$target[0].comment | Should -MatchExactly '\{Locked="Gemini"\}'
+                    [string]$target[0].value | Should -MatchExactly '(?<![A-Za-z])Gemini(?![A-Za-z])'
+                    @($localized.root.data |
+                            Where-Object name -eq 'AIAgents_YoloGeminiInfo.Title') |
+                        Should -HaveCount 0
                 }
 
                 if ($localeDirectory.Name -notin @('en-US', 'qps-ploc', 'qps-ploca', 'qps-plocm')) {

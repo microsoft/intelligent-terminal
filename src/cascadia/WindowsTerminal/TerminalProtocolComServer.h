@@ -67,6 +67,7 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     static void s_setEmperor(WindowEmperor* emperor) noexcept;
 
     static HRESULT s_StartListening();
+    [[nodiscard]] static HRESULT s_StopHookListening() noexcept;
     static HRESULT s_StopListening();
 
     // Re-runs per-window page event registration after a new AppHost is added.
@@ -132,6 +133,7 @@ private:
     // they marshal SendEvent payloads onto each window's TerminalPage).
     static void _dispatchAutofixStateToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentStatusToPage(const winrt::hstring& eventJson);
+    static void _dispatchAgentAvailabilityToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentSwitchToPage(const winrt::hstring& eventJson);
     static void _dispatchCloseAgentPaneToPage(const winrt::hstring& eventJson);
     static void _dispatchDefaultPasteToPage(const winrt::hstring& eventJson);
@@ -141,6 +143,7 @@ private:
     static void _dispatchAgentChipTargetToPage(const winrt::hstring& eventJson);
     static void _dispatchRestartAgentStackToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentSessionsRetiredToPage(const winrt::hstring& eventJson);
+    static void _dispatchSessionRegistryChangedToPage(const winrt::hstring& eventJson);
 
     static WindowEmperor* s_emperor;
 };

@@ -34,6 +34,16 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
         Test-UiElementExists -App $script:app -Selector 'AcpAgent' -TimeoutSec 8 | Should -BeTrue -Because 'the AI Agents page must show the agent picker'
     }
 
+    It 'Settings Tab Mode matches FRE' {
+        if (-not $script:settingsOpen) { Set-ItResult -Skipped -Because 'the WT window could not take foreground to open Settings (env precondition)'; return }
+        Invoke-SettingsNav -App $script:app -NavItem 'AppearanceNavItem' | Out-Null
+        $tabModeLabel = Get-WtReswTextRegex -Key 'FreOverlay_TabModeLabel.Text'
+        $tabModeLabel | Should -Not -BeNullOrEmpty
+        (Test-Until -TimeoutSec 8 -IntervalSec 0.5 -Condition {
+                (Get-UiTree -App $script:app -Depth 18) -match $tabModeLabel
+            }) | Should -BeTrue -Because 'Appearance must render the same localized Tab Mode label as FRE'
+    }
+
     It 'Model selection visible: the model control shows on the AI Agents page for a custom agent' {
         if (-not $script:settingsOpen) { Set-ItResult -Skipped -Because 'the WT window could not take foreground to open Settings (env precondition)'; return }
         Invoke-SettingsNav -App $script:app -NavItem 'AIAgentsNavItem'
@@ -48,20 +58,20 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
             Should -BeTrue -Because 'the model control (localized "Model" header) must be visible when a custom agent is selected'
     }
 
-    It 'Token usage toggle defaults off and persists when enabled' {
+    It 'Token usage toggle defaults on and persists when disabled' {
         if (-not $script:settingsOpen) { Set-ItResult -Skipped -Because 'the WT window could not take foreground to open Settings (env precondition)'; return }
         Invoke-SettingsNav -App $script:app -NavItem 'AIAgentsNavItem'
 
         Test-UiElementExists -App $script:app -Selector 'ShowTokenUsageAndCostToggle' -TimeoutSec 8 |
             Should -BeTrue -Because 'Settings > Agents must expose the token usage preference'
         (Get-UiElement -App $script:app -Selector 'ShowTokenUsageAndCostToggle').toggleState |
-            Should -Be 'off' -Because 'token usage and cost must be hidden by default'
+            Should -Be 'on' -Because 'token usage and cost must be shown by default'
 
         Invoke-UiElement -App $script:app -Selector 'ShowTokenUsageAndCostToggle' | Out-Null
         Invoke-UiElement -App $script:app -Selector 'SaveButton' | Out-Null
-        Wait-Until -TimeoutSec 8 -Because 'the Settings toggle to persist showTokenUsageAndCost=true' -Condition {
-            (Get-WtSettingsObject -App $script:app).showTokenUsageAndCost -eq $true
+        Wait-Until -TimeoutSec 8 -Because 'the Settings toggle to persist showTokenUsageAndCost=false' -Condition {
+            (Get-WtSettingsObject -App $script:app).showTokenUsageAndCost -eq $false
         } | Out-Null
-        Assert-Setting -App $script:app -Key 'showTokenUsageAndCost' -Value $true
+        Assert-Setting -App $script:app -Key 'showTokenUsageAndCost' -Value $false
     }
 }

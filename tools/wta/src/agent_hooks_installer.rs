@@ -846,19 +846,47 @@ pub fn build_reconciliation_plan(
 /// install must not hide the others. `Skip` entries are accepted and ignored
 /// so callers may pass a full plan or a pre-filtered one.
 pub fn apply_install_plan(plan: &[(CliKind, InstallAction)]) -> Vec<InstallFailure> {
+    if plan
+        .iter()
+        .all(|(_, action)| matches!(action, InstallAction::Skip))
+    {
+        return Vec::new();
+    }
+
+    let _mutation_guard = match acquire_hook_mutation_mutex() {
+        Ok(guard) => guard,
+        Err(reason) => {
+            return plan
+                .iter()
+                .filter(|(_, action)| !matches!(action, InstallAction::Skip))
+                .map(|(cli, _)| InstallFailure {
+                    cli: cli.name(),
+                    reason: reason.clone(),
+                })
+                .collect();
+        }
+    };
+
     let Some(home) = home_dir() else {
         tracing::debug!(target: "agent_hooks", "no HOME/USERPROFILE; skipping");
         return Vec::new();
     };
+    apply_install_plan_locked(plan, &home)
+}
+
+fn apply_install_plan_locked(
+    plan: &[(CliKind, InstallAction)],
+    home: &Path,
+) -> Vec<InstallFailure> {
     let mut failures = Vec::new();
     for (cli, action) in plan.iter().copied() {
         let failure = match action {
             InstallAction::Skip => None,
-            InstallAction::Install => match install_one(cli, &home) {
+            InstallAction::Install => match install_one(cli, home) {
                 InstallOutcome::Failed(reason) => Some(reason),
                 InstallOutcome::Installed | InstallOutcome::Skipped => None,
             },
-            InstallAction::Upgrade => upgrade_one_cli(cli, &home, read_bundled_version(cli)).err(),
+            InstallAction::Upgrade => upgrade_one_cli(cli, home, read_bundled_version(cli)).err(),
         };
         if let Some(reason) = failure {
             failures.push(InstallFailure {
@@ -870,15 +898,81 @@ pub fn apply_install_plan(plan: &[(CliKind, InstallAction)]) -> Vec<InstallFailu
     failures
 }
 
+struct HookMutationMutex(windows_sys::Win32::Foundation::HANDLE);
+
+impl Drop for HookMutationMutex {
+    fn drop(&mut self) {
+        unsafe {
+            windows_sys::Win32::System::Threading::ReleaseMutex(self.0);
+            windows_sys::Win32::Foundation::CloseHandle(self.0);
+        }
+    }
+}
+
+fn acquire_hook_mutation_mutex() -> Result<HookMutationMutex, String> {
+    use windows_sys::Win32::Foundation::{WAIT_ABANDONED, WAIT_OBJECT_0};
+    use windows_sys::Win32::System::Threading::{CreateMutexW, WaitForSingleObject};
+
+    const HOOK_MUTATION_TIMEOUT_MS: u32 = 60_000;
+    let name: Vec<u16> = "Local\\Microsoft.WindowsTerminal.Wta.HookMutation\0"
+        .encode_utf16()
+        .collect();
+    let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+    if handle.is_null() {
+        return Err("failed to create the agent hook mutation lock".to_string());
+    }
+
+    let wait = unsafe { WaitForSingleObject(handle, HOOK_MUTATION_TIMEOUT_MS) };
+    if wait == WAIT_OBJECT_0 || wait == WAIT_ABANDONED {
+        Ok(HookMutationMutex(handle))
+    } else {
+        unsafe {
+            windows_sys::Win32::Foundation::CloseHandle(handle);
+        }
+        Err("timed out waiting for another agent hook update".to_string())
+    }
+}
+
 /// Ensure every installed CLI in `scope` has a complete, current hook bridge.
 ///
 /// This is the single automatic reconciliation path used by master startup and
 /// by the default `wta hooks install`, which Terminal invokes after session
 /// management is enabled or the selected built-in agent changes.
 pub fn reconcile_agent_hooks(scope: CliScope) -> ReconciliationResult {
+    let _mutation_guard = match acquire_hook_mutation_mutex() {
+        Ok(guard) => guard,
+        Err(reason) => {
+            let status = status_scoped(scope);
+            let plan = build_reconciliation_plan(scope, &status);
+            let spawn_failures = plan
+                .iter()
+                .map(|(cli, _)| InstallFailure {
+                    cli: cli.name(),
+                    reason: reason.clone(),
+                })
+                .collect();
+            let missing = plan.iter().map(|(kind, _)| kind.name()).collect();
+            return ReconciliationResult {
+                plan,
+                spawn_failures,
+                status,
+                missing,
+            };
+        }
+    };
+
+    // Status and planning happen after ownership is acquired so another WTA
+    // process cannot invalidate the plan before mutations begin. Verification
+    // remains under the same ownership for the same reason.
     let pre_status = status_scoped(scope);
     let plan = build_reconciliation_plan(scope, &pre_status);
-    let spawn_failures = apply_install_plan(&plan);
+    let spawn_failures = if plan.is_empty() {
+        Vec::new()
+    } else if let Some(home) = home_dir() {
+        apply_install_plan_locked(&plan, &home)
+    } else {
+        Vec::new()
+    };
     let status = if plan.is_empty() {
         pre_status
     } else {
@@ -1374,7 +1468,7 @@ fn install_for_gemini(_home: &Path) -> InstallOutcome {
     // `--consent` does NOT cover ("Do you trust the files in this
     // folder? [y/N]"). Without this, the install hangs on stdin and
     // a scoped Terminal reconciliation attempt times out at 60s
-    // (issue: install_for_gemini timed out in wta-install-hooks.log
+    // (issue: install_for_gemini timed out in wta-install-hooks.<date>.log
     // after Claude + Copilot succeeded). The `--skip-trust` flag is
     // top-level only and isn't accepted on the `extensions install`
     // subcommand, so we use the env-var form Gemini documents for
@@ -1558,7 +1652,7 @@ pub fn status() -> StatusReport {
 /// `run_hooks_install` to avoid spawning `claude`/`gemini` query
 /// subprocesses when the install was scoped to a single CLI — those
 /// spawns are ~1-3s of Node startup each (verified in
-/// `wta-install-hooks.log` against a `--cli copilot` install) and add
+/// `wta-install-hooks.<date>.log` against a `--cli copilot` install) and add
 /// nothing to the verification of a Copilot-only install.
 ///
 /// CLIs that aren't `scope.includes(...)`d get a stub `CliStatus`
@@ -1758,7 +1852,7 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
     // ~2.8s (serial — each is a cold Node CLI startup) to ~1.5s on a
     // dev box; the peak memory cost is ~150 MB extra for the brief
     // window both Node processes are live. The two `tracing::info!`
-    // lines they emit may interleave in `wta-install-hooks.log` (each
+    // lines they emit may interleave in `wta-install-hooks.<date>.log` (each
     // line stays atomic — `tracing` synchronizes per-event), but the
     // log payload is unambiguous because each carries its own
     // `args=` field.
@@ -2563,6 +2657,27 @@ fn whitespace_tokens(line: &str) -> Vec<(usize, &str)> {
 /// still swept in the background so we don't leave behind orphan files
 /// from older wta builds.
 pub fn uninstall(scope: CliScope) -> UninstallReport {
+    let _mutation_guard = match acquire_hook_mutation_mutex() {
+        Ok(guard) => guard,
+        Err(reason) => {
+            return UninstallReport {
+                schema_version: UNINSTALL_SCHEMA_VERSION,
+                clis: CliKind::ALL
+                    .iter()
+                    .copied()
+                    .filter(|kind| scope.includes(*kind))
+                    .map(|kind| CliUninstallResult {
+                        name: kind.name(),
+                        attempted: false,
+                        plugin_uninstalled: Some(false),
+                        marketplace_removed: None,
+                        staging_dir_removed: false,
+                        messages: vec![reason.clone()],
+                    })
+                    .collect(),
+            };
+        }
+    };
     let home = home_dir();
     UninstallReport {
         schema_version: UNINSTALL_SCHEMA_VERSION,
@@ -3140,7 +3255,7 @@ fn spawn_plugin_cli_query(
 ///     in `run_plugin_cli_capture`), so without an explicit log here
 ///     a thread panic would silently fall through to the filesystem
 ///     fallback and we'd never know the parallel-status code regressed.
-///     Log it at warn so it surfaces in `wta-install-hooks.log` next
+///     Log it at warn so it surfaces in `wta-install-hooks.<date>.log` next
 ///     to the surrounding `agent_hooks` events.
 ///
 /// `exe` and `args` are echoed into the log so an operator reading
@@ -4761,8 +4876,11 @@ fn upgrade_one_cli(
         // stderr; threading that string back through five `bool`-returning
         // upgrade paths would be a bigger change than the report is worth.
         Err(format!(
-            "{} hook upgrade failed; see wta-install-hooks.log",
-            cli.name()
+            "{} hook upgrade failed; see {}",
+            cli.name(),
+            crate::logging::log_dir()
+                .join("wta-install-hooks*.log")
+                .display()
         ))
     }
 }

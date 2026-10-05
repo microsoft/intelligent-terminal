@@ -4,15 +4,29 @@ import "TerminalTabStatus.idl";
 
 namespace TerminalApp
 {
+    [bindable]
+    [default_interface] runtimeclass TabHeaderPresentation : Windows.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        String Title;
+        String SearchText;
+        Double RenamerMaxWidth;
+        TerminalTabStatus TabStatus;
+        String MetadataText;
+        String MetadataAutomationName;
+        String AutomationName;
+    };
+
     delegate void TitleChangeRequestedArgs(String title);
 
     [default_interface] runtimeclass TabHeaderControl : Windows.UI.Xaml.Controls.UserControl, Windows.UI.Xaml.Data.INotifyPropertyChanged
     {
         String Title { get; set; };
+        String SearchText { get; set; };
         Double RenamerMaxWidth { get; set; };
 
         TabHeaderControl();
         void BeginRename();
+        void CancelRename();
 
         Boolean InRename { get; };
 
@@ -20,5 +34,13 @@ namespace TerminalApp
 
         event TitleChangeRequestedArgs TitleChangeRequested;
         event Windows.Foundation.TypedEventHandler<Object, Object> RenameEnded;
+
+        String MetadataText { get; set; };
+        String MetadataAutomationName { get; set; };
+        Boolean IsMetadataVisible { get; set; };
+
+        TabHeaderPresentation Presentation { get; set; };
+        Boolean ShowProgressRing { get; set; };
+        Boolean ShowPinnedIcon { get; set; };
     }
 }

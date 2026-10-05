@@ -50,7 +50,16 @@ function Get-WtSettingsObject {
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
     process {
         if (-not (Test-Path $App.SettingsPath)) { return $null }
-        (Get-Content -LiteralPath $App.SettingsPath -Raw -Encoding utf8) | ConvertFrom-JsonC
+        # Terminal saves atomically by replacing the file; polling must permit that replacement.
+        $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+        $stream = [IO.File]::Open($App.SettingsPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
+        try {
+            $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true, 1024, $true)
+            try { $text = $reader.ReadToEnd() }
+            finally { $reader.Dispose() }
+        }
+        finally { $stream.Dispose() }
+        $text | ConvertFrom-JsonC
     }
 }
 

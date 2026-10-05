@@ -1138,6 +1138,7 @@ fn helper_status_catalog_combines_cloud_agent_and_byok_models() {
         load_session_supported: false,
         image_supported: false,
         session_capabilities_ready: true,
+        telemetry_byok_binding: None,
     });
 
     assert_eq!(app.available_models.len(), 3);
@@ -1180,6 +1181,7 @@ fn private_cloud_catalog_survives_bare_agent_model_response() {
         load_session_supported: false,
         image_supported: false,
         session_capabilities_ready: true,
+        telemetry_byok_binding: None,
     });
 
     assert_eq!(app.cloud_models.len(), 1);

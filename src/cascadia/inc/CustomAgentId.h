@@ -25,10 +25,8 @@
 // always prefix the returned id with "custom:" before storing it in the
 // AcpAgent / DelegateAgent setting — that prefix is the system-wide
 // discriminator used by EffectiveAcpAgent, the command-line resolver, and
-// the custom-edit/delete UI gates. (Telemetry collapses every non-built-in
-// id to literal `custom` via `sanitizeProviderId` and does not key on the
-// prefix.) Storing a bare id silently breaks the consumers above; see
-// PR #123.
+// the custom-edit/delete UI gates. Storing a bare id silently breaks these
+// consumers; see PR #123.
 
 #pragma once
 

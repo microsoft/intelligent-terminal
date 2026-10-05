@@ -39,14 +39,7 @@ namespace winrt::TerminalApp::implementation
         // into sessions view.
         bool IsSessionsView() const noexcept { return _isSessionsView; }
         winrt::hstring AgentSessionId() const noexcept { return _agentSessionId; }
-        void SetAgentSessionId(const winrt::hstring& sessionId) noexcept
-        {
-            if (_agentSessionId != sessionId)
-            {
-                _yoloControlOwner = {};
-            }
-            _agentSessionId = sessionId;
-        }
+        void SetAgentSessionId(const winrt::hstring& sessionId);
         const winrt::hstring& YoloControlOwner() const noexcept { return _yoloControlOwner; }
         void SetYoloControlOwner(const winrt::hstring& owner) noexcept
         {
@@ -106,6 +99,15 @@ namespace winrt::TerminalApp::implementation
             _agentRestoreIdentity = source._agentRestoreIdentity;
             _agentRestoreCustomCommand = source._agentRestoreCustomCommand;
             _wtaExecutablePath = source._wtaExecutablePath;
+        }
+
+        void CopyLiveStateFrom(const AgentPaneContent& source)
+        {
+            UpdateAgentStatus(source._agentName, source._agentVersion, source._agentModel, source._agentState, source._agentBackend);
+            _helperEventReady = source._helperEventReady;
+            _yoloControlOwner = source._yoloControlOwner;
+            _agentUsage = source._agentUsage;
+            ApplyAutofixState(source._autofixState, source._lastErrorPaneId, source._detectedSummary, source._fixPreview, source._hotkeyHint, source._suggestionTitle);
         }
 
         // --- Per-pane autofix / diagnostics state ---
@@ -229,6 +231,7 @@ namespace winrt::TerminalApp::implementation
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged
         // (the single writer for view-derived UI state).
         bool _isSessionsView{ false };
+        bool _canEnableSessions{ false };
         winrt::hstring _agentSessionId{};
         winrt::hstring _agentSessionOwner{};
         winrt::hstring _yoloControlOwner{};
@@ -275,6 +278,8 @@ namespace winrt::TerminalApp::implementation
 
         void _refreshLabel();
         void _refreshLogo();
+        void _refreshSessionsHint();
+        float _chromeHeight();
     };
 }
 
