@@ -1,0 +1,155 @@
+name: Native accessibility hosted acceptance
+'on':
+  push:
+    branches:
+    - test/yeelam/ghaw-native-accessibility-20261006
+    paths:
+    - .github/workflows/ghaw-native-accessibility-probe.yml
+permissions:
+  contents: read
+concurrency:
+  group: native-accessibility-hosted-acceptance
+  cancel-in-progress: false
+jobs:
+  native-acceptance:
+    name: Real FRE and Agents Axe.Windows acceptance
+    runs-on: windows-2025-vs2026
+    permissions:
+      contents: read
+    timeout-minutes: 45
+    steps:
+    - name: Configure GH_HOST for enterprise compatibility
+      id: ghes-host-config
+      shell: bash
+      run: '# Derive GH_HOST from GITHUB_SERVER_URL so the gh CLI targets the correct
+
+        # GitHub instance (GHES/GHEC). On github.com this is a harmless no-op.
+
+        GH_HOST="${GITHUB_SERVER_URL#https://}"
+
+        GH_HOST="${GH_HOST#http://}"
+
+        echo "GH_HOST=${GH_HOST}" >> "$GITHUB_ENV"
+
+        '
+    - name: Checkout immutable pull request head
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 1
+        persist-credentials: false
+        ref: ${{ github.sha }}
+        repository: ${{ github.repository }}
+    - name: Verify immutable head
+      run: "$ErrorActionPreference = 'Stop'\nif ((git rev-parse HEAD) -ne $env:EXPECTED_HEAD_SHA) {\n  throw 'Checked-out\
+        \ revision does not match the immutable PR head.'\n}\n"
+      env:
+        EXPECTED_HEAD_SHA: ${{ github.sha }}
+      shell: pwsh
+    - name: Build accessibility test host
+      run: 'set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+
+        call tools\razzle.cmd
+
+        if errorlevel 1 exit /b 1
+
+        cd src\cascadia\LocalTests_TerminalApp\TestHostApp
+
+        if errorlevel 1 exit /b 1
+
+        call bx
+
+        '
+      shell: cmd
+    - name: Acquire pinned Axe.Windows CLI
+      run: "$ErrorActionPreference = 'Stop'\n$uri = 'https://github.com/microsoft/axe-windows/releases/download/v2.4.2/AxeWindowsCLI-2.4.2.zip'\n\
+        $expectedHash = 'AECA43F41C89B3FFB1DB84011539E609ECD7CB3BADD6E78FADA2ADA327D10A64'\n$zip = Join-Path $env:RUNNER_TEMP\
+        \ 'AxeWindowsCLI-2.4.2.zip'\nInvoke-WebRequest -Uri $uri -OutFile $zip\n$actualHash = (Get-FileHash -Algorithm SHA256\
+        \ $zip).Hash\nif ($actualHash -ne $expectedHash) {\n  throw \"Axe.Windows archive hash mismatch: $actualHash\"\n}\n\
+        $destination = Join-Path $env:RUNNER_TEMP 'axe-windows'\nExpand-Archive -LiteralPath $zip -DestinationPath $destination\n\
+        \"AXE_WINDOWS_PATH=$(Join-Path $destination 'AxeWindowsCLI.exe')\" |\n  Out-File -FilePath $env:GITHUB_ENV -Append\n"
+      shell: pwsh
+    - name: Checkout trusted native harness
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 1
+        path: trusted-accessibility
+        persist-credentials: false
+        ref: ${{ github.sha }}
+        repository: ${{ github.repository }}
+        sparse-checkout: 'test/accessibility
+
+          build/scripts/Get-DependenciesFromAppxRecipe.ps1
+
+          '
+        sparse-checkout-cone-mode: false
+    - name: Install test host framework dependencies
+      run: "$ErrorActionPreference = 'Stop'\n$recipe = 'bin\\x64\\Debug\\TestHostApp\\TestHostApp.build.appxrecipe'\n$dependencies\
+        \ = @(& trusted-accessibility\\build\\scripts\\Get-DependenciesFromAppxRecipe.ps1 -Path $recipe)\nif ($dependencies.Count\
+        \ -eq 0) {\n  throw 'The test host recipe contains no framework dependencies.'\n}\nAdd-Type -AssemblyName System.IO.Compression.FileSystem\n\
+        foreach ($dependency in $dependencies) {\n  $archive = [IO.Compression.ZipFile]::OpenRead($dependency.FullName)\n\
+        \  try {\n    $entry = $archive.GetEntry('AppxManifest.xml')\n    if (-not $entry) { throw \"Framework package has\
+        \ no manifest: $dependency\" }\n    $reader = [IO.StreamReader]::new($entry.Open())\n    try { [xml]$framework = $reader.ReadToEnd()\
+        \ } finally { $reader.Dispose() }\n  } finally { $archive.Dispose() }\n  $identity = $framework.Package.Identity\n\
+        \  $installed = @(Get-AppxPackage -Name $identity.Name | Where-Object {\n    $_.Architecture -eq $identity.ProcessorArchitecture\
+        \ -and\n    [version]$_.Version -ge [version]$identity.Version -and\n    $_.Publisher -eq $identity.Publisher\n  })\n\
+        \  if ($installed.Count -gt 0) { continue }\n  Add-AppxPackage -Path $dependency.FullName -ErrorAction Stop\n}\n"
+      shell: powershell
+    - name: Scan FRE
+      id: fre
+      run: "& trusted-accessibility\\test\\accessibility\\Invoke-AxeWindowsTestHost.ps1 `\n  -Surface fre `\n  -ManifestPath\
+        \ bin/x64/Debug/TestHostApp/AppxManifest.xml `\n  -AxePath $env:AXE_WINDOWS_PATH `\n  -OutputDirectory \"$env:RUNNER_TEMP/accessibility-results\"\
+        \ `\n  -SourceSha $env:SOURCE_SHA\n"
+      env:
+        SOURCE_SHA: ${{ github.sha }}
+      continue-on-error: true
+      shell: pwsh
+    - name: Scan Agents settings
+      id: agents
+      run: "& trusted-accessibility\\test\\accessibility\\Invoke-AxeWindowsTestHost.ps1 `\n  -Surface agents `\n  -ManifestPath\
+        \ bin/x64/Debug/TestHostApp/AppxManifest.xml `\n  -AxePath $env:AXE_WINDOWS_PATH `\n  -OutputDirectory \"$env:RUNNER_TEMP/accessibility-results\"\
+        \ `\n  -SourceSha $env:SOURCE_SHA\n"
+      env:
+        SOURCE_SHA: ${{ github.sha }}
+      continue-on-error: true
+      shell: pwsh
+    - name: Scan FRE settings
+      id: fre-settings
+      run: "& trusted-accessibility\\test\\accessibility\\Invoke-AxeWindowsTestHost.ps1 `\n  -Surface fre-settings `\n  -ManifestPath\
+        \ bin\\x64\\Debug\\TestHostApp\\AppxManifest.xml `\n  -AxePath $env:AXE_WINDOWS_PATH `\n  -OutputDirectory \"$env:RUNNER_TEMP\\\
+        accessibility-results\" `\n  -SourceSha $env:SOURCE_SHA\n"
+      env:
+        SOURCE_SHA: ${{ github.sha }}
+      continue-on-error: true
+      shell: pwsh
+    - name: Upload native accessibility evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        if-no-files-found: warn
+        name: native-accessibility-${{ github.sha }}
+        path: ${{ runner.temp }}/accessibility-results
+        retention-days: 14
+    - name: Enforce native scan results
+      if: always()
+      run: "$ErrorActionPreference = 'Stop'\nif ($env:FRE_OUTCOME -ne 'success' -or $env:AGENTS_OUTCOME -ne 'success' -or\
+        \ $env:FRE_SETTINGS_OUTCOME -ne 'success') {\n  throw \"Native accessibility scan failed or was blocked: FRE=$env:FRE_OUTCOME\
+        \ Agents=$env:AGENTS_OUTCOME FRE-settings=$env:FRE_SETTINGS_OUTCOME\"\n}\n$markers = @{ fre = 'NextButton'; 'fre-settings'\
+        \ = 'TabModeComboBox'; agents = 'AcpAgentComboBox' }\nforeach ($surface in @('fre', 'fre-settings', 'agents')) {\n\
+        \  $directory = Join-Path \"$env:RUNNER_TEMP\\accessibility-results\" $surface\n  $result = Get-Content -LiteralPath\
+        \ (Join-Path $directory 'result.json') -Raw | ConvertFrom-Json\n  if ($result.status -ne 'PASS' -or $result.source_sha\
+        \ -ne $env:SOURCE_SHA -or\n      $result.surface -ne $surface -or $result.process_id -le 0) {\n    throw \"Native\
+        \ $surface result has missing or inconsistent identity/status evidence.\"\n  }\n  $scanPath = Join-Path $directory\
+        \ 'axe-results.json'\n  $treePath = Join-Path $directory 'uia-tree.json'\n  if ($result.axe_results -ne $scanPath)\
+        \ { throw \"Native $surface scan path is inconsistent.\" }\n  $scan = Get-Content -LiteralPath $scanPath -Raw | ConvertFrom-Json\n\
+        \  if ($scan.scan_id -ne $surface -or $scan.process_id -ne $result.process_id -or\n      $scan.window_count -le 0\
+        \ -or $scan.error_count -ne 0 -or\n      $scan.visible_state_marker -ne $markers[$surface] -or $scan.uia_tree -ne\
+        \ $treePath) {\n    throw \"Native $surface scan has missing or inconsistent state evidence.\"\n  }\n  $tree = @(Get-Content\
+        \ -LiteralPath $treePath -Raw | ConvertFrom-Json)\n  $visibleMarker = @($tree | Where-Object {\n    $_.automation_id\
+        \ -eq $markers[$surface] -and\n    $_.is_offscreen -eq $false -and $_.process_id -eq $result.process_id\n  })\n  if\
+        \ ($visibleMarker.Count -eq 0) { throw \"Native $surface hierarchy lacks its visible state marker.\" }\n}\n"
+      env:
+        AGENTS_OUTCOME: ${{ steps.agents.outcome }}
+        FRE_OUTCOME: ${{ steps.fre.outcome }}
+        FRE_SETTINGS_OUTCOME: ${{ steps.fre-settings.outcome }}
+        SOURCE_SHA: ${{ github.sha }}
+      shell: pwsh
