@@ -560,6 +560,14 @@ class ValidationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_agent_and_detection_have_explicit_spend_caps(self):
+        root = Path(__file__).parents[4]
+        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        self.assertIn("max-daily-ai-credits: 90", workflow)
+        self.assertEqual(2, workflow.count("max-ai-credits: 30"))
+        self.assertIn("timeout-minutes: 15", workflow)
+        self.assertIn("retries: 0", workflow)
+
     @unittest.skipUnless(os.name == "nt" and shutil.which("pwsh"), "Windows PowerShell host required")
     def test_native_enforcement_rejects_success_without_state_evidence(self):
         root = Path(__file__).parents[4]
@@ -665,7 +673,7 @@ class WorkflowContractTests(unittest.TestCase):
     def test_native_runtime_job_uses_pinned_ephemeral_windows_lane(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        self.assertIn("runs-on: windows-latest", workflow)
+        self.assertIn("runs-on: windows-2025-vs2026", workflow)
         self.assertIn("persist-credentials: false", workflow)
         self.assertIn("AECA43F41C89B3FFB1DB84011539E609ECD7CB3BADD6E78FADA2ADA327D10A64", workflow)
         self.assertIn("-Surface fre", workflow)

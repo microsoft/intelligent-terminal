@@ -22,6 +22,10 @@ engine:
   id: copilot
   agent: pr-accessibility
   bare: true
+
+timeout-minutes: 15
+max-ai-credits: 30
+max-daily-ai-credits: 90
 imports:
   - .github/agents/pr-accessibility.agent.md
 
@@ -53,7 +57,7 @@ jobs:
     name: Native Axe.Windows smoke
     needs: [agent]
     if: ${{ !cancelled() && needs.agent.result != 'skipped' }}
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     timeout-minutes: 45
     permissions:
       contents: read
@@ -81,7 +85,9 @@ jobs:
         run: |
           set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
           call tools\razzle.cmd
+          if errorlevel 1 exit /b 1
           cd src\cascadia\LocalTests_TerminalApp\TestHostApp
+          if errorlevel 1 exit /b 1
           call bx
 
       - name: Acquire pinned Axe.Windows CLI
@@ -265,6 +271,9 @@ steps:
 
 safe-outputs:
   github-token: ${{ secrets.GITHUB_TOKEN }}
+  threat-detection:
+    max-ai-credits: 30
+    retries: 0
   push-to-pull-request-branch:
     base-branch: ${{ github.event.pull_request.head.sha }}
     github-token-for-extra-empty-commit: "${{ '' }}"
