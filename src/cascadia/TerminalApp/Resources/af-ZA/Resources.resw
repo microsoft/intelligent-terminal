@@ -430,8 +430,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Geskiedenis</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Geskiedenis en ander sessies</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agente</value>
@@ -647,4 +647,22 @@
     <value>Skakel na ander venster</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Verander oortjiekleur</value></data>
+  <data name="RenameTabText"><value>Hernoem oortjie</value></data>
+  <data name="DuplicateTabText"><value>Dupliseer oortjie</value></data>
+  <data name="SplitTabText"><value>Verdeel oortjie</value></data>
+  <data name="TabMoveSubMenu"><value>Skuif oortjie</value></data>
+  <data name="ExportTabText"><value>Voer teks uit</value></data>
+  <data name="FindText"><value>Soek</value></data>
+  <data name="RestartConnectionText"><value>Herbegin sessie</value></data>
+  <data name="TabCloseSubMenu"><value>Sluit</value></data>
+  <data name="TabClose"><value>Sluit oortjie</value></data>
+  <data name="MoveTabToNewWindowText"><value>Skuif oortjie na nuwe venster</value></data>
+  <data name="TabMoveLeft"><value>Skuif links</value></data>
+  <data name="TabMoveRight"><value>Skuif regs</value></data>
+  <data name="TabMoveUp"><value>Skuif op</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Skuif af</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Sluit oortjies aan die regterkant</value></data>
+  <data name="TabCloseOther"><value>Sluit ander oortjies</value></data>
+  <data name="ClosePaneText"><value>Sluit paneel</value></data>
 </root>

@@ -543,8 +543,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Historial</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Historial y otras sesiones</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agentes</value>
@@ -760,4 +760,22 @@
     <value>Cambiar a otra ventana</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Cambiar el color de la pestaña</value></data>
+  <data name="RenameTabText"><value>Cambiar el nombre de la pestaña</value></data>
+  <data name="DuplicateTabText"><value>Duplicar pestaña</value></data>
+  <data name="SplitTabText"><value>Dividir pestaña</value></data>
+  <data name="TabMoveSubMenu"><value>Mover pestaña</value></data>
+  <data name="ExportTabText"><value>Exportar texto</value></data>
+  <data name="FindText"><value>Buscar</value></data>
+  <data name="RestartConnectionText"><value>Reiniciar sesión</value></data>
+  <data name="TabCloseSubMenu"><value>Cerrar</value></data>
+  <data name="TabClose"><value>Cerrar pestaña</value></data>
+  <data name="MoveTabToNewWindowText"><value>Mover pestaña a una ventana nueva</value></data>
+  <data name="TabMoveLeft"><value>Mover a la izquierda</value></data>
+  <data name="TabMoveRight"><value>Mover a la derecha</value></data>
+  <data name="TabMoveUp"><value>Mover hacia arriba</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Mover hacia abajo</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Cerrar las pestañas de la derecha</value></data>
+  <data name="TabCloseOther"><value>Cerrar las demás pestañas</value></data>
+  <data name="ClosePaneText"><value>Cerrar panel</value></data>
 </root>

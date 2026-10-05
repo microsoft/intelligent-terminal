@@ -548,8 +548,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>इतिहास</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>इतिहास आनी हेर सत्रां</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>एजंट</value>
@@ -765,4 +765,22 @@
     <value>दुसऱ्या विंडोंत वचात</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>टॅबाचो रंग बदलात</value></data>
+  <data name="RenameTabText"><value>टॅबाचें नांव बदलात</value></data>
+  <data name="DuplicateTabText"><value>टॅबाची प्रत तयार करात</value></data>
+  <data name="SplitTabText"><value>टॅब विभागात</value></data>
+  <data name="TabMoveSubMenu"><value>टॅब हलयात</value></data>
+  <data name="ExportTabText"><value>मजकूर निर्यात करात</value></data>
+  <data name="FindText"><value>सोदात</value></data>
+  <data name="RestartConnectionText"><value>सत्र परत सुरू करात</value></data>
+  <data name="TabCloseSubMenu"><value>बंद करात</value></data>
+  <data name="TabClose"><value>टॅब बंद करात</value></data>
+  <data name="MoveTabToNewWindowText"><value>टॅब नव्या विंडोंत हलयात</value></data>
+  <data name="TabMoveLeft"><value>दावेकडेन हलयात</value></data>
+  <data name="TabMoveRight"><value>उजवेकडेन हलयात</value></data>
+  <data name="TabMoveUp"><value>वयर हलयात</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>सकयल हलयात</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>उजवेकडले टॅब बंद करात</value></data>
+  <data name="TabCloseOther"><value>हेर टॅब बंद करात</value></data>
+  <data name="ClosePaneText"><value>पेन बंद करात</value></data>
 </root>

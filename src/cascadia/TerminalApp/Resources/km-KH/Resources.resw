@@ -363,8 +363,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>ប្រវត្តិ</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>ប្រវត្តិ និងវគ្គផ្សេងទៀត</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>ភ្នាក់ងារ</value>
@@ -580,4 +580,22 @@
     <value>ប្ដូរទៅបង្អួចផ្សេងទៀត</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>ប្ដូរពណ៌ផ្ទាំង</value></data>
+  <data name="RenameTabText"><value>ប្ដូរឈ្មោះផ្ទាំង</value></data>
+  <data name="DuplicateTabText"><value>ចម្លងផ្ទាំង</value></data>
+  <data name="SplitTabText"><value>បំបែកផ្ទាំង</value></data>
+  <data name="TabMoveSubMenu"><value>ផ្លាស់ទីផ្ទាំង</value></data>
+  <data name="ExportTabText"><value>នាំចេញអត្ថបទ</value></data>
+  <data name="FindText"><value>ស្វែងរក</value></data>
+  <data name="RestartConnectionText"><value>ចាប់ផ្ដើមវគ្គឡើងវិញ</value></data>
+  <data name="TabCloseSubMenu"><value>បិទ</value></data>
+  <data name="TabClose"><value>បិទផ្ទាំង</value></data>
+  <data name="MoveTabToNewWindowText"><value>ផ្លាស់ទីផ្ទាំងទៅបង្អួចថ្មី</value></data>
+  <data name="TabMoveLeft"><value>ផ្លាស់ទីទៅឆ្វេង</value></data>
+  <data name="TabMoveRight"><value>ផ្លាស់ទីទៅស្ដាំ</value></data>
+  <data name="TabMoveUp"><value>ផ្លាស់ទីឡើងលើ</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>ផ្លាស់ទីចុះក្រោម</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>បិទផ្ទាំងនៅខាងស្ដាំ</value></data>
+  <data name="TabCloseOther"><value>បិទផ្ទាំងផ្សេងទៀត</value></data>
+  <data name="ClosePaneText"><value>បិទផ្ទាំងរង</value></data>
 </root>

@@ -544,8 +544,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>السجل</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>السجل والجلسات الأخرى</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>عوامل الذكاء الاصطناعي</value>
@@ -760,5 +760,61 @@
   <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
     <value>التبديل إلى نافذة أخرى</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
+  </data>
+  <data name="TabColorChoose" xml:space="preserve">
+    <value>تغيير لون علامة التبويب</value>
+  </data>
+  <data name="RenameTabText" xml:space="preserve">
+    <value>إعادة تسمية علامة التبويب</value>
+  </data>
+  <data name="DuplicateTabText" xml:space="preserve">
+    <value>تكرار علامة التبويب</value>
+  </data>
+  <data name="SplitTabText" xml:space="preserve">
+    <value>تقسيم علامة التبويب</value>
+  </data>
+  <data name="TabMoveSubMenu" xml:space="preserve">
+    <value>نقل علامة التبويب</value>
+  </data>
+  <data name="ExportTabText" xml:space="preserve">
+    <value>تصدير النص</value>
+  </data>
+  <data name="FindText" xml:space="preserve">
+    <value>بحث</value>
+  </data>
+  <data name="RestartConnectionText" xml:space="preserve">
+    <value>إعادة تشغيل الجلسة</value>
+  </data>
+  <data name="TabCloseSubMenu" xml:space="preserve">
+    <value>إغلاق</value>
+  </data>
+  <data name="TabClose" xml:space="preserve">
+    <value>إغلاق علامة التبويب</value>
+  </data>
+  <data name="MoveTabToNewWindowText" xml:space="preserve">
+    <value>نقل علامة التبويب إلى نافذة جديدة</value>
+  </data>
+  <data name="TabMoveLeft" xml:space="preserve">
+    <value>نقل إلى اليسار</value>
+  </data>
+  <data name="TabMoveRight" xml:space="preserve">
+    <value>نقل إلى اليمين</value>
+  </data>
+  <data name="TabMoveUp" xml:space="preserve">
+    <value>نقل إلى أعلى</value>
+    <comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment>
+  </data>
+  <data name="TabMoveDown" xml:space="preserve">
+    <value>نقل إلى أسفل</value>
+    <comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment>
+  </data>
+  <data name="TabCloseAfter" xml:space="preserve">
+    <value>إغلاق علامات التبويب إلى اليمين</value>
+  </data>
+  <data name="TabCloseOther" xml:space="preserve">
+    <value>إغلاق علامات التبويب الأخرى</value>
+  </data>
+  <data name="ClosePaneText" xml:space="preserve">
+    <value>إغلاق اللوحة</value>
   </data>
 </root>

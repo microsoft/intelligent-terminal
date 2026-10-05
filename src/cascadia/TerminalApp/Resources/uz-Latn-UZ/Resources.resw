@@ -523,8 +523,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Tarix</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Tarix va boshqa seanslar</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agentlar</value>
@@ -740,4 +740,22 @@
     <value>Boshqa oynaga o‘tish</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Varaq rangini o‘zgartirish</value></data>
+  <data name="RenameTabText"><value>Varaq nomini o‘zgartirish</value></data>
+  <data name="DuplicateTabText"><value>Varaq nusxasini yaratish</value></data>
+  <data name="SplitTabText"><value>Varaqni bo‘lish</value></data>
+  <data name="TabMoveSubMenu"><value>Varaqni ko‘chirish</value></data>
+  <data name="ExportTabText"><value>Matnni eksport qilish</value></data>
+  <data name="FindText"><value>Qidirish</value></data>
+  <data name="RestartConnectionText"><value>Seansni qayta boshlash</value></data>
+  <data name="TabCloseSubMenu"><value>Yopish</value></data>
+  <data name="TabClose"><value>Varaqni yopish</value></data>
+  <data name="MoveTabToNewWindowText"><value>Varaqni yangi oynaga ko‘chirish</value></data>
+  <data name="TabMoveLeft"><value>Chapga ko‘chirish</value></data>
+  <data name="TabMoveRight"><value>O‘ngga ko‘chirish</value></data>
+  <data name="TabMoveUp"><value>Yuqoriga ko‘chirish</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Pastga ko‘chirish</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>O‘ngdagi varaqlarni yopish</value></data>
+  <data name="TabCloseOther"><value>Boshqa varaqlarni yopish</value></data>
+  <data name="ClosePaneText"><value>Panelni yopish</value></data>
 </root>

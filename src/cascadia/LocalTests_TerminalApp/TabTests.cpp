@@ -5747,7 +5747,15 @@ namespace TerminalAppLocalTests
             winrt::TerminalApp::TabStrip strip;
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             const auto row = stripImpl->HistoryList().ItemTemplate().LoadContent().as<Grid>();
-            const auto icon = row.Children().GetAt(1).as<ContentControl>();
+            VERIFY_ARE_EQUAL(2u, row.ColumnDefinitions().Size());
+            VERIFY_ARE_EQUAL(GridUnitType::Auto, row.ColumnDefinitions().GetAt(0).Width().GridUnitType);
+            VERIFY_ARE_EQUAL(GridUnitType::Star, row.ColumnDefinitions().GetAt(1).Width().GridUnitType);
+            const auto selection = row.FindName(L"HistorySelectionBackground").as<Border>();
+            VERIFY_ARE_EQUAL(2, Grid::GetColumnSpan(selection));
+            VERIFY_ARE_EQUAL(2, Grid::GetRowSpan(selection));
+            VERIFY_IS_TRUE(row.Children().GetAt(0) == selection);
+            VERIFY_IS_TRUE(static_cast<bool>(row.FindName(L"HistorySelectionPalette").as<ContentControl>()));
+            const auto icon = row.FindName(L"HistoryProviderIcon").as<ContentControl>();
             VERIFY_ARE_EQUAL(0, Grid::GetColumn(icon));
             VERIFY_ARE_EQUAL(2, Grid::GetRowSpan(icon));
             VERIFY_ARE_EQUAL(16.0, icon.Width());
@@ -5755,16 +5763,24 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(12.0, icon.Margin().Right);
             VERIFY_ARE_EQUAL(VerticalAlignment::Center, icon.VerticalAlignment());
             VERIFY_IS_FALSE(icon.IsTabStop());
-            VERIFY_IS_FALSE(icon.IsHitTestVisible());
-            VERIFY_ARE_EQUAL(1, Grid::GetColumn(row.Children().GetAt(2).as<FrameworkElement>()));
-            const auto metadata = row.Children().GetAt(3).as<Grid>();
+            const auto title = row.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
+            title.Text(L"History session title");
+            VERIFY_ARE_EQUAL(1, Grid::GetColumn(title));
+            const auto metadata = row.FindName(L"HistoryMetadata").as<Grid>();
             VERIFY_ARE_EQUAL(1, Grid::GetRow(metadata));
             VERIFY_ARE_EQUAL(1, Grid::GetColumn(metadata));
             VERIFY_ARE_EQUAL(HorizontalAlignment::Left, metadata.HorizontalAlignment());
             VERIFY_ARE_EQUAL(GridUnitType::Star, metadata.ColumnDefinitions().GetAt(0).Width().GridUnitType);
             VERIFY_ARE_EQUAL(GridUnitType::Auto, metadata.ColumnDefinitions().GetAt(1).Width().GridUnitType);
+            VERIFY_ARE_EQUAL(GridUnitType::Star, metadata.ColumnDefinitions().GetAt(2).Width().GridUnitType);
+            VERIFY_ARE_EQUAL(GridUnitType::Auto, metadata.ColumnDefinitions().GetAt(3).Width().GridUnitType);
             const auto subtitle = metadata.Children().GetAt(0).as<winrt::TerminalApp::HighlightedTextControl>();
             const auto status = metadata.Children().GetAt(1).as<winrt::TerminalApp::HighlightedTextControl>();
+            const auto provider = metadata.Children().GetAt(2).as<winrt::TerminalApp::HighlightedTextControl>();
+            VERIFY_IS_TRUE(provider == row.FindName(L"HistoryProviderNameText"));
+            VERIFY_ARE_EQUAL(2, Grid::GetColumn(provider));
+            VERIFY_ARE_EQUAL(8.0, provider.Margin().Left);
+            VERIFY_ARE_EQUAL(3, Grid::GetColumn(row.FindName(L"HistoryOwnershipButton").as<Button>()));
             VERIFY_ARE_EQUAL(1, Grid::GetColumn(status));
             VERIFY_ARE_EQUAL(4.0, status.Margin().Left);
             VERIFY_ARE_EQUAL(0.0, status.Margin().Right);
@@ -5772,25 +5788,39 @@ namespace TerminalAppLocalTests
             status.TextBlockStyle(strip.Resources().Lookup(winrt::box_value(L"HistoryActiveTextStyle")).as<Style>());
             subtitle.ApplyTemplate();
             status.ApplyTemplate();
+            title.ApplyTemplate();
+            provider.ApplyTemplate();
             const auto subtitleText = Media::VisualTreeHelper::GetChild(subtitle, 0).as<TextBlock>();
             const auto statusText = Media::VisualTreeHelper::GetChild(status, 0).as<TextBlock>();
+            const auto titleText = Media::VisualTreeHelper::GetChild(title, 0).as<TextBlock>();
+            const auto providerText = Media::VisualTreeHelper::GetChild(provider, 0).as<TextBlock>();
             const auto rowOverhead = row.Padding().Left + icon.Width() + icon.Margin().Right + row.Padding().Right;
             constexpr double tolerance = 1.0;
-            for (const auto subtitleValue : { L"Copilot · 2m ago", L"Copilot \u00b7 Ubuntu-24.04 \u00b7 2m ago", L"Localized provider with a very long display name · several minutes ago" })
+            for (const auto subtitleValue : { L"2m ago", L"several minutes ago", L"Localized relative timestamp with a very long display value" })
             {
-                for (const auto statusValue : { L"· Idle", L"· Waiting for confirmation" })
+                provider.Text(std::wstring_view{ subtitleValue }.starts_with(L"Localized") ?
+                                  L"Localized provider with a very long display name" :
+                                  L"Copilot");
+                providerText.Measure({ 10000, 80 });
+                const auto providerWidth = providerText.DesiredSize().Width;
+                for (const auto statusValue : { L"Idle", L"Waiting for confirmation", L"" })
                 {
                     subtitle.Text(subtitleValue);
                     status.Text(statusValue);
+                    status.Visibility(statusValue[0] ? Visibility::Visible : Visibility::Collapsed);
                     subtitleText.Measure({ 10000, 80 });
                     statusText.Measure({ 10000, 80 });
                     const auto subtitleWidth = subtitleText.DesiredSize().Width;
                     const auto statusWidth = statusText.DesiredSize().Width;
                     VERIFY_IS_TRUE(subtitleWidth > 0);
-                    VERIFY_IS_TRUE(statusWidth > 0);
-                    const auto fixedWidth = rowOverhead + status.Margin().Left + statusWidth;
-                    const auto wideWidth = static_cast<float>(fixedWidth + subtitleWidth + 120);
-                    const auto narrowWidth = static_cast<float>(fixedWidth + subtitleWidth / 2);
+                    if (statusValue[0])
+                    {
+                        VERIFY_IS_TRUE(statusWidth > 0);
+                    }
+                    const auto fixedWidth = rowOverhead + provider.Margin().Left +
+                                            (statusValue[0] ? status.Margin().Left + statusWidth : 0);
+                    const auto wideWidth = static_cast<float>(fixedWidth + 2 * std::max(subtitleWidth, providerWidth) + 120);
+                    const auto narrowWidth = static_cast<float>(fixedWidth + subtitleWidth);
 
                     // Re-expanding also catches stale trimming or column widths after a resize.
                     for (const auto width : { wideWidth, narrowWidth, wideWidth })
@@ -5801,16 +5831,31 @@ namespace TerminalAppLocalTests
                         row.UpdateLayout();
                         const auto subtitlePosition = subtitleText.TransformToVisual(row).TransformPoint({ 0, 0 });
                         const auto statusPosition = statusText.TransformToVisual(row).TransformPoint({ 0, 0 });
+                        const auto titlePosition = titleText.TransformToVisual(row).TransformPoint({ 0, 0 });
+                        const auto providerPosition = providerText.TransformToVisual(row).TransformPoint({ 0, 0 });
+                        const auto iconPosition = icon.TransformToVisual(row).TransformPoint({ 0, 0 });
+                        VERIFY_IS_TRUE(iconPosition.X + icon.ActualWidth() < titlePosition.X);
+                        VERIFY_IS_TRUE(std::abs(titlePosition.X - subtitlePosition.X) <= tolerance);
+                        const auto metadataPosition = metadata.TransformToVisual(row).TransformPoint({ 0, 0 });
+                        const auto textCenter = (titlePosition.Y + metadataPosition.Y + metadata.ActualHeight()) / 2;
+                        VERIFY_IS_TRUE(std::abs(iconPosition.Y + icon.ActualHeight() / 2 - textCenter) <= tolerance);
                         VERIFY_IS_TRUE(std::abs(subtitlePosition.X - (rowOverhead - row.Padding().Right)) <= tolerance);
-                        VERIFY_ARE_EQUAL(Visibility::Visible, status.Visibility());
-                        VERIFY_IS_TRUE(statusText.ActualWidth() >= statusWidth - tolerance);
-                        VERIFY_IS_FALSE(statusText.IsTextTrimmed());
-                        VERIFY_IS_TRUE(statusPosition.X >= subtitlePosition.X);
-                        VERIFY_IS_TRUE(statusPosition.X + statusText.ActualWidth() <= width - row.Padding().Right + tolerance);
-                        const auto gap = statusPosition.X - (subtitlePosition.X + subtitleText.ActualWidth());
-                        VERIFY_IS_TRUE(gap >= status.Margin().Left - tolerance);
-                        VERIFY_IS_TRUE(gap <= status.Margin().Left + tolerance);
-                        VERIFY_IS_TRUE(std::abs(statusPosition.Y - subtitlePosition.Y) <= tolerance);
+                        VERIFY_IS_TRUE(providerPosition.X + providerText.ActualWidth() <= width - row.Padding().Right + tolerance);
+                        if (statusValue[0])
+                        {
+                            VERIFY_ARE_EQUAL(Visibility::Visible, status.Visibility());
+                            VERIFY_IS_TRUE(statusText.ActualWidth() >= statusWidth - tolerance);
+                            VERIFY_IS_FALSE(statusText.IsTextTrimmed());
+                            const auto gap = statusPosition.X - (subtitlePosition.X + subtitleText.ActualWidth());
+                            VERIFY_IS_TRUE(std::abs(gap - status.Margin().Left) <= tolerance);
+                            VERIFY_IS_TRUE(std::abs(statusPosition.Y - subtitlePosition.Y) <= tolerance);
+                            VERIFY_IS_TRUE(std::abs(providerPosition.X - (statusPosition.X + statusText.ActualWidth()) - provider.Margin().Left) <= tolerance);
+                        }
+                        else
+                        {
+                            VERIFY_ARE_EQUAL(Visibility::Collapsed, status.Visibility());
+                            VERIFY_IS_TRUE(std::abs(providerPosition.X - (subtitlePosition.X + subtitleText.ActualWidth()) - provider.Margin().Left) <= tolerance);
+                        }
                         if (width == narrowWidth)
                         {
                             VERIFY_IS_TRUE(subtitleText.IsTextTrimmed());
@@ -5819,12 +5864,73 @@ namespace TerminalAppLocalTests
                         else
                         {
                             VERIFY_IS_FALSE(subtitleText.IsTextTrimmed());
+                            VERIFY_IS_FALSE(providerText.IsTextTrimmed());
+                            VERIFY_IS_TRUE(providerText.ActualWidth() >= providerWidth - tolerance);
                             VERIFY_IS_TRUE(std::abs(subtitleText.ActualWidth() - subtitleWidth) <= tolerance);
-                            VERIFY_IS_TRUE(width - row.Padding().Right - (statusPosition.X + statusText.ActualWidth()) >= 100);
+                            VERIFY_IS_TRUE(width - row.Padding().Right - (providerPosition.X + providerText.ActualWidth()) >= 100);
                         }
                     }
                 }
             }
+            provider.Text(L"Copilot");
+            provider.SearchText(L"pilot");
+            VERIFY_ARE_EQUAL(2u, providerText.Inlines().Size());
+            const auto providerMatch = providerText.Inlines().GetAt(1).as<Documents::Run>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"pilot" }, providerMatch.Text());
+            VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, providerMatch.FontWeight().Weight);
+            const auto ownership = row.FindName(L"HistoryOwnershipButton").as<Button>();
+            ownership.Visibility(Visibility::Visible);
+            subtitle.Text(L"just now");
+            provider.Text(L"custom:combined-sidebar-fixture");
+            provider.SearchText(L"sidebar");
+            status.Text(L"Idle");
+            status.Visibility(Visibility::Visible);
+            for (const auto width : { 360.0f, 180.0f, 360.0f })
+            {
+                row.Width(width);
+                row.Measure({ width, 80 });
+                row.Arrange({ 0, 0, width, 80 });
+                row.UpdateLayout();
+                const auto ownershipPosition = ownership.TransformToVisual(row).TransformPoint({ 0, 0 });
+                const auto providerPosition = providerText.TransformToVisual(row).TransformPoint({ 0, 0 });
+                const auto subtitlePosition = subtitleText.TransformToVisual(row).TransformPoint({ 0, 0 });
+                const auto statusPosition = statusText.TransformToVisual(row).TransformPoint({ 0, 0 });
+                const auto titlePosition = titleText.TransformToVisual(row).TransformPoint({ 0, 0 });
+                const auto metadataPosition = metadata.TransformToVisual(row).TransformPoint({ 0, 0 });
+                const auto iconPosition = icon.TransformToVisual(row).TransformPoint({ 0, 0 });
+                VERIFY_ARE_EQUAL(Visibility::Visible, ownership.Visibility());
+                VERIFY_ARE_EQUAL(24.0, ownership.ActualWidth());
+                VERIFY_IS_TRUE(ownershipPosition.X + ownership.ActualWidth() <= width - row.Padding().Right + tolerance);
+                VERIFY_IS_TRUE(ownershipPosition.X >= providerPosition.X + providerText.ActualWidth() + ownership.Margin().Left - tolerance);
+                VERIFY_IS_TRUE(providerText.ActualWidth() > 0);
+                VERIFY_IS_FALSE(statusText.IsTextTrimmed());
+                VERIFY_IS_TRUE(statusText.ActualWidth() > 0);
+                VERIFY_IS_TRUE(subtitlePosition.X + subtitleText.ActualWidth() <= statusPosition.X);
+                VERIFY_IS_TRUE(statusPosition.X + statusText.ActualWidth() <= providerPosition.X);
+                VERIFY_IS_TRUE(iconPosition.X + icon.ActualWidth() < titlePosition.X);
+                VERIFY_IS_TRUE(std::abs(titlePosition.X - subtitlePosition.X) <= tolerance);
+                const auto textCenter = (titlePosition.Y + metadataPosition.Y + metadata.ActualHeight()) / 2;
+                VERIFY_IS_TRUE(std::abs(iconPosition.Y + icon.ActualHeight() / 2 - textCenter) <= tolerance);
+                if (width == 180.0f)
+                {
+                    VERIFY_IS_TRUE(providerText.IsTextTrimmed());
+                    VERIFY_IS_TRUE(metadata.ActualWidth() <= width - rowOverhead + tolerance);
+                }
+            }
+            provider.Text(L"Copilot");
+            provider.SearchText(L"pilot");
+            row.Width(1000);
+            row.Measure({ 1000, 80 });
+            row.Arrange({ 0, 0, 1000, 80 });
+            row.UpdateLayout();
+            const auto ownershipPosition = ownership.TransformToVisual(row).TransformPoint({ 0, 0 });
+            const auto providerPosition = providerText.TransformToVisual(row).TransformPoint({ 0, 0 });
+            VERIFY_IS_TRUE(ownershipPosition.X >= providerPosition.X + providerText.ActualWidth() + ownership.Margin().Left - tolerance);
+            const auto titlePosition = titleText.TransformToVisual(row).TransformPoint({ 0, 0 });
+            const auto metadataPosition = metadata.TransformToVisual(row).TransformPoint({ 0, 0 });
+            const auto iconPosition = icon.TransformToVisual(row).TransformPoint({ 0, 0 });
+            const auto textCenter = (titlePosition.Y + metadataPosition.Y + metadata.ActualHeight()) / 2;
+            VERIFY_IS_TRUE(std::abs(iconPosition.Y + icon.ActualHeight() / 2 - textCenter) <= tolerance);
         });
     }
 
@@ -7286,12 +7392,14 @@ namespace TerminalAppLocalTests
                 const auto container = impl->HistoryList().ContainerFromIndex(0).as<ListViewItem>();
                 const auto row = container.ContentTemplateRoot().as<Grid>();
                 const auto title = row.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
+                const auto provider = row.FindName(L"HistoryProviderNameText").as<winrt::TerminalApp::HighlightedTextControl>();
                 const auto selection = row.FindName(L"HistorySelectionBackground").as<Border>();
                 const auto palette = row.FindName(L"HistorySelectionPalette").as<ContentControl>();
                 const auto inheritedForeground = title.Foreground();
                 VERIFY_IS_NOT_NULL(inheritedForeground);
                 VERIFY_IS_NULL(row.GetBindingExpression(Panel::BackgroundProperty()));
                 VERIFY_IS_TRUE(title.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+                VERIFY_IS_TRUE(provider.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
                 VERIFY_ARE_EQUAL(Visibility::Collapsed, selection.Visibility());
                 VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(container).empty());
 
@@ -7305,6 +7413,7 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(Visibility::Visible, selection.Visibility());
                 VERIFY_IS_NOT_NULL(selection.Background());
                 VERIFY_IS_TRUE(title.Foreground() == palette.Foreground());
+                VERIFY_IS_TRUE(provider.Foreground() == palette.Foreground());
                 VERIFY_ARE_EQUAL(currentStatus, Automation::AutomationProperties::GetItemStatus(container));
                 VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(
                                    impl->HistoryList().ContainerFromIndex(1)).empty());
@@ -7317,6 +7426,7 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(tabBrush.Color(), palette.Content().as<Border>().Background().as<Media::SolidColorBrush>().Color());
                 VERIFY_ARE_EQUAL(1.0, first.CurrentBackground().Opacity());
                 VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::White(), title.Foreground().as<Media::SolidColorBrush>().Color());
+                VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::White(), provider.Foreground().as<Media::SolidColorBrush>().Color());
 
                 impl->SetCurrentHistoryItem(second, tab);
                 host.UpdateLayout();
@@ -7325,6 +7435,7 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_NULL(first.CurrentBackground());
                 VERIFY_ARE_EQUAL(Visibility::Collapsed, selection.Visibility());
                 VERIFY_IS_TRUE(title.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+                VERIFY_IS_TRUE(provider.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
                 VERIFY_IS_TRUE(title.Foreground() == inheritedForeground);
                 VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(container).empty());
                 VERIFY_ARE_EQUAL(currentStatus, Automation::AutomationProperties::GetItemStatus(
@@ -7338,10 +7449,12 @@ namespace TerminalAppLocalTests
             impl->SetCurrentHistoryItem(first, tab);
             const auto currentRow = impl->HistoryList().ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<Grid>();
             const auto currentTitle = currentRow.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
+            const auto currentProvider = currentRow.FindName(L"HistoryProviderNameText").as<winrt::TerminalApp::HighlightedTextControl>();
             const auto currentPalette = currentRow.FindName(L"HistorySelectionPalette").as<ContentControl>();
             currentPalette.Foreground(Media::SolidColorBrush{ winrt::Windows::UI::Colors::Magenta() });
             host.UpdateLayout();
             VERIFY_IS_TRUE(currentTitle.Foreground() == currentPalette.Foreground());
+            VERIFY_IS_TRUE(currentProvider.Foreground() == currentPalette.Foreground());
             const auto replacement = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             replacement.Title(L"Replacement session");
             impl->CommitHistorySnapshot({ replacement });
@@ -7349,6 +7462,7 @@ namespace TerminalAppLocalTests
             const auto recycledRow = impl->HistoryList().ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<Grid>();
             const auto recycledTitle = recycledRow.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
             VERIFY_IS_TRUE(recycledTitle.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+            VERIFY_IS_TRUE(recycledRow.FindName(L"HistoryProviderNameText").as<winrt::TerminalApp::HighlightedTextControl>().ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, recycledRow.FindName(L"HistorySelectionBackground").as<Border>().Visibility());
             VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(
                                impl->HistoryList().ContainerFromIndex(0)).empty());

@@ -431,8 +431,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Hītori</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Hītori me ētahi atu wātū</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Ngā māngai AI</value>
@@ -648,4 +648,22 @@
     <value>Huri ki tētahi atu matapihi</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Hurihia te tae o te ripa</value></data>
+  <data name="RenameTabText"><value>Whakaingoatia anō te ripa</value></data>
+  <data name="DuplicateTabText"><value>Tāruatia te ripa</value></data>
+  <data name="SplitTabText"><value>Wehea te ripa</value></data>
+  <data name="TabMoveSubMenu"><value>Nukuhia te ripa</value></data>
+  <data name="ExportTabText"><value>Kaweake kuputuhi</value></data>
+  <data name="FindText"><value>Rapu</value></data>
+  <data name="RestartConnectionText"><value>Tīmata anō i te wātū</value></data>
+  <data name="TabCloseSubMenu"><value>Katia</value></data>
+  <data name="TabClose"><value>Katia te ripa</value></data>
+  <data name="MoveTabToNewWindowText"><value>Nukuhia te ripa ki tētahi matapihi hou</value></data>
+  <data name="TabMoveLeft"><value>Nukuhia ki te mauī</value></data>
+  <data name="TabMoveRight"><value>Nukuhia ki te matau</value></data>
+  <data name="TabMoveUp"><value>Nukuhia whakarunga</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Nukuhia whakararo</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Katia ngā ripa kei te matau</value></data>
+  <data name="TabCloseOther"><value>Katia ērā atu ripa</value></data>
+  <data name="ClosePaneText"><value>Katia te papa</value></data>
 </root>

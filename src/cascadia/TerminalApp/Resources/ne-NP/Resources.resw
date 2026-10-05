@@ -548,8 +548,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>इतिहास</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>इतिहास र अन्य सत्रहरू</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>एजेन्टहरू</value>
@@ -765,4 +765,22 @@
     <value>अर्को विन्डोमा जानुहोस्</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>ट्याबको रङ परिवर्तन गर्नुहोस्</value></data>
+  <data name="RenameTabText"><value>ट्याबको नाम परिवर्तन गर्नुहोस्</value></data>
+  <data name="DuplicateTabText"><value>ट्याबको प्रतिलिपि बनाउनुहोस्</value></data>
+  <data name="SplitTabText"><value>ट्याब विभाजन गर्नुहोस्</value></data>
+  <data name="TabMoveSubMenu"><value>ट्याब सार्नुहोस्</value></data>
+  <data name="ExportTabText"><value>पाठ निर्यात गर्नुहोस्</value></data>
+  <data name="FindText"><value>खोज्नुहोस्</value></data>
+  <data name="RestartConnectionText"><value>सत्र पुनः सुरु गर्नुहोस्</value></data>
+  <data name="TabCloseSubMenu"><value>बन्द गर्नुहोस्</value></data>
+  <data name="TabClose"><value>ट्याब बन्द गर्नुहोस्</value></data>
+  <data name="MoveTabToNewWindowText"><value>ट्याब नयाँ विन्डोमा सार्नुहोस्</value></data>
+  <data name="TabMoveLeft"><value>बायाँ सार्नुहोस्</value></data>
+  <data name="TabMoveRight"><value>दायाँ सार्नुहोस्</value></data>
+  <data name="TabMoveUp"><value>माथि सार्नुहोस्</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>तल सार्नुहोस्</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>दायाँका ट्याब बन्द गर्नुहोस्</value></data>
+  <data name="TabCloseOther"><value>अन्य ट्याब बन्द गर्नुहोस्</value></data>
+  <data name="ClosePaneText"><value>पेन बन्द गर्नुहोस्</value></data>
 </root>

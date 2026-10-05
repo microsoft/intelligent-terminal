@@ -153,9 +153,13 @@ This discovery covers built-in agents on the Windows host. It does not start WSL
 distributions or discover arbitrary custom commands; sessions already in the registry
 remain visible according to the requested origin filter.
 
-Host discovery runs only at master startup, after a confirmed host-agent
-installation, or on an explicit `wta sessions refresh` request. There is no periodic
-installation scan. `wta sessions refresh --json` schedules discovery and returns the
+Initial host discovery runs at master startup, after a confirmed host-agent
+installation, or on an explicit `wta sessions refresh` request. There is no unconditional
+periodic installation scan. Failed host-agent startup discoveries are retried through the
+same discovery worker, with delays of 5, 10, 20, 40, then at most 60 seconds after
+each failure (checked on the existing five-second history timer). Retries recheck
+installation and policy and do not restart healthy resident providers.
+`wta sessions refresh --json` bypasses this startup backoff, schedules discovery and returns the
 current snapshot with `history_status`; it does not wait for discovery to finish.
 The removed `--all-agents` flag is no longer accepted. F5 in a helper's session view
 explicitly refreshes that helper's bound connection without discovering other agents.
@@ -164,8 +168,8 @@ only in nonvertical layout; vertical layout uses the Sidebar fallback instead.
 Live layout changes and helper-ready runtime configuration update this selection per
 window without reconnecting ACP. Push updates remain immediate in either layout,
 and returning to nonvertical layout immediately refreshes an already-open helper view.
-ACP initialization retry behavior is unchanged; history-query retries do not restart
-or initialize agents.
+History-query retries do not restart or initialize agents; startup discovery retries
+are separate and retain the existing ACP initialization timeout.
 
 ### tmux-like CLI
 

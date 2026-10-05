@@ -431,8 +431,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Verlaf</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Verlaf an aner Sessiounen</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agenten</value>
@@ -648,4 +648,22 @@
     <value>Op eng aner Fënster wiesselen</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Faarf vum Tab änneren</value></data>
+  <data name="RenameTabText"><value>Tab ëmbenennen</value></data>
+  <data name="DuplicateTabText"><value>Tab duplizéieren</value></data>
+  <data name="SplitTabText"><value>Tab deelen</value></data>
+  <data name="TabMoveSubMenu"><value>Tab réckelen</value></data>
+  <data name="ExportTabText"><value>Text exportéieren</value></data>
+  <data name="FindText"><value>Sichen</value></data>
+  <data name="RestartConnectionText"><value>Sessioun nei starten</value></data>
+  <data name="TabCloseSubMenu"><value>Zoumaachen</value></data>
+  <data name="TabClose"><value>Tab zoumaachen</value></data>
+  <data name="MoveTabToNewWindowText"><value>Tab an eng nei Fënster réckelen</value></data>
+  <data name="TabMoveLeft"><value>No lénks réckelen</value></data>
+  <data name="TabMoveRight"><value>No riets réckelen</value></data>
+  <data name="TabMoveUp"><value>No uewe réckelen</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>No ënne réckelen</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Tabs op der rietser Säit zoumaachen</value></data>
+  <data name="TabCloseOther"><value>Aner Tabs zoumaachen</value></data>
+  <data name="ClosePaneText"><value>Beräich zoumaachen</value></data>
 </root>

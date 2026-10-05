@@ -363,8 +363,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>ປະຫວັດ</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>ປະຫວັດ ແລະເຊດຊັນອື່ນໆ</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>ເອເຈນ</value>
@@ -580,4 +580,22 @@
     <value>ສະຫຼັບໄປໜ້າຕ່າງອື່ນ</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>ປ່ຽນສີແທັບ</value></data>
+  <data name="RenameTabText"><value>ປ່ຽນຊື່ແທັບ</value></data>
+  <data name="DuplicateTabText"><value>ສຳເນົາແທັບ</value></data>
+  <data name="SplitTabText"><value>ແບ່ງແທັບ</value></data>
+  <data name="TabMoveSubMenu"><value>ຍ້າຍແທັບ</value></data>
+  <data name="ExportTabText"><value>ສົ່ງອອກຂໍ້ຄວາມ</value></data>
+  <data name="FindText"><value>ຄົ້ນຫາ</value></data>
+  <data name="RestartConnectionText"><value>ເລີ່ມເຊດຊັນໃໝ່</value></data>
+  <data name="TabCloseSubMenu"><value>ປິດ</value></data>
+  <data name="TabClose"><value>ປິດແທັບ</value></data>
+  <data name="MoveTabToNewWindowText"><value>ຍ້າຍແທັບໄປໜ້າຕ່າງໃໝ່</value></data>
+  <data name="TabMoveLeft"><value>ຍ້າຍໄປຊ້າຍ</value></data>
+  <data name="TabMoveRight"><value>ຍ້າຍໄປຂວາ</value></data>
+  <data name="TabMoveUp"><value>ຍ້າຍຂຶ້ນ</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>ຍ້າຍລົງ</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>ປິດແທັບຢູ່ຂວາ</value></data>
+  <data name="TabCloseOther"><value>ປິດແທັບອື່ນ</value></data>
+  <data name="ClosePaneText"><value>ປິດແຜງ</value></data>
 </root>

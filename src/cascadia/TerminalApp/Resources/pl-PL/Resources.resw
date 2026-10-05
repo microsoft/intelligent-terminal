@@ -545,8 +545,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Historia</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Historia i inne sesje</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agenci</value>
@@ -762,4 +762,22 @@
     <value>Przełącz do innego okna</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Zmień kolor karty</value></data>
+  <data name="RenameTabText"><value>Zmień nazwę karty</value></data>
+  <data name="DuplicateTabText"><value>Duplikuj kartę</value></data>
+  <data name="SplitTabText"><value>Podziel kartę</value></data>
+  <data name="TabMoveSubMenu"><value>Przenieś kartę</value></data>
+  <data name="ExportTabText"><value>Eksportuj tekst</value></data>
+  <data name="FindText"><value>Znajdź</value></data>
+  <data name="RestartConnectionText"><value>Uruchom ponownie sesję</value></data>
+  <data name="TabCloseSubMenu"><value>Zamknij</value></data>
+  <data name="TabClose"><value>Zamknij kartę</value></data>
+  <data name="MoveTabToNewWindowText"><value>Przenieś kartę do nowego okna</value></data>
+  <data name="TabMoveLeft"><value>Przesuń w lewo</value></data>
+  <data name="TabMoveRight"><value>Przesuń w prawo</value></data>
+  <data name="TabMoveUp"><value>Przesuń w górę</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Przesuń w dół</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Zamknij karty po prawej</value></data>
+  <data name="TabCloseOther"><value>Zamknij pozostałe karty</value></data>
+  <data name="ClosePaneText"><value>Zamknij okienko</value></data>
 </root>

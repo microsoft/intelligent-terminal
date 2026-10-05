@@ -545,8 +545,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Povijest</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Povijest i druge sesije</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agenti</value>
@@ -762,4 +762,22 @@
     <value>Prebaci na drugi prozor</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Promijeni boju kartice</value></data>
+  <data name="RenameTabText"><value>Preimenuj karticu</value></data>
+  <data name="DuplicateTabText"><value>Dupliciraj karticu</value></data>
+  <data name="SplitTabText"><value>Podijeli karticu</value></data>
+  <data name="TabMoveSubMenu"><value>Premjesti karticu</value></data>
+  <data name="ExportTabText"><value>Izvezi tekst</value></data>
+  <data name="FindText"><value>Pronađi</value></data>
+  <data name="RestartConnectionText"><value>Ponovno pokreni sesiju</value></data>
+  <data name="TabCloseSubMenu"><value>Zatvori</value></data>
+  <data name="TabClose"><value>Zatvori karticu</value></data>
+  <data name="MoveTabToNewWindowText"><value>Premjesti karticu u novi prozor</value></data>
+  <data name="TabMoveLeft"><value>Pomakni lijevo</value></data>
+  <data name="TabMoveRight"><value>Pomakni desno</value></data>
+  <data name="TabMoveUp"><value>Pomakni gore</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Pomakni dolje</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Zatvori kartice desno</value></data>
+  <data name="TabCloseOther"><value>Zatvori ostale kartice</value></data>
+  <data name="ClosePaneText"><value>Zatvori okno</value></data>
 </root>

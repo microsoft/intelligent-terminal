@@ -431,8 +431,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Պատմություն</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Պատմություն և այլ նստաշրջաններ</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Ագենտներ</value>
@@ -648,4 +648,22 @@
     <value>Անցնել այլ պատուհանի</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Փոխել ներդիրի գույնը</value></data>
+  <data name="RenameTabText"><value>Վերանվանել ներդիրը</value></data>
+  <data name="DuplicateTabText"><value>Կրկնօրինակել ներդիրը</value></data>
+  <data name="SplitTabText"><value>Բաժանել ներդիրը</value></data>
+  <data name="TabMoveSubMenu"><value>Տեղափոխել ներդիրը</value></data>
+  <data name="ExportTabText"><value>Արտահանել տեքստը</value></data>
+  <data name="FindText"><value>Որոնել</value></data>
+  <data name="RestartConnectionText"><value>Վերագործարկել աշխատաշրջանը</value></data>
+  <data name="TabCloseSubMenu"><value>Փակել</value></data>
+  <data name="TabClose"><value>Փակել ներդիրը</value></data>
+  <data name="MoveTabToNewWindowText"><value>Տեղափոխել ներդիրը նոր պատուհան</value></data>
+  <data name="TabMoveLeft"><value>Տեղափոխել ձախ</value></data>
+  <data name="TabMoveRight"><value>Տեղափոխել աջ</value></data>
+  <data name="TabMoveUp"><value>Տեղափոխել վերև</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Տեղափոխել ներքև</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Փակել աջ կողմի ներդիրները</value></data>
+  <data name="TabCloseOther"><value>Փակել մյուս ներդիրները</value></data>
+  <data name="ClosePaneText"><value>Փակել վահանակը</value></data>
 </root>

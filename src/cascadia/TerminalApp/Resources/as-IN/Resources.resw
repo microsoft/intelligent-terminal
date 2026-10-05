@@ -547,8 +547,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>ইতিহাস</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>ইতিহাস আৰু অন্য অধিৱেশনসমূহ</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>এজেণ্টসমূহ</value>
@@ -764,4 +764,22 @@
     <value>আন এখন উইণ্ড’লৈ সলনি কৰক</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>টেবৰ ৰং সলনি কৰক</value></data>
+  <data name="RenameTabText"><value>টেবৰ নাম সলনি কৰক</value></data>
+  <data name="DuplicateTabText"><value>টেবৰ প্ৰতিলিপি তৈয়াৰ কৰক</value></data>
+  <data name="SplitTabText"><value>টেব বিভাজন কৰক</value></data>
+  <data name="TabMoveSubMenu"><value>টেব স্থানান্তৰ কৰক</value></data>
+  <data name="ExportTabText"><value>পাঠ ৰপ্তানি কৰক</value></data>
+  <data name="FindText"><value>সন্ধান</value></data>
+  <data name="RestartConnectionText"><value>অধিবেশন পুনৰ আৰম্ভ কৰক</value></data>
+  <data name="TabCloseSubMenu"><value>বন্ধ কৰক</value></data>
+  <data name="TabClose"><value>টেব বন্ধ কৰক</value></data>
+  <data name="MoveTabToNewWindowText"><value>টেব নতুন উইণ্ড'লৈ স্থানান্তৰ কৰক</value></data>
+  <data name="TabMoveLeft"><value>বাওঁফালে স্থানান্তৰ কৰক</value></data>
+  <data name="TabMoveRight"><value>সোঁফালে স্থানান্তৰ কৰক</value></data>
+  <data name="TabMoveUp"><value>ওপৰলৈ স্থানান্তৰ কৰক</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>তললৈ স্থানান্তৰ কৰক</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>সোঁফালৰ টেবসমূহ বন্ধ কৰক</value></data>
+  <data name="TabCloseOther"><value>অন্য টেবসমূহ বন্ধ কৰক</value></data>
+  <data name="ClosePaneText"><value>পেন বন্ধ কৰক</value></data>
 </root>

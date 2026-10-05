@@ -476,8 +476,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Riwayat</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Riwayat dan sesi lainnya</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agen</value>
@@ -693,4 +693,22 @@
     <value>Beralih ke jendela lain</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Ubah warna tab</value></data>
+  <data name="RenameTabText"><value>Ganti nama tab</value></data>
+  <data name="DuplicateTabText"><value>Duplikasikan tab</value></data>
+  <data name="SplitTabText"><value>Pisahkan tab</value></data>
+  <data name="TabMoveSubMenu"><value>Pindahkan tab</value></data>
+  <data name="ExportTabText"><value>Ekspor teks</value></data>
+  <data name="FindText"><value>Cari</value></data>
+  <data name="RestartConnectionText"><value>Mulai ulang sesi</value></data>
+  <data name="TabCloseSubMenu"><value>Tutup</value></data>
+  <data name="TabClose"><value>Tutup tab</value></data>
+  <data name="MoveTabToNewWindowText"><value>Pindahkan tab ke jendela baru</value></data>
+  <data name="TabMoveLeft"><value>Pindahkan ke kiri</value></data>
+  <data name="TabMoveRight"><value>Pindahkan ke kanan</value></data>
+  <data name="TabMoveUp"><value>Pindahkan ke atas</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Pindahkan ke bawah</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Tutup tab di sebelah kanan</value></data>
+  <data name="TabCloseOther"><value>Tutup tab lain</value></data>
+  <data name="ClosePaneText"><value>Tutup panel</value></data>
 </root>

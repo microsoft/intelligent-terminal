@@ -526,8 +526,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>வரலாறு</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>வரலாறு மற்றும் பிற அமர்வுகள்</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>எஜென்ட்கள்</value>
@@ -743,4 +743,22 @@
     <value>மற்றொரு சாளரத்திற்கு மாறு</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>தாவலின் நிறத்தை மாற்று</value></data>
+  <data name="RenameTabText"><value>தாவலின் பெயரை மாற்று</value></data>
+  <data name="DuplicateTabText"><value>தாவலை நகலெடு</value></data>
+  <data name="SplitTabText"><value>தாவலைப் பிரி</value></data>
+  <data name="TabMoveSubMenu"><value>தாவலை நகர்த்து</value></data>
+  <data name="ExportTabText"><value>உரையை ஏற்றுமதி செய்</value></data>
+  <data name="FindText"><value>தேடு</value></data>
+  <data name="RestartConnectionText"><value>அமர்வை மறுதொடக்கம் செய்</value></data>
+  <data name="TabCloseSubMenu"><value>மூடு</value></data>
+  <data name="TabClose"><value>தாவலை மூடு</value></data>
+  <data name="MoveTabToNewWindowText"><value>தாவலைப் புதிய சாளரத்திற்கு நகர்த்து</value></data>
+  <data name="TabMoveLeft"><value>இடப்புறம் நகர்த்து</value></data>
+  <data name="TabMoveRight"><value>வலப்புறம் நகர்த்து</value></data>
+  <data name="TabMoveUp"><value>மேலே நகர்த்து</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>கீழே நகர்த்து</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>வலப்புறத் தாவல்களை மூடு</value></data>
+  <data name="TabCloseOther"><value>மற்ற தாவல்களை மூடு</value></data>
+  <data name="ClosePaneText"><value>பலகத்தை மூடு</value></data>
 </root>

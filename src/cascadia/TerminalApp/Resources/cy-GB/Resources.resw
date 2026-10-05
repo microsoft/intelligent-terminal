@@ -430,8 +430,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Hanes</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Hanes a sesiynau eraill</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Asiantau</value>
@@ -647,4 +647,22 @@
     <value>Newid i ffenestr arall</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Newid lliw'r tab</value></data>
+  <data name="RenameTabText"><value>Ailenwi'r tab</value></data>
+  <data name="DuplicateTabText"><value>Dyblygu'r tab</value></data>
+  <data name="SplitTabText"><value>Hollti'r tab</value></data>
+  <data name="TabMoveSubMenu"><value>Symud y tab</value></data>
+  <data name="ExportTabText"><value>Allforio testun</value></data>
+  <data name="FindText"><value>Chwilio</value></data>
+  <data name="RestartConnectionText"><value>Ailgychwyn y sesiwn</value></data>
+  <data name="TabCloseSubMenu"><value>Cau</value></data>
+  <data name="TabClose"><value>Cau'r tab</value></data>
+  <data name="MoveTabToNewWindowText"><value>Symud y tab i ffenestr newydd</value></data>
+  <data name="TabMoveLeft"><value>Symud i'r chwith</value></data>
+  <data name="TabMoveRight"><value>Symud i'r dde</value></data>
+  <data name="TabMoveUp"><value>Symud i fyny</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Symud i lawr</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Cau'r tabiau ar y dde</value></data>
+  <data name="TabCloseOther"><value>Cau'r tabiau eraill</value></data>
+  <data name="ClosePaneText"><value>Cau'r cwarel</value></data>
 </root>

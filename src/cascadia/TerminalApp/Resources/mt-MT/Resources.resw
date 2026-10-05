@@ -431,8 +431,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Kronoloġija</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Kronoloġija u sessjonijiet oħra</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Aġenti</value>
@@ -648,4 +648,22 @@
     <value>Aqleb għal tieqa oħra</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Ibdel il-kulur tat-tab</value></data>
+  <data name="RenameTabText"><value>Ibdel l-isem tat-tab</value></data>
+  <data name="DuplicateTabText"><value>Idduplika t-tab</value></data>
+  <data name="SplitTabText"><value>Aqsam it-tab</value></data>
+  <data name="TabMoveSubMenu"><value>Mexxi t-tab</value></data>
+  <data name="ExportTabText"><value>Esporta t-test</value></data>
+  <data name="FindText"><value>Sib</value></data>
+  <data name="RestartConnectionText"><value>Ibda s-sessjoni mill-ġdid</value></data>
+  <data name="TabCloseSubMenu"><value>Agħlaq</value></data>
+  <data name="TabClose"><value>Agħlaq it-tab</value></data>
+  <data name="MoveTabToNewWindowText"><value>Mexxi t-tab għal tieqa ġdida</value></data>
+  <data name="TabMoveLeft"><value>Mexxi lejn ix-xellug</value></data>
+  <data name="TabMoveRight"><value>Mexxi lejn il-lemin</value></data>
+  <data name="TabMoveUp"><value>Mexxi 'l fuq</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Mexxi 'l isfel</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Agħlaq it-tabs fuq il-lemin</value></data>
+  <data name="TabCloseOther"><value>Agħlaq it-tabs l-oħra</value></data>
+  <data name="ClosePaneText"><value>Agħlaq il-panew</value></data>
 </root>

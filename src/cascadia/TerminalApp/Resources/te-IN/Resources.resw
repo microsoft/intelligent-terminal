@@ -526,8 +526,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>చరిత్ర</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>చరిత్ర మరియు ఇతర సెషన్‌లు</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>ఏజెంట్‌లు</value>
@@ -743,4 +743,22 @@
     <value>మరో విండోకు మారు</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>ట్యాబ్ రంగును మార్చండి</value></data>
+  <data name="RenameTabText"><value>ట్యాబ్ పేరును మార్చండి</value></data>
+  <data name="DuplicateTabText"><value>ట్యాబ్ నకలును సృష్టించండి</value></data>
+  <data name="SplitTabText"><value>ట్యాబ్‌ను విభజించండి</value></data>
+  <data name="TabMoveSubMenu"><value>ట్యాబ్‌ను తరలించండి</value></data>
+  <data name="ExportTabText"><value>పాఠ్యాన్ని ఎగుమతి చేయండి</value></data>
+  <data name="FindText"><value>శోధన</value></data>
+  <data name="RestartConnectionText"><value>సెషన్‌ను పునఃప్రారంభించండి</value></data>
+  <data name="TabCloseSubMenu"><value>మూసివేయండి</value></data>
+  <data name="TabClose"><value>ట్యాబ్‌ను మూసివేయండి</value></data>
+  <data name="MoveTabToNewWindowText"><value>ట్యాబ్‌ను కొత్త విండోకు తరలించండి</value></data>
+  <data name="TabMoveLeft"><value>ఎడమకు తరలించండి</value></data>
+  <data name="TabMoveRight"><value>కుడికి తరలించండి</value></data>
+  <data name="TabMoveUp"><value>పైకి తరలించండి</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>కిందికి తరలించండి</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>కుడివైపు ఉన్న ట్యాబ్‌లను మూసివేయండి</value></data>
+  <data name="TabCloseOther"><value>ఇతర ట్యాబ్‌లను మూసివేయండి</value></data>
+  <data name="ClosePaneText"><value>పేన్‌ను మూసివేయండి</value></data>
 </root>

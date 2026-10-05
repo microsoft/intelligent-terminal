@@ -543,8 +543,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Tarixçə</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Tarixçə və digər seanslar</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agentlər</value>
@@ -760,4 +760,22 @@
     <value>Başqa pəncərəyə keç</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Tabın rəngini dəyiş</value></data>
+  <data name="RenameTabText"><value>Tabın adını dəyiş</value></data>
+  <data name="DuplicateTabText"><value>Tabın surətini yarat</value></data>
+  <data name="SplitTabText"><value>Tabı böl</value></data>
+  <data name="TabMoveSubMenu"><value>Tabı köçür</value></data>
+  <data name="ExportTabText"><value>Mətni ixrac et</value></data>
+  <data name="FindText"><value>Tap</value></data>
+  <data name="RestartConnectionText"><value>Sessiyanı yenidən başlat</value></data>
+  <data name="TabCloseSubMenu"><value>Bağla</value></data>
+  <data name="TabClose"><value>Tabı bağla</value></data>
+  <data name="MoveTabToNewWindowText"><value>Tabı yeni pəncərəyə köçür</value></data>
+  <data name="TabMoveLeft"><value>Sola köçür</value></data>
+  <data name="TabMoveRight"><value>Sağa köçür</value></data>
+  <data name="TabMoveUp"><value>Yuxarı köçür</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Aşağı köçür</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Sağdakı tabları bağla</value></data>
+  <data name="TabCloseOther"><value>Digər tabları bağla</value></data>
+  <data name="ClosePaneText"><value>Paneli bağla</value></data>
 </root>

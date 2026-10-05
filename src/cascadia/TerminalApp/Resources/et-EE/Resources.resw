@@ -544,8 +544,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Ajalugu</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Ajalugu ja muud seansid</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agendid</value>
@@ -761,4 +761,22 @@
     <value>Lülitu teisele aknale</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Muuda vahekaardi värvi</value></data>
+  <data name="RenameTabText"><value>Nimeta vahekaart ümber</value></data>
+  <data name="DuplicateTabText"><value>Dubleeri vahekaart</value></data>
+  <data name="SplitTabText"><value>Jaga vahekaart</value></data>
+  <data name="TabMoveSubMenu"><value>Teisalda vahekaart</value></data>
+  <data name="ExportTabText"><value>Ekspordi tekst</value></data>
+  <data name="FindText"><value>Otsi</value></data>
+  <data name="RestartConnectionText"><value>Taaskäivita seanss</value></data>
+  <data name="TabCloseSubMenu"><value>Sulge</value></data>
+  <data name="TabClose"><value>Sulge vahekaart</value></data>
+  <data name="MoveTabToNewWindowText"><value>Teisalda vahekaart uude aknasse</value></data>
+  <data name="TabMoveLeft"><value>Liiguta vasakule</value></data>
+  <data name="TabMoveRight"><value>Liiguta paremale</value></data>
+  <data name="TabMoveUp"><value>Liiguta üles</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Liiguta alla</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Sulge parempoolsed vahekaardid</value></data>
+  <data name="TabCloseOther"><value>Sulge teised vahekaardid</value></data>
+  <data name="ClosePaneText"><value>Sulge paan</value></data>
 </root>

@@ -329,42 +329,47 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $time = $times[0]
             $icon = Get-CombinedVisiblePart $row HistoryProviderIcon
             (Get-CombinedRowText $row) | Should -Match ([regex]::Escape($Title))
-            $icon.Current.Name | Should -Be $Provider -Because 'icon-only provider identity remains accessible'
+            $icon.Current.Name | Should -Be $Provider -Because 'the leading provider control retains its accessible identity'
             $timeText = $time.Current.Name
             $timeText | Should -Match '^(just now|\d+ (minute|hour|day)s? ago)$'
             $timeText | Should -Not -Match ('Historical|Ended|' + [regex]::Escape($Provider))
-            @($visible | Where-Object {
-                $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and
-                    $_.Current.Name -eq $Provider
-            }).Count | Should -Be 0 -Because 'provider must not be repeated as metadata text'
+            $providers = @($textLeaves | Where-Object { $_.Current.Name -eq $Provider })
+            $providers.Count | Should -Be 1 -Because 'metadata must expose one visible provider display name'
+            $providerPart = $providers[0]
+            @($textLeaves | Where-Object { $_.Current.Name }).Count | Should -Be $(if ($Status) { 4 } else { 3 }) -Because 'the row contains only title, time, meaningful status when present, and provider name'
             $titleBounds = $titlePart.Current.BoundingRectangle
             $timeBounds = $time.Current.BoundingRectangle
             $iconBounds = $icon.Current.BoundingRectangle
+            $providerBounds = $providerPart.Current.BoundingRectangle
             $titleBounds.Bottom | Should -BeLessOrEqual $timeBounds.Top
-            $titleBounds.Bottom | Should -BeLessOrEqual $iconBounds.Top
+            $titleBounds.Bottom | Should -BeLessOrEqual $providerBounds.Top
             $rowBounds = $row.Current.BoundingRectangle
-            $titleBounds.Left | Should -BeLessOrEqual ($timeBounds.Left + 1)
+            $providerBounds.Right | Should -BeLessOrEqual $rowBounds.Right -Because 'provider text must trim inside the available row rather than clip the ownership action'
+            [math]::Abs($titleBounds.Left - $timeBounds.Left) | Should -BeLessOrEqual 1
+            $iconBounds.Right | Should -BeLessThan $titleBounds.Left
             $iconBounds.Left | Should -BeGreaterOrEqual $rowBounds.Left
             $iconBounds.Right | Should -BeLessOrEqual $rowBounds.Right
             $iconBounds.Top | Should -BeGreaterOrEqual $rowBounds.Top
             $iconBounds.Bottom | Should -BeLessOrEqual $rowBounds.Bottom
-            $timeBounds.Right | Should -BeLessOrEqual $iconBounds.Left
-            $iconBounds.Top | Should -BeLessThan $timeBounds.Bottom
-            $iconBounds.Bottom | Should -BeGreaterThan $timeBounds.Top
+            [math]::Abs(($iconBounds.Top + $iconBounds.Bottom) / 2 - ($rowBounds.Top + $rowBounds.Bottom) / 2) |
+                Should -BeLessOrEqual 2 -Because 'the 16px leading icon is centered across both row lines'
+            $dpiScale = $iconBounds.Width / 16
+            [math]::Abs($iconBounds.Height - $iconBounds.Width) | Should -BeLessOrEqual 1
+            $dpiScale | Should -BeGreaterOrEqual 1
+            $timeBounds.Right | Should -BeLessOrEqual $providerBounds.Left
+            $providerBounds.Top | Should -BeLessThan $timeBounds.Bottom
+            $providerBounds.Bottom | Should -BeGreaterThan $timeBounds.Top
             if ($Status) {
                 $statusLabel = if ($Status -eq 'Working') { 'Active' } else { $Status }
                 $statuses = @($textLeaves | Where-Object { $_.Current.Name -eq $statusLabel })
                 $statuses.Count | Should -Be 1 -Because 'the history row must expose one unambiguous meaningful status'
                 $statusPart = $statuses[0]
                 $statusPart.Current.Name | Should -Be $statusLabel
-                if ($OtherWindow) {
-                    @($textLeaves | Where-Object { $_.Current.Name }).Count | Should -Be 3 -Because 'ownership is conveyed by an icon, not repeated metadata text'
-                }
                 $statusBounds = $statusPart.Current.BoundingRectangle
                 $statusBounds.Left | Should -BeGreaterOrEqual $timeBounds.Right
-                $statusBounds.Right | Should -BeLessOrEqual $iconBounds.Left
-                $statusBounds.Top | Should -BeLessThan $iconBounds.Bottom
-                $statusBounds.Bottom | Should -BeGreaterThan $iconBounds.Top
+                $statusBounds.Right | Should -BeLessOrEqual $providerBounds.Left
+                $statusBounds.Top | Should -BeLessThan $providerBounds.Bottom
+                $statusBounds.Bottom | Should -BeGreaterThan $providerBounds.Top
             } else {
                 @($textLeaves | Where-Object {
                     $_.Current.Name -match '^(Historical|Ended|Idle|Active|Working|Attention|Error)$'
@@ -372,12 +377,13 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 Assert-CombinedOwnershipButton None
             }
             @{
-                title = $Title; status = $Status; provider = $icon.Current.Name
+                title = $Title; status = $Status; provider = $providerPart.Current.Name
                 rendered_status = if ($Status) { $statusPart.Current.Name } else { $null }
                 other_window = [bool]$OtherWindow
                 title_bounds = $titleBounds.ToString(); time_bounds = $timeBounds.ToString()
                 status_bounds = if ($Status) { $statusBounds.ToString() } else { $null }
                 icon_bounds = $iconBounds.ToString()
+                provider_bounds = $providerBounds.ToString(); row_bounds = $rowBounds.ToString()
             } | ConvertTo-Json -Compress |
                 Add-Content -LiteralPath (Join-Path $script:evidence 'history-metadata.jsonl')
         }
@@ -408,9 +414,20 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 $expected = if ($Kind -eq 'Background') { 'Restore background tab' } else { 'Switch to other window' }
                 $buttons[0].Current.Name | Should -Be $expected
                 $buttons[0].Current.IsEnabled | Should -BeTrue
-                $provider = Get-CombinedVisiblePart $rows[0] HistoryProviderIcon
+                $providerIcon = Get-CombinedVisiblePart $rows[0] HistoryProviderIcon
+                $providers = @(Get-CombinedRawChildren $rows[0] | Where-Object {
+                    $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and
+                        $_.Current.Name -eq $providerIcon.Current.Name -and -not $_.Current.IsOffscreen -and
+                        $_.Current.BoundingRectangle.Width -gt 0 -and $_.Current.BoundingRectangle.Height -gt 0 -and
+                        -not @(Get-CombinedRawChildren $_ | Where-Object {
+                            $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and
+                                -not $_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Width -gt 0 -and
+                                $_.Current.BoundingRectangle.Height -gt 0
+                        }).Count
+                })
+                $providers.Count | Should -Be 1 -Because 'ownership follows the visible provider display name'
                 $bounds = $buttons[0].Current.BoundingRectangle
-                $bounds.Left | Should -BeGreaterOrEqual $provider.Current.BoundingRectangle.Right
+                $bounds.Left | Should -BeGreaterOrEqual $providers[0].Current.BoundingRectangle.Right
                 $bounds.Right | Should -BeLessOrEqual $rows[0].Current.BoundingRectangle.Right
                 Save-CombinedActionEvidence "ownership-$Kind" -Screenshot
                 $buttons[0]
@@ -915,6 +932,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         (Get-AgentPaneSession -App $script:app).AcpSessionId | Should -Match '^chat-fixture-'
         Set-CombinedView $true
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        (Get-CombinedElement HistoryHeader).Current.Name | Should -Be 'History & Other Sessions'
         Set-CombinedView $false
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence 'startup-header.png') | Out-Null
@@ -1081,7 +1099,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         Assert-CombinedBounds
     }
 
-    It 'History metadata shows time useful status and trailing agent icon' {
+    It 'History metadata shows time useful status and agent name with a leading icon' {
         $history = $script:history[0]
         Set-CombinedQuery $history.title
         Wait-Until -TimeoutSec 10 -Condition { @(Get-CombinedRows HistoryList).Count -eq 1 } | Out-Null
@@ -1091,7 +1109,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         Assert-CombinedHistoryMetadata -Title $history.title -Provider 'custom:combined-sidebar-fixture'
         foreach ($query in @('custom:combined-sidebar-fixture', 'combined-sidebar-fixture')) {
             Set-CombinedQuery $query
-            Wait-Until -TimeoutSec 10 -Because 'icon-only history still matches canonical and display provider aliases' -Condition {
+            Wait-Until -TimeoutSec 10 -Because 'history still matches canonical and display provider aliases' -Condition {
                 @((Get-CombinedRows HistoryList) | Where-Object {
                     (Get-CombinedRowText $_).Contains($history.title)
                 }).Count -eq 1

@@ -545,8 +545,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>היסטוריה</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>היסטוריה והפעלות אחרות</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>סוכנים</value>
@@ -762,4 +762,22 @@
     <value>עבור לחלון אחר</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>שינוי צבע הכרטיסייה</value></data>
+  <data name="RenameTabText"><value>שינוי שם הכרטיסייה</value></data>
+  <data name="DuplicateTabText"><value>שכפול כרטיסייה</value></data>
+  <data name="SplitTabText"><value>פיצול כרטיסייה</value></data>
+  <data name="TabMoveSubMenu"><value>העברת כרטיסייה</value></data>
+  <data name="ExportTabText"><value>ייצוא טקסט</value></data>
+  <data name="FindText"><value>חיפוש</value></data>
+  <data name="RestartConnectionText"><value>הפעלה מחדש של ההפעלה</value></data>
+  <data name="TabCloseSubMenu"><value>סגירה</value></data>
+  <data name="TabClose"><value>סגירת כרטיסייה</value></data>
+  <data name="MoveTabToNewWindowText"><value>העברת כרטיסייה לחלון חדש</value></data>
+  <data name="TabMoveLeft"><value>הזזה שמאלה</value></data>
+  <data name="TabMoveRight"><value>הזזה ימינה</value></data>
+  <data name="TabMoveUp"><value>הזזה למעלה</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>הזזה למטה</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>סגירת הכרטיסיות מימין</value></data>
+  <data name="TabCloseOther"><value>סגירת הכרטיסיות האחרות</value></data>
+  <data name="ClosePaneText"><value>סגירת חלונית</value></data>
 </root>

@@ -431,8 +431,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Stair</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Stair agus seisiúin eile</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Gníomhairí</value>
@@ -648,4 +648,22 @@
     <value>Athraigh go fuinneog eile</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Athraigh dath an chluaisín</value></data>
+  <data name="RenameTabText"><value>Athainmnigh an cluaisín</value></data>
+  <data name="DuplicateTabText"><value>Dúblaigh an cluaisín</value></data>
+  <data name="SplitTabText"><value>Scoil an cluaisín</value></data>
+  <data name="TabMoveSubMenu"><value>Bog an cluaisín</value></data>
+  <data name="ExportTabText"><value>Easpórtáil téacs</value></data>
+  <data name="FindText"><value>Aimsigh</value></data>
+  <data name="RestartConnectionText"><value>Atosaigh an seisiún</value></data>
+  <data name="TabCloseSubMenu"><value>Dún</value></data>
+  <data name="TabClose"><value>Dún an cluaisín</value></data>
+  <data name="MoveTabToNewWindowText"><value>Bog an cluaisín go fuinneog nua</value></data>
+  <data name="TabMoveLeft"><value>Bog ar chlé</value></data>
+  <data name="TabMoveRight"><value>Bog ar dheis</value></data>
+  <data name="TabMoveUp"><value>Bog suas</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Bog síos</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Dún na cluaisíní ar dheis</value></data>
+  <data name="TabCloseOther"><value>Dún na cluaisíní eile</value></data>
+  <data name="ClosePaneText"><value>Dún an phána</value></data>
 </root>

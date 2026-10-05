@@ -431,8 +431,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>ისტორია</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>ისტორია და სხვა სესიები</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>აგენტები</value>
@@ -648,4 +648,22 @@
     <value>სხვა ფანჯარაზე გადართვა</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>ჩანართის ფერის შეცვლა</value></data>
+  <data name="RenameTabText"><value>ჩანართის სახელის შეცვლა</value></data>
+  <data name="DuplicateTabText"><value>ჩანართის დუბლირება</value></data>
+  <data name="SplitTabText"><value>ჩანართის გაყოფა</value></data>
+  <data name="TabMoveSubMenu"><value>ჩანართის გადატანა</value></data>
+  <data name="ExportTabText"><value>ტექსტის ექსპორტი</value></data>
+  <data name="FindText"><value>ძიება</value></data>
+  <data name="RestartConnectionText"><value>სესიის ხელახლა დაწყება</value></data>
+  <data name="TabCloseSubMenu"><value>დახურვა</value></data>
+  <data name="TabClose"><value>ჩანართის დახურვა</value></data>
+  <data name="MoveTabToNewWindowText"><value>ჩანართის ახალ ფანჯარაში გადატანა</value></data>
+  <data name="TabMoveLeft"><value>მარცხნივ გადატანა</value></data>
+  <data name="TabMoveRight"><value>მარჯვნივ გადატანა</value></data>
+  <data name="TabMoveUp"><value>ზემოთ გადატანა</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>ქვემოთ გადატანა</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>მარჯვნივ მდებარე ჩანართების დახურვა</value></data>
+  <data name="TabCloseOther"><value>სხვა ჩანართების დახურვა</value></data>
+  <data name="ClosePaneText"><value>პანელის დახურვა</value></data>
 </root>
