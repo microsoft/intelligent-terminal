@@ -2,9 +2,9 @@
 # Process isolation shares the host kernel; this is not hardware isolation.
 FROM mcr.microsoft.com/windows/servercore@sha256:22505496dd4229dba63453ba0c6dc31c06fd3e11810e5b8e429aa6b16dab2457
 
-SHELL ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command"]
+SHELL ["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command"]
 ENV CARGO_HOME="C:\cargo-cache" RUSTUP_HOME="C:\rustup" RUSTUP_TOOLCHAIN="1.93.0"
-ENV PATH="C:\cargo-cache\bin;${PATH}"
+ENV PATH="C:\cargo-cache\bin;C:\Program Files\PowerShell\7;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0"
 
 # Official VS2026 Stable link: https://learn.microsoft.com/visualstudio/install/create-a-network-installation-of-visual-studio?view=visualstudio
 # The bootstrapper digest was verified with MZ, Valid Microsoft Authenticode, and VS2026 product metadata.
@@ -33,6 +33,14 @@ RUN $ErrorActionPreference = 'Stop'; `
     if ($LASTEXITCODE -ne 0) { throw 'Rust toolchain verification failed.' }; `
     Remove-Item C:\setup -Recurse -Force
 
+RUN $ErrorActionPreference = 'Stop'; `
+    Invoke-WebRequest -UseBasicParsing -TimeoutSec 180 -Uri 'https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.zip' -OutFile C:\powershell.zip; `
+    if ((Get-FileHash C:\powershell.zip -Algorithm SHA256).Hash -ne '02fe458be20493fbdf43f61ea20610b811ee6c738ab1676c61b9cfcd1a33c860') { throw 'PowerShell checksum mismatch.' }; `
+    Expand-Archive -LiteralPath C:\powershell.zip -DestinationPath 'C:\Program Files\PowerShell\7'; `
+    & 'C:\Program Files\PowerShell\7\pwsh.exe' -NoProfile -NonInteractive -Command 'if ($PSVersionTable.PSVersion -ne [version]"7.6.6") { exit 1 }'; `
+    if ($LASTEXITCODE -ne 0) { throw 'Public PowerShell installation failed.' }; `
+    Remove-Item C:\powershell.zip
+
 COPY Invoke-WtaContainerTests.ps1 C:\validation\Invoke-WtaContainerTests.ps1
 RUN $ErrorActionPreference = 'Stop'; `
     New-Item -ItemType Directory -Path C:\validation-output | Out-Null; `
@@ -44,4 +52,4 @@ RUN $ErrorActionPreference = 'Stop'; `
     if ($LASTEXITCODE -ne 0) { throw 'Could not grant toolchain read access.' }
 WORKDIR C:\workspace
 USER ContainerUser
-ENTRYPOINT ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "C:\\validation\\Invoke-WtaContainerTests.ps1"]
+ENTRYPOINT ["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", "C:\\validation\\Invoke-WtaContainerTests.ps1"]

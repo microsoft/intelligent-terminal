@@ -20,6 +20,10 @@ if ($LASTEXITCODE -ne 0 -or $version -notcontains 'release: 1.93.0' -or
     throw 'Public Windows Rust 1.93.0 is required.'
 }
 $version
+$powerShell = & 'C:\Program Files\PowerShell\7\pwsh.exe' -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()'
+if ($LASTEXITCODE -ne 0 -or $powerShell -ne '7.6.6') {
+    throw 'PowerShell is required so shell-launch regression tests do not silently skip.'
+}
 $env:CARGO_TARGET_DIR = 'C:\validation-output'
 $env:CARGO_TERM_COLOR = 'never'
 Set-Location -LiteralPath 'C:\workspace'
