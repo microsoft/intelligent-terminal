@@ -1026,7 +1026,7 @@ namespace winrt::TerminalApp::implementation
                                            std::string_view providerId,
                                            std::optional<uint64_t> lastActivityAtMs,
                                            std::string_view status);
-        static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs);
+        static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs, std::wstring_view languageTag = {});
         struct _SidebarHistorySnapshot
         {
             enum class State

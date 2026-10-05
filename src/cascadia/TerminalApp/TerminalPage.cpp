@@ -7,6 +7,7 @@
 #include "TabStrip.h"
 
 #include <iomanip>
+#include <icu.h>
 #include <winrt/Windows.Globalization.NumberFormatting.h>
 
 #include <json/json.h>
@@ -6810,10 +6811,18 @@ namespace winrt::TerminalApp::implementation
         return winrt::hstring{ fmt::format(FMT_COMPILE(L"{}%"), progressValue) };
     }
 
-    winrt::hstring TerminalPage::_SidebarHistoryAgeText(const std::optional<uint64_t> lastActivityAtMs, const uint64_t nowMs)
+    winrt::hstring TerminalPage::_SidebarHistoryAgeText(const std::optional<uint64_t> lastActivityAtMs, const uint64_t nowMs, const std::wstring_view languageTag)
     {
         if (!lastActivityAtMs || *lastActivityAtMs == 0)
         {
+            return RS_(L"VerticalTabsHistoryAgeUnknown");
+        }
+
+        constexpr auto endOfSupportedDates = std::chrono::sys_days{ std::chrono::year{ 9999 } / 12 / 31 } + std::chrono::days{ 1 };
+        constexpr auto endOfSupportedMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(endOfSupportedDates.time_since_epoch()).count());
+        if (*lastActivityAtMs >= endOfSupportedMs || nowMs >= endOfSupportedMs)
+        {
+            LOG_HR(E_INVALIDARG);
             return RS_(L"VerticalTabsHistoryAgeUnknown");
         }
 
@@ -6823,54 +6832,84 @@ namespace winrt::TerminalApp::implementation
         {
             return RS_(L"VerticalTabsHistoryAgeJustNow");
         }
-        if (seconds < 3600)
+        try
         {
-            const auto minutes = seconds / 60;
-            return minutes == 1 ? RS_(L"VerticalTabsHistoryAgeMinute") :
-                                  winrt::hstring{ RS_fmt(L"VerticalTabsHistoryAgeMinutes", minutes) };
-        }
-        if (seconds < 86400)
-        {
-            const auto hours = seconds / 3600;
-            return hours == 1 ? RS_(L"VerticalTabsHistoryAgeHour") :
-                                winrt::hstring{ RS_fmt(L"VerticalTabsHistoryAgeHours", hours) };
-        }
+            auto unit = UDAT_REL_UNIT_MINUTE;
+            auto count = static_cast<double>(seconds / 60);
+            if (seconds >= 3600)
+            {
+                unit = UDAT_REL_UNIT_HOUR;
+                count = static_cast<double>(seconds / 3600);
+            }
+            if (seconds >= 86400)
+            {
+                unit = UDAT_REL_UNIT_DAY;
+                count = static_cast<double>(seconds / 86400);
+            }
+            UErrorCode status = U_ZERO_ERROR;
+            if (seconds >= 7 * 86400)
+            {
+                unit = UDAT_REL_UNIT_WEEK;
+                count = static_cast<double>(seconds / (7 * 86400));
 
-        if (seconds < 7 * 86400)
-        {
-            const auto days = seconds / 86400;
-            return days == 1 ? RS_(L"VerticalTabsHistoryAgeDay") :
-                               winrt::hstring{ RS_fmt(L"VerticalTabsHistoryAgeDays", days) };
-        }
+                // Completed Gregorian UTC months/years, not fixed 30/365-day approximations.
+                using Calendar = wistd::unique_ptr<UCalendar, wil::function_deleter<decltype(&ucal_close), &ucal_close>>;
+                const UChar utc[]{ u'U', u'T', u'C' };
+                Calendar calendar{ ucal_open(utc, ARRAYSIZE(utc), "en_US", UCAL_GREGORIAN, &status) };
+                THROW_HR_IF_MSG(E_FAIL, U_FAILURE(status) != 0, "ICU calendar: %hs", u_errorName(status));
+                const auto completed = [&](UCalendarDateFields field) {
+                    ucal_setMillis(calendar.get(), static_cast<UDate>(*lastActivityAtMs), &status);
+                    const auto difference = ucal_getFieldDifference(calendar.get(), static_cast<UDate>(nowMs), field, &status);
+                    THROW_HR_IF_MSG(E_FAIL, U_FAILURE(status) != 0, "ICU calendar difference: %hs", u_errorName(status));
+                    return difference;
+                };
+                if (const auto years = completed(UCAL_YEAR); years > 0)
+                {
+                    unit = UDAT_REL_UNIT_YEAR;
+                    count = years;
+                }
+                else if (const auto months = completed(UCAL_MONTH); months > 0)
+                {
+                    unit = UDAT_REL_UNIT_MONTH;
+                    count = months;
+                }
+            }
 
-        // Match WTA's session manager: use the UTC calendar date and the UI locale.
-        const auto epochDays = *lastActivityAtMs / 86'400'000;
-        constexpr auto lastSupportedDay = std::chrono::sys_days{ std::chrono::year{ 9999 } / 12 / 31 };
-        if (epochDays > static_cast<uint64_t>(lastSupportedDay.time_since_epoch().count()))
-        {
-            LOG_HR(E_INVALIDARG);
-            return RS_(L"VerticalTabsHistoryAgeUnknown");
+            const auto effectiveLanguage = languageTag.empty() ? _SidebarHistoryLanguageTag() : winrt::hstring{ languageTag };
+            const auto tag = winrt::to_string(effectiveLanguage);
+            std::string locale(ULOC_FULLNAME_CAPACITY, '\0');
+            if (!tag.empty())
+            {
+                int32_t parsedLength = 0;
+                auto length = uloc_forLanguageTag(tag.c_str(), locale.data(), static_cast<int32_t>(locale.size()), &parsedLength, &status);
+                if (status == U_BUFFER_OVERFLOW_ERROR)
+                {
+                    status = U_ZERO_ERROR;
+                    locale.resize(static_cast<size_t>(length) + 1);
+                    length = uloc_forLanguageTag(tag.c_str(), locale.data(), static_cast<int32_t>(locale.size()), &parsedLength, &status);
+                }
+                THROW_HR_IF_MSG(E_INVALIDARG, U_FAILURE(status) || parsedLength != static_cast<int32_t>(tag.size()), "Invalid ICU language tag: %hs", u_errorName(status));
+                locale.resize(length);
+            }
+            using Formatter = wistd::unique_ptr<URelativeDateTimeFormatter, wil::function_deleter<decltype(&ureldatefmt_close), &ureldatefmt_close>>;
+            Formatter formatter{ ureldatefmt_open(tag.empty() ? nullptr : locale.c_str(), nullptr, UDAT_STYLE_SHORT, UDISPCTX_CAPITALIZATION_NONE, &status) };
+            THROW_HR_IF_MSG(E_FAIL, U_FAILURE(status) != 0, "ICU relative formatter: %hs", u_errorName(status));
+            std::vector<UChar> buffer(128);
+            auto length = ureldatefmt_formatNumeric(formatter.get(), -count, unit, buffer.data(), static_cast<int32_t>(buffer.size()), &status);
+            if (status == U_BUFFER_OVERFLOW_ERROR)
+            {
+                status = U_ZERO_ERROR;
+                buffer.resize(static_cast<size_t>(length) + 1);
+                length = ureldatefmt_formatNumeric(formatter.get(), -count, unit, buffer.data(), static_cast<int32_t>(buffer.size()), &status);
+            }
+            THROW_HR_IF_MSG(E_FAIL, U_FAILURE(status) != 0, "ICU relative time: %hs", u_errorName(status));
+            return winrt::hstring{ std::wstring{ buffer.data(), buffer.data() + length } };
         }
-        const auto date = std::chrono::year_month_day{ std::chrono::sys_days{
-            std::chrono::days{ static_cast<int64_t>(epochDays) } } };
-        SYSTEMTIME time{};
-        time.wYear = static_cast<WORD>(static_cast<int>(date.year()));
-        time.wMonth = static_cast<WORD>(static_cast<unsigned>(date.month()));
-        time.wDay = static_cast<WORD>(static_cast<unsigned>(date.day()));
-        const auto locale = _SidebarHistoryLanguageTag();
-        wchar_t buffer[256]{};
-        if (GetDateFormatEx(locale.empty() ? LOCALE_NAME_USER_DEFAULT : locale.c_str(),
-                            DATE_LONGDATE,
-                            &time,
-                            nullptr,
-                            buffer,
-                            ARRAYSIZE(buffer),
-                            nullptr) > 0)
+        catch (...)
         {
-            return winrt::hstring{ buffer };
+            LOG_CAUGHT_EXCEPTION();
         }
-        LOG_LAST_ERROR();
-        return winrt::hstring{ fmt::format(L"{:04}-{:02}-{:02}", time.wYear, time.wMonth, time.wDay) };
+        return RS_(L"VerticalTabsHistoryAgeUnknown");
     }
 
     TerminalPage::_SidebarHistorySnapshot TerminalPage::_ParseSidebarHistorySnapshot(const std::string& output, const uint64_t currentWindowId)
