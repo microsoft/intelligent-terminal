@@ -8022,6 +8022,7 @@ async fn execute_session_activation(
                 "window_id": parsed.window_id,
                 "commandline": commandline,
                 "background": true,
+                "native_agent_provider_id": provider_id,
             });
             if matches!(row.location, crate::agent_sessions::SessionLocation::Host)
                 && !row.cwd.as_os_str().is_empty()

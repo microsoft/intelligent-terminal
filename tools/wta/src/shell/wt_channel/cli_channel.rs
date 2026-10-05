@@ -1060,6 +1060,12 @@ impl WtChannel for CliChannel {
             }
             "create_tab" => {
                 let mut args = vec!["new-tab"];
+                if let Some(provider) = params
+                    .get("native_agent_provider_id")
+                    .and_then(|value| value.as_str())
+                {
+                    args.extend(["--agent-provider", provider]);
+                }
                 let window_id = params
                     .get("window_id")
                     .and_then(json_id_as_str)
@@ -1124,6 +1130,12 @@ impl WtChannel for CliChannel {
                 let profile_owned;
                 let size_owned;
                 let mut args = vec!["split-pane"];
+                if let Some(provider) = params
+                    .get("native_agent_provider_id")
+                    .and_then(|value| value.as_str())
+                {
+                    args.extend(["--agent-provider", provider]);
+                }
                 if let Some(size) = params.get("size").and_then(|value| value.as_f64()) {
                     size_owned = size.to_string();
                     args.extend(["--size", &size_owned]);

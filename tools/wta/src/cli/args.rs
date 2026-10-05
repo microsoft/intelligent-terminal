@@ -390,6 +390,9 @@ pub(crate) enum Command {
         /// Delegate agent CLI command (e.g. "codex")
         #[arg(long)]
         delegate_agent: Option<String>,
+        /// Canonical configured provider identity, independent of the CLI command
+        #[arg(long)]
+        delegate_agent_id: Option<String>,
         /// Model override for the delegate agent
         #[arg(long)]
         delegate_model: Option<String>,

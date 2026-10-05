@@ -79,6 +79,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             ITE2E_SHIM_PWSH = $pwsh; ITE2E_SHIM_FIXTURE = $fixture
             ITE2E_SHIM_LOG = $script:canonicalLog; ITE2E_SHIM_RUN = $script:runId
             ITE2E_SHIM_WTCLI = $script:target.WtcliPath
+            ITE2E_SHIM_SESSION_START_GATE = (Join-Path $script:evidence 'release-session-start')
         }
         $shimConfig | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:shimDirectory 'config.json')
         $configHeader = Join-Path $script:shimDirectory 'config.h'
@@ -124,6 +125,83 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             $window.FindFirst([Windows.Automation.TreeScope]::Descendants,
                 [Windows.Automation.PropertyCondition]::new(
                     [Windows.Automation.AutomationElement]::AutomationIdProperty, $Id))
+        }
+        function Install-ActionCanonicalResolver {
+            if ($script:resolverShimOwned) { return }
+            if (-not $env:ITE2E_CANONICAL_SHIM_DIRECTORY) {
+                throw 'Supply an explicitly approved existing PATH directory for the temporary canonical fixture.'
+            }
+            $approved = [IO.Path]::GetFullPath($env:ITE2E_CANONICAL_SHIM_DIRECTORY)
+            $allPath = ([Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
+                [Environment]::GetEnvironmentVariable('PATH', 'User')).Split(';') |
+                Where-Object { $_ } | ForEach-Object { [IO.Path]::GetFullPath($_) }
+            $approved | Should -BeIn $allPath
+            Test-Path -LiteralPath $approved -PathType Container | Should -BeTrue
+            $script:resolverShim = Join-Path $approved 'copilot.exe'
+            foreach ($path in @($script:resolverShim, (Join-Path $script:target.InstallLocation 'copilot.exe'),
+                (Join-Path $script:evidence 'copilot.exe'))) {
+                if (Test-Path -LiteralPath $path) { throw "Refusing to replace any existing canonical executable: $path" }
+            }
+            $script:resolverShimHash = (Get-FileHash -LiteralPath $script:shim).Hash
+            [IO.File]::Copy($script:shim, $script:resolverShim, $false)
+            $script:resolverShimOwned = $true
+        }
+        function Save-ActionHeldRowIconEvidence {
+            param($Receipt, [string]$ProviderId, [string]$Phase)
+            Test-Path -LiteralPath $shimConfig.ITE2E_SHIM_SESSION_START_GATE | Should -BeFalse
+            Test-Path -LiteralPath "$($shimConfig.ITE2E_SHIM_SESSION_START_GATE).emitted-$($Receipt.session_id).json" | Should -BeFalse
+            $script:heldRow = $null
+            Wait-Until -TimeoutSec 10 -Because 'the exact fixture-owned newly created sidebar row is visible before its hook' -Condition {
+                $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
+                $window.Current.ProcessId | Should -Be $script:app.Pid
+                $title = $window.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                    [Windows.Automation.PropertyCondition]::new(
+                        [Windows.Automation.AutomationElement]::NameProperty, [string]$Receipt.title))
+                if (-not $title -or $title.Current.IsOffscreen) { return $false }
+                $row = $title
+                while ($row -and $row.Current.ControlType -notin @(
+                    [Windows.Automation.ControlType]::ListItem, [Windows.Automation.ControlType]::TabItem)) {
+                    $row = [Windows.Automation.TreeWalker]::RawViewWalker.GetParent($row)
+                }
+                if (-not $row -or $row.Current.IsOffscreen) { return $false }
+                $script:heldRow = $row
+                $row.Current.BoundingRectangle.Width -gt 0 -and $row.Current.BoundingRectangle.Height -gt 0
+            } | Out-Null
+            $bounds = $script:heldRow.Current.BoundingRectangle
+            Add-Type -AssemblyName System.Drawing
+            $image = [Drawing.Bitmap]::new([int][Math]::Ceiling($bounds.Width), [int][Math]::Ceiling($bounds.Height))
+            $graphics = [Drawing.Graphics]::FromImage($image)
+            try {
+                $graphics.CopyFromScreen([int]$bounds.Left, [int]$bounds.Top, 0, 0, $image.Size)
+                $image.Save((Join-Path $script:evidence "$Phase.row.png"), [Drawing.Imaging.ImageFormat]::Png)
+            }
+            finally { $graphics.Dispose(); $image.Dispose() }
+            @{
+                phase = $Phase; provider_id = $ProviderId; pane_session_id = $Receipt.pane_session_id
+                session_id = $Receipt.session_id; title = $Receipt.title; pid = $script:app.Pid
+                row_bounds = $bounds.ToString()
+                expected_icon = if ($ProviderId -eq 'copilot') { 'Copilot provider glyph' } else { 'existing generic Message glyph for custom provider without a configured icon' }
+                rendered_icon_review = 'pending parent visual review of row.png; automated assertions cover exact visible row and canonical provider data'
+            } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence "$Phase.row.json")
+            Test-Path -LiteralPath $shimConfig.ITE2E_SHIM_SESSION_START_GATE | Should -BeFalse
+        }
+        function Save-ActionSessionSnapshot {
+            param([string]$Phase)
+            $rows = @(Get-ActionSessions)
+            ConvertTo-Json -InputObject $rows -Depth 20 |
+                Set-Content -LiteralPath (Join-Path $script:evidence "$Phase.sessions.json")
+            return $rows
+        }
+        function Assert-ActionPriorSessionsPreserved {
+            param([array]$Before, [array]$During)
+            foreach ($row in $Before) {
+                $matches = @($During | Where-Object {
+                    $_.session_id -eq $row.session_id -and $_.provider_id -eq $row.provider_id -and $_.location -eq $row.location
+                })
+                $matches.Count | Should -Be 1
+                $matches[0].status | Should -Be $row.status
+                $matches[0].pane_session_id | Should -Be $row.pane_session_id
+            }
         }
         function Set-ActionView {
             param([bool]$Agents)
@@ -240,7 +318,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                 $actual = if (Test-Path -LiteralPath $path) { (Get-FileHash -LiteralPath $path).Hash } else { $null }
                 $actual | Should -Be $script:originalConfigHashes[$path] -Because 'restore exact pre-run configuration bytes'
             }
-            foreach ($name in @('copilot.exe', 'copilot.obj')) {
+            foreach ($name in @('copilot.exe', 'copilot.obj', 'interactive-fixture.exe')) {
                 $path = Join-Path $script:shimDirectory $name
                 if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
             }
@@ -320,25 +398,119 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
     }
 
+    It 'Native agent provider is visible before session startup' {
+        Set-ActionView $true
+        Install-ActionCanonicalResolver
+        $gate = $shimConfig.ITE2E_SHIM_SESSION_START_GATE
+        $prior = Get-WtSetting -App $script:app -Key delegateAgent
+        $receiptsBefore = @(Get-ChildItem -LiteralPath $script:evidence -Filter 'release-session-start.waiting-*.json').FullName
+        $rowsBefore = @(Save-ActionSessionSnapshot 'copilot-before-launch')
+        try {
+            Set-WtDelegateAgent -App $script:app -Agent copilot | Out-Null
+            Wait-Until -TimeoutSec 15 -Because 'Terminal settings select the canonical fixture provider' -Condition {
+                $settings = Invoke-Native -FilePath $script:target.WtcliPath -Arguments @('--json', 'get-settings') -TimeoutSec 10
+                $settings.ExitCode -eq 0 -and ($settings.StdOut | ConvertFrom-Json).delegateAgent -eq 'copilot'
+            } | Out-Null
+            $tab = Invoke-ActionPlus
+            Wait-Until -TimeoutSec 20 -Because 'native fixture is held before publishing any session hook' -Condition {
+                @(Get-ChildItem -LiteralPath $script:evidence -Filter 'release-session-start.waiting-*.json' |
+                    Where-Object FullName -NotIn $receiptsBefore).Count -eq 1
+            } | Out-Null
+            $receipt = Get-Content -LiteralPath @(Get-ChildItem -LiteralPath $script:evidence -Filter 'release-session-start.waiting-*.json' |
+                Where-Object FullName -NotIn $receiptsBefore)[0].FullName -Raw | ConvertFrom-Json
+            $sid = $receipt.session_id
+            $pane = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId)) |
+                Where-Object session_id -EQ $receipt.pane_session_id
+            $pane.native_agent_provider_id | Should -Be 'copilot'
+            $pane.is_agent_pane | Should -BeFalse
+            $rowsDuring = @(Save-ActionSessionSnapshot 'copilot-before-hook')
+            $bornRows = @($rowsDuring | Where-Object session_id -EQ $sid)
+            $bornRows.Count | Should -Be 1 -Because 'Copilot explicitly receives this preassigned SID and its existing born-bound registration remains valid'
+            $bornRows[0].pane_session_id | Should -Be $receipt.pane_session_id
+            $bornRows[0].provider_id | Should -Be 'copilot'
+            $bornRows[0].location | Should -Be 'host'
+            @($rowsDuring | Where-Object pane_session_id -EQ $receipt.pane_session_id).Count |
+                Should -Be 1 -Because 'only the exact pinned native conversation belongs to this pane; new stashed ACP helpers have different pane GUIDs'
+            Assert-ActionPriorSessionsPreserved -Before $rowsBefore -During $rowsDuring
+            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+            $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
+            $visibleTitle = @($window.FindAll([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::NameProperty, $pane.title)) |
+                Where-Object { -not $_.Current.IsOffscreen })
+            $visibleTitle.Count | Should -BeGreaterThan 0 -Because 'the held native CLI remains visible in Agents before any title or hook startup'
+            Save-ActionUiEvidence 'provider-before-session-hook'
+            Save-ActionHeldRowIconEvidence -Receipt $receipt -ProviderId copilot -Phase 'provider-before-session-hook'
+        }
+        finally {
+            Set-Content -LiteralPath $gate -Value 'released'
+            Set-WtDelegateAgent -App $script:app -Agent $prior | Out-Null
+        }
+        Wait-Until -TimeoutSec 20 -Because 'real session hook binds the fixture conversation after release' -Condition {
+            (Test-Path -LiteralPath "$gate.emitted-$sid.json") -and @(Get-ActionSessions | Where-Object {
+                $_.session_id -eq $sid -and $_.pane_session_id -eq $receipt.pane_session_id -and $_.provider_id -eq 'copilot'
+            }).Count -eq 1
+        } | Out-Null
+        $rowsAfter = @(Save-ActionSessionSnapshot 'copilot-after-hook')
+        @($rowsAfter | Where-Object pane_session_id -EQ $receipt.pane_session_id).Count | Should -Be 1
+        Assert-ActionPriorSessionsPreserved -Before $rowsBefore -During $rowsAfter
+    }
+
+    It 'Custom native provider intent creates no conversation before its hook' {
+        Set-ActionView $true
+        $sid = [guid]::NewGuid().ToString()
+        $gate = $shimConfig.ITE2E_SHIM_SESSION_START_GATE
+        $provider = 'custom:agents-actions-no-pin'
+        $customShim = Join-Path $script:shimDirectory 'interactive-fixture.exe'
+        [IO.File]::Copy($script:shim, $customShim, $false)
+        $priorAgent = Get-WtSetting -App $script:app -Key delegateAgent
+        $priorCommand = Get-WtSetting -App $script:app -Key delegateCustomCommand
+        $rowsBefore = @(Save-ActionSessionSnapshot 'custom-before-launch')
+        if (Test-Path -LiteralPath $gate) { Remove-Item -LiteralPath $gate }
+        try {
+            Set-WtSetting -App $script:app -Key delegateCustomCommand -Value "`"$customShim`" --session-id $sid" | Out-Null
+            Set-WtDelegateAgent -App $script:app -Agent $provider | Out-Null
+            $tab = Invoke-ActionPlus
+            Wait-Until -TimeoutSec 20 -Because 'no-pin native fixture waits before publishing its genuine session hook' -Condition {
+                Test-Path -LiteralPath "$gate.waiting-$sid.json"
+            } | Out-Null
+            $receipt = Get-Content -LiteralPath "$gate.waiting-$sid.json" -Raw | ConvertFrom-Json
+            $pane = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId)) |
+                Where-Object session_id -EQ $receipt.pane_session_id
+            $pane.native_agent_provider_id | Should -Be $provider
+            $pane.is_agent_pane | Should -BeFalse
+            $rowsDuring = @(Save-ActionSessionSnapshot 'custom-before-hook')
+            @($rowsDuring | Where-Object pane_session_id -EQ $receipt.pane_session_id).Count | Should -Be 0
+            @($rowsDuring | Where-Object session_id -EQ $sid).Count | Should -Be 0
+            Assert-ActionPriorSessionsPreserved -Before $rowsBefore -During $rowsDuring
+            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+            $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
+            @($window.FindAll([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::NameProperty, $pane.title)) |
+                Where-Object { -not $_.Current.IsOffscreen }).Count | Should -BeGreaterThan 0
+            Save-ActionUiEvidence 'custom-provider-before-session-hook'
+            Save-ActionHeldRowIconEvidence -Receipt $receipt -ProviderId $provider -Phase 'custom-provider-before-session-hook'
+        }
+        finally {
+            Set-Content -LiteralPath $gate -Value 'released'
+            Set-WtSetting -App $script:app -Key delegateCustomCommand -Value $priorCommand | Out-Null
+            Set-WtDelegateAgent -App $script:app -Agent $priorAgent | Out-Null
+        }
+        Wait-Until -TimeoutSec 20 -Because 'the real hook supplies exactly one conversation for the same custom-launched pane' -Condition {
+            (Test-Path -LiteralPath "$gate.emitted-$sid.json") -and @(Get-ActionSessions | Where-Object {
+                $_.session_id -eq $sid -and $_.pane_session_id -eq $receipt.pane_session_id -and $_.provider_id -eq 'copilot'
+            }).Count -eq 1
+        } | Out-Null
+        $rowsAfter = @(Save-ActionSessionSnapshot 'custom-after-hook')
+        @($rowsAfter | Where-Object pane_session_id -EQ $receipt.pane_session_id).Count | Should -Be 1
+        Assert-ActionPriorSessionsPreserved -Before $rowsBefore -During $rowsAfter
+    }
+
     It 'Agents split creates a fresh same-provider interactive CLI' {
+        Set-Content -LiteralPath $shimConfig.ITE2E_SHIM_SESSION_START_GATE -Value 'released'
         Set-ActionView $false
-        if (-not $env:ITE2E_CANONICAL_SHIM_DIRECTORY) {
-            throw 'Supply an explicitly approved existing PATH directory for the temporary canonical fixture.'
-        }
-        $approved = [IO.Path]::GetFullPath($env:ITE2E_CANONICAL_SHIM_DIRECTORY)
-        $allPath = ([Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
-            [Environment]::GetEnvironmentVariable('PATH', 'User')).Split(';') |
-            Where-Object { $_ } | ForEach-Object { [IO.Path]::GetFullPath($_) }
-        $approved | Should -BeIn $allPath
-        Test-Path -LiteralPath $approved -PathType Container | Should -BeTrue
-        $script:resolverShim = Join-Path $approved 'copilot.exe'
-        foreach ($path in @($script:resolverShim, (Join-Path $script:target.InstallLocation 'copilot.exe'),
-            (Join-Path $script:evidence 'copilot.exe'))) {
-            if (Test-Path -LiteralPath $path) { throw "Refusing to replace any existing canonical executable: $path" }
-        }
-        $script:resolverShimHash = (Get-FileHash -LiteralPath $script:shim).Hash
-        [IO.File]::Copy($script:shim, $script:resolverShim, $false)
-        $script:resolverShimOwned = $true
+        Install-ActionCanonicalResolver
         $sid = [guid]::NewGuid().ToString()
         $beforeCount = @(Get-CanonicalLaunches).Count
         $tab = New-WtTab -App $script:app -Command "`"$script:shim`" --session-id $sid" -Cwd $script:evidence

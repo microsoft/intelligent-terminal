@@ -38,6 +38,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             prompt,
             agent,
             delegate_agent,
+            delegate_agent_id,
             delegate_model,
             delegate_source,
             delegate_wsl_distro,
@@ -61,6 +62,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 split_session.as_deref(),
                 &split_direction,
                 split_size,
+                delegate_agent_id.as_deref(),
             )
             .await
         }

@@ -523,3 +523,17 @@ failure-time observations, not a history of how pane/source state changed.
 - **Protocol discovery**: `WT_COM_CLSID` env var, inherited from the WT-spawned conpty
 - **CLI subcommands** call `CliChannel::connect()` directly; no ShellManager needed
 - **Pane identity** is discovered at startup via PID matching (list all panes, find ours)
+# Native interactive CLI creation
+
+Delegation and native session resumes pass the resolved provider ID through
+`wtcli --agent-provider`. Terminal stores that identity with the terminal content
+before displaying the tab or split, so the Agents view and provider icon do not
+wait for CLI startup hooks. This does not create a conversation ID, activity
+state, or history row. Older protocol servers reject this capability explicitly.
+Host-configured delegation carries the provider separately from its executable
+through `wta delegate --delegate-agent-id`. Custom commands require that explicit
+identity; their executable basename is not treated as a configured provider.
+Provider masks use the canonical `AgentIconResources.xaml` geometry and the
+existing monochrome bitmap tint pipeline. Regenerate the six transparent masks
+with `pwsh -STA -File build\scripts\Generate-AgentIconMasks.ps1`; add `-Check` to
+verify committed outputs without changing them.

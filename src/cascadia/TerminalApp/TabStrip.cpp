@@ -447,7 +447,6 @@ namespace winrt::TerminalApp::implementation
         _historyItems = single_threaded_observable_vector<TerminalApp::TabStripHistoryItem>();
 
         InitializeComponent();
-        ::Microsoft::Terminal::UI::AgentIcons::Resources() = Resources();
 
         ItemsList().ItemsSource(_displayItems);
         // ListView consumes Enter even when its focused row is already selected.
@@ -918,10 +917,6 @@ namespace winrt::TerminalApp::implementation
                         control.Foreground(foreground);
                     }
                 }
-                if (monochromeIcon)
-                {
-                    icon.Foreground(foreground);
-                }
             }
             else
             {
@@ -932,14 +927,14 @@ namespace winrt::TerminalApp::implementation
                         control.ClearValue(WUX::Controls::Control::ForegroundProperty());
                     }
                 }
-                if (monochromeIcon)
-                {
-                    icon.ClearValue(IconElement::ForegroundProperty());
-                    if (const auto foreground = display.IconSource().as<MUX::Controls::IconSource>().Foreground())
-                    {
-                        icon.Foreground(foreground);
-                    }
-                }
+            }
+            if (monochromeIcon && header)
+            {
+                WUX::Data::Binding binding;
+                binding.Source(header);
+                binding.Path(WUX::PropertyPath{ L"Foreground" });
+                binding.Mode(WUX::Data::BindingMode::OneWay);
+                icon.SetBinding(IconElement::ForegroundProperty(), binding);
             }
         }
     }

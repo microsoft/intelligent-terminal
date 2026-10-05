@@ -3308,6 +3308,8 @@ impl App {
         let launch_commandline = format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
         let mut argv = vec![
             "new-tab".to_string(),
+            "--agent-provider".to_string(),
+            cli_id.to_string(),
             "--window-id".to_string(),
             window_id.to_string(),
             "-c".to_string(),
