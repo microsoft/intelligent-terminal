@@ -70,7 +70,7 @@ and focuses ordinary tab search on entry.
   activation, rather than also activating its containing row.
   Provider identity remains available through the icon tooltip, highlighted
   provider-name text, and shared search.
-  Time and provider text share bounded metadata space and may ellipsize at the
+  Time and provider text share bounded metadata space and may truncate with an ellipsis at the
   minimum sidebar width; status and the ownership action retain reserved space.
 - The Agents view consists of two distinct upper and lower sections separated
   by a horizontal divider:

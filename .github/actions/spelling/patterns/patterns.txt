@@ -36,6 +36,10 @@ D2D
 # tools/wta/build.rs: Rust stdlib char predicate
 \bis_ascii_hexdigit\b
 
+# Generate-AgentIconMasks.ps1: exact Windows font file and pixel-format identifier
+\bsegmdl2\.ttf\b
+\bPbgra32\b
+
 # Automatically suggested patterns
 
 # hit-count: 26 file-count: 12
