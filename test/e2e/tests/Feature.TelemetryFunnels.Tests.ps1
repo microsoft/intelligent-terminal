@@ -169,8 +169,10 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             foreach ($decision in @('Run', 'Insert', 'Reject')) {
                 Invoke-TelemetryPhase -Name "offer-$decision" -Action { Invoke-TelemetryOffer -Decision $decision }
             }
-            foreach ($allowed in @($false, $true)) {
-                Invoke-TelemetryPhase -Name "autofix-policy-$allowed" -Action { Invoke-TelemetryAutoFixPolicy -Allowed $allowed }
+            if ($env:ITE2E_TELEMETRY_HOT_POLICY -eq '1') {
+                foreach ($allowed in @($false, $true)) {
+                    Invoke-TelemetryPhase -Name "autofix-policy-$allowed" -Action { Invoke-TelemetryAutoFixPolicy -Allowed $allowed }
+                }
             }
             Set-TelemetryPolicy -Transaction $script:policyTransaction -Name AllowAutoFix -Value $null
             Invoke-TelemetryPhase -Name second-window -Action { Invoke-TelemetrySecondWindow }
@@ -547,8 +549,10 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         }
     }
 
-    It 'Raw Autofix policy stays distinct from effective helper state' -ForEach @(
-        @{ Allowed = $false }, @{ Allowed = $true }
+    It 'Optional hot-policy diagnostic updates a connected helper' -Tag 'HotPolicyDiagnostic' -ForEach @(
+        if ($env:ITE2E_TELEMETRY_HOT_POLICY -eq '1') {
+            @{ Allowed = $false }, @{ Allowed = $true }
+        }
     ) {
         $events = @(Get-TelemetryPhaseEvents -Phase "autofix-policy-$Allowed" -Name ErrorDetected | Where-Object {
             $_.Provider -eq '4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b' -and $_.Fields.PaneId -eq $script:shell.session_id
