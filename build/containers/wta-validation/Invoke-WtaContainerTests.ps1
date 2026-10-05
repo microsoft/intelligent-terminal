@@ -1,5 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
-# Trusted baseline only. Repository and dependency inputs must be read-only mounts.
+# Trusted entrypoint. Repository and dependency inputs must be read-only mounts.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 

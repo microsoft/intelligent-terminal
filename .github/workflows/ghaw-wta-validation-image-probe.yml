@@ -53,7 +53,29 @@ jobs:
           New-Item -ItemType Directory -Path $evidence | Out-Null
           $sourceSha = git -C trusted-source rev-parse HEAD
           if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-f]{40}$') { throw 'Cannot identify trusted base HEAD.' }
-          $drive = Get-PSDrive -Name C
+          $dockerRaw = docker info --format '{{json .}}'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify Docker storage.' }
+          $dockerInfo = $dockerRaw | ConvertFrom-Json
+          if ($dockerInfo.OSType -ne 'windows' -or -not [IO.Path]::IsPathFullyQualified($dockerInfo.DockerRootDir)) {
+              throw 'Windows Docker daemon/storage is unavailable.'
+          }
+          $storage = @(
+              @{ purpose = 'Docker layers and guest outputs'; path = $dockerInfo.DockerRootDir; allocation = 25GB },
+              @{ purpose = 'Host public Rust'; path = $env:USERPROFILE; allocation = 1GB },
+              @{ purpose = 'Public Cargo cache and evidence'; path = $env:RUNNER_TEMP; allocation = 1536MB },
+              @{ purpose = 'Trusted source'; path = $env:GITHUB_WORKSPACE; allocation = 512MB }
+          )
+          $budgets = @{}
+          foreach ($item in $storage) {
+              $volume = @(Get-Volume -FilePath $item.path -ErrorAction Stop)
+              if ($volume.Count -ne 1) { throw 'Cannot resolve an actual storage volume.' }
+              $item.volumeId = $volume[0].UniqueId
+              $item.freeBytes = $volume[0].SizeRemaining
+              if (-not $budgets.ContainsKey($item.volumeId)) {
+                  $budgets[$item.volumeId] = @{ free = $item.freeBytes; required = 2GB }
+              }
+              $budgets[$item.volumeId].required += $item.allocation
+          }
           $receipt = [ordered]@{
             definitionSha = $env:GITHUB_SHA
             sourceRepository = 'microsoft/intelligent-terminal'
@@ -66,12 +88,14 @@ jobs:
             osVersion = [Environment]::OSVersion.Version.ToString()
             baseDigest = 'sha256:22505496dd4229dba63453ba0c6dc31c06fd3e11810e5b8e429aa6b16dab2457'
             baseOsVersion = '10.0.26100.33438'
-            diskFreeBytes = $drive.Free
-            diskRequiredBytes = 35GB
+            storage = $storage
+            capacityPolicy = 'Experimental estimates plus 2 GiB reserve per actual volume; not a measured image footprint'
             isolationClaim = 'process isolation only; shared host kernel, not hardware isolation'
           }
-          $receipt | ConvertTo-Json | Set-Content (Join-Path $evidence 'source.json')
-          if ($drive.Free -lt 35GB) { throw 'Insufficient disk for bounded image proof; no broad pruning will be attempted.' }
+          $receipt | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $evidence 'source.json')
+          if (@($budgets.Values | Where-Object { $_.free -lt $_.required }).Count -ne 0) {
+              throw 'Actual storage does not meet the experimental allocation; no pruning or relocation will be attempted.'
+          }
           if ($sourceSha -ne 'c40ab2727a3c5c498d320ffe90b761f2982c561f') { throw 'Unexpected trusted baseline commit.' }
           if ([Environment]::OSVersion.Version.Build -ne 26100) { throw 'Runner Windows build no longer matches the pinned base.' }
           $osType = docker info --format '{{.OSType}}'
@@ -113,6 +137,13 @@ jobs:
           docker build --isolation=process --iidfile $iid $context 2>&1 |
             Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'wta-image-evidence\build.log')
           if ($LASTEXITCODE -ne 0) { throw 'Trusted validation image build failed.' }
+          $storage = (Get-Content (Join-Path $env:RUNNER_TEMP 'wta-image-evidence\source.json') -Raw | ConvertFrom-Json).storage
+          $remaining = @($storage | ForEach-Object {
+              $volume = @(Get-Volume -FilePath $_.path -ErrorAction Stop)[0]
+              @{ purpose = $_.purpose; freeBytes = $volume.SizeRemaining }
+          })
+          $remaining | ConvertTo-Json | Set-Content (Join-Path $env:RUNNER_TEMP 'wta-image-evidence\storage-after-build.json')
+          if (@($remaining | Where-Object freeBytes -lt 2GB).Count -ne 0) { throw 'Image build exhausted the retained disk reserve.' }
           $image = (Get-Content -LiteralPath $iid -Raw).Trim()
           if ($image -notmatch '^sha256:[0-9a-f]{64}$') { throw 'Missing immutable image ID.' }
           $manifest = docker image inspect $image
@@ -152,6 +183,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect final test exit.' }
           $inspection | Set-Content (Join-Path $evidence 'container-final.json')
           $container = @($inspection | ConvertFrom-Json)[0]
+          $storage = (Get-Content (Join-Path $evidence 'source.json') -Raw | ConvertFrom-Json).storage
+          $remaining = @($storage | ForEach-Object {
+              $volume = @(Get-Volume -FilePath $_.path -ErrorAction Stop)[0]
+              @{ purpose = $_.purpose; freeBytes = $volume.SizeRemaining }
+          })
+          $remaining | ConvertTo-Json | Set-Content (Join-Path $evidence 'storage-after-tests.json')
+          if (@($remaining | Where-Object freeBytes -lt 2GB).Count -ne 0) { throw 'Validation exhausted the retained disk reserve.' }
           if ($attachExit -ne 0 -or $container.State.Running -or $container.State.ExitCode -ne 0 -or
               $container.State.OOMKilled -or $container.State.Error) {
             throw "WTA container tests failed: attach=$attachExit, exit=$($container.State.ExitCode)."
