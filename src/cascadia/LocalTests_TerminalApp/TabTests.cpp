@@ -351,7 +351,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentCreationOwnsProviderBeforeHooks);
         TEST_METHOD(NativeAgentResumeSeedsProviderBeforeContent);
         TEST_METHOD(NativeAgentPreHookPersistenceRestoresTabAndSplit);
-        TEST_METHOD(HorizontalNativeIconSelectionRetemplatesReusableMasks);
+        TEST_METHOD(HorizontalNativeIconSelectionAppliesTemplateAgainWithReusableMasks);
         TEST_METHOD(VerticalTabThemeChangesDoNotReprojectPanes);
         TEST_METHOD(VerticalTabColorsFollowSidebarTheme);
         TEST_METHOD(VerticalTabStripUsesNativeInteractionStates);
@@ -10970,7 +10970,7 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::HorizontalNativeIconSelectionRetemplatesReusableMasks()
+    void TabTests::HorizontalNativeIconSelectionAppliesTemplateAgainWithReusableMasks()
     {
         using namespace winrt::Windows::Graphics::Imaging;
         for (const auto provider : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"generic" })
