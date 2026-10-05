@@ -31,7 +31,7 @@ function fail(message) {
 
 function text(value, name, max = 600) {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > max) {
-    fail(`${name} must be a non-empty string of at most ${max} characters`);
+    fail(`${name} must be a non-empty string of at most ${max} characters; received ${typeof value === 'string' ? value.length : 'non-string'} characters`);
   }
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)) {
     fail(`${name} contains a control character`);
@@ -432,7 +432,7 @@ export function attestChecks(report, headSha, wtaTestsPassed, patchText = '') {
       name: 'wta-tests',
       status: 'pass',
       headSha,
-      evidence: 'local command: trusted isolated container: cargo test --locked --offline --manifest-path tools/wta/Cargo.toml (exit 0) against the final patch',
+      evidence: 'local command: trusted isolated Windows container: cargo test --locked --offline --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml (exit 0) against the final patch',
     };
     if (existing >= 0) checks[existing] = attested;
     else checks.push(attested);
@@ -601,6 +601,14 @@ function main() {
     writeFileSync(option('--status'), report.findings.some(finding => finding.severity === 'high' && finding.fixDisposition.state !== 'fixed') ? 'blocking\n' : 'pass\n', { flag: 'wx' });
     return;
   }
+  if (command === 'check-report') {
+    const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
+    const report = JSON.parse(readFileSync(option('--report'), 'utf8'));
+    if (scope.mode === 'repair') validateProposal(report, scope);
+    else validateReport(report, scope);
+    console.log('Report contract is valid; this is not a publication or test attestation.');
+    return;
+  }
   if (command === 'attest') {
     const report = JSON.parse(readFileSync(option('--report'), 'utf8'));
     const passed = process.argv.includes('--wta-tests-passed');
@@ -648,7 +656,7 @@ function main() {
     }
     return;
   }
-  fail('expected scope, init-report, validate-proposal, validate-repair-scope, stage-repair, attest, validate, validate-output, or enforce command');
+  fail('expected scope, init-report, check-report, validate-proposal, validate-repair-scope, stage-repair, attest, validate, validate-output, or enforce command');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

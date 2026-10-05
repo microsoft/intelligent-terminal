@@ -80,7 +80,10 @@ review reasoning and the structured report.
    validation check. Preserve their real provenance, not invented command
    evidence. Only trusted final-patch execution can attest a validation PASS.
 6. Remove false positives, documented intended boundary behavior, duplicates,
-   and unrelated pre-existing problems.
+   and unrelated pre-existing problems. An ordinary OS failure, OOM condition,
+   or startup exception is not a security finding without a source-supported
+   attacker path and security impact. Do not report intentional fail-closed
+   behavior as a regression or recommend restoring silent unsafe degradation.
 7. In `repair` mode only, propose an automatic fix when all are true:
    - severity and confidence are both HIGH;
    - repository-specific source evidence is strong;
@@ -182,6 +185,35 @@ The completed JSON has this shape:
 }
 ```
 
+### Required report limits and final self-check
+
+Keep `summary` to **800 characters maximum**; put traces in findings, not the
+summary. Finding prose fields have a **600-character maximum**; evidence
+references use **300**, evidence details **500**, disposition/review reasons
+**500**, and patch summaries **300**. Use at most 20 findings and 12 checks.
+Domain labels from the scope are not report categories.
+
+Accepted finding categories are `cpp-lifetime`, `memory-safety`,
+`com-authorization`, `command-path`, `session-routing`, `agent-input`,
+`confirmation`, `secret-handling`, `filesystem`, `packaging`,
+`workflow-security`, and `dependency-security`. There is no `cpp-memory`
+category. HIGH guide findings use `blocked`; **medium/low always use
+`advice-only`**, even though the worker is read-only.
+
+After writing the report, run the existing trusted validator through the
+permitted PowerShell operation, before calling `noop`:
+
+```powershell
+$validator = Join-Path $env:RUNNER_TEMP 'gh-aw/security-review-check.mjs'
+& node $validator check-report --scope /tmp/gh-aw/security-scope.json --report /tmp/gh-aw/agent/security-findings.json
+if ($LASTEXITCODE -ne 0) { throw 'Repair the report contract errors before emitting noop.' }
+```
+
+Correct reported field errors directly and recheck the changed report. Do not
+expand limits, truncate evidence mechanically, invent categories, or retry
+denied writing tools. Read-only self-check is advisory; native post-validation
+still recomputes immutable scope and controls publication.
+
 Use an empty `findings` array when no regression is found. Use only categories
 and check names accepted by the trusted validator. Mark unavailable checks
 `skipped` or `blocked` with a precise reason. Agent reports never claim `fixed`;
@@ -216,7 +248,8 @@ trusted controller publishes only after a successful worker and validated
 artifact:
 
 - same-repository repair: index-only commit based on the reviewed head and a
-  non-force fast-forward push, which fails atomically if the branch raced;
+  push with an explicit expected-head lease and independently enforced
+  fast-forward candidate; branch rewinds and advances are rejected atomically;
 - fork guidance: one idempotent comment containing only the trusted rendered
   report;
 - no patch/findings: no publication.

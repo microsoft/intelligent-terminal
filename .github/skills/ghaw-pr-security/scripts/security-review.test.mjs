@@ -110,6 +110,14 @@ test('accepts no-findings and medium advice-only reports', () => {
     }],
   });
   assert.match(validateReport(candidate, scope()).findings[0].id, /^ITSEC-[A-F0-9]{12}$/);
+  const wrongDomain = structuredClone(candidate);
+  wrongDomain.findings[0].category = 'cpp-memory';
+  assert.throws(() => validateReport(wrongDomain, scope()), /invalid classification/);
+  const wrongDisposition = structuredClone(candidate);
+  wrongDisposition.findings[0].fixDisposition.state = 'blocked';
+  assert.throws(() => validateReport(wrongDisposition, scope()), /invalid fix disposition/);
+  assert.throws(() => validateReport({ ...candidate, summary: 's'.repeat(801) }, scope()), /at most 800/);
+  assert.doesNotThrow(() => validateReport({ ...candidate, summary: 's'.repeat(800) }, scope()));
 });
 
 test('accepts wrong-session HIGH as blocking and renders it first', () => {
@@ -242,7 +250,7 @@ test('only trusted post-step attestation can authorize a passing repair check', 
   assert.equal(unattested.checks.some(check => check.name === 'wta-tests' && check.status === 'pass'), false);
   const attested = attestChecks(claimed, HEAD, true);
   assert.doesNotThrow(() => validateReport(attested, current));
-  assert.match(attested.checks.find(check => check.name === 'wta-tests').evidence, /trusted isolated container:/);
+  assert.match(attested.checks.find(check => check.name === 'wta-tests').evidence, /trusted isolated Windows container:/);
 });
 
 test('automatic repair accepts only modifications to existing WTA Rust source', () => {
@@ -497,6 +505,7 @@ test('native CLI and permitted PowerShell report writes work end to end', () => 
   const invoke = (...args) => spawnSync(process.execPath, [validator, ...args], {
     cwd: workspace, encoding: 'utf8', timeout: 30_000,
   });
+
   const git = (...args) => execFileSync('git', args, {
     cwd: workspace, encoding: 'utf8', timeout: 30_000,
   }).trim();
@@ -533,6 +542,9 @@ test('native CLI and permitted PowerShell report writes work end to end', () => 
       result = validate();
       assert.equal(result.status, 1);
       assert.match(result.stderr, /summary/);
+      result = invoke('check-report', '--scope', scopePath, '--report', reportPath);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /summary/);
       result = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-Command', `
         $ErrorActionPreference = 'Stop'
         $path = $env:SECURITY_REPORT_PATH
@@ -547,6 +559,8 @@ test('native CLI and permitted PowerShell report writes work end to end', () => 
       assert.equal(result.status, 0, result.stderr || result.error?.message);
       result = validate();
       assert.equal(result.status, 0, result.stderr);
+      result = invoke('check-report', '--scope', scopePath, '--report', reportPath);
+      assert.equal(result.status, 0, result.stderr);
       assert.equal(readFileSync(status, 'utf8'), 'pass\n');
       const queue = join(artifacts, `${mode}-queue.json`);
       writeFileSync(queue, JSON.stringify({ items: [{ type: 'noop' }], errors: [] }));
@@ -557,6 +571,58 @@ test('native CLI and permitted PowerShell report writes work end to end', () => 
       assert.equal(result.status, 1);
       assert.match(result.stderr, /exactly one noop/);
     }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('repair publication requires the exact reviewed head even after a branch rewind', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ghaw-security-publication-race-'));
+  const checkout = join(root, 'checkout');
+  const remote = join(root, 'remote.git');
+  mkdirSync(checkout);
+  const git = (...args) => execFileSync('git', args, {
+    cwd: checkout, encoding: 'utf8', timeout: 30_000,
+  }).trim();
+  const updateRemote = sha => git('--git-dir', remote, 'update-ref', 'refs/heads/reviewed', sha);
+  try {
+    git('init', '--quiet');
+    git('init', '--quiet', '--bare', remote);
+    git('config', 'user.name', 'Local publication fixture');
+    git('config', 'user.email', 'fixture@example.invalid');
+    git('remote', 'add', 'origin', remote);
+    git('commit', '--quiet', '--allow-empty', '-m', 'Base');
+    const base = git('rev-parse', 'HEAD');
+    git('commit', '--quiet', '--allow-empty', '-m', 'Reviewed head');
+    const reviewed = git('rev-parse', 'HEAD');
+    git('push', '--quiet', 'origin', 'HEAD:refs/heads/reviewed');
+    git('commit', '--quiet', '--allow-empty', '-m', 'Validated repair');
+    const repair = git('rev-parse', 'HEAD');
+    git('merge-base', '--is-ancestor', reviewed, repair);
+    const publish = () => spawnSync('git', [
+      'push', '--quiet', `--force-with-lease=refs/heads/reviewed:${reviewed}`,
+      'origin', `${repair}:refs/heads/reviewed`,
+    ], { cwd: checkout, encoding: 'utf8', timeout: 30_000 });
+    let result = publish();
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/reviewed'), repair);
+    updateRemote(base);
+    // A non-force push alone accepts this race and restores removed history.
+    git('push', '--quiet', 'origin', `${repair}:refs/heads/reviewed`);
+    updateRemote(base);
+    result = publish();
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /stale info|rejected/);
+    assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/reviewed'), base);
+    updateRemote(repair);
+    result = publish();
+    assert.equal(result.status, 0, result.stderr);
+    git('commit', '--quiet', '--allow-empty', '-m', 'Concurrent branch advance');
+    const advanced = git('rev-parse', 'HEAD');
+    git('push', '--quiet', 'origin', `${advanced}:refs/heads/reviewed`);
+    result = publish();
+    assert.notEqual(result.status, 0);
+    assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/reviewed'), advanced);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

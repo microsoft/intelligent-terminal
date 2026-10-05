@@ -111,6 +111,7 @@ steps:
       trusted_dir="$RUNNER_TEMP/gh-aw/security-guide-test-trusted"
       mkdir -p "$trusted_dir" /tmp/gh-aw/agent
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review.mjs" > "$trusted_dir/security-review.mjs"
+      cp "$trusted_dir/security-review.mjs" "$RUNNER_TEMP/gh-aw/security-review-check.mjs"
       node "$trusted_dir/security-review.mjs" scope \
         --base c40ab2727a3c5c498d320ffe90b761f2982c561f \
         --head 6e3a41af0a66727dd20dcf0e89b8f467e09db059 \
@@ -207,7 +208,7 @@ post-steps:
 
 timeout-minutes: 25
 max-ai-credits: 400
-max-daily-ai-credits: 400
+max-daily-ai-credits: 800
 
 concurrency:
   group: ghaw-pr-security-guide-test-20261006
@@ -233,6 +234,11 @@ preserving every identity field and an empty `patch`. Do not recreate the
 report envelope, write runtime agent output, add report wrappers, run another
 agent or CLI session, probe denied tools, or expose secret-bearing source data.
 The shared skill supplies all review reasoning and the report contract.
+Use the permitted inline `pwsh` file operations immediately, not bash heredocs,
+redirection, temporary payload files, or the edit tool. Run the trusted
+`check-report` operation from the skill before `noop`; a JSON parse alone is not
+a contract check. Keep the summary under 800 characters, use only accepted
+categories, and mark medium/low findings `advice-only`.
 
 Call `noop` exactly once, including when HIGH findings remain blocked. Do not
 emit comments, commits, issues, check runs, or any other output. The trusted
