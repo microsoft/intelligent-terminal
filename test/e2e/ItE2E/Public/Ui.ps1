@@ -40,7 +40,7 @@ function Get-UiTarget {
 # WT's accelerator handler. Foreground-focus dependent (so a bit fragile under parallel runs /
 # a locked session), hence the SetForegroundWindow + verify + retry below.
 function Initialize-WtWin32Input {
-    if ('ItWtWin32Input' -as [type]) { return }
+    if ('ItE2E.ItWtWin32Input' -as [type]) { return }
     Add-Type -Namespace 'ItE2E' -Name 'ItWtWin32Input' -MemberDefinition @'
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
@@ -51,8 +51,19 @@ function Initialize-WtWin32Input {
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(uint dwProcessId);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
+    [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint command);
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
+    [DllImport("user32.dll")] public static extern bool CloseDesktop(IntPtr desktop);
     [DllImport("user32.dll", SetLastError=true)] public static extern bool GetCursorPos(out POINT point);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT point);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint message, UIntPtr wParam, IntPtr lParam, uint flags, uint timeout, out UIntPtr result);
     [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int virtualKey);
     [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint count, INPUT[] inputs, int size);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
@@ -75,6 +86,9 @@ function Initialize-WtWin32Input {
         public int X;
         public int Y;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left, Top, Right, Bottom; }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct MOUSEINPUT {
@@ -103,6 +117,19 @@ function Initialize-WtWin32Input {
         return pid;
     }
 
+    public static bool IsOwnedRootOrPopup(IntPtr window, IntPtr root, uint pid) {
+        if (!IsWindow(root) || GetAncestor(root, 2) != root || GetWindowProcessId(root) != pid)
+            return false;
+        for (int depth = 0; window != IntPtr.Zero && depth < 32; depth++) {
+            if (!IsWindow(window) || GetWindowProcessId(window) != pid) return false;
+            window = GetAncestor(window, 2);
+            if (window == root) return true;
+            if (GetWindowProcessId(window) != pid) return false;
+            window = GetWindow(window, 4); // GW_OWNER, bounded and same-process at every hop.
+        }
+        return false;
+    }
+
     public static int[] GetCursorPosition() {
         POINT point;
         if (!GetCursorPos(out point)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
@@ -124,28 +151,83 @@ function Initialize-WtWin32Input {
         return true;
     }
 
-    // Aggressively bring a window to the foreground, defeating the foreground-lock that otherwise
-    // makes SetForegroundWindow a no-op when the caller doesn't own foreground. Combines every
-    // documented workaround: zero the foreground-lock timeout, tap ALT (registers input from this
-    // context so Windows permits the switch), AllowSetForegroundWindow, attach to the current
-    // foreground thread's input queue, un-minimize, and push the window active/focused. Returns
-    // true only if the window actually holds the foreground afterwards.
+    public static int[] LastCaptionPoint;
+    public static string CaptionActivationResult;
+
+    public static bool ClickOwnedPoint(IntPtr root, uint pid, int x, int y) {
+        var inputs = new INPUT[2];
+        inputs[0].data.mouse.dwFlags = 2;
+        inputs[1].data.mouse.dwFlags = 4;
+        foreach (int key in new int[] { 1, 2, 4, 5, 6, 16, 17, 18, 91, 92 })
+            if (IsKeyDown(key)) return false;
+        POINT cursor;
+        if (!IsWindow(root) || GetAncestor(root, 2) != root || GetWindowProcessId(root) != pid ||
+            !GetCursorPos(out cursor) || cursor.X != x || cursor.Y != y) return false;
+        IntPtr pointWindow = WindowFromPoint(cursor);
+        if (GetAncestor(pointWindow, 2) != root || GetWindowProcessId(pointWindow) != pid) return false;
+        return SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT))) == 2;
+    }
+
+    // A real caption click can establish last-input ownership when background ASFW is denied.
+    // Never click a covered point or a titlebar control, and never send keys to the old foreground.
+    public static bool ClickOwnedCaption(IntPtr hWnd, uint pid) {
+        LastCaptionPoint = null;
+        CaptionActivationResult = "NoUncoveredOwnedCaption";
+        if (!IsWindow(hWnd) || GetAncestor(hWnd, 2) != hWnd || GetWindowProcessId(hWnd) != pid ||
+            !IsWindowVisible(hWnd) || IsIconic(hWnd)) return false;
+        foreach (int key in new int[] { 1, 2, 4, 16, 17, 18 })
+            if (IsKeyDown(key)) { CaptionActivationResult = "UserInputHeld"; return false; }
+        IntPtr dpi = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        if (dpi == IntPtr.Zero) { CaptionActivationResult = "PhysicalCoordinateContextUnavailable"; return false; }
+        int[] original = null;
+        try {
+            RECT rect;
+            if (!GetWindowRect(hWnd, out rect)) return false;
+            if (!SetWindowPos(hWnd, IntPtr.Zero, 0, 0, 0, 0, 0x13)) return false; // NOACTIVATE | NOMOVE | NOSIZE
+            original = GetCursorPosition();
+            for (int yOffset = 8; yOffset <= 32; yOffset += 8) {
+                for (int fraction = 3; fraction <= 7; fraction++) {
+                    POINT point = new POINT {
+                        X = rect.Left + (rect.Right - rect.Left) * fraction / 10,
+                        Y = rect.Top + yOffset
+                    };
+                    if (point.X < -32768 || point.X > 32767 || point.Y < -32768 || point.Y > 32767) continue;
+                    if (GetAncestor(WindowFromPoint(point), 2) != hWnd) continue;
+                    UIntPtr hit;
+                    IntPtr packed = new IntPtr(unchecked((point.Y << 16) | (point.X & 0xffff)));
+                    if (SendMessageTimeout(hWnd, 0x84, UIntPtr.Zero, packed, 0x22, 500, out hit) == IntPtr.Zero ||
+                        hit.ToUInt64() != 2) continue; // WM_NCHITTEST must return HTCAPTION.
+                    if (!SetCursorPos(point.X, point.Y)) return false;
+                    if (!IsWindow(hWnd) || GetWindowProcessId(hWnd) != pid ||
+                        GetAncestor(WindowFromPoint(point), 2) != hWnd) return false;
+                    if (SendMessageTimeout(hWnd, 0x84, UIntPtr.Zero, packed, 0x22, 500, out hit) == IntPtr.Zero ||
+                        hit.ToUInt64() != 2) return false;
+                    LastCaptionPoint = new int[] { point.X, point.Y };
+                    if (!ClickOwnedPoint(hWnd, pid, point.X, point.Y)) {
+                        CaptionActivationResult = "OwnedPointOrInputRejected";
+                        return false;
+                    }
+                    System.Threading.Thread.Sleep(150);
+                    CaptionActivationResult = GetForegroundWindow() == hWnd ? "OwnedForegroundConfirmed" : "ClickDidNotAcquireForeground";
+                    return GetForegroundWindow() == hWnd;
+                }
+            }
+            return false;
+        }
+        finally {
+            if (original != null) SetCursorPos(original[0], original[1]);
+            if (dpi != IntPtr.Zero) SetThreadDpiAwarenessContext(dpi);
+        }
+    }
+
+    // Attach only to the selected target. Never inject an ALT into an unrelated foreground app
+    // or change the user's global foreground-lock settings.
     public static bool ForceForeground(IntPtr hWnd) {
-        if (GetForegroundWindow() == hWnd) return true;
-
-        uint prev = 0; SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, ref prev, 0);
-        uint zero = 0; SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, ref zero, SPIF_SENDCHANGE);
-
-        // Tap ALT: Windows allows a foreground change if the calling thread received the last input.
-        keybd_event(VK_MENU, 0, 0, System.UIntPtr.Zero);
-        keybd_event(VK_MENU, 0, KEYUP, System.UIntPtr.Zero);
-
-        AllowSetForegroundWindow(ASFW_ANY);
-
+        if (!IsWindow(hWnd) || GetAncestor(hWnd, 2) != hWnd) return false;
+        AllowSetForegroundWindow(GetWindowProcessId(hWnd));
         uint tidThis = GetCurrentThreadId();
-        IntPtr fg = GetForegroundWindow();
-        uint fgPid; uint tidFg = (fg == IntPtr.Zero) ? 0 : GetWindowThreadProcessId(fg, out fgPid);
-        bool attached = (tidFg != 0 && tidFg != tidThis) && AttachThreadInput(tidThis, tidFg, true);
+        uint targetPid; uint tidTarget = GetWindowThreadProcessId(hWnd, out targetPid);
+        bool attached = tidTarget != tidThis && AttachThreadInput(tidThis, tidTarget, true);
         try {
             if (IsIconic(hWnd)) { ShowWindow(hWnd, SW_RESTORE); }
             BringWindowToTop(hWnd);
@@ -154,10 +236,8 @@ function Initialize-WtWin32Input {
             SetFocus(hWnd);
         }
         finally {
-            if (attached) { AttachThreadInput(tidThis, tidFg, false); }
-            uint restore = prev; SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, ref restore, SPIF_SENDCHANGE);
+            if (attached) { AttachThreadInput(tidThis, tidTarget, false); }
         }
-        System.Threading.Thread.Sleep(120);
         return GetForegroundWindow() == hWnd;
     }
 '@
@@ -169,6 +249,8 @@ function Set-WtWindowForeground {
         Ensure the WT window IS in the foreground so a subsequent window-level key send lands on it.
         Applies the full foreground-forcing combo (see ForceForeground) and RETRIES until the window
         actually holds the foreground or the attempts run out.
+        Explicit RequireOwnedForeground contexts may then use one identity-checked, uncovered
+        HTCAPTION mouse click, preserving the cursor. No input is sent to a foreign window.
     .OUTPUTS
         [bool] $true if the WT window is confirmed foreground; $false if it could not be forced
         (a competing foreground app is holding it — caller should treat as a precondition skip).
@@ -179,11 +261,66 @@ function Set-WtWindowForeground {
         if (-not $App.Hwnd) { throw "Set-WtWindowForeground needs `$App.Hwnd (launch via Start-Terminal)." }
         Initialize-WtWin32Input
         $hwnd = [IntPtr][int64]$App.Hwnd
+        $root = [ItE2E.ItWtWin32Input]::GetAncestor($hwnd, 2)
+        if ($root -ne [IntPtr]::Zero -and [ItE2E.ItWtWin32Input]::GetWindowProcessId($root) -eq $App.Pid) {
+            $hwnd = $root
+            $App.Hwnd = $root.ToInt64()
+        }
+        if ([ItE2E.ItWtWin32Input]::GetWindowProcessId($hwnd) -ne $App.Pid) {
+            throw 'Foreground target no longer belongs to the selected Terminal process.'
+        }
+        if ($App.PSObject.Properties['RequireOwnedForeground'] -and $App.RequireOwnedForeground) {
+            if (-not $App.Launched -or -not $App.OwnedProcess -or $App.OwnedProcess.HasExited -or
+                $App.OwnedProcess.Id -ne $App.Pid -or
+                $App.OwnedProcess.Path -ne (Join-Path $App.InstallLocation 'WindowsTerminal.exe')) {
+                throw 'Foreground acquisition requires the original test-owned executable identity.'
+            }
+            $current = Get-Process -Id $App.Pid -ErrorAction Stop
+            if ($current.StartTime -ne $App.OwnedProcess.StartTime -or $current.Path -ne $App.OwnedProcess.Path) {
+                throw 'Foreground acquisition requires the captured process/start-time lease.'
+            }
+            if ([ItE2E.ItWtWin32Input]::IsOwnedRootOrPopup(
+                [ItE2E.ItWtWin32Input]::GetForegroundWindow(), $hwnd, [uint32]$App.Pid)) {
+                return $true
+            }
+        }
+        try {
+            $desktop = [ItE2E.ItWtWin32Input]::OpenInputDesktop(0, $false, 1)
+            if ($desktop -eq [IntPtr]::Zero) { throw 'Interactive input desktop unavailable; stop the batch before sending input.' }
+            [void][ItE2E.ItWtWin32Input]::CloseDesktop($desktop)
+            $null = [ItE2E.ItWtWin32Input]::GetCursorPosition()
+        }
+        catch {
+            if ($env:ITE2E_INPUT_FAILURE_RECEIPT) {
+                @{ reason = 'InputDesktopUnavailable'; at = [datetimeoffset]::UtcNow.ToString('o')
+                    error = $_.Exception.Message; owned_pid = $App.Pid; hwnd = $hwnd.ToInt64()
+                } | ConvertTo-Json | Set-Content -LiteralPath $env:ITE2E_INPUT_FAILURE_RECEIPT
+            }
+            throw
+        }
         for ($i = 0; $i -lt $Attempts; $i++) {
             if ([ItE2E.ItWtWin32Input]::ForceForeground($hwnd)) { return $true }
             Start-Sleep -Milliseconds $DelayMs
         }
-        [ItE2E.ItWtWin32Input]::ForceForeground($hwnd)
+        if ($App.PSObject.Properties['RequireOwnedForeground'] -and $App.RequireOwnedForeground) {
+            $current = Get-Process -Id $App.Pid -ErrorAction Stop
+            if ($current.StartTime -ne $App.OwnedProcess.StartTime -or
+                $current.Path -ne $App.OwnedProcess.Path -or $App.OwnedProcess.HasExited) {
+                throw 'Caption activation requires the original live test-owned process/start-time identity.'
+            }
+            if ([ItE2E.ItWtWin32Input]::ClickOwnedCaption($hwnd, [uint32]$App.Pid)) { return $true }
+        }
+        if ($env:ITE2E_INPUT_FAILURE_RECEIPT) {
+            @{
+                reason = 'OwnedForegroundUnavailable'; at = [datetimeoffset]::UtcNow.ToString('o')
+                hwnd = $hwnd.ToInt64(); owned_pid = $App.Pid
+                foreground_hwnd = [ItE2E.ItWtWin32Input]::GetForegroundWindow().ToInt64()
+                foreground_pid = [ItE2E.ItWtWin32Input]::GetWindowProcessId([ItE2E.ItWtWin32Input]::GetForegroundWindow())
+                caption_activation = [ItE2E.ItWtWin32Input]::CaptionActivationResult
+                caption_point = [ItE2E.ItWtWin32Input]::LastCaptionPoint
+            } | ConvertTo-Json | Set-Content -LiteralPath $env:ITE2E_INPUT_FAILURE_RECEIPT
+        }
+        $false
     }
 }
 
@@ -351,11 +488,74 @@ function Invoke-WinAppUi {
         (ExitCode/StdOut/StdErr). Telemetry is opted out.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)]$App, [Parameter(Mandatory)][string[]]$UiArgs, [int]$TimeoutSec = 30, [switch]$NoTarget)
+    param([Parameter(Mandatory)]$App, [Parameter(Mandatory)][AllowEmptyString()][string[]]$UiArgs, [int]$TimeoutSec = 30, [switch]$NoTarget)
     $winapp = Get-WinAppPath
     $args = @('ui') + $UiArgs
+    if ($App.PSObject.Properties['RequireOwnedForeground'] -and $App.RequireOwnedForeground -and
+        $UiArgs[0] -in @('click', 'invoke', 'set-value')) {
+        if ($NoTarget -or -not $App.Launched -or -not $App.OwnedProcess -or
+            $App.OwnedProcess.HasExited -or $App.OwnedProcess.Id -ne $App.Pid) {
+            throw 'UI input requires the captured live test-owned Terminal.'
+        }
+        Initialize-WtWin32Input
+        $hwnd = [IntPtr][int64]$App.Hwnd
+        $current = Get-Process -Id $App.Pid -ErrorAction Stop
+        if ($current.StartTime -ne $App.OwnedProcess.StartTime -or
+            $current.Path -ne (Join-Path $App.InstallLocation 'WindowsTerminal.exe') -or
+            [ItE2E.ItWtWin32Input]::GetAncestor($hwnd, 2) -ne $hwnd -or
+            [ItE2E.ItWtWin32Input]::GetWindowProcessId($hwnd) -ne $App.Pid -or
+            @($UiArgs | Where-Object { $_ -match '^(?:-a|-w|--app|--window)(?:=|$)' }).Count) {
+            throw 'UI input requires the original root-scoped HWND and process/start-time lease.'
+        }
+        # invoke and set-value use UIA patterns, not physical input (winapp 0.6.1 help).
+        # Refocusing the root here can dismiss the owned popup containing the target.
+        if ($UiArgs[0] -eq 'click' -and -not (Set-WtWindowForeground -App $App -Attempts 3 -DelayMs 150)) {
+            $foregroundPid = [ItE2E.ItWtWin32Input]::GetWindowProcessId(
+                [ItE2E.ItWtWin32Input]::GetForegroundWindow())
+            throw "Owned Terminal cannot acquire foreground; competing PID=$foregroundPid. No UI input sent."
+        }
+    }
     if (-not $NoTarget) { $args += (Get-UiTarget -App $App) }
-    Invoke-Native -FilePath $winapp -Arguments $args -TimeoutSec $TimeoutSec -Environment @{ WINAPP_CLI_TELEMETRY_OPTOUT = '1' }
+    $start = [Diagnostics.ProcessStartInfo]::new($winapp)
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    $start.Environment['WINAPP_CLI_TELEMETRY_OPTOUT'] = '1'
+    foreach ($argument in $args) { $start.ArgumentList.Add($argument) }
+    $process = [Diagnostics.Process]::Start($start)
+    try {
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEndAsync()
+        $timedOut = -not (Wait-ItProcessDeadline -Process $process -TimeoutSec $TimeoutSec)
+        if ($timedOut -and -not $process.HasExited) {
+            [void]$process.CloseMainWindow()
+            if (-not (Wait-ItProcessDeadline -Process $process -TimeoutSec 1)) {
+                if (-not $process.HasExited) { $process.Kill() }
+                if (-not (Wait-ItProcessDeadline -Process $process -TimeoutSec 2)) {
+                    throw 'Owned winapp process did not exit after bounded shutdown.'
+                }
+            }
+        }
+        # Descendants retaining redirected pipes must not turn a bounded process wait into an
+        # unbounded GetResult. Keep failed drains explicit rather than fabricating UI success.
+        $drainDeadline = [datetimeoffset]::UtcNow.AddSeconds(2)
+        $drainClock = [Diagnostics.Stopwatch]::StartNew()
+        while (-not ($stdout.IsCompleted -and $stderr.IsCompleted)) {
+            if (Test-ItProcessDeadline $drainDeadline $drainClock.Elapsed.TotalSeconds 2) {
+                throw 'winapp output streams did not close within the drain deadline.'
+            }
+            Start-Sleep -Milliseconds 50
+        }
+        [pscustomobject]@{
+            ExitCode = if ($timedOut) { -1 } else { $process.ExitCode }
+            StdOut = $stdout.GetAwaiter().GetResult()
+            StdErr = $stderr.GetAwaiter().GetResult()
+            TimedOut = $timedOut
+            Command = "$winapp $($args -join ' ')"
+        }
+    }
+    finally { $process.Dispose() }
 }
 
 function Get-WtWindowHwnds {
@@ -531,7 +731,7 @@ function Invoke-UiMouseDrag {
 
 function Set-UiValue {
     [CmdletBinding()]
-    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Selector, [Parameter(Mandatory)][string]$Value)
+    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Selector, [Parameter(Mandatory)][AllowEmptyString()][string]$Value)
     process {
         $r = Invoke-WinAppUi -App $App -UiArgs @('set-value', $Selector, $Value)
         if ($r.ExitCode -ne 0) { throw "winapp ui set-value '$Selector' failed: $($r.StdErr.Trim())" }

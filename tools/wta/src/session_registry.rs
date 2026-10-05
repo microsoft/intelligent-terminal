@@ -1228,6 +1228,12 @@ pub struct SessionInfo {
     pub updated_at: Option<String>,
     #[serde(default)]
     pub pane_session_id: Option<String>,
+    /// Response-only attribution, resolved from the bound pane by `sessions/list`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_window_id: Option<u64>,
+    /// Response-only whole-tab membership; absent on older or unavailable hosts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_tab: Option<bool>,
     #[serde(default)]
     pub status: Option<AgentStatus>,
     #[serde(default)]
@@ -1293,6 +1299,8 @@ impl SessionInfo {
             title: None,
             updated_at: None,
             pane_session_id: None,
+            owner_window_id: None,
+            background_tab: None,
             status: None,
             cli_source: None,
             current_tool: None,
@@ -1349,6 +1357,8 @@ pub fn agent_session_to_session_info(s: &AgentSession) -> SessionInfo {
         },
         updated_at: None,
         pane_session_id: s.pane_session_id.clone(),
+        owner_window_id: None,
+        background_tab: None,
         status: Some(s.status.clone()),
         cli_source: Some(s.cli_source.clone()),
         current_tool: s.current_tool.clone(),
@@ -3257,6 +3267,8 @@ mod tests {
             title: Some("fix the build".into()),
             updated_at: Some("2026-05-27T12:34:56Z".into()),
             pane_session_id: Some("pane-1".into()),
+            owner_window_id: Some(42),
+            background_tab: Some(false),
             status: Some(crate::agent_sessions::AgentStatus::Attention),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
             current_tool: Some("ask_user".into()),
@@ -3278,6 +3290,22 @@ mod tests {
         assert_eq!(value["cli_source"], "Copilot");
         assert_eq!(value["origin"], "AgentPane");
         assert_eq!(value["last_activity_at_ms"], 1717012345678u64);
+        assert_eq!(value["owner_window_id"], 42u64);
+        assert_eq!(value["background_tab"], false);
+        let mut legacy = value;
+        legacy.as_object_mut().unwrap().remove("owner_window_id");
+        legacy.as_object_mut().unwrap().remove("background_tab");
+        let parsed: SessionInfo = serde_json::from_value(legacy).unwrap();
+        assert_eq!(parsed.owner_window_id, None);
+        assert_eq!(parsed.background_tab, None);
+        for background in [Some(true), Some(false), None] {
+            let mut row = parsed.clone();
+            row.background_tab = background;
+            let value = serde_json::to_value(&row).unwrap();
+            assert_eq!(value.get("background_tab").is_some(), background.is_some());
+            let round_trip: SessionInfo = serde_json::from_value(value).unwrap();
+            assert_eq!(round_trip.background_tab, background);
+        }
     }
 
     #[test]
@@ -3416,6 +3444,8 @@ mod tests {
             title: Some("title".into()),
             updated_at: Some("2026-05-27T12:34:56Z".into()),
             pane_session_id: Some("pane-list".into()),
+            owner_window_id: Some(42),
+            background_tab: Some(false),
             status: Some(crate::agent_sessions::AgentStatus::Idle),
             cli_source: Some(crate::agent_sessions::CliSource::Claude),
             current_tool: None,
@@ -3770,6 +3800,8 @@ mod tests {
             updated_at: None,
             pane_session_id: None,
             status: Some(crate::agent_sessions::AgentStatus::Historical),
+            owner_window_id: None,
+            background_tab: None,
             cli_source: Some(crate::agent_sessions::CliSource::Gemini),
             current_tool: None,
             attention_reason: None,

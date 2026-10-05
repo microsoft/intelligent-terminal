@@ -5,6 +5,13 @@ BeforeAll {
     . (Join-Path $PSScriptRoot '..\tests\helpers\TestTerminalCleanup.ps1')
     Add-Type -AssemblyName UIAutomationClient
     Add-Type -AssemblyName UIAutomationTypes
+    $fixtureAst = [Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $PSScriptRoot '..\tests\Feature.CombinedAgentsSidebar.Tests.ps1'), [ref]$null, [ref]$null)
+    $checkedCleanup = $fixtureAst.FindAll({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-CombinedCheckedCleanup'
+    }, $true)[0]
+    . ([scriptblock]::Create($checkedCleanup.Extent.Text))
 
     function Get-FixtureCleanup([string]$File, [string]$DescribeName) {
         $tokens = $null
@@ -23,6 +30,186 @@ BeforeAll {
         }, $true)[0]
         $body = $cleanup.CommandElements[1].ScriptBlock.Extent.Text
         [scriptblock]::Create($body.Substring(1, $body.Length - 2))
+    }
+}
+
+Describe 'Combined cleanup failure preservation' -Tag 'Unit' {
+    It 'retains original and cleanup exceptions independently' {
+        $primary = [Management.Automation.ErrorRecord]::new([Exception]::new('original'),
+            'original', [Management.Automation.ErrorCategory]::NotSpecified, $null)
+        try {
+            Invoke-CombinedCheckedCleanup -PrimaryFailure $primary -Action { throw 'cleanup' }
+            throw 'Expected aggregate'
+        }
+        catch {
+            $_.Exception | Should -BeOfType ([AggregateException])
+            $_.Exception.InnerExceptions.Count | Should -Be 2
+            $_.Exception.InnerExceptions[0].Message | Should -Be 'original'
+            $_.Exception.InnerExceptions[1].Message | Should -Be 'cleanup'
+        }
+    }
+    It 'never suppresses cleanup failure without a primary failure' {
+        { Invoke-CombinedCheckedCleanup -Action { throw 'cleanup' } } | Should -Throw '*cleanup*'
+    }
+}
+
+Describe 'Combined History target safety' -Tag @('Unit', 'CombinedHistoryTargetSafety') {
+    BeforeAll {
+        $historyFunction = $fixtureAst.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-CombinedHistoryRow'
+        }, $true)[0]
+        . ([scriptblock]::Create($historyFunction.Extent.Text))
+        foreach ($name in @('isReady', 'getTarget')) {
+            $assignment = $historyFunction.FindAll({
+                param($node)
+                $node -is [Management.Automation.Language.AssignmentStatementAst] -and
+                    $node.Left.Extent.Text -eq ('$' + $name)
+            }, $true)[0]
+            . ([scriptblock]::Create($assignment.Extent.Text))
+        }
+        function Get-CombinedSnapshot {}
+        function Get-CombinedElement {}
+        function Get-CombinedRows {}
+        function Get-CombinedRawChildren {}
+        $script:app = [pscustomobject]@{ Pid = 42 }
+        $script:evidence = $TestDrive
+    }
+    It 'rejects clipped rows even with a visible nonzero rectangle' {
+        $list = [pscustomobject]@{ Current = @{ IsOffscreen = $false; BoundingRectangle = @{
+            Left = 10; Top = 10; Right = 110; Bottom = 110; Width = 100; Height = 100
+        } } }
+        $row = [pscustomobject]@{ Current = @{ IsOffscreen = $false; BoundingRectangle = @{
+            Left = 10; Top = 100; Right = 110; Bottom = 130; Width = 100; Height = 30
+        } } }
+        (& $isReady $row $list) | Should -BeFalse
+        $row.Current.BoundingRectangle.Top = 80
+        $row.Current.BoundingRectangle.Bottom = 110
+        (& $isReady $row $list) | Should -BeTrue
+    }
+    It 'rejects a sole row with the wrong controlled title' {
+        $Title = 'intended'
+        Mock Get-UiValue { 'intended' }
+        Mock Get-CombinedRows { [pscustomobject]@{ Current = @{ ProcessId = 42 } } }
+        Mock Get-CombinedRawChildren { [pscustomobject]@{ Current = @{ ControlType = [Windows.Automation.ControlType]::Text; Name = 'other' } } }
+        { & $getTarget } | Should -Throw '*controlled title*'
+    }
+    It 'preserves the original failure when diagnostics see a <Kind> viewport' -ForEach @(
+        @{ Kind = 'null' }, @{ Kind = 'stale' }
+    ) {
+        Mock Get-CombinedSnapshot { throw 'original-target-failure' }
+        Mock Get-CombinedElement {
+            if ($Kind -eq 'stale') { throw 'stale-viewport' }
+            $null
+        }
+        Mock Set-Content {}
+        { Invoke-CombinedHistoryRow -Title intended -SessionId exact } | Should -Throw '*original-target-failure*'
+        Should -Invoke Set-Content -Times 1 -Exactly -ParameterFilter {
+            $Path -like '*history-action-diagnostic-error.json'
+        }
+    }
+}
+
+Describe 'Owned caption foreground safety' -Tag 'Unit' {
+    It 'fails closed on an unknown owned popup without changing foreground' {
+        InModuleScope ItE2E {
+            Initialize-WtWin32Input
+            $foreground = [ItE2E.ItWtWin32Input]::GetForegroundWindow()
+            [ItE2E.ItWtWin32Input]::IsOwnedRootOrPopup([IntPtr]::Zero, [IntPtr]::Zero, 1) | Should -BeFalse
+            [ItE2E.ItWtWin32Input]::GetForegroundWindow() | Should -Be $foreground
+        }
+    }
+    It 'gates physical clicks but does not refocus UIA pattern operations' {
+        InModuleScope ItE2E {
+            $source = (Get-Command Invoke-WinAppUi).Definition
+            $source | Should -Match "\`$UiArgs\[0\] -eq 'click' -and -not \(Set-WtWindowForeground"
+            $source | Should -Match '\$current.StartTime -ne \$App.OwnedProcess.StartTime'
+            $source | Should -Match 'GetAncestor\(\$hwnd, 2\) -ne \$hwnd'
+        }
+    }
+    It 'rejects an invalid root without selecting a click point or changing foreground' {
+        InModuleScope ItE2E {
+            Initialize-WtWin32Input
+            $foreground = [ItE2E.ItWtWin32Input]::GetForegroundWindow()
+            [ItE2E.ItWtWin32Input]::ClickOwnedCaption([IntPtr]::Zero, 1) | Should -BeFalse
+            [ItE2E.ItWtWin32Input]::ClickOwnedPoint([IntPtr]::Zero, 1, 0, 0) | Should -BeFalse
+            [ItE2E.ItWtWin32Input]::LastCaptionPoint | Should -BeNullOrEmpty
+            [ItE2E.ItWtWin32Input]::GetForegroundWindow() | Should -Be $foreground
+        }
+    }
+    It 'rejects a mismatched target PID before acquiring foreground' {
+        $app = [pscustomobject]@{ Hwnd = 1; Pid = 1 }
+        { Set-WtWindowForeground -App $app -Attempts 1 } | Should -Throw '*no longer belongs*'
+    }
+    It 'has no caption injection bypass and guards the final paired mouse input' {
+        $source = Get-Content (Join-Path $PSScriptRoot '..\ItE2E\Public\Ui.ps1') -Raw
+        $caption = [regex]::Match($source, '(?s)public static bool ClickOwnedCaption\b.*?(?=\r?\n    // Attach only)').Value
+        $point = [regex]::Match($source, '(?s)public static bool ClickOwnedPoint\b.*?(?=\r?\n    // A real caption)').Value
+        $caption | Should -Not -BeNullOrEmpty
+        $point | Should -Not -BeNullOrEmpty
+        $caption | Should -Not -Match '\bSendInput\s*\('
+        $caption | Should -Match 'if \(!ClickOwnedPoint\(hWnd, pid, point\.X, point\.Y\)\)'
+        $caption.LastIndexOf('SendMessageTimeout(') | Should -BeLessThan $caption.IndexOf('ClickOwnedPoint(')
+        $point | Should -Match 'new int\[\] \{ 1, 2, 4, 5, 6, 16, 17, 18, 91, 92 \}'
+        $point | Should -Match 'if \(IsKeyDown\(key\)\) return false;'
+        $point | Should -Match 'GetWindowProcessId\(root\) != pid'
+        $point | Should -Match 'cursor\.X != x \|\| cursor\.Y != y'
+        $point | Should -Match 'GetAncestor\(pointWindow, 2\) != root \|\| GetWindowProcessId\(pointWindow\) != pid\) return false'
+        $point | Should -Match 'inputs\[0\]\.data\.mouse\.dwFlags = 2;'
+        $point | Should -Match 'inputs\[1\]\.data\.mouse\.dwFlags = 4;'
+        $point.IndexOf('IsKeyDown(') | Should -BeLessThan $point.IndexOf('GetCursorPos(')
+        $point.IndexOf('GetCursorPos(') | Should -BeLessThan $point.IndexOf('WindowFromPoint(')
+        $point.IndexOf('GetWindowProcessId(pointWindow)') | Should -BeLessThan $point.IndexOf('SendInput(')
+        ([regex]::Matches($point, '\bSendInput\s*\(')).Count | Should -Be 1
+    }
+}
+
+Describe 'Background canonical header context source safety' -Tag 'Unit' {
+    BeforeAll {
+        $script:groupContextSource = $fixtureAst.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+                $node.Name -eq 'Invoke-CombinedOwnedGroupContext'
+        }, $true)[0].Extent.Text
+    }
+    It 'targets the unique canonical header rather than the expanded group container' {
+        $script:groupContextSource | Should -Match 'get-pane-context'
+        $script:groupContextSource | Should -Match '\$tabs \| Where-Object title -eq \$Title'
+        $script:groupContextSource | Should -Match 'BoundingRectangle.Height / 2\) -ge \$toggle.Top'
+        $script:groupContextSource | Should -Match 'BoundingRectangle.Height / 2\) -le \$toggle.Bottom'
+        $script:groupContextSource | Should -Match '\$bounds.Contains\(\$point\)'
+        $script:groupContextSource | Should -Match 'Canonical header geometry changed'
+        $script:groupContextSource | Should -Not -Match '\.SetFocus\(|-Vk 0x79|Invoke-UiMouseDrag'
+    }
+    It 'checks the original lease and immediate Win32 point ownership before paired right input' {
+        $source = $script:groupContextSource
+        $source | Should -Match '\$current.StartTime -ne \$script:app.OwnedProcess.StartTime'
+        $source | Should -Match 'GetForegroundWindow\(\) -ne \$root'
+        $source | Should -Match 'GetAncestor\(\$nativeHit, 2\) -ne \$root'
+        $source | Should -Match 'GetWindowProcessId\(\$nativeHit\) -ne \$script:app.Pid'
+        $source | Should -Match '@\(1, 2, 4, 5, 6, 16, 17, 18, 91, 92\)'
+        $source | Should -Match 'cursor.X -ne \$nativePoint.X'
+        $source | Should -Match 'cursor.Y -ne \$nativePoint.Y'
+        $source.IndexOf('original owned process lease') | Should -BeLessThan $source.IndexOf('::SetCursorPos(')
+        $source.IndexOf('refuses held input.') | Should -BeLessThan $source.IndexOf('::SetCursorPos(')
+        $source | Should -Match '\$cursorMoved -and -not \$clickDelivered'
+        $source | Should -Match 'Cursor restoration refused while a mouse button is held'
+        $source.LastIndexOf('WindowFromPoint(') | Should -BeLessThan $source.IndexOf('::SendInput(')
+        $source | Should -Match '\$mouse.dwFlags = 0x0008'
+        $source | Should -Match '\$mouse.dwFlags = 0x0010'
+        $source | Should -Match 'finally \{\s+\[void\].*SetThreadDpiAwarenessContext\(\$dpi\)'
+        ([regex]::Matches($source, '::SendInput\(')).Count | Should -Be 1
+    }
+    It 'constructs right-down and right-up structs without injecting input' {
+        & (Get-Module ItE2E) { Initialize-WtWin32Input }
+        $source = $script:groupContextSource
+        $start = $source.IndexOf('$down =')
+        $end = $source.IndexOf('$dpi =', $start)
+        . ([scriptblock]::Create($source.Substring($start, $end - $start)))
+        $inputs.Count | Should -Be 2
+        $inputs[0].type | Should -Be 0
+        $inputs[0].data.mouse.dwFlags | Should -Be 8
+        $inputs[1].data.mouse.dwFlags | Should -Be 16
     }
 }
 

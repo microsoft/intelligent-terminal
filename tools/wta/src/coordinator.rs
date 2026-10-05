@@ -803,6 +803,43 @@ pub fn build_delegate_launch_commandline_with_session(
     build_delegate_launch_commandline(runtime, input, session_id)
 }
 
+pub(crate) fn with_windows_delegate_cwd(commandline: &str, cwd: &str) -> Result<String> {
+    anyhow::ensure!(
+        std::path::Path::new(cwd).is_absolute(),
+        "host split requires an absolute Windows working directory"
+    );
+    let executable = split_windows_commandline(commandline)
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("delegate command has no executable"))?;
+    let quoted = quote_windows_commandline_arg(&executable);
+    let always_quoted = format!("\"{executable}\"");
+    let arguments = commandline
+        .strip_prefix(&always_quoted)
+        .or_else(|| commandline.strip_prefix(&quoted))
+        .ok_or_else(|| anyhow!("delegate executable quoting is unsupported"))?
+        .trim_start();
+    // Keep the existing native argument string intact, including cmd /c shim
+    // quoting. Encoded script data bypasses WT's environment-string expansion.
+    let script = format!(
+        "$ErrorActionPreference='Stop';\
+         $p=New-Object System.Diagnostics.Process;\
+         $p.StartInfo.FileName={};\
+         $p.StartInfo.Arguments={};\
+         $p.StartInfo.WorkingDirectory={};\
+         $p.StartInfo.UseShellExecute=$false;\
+         [void]$p.Start();$p.WaitForExit();exit $p.ExitCode",
+        ps_single_quote(&executable),
+        ps_single_quote(arguments),
+        ps_single_quote(cwd),
+    );
+    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    Ok(format!(
+        "powershell.exe -NoLogo -NoProfile -EncodedCommand {}",
+        crate::osc52::base64_encode(&utf16)
+    ))
+}
+
 fn build_delegate_launch_commandline(
     runtime: &DelegateAgentRuntime,
     input: Option<&str>,
@@ -1396,17 +1433,67 @@ pub(crate) fn build_delegate_resume_commandline(
         bail!("delegate agent does not support resume");
     }
     let resolved = resolve_commandline_executable(commandline);
+    if needs_shell_launch(&resolved) {
+        let mut tokens = split_windows_commandline(&resolved);
+        let executable = tokens
+            .first()
+            .ok_or_else(|| anyhow!("delegate agent runtime commandline has no executable"))?;
+        let path = std::path::Path::new(executable);
+        let shim = if path.is_file() {
+            Some(path.to_path_buf())
+        } else if !executable.contains('\\') && !executable.contains('/') {
+            std::env::var_os("PATH").and_then(|path| {
+                std::env::split_paths(&path)
+                    .map(|directory| directory.join(executable))
+                    .find(|candidate| candidate.is_file())
+            })
+        } else {
+            None
+        };
+        let shim =
+            shim.ok_or_else(|| anyhow!("delegate batch resume is unsupported: shim not found"))?;
+        let shim = if shim.is_absolute() {
+            shim
+        } else {
+            std::env::current_dir()
+                .context("resolve delegate batch resume shim")?
+                .join(shim)
+        };
+        let companion = shim.with_extension("ps1");
+        // Never pass a resume id through cmd's parser or fall back to another
+        // PATH-resolved provider. Only the exact shim's companion is supported.
+        if !companion.is_file() {
+            bail!("delegate batch resume is unsupported without an adjacent PowerShell companion");
+        }
+        tokens[0] = shim.to_string_lossy().into_owned();
+        let args: Vec<&str> = tokens.iter().map(String::as_str).collect();
+        let mut invocation =
+            powershell_invocation_tokens(&join_windows_commandline(&args), profile);
+        anyhow::ensure!(
+            invocation.first().map(String::as_str) == companion.to_str(),
+            "delegate batch resume is unsupported: PowerShell companion changed"
+        );
+        invocation.push(profile.resume_flag.to_string());
+        invocation.push(session_id.to_string());
+        let call = invocation
+            .iter()
+            .map(|token| ps_single_quote(token))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let script = format!("$ErrorActionPreference='Stop'; & {call}; exit $LASTEXITCODE");
+        let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        return Ok(format!(
+            "powershell.exe -NoLogo -NoProfile -EncodedCommand {}",
+            crate::osc52::base64_encode(&utf16)
+        ));
+    }
     let resume = format!(
         "{} {} {}",
         resolved,
         profile.resume_flag,
         quote_windows_commandline_arg(session_id)
     );
-    if needs_shell_launch(&resolved) {
-        Ok(format!("cmd /c {resume}"))
-    } else {
-        Ok(resume)
-    }
+    Ok(resume)
 }
 
 pub(crate) fn build_wsl_delegate_resume_commandline(
@@ -3090,19 +3177,109 @@ mod tests {
     }
 
     #[test]
-    fn delegate_resume_wraps_batch_shims_with_cmd() {
-        let root = std::env::temp_dir().join(format!("wta resume shim {}", uuid::Uuid::new_v4()));
+    fn delegate_resume_rejects_batch_shims_without_companion() {
+        let root = std::env::current_dir()
+            .expect("working directory")
+            .join(format!("wta-resume-probe-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("create temp directory");
         let shim = root.join("claude.cmd");
         std::fs::write(&shim, "@echo off").expect("write shim");
 
         let quoted_shim = super::quote_windows_commandline_arg(&shim.to_string_lossy());
         let runtime = base64_runtime(&quoted_shim);
-        let cmd = build_delegate_resume_commandline(&runtime, "abc").expect("cmd");
-        assert!(cmd.starts_with("cmd /c "), "commandline: {cmd}");
-        assert!(cmd.contains("--resume abc"), "commandline: {cmd}");
+        for sid in ["abc", "session&whoami", "%PATH%"] {
+            let error = build_delegate_resume_commandline(&runtime, sid).expect_err("unsupported");
+            assert!(error.to_string().contains("unsupported"), "{error:#}");
+        }
 
-        let _ = std::fs::remove_dir_all(root);
+        std::fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn delegate_resume_batch_companion_preserves_literal_arguments() {
+        struct Fixture(std::path::PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let fixture = Fixture(
+            std::env::current_dir()
+                .expect("working directory")
+                .join(format!("wta resume probe {}", uuid::Uuid::new_v4())),
+        );
+        std::fs::create_dir_all(&fixture.0).expect("create fixture");
+        let record = fixture.0.join("arguments.json");
+        let sentinel = fixture.0.join("injected.txt");
+        let sid = format!(
+            "session&echo injected>\"{}\" &whoami \"quotes\" %PATH% !bang! (paren) apostrophe's 雪",
+            sentinel.display()
+        );
+        for extension in ["cmd", "bat"] {
+            let shim = fixture.0.join(format!("codex.{extension}"));
+            std::fs::write(&shim, "@exit /b 99\r\n").expect("write batch");
+            std::fs::write(
+                shim.with_extension("ps1"),
+                format!(
+                    "[IO.File]::WriteAllText({}, (ConvertTo-Json -InputObject @($args) -Compress)); exit 7",
+                    super::ps_single_quote(record.to_str().expect("UTF-8 record path"))
+                ),
+            )
+            .expect("write companion");
+            let commandline = format!(
+                "{} --search \"prior & %PATH% ' 雪\"",
+                super::quote_windows_commandline_arg(shim.to_str().expect("UTF-8 shim path"))
+            );
+            let runtime = base64_runtime(&commandline);
+            let launch = build_delegate_resume_commandline(&runtime, &sid).expect("safe launch");
+            assert!(launch.starts_with("powershell.exe -NoLogo -NoProfile -EncodedCommand "));
+            assert!(!launch.contains(&sid));
+            let mut child = std::process::Command::new("powershell.exe")
+                .raw_arg(launch.strip_prefix("powershell.exe ").expect("PowerShell"))
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .expect("launch companion");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            let status = loop {
+                if let Some(status) = child.try_wait().expect("poll companion") {
+                    break status;
+                }
+                if std::time::Instant::now() >= deadline {
+                    let _ = std::process::Command::new("taskkill.exe")
+                        .args(["/PID", &child.id().to_string(), "/T", "/F"])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    panic!("resume companion exceeded 10 seconds");
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            };
+            assert_eq!(status.code(), Some(7), "companion exit code");
+            let recorded: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&record).expect("recorded arguments"))
+                    .expect("JSON arguments");
+            assert_eq!(
+                recorded,
+                json!(["--search", "prior & %PATH% ' 雪", "resume", sid])
+            );
+            assert!(!sentinel.exists(), "session id must not execute a command");
+        }
+    }
+
+    #[test]
+    fn delegate_resume_native_exe_keeps_windows_quoting() {
+        let runtime = base64_runtime("codex.exe --search");
+        let sid = "session&whoami \"quote\" %PATH%";
+        assert_eq!(
+            build_delegate_resume_commandline(&runtime, sid).expect("native launch"),
+            format!(
+                "codex.exe --search resume {}",
+                super::quote_windows_commandline_arg(sid)
+            )
+        );
     }
 
     #[test]
@@ -3270,6 +3447,47 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn delegate_host_split_cwd_wrapper_rejects_missing_or_posix_cwd() {
+        assert!(super::with_windows_delegate_cwd("copilot", "").is_err());
+        assert!(super::with_windows_delegate_cwd("copilot", "/home/project").is_err());
+        assert!(super::with_windows_delegate_cwd("", "C:\\project").is_err());
+    }
+
+    #[test]
+    fn delegate_host_split_cwd_wrapper_launches_in_exact_special_character_directory() {
+        let root = std::env::temp_dir().join(format!(
+            "wta split cwd ' & ; %WTA_TEST_UNUSED% ! [x] {}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir(&root).expect("create cwd test directory");
+        let cwd = root.to_str().expect("test cwd is UTF-8");
+        let launch = super::with_windows_delegate_cwd(
+            "powershell.exe -NoLogo -NoProfile -Command \"Write-Output ([Environment]::CurrentDirectory); exit 7\"",
+            cwd,
+        ).expect("build cwd wrapper");
+        assert!(
+            !launch.contains('%'),
+            "cwd must bypass WT environment expansion"
+        );
+        let output = std::process::Command::new("powershell.exe")
+            .raw_arg(
+                launch
+                    .strip_prefix("powershell.exe ")
+                    .expect("wrapper prefix"),
+            )
+            .output();
+        std::fs::remove_dir(&root).expect("remove cwd test directory");
+        let output = output.expect("execute real host split payload");
+        assert_eq!(
+            output.status.code(),
+            Some(7),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), cwd);
     }
 
     #[test]

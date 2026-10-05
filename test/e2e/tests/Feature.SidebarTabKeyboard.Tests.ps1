@@ -112,7 +112,7 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
         $script:evidenceDir = Join-Path ([IO.Path]::GetFullPath($artifactRoot)) "sidebar-tab-keyboard-$([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Force -Path $script:evidenceDir | Out-Null
-        Wait-UiElement -App $script:app -Selector TabHistoryButton | Out-Null
+        Wait-UiElement -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
         $initialTabs = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId))
         if ($initialTabs.Count -ne 1) { throw "Expected one initial terminal tab, found $($initialTabs.Count)." }
 
@@ -140,10 +140,10 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             return
         }
         Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
-        $history = Get-SidebarElement -AutomationId 'TabHistoryButton'
-        $history.Current.IsOffscreen | Should -BeFalse
-        $history.SetFocus()
-        $history.Current.HasKeyboardFocus | Should -BeTrue
+        $toolbarEnd = Get-SidebarElement -AutomationId 'FilterTabsButton'
+        $toolbarEnd.Current.IsOffscreen | Should -BeFalse
+        $toolbarEnd.SetFocus()
+        $toolbarEnd.Current.HasKeyboardFocus | Should -BeTrue
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'unfiltered-before.png') | Out-Null
         Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'unfiltered-after-tab.png') | Out-Null

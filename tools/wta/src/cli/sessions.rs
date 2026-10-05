@@ -68,7 +68,7 @@ fn filter_snapshot(
         .sort_by(|a, b| b.last_activity_at_ms.cmp(&a.last_activity_at_ms));
 }
 
-async fn fetch_from_master(
+pub(crate) async fn fetch_from_master(
     master_override: Option<String>,
     refresh: bool,
 ) -> Result<crate::session_registry::SessionsListResponse> {

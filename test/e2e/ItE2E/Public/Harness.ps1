@@ -1,6 +1,26 @@
 # Harness.ps1 — lifecycle: resolve, (safely) configure, launch, attach, teardown.
 # Non-destructive by default: settings.json/state.json are backed up and restored.
 
+function Test-ItProcessDeadline {
+    param([datetimeoffset]$DeadlineUtc, [double]$ElapsedSeconds, [double]$TimeoutSeconds,
+        [datetimeoffset]$NowUtc = [datetimeoffset]::UtcNow)
+    $NowUtc -ge $DeadlineUtc -or $ElapsedSeconds -ge $TimeoutSeconds
+}
+
+function Wait-ItProcessDeadline {
+    param([Parameter(Mandatory)]$Process, [ValidateRange(1, 86400)][int]$TimeoutSec,
+        [datetimeoffset]$StartedUtc = [datetimeoffset]::UtcNow, [string]$PrerequisiteFailurePath)
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $deadline = $StartedUtc.AddSeconds($TimeoutSec)
+    while ($true) {
+        if ($PrerequisiteFailurePath -and (Test-Path -LiteralPath $PrerequisiteFailurePath)) { return $false }
+        # Windows handle waits exclude system sleep; check UTC BEFORE accepting an exit.
+        if (Test-ItProcessDeadline $deadline $clock.Elapsed.TotalSeconds $TimeoutSec) { return $false }
+        if ($Process.HasExited) { return $true }
+        [void]$Process.WaitForExit(500)
+    }
+}
+
 function Backup-WtConfig {
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
     foreach ($f in @($App.SettingsPath, $App.StatePath)) {
@@ -34,10 +54,21 @@ function Backup-WtConfig {
 
 function Get-DescendantWtaIds {
     <# wta.exe PIDs that are descendants of the given WindowsTerminal pid (master spawned by
-       SharedWta, helpers as conpty children). Only these belong to this test run. #>
-    [CmdletBinding()] param([Parameter(Mandatory)][int]$RootPid)
-    $all = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue
-    if (-not $all) { return @() }
+       SharedWta, helpers as conpty children). AsProcess also captures their wtcli listeners,
+       which can outlive a killed WTA parent. Only these belong to this test run. #>
+    [CmdletBinding()] param([Parameter(Mandatory)][int]$RootPid, [switch]$AsProcess, [datetime]$RootStartTime, $RootProcess)
+    $all = Get-CimInstance Win32_Process -ErrorAction Stop
+    if (-not $all -and -not $AsProcess) { return @() }
+    $root = $all | Where-Object ProcessId -eq $RootPid | Select-Object -First 1
+    if ($AsProcess -and -not $root) {
+        if ($RootProcess -and $RootProcess.Id -eq $RootPid -and $RootProcess.HasExited) { return @() }
+        throw 'Terminal process disappeared during descendant discovery without a confirmed owned exit.'
+    }
+    # CIM's DMTF timestamp has microsecond precision; Process.StartTime has 100ns ticks.
+    $rootTicks = $RootStartTime.ToUniversalTime().Ticks
+    if ($AsProcess -and $root.CreationDate.ToUniversalTime().Ticks -ne ($rootTicks - $rootTicks % 10)) {
+        throw 'Terminal process identity changed during descendant discovery.'
+    }
     $byParent = @{}
     foreach ($p in $all) { $byParent[[int]$p.ParentProcessId] += @($p) }
     # BFS from the WT root to collect all descendant PIDs.
@@ -45,13 +76,43 @@ function Get-DescendantWtaIds {
     $queue = [System.Collections.Generic.Queue[int]]::new(); $queue.Enqueue($RootPid)
     while ($queue.Count) {
         $cur = $queue.Dequeue()
+        $parent = $all | Where-Object ProcessId -eq $cur | Select-Object -First 1
         foreach ($child in $byParent[$cur]) {
+            if ($AsProcess -and $child.CreationDate -lt $parent.CreationDate) { continue }
             $cpid = [int]$child.ProcessId
             if ($descendants.Add($cpid)) { $queue.Enqueue($cpid) }
         }
     }
-    $all | Where-Object { $_.Name -ieq 'wta.exe' -and $descendants.Contains([int]$_.ProcessId) } |
-        Select-Object -ExpandProperty ProcessId
+    $owned = @($all | Where-Object {
+        if (-not $descendants.Contains([int]$_.ProcessId)) { return $false }
+        if ($_.Name -ieq 'wta.exe') { return $true }
+        if (-not $AsProcess -or $_.Name -ine 'wtcli.exe') { return $false }
+        $parentId = [int]$_.ParentProcessId
+        $parentWta = $all | Where-Object { $_.ProcessId -eq $parentId -and $_.Name -ieq 'wta.exe' } | Select-Object -First 1
+        $parentWta -and $_.CommandLine -match "(?:^|\s)listen\s.*--parent-pid\s+$parentId(?:\s|$)"
+    } | Sort-Object { if ($_.Name -ieq 'wta.exe') { 0 } else { 1 } })
+    foreach ($child in $owned) {
+        if (-not $AsProcess) { $child.ProcessId; continue }
+        try { $process = Get-Process -Id $child.ProcessId -ErrorAction Stop }
+        catch {
+            if ($_.FullyQualifiedErrorId -like 'NoProcessFoundForGivenId,*') { continue }
+            throw
+        }
+        # Pin the process handle before checking the snapshot identity or sending a kill.
+        try {
+            $null = $process.Handle
+            if ($process.HasExited) { continue }
+            $ticks = $process.StartTime.ToUniversalTime().Ticks
+            if (($ticks - $ticks % 10) -ne $child.CreationDate.ToUniversalTime().Ticks -or $process.Path -ne $child.ExecutablePath) {
+                throw "WTA process identity changed during discovery (pid=$($child.ProcessId))."
+            }
+        }
+        catch {
+            if ($_.Exception -is [InvalidOperationException] -and $process.HasExited) { continue }
+            throw
+        }
+        $process
+    }
 }
 
 function Restore-WtConfig {
@@ -112,9 +173,20 @@ function Get-WtProcessesForApp {
     if ($IncludePackageExecutables) {
         if (-not $loc) { throw 'Package-wide process discovery requires an installation directory.' }
         $root = [IO.Path]::GetFullPath([string]$loc).TrimEnd('\') + '\'
+        $executableNames = @(Get-ChildItem -LiteralPath $loc -Filter '*.exe' -File -Recurse -ErrorAction Stop |
+            Select-Object -ExpandProperty BaseName -Unique)
+        if (-not $executableNames.Count) { throw 'Cannot establish package inactivity: no package executables were discoverable.' }
         # Refusal-only callers opt in; existing process-cleanup callers remain terminal-only.
-        Get-Process | Where-Object {
-            $_.Path -and [IO.Path]::GetFullPath($_.Path).StartsWith($root, [StringComparison]::OrdinalIgnoreCase)
+        foreach ($process in @(Get-Process -ErrorAction Stop)) {
+            $path = $process.Path
+            if (-not $path) {
+                if ($process.HasExited) { continue }
+                if (-not $process.ProcessName -or $process.ProcessName -in $executableNames) {
+                    throw "Cannot establish package inactivity: executable path unavailable for pid=$($process.Id) ($($process.ProcessName))."
+                }
+                continue
+            }
+            if ([IO.Path]::GetFullPath($path).StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { $process }
         }
         return
     }
@@ -264,8 +336,9 @@ function Start-Terminal {
     $app = Resolve-ItApp -Package $Package
     Write-ItLog -Level INFO -Message "Resolved package $($app.Package) v$($app.Version); wtcli=$($app.WtcliPath)"
 
-    # Per-run framework log file under TEMP.
-    $script:ItE2ELogFile = Join-Path $env:TEMP ("ite2e-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    $logRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\..\artifacts' }
+    New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
+    $script:ItE2ELogFile = Join-Path $logRoot ("ite2e-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 
     # Clear leftover instances of the selected package BEFORE writing config: a stale window
     # from a crashed prior test would otherwise be attached-to in a broken state (new-tab ->
@@ -280,6 +353,7 @@ function Start-Terminal {
     $app | Add-Member -NotePropertyName PreLaunchLogStartOffset -NotePropertyValue $preLaunchLogStartOffset -Force
 
     if ($Backup) { Backup-WtConfig -App $app }
+    $app | Add-Member -NotePropertyName ConfigBackupOwned -NotePropertyValue $Backup -Force
     # Strip agent/AI keys from settings.json so the user's real config (e.g. a Foundry
     # acpModel/acpBaseUrl set for acpAgent=native) cannot leak into a test that only patches a
     # subset of keys. Requires a backup so Stop-Terminal can restore the real settings.
@@ -331,12 +405,20 @@ function Start-Terminal {
         if ($new) { $new } elseif ($ps) { $ps | Select-Object -First 1 } else { $null }
     }
     $app.Pid = $proc.Id
+    $null = $proc.Handle
+    $app | Add-Member -NotePropertyName OwnedProcess -NotePropertyValue $proc -Force
     # Track whether WE launched this process or merely attached to a pre-existing one
     # (WT is single-instance — a launch can join an already-running window). Stop-Terminal
     # only kills processes we launched, so it never terminates a user's existing terminal.
     $app | Add-Member -NotePropertyName Launched -NotePropertyValue ($app.Pid -notin $existing) -Force
     if (-not $app.Launched) {
         Write-ItLog -Level WARN -Message "Attached to a pre-existing WindowsTerminal (pid=$($app.Pid)); Stop-Terminal will NOT kill it."
+    }
+    if ($app.Launched -and $env:ITE2E_OWNED_PROCESS_RECEIPT) {
+        @{
+            pid = $proc.Id; start_utc = $proc.StartTime.ToUniversalTime().ToString('o')
+            path = $proc.Path; run_token = $env:ITE2E_RUN_TOKEN
+        } | ConvertTo-Json -Compress | Add-Content -LiteralPath $env:ITE2E_OWNED_PROCESS_RECEIPT
     }
     Write-ItLog -Level INFO -Message "WindowsTerminal pid=$($app.Pid) launched=$($app.Launched)"
 
@@ -387,6 +469,9 @@ function Stop-Terminal {
         its single-instance/COM-protocol server cleanly. Only force-kills as a fallback after
         -GraceSec. Graceful close is preferred so the COM monarch handoff between runs is
         clean; force-kill is a last resort for an unresponsive window.
+        Stops captured, identity-checked WTA listeners before the COM host. Restoration
+        runs in finally only for an owned backup and an affirmatively inactive package;
+        live or undiscoverable package processes retain backups and surface an error.
     #>
     [CmdletBinding()]
     param(
@@ -395,48 +480,80 @@ function Stop-Terminal {
         [int]$GraceSec = 8
     )
     process {
-        # Only tear down processes WE launched. If Start-Terminal attached to a pre-existing
-        # WindowsTerminal (single-instance), leave it (and its wta) alone.
-        if ($App.PSObject.Properties.Name -contains 'Launched' -and -not $App.Launched) {
-            Write-ItLog -Level WARN -Message "Stop-Terminal: not killing pre-existing WindowsTerminal (pid=$($App.Pid))."
-            if ($RestoreSettings) { Restore-WtConfig -App $App }
-            return
-        }
-        # Collect OUR wta descendants before WT exits (parent links vanish afterwards).
-        $wtaIds = if ($App.Pid) { @(Get-DescendantWtaIds -RootPid ([int]$App.Pid)) } else { @() }
+        $cleanupError = $null
+        try {
+            # Only tear down processes WE launched. If Start-Terminal attached to a pre-existing
+            # WindowsTerminal (single-instance), leave it (and its wta) alone.
+            if ($App.PSObject.Properties.Name -contains 'Launched' -and -not $App.Launched) {
+                Write-ItLog -Level WARN -Message "Stop-Terminal: not killing pre-existing WindowsTerminal (pid=$($App.Pid))."
+                return
+            }
+            # Collect OUR wta descendants before WT exits (parent links vanish afterwards).
+            $proc = $App.OwnedProcess
+            if ($App.Pid -and -not $proc) { throw 'Terminal cleanup requires a captured owned process identity.' }
+            $wta = if ($proc -and -not $proc.HasExited) {
+                @(Get-DescendantWtaIds -RootPid ([int]$App.Pid) -AsProcess -RootStartTime $proc.StartTime -RootProcess $proc)
+            } else { @() }
+            # Stop owned COM listeners before closing the server; reconnecting during
+            # shutdown can activate a replacement headless Terminal.
+            foreach ($child in $wta) {
+                if ($child.HasExited) { continue }
+                try { Stop-Process -InputObject $child -Force -ErrorAction Stop }
+                catch {
+                    if ($_.FullyQualifiedErrorId -notlike 'NoProcessFoundForGivenId,*' -or -not $child.HasExited) { throw }
+                    Write-ItLog -Level INFO -Message "Owned WTA exited during stop (pid=$($child.Id))."
+                }
+            }
+            if ($wta.Count -and -not (Test-Until -TimeoutSec $GraceSec -IntervalSec 0.2 -Condition {
+                -not @($wta | Where-Object { -not $_.HasExited }).Count
+            })) {
+                throw 'Owned WTA listeners remain active; refusing to close the COM host.'
+            }
 
-        $forced = $false
-        if ($App.Pid) {
-            $proc = Get-Process -Id $App.Pid -ErrorAction SilentlyContinue
-            if ($proc) {
-                # 1) Graceful close: post WM_CLOSE to the main window so WindowEmperor runs
-                #    its normal shutdown (deregisters COM monarch / protocol server cleanly).
-                $closed = $false
-                try { $closed = $proc.CloseMainWindow() } catch { }
-                if ($closed -or $proc.MainWindowHandle -eq 0) {
-                    $closed = Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition {
-                        $null -eq (Get-Process -Id $App.Pid -ErrorAction SilentlyContinue)
+            $forced = $false
+            if ($App.Pid) {
+                if ($proc -and -not $proc.HasExited) {
+                    # 1) Graceful close: post WM_CLOSE to the main window so WindowEmperor runs
+                    #    its normal shutdown (deregisters COM monarch / protocol server cleanly).
+                    $closed = $false
+                    try { $closed = $proc.CloseMainWindow() } catch { if (-not $proc.HasExited) { throw } }
+                    if ($closed -or $proc.MainWindowHandle -eq 0) {
+                        $closed = Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition {
+                            $proc.HasExited
+                        }
+                    }
+                    # 2) Fallback: force-kill only if it did not exit gracefully in time.
+                    if ($proc.HasExited) {
+                        Write-ItLog -Level INFO -Message "Terminal closed gracefully (pid=$($App.Pid))."
+                    }
+                    else {
+                        Write-ItLog -Level WARN -Message "Graceful close timed out after ${GraceSec}s; force-killing pid=$($App.Pid)."
+                        try { Stop-Process -InputObject $proc -Force -ErrorAction Stop }
+                        catch {
+                            if ($_.FullyQualifiedErrorId -notlike 'NoProcessFoundForGivenId,*' -or -not $proc.HasExited) { throw }
+                        }
+                        $forced = $true
                     }
                 }
-                # 2) Fallback: force-kill only if it did not exit gracefully in time.
-                if (-not (Get-Process -Id $App.Pid -ErrorAction SilentlyContinue)) {
-                    Write-ItLog -Level INFO -Message "Terminal closed gracefully (pid=$($App.Pid))."
+            }
+
+            Write-ItLog -Level INFO -Message "Terminal stopped (pid=$($App.Pid), graceful=$(-not $forced), owned WTA/listeners reaped=$($wta.Count))."
+        }
+        catch { $cleanupError = $_; throw }
+        finally {
+            if ($RestoreSettings -and $App.ConfigBackupOwned) {
+                try {
+                    if (@(Get-WtProcessesForApp -App $App -IncludePackageExecutables).Count) {
+                        throw 'Package remains active; retaining owned configuration backups.'
+                    }
+                    Restore-WtConfig -App $App
                 }
-                else {
-                    Write-ItLog -Level WARN -Message "Graceful close timed out after ${GraceSec}s; force-killing pid=$($App.Pid)."
-                    Stop-Process -Id $App.Pid -Force -ErrorAction SilentlyContinue
-                    $forced = $true
+                catch {
+                    Write-ItLog -Level ERROR -Message "Configuration restoration refused or failed; backups retained: $_"
+                    if (-not $cleanupError) { throw }
                 }
             }
         }
-
-        # Reap any of OUR wta helpers/master still alive (they normally exit with their helper
-        # conpty once WT closes; force only the stragglers, never every wta on the machine).
-        $alive = @($wtaIds | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
-        if ($alive.Count) { Stop-Process -Id $alive -Force -ErrorAction SilentlyContinue }
-
-        if ($RestoreSettings) { Restore-WtConfig -App $App }
-        Write-ItLog -Level INFO -Message "Terminal stopped (pid=$($App.Pid), graceful=$(-not $forced), wta reaped=$($alive.Count))."
     }
 }
 

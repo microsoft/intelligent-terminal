@@ -546,6 +546,10 @@
     <value>এজেণ্টসমূহ</value>
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
+  <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
+    <value>ইতিহাস</value>
+    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+  </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>এজেণ্টসমূহ</value>
     <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
@@ -735,5 +739,29 @@
   <data name="PaneProgressStatusPaused" xml:space="preserve">
     <value>বিৰাম দিয়া হৈছে</value>
     <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
+  </data>
+  <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
+    <value>এজেণ্ট আৰু ইতিহাস সন্ধান কৰক</value>
+    <comment>Shared sidebar search field and button label in the Agents view. Filters both open AI-agent tabs and historical agent sessions. Agents means AI agents; history means prior agent sessions. Keep the separate Tabs view search labels unchanged.</comment>
+  </data>
+  <data name="VerticalTabsHistorySplitter.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>এজেণ্টৰ টেব আৰু ইতিহাসৰ আকাৰ সলনি কৰক</value>
+    <comment>Accessible name for the adjustable horizontal divider between open AI-agent tabs and session History in the Agents sidebar.</comment>
+  </data>
+  <data name="VerticalTabsHistorySplitter.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>অংশসমূহৰ আকাৰ সলনি কৰিবলৈ ওপৰ আৰু তলৰ কাঁড় চিহ্নৰ কীবোৰ ব্যৱহাৰ কৰক।</value>
+    <comment>Keyboard instructions for the divider between open AI-agent tabs and session History. Up reduces the upper section height; Down increases it. The lower section height adjusts oppositely.</comment>
+  </data>
+  <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
+    <value>{0} · আন এখন উইণ্ড’</value>
+    <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
+  </data>
+  <data name="VerticalTabsHistoryRestoreBackgroundTab" xml:space="preserve">
+    <value>পটভূমিৰ টেব পুনৰুদ্ধাৰ কৰক</value>
+    <comment>Action for a live agent session in a kept-running background tab. Restores the entire original tab, with all its panes, to the foreground. This does not resume a new conversation or focus another visible window.</comment>
+  </data>
+  <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
+    <value>আন এখন উইণ্ড’লৈ সলনি কৰক</value>
+    <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
 </root>

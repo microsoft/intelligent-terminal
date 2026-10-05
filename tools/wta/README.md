@@ -88,7 +88,35 @@ Each connection has one refresh in flight; history and title updates share its
 single response. Failed queries retain prior rows and back off up to 60 seconds.
 The opt-in JSON object contains `sessions` and `history_status` (`loading`, `ready`,
 or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
-ordinary `--json` output remains one session per line. The initial
+ordinary `--json` output remains one session per line.
+
+An activity hook cannot claim or alter a pane owned by another live session,
+even if its raw session ID exists in another provider or source. Nested CLI
+workers can inherit the parent's pane identity; their synthetic session starts
+and errors must not end, unbind, or change the parent's status. Explicit
+session-start hooks still replace a pane's session, and activity in an
+unowned pane retains its normal discovery behavior.
+
+Live rows may also include response-only `owner_window_id` and `background_tab`
+fields from the exact bound pane's context. `background_tab: true` means the
+pane belongs to a kept-running whole tab; activating it restores that entire
+tab. Only an explicit `false` with a different owning window enables the
+other-window action. Missing or malformed membership is unknown, not evidence
+that the pane is attached elsewhere. These fields are refreshed per response,
+not stored as registry ownership or lifecycle state.
+
+Historical/Ended native host Copilot rows may receive response-only activity
+from their exact default-universe SDK session directory. This requires a
+matching PID marker, a live native `copilot.exe` created before that marker,
+and an actively held `inuse.<pid>.hold` lease (observed with Copilot SDK
+1.0.80). A stale marker, released lease, inaccessible process, unknown phase,
+or nonmatching provider/source/universe leaves the original status unchanged.
+The existing turn classifier supplies activity; individual tool completion
+does not imply Idle. Reads use a bounded 4 MiB bootstrap tail and incremental
+cached appends under a two-second budget. This does not mutate registry state,
+infer a window/pane owner, or enable a running-location indicator.
+
+The initial
 discovery stays `loading` until all eligible host providers finish. Providers that
 do not support listing are skipped, while initialization or listing failures
 produce `error`. Later refreshes retain the last completed status until they finish.
@@ -298,6 +326,34 @@ Run or Insert. After the user chooses, history uses the localized
 a localized cancellation status on the same line, not on the conversation title.
 History has no suggestion counts, numbering, or recommendation checkmarks.
 
+## Interactive delegate tabs
+
+`wta delegate` without a prompt opens the configured interactive agent CLI in
+a fresh tab. The Agents sidebar's default `+` button uses this same delegation
+path, including provider, model, policy, and explicit host/WSL source selection;
+it does not open an assistant pane or resume a conversation. The normal Tabs
+`+`, explicit profile dropdown entries, and existing shortcuts are unchanged.
+
+The sidebar passes `--preserve-sidebar-view` to create the delegate tab in the
+background and then focus its returned pane through the existing protocol focus
+path. This preserves the selected sidebar page and search state. Other delegate
+calls retain ordinary foreground tab creation.
+
+In Agents, duplicate-split uses the target pane's live provider/session binding.
+`wta delegate --split-pane <pane> --split-session <current-session>
+--delegate-agent <provider>` validates that pair against one live master row
+and uses its exact host or WSL distro before launching a fresh interactive
+instance through the existing delegate builders. The old session ID is only a
+guard, never a resume argument. Missing, ambiguous, unknown-source, unavailable,
+and unsupported/custom targets fail rather than launching a default shell.
+Host splits carry the resolved project directory in an encoded PowerShell
+wrapper that starts the existing delegate command with an explicit native
+working directory; the split protocol itself has no cwd argument. The wrapper
+preserves native arguments and exit status, including paths with spaces and
+shell metacharacters. WSL retains its existing distro-specific `--cd` launch.
+Sidebar `+` and split launchers use bounded output capture and surface failures
+through the sidebar's existing error presentation.
+
 ## Debug Panel
 
 Press **F12** to open a side panel showing all JSON-RPC messages between WTA and Windows Terminal in real time.
@@ -325,7 +381,7 @@ packaged (or bare `%LOCALAPPDATA%\IntelligentTerminal\logs\` unpackaged):
 | `terminal-agent-pane.log` | Agent-pane chrome (C++ TerminalApp side) |
 | `wta-ensure-host.log` | Background host startup / COM connection / SharedWta lifecycle |
 | `wta-acp-debug.log` | ACP protocol debug trace |
-| `wta-delegate.<UTC-date>.log` | `?<prompt>` delegation flow |
+| `wta-delegate.<UTC-date>.log` | `?<prompt>` and interactive delegate creation |
 | `wta-probe.<UTC-date>.log` | Agent/model/session capability probes |
 | `wta-install-hooks.<UTC-date>.log` | Hook installation and upgrade diagnostics |
 | `wta-panic.<UTC-date>.log` | Synchronous panic backstop when the normal buffered record may not flush |

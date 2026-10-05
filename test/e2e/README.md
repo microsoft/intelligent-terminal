@@ -26,8 +26,10 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.SidebarTabKeyboard.Tests.ps1` | Issue #1045: physical Tab/Up/Down navigate unfiltered and filtered Sidebar tabs without terminal focus; bare Enter activates, Ctrl+Enter does not, pointer selection still works, and Ctrl+Shift+S entry/exit preserves the originating shell while Tab visits a row | 3 |
 | `Feature.PaneProgress.Tests.ps1` | PR #1043: one-shot OSC progress across real tab right-click moves/layout round trips, shared group-chevron/icon slot and aligned top-level titles, layout-specific Move submenu order/direction, and fixture-owned native hook identity/icon restoration with OSC3/OSC0; six-frame rendered ring evidence, no model quota | 4 checklist cases plus literal one-shot coverage (explicit Dev, exact-source `ITE2E_EXPECTED_APP_SHA256` / `ITE2E_EXPECTED_WTA_SHA256`, inactive package and interactive desktop required) |
 | `Feature.PinnedTabSelection.Tests.ps1` | PRs #1043/#1052: the primary two-pinned-plus-one-ordinary Horizontal/Sidebar round trip first verifies Alpha's active shell, exactly one selected Alpha Sidebar row, terminal focus, canonical order, shell identities and retained pin menus. A separate visual round trip verifies canonical accessibility labels and matched same-profile title-leading offsets; Beta unpin removes its extra Sidebar slot and keeps first-ordinary positioning. FontIcon peers are diagnostic only. A passing test credits C372's automated selection, identity, accessibility and geometry contracts. Full-header compositor crops and `acceptance.json` leave actual Sidebar glyph presence/Horizontal absence pending independent sign-off under the separate C373 MANUAL item **Pinned tab glyphs render only in Sidebar**, which has no automated coverage mapping | 1 (deterministic ACP fixture, no model quota; explicit Dev, exact-source `ITE2E_EXPECTED_APP_SHA256` / `ITE2E_EXPECTED_WTA_SHA256`, inactive package and interactive desktop required) |
+| `Feature.CombinedAgentsSidebar.Tests.ps1` | PR #1070: accessible header bounds and physical navigation leave search off, with non-hover screenshots for independent swap-cue review; historical and detached Idle/Working metadata show time/status/trailing accessible provider icon without redundant text (Working renders as Active in en-US); provider alias search remains compatible; explicit shared search preserves its on-state/query across views and clear/close restores both lists; independent UIA scrolling, pointer/keyboard divider resizing, window resize, represented Idle exclusion, detached retention, live History activation and unavailable-provider errors. C388 checks the clickable other-window indicator and physical Enter against the same existing pane; C389 restores a kept-running two-pane tab for Idle and Working; C390 verifies explicit unbound resume in the current window without assigning external ownership. Exact Dev hashes and inactive package required; native resume fixture accepts only its one approved SID, while normal fresh/split fixtures still reject resume and ACP arguments. Inputs reacquire only the identity-checked owned foreground window; aborted held turns are released before the next case | 15 |
+| `Feature.AgentsModeActions.Tests.ps1` | PR #1070: mode-specific plus creates a fresh interactive delegate, same-provider splitting preserves the target project and original agent, ordinary Tabs controls remain unchanged, and unidentified/custom-unsupported splits fail visibly; test-owned native CLI fixtures, exact Dev hashes, no provider prompts | 5 |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 14 |
-| `Feature.AgentHotkeys.Tests.ps1` | Physical WT-window accelerators for agent pane/delegation; Sidebar and History hotkeys preserve shell/Agent drafts and tab-search focus, including keyboard focus on the titlebar rail toggle. The public palette action retains visibility toggling; mixed pointer sessions, horizontal suppression, and effective Expand/Collapse hints remain covered | 14 |
+| `Feature.AgentHotkeys.Tests.ps1` | Physical WT-window accelerators for agent pane/delegation; History navigation preserves search-off state and exact shell/Agent input focus, while explicit shared-search entry retains search-focus baselines and existing on-state/query. Sidebar hotkeys preserve drafts and tab-search focus, including keyboard focus on the titlebar rail toggle. The public palette action retains visibility toggling; mixed pointer sessions, horizontal suppression, and effective Expand/Collapse hints remain covered | 14 |
 | `Feature.AgentProtocolExperience.Tests.ps1` | PRs #599/#601/#606/#610/#611/#612/#616/#634/#683: intent-based terminal actions (including empty workspaces and configured delegation), ACP tool/transcript rendering, clarification input, session configuration, model title, and replacement cleanup across the deployed helper/master boundary | 8 |
 | `Feature.AgentImageAttachmentEditing.Tests.ps1` | PR #536: inline image tokens move and delete atomically while preserving adjacent prompt text | 1 |
 | `Feature.AgentModelSync.Tests.ps1` | PR #538: ACP config-option updates replace stale session model state in the active picker | 1 |
@@ -79,6 +81,22 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.AgentPaneMove.Tests.ps1` | PR #429: `/move` stays per-tab, preserves global position, and restores agent input focus | 1 |
 
 **Coverage and results are tracked by stable checklist IDs and generated release reports.**
+`Feature.CombinedAgentsSidebar` requires `ITE2E_PACKAGE=Dev`,
+`ITE2E_EXPECTED_APP_SHA256`, `ITE2E_EXPECTED_WTA_SHA256`, and
+`ITE2E_SOURCE_COMMIT` from the exact-source build receipt. The source revision must
+match the worktree HEAD (a receipt suffix may describe uncommitted build fixes).
+History retains its shell-origin contract: deterministic native hooks establish
+the root identity before a held ACP fixture prompt, and uniquely named rows avoid
+matching existing user history. For a single retention diagnostic, set
+`ITE2E_COMBINED_RETENTION_STATUS=Idle` or `Working` and filter the Pester full name
+with `*retains unattached*`; unset that variable for the normal eleven-case suite.
+The metadata case uses actual row-control bounds from the raw UIA tree, not XAML
+coordinates, and writes screenshots and geometry receipts. A missing decorative
+header peer is a failed oracle, not evidence that its glyph rendered; compositor
+visual review may be needed before adapting that assertion. This Windows-only
+fixture proves provider aliases; WSL distro aliases still need source-specific
+coverage and must not be credited from this case.
+
 The suite table describes available cases, not a blanket pass result for every package or
 environment. Use `Invoke-ItE2EReport.ps1` and its full or incremental release report for the
 selected revision's actual passed, failed, skipped and remaining checklist items.
@@ -89,6 +107,16 @@ Environment-dependent suites declare their prerequisites, including installed/au
 agents, WSL availability, hook or policy provisioning, and interactive-desktop input support.
 Unavailable external prerequisites may be skipped; product failures must remain failures.
 Manual release-sign-off items are not credited by unrelated unit or protocol checks.
+
+The focused UI controller checks both an absolute UTC deadline and monotonic elapsed
+time between short (500 ms) process waits. Windows handle waits alone do not include
+system sleep. A suspended controller cannot enforce a deadline while suspended; on
+resume an expired deadline aborts the run, not a successful timeout-compliance receipt.
+Loss of owned foreground or interactive cursor access stops the focused batch through
+an input-prerequisite receipt; remaining cases are unproven, not passed or skipped.
+Emergency cleanup accepts only the run-token receipt's exact executable/PID/start-time
+identity and its captured descendants. Foreground acquisition never taps ALT into an
+unrelated app or modifies the user's foreground-lock timeout.
 
 For **PR validation** of `Feature.AgentInputUndoRedo`, build/deploy the intended source revision
 and set `ITE2E_EXPECTED_WTA_SHA256` from that build's receipt before running the suite. Verify
