@@ -544,8 +544,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Historikk</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Historikk og andre økter</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agenter</value>
@@ -761,4 +761,22 @@
     <value>Bytt til et annet vindu</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Endre fanefarge</value></data>
+  <data name="RenameTabText"><value>Gi fanen nytt navn</value></data>
+  <data name="DuplicateTabText"><value>Dupliser fane</value></data>
+  <data name="SplitTabText"><value>Del fane</value></data>
+  <data name="TabMoveSubMenu"><value>Flytt fane</value></data>
+  <data name="ExportTabText"><value>Eksporter tekst</value></data>
+  <data name="FindText"><value>Finn</value></data>
+  <data name="RestartConnectionText"><value>Start økten på nytt</value></data>
+  <data name="TabCloseSubMenu"><value>Lukk</value></data>
+  <data name="TabClose"><value>Lukk fane</value></data>
+  <data name="MoveTabToNewWindowText"><value>Flytt fanen til et nytt vindu</value></data>
+  <data name="TabMoveLeft"><value>Flytt til venstre</value></data>
+  <data name="TabMoveRight"><value>Flytt til høyre</value></data>
+  <data name="TabMoveUp"><value>Flytt opp</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Flytt ned</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Lukk fanene til høyre</value></data>
+  <data name="TabCloseOther"><value>Lukk andre faner</value></data>
+  <data name="ClosePaneText"><value>Lukk rute</value></data>
 </root>

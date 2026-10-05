@@ -50,10 +50,12 @@ and focuses ordinary tab search on entry.
   or shortcut). A persistent swap icon and button border make the switch
   discoverable; normal button hover, pressed, and keyboard-focus feedback remain.
   There is no separate redundant Agents icon in the toolbar.
-- History rows keep the session title above metadata ordered as timestamp,
-  meaningful status, and provider icon. Ended/historical rows omit the redundant
+- History rows use a leading 16px provider icon, vertically centered across the
+  title and metadata rows, with both text rows aligned to its right. Metadata is
+  ordered as timestamp, meaningful status, and provider display name.
+  Ended/historical rows omit the redundant
   Historical status; live Idle/Working/Attention/Error statuses remain visible.
-  An outlined window with an upward restore arrow after the provider icon
+  An outlined window with an upward restore arrow after the provider name
   identifies a confirmed background tab; clicking restores the whole original
   tab. Two overlapping windows identify a session attached to another visible
   window; clicking focuses its original tab and pane. The status remains plain
@@ -66,8 +68,10 @@ and focuses ordinary tab search on entry.
   Bare Enter activates the focused History row even with selection disabled;
   modified Enter is ignored. A focused ownership button retains its native
   activation, rather than also activating its containing row.
-  Provider identity remains available through the icon tooltip and shared search,
-  even though repeated provider text is omitted from the metadata line.
+  Provider identity remains available through the icon tooltip, highlighted
+  provider-name text, and shared search.
+  Time and provider text share bounded metadata space and may ellipsize at the
+  minimum sidebar width; status and the ownership action retain reserved space.
 - The Agents view consists of two distinct upper and lower sections separated
   by a horizontal divider:
   - **Upper section (`AgentTabsHost`)**: contains live/open agent tabs hosting
@@ -79,7 +83,7 @@ and focuses ordinary tab search on entry.
     cannot fit both minima and the divider. Supports mouse/pointer dragging
     with `CoreCursorType::SizeNorthSouth` and keyboard resizing via `Up` and
     `Down` arrow keys (16px per step).
-  - **Lower section (`HistoryList`)**: displays the History section heading
+  - **Lower section (`HistoryList`)**: displays the **History & Other Sessions** heading
     and resumable session rows, excluding represented sessions, with its own
     independent vertical scrollbar.
 - **Unified Search**: There is no separate history search box. The single

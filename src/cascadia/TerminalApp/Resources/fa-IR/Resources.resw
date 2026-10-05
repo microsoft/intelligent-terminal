@@ -544,8 +544,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>تاریخچه</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>تاریخچه و سایر جلسه‌ها</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>عامل‌ها</value>
@@ -761,4 +761,22 @@
     <value>رفتن به پنجره‌ای دیگر</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>تغییر رنگ زبانه</value></data>
+  <data name="RenameTabText"><value>تغییر نام زبانه</value></data>
+  <data name="DuplicateTabText"><value>تکثیر زبانه</value></data>
+  <data name="SplitTabText"><value>تقسیم زبانه</value></data>
+  <data name="TabMoveSubMenu"><value>جابجایی زبانه</value></data>
+  <data name="ExportTabText"><value>صدور متن</value></data>
+  <data name="FindText"><value>جستجو</value></data>
+  <data name="RestartConnectionText"><value>راه‌اندازی مجدد نشست</value></data>
+  <data name="TabCloseSubMenu"><value>بستن</value></data>
+  <data name="TabClose"><value>بستن زبانه</value></data>
+  <data name="MoveTabToNewWindowText"><value>انتقال زبانه به پنجره جدید</value></data>
+  <data name="TabMoveLeft"><value>جابجایی به چپ</value></data>
+  <data name="TabMoveRight"><value>جابجایی به راست</value></data>
+  <data name="TabMoveUp"><value>جابجایی به بالا</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>جابجایی به پایین</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>بستن زبانه‌های سمت راست</value></data>
+  <data name="TabCloseOther"><value>بستن زبانه‌های دیگر</value></data>
+  <data name="ClosePaneText"><value>بستن پنل</value></data>
 </root>

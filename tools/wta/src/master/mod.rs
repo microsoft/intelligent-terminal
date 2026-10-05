@@ -624,6 +624,7 @@ struct MasterStateInner {
     history_refresh: Arc<Mutex<()>>,
     history_discovery_state: std::sync::atomic::AtomicU8,
     history_discovery_errors: Mutex<HashMap<AgentCmdKey, HistoryRefreshFailure>>,
+    history_discovery_retries: Mutex<HashMap<AgentCmdKey, HistoryRefreshState>>,
     history_status: watch::Sender<HistorySyncStatus>,
     history_status_gate: Mutex<()>,
     helper_roles: Mutex<HashMap<HelperId, HelperRole>>,
@@ -1896,6 +1897,18 @@ struct HistoryRefreshState {
     next_refresh_at: Option<tokio::time::Instant>,
     failures: u32,
     last_count: Option<usize>,
+}
+
+impl HistoryRefreshState {
+    fn record_failure(&mut self) -> std::time::Duration {
+        self.failures = self.failures.saturating_add(1).min(5);
+        std::time::Duration::from_secs((5u64 << (self.failures - 1)).min(60))
+    }
+
+    fn retry_due(&self) -> bool {
+        self.next_refresh_at
+            .is_none_or(|at| at <= tokio::time::Instant::now())
+    }
 }
 
 /// One spawned agent CLI subprocess and everything a helper needs to
@@ -4932,6 +4945,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         history_refresh: Arc::new(Mutex::new(())),
         history_discovery_state: std::sync::atomic::AtomicU8::new(0),
         history_discovery_errors: Mutex::new(HashMap::new()),
+        history_discovery_retries: Mutex::new(HashMap::new()),
         history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading.into())
             .0,
         history_status_gate: Mutex::new(()),
@@ -5606,6 +5620,7 @@ async fn get_or_spawn_agent(
     })
     .await?;
     state.history_discovery_errors.lock().await.remove(&key);
+    state.history_discovery_retries.lock().await.remove(&key);
     Ok(agent)
 }
 
@@ -7137,8 +7152,7 @@ async fn refresh_agent_history(
         refresh.failures = 0;
         HISTORY_REFRESH_INTERVAL
     } else {
-        refresh.failures = refresh.failures.saturating_add(1).min(5);
-        std::time::Duration::from_secs((5u64 << (refresh.failures - 1)).min(60))
+        refresh.record_failure()
     };
     refresh.next_refresh_at = Some(if result.is_ok() {
         started_at + delay
@@ -7235,6 +7249,7 @@ fn start_history_refresh_loop(state: &Arc<MasterStateInner>) {
         loop {
             ticks.tick().await;
             let Some(state) = weak.upgrade() else { break };
+            retry_failed_host_history_discovery(&state).await;
             let agents: Vec<_> = state
                 .agents
                 .lock()
@@ -7270,23 +7285,74 @@ fn host_history_agent_ids(
 }
 
 async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &[&str]) -> bool {
+    refresh_host_history_agents_for_trigger(state, agent_ids, HistoryRefreshTrigger::Immediate)
+        .await
+}
+
+async fn refresh_host_history_agents_for_trigger(
+    state: &Arc<MasterStateInner>,
+    agent_ids: &[&str],
+    trigger: HistoryRefreshTrigger,
+) -> bool {
+    refresh_host_history_agents_with(state, agent_ids, trigger, |command, agent_id| {
+        let state = Arc::clone(state);
+        async move {
+            get_or_spawn_agent(
+                &state,
+                &command,
+                Some(&agent_id),
+                &crate::agent_source::AgentSource::Host,
+                ProviderBinding::Native,
+                Vec::new(),
+            )
+            .await
+        }
+    })
+    .await
+}
+
+async fn refresh_host_history_agents_with<F, Fut>(
+    state: &Arc<MasterStateInner>,
+    agent_ids: &[&str],
+    trigger: HistoryRefreshTrigger,
+    initialize: F,
+) -> bool
+where
+    F: Fn(String, String) -> Fut,
+    Fut: std::future::Future<Output = Result<Arc<AgentCli>>>,
+{
+    let initialize = &initialize;
     let results = futures::future::join_all(agent_ids.iter().map(|&agent_id| async move {
         let command = crate::agent_registry::build_acp_command(agent_id, None);
-        let agent = match get_or_spawn_agent(
-            state,
+        let key = agent_cmd_key(
             &command,
             Some(agent_id),
             &crate::agent_source::AgentSource::Host,
-            ProviderBinding::Native,
-            Vec::new(),
-        )
-        .await
+        );
+        if !matches!(trigger, HistoryRefreshTrigger::Immediate)
+            && state
+                .history_discovery_retries
+                .lock()
+                .await
+                .get(&key)
+                .is_some_and(|retry| !retry.retry_due())
         {
+            state
+                .history_discovery_errors
+                .lock()
+                .await
+                .insert(key, HistoryRefreshFailure::Other);
+            return false;
+        }
+        let agent = match initialize(command, agent_id.to_string()).await {
             Ok(agent) => agent,
             Err(error) => {
-                state.history_discovery_errors.lock().await.insert(agent_cmd_key(
-                    &command, Some(agent_id), &crate::agent_source::AgentSource::Host,
-                ), HistoryRefreshFailure::Other);
+                let mut retries = state.history_discovery_retries.lock().await;
+                let retry = retries.entry(key.clone()).or_default();
+                let delay = retry.record_failure();
+                retry.next_refresh_at = Some(tokio::time::Instant::now() + delay);
+                drop(retries);
+                state.history_discovery_errors.lock().await.insert(key, HistoryRefreshFailure::Other);
                 tracing::warn!(
                     target: "master_history",
                     agent_id,
@@ -7296,12 +7362,13 @@ async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &
                 return false;
             }
         };
+        state.history_discovery_retries.lock().await.remove(&key);
         if agent.cached_init_resp.agent_capabilities.session_capabilities.list.is_none() {
             state.history_discovery_errors.lock().await.remove(&agent.cmd_key);
             tracing::debug!(target: "master_history", agent_id, "agent does not support session/list");
             return true;
         }
-        if seed_host_and_broadcast(state, &agent).await.is_none() {
+        if refresh_agent_history(state, &agent, trigger).await.is_none() {
             let failure = agent.history_refresh.failure.lock().await.unwrap_or(HistoryRefreshFailure::Other);
             state.history_discovery_errors.lock().await.insert(agent.cmd_key.clone(), failure);
             tracing::warn!(target: "master_history", agent_id, "could not load agent history");
@@ -7314,10 +7381,34 @@ async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &
 }
 
 fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
+    request_host_history_discovery(state, true);
+}
+
+async fn retry_failed_host_history_discovery(state: &Arc<MasterStateInner>) {
     use std::sync::atomic::Ordering;
-    // Bit 0 owns the single worker; bit 1 requests another pass. The worker's
+    if state.history_discovery_state.load(Ordering::Acquire) == 0
+        && state
+            .history_discovery_retries
+            .lock()
+            .await
+            .values()
+            .any(HistoryRefreshState::retry_due)
+    {
+        request_host_history_discovery(state, false);
+    }
+}
+
+fn request_host_history_discovery(state: &Arc<MasterStateInner>, immediate: bool) {
+    use std::sync::atomic::Ordering;
+    // Bit 0 owns the single worker; bit 1 requests another pass; bit 2 makes
+    // an explicit refresh bypass startup-failure backoff. The worker's
     // idle transition is atomic with respect to requests, even on COM threads.
-    if state.history_discovery_state.fetch_or(3, Ordering::AcqRel) & 1 != 0 {
+    if state
+        .history_discovery_state
+        .fetch_or(if immediate { 7 } else { 3 }, Ordering::AcqRel)
+        & 1
+        != 0
+    {
         return;
     }
     let guard = Arc::clone(&state.history_refresh).try_lock_owned().ok();
@@ -7329,9 +7420,10 @@ fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
             None => Arc::clone(&state.history_refresh).lock_owned().await,
         };
         loop {
-            state
+            let pending = state
                 .history_discovery_state
-                .fetch_and(!2, Ordering::AcqRel);
+                .fetch_and(!6, Ordering::AcqRel);
+            let immediate = pending & 4 != 0;
             state.history_discovery_errors.lock().await.clear();
             let allowed_ids = state.allowed_agent_ids.clone();
             let discovery = tokio::task::spawn_blocking(move || {
@@ -7344,7 +7436,31 @@ fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
             .await;
             match discovery {
                 Ok(agent_ids) => {
-                    refresh_host_history_agents(&state, &agent_ids).await;
+                    let eligible_keys: HashSet<_> = agent_ids
+                        .iter()
+                        .map(|id| {
+                            agent_cmd_key(
+                                &crate::agent_registry::build_acp_command(id, None),
+                                Some(id),
+                                &crate::agent_source::AgentSource::Host,
+                            )
+                        })
+                        .collect();
+                    state
+                        .history_discovery_retries
+                        .lock()
+                        .await
+                        .retain(|key, _| eligible_keys.contains(key));
+                    if immediate {
+                        refresh_host_history_agents(&state, &agent_ids).await;
+                    } else {
+                        refresh_host_history_agents_for_trigger(
+                            &state,
+                            &agent_ids,
+                            HistoryRefreshTrigger::Periodic,
+                        )
+                        .await;
+                    }
                 }
                 Err(error) => {
                     state

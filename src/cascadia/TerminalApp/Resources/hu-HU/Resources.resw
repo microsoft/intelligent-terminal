@@ -545,8 +545,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Előzmények</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Előzmények és egyéb munkamenetek</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Ügynökök</value>
@@ -762,4 +762,22 @@
     <value>Váltás másik ablakra</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Lap színének módosítása</value></data>
+  <data name="RenameTabText"><value>Lap átnevezése</value></data>
+  <data name="DuplicateTabText"><value>Lap megkettőzése</value></data>
+  <data name="SplitTabText"><value>Lap felosztása</value></data>
+  <data name="TabMoveSubMenu"><value>Lap áthelyezése</value></data>
+  <data name="ExportTabText"><value>Szöveg exportálása</value></data>
+  <data name="FindText"><value>Keresés</value></data>
+  <data name="RestartConnectionText"><value>Munkamenet újraindítása</value></data>
+  <data name="TabCloseSubMenu"><value>Bezárás</value></data>
+  <data name="TabClose"><value>Lap bezárása</value></data>
+  <data name="MoveTabToNewWindowText"><value>Lap áthelyezése új ablakba</value></data>
+  <data name="TabMoveLeft"><value>Mozgatás balra</value></data>
+  <data name="TabMoveRight"><value>Mozgatás jobbra</value></data>
+  <data name="TabMoveUp"><value>Mozgatás felfelé</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Mozgatás lefelé</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Jobbra lévő lapok bezárása</value></data>
+  <data name="TabCloseOther"><value>Többi lap bezárása</value></data>
+  <data name="ClosePaneText"><value>Ablaktábla bezárása</value></data>
 </root>

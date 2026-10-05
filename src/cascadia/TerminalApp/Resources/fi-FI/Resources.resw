@@ -543,8 +543,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Historia</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Historia ja muut istunnot</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agentit</value>
@@ -760,4 +760,22 @@
     <value>Vaihda toiseen ikkunaan</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Muuta välilehden väriä</value></data>
+  <data name="RenameTabText"><value>Nimeä välilehti uudelleen</value></data>
+  <data name="DuplicateTabText"><value>Monista välilehti</value></data>
+  <data name="SplitTabText"><value>Jaa välilehti</value></data>
+  <data name="TabMoveSubMenu"><value>Siirrä välilehti</value></data>
+  <data name="ExportTabText"><value>Vie teksti</value></data>
+  <data name="FindText"><value>Etsi</value></data>
+  <data name="RestartConnectionText"><value>Käynnistä istunto uudelleen</value></data>
+  <data name="TabCloseSubMenu"><value>Sulje</value></data>
+  <data name="TabClose"><value>Sulje välilehti</value></data>
+  <data name="MoveTabToNewWindowText"><value>Siirrä välilehti uuteen ikkunaan</value></data>
+  <data name="TabMoveLeft"><value>Siirrä vasemmalle</value></data>
+  <data name="TabMoveRight"><value>Siirrä oikealle</value></data>
+  <data name="TabMoveUp"><value>Siirrä ylöspäin</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Siirrä alaspäin</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Sulje oikealla olevat välilehdet</value></data>
+  <data name="TabCloseOther"><value>Sulje muut välilehdet</value></data>
+  <data name="ClosePaneText"><value>Sulje ruutu</value></data>
 </root>

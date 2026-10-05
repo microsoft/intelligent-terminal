@@ -362,8 +362,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Historial</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Historial i altres sessions</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agents</value>
@@ -579,4 +579,22 @@
     <value>Canvia a una altra finestra</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Canvia el color de la pestanya</value></data>
+  <data name="RenameTabText"><value>Canvia el nom de la pestanya</value></data>
+  <data name="DuplicateTabText"><value>Duplica la pestanya</value></data>
+  <data name="SplitTabText"><value>Divideix la pestanya</value></data>
+  <data name="TabMoveSubMenu"><value>Mou la pestanya</value></data>
+  <data name="ExportTabText"><value>Exporta el text</value></data>
+  <data name="FindText"><value>Cerca</value></data>
+  <data name="RestartConnectionText"><value>Reinicia la sessió</value></data>
+  <data name="TabCloseSubMenu"><value>Tanca</value></data>
+  <data name="TabClose"><value>Tanca la pestanya</value></data>
+  <data name="MoveTabToNewWindowText"><value>Mou la pestanya a una finestra nova</value></data>
+  <data name="TabMoveLeft"><value>Mou a l'esquerra</value></data>
+  <data name="TabMoveRight"><value>Mou a la dreta</value></data>
+  <data name="TabMoveUp"><value>Mou amunt</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Mou avall</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Tanca les pestanyes de la dreta</value></data>
+  <data name="TabCloseOther"><value>Tanca les altres pestanyes</value></data>
+  <data name="ClosePaneText"><value>Tanca la subfinestra</value></data>
 </root>

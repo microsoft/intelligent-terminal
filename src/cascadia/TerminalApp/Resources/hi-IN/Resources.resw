@@ -547,8 +547,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>इतिहास</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>इतिहास और अन्य सत्र</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>एजेंट</value>
@@ -764,4 +764,22 @@
     <value>दूसरी विंडो पर स्विच करें</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>टैब का रंग बदलें</value></data>
+  <data name="RenameTabText"><value>टैब का नाम बदलें</value></data>
+  <data name="DuplicateTabText"><value>टैब की प्रतिलिपि बनाएँ</value></data>
+  <data name="SplitTabText"><value>टैब विभाजित करें</value></data>
+  <data name="TabMoveSubMenu"><value>टैब ले जाएँ</value></data>
+  <data name="ExportTabText"><value>पाठ निर्यात करें</value></data>
+  <data name="FindText"><value>खोजें</value></data>
+  <data name="RestartConnectionText"><value>सत्र पुनः प्रारंभ करें</value></data>
+  <data name="TabCloseSubMenu"><value>बंद करें</value></data>
+  <data name="TabClose"><value>टैब बंद करें</value></data>
+  <data name="MoveTabToNewWindowText"><value>टैब नई विंडो में ले जाएँ</value></data>
+  <data name="TabMoveLeft"><value>बाएँ ले जाएँ</value></data>
+  <data name="TabMoveRight"><value>दाएँ ले जाएँ</value></data>
+  <data name="TabMoveUp"><value>ऊपर ले जाएँ</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>नीचे ले जाएँ</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>दाईं ओर के टैब बंद करें</value></data>
+  <data name="TabCloseOther"><value>अन्य टैब बंद करें</value></data>
+  <data name="ClosePaneText"><value>पेन बंद करें</value></data>
 </root>

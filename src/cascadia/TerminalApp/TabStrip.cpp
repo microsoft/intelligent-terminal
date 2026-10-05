@@ -818,7 +818,7 @@ namespace winrt::TerminalApp::implementation
         }
         const auto foreground = isCurrent ? item.CurrentForeground() : nullptr;
         const auto palette = root.FindName(L"HistorySelectionPalette").try_as<Control>();
-        for (const auto name : { L"HistoryTitleText", L"HistorySubtitleText", L"HistoryStatusText" })
+        for (const auto name : { L"HistoryTitleText", L"HistorySubtitleText", L"HistoryStatusText", L"HistoryProviderNameText" })
         {
             if (const auto control = root.FindName(name).try_as<Control>())
             {

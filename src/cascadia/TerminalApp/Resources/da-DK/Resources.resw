@@ -543,8 +543,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Historik</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Historik og andre sessioner</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agenter</value>
@@ -760,4 +760,22 @@
     <value>Skift til et andet vindue</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Skift fanefarve</value></data>
+  <data name="RenameTabText"><value>Omdøb fane</value></data>
+  <data name="DuplicateTabText"><value>Dupliker fane</value></data>
+  <data name="SplitTabText"><value>Opdel fane</value></data>
+  <data name="TabMoveSubMenu"><value>Flyt fane</value></data>
+  <data name="ExportTabText"><value>Eksportér tekst</value></data>
+  <data name="FindText"><value>Find</value></data>
+  <data name="RestartConnectionText"><value>Genstart session</value></data>
+  <data name="TabCloseSubMenu"><value>Luk</value></data>
+  <data name="TabClose"><value>Luk fane</value></data>
+  <data name="MoveTabToNewWindowText"><value>Flyt fane til nyt vindue</value></data>
+  <data name="TabMoveLeft"><value>Flyt til venstre</value></data>
+  <data name="TabMoveRight"><value>Flyt til højre</value></data>
+  <data name="TabMoveUp"><value>Flyt op</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Flyt ned</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Luk fanerne til højre</value></data>
+  <data name="TabCloseOther"><value>Luk andre faner</value></data>
+  <data name="ClosePaneText"><value>Luk rude</value></data>
 </root>

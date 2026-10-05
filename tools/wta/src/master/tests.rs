@@ -1505,6 +1505,7 @@ fn make_state_with_retirement_pending_timeout(
         history_refresh: Arc::new(Mutex::new(())),
         history_discovery_state: std::sync::atomic::AtomicU8::new(0),
         history_discovery_errors: Mutex::new(HashMap::new()),
+        history_discovery_retries: Mutex::new(HashMap::new()),
         history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading.into())
             .0,
         history_status_gate: Mutex::new(()),
@@ -11657,6 +11658,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         history_refresh: Arc::new(Mutex::new(())),
         history_discovery_state: std::sync::atomic::AtomicU8::new(0),
         history_discovery_errors: Mutex::new(HashMap::new()),
+        history_discovery_retries: Mutex::new(HashMap::new()),
         history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading.into())
             .0,
         history_status_gate: Mutex::new(()),
@@ -12554,6 +12556,257 @@ async fn sidebar_history_discovery_isolates_failed_and_unsupported_agents() {
 }
 
 // ── refresh_synthetic_titles_from ───────────────────────────────
+
+#[tokio::test(start_paused = true)]
+async fn sidebar_history_startup_retry_recovers_without_respawning_healthy_agents() {
+    use crate::agent_sessions::CliSource;
+    use crate::session_registry::HistoryLoadStatus;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for history_ids in [Vec::new(), vec!["recovered-history"]] {
+                let state = make_state();
+                let healthy =
+                    add_sidebar_listing_agent(&state, CliSource::Claude, &["healthy-history"])
+                        .await;
+                let mut recovering = listing_agent(CliSource::Copilot, &history_ids);
+                Arc::get_mut(&mut recovering).unwrap().cmd_key = agent_cmd_key(
+                    &crate::agent_registry::build_acp_command("copilot", None),
+                    Some("copilot"),
+                    &crate::agent_source::AgentSource::Host,
+                );
+                let failed_attempts = Arc::new(AtomicUsize::new(0));
+                let healthy_spawns = Arc::new(AtomicUsize::new(0));
+                let initialize = |command: String, id: String| {
+                    let state = Arc::clone(&state);
+                    let agent = if id == "copilot" {
+                        Arc::clone(&recovering)
+                    } else {
+                        Arc::clone(&healthy)
+                    };
+                    let failed_attempts = Arc::clone(&failed_attempts);
+                    let healthy_spawns = Arc::clone(&healthy_spawns);
+                    async move {
+                        let key = agent_cmd_key(
+                            &command,
+                            Some(&id),
+                            &crate::agent_source::AgentSource::Host,
+                        );
+                        acquire_agent_from_pool(&state, &key, |_| {
+                            let agent = Arc::clone(&agent);
+                            let failed_attempts = Arc::clone(&failed_attempts);
+                            let healthy_spawns = Arc::clone(&healthy_spawns);
+                            let is_copilot = id == "copilot";
+                            async move {
+                                if is_copilot {
+                                    if failed_attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                                        return Err(anyhow!("mock initialize timeout"));
+                                    }
+                                } else {
+                                    healthy_spawns.fetch_add(1, Ordering::SeqCst);
+                                }
+                                Ok(agent)
+                            }
+                        })
+                        .await
+                    }
+                };
+                assert!(
+                    !refresh_host_history_agents_with(
+                        &state,
+                        &["copilot", "claude"],
+                        HistoryRefreshTrigger::Immediate,
+                        &initialize
+                    )
+                    .await
+                );
+                publish_history_sync_status(&state).await;
+                assert_eq!(
+                    state.history_status.borrow().status,
+                    HistoryLoadStatus::Error
+                );
+                assert_eq!(state.agents.lock().await.len(), 1);
+                let snapshot = handle_sessions_list(&state, None, &Default::default())
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    crate::session_registry::parse_sessions_list_response(&snapshot.0)
+                        .unwrap()
+                        .sessions
+                        .len(),
+                    1
+                );
+                retry_failed_host_history_discovery(&state).await;
+                assert_eq!(state.history_discovery_state.load(Ordering::Acquire), 0);
+                assert!(
+                    !refresh_host_history_agents_with(
+                        &state,
+                        &["copilot", "claude"],
+                        HistoryRefreshTrigger::Periodic,
+                        &initialize
+                    )
+                    .await
+                );
+                assert_eq!(failed_attempts.load(Ordering::SeqCst), 1);
+                tokio::time::advance(std::time::Duration::from_secs(5)).await;
+                assert!(
+                    refresh_host_history_agents_with(
+                        &state,
+                        &["copilot", "claude"],
+                        HistoryRefreshTrigger::Periodic,
+                        &initialize
+                    )
+                    .await
+                );
+                publish_history_sync_status(&state).await;
+                assert_eq!(
+                    state.history_status.borrow().status,
+                    HistoryLoadStatus::Ready
+                );
+                assert!(state.history_discovery_retries.lock().await.is_empty());
+                assert!(state.history_discovery_errors.lock().await.is_empty());
+                assert_eq!(state.registry.snapshot().await.len(), 1 + history_ids.len());
+                assert_eq!(failed_attempts.load(Ordering::SeqCst), 2);
+                assert_eq!(healthy_spawns.load(Ordering::SeqCst), 0);
+                assert!(
+                    refresh_host_history_agents_with(
+                        &state,
+                        &["copilot", "claude"],
+                        HistoryRefreshTrigger::Periodic,
+                        &initialize
+                    )
+                    .await
+                );
+                assert_eq!(failed_attempts.load(Ordering::SeqCst), 2);
+            }
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn sidebar_history_startup_retry_uses_capped_backoff_and_explicit_override() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let attempts = AtomicUsize::new(0);
+            let initialize = |_: String, _: String| {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                async { Err(anyhow!("mock initialization failure")) }
+            };
+            let key = agent_cmd_key(
+                &crate::agent_registry::build_acp_command("copilot", None),
+                Some("copilot"),
+                &crate::agent_source::AgentSource::Host,
+            );
+            for (index, delay) in [5, 10, 20, 40, 60, 60].into_iter().enumerate() {
+                assert!(
+                    !refresh_host_history_agents_with(
+                        &state,
+                        &["copilot"],
+                        HistoryRefreshTrigger::Periodic,
+                        &initialize
+                    )
+                    .await
+                );
+                assert_eq!(attempts.load(Ordering::SeqCst), index + 1);
+                let expected = tokio::time::Instant::now() + std::time::Duration::from_secs(delay);
+                assert_eq!(
+                    state.history_discovery_retries.lock().await[&key].next_refresh_at,
+                    Some(expected)
+                );
+                assert!(
+                    !refresh_host_history_agents_with(
+                        &state,
+                        &["copilot"],
+                        HistoryRefreshTrigger::Periodic,
+                        &initialize
+                    )
+                    .await
+                );
+                tokio::time::advance(std::time::Duration::from_secs(delay - 1)).await;
+                assert!(
+                    !refresh_host_history_agents_with(
+                        &state,
+                        &["copilot"],
+                        HistoryRefreshTrigger::Periodic,
+                        &initialize
+                    )
+                    .await
+                );
+                assert_eq!(attempts.load(Ordering::SeqCst), index + 1);
+                assert_eq!(
+                    state.history_discovery_errors.lock().await.get(&key),
+                    Some(&HistoryRefreshFailure::Other)
+                );
+                tokio::time::advance(std::time::Duration::from_secs(1)).await;
+            }
+            assert!(
+                !refresh_host_history_agents_with(
+                    &state,
+                    &["copilot"],
+                    HistoryRefreshTrigger::Immediate,
+                    &initialize
+                )
+                .await
+            );
+            assert!(
+                !refresh_host_history_agents_with(
+                    &state,
+                    &["copilot"],
+                    HistoryRefreshTrigger::Immediate,
+                    &initialize
+                )
+                .await
+            );
+            assert_eq!(attempts.load(Ordering::SeqCst), 8);
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn sidebar_history_startup_retry_rechecks_policy_and_drops_ineligible_failures() {
+    use crate::session_registry::HistoryLoadStatus;
+    use std::sync::atomic::Ordering;
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for allowed in [HashSet::new(), allow_set(&["gemini"])] {
+                let mut state = make_state();
+                Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(allowed);
+                let key = agent_cmd_key(
+                    &crate::agent_registry::build_acp_command("copilot", None),
+                    Some("copilot"),
+                    &crate::agent_source::AgentSource::Host,
+                );
+                state
+                    .history_discovery_retries
+                    .lock()
+                    .await
+                    .insert(key.clone(), HistoryRefreshState::default());
+                state
+                    .history_discovery_errors
+                    .lock()
+                    .await
+                    .insert(key, HistoryRefreshFailure::Other);
+                publish_history_sync_status(&state).await;
+                assert_eq!(
+                    state.history_status.borrow().status,
+                    HistoryLoadStatus::Error
+                );
+                retry_failed_host_history_discovery(&state).await;
+                assert_eq!(state.history_discovery_state.load(Ordering::Acquire), 3);
+                let _finished = state.history_refresh.lock().await;
+                assert!(state.agents.lock().await.is_empty());
+                assert!(state.history_discovery_retries.lock().await.is_empty());
+                assert_eq!(
+                    state.history_status.borrow().status,
+                    HistoryLoadStatus::Ready
+                );
+                assert_eq!(state.history_discovery_state.load(Ordering::Acquire), 0);
+            }
+        })
+        .await;
+}
 
 #[tokio::test]
 async fn refresh_titles_from_listing_upgrades_known_placeholders() {
@@ -13549,7 +13802,7 @@ async fn history_refresh_discovery_requests_survive_a_busy_completion_guard() {
             request_host_history_refresh(&state);
             tokio::task::yield_now().await;
             request_host_history_refresh(&state);
-            assert_eq!(state.history_discovery_state.load(Ordering::Acquire), 3);
+            assert_eq!(state.history_discovery_state.load(Ordering::Acquire), 7);
             drop(guard);
             {
                 let _finished = state.history_refresh.lock().await;
@@ -13590,7 +13843,7 @@ async fn history_refresh_discovery_requests_during_a_pass_run_another_pass() {
                 .insert("first-pass-marker".into(), HistoryRefreshFailure::Other);
             request_host_history_refresh(&state);
             request_host_history_refresh(&state);
-            assert_eq!(state.history_discovery_state.load(Ordering::Acquire), 3);
+            assert_eq!(state.history_discovery_state.load(Ordering::Acquire), 7);
             drop(subscribers);
             let _finished = state.history_refresh.lock().await;
             assert!(

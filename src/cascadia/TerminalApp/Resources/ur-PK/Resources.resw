@@ -527,8 +527,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>ہسٹری</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>ہسٹری اور دیگر سیشنز</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>ایجنٹس</value>
@@ -744,4 +744,22 @@
     <value>دوسری ونڈو پر جائیں</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>ٹیب کا رنگ تبدیل کریں</value></data>
+  <data name="RenameTabText"><value>ٹیب کا نام تبدیل کریں</value></data>
+  <data name="DuplicateTabText"><value>ٹیب کی نقل بنائیں</value></data>
+  <data name="SplitTabText"><value>ٹیب تقسیم کریں</value></data>
+  <data name="TabMoveSubMenu"><value>ٹیب منتقل کریں</value></data>
+  <data name="ExportTabText"><value>متن برآمد کریں</value></data>
+  <data name="FindText"><value>تلاش</value></data>
+  <data name="RestartConnectionText"><value>سیشن دوبارہ شروع کریں</value></data>
+  <data name="TabCloseSubMenu"><value>بند کریں</value></data>
+  <data name="TabClose"><value>ٹیب بند کریں</value></data>
+  <data name="MoveTabToNewWindowText"><value>ٹیب نئی ونڈو میں منتقل کریں</value></data>
+  <data name="TabMoveLeft"><value>بائیں منتقل کریں</value></data>
+  <data name="TabMoveRight"><value>دائیں منتقل کریں</value></data>
+  <data name="TabMoveUp"><value>اوپر منتقل کریں</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>نیچے منتقل کریں</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>دائیں جانب کے ٹیبز بند کریں</value></data>
+  <data name="TabCloseOther"><value>دیگر ٹیبز بند کریں</value></data>
+  <data name="ClosePaneText"><value>پین بند کریں</value></data>
 </root>

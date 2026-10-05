@@ -544,8 +544,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Historique</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Historique et autres sessions</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agents</value>
@@ -761,4 +761,22 @@
     <value>Passer à une autre fenêtre</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Modifier la couleur de l’onglet</value></data>
+  <data name="RenameTabText"><value>Renommer l’onglet</value></data>
+  <data name="DuplicateTabText"><value>Dupliquer l’onglet</value></data>
+  <data name="SplitTabText"><value>Diviser l’onglet</value></data>
+  <data name="TabMoveSubMenu"><value>Déplacer l’onglet</value></data>
+  <data name="ExportTabText"><value>Exporter le texte</value></data>
+  <data name="FindText"><value>Rechercher</value></data>
+  <data name="RestartConnectionText"><value>Redémarrer la session</value></data>
+  <data name="TabCloseSubMenu"><value>Fermer</value></data>
+  <data name="TabClose"><value>Fermer l’onglet</value></data>
+  <data name="MoveTabToNewWindowText"><value>Déplacer l’onglet vers une nouvelle fenêtre</value></data>
+  <data name="TabMoveLeft"><value>Déplacer vers la gauche</value></data>
+  <data name="TabMoveRight"><value>Déplacer vers la droite</value></data>
+  <data name="TabMoveUp"><value>Déplacer vers le haut</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Déplacer vers le bas</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Fermer les onglets à droite</value></data>
+  <data name="TabCloseOther"><value>Fermer les autres onglets</value></data>
+  <data name="ClosePaneText"><value>Fermer le volet</value></data>
 </root>

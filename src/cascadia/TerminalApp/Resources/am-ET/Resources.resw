@@ -430,8 +430,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>ታሪክ</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>ታሪክ እና ሌሎች ክፍለ ጊዜዎች</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>ኤጅንቶች</value>
@@ -647,4 +647,22 @@
     <value>ወደ ሌላ መስኮት ቀይር</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>የትር ቀለም ቀይር</value></data>
+  <data name="RenameTabText"><value>የትር ስም ቀይር</value></data>
+  <data name="DuplicateTabText"><value>ትር ቅዳ</value></data>
+  <data name="SplitTabText"><value>ትር ክፈል</value></data>
+  <data name="TabMoveSubMenu"><value>ትር አንቀሳቅስ</value></data>
+  <data name="ExportTabText"><value>ጽሑፍ ወደ ውጭ ላክ</value></data>
+  <data name="FindText"><value>ፈልግ</value></data>
+  <data name="RestartConnectionText"><value>ክፍለ ጊዜውን እንደገና ጀምር</value></data>
+  <data name="TabCloseSubMenu"><value>ዝጋ</value></data>
+  <data name="TabClose"><value>ትር ዝጋ</value></data>
+  <data name="MoveTabToNewWindowText"><value>ትር ወደ አዲስ መስኮት አንቀሳቅስ</value></data>
+  <data name="TabMoveLeft"><value>ወደ ግራ አንቀሳቅስ</value></data>
+  <data name="TabMoveRight"><value>ወደ ቀኝ አንቀሳቅስ</value></data>
+  <data name="TabMoveUp"><value>ወደ ላይ አንቀሳቅስ</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>ወደ ታች አንቀሳቅስ</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>በቀኝ ያሉትን ትሮች ዝጋ</value></data>
+  <data name="TabCloseOther"><value>ሌሎች ትሮችን ዝጋ</value></data>
+  <data name="ClosePaneText"><value>ፓነሉን ዝጋ</value></data>
 </root>

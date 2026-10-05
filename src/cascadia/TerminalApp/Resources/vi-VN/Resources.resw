@@ -455,8 +455,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Lịch sử</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Lịch sử và các phiên khác</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Các tác tử</value>
@@ -672,4 +672,22 @@
     <value>Chuyển sang cửa sổ khác</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Đổi màu tab</value></data>
+  <data name="RenameTabText"><value>Đổi tên tab</value></data>
+  <data name="DuplicateTabText"><value>Nhân bản tab</value></data>
+  <data name="SplitTabText"><value>Chia tab</value></data>
+  <data name="TabMoveSubMenu"><value>Di chuyển tab</value></data>
+  <data name="ExportTabText"><value>Xuất văn bản</value></data>
+  <data name="FindText"><value>Tìm</value></data>
+  <data name="RestartConnectionText"><value>Khởi động lại phiên</value></data>
+  <data name="TabCloseSubMenu"><value>Đóng</value></data>
+  <data name="TabClose"><value>Đóng tab</value></data>
+  <data name="MoveTabToNewWindowText"><value>Di chuyển tab sang cửa sổ mới</value></data>
+  <data name="TabMoveLeft"><value>Di chuyển sang trái</value></data>
+  <data name="TabMoveRight"><value>Di chuyển sang phải</value></data>
+  <data name="TabMoveUp"><value>Di chuyển lên</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Di chuyển xuống</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Đóng các tab bên phải</value></data>
+  <data name="TabCloseOther"><value>Đóng các tab khác</value></data>
+  <data name="ClosePaneText"><value>Đóng ngăn</value></data>
 </root>

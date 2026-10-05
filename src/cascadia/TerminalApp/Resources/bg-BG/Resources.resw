@@ -544,8 +544,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Хронология</value>
-    <comment>Noun heading for resumable session history in the lower section of the combined Agents sidebar.</comment>
+    <value>Хронология и други сесии</value>
+    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Агенти</value>
@@ -761,4 +761,22 @@
     <value>Превключване към друг прозорец</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
+  <data name="TabColorChoose"><value>Промяна на цвета на раздела</value></data>
+  <data name="RenameTabText"><value>Преименуване на раздела</value></data>
+  <data name="DuplicateTabText"><value>Дублиране на раздела</value></data>
+  <data name="SplitTabText"><value>Разделяне на раздела</value></data>
+  <data name="TabMoveSubMenu"><value>Преместване на раздела</value></data>
+  <data name="ExportTabText"><value>Експортиране на текст</value></data>
+  <data name="FindText"><value>Търсене</value></data>
+  <data name="RestartConnectionText"><value>Рестартиране на сесията</value></data>
+  <data name="TabCloseSubMenu"><value>Затваряне</value></data>
+  <data name="TabClose"><value>Затваряне на раздела</value></data>
+  <data name="MoveTabToNewWindowText"><value>Преместване на раздела в нов прозорец</value></data>
+  <data name="TabMoveLeft"><value>Преместване наляво</value></data>
+  <data name="TabMoveRight"><value>Преместване надясно</value></data>
+  <data name="TabMoveUp"><value>Преместване нагоре</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Преместване надолу</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Затваряне на разделите вдясно</value></data>
+  <data name="TabCloseOther"><value>Затваряне на другите раздели</value></data>
+  <data name="ClosePaneText"><value>Затваряне на панела</value></data>
 </root>
