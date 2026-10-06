@@ -32,6 +32,9 @@ checkout:
   fetch-depth: 0
 
 tools:
+  github: false
+  bash: []
+  cli-proxy: false
   edit: false
 
 jobs:
@@ -204,7 +207,7 @@ post-steps:
 
 timeout-minutes: 25
 max-ai-credits: 400
-max-daily-ai-credits: 800
+max-daily-ai-credits: 1200
 
 concurrency:
   group: ghaw-pr-security-guide-test-20261006
