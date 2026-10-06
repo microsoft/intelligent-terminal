@@ -61,6 +61,156 @@ jobs:
   safe_outputs:
     if: needs.agent.result == 'success'
 
+  accessibility-report:
+    name: Publish native accessibility run report
+    needs: [agent, detection, safe_outputs, native-runtime]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: write
+      pull-requests: read
+    steps:
+      - name: Download validated source findings
+        id: source-report
+        if: needs.agent.result == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: validated-accessibility-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/accessibility-run-report
+
+      - name: Publish linked PR check
+        if: ${{ always() }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          REVIEWED_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          AGENT_RESULT: ${{ needs.agent.result }}
+          DETECTION_RESULT: ${{ needs.detection.result }}
+          PUBLICATION_RESULT: ${{ needs.safe_outputs.result }}
+          NATIVE_RESULT: ${{ needs.native-runtime.result }}
+          SOURCE_ARTIFACT_OUTCOME: ${{ steps.source-report.outcome }}
+          PUBLISHED_SHA: ${{ needs.safe_outputs.outputs.push_commit_sha }}
+          CODE_PUSH_FAILURE_COUNT: ${{ needs.safe_outputs.outputs.code_push_failure_count }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const { owner, repo } = context.repo;
+            const reviewedSha = process.env.REVIEWED_SHA;
+            const publishedSha = process.env.PUBLISHED_SHA || '';
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const stages = [
+              ['Source review and validation', process.env.AGENT_RESULT],
+              ['Threat detection', process.env.DETECTION_RESULT],
+              ['Safe-output processing', process.env.PUBLICATION_RESULT],
+              ['Native Axe.Windows smoke', process.env.NATIVE_RESULT]
+            ];
+            const reasons = [];
+            let findings;
+            let fixedCount = 0;
+            let conclusion = 'success';
+            if (stages.some(([, result]) => result === 'failure')) {
+              conclusion = 'failure';
+            } else if (stages.some(([, result]) => result === 'cancelled')) {
+              conclusion = 'cancelled';
+            } else if (stages.some(([, result]) => result !== 'success')) {
+              conclusion = 'action_required';
+              reasons.push('One or more required stages did not run successfully.');
+            }
+            const failures = process.env.CODE_PUSH_FAILURE_COUNT || '0';
+            if (!/^\d+$/.test(failures) || Number(failures) > 0) {
+              conclusion = 'failure';
+              reasons.push('Repair publication failed or its failure count is invalid.');
+            }
+            if (process.env.AGENT_RESULT === 'success') {
+              try {
+                if (process.env.SOURCE_ARTIFACT_OUTCOME !== 'success') {
+                  throw new Error('Validated source findings could not be downloaded.');
+                }
+                const reportPath = path.join(process.env.RUNNER_TEMP, 'accessibility-run-report', 'final.json');
+                const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+                if (report.version !== 1 || typeof report.source_sha !== 'string' ||
+                    report.source_sha.toLowerCase() !== reviewedSha.toLowerCase() ||
+                    !Array.isArray(report.findings) ||
+                    report.findings.some(finding => !finding ||
+                      !['HIGH', 'MEDIUM', 'LOW'].includes(finding.severity) ||
+                      !['fixed', 'remaining', 'blocked', 'advice', 'skipped'].includes(finding.disposition))) {
+                  throw new Error('Validated source findings have inconsistent revision or shape.');
+                }
+                findings = report.findings;
+                fixedCount = findings.filter(finding => finding.disposition === 'fixed').length;
+                if (fixedCount > 0 && !/^[0-9a-f]{40}$/i.test(publishedSha)) {
+                  conclusion = 'failure';
+                  reasons.push('A validated repair has no successful publication commit evidence.');
+                }
+                if (conclusion === 'success' &&
+                    findings.some(finding => finding.severity === 'HIGH' &&
+                      ['remaining', 'blocked'].includes(finding.disposition))) {
+                  conclusion = 'action_required';
+                  reasons.push('HIGH findings remain unresolved or require authenticated runtime evidence.');
+                }
+              } catch (error) {
+                core.error(`Accessibility run report: ${error.message}`);
+                conclusion = 'failure';
+                reasons.push(error.message);
+              }
+            }
+            const { data: pr } = await github.rest.pulls.get({
+              owner, repo, pull_number: Number(process.env.PR_NUMBER)
+            });
+            const currentSha = pr.head.sha;
+            const matchesPublishedHead = /^[0-9a-f]{40}$/i.test(publishedSha) &&
+              currentSha === publishedSha && process.env.PUBLICATION_RESULT === 'success' &&
+              process.env.AGENT_RESULT === 'success' && fixedCount > 0;
+            const stale = currentSha !== reviewedSha && !matchesPublishedHead;
+            if (stale) {
+              if (conclusion === 'success') conclusion = 'neutral';
+              reasons.push('The PR head changed; this report covers the earlier reviewed revision only.');
+            }
+            const checkSha = matchesPublishedHead ? publishedSha : reviewedSha;
+            const summary = [
+              `**[Open workflow run ${context.runId}](${runUrl})**`,
+              '',
+              `Reviewed source: \`${reviewedSha}\`.`,
+              `Current PR head: \`${currentSha}\`.`,
+              ...stages.map(([name, result]) => `- ${name}: **${result || 'unavailable'}**.`)
+            ];
+            if (findings) {
+              const counts = ['HIGH', 'MEDIUM', 'LOW'].map(severity =>
+                `${findings.filter(finding => finding.severity === severity).length} ${severity}`);
+              summary.push('', `Validated findings: ${counts.join(', ')}.`,
+                `Fixed: ${findings.filter(finding => finding.disposition === 'fixed').length}.`);
+            } else {
+              summary.push('', 'Validated findings are unavailable; no source-review PASS is inferred.');
+            }
+            if (matchesPublishedHead) {
+              summary.push('', `Static repair published as \`${publishedSha}\`.`,
+                'Native smoke covers the original reviewed revision, not this new repair commit.');
+            }
+            if (reasons.length) summary.push('', ...reasons.map(reason => `- ${reason}`));
+            summary.push('', `[Findings, native evidence and logs](${runUrl}#artifacts).`,
+              'Runtime-dependent repairs remain blocked; native smoke is not full accessibility certification.');
+            const titles = {
+              success: 'Review and native smoke completed',
+              failure: 'Accessibility validation or publication failed',
+              cancelled: 'Accessibility run was cancelled',
+              action_required: 'Accessibility findings or blocked stages need attention',
+              neutral: 'Stale report for an earlier PR revision'
+            };
+            await github.rest.checks.create({
+              owner, repo, name: 'Native accessibility report',
+              head_sha: checkSha,
+              external_id: `native-accessibility-${context.runId}-${process.env.GITHUB_RUN_ATTEMPT}`,
+              status: 'completed', conclusion,
+              completed_at: new Date().toISOString(),
+              details_url: runUrl,
+              output: { title: titles[conclusion], summary: summary.join('\n') }
+            });
+            await core.summary.addRaw(summary.join('\n')).write();
+
   native-runtime:
     name: Native Axe.Windows smoke
     needs: [agent]

@@ -77,6 +77,29 @@ failed post-step validator cannot publish previously queued branch writes.
 Validated final JSON is retained as an artifact; advisory details are included
 in the job summary without introducing a second publication mode.
 
+## Automatic PR run report
+
+Every triggered run ends with a trusted **Native accessibility report** check
+in the PR's Checks tab. Its Details link opens the actual workflow run; the
+summary shows stage outcomes, validated finding counts, reviewed/current SHAs,
+and links to findings, native evidence, and logs. Failed, blocked, and skipped
+stages remain visible rather than being inferred as PASS.
+
+The report is a trusted final job, not an agent-authored comment or safe output.
+It never posts PR comments or edits the PR description, so repair runs still
+have only one code-publication mode. If a verified static repair was published,
+the check follows that published commit and explicitly states that native smoke
+covered the original source revision. A stale run remains associated with its
+reviewed commit and does not mark a newer unreviewed head as passing.
+
+This reporting is installed with the workflow in the trusted base. The manually
+linked historical sample PR is not evidence that this newly added reporter has
+already executed; its success/failure/stale/repair behaviors are tested locally.
+GitHub API or runner outages can prevent final publication; the report job
+fails explicitly and its ordinary Actions check still links to the failed job.
+
+## Findings and publication policy
+
 Fork pull requests are review-only. The report validator rejects both `fixed`
 dispositions and worktree changes for forks. Same-repository fixes use
 `push-to-pull-request-branch` against the reviewed head SHA with no fallback PR.

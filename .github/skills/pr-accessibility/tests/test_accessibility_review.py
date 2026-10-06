@@ -804,7 +804,166 @@ class ValidationTests(unittest.TestCase):
             MODULE.validate(self.root, self.head, self.head, True, self.prepared, self.report())
 
 
+@unittest.skipUnless(shutil.which("node"), "Node required for trusted report scenarios")
+class RunReportTests(unittest.TestCase):
+    reviewed_sha = "a" * 40
+    published_sha = "b" * 40
+
+    def report(self, *, findings=None, report_sha=None, current_sha=None, published_sha="",
+               agent="success", detection="success", publication="success", native="success",
+               artifact="success", push_failures="0", fail_api=False):
+        root = Path(__file__).parents[4]
+        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        job = workflow.split("\n  accessibility-report:\n", 1)[1].split("\n  native-runtime:\n", 1)[0]
+        script = textwrap.dedent(job.split("          script: |\n", 1)[1])
+        with tempfile.TemporaryDirectory() as directory:
+            report_dir = Path(directory) / "accessibility-run-report"
+            report_dir.mkdir()
+            (report_dir / "final.json").write_text(json.dumps({
+                "version": 1, "source_sha": report_sha or self.reviewed_sha,
+                "findings": findings or [],
+            }), encoding="utf-8")
+            data = {
+                "script": script, "currentSha": current_sha or self.reviewed_sha, "failApi": fail_api,
+                "env": {
+                    "RUNNER_TEMP": directory, "REVIEWED_SHA": self.reviewed_sha, "PR_NUMBER": "985",
+                    "AGENT_RESULT": agent, "DETECTION_RESULT": detection, "PUBLICATION_RESULT": publication,
+                    "NATIVE_RESULT": native, "SOURCE_ARTIFACT_OUTCOME": artifact,
+                    "PUBLISHED_SHA": published_sha, "CODE_PUSH_FAILURE_COUNT": push_failures,
+                    "GITHUB_RUN_ATTEMPT": "1",
+                },
+            }
+            runner = r"""
+const fs = require('fs');
+const vm = require('vm');
+const data = JSON.parse(fs.readFileSync(0, 'utf8'));
+const calls = [];
+const errors = [];
+let summary = '';
+const context = {
+  repo: { owner: 'microsoft', repo: 'intelligent-terminal' },
+  serverUrl: 'https://github.com', runId: 12345
+};
+const github = { rest: {
+  pulls: { get: async () => {
+    if (data.failApi) throw new Error('PR metadata unavailable');
+    return { data: { head: { sha: data.currentSha } } };
+  } },
+  checks: { create: async value => { calls.push(value); return {}; } }
+} };
+const core = {
+  error: value => errors.push(value),
+  summary: { addRaw(value) { summary = value; return this; }, async write() {} }
+};
+vm.runInNewContext('(async () => {' + data.script + '\n})()', {
+  require, context, github, core, process: { env: data.env }
+}).then(() => console.log(JSON.stringify({ calls, errors, summary })))
+  .catch(error => { console.error(error.message); process.exitCode = 1; });
+"""
+            result = subprocess.run(
+                ["node", "-e", runner], input=json.dumps(data),
+                capture_output=True, text=True, timeout=30,
+            )
+            if fail_api:
+                return result
+            self.assertEqual(0, result.returncode, result.stderr)
+            output = json.loads(result.stdout)
+            self.assertEqual(1, len(output["calls"]))
+            self.assertEqual("https://github.com/microsoft/intelligent-terminal/actions/runs/12345",
+                             output["calls"][0]["details_url"])
+            self.assertEqual("Native accessibility report", output["calls"][0]["name"])
+            return output
+
+    def test_passed_noop_has_direct_run_link_and_validated_counts(self):
+        result = self.report(findings=[{"severity": "MEDIUM", "disposition": "advice"}])
+        check = result["calls"][0]
+        self.assertEqual("success", check["conclusion"])
+        self.assertEqual(self.reviewed_sha, check["head_sha"])
+        self.assertIn("0 HIGH, 1 MEDIUM, 0 LOW", check["output"]["summary"])
+        self.assertIn("actions/runs/12345", result["summary"])
+        self.assertIn("#artifacts", result["summary"])
+
+    def test_native_failure_is_not_reported_as_pass(self):
+        self.assertEqual("failure", self.report(native="failure")["calls"][0]["conclusion"])
+
+    def test_blocked_high_finding_requires_attention(self):
+        result = self.report(findings=[{"severity": "HIGH", "disposition": "blocked"}])
+        self.assertEqual("action_required", result["calls"][0]["conclusion"])
+
+    def test_missing_validated_artifact_is_failure_not_empty_success(self):
+        result = self.report(artifact="failure")
+        self.assertEqual("failure", result["calls"][0]["conclusion"])
+        self.assertTrue(result["errors"])
+        self.assertIn("unavailable", result["summary"])
+
+    def test_wrong_report_revision_is_rejected(self):
+        result = self.report(report_sha="c" * 40)
+        self.assertEqual("failure", result["calls"][0]["conclusion"])
+        self.assertIn("inconsistent revision", result["summary"])
+
+    def test_source_failure_still_publishes_run_link_without_findings(self):
+        result = self.report(agent="failure", artifact="skipped")
+        self.assertEqual("failure", result["calls"][0]["conclusion"])
+        self.assertIn("no source-review PASS is inferred", result["summary"])
+
+    def test_skipped_stages_are_not_inferred_successful(self):
+        result = self.report(agent="skipped", detection="skipped", publication="skipped",
+                             native="skipped", artifact="skipped")
+        self.assertEqual("action_required", result["calls"][0]["conclusion"])
+
+    def test_stale_success_stays_on_reviewed_commit_and_is_neutral(self):
+        result = self.report(current_sha=self.published_sha)
+        self.assertEqual("neutral", result["calls"][0]["conclusion"])
+        self.assertEqual(self.reviewed_sha, result["calls"][0]["head_sha"])
+        self.assertIn("earlier reviewed revision", result["summary"])
+
+    def test_stale_failed_validation_remains_failure(self):
+        result = self.report(agent="failure", artifact="skipped", current_sha=self.published_sha)
+        self.assertEqual("failure", result["calls"][0]["conclusion"])
+
+    def test_repair_link_follows_authenticated_published_commit(self):
+        result = self.report(findings=[{"severity": "HIGH", "disposition": "fixed"}],
+                             published_sha=self.published_sha, current_sha=self.published_sha)
+        self.assertEqual("success", result["calls"][0]["conclusion"])
+        self.assertEqual(self.published_sha, result["calls"][0]["head_sha"])
+        self.assertIn("original reviewed revision, not this new repair commit", result["summary"])
+
+    def test_fixed_without_published_commit_is_failure(self):
+        result = self.report(findings=[{"severity": "HIGH", "disposition": "fixed"}])
+        self.assertEqual("failure", result["calls"][0]["conclusion"])
+
+    def test_failed_code_push_is_failure_even_if_job_succeeded(self):
+        result = self.report(push_failures="1")
+        self.assertEqual("failure", result["calls"][0]["conclusion"])
+
+    def test_unconfirmed_published_sha_does_not_mark_new_head_passed(self):
+        result = self.report(current_sha=self.published_sha, published_sha=self.published_sha)
+        self.assertEqual("neutral", result["calls"][0]["conclusion"])
+        self.assertEqual(self.reviewed_sha, result["calls"][0]["head_sha"])
+
+    def test_api_failure_surfaces_without_fake_check(self):
+        result = self.report(fail_api=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("PR metadata unavailable", result.stderr)
+
+
 class WorkflowContractTests(unittest.TestCase):
+    def test_linked_report_runs_after_validation_publication_and_native(self):
+        root = Path(__file__).parents[4]
+        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        job = workflow.split("\n  accessibility-report:\n", 1)[1].split("\n  native-runtime:\n", 1)[0]
+        self.assertIn("needs: [agent, detection, safe_outputs, native-runtime]", job)
+        self.assertIn("checks: write", job)
+        self.assertIn("details_url: runUrl", job)
+        self.assertNotIn("createComment", job)
+        compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
+        compiled_report = re.split(r"\n  [a-zA-Z][\w-]*:\n",
+                                  compiled.split("\n  accessibility-report:\n", 1)[1], maxsplit=1)[0]
+        dependencies = compiled_report.split("    needs:\n", 1)[1].split("\n    if:", 1)[0]
+        for required in ("agent", "detection", "safe_outputs", "native-runtime"):
+            self.assertIn(f"      - {required}", dependencies)
+        self.assertIn("checks: write", compiled_report)
+
     def test_support_paths_trigger_trusted_base_validation(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
