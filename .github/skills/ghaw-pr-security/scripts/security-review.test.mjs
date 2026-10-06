@@ -567,6 +567,7 @@ test('native CLI and bounded data-only report submission work end to end', () =>
     // Keep report artifacts outside the checkout, as on the hosted runner.
     const artifacts = join(root, 'artifacts');
     mkdirSync(artifacts);
+    git('replace', head, base);
     for (const [relation, mode] of [['fork', 'guide'], ['same-repo', 'repair']]) {
       const scopePath = join(artifacts, `${mode}-scope.json`);
       const reportPath = join(artifacts, `${mode}-report.json`);
@@ -576,6 +577,8 @@ test('native CLI and bounded data-only report submission work end to end', () =>
       let result = invoke('scope', '--base', base, '--head', head, '--pr', '17',
         '--relation', relation, '--mode', mode, '--output', scopePath);
       assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(readFileSync(scopePath, 'utf8')).changedFiles.length, 1,
+        'native immutable scope must ignore runner-configured replacement refs');
       result = invoke('init-report', '--scope', scopePath, '--output', reportPath);
       assert.equal(result.status, 0, result.stderr);
       const validate = () => invoke('validate', '--scope', scopePath, '--report', reportPath,

@@ -630,9 +630,7 @@ function main() {
     git(['cat-file', '-e', `${head}^{commit}`]);
     const base = git(['merge-base', observedBase, head]).trim().toLowerCase();
     if (!SHA.test(base)) fail('could not resolve a comparison merge base');
-    const raw = execFileSync('git', ['diff', '--name-status', '-z', '--find-renames', base, head], {
-      encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 30_000,
-    });
+    const raw = git(['diff', '--no-ext-diff', '--no-textconv', '--name-status', '-z', '--find-renames', base, head]);
     const scope = buildScope(base, head, Number(option('--pr')), option('--relation'), raw, observedBase, option('--mode'));
     writeFileSync(option('--output'), `${JSON.stringify(scope, null, 2)}\n`, { flag: 'wx' });
     return;

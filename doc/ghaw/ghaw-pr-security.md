@@ -264,8 +264,14 @@ The remaining low-severity notification suggestion was independently declined
 as UX noise, not a vulnerability; the skill now explicitly excludes such
 suggestions. This evidence proves transport, not universal finding relevance.
 That run used the earlier PowerShell report path. The replacement data-only
-MCP capability boundary is undergoing its own official hosted proof; do not
-reuse the earlier run as evidence that a newly declared tool server works.
+MCP capability boundary separately passed
+[run 37399159887](https://github.com/microsoft/intelligent-terminal/actions/runs/37399159887),
+test commit `2130542495c4ad9469a1b48f19de7c59df7816a5`. The real model used the
+immutable-read tools and fixed report writer; native unchanged-worktree, scope,
+report and noop checks passed. Recorded total usage was 243.54923 AIC. Its
+remaining LOW robustness suggestion lacked a demonstrated attacker path and
+is not accepted as a proved security regression. Transport and finding quality
+must remain separate claims; no native post-filter fabricates no findings.
 
 ## Local validation
 

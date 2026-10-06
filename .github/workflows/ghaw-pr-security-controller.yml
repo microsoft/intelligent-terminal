@@ -236,6 +236,11 @@ jobs:
                 --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" |
                 tail -n 1
             )"
+            current_head="$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)"
+            [ "$current_head" = "$EXPECTED_HEAD_SHA" ] || {
+              echo "::error::PR head changed before fork guidance publication; existing comment left unchanged."
+              exit 1
+            }
             if [ -n "$existing" ]; then
               jq -n --rawfile body "$body_file" '{body:$body}' |
                 gh api --method PATCH "/repos/$GITHUB_REPOSITORY/issues/comments/$existing" --input -
