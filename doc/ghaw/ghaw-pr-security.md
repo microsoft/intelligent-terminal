@@ -33,6 +33,11 @@ Before inference, the trusted script validates the immutable observed-base/head
 commits, resolves their merge base, normalizes changed paths, classifies
 affected trust boundaries, and records a scope hash. After inference, a fresh
 API read must still return the same head.
+Rename/copy classification includes both source and destination paths, so moving
+a sensitive file into an unrelated directory does not suppress review. All
+`.github/**` automation, including policies and instructions, is included in
+both triggering and classification. Report validation rejects common bearer
+and labeled session-capability forms without claiming universal secret detection.
 Each worker rematerializes the validator from `github.workflow_sha`, not from
 agent-edited bytes.
 
@@ -164,6 +169,12 @@ The repair worker's explicit checkout is pinned to the immutable head; fork
 guidance stays on the trusted workflow checkout and reads only fetched Git
 objects. The inline repair gate and skill are restored from gh-aw's trusted
 activation artifact after checkout.
+The repair worker also restores the entire trusted `.github`/`.agents` snapshot
+unconditionally after its explicit immutable-head checkout, before native scope
+preparation and inline restoration. It does not rely on the generated
+PR-checkout step's conditional restoration, since that step is deliberately
+ineligible in this dispatch context. Runtime prompts and shared tool imports
+therefore cannot come from PR-edited files.
 
 ## Hosted-trial readiness
 

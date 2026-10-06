@@ -22,7 +22,9 @@ const SECRET_PATTERNS = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i,
   /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/,
   /\bgithub_pat_[A-Za-z0-9_]{20,}\b/,
-  /\b(?:token|secret|password|authorization)\s*[:=]\s*["']?[A-Za-z0-9+/_.=-]{16,}/i,
+  /\b(?:token|secret|password|authorization)["']?\s*[:=]\s*["']?[A-Za-z0-9+/_.=-]{16,}/i,
+  /\bbearer[ \t]+[A-Za-z0-9+/_.~=-]{16,}/i,
+  /\b(?:session[_-]?capability|capability|mcp[_-]?token|session[_-]?token)["']?\s*[:=]\s*["']?[A-Za-z0-9+/_.~=-]{16,}/i,
 ];
 
 function fail(message) {
@@ -81,7 +83,7 @@ export function classifyPath(path) {
   if (/(?:hook|agent_event|osc)/i.test(path)) {
     domains.add('hooks-untrusted-input');
   }
-  if (/^(?:\.github\/workflows\/|\.github\/actions\/|\.github\/scripts\/|\.github\/agents\/|\.github\/skills\/)/.test(path)) {
+  if (/^\.github\//.test(path)) {
     domains.add('workflow-credentials');
   }
   if (/^(?:src\/cascadia\/CascadiaPackage\/|build\/|tools\/wta\/.*(?:runtime_paths|logging))/.test(path)) {
@@ -118,7 +120,10 @@ function parseNameStatus(raw) {
     if (status[0] === 'R' || status[0] === 'C') {
       path = normalizePath(parts[index++], 'renamed path');
     }
-    files.push({ status, path, ...(path === oldPath ? {} : { oldPath }), domains: classifyPath(path) });
+    files.push({
+      status, path, ...(path === oldPath ? {} : { oldPath }),
+      domains: [...new Set([...classifyPath(oldPath), ...classifyPath(path)])].sort(),
+    });
   }
   return files;
 }
@@ -261,7 +266,7 @@ export function validateReport(report, scope, phase = 'final') {
   if (!Array.isArray(report.findings) || report.findings.length > 20) {
     fail('findings must be an array with at most 20 entries');
   }
-  const changed = new Set(scope.changedFiles.map(file => file.path));
+  const changed = new Set(scope.changedFiles.flatMap(file => file.oldPath ? [file.oldPath, file.path] : [file.path]));
   const findings = report.findings.map((finding, index) => {
     if (!finding || typeof finding !== 'object' || !SAFE_RULE.test(finding.rule) ||
         !['high', 'medium', 'low'].includes(finding.severity) ||

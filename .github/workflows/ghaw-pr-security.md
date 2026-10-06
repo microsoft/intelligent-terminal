@@ -213,6 +213,16 @@ safe-outputs:
     create-issue: false
 
 steps:
+  - name: Restore trusted runtime imports after immutable head checkout
+    shell: bash
+    env:
+      GH_AW_AGENT_FOLDERS: ".agents .github"
+      GH_AW_AGENT_FILES: "AGENTS.md"
+    run: |
+      set -euo pipefail
+      [ -d /tmp/gh-aw/base/.github ]
+      bash "${RUNNER_TEMP}/gh-aw/actions/restore_base_github_folders.sh"
+
   - name: Prepare immutable repair scope
     shell: bash
     env:

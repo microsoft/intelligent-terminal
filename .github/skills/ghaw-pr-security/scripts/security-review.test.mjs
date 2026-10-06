@@ -82,6 +82,21 @@ test('classifies project trust boundaries', () => {
   assert(classifyPath('tools/wta/prompts/terminal-agent.md').includes('wta'));
   assert(classifyPath('.github/workflows/review.yml').includes('workflow-credentials'));
   assert(classifyPath('.github/skills/reviewer/SKILL.md').includes('workflow-credentials'));
+  assert(classifyPath('.github/policies/resourceManagement.yml').includes('workflow-credentials'));
+  assert(classifyPath('.github/instructions/security.instructions.md').includes('workflow-credentials'));
+});
+
+test('sensitive source paths remain applicable after rename or copy outside their domain', () => {
+  for (const status of ['R100', 'C100']) {
+    const current = buildScope(
+      BASE, HEAD, 17, 'fork',
+      `${status}\0.github/workflows/review.yml\0archive/review.txt\0`,
+    );
+    assert.equal(current.applicable, true);
+    assert(current.domains.includes('workflow-credentials'));
+    assert.equal(current.changedFiles[0].oldPath, '.github/workflows/review.yml');
+    assert.equal(current.changedFiles[0].path, 'archive/review.txt');
+  }
 });
 
 test('rejects unsafe changed paths', () => {
@@ -504,6 +519,15 @@ test('rejects secret-like diagnostic evidence and unsupported passing checks', (
   assert.throws(() => validateReport(report({
     summary: 'token=abcdefghijklmnopqrstuvwxyz123456',
   }), scope()), /secret material/);
+  for (const summary of [
+    'Bearer abcdefghijklmnopqrstuvwxyz123456',
+    'session_capability=abcdefghijklmnopqrstuvwxyz123456',
+    'mcp-token: abcdefghijklmnopqrstuvwxyz123456',
+    '{"session_capability":"abcdefghijklmnopqrstuvwxyz123456"}',
+    '{"authorization":"Bearer abcdefghijklmnopqrstuvwxyz123456"}',
+  ]) {
+    assert.throws(() => validateReport(report({ summary }), scope()), /secret material/);
+  }
 });
 
 test('native CLI and bounded data-only report submission work end to end', () => {
