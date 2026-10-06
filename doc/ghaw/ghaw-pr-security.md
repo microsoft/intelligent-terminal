@@ -79,17 +79,17 @@ success. Native attestation alone promotes an exact, source-approved proposal
 to `fixed` after final-patch validation passes. After inference, the trusted post-step creates a fresh
 checkout of the immutable head, recomputes scope from the dispatch SHAs, copies
 only reported regular non-executable WTA source files without mode changes,
-removes agent-authored passing validation claims, and runs the fixed WTA test
-command in a pinned disposable Rust container with the reconstructed workspace
-mounted read-only, no network, and no GitHub credential passed. The Linux
-analysis post-step emits only a source-reviewed proposal artifact. A reusable
+rejects agent-authored final validation claims, and emits only a source-reviewed
+proposal artifact. A reusable
 `ghaw-pr-security-validate-windows.yml` job reconstructs the immutable head,
 recomputes scope, checks proposal identity/paths/digest, and executes tests only
 inside the trusted public Rust 1.93.0/MSVC image as `ContainerUser`. Final Linux
 promotion waits for that job, verifies its head and patch digest, and creates
 the publication artifact only after native test success. Failed validation or
 unpromoted proposals cannot reach the controller's push path. Dependencies
-are fetched in a separate container from the trusted base; automatic repair is
+are fetched on the trusted Windows host with `cargo fetch --locked` from a
+separate immutable base checkout, without executing PR-controlled build code;
+automatic repair is
 blocked unless every complete-PR diff entry has Git status `M` and targets
 existing WTA Rust source. Additions, copies, deletions, renames, and type changes
 remain guidance-only.
@@ -268,7 +268,8 @@ MCP capability boundary separately passed
 [run 37399159887](https://github.com/microsoft/intelligent-terminal/actions/runs/37399159887),
 test commit `2130542495c4ad9469a1b48f19de7c59df7816a5`. The real model used the
 immutable-read tools and fixed report writer; native unchanged-worktree, scope,
-report and noop checks passed. Recorded total usage was 243.54923 AIC. Its
+report and noop checks passed. Model execution took 20m33s; recorded total usage
+was 243.54923 AIC. Its
 remaining LOW robustness suggestion lacked a demonstrated attacker path and
 is not accepted as a proved security regression. Transport and finding quality
 must remain separate claims; no native post-filter fabricates no findings.

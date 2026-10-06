@@ -163,15 +163,16 @@ jobs:
             --pr "$PR_NUMBER" --relation same-repo --mode repair --output "$final/security-scope.validated.json"
           [ "$(node -p "JSON.parse(require('fs').readFileSync('$final/security-scope.validated.json','utf8')).baseSha")" = "$COMPARISON_BASE_SHA" ]
           patch_count="$(node -p "JSON.parse(require('fs').readFileSync('$proposal/security-findings.proposed.json','utf8')).patch.length")"
+          [ "$TESTED_HEAD_SHA" = "$EXPECTED_HEAD_SHA" ]
           attest_args=()
           if [ "$patch_count" -gt 0 ]; then
             [ "$TESTS_PASSED" = true ]
-            [ "$TESTED_HEAD_SHA" = "$EXPECTED_HEAD_SHA" ]
             [ "$(sha256sum "$proposal/security-repair.patch" | cut -d ' ' -f 1)" = "$TESTED_PATCH_SHA256" ]
             git apply --binary "$proposal/security-repair.patch"
             attest_args+=(--wta-tests-passed)
           else
             [ "$TESTS_PASSED" = false ]
+            [ -z "$TESTED_PATCH_SHA256" ]
             [ ! -s "$proposal/security-repair.patch" ]
           fi
           node "$validator" validate-proposal --scope "$final/security-scope.validated.json" \
