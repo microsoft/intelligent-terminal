@@ -77,6 +77,132 @@ class StaticAnalysisTests(unittest.TestCase):
 
 
 class PrepareIntegrationTests(unittest.TestCase):
+    @contextlib.contextmanager
+    def source_fixture(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+            workspace = Path(directory)
+            root = workspace / "repo"
+            root.mkdir()
+            MODULE._git(root, "init", "-q")
+            MODULE._git(root, "config", "user.email", "test@example.com")
+            MODULE._git(root, "config", "user.name", "Test")
+            MODULE._git(root, "config", "core.autocrlf", "false")
+            path = root / "src/cascadia/TerminalApp/Deleted.xaml"
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b'<Button AutomationProperties.AccessibilityView="Raw" Content="Open" />\n')
+            MODULE._git(root, "add", ".")
+            MODULE._git(root, "commit", "-qm", "base")
+            yield workspace, root, path, MODULE._git(root, "rev-parse", "HEAD").strip()
+
+    def test_deletion_only_preserves_base_evidence_and_allows_unrepaired_high(self):
+        with self.source_fixture() as (workspace, root, path, base):
+            original = path.read_bytes().decode("utf-8")
+            relative = path.relative_to(root).as_posix()
+            path.unlink()
+            MODULE._git(root, "add", ".")
+            MODULE._git(root, "commit", "-qm", "delete UI")
+            head = MODULE._git(root, "rev-parse", "HEAD").strip()
+            prepared_path = workspace / "prepared.json"
+            MODULE.prepare(root, base, head, prepared_path, None)
+            first = prepared_path.read_text()
+            MODULE.prepare(root, base, head, prepared_path, None)
+            self.assertEqual(first, prepared_path.read_text())
+            prepared = json.loads(first)
+            self.assertTrue(prepared["relevant"])
+            self.assertEqual([relative], prepared["changed_files"])
+            self.assertEqual(head, prepared["source_sha"])
+            self.assertEqual(base, prepared["comparison_base_sha"])
+            evidence = prepared["source_evidence"][relative]
+            self.assertEqual("deleted", evidence["change"])
+            self.assertIsNone(evidence["head"])
+            self.assertEqual(base, evidence["base"]["source_sha"])
+            self.assertEqual(relative, evidence["base"]["file"])
+            self.assertEqual(original, evidence["base"]["text"])
+            self.assertEqual(
+                MODULE._git(root, "rev-parse", f"{base}:{relative}").strip(),
+                evidence["base"]["blob_sha"],
+            )
+            self.assertIn("deleted file mode", evidence["diff"])
+            self.assertIn("-" + original.strip(), evidence["diff"])
+            self.assertIn("names_roles_values", prepared["review_surfaces"][relative])
+            self.assertEqual([], prepared["static_findings"])
+            with self.assertRaises(RuntimeError):
+                MODULE._git(root, "show", f"{head}:{relative}")
+            finding = MODULE._finding(
+                "AX-DELETION", relative, 1, "HIGH", "high",
+                "Accessible operation was deleted.", "Keep an accessible operation.",
+                "Users cannot invoke the operation.", evidence["diff"],
+            )
+            report_path = workspace / "report.json"
+            for disposition in ("remaining", "blocked"):
+                finding["disposition"] = disposition
+                report_path.write_text(json.dumps({
+                    "version": 1, "source_sha": head, "findings": [finding],
+                    "patch_files": [], "runtime_checks": prepared["runtime_checks"],
+                }), encoding="utf-8")
+                MODULE.validate(root, head, head, True, prepared_path, report_path)
+
+    def test_renames_expose_old_and_new_revision_paths_without_false_head_source(self):
+        for destination in ("src/cascadia/TerminalApp/Renamed.xaml", "doc/Moved.xaml"):
+            with self.subTest(destination=destination), self.source_fixture() as (workspace, root, path, base):
+                old = path.relative_to(root).as_posix()
+                target = root / destination
+                target.parent.mkdir(parents=True, exist_ok=True)
+                path.rename(target)
+                MODULE._git(root, "add", ".")
+                MODULE._git(root, "commit", "-qm", "rename UI")
+                head = MODULE._git(root, "rev-parse", "HEAD").strip()
+                self.assertIn("R100", MODULE._git(root, "diff", "--name-status", "-M", base, head))
+                prepared_path = workspace / "prepared.json"
+                MODULE.prepare(root, base, head, prepared_path, None)
+                prepared = json.loads(prepared_path.read_text())
+                MODULE._git(root, "config", "diff.renames", "false")
+                MODULE.prepare(root, base, head, prepared_path, None)
+                self.assertEqual(prepared, json.loads(prepared_path.read_text()))
+                expected = sorted([old, destination]) if MODULE._is_relevant(destination) else [old]
+                self.assertTrue(prepared["relevant"])
+                self.assertEqual(expected, prepared["changed_files"])
+                deleted = prepared["source_evidence"][old]
+                self.assertEqual(base, deleted["base"]["source_sha"])
+                self.assertIsNone(deleted["head"])
+                self.assertIn("deleted file mode", deleted["diff"])
+                with self.assertRaises(RuntimeError):
+                    MODULE._git(root, "show", f"{head}:{old}")
+                if destination in expected:
+                    added = prepared["source_evidence"][destination]
+                    self.assertIsNone(added["base"])
+                    self.assertEqual(head, added["head"]["source_sha"])
+                    self.assertEqual(destination, added["head"]["file"])
+                    self.assertEqual(deleted["base"]["blob_sha"], added["head"]["blob_sha"])
+                    self.assertIn("new file mode", added["diff"])
+                    self.assertEqual([destination], [item["file"] for item in prepared["static_findings"]])
+
+    def test_deleted_base_signal_cannot_authorize_restoring_a_head_missing_file(self):
+        with self.source_fixture() as (workspace, root, path, base):
+            original = path.read_bytes().decode("utf-8")
+            relative = path.relative_to(root).as_posix()
+            path.unlink()
+            MODULE._git(root, "add", ".")
+            MODULE._git(root, "commit", "-qm", "delete UI")
+            head = MODULE._git(root, "rev-parse", "HEAD").strip()
+            prepared_path = workspace / "prepared.json"
+            MODULE.prepare(root, base, head, prepared_path, None)
+            prepared = json.loads(prepared_path.read_text())
+            signal = MODULE._scan_xaml(relative, original, set())[0]
+            prepared["static_findings"] = [signal]
+            prepared_path.write_text(json.dumps(prepared), encoding="utf-8")
+            finding = dict(signal, confidence="high", disposition="fixed",
+                           repair_recipe=MODULE.STATIC_RAW_VIEW_RECIPE)
+            path.write_bytes(MODULE._remove_raw_view_at_line(original, 1).encode("utf-8"))
+            MODULE._git(root, "add", ".")
+            report_path = workspace / "report.json"
+            report_path.write_text(json.dumps({
+                "version": 1, "source_sha": head, "findings": [finding],
+                "patch_files": [relative], "runtime_checks": prepared["runtime_checks"],
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "trusted static repair verification failed"):
+                MODULE.validate(root, head, head, True, prepared_path, report_path)
+
     def test_prepare_reads_immutable_head_blobs_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -100,6 +226,12 @@ class PrepareIntegrationTests(unittest.TestCase):
             prepared = json.loads(first.read_text())
             self.assertEqual(first.read_text(), second.read_text())
             self.assertEqual(head, prepared["source_sha"])
+            evidence = prepared["source_evidence"]["src/cascadia/TerminalApp/Test.xaml"]
+            self.assertEqual("modified", evidence["change"])
+            self.assertEqual(base, evidence["base"]["source_sha"])
+            self.assertEqual(head, evidence["head"]["source_sha"])
+            self.assertNotIn("AccessibilityView", evidence["base"]["text"])
+            self.assertIn('AccessibilityView="Raw"', evidence["head"]["text"])
             self.assertEqual("AXSTATIC001", prepared["static_findings"][0]["rule"])
             self.assertTrue(all(check["status"] == "SKIPPED" for check in prepared["runtime_checks"]))
 

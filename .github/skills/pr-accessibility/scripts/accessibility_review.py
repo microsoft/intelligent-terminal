@@ -88,8 +88,25 @@ def _is_relevant(path: str) -> bool:
 
 
 def _changed_paths(root: Path, base: str, head: str) -> list[str]:
-    output = _git(root, "diff", "--name-only", "--diff-filter=ACMRT", base, head, "--")
-    return sorted({_normalize(line) for line in output.splitlines() if _is_relevant(line)})
+    # Expose both sides of renames, including moves out of the UI allowlist.
+    output = _git(root, "diff", "--name-only", "-z", "--no-renames", "--diff-filter=ACDMRT", base, head, "--")
+    return sorted({_normalize(path) for path in output.split("\0") if _is_relevant(path)})
+
+
+def _source_blob(root: Path, revision: str, path: str) -> dict[str, str] | None:
+    entry = _git(root, "ls-tree", "-z", revision, "--", path)
+    if not entry:
+        return None
+    metadata, name = entry.rstrip("\0").split("\t", 1)
+    _, kind, blob_sha = metadata.split()
+    if kind != "blob" or name != path:
+        raise ValueError(f"expected a source blob at {revision}:{path}")
+    return {
+        "source_sha": revision.lower(),
+        "blob_sha": blob_sha,
+        "file": path,
+        "text": _git(root, "show", f"{revision}:{path}"),
+    }
 
 
 def _added_lines(root: Path, base: str, head: str, path: str) -> set[int]:
@@ -292,6 +309,7 @@ def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path 
 
     findings: list[dict[str, Any]] = []
     surfaces: dict[str, list[str]] = {}
+    source_evidence: dict[str, dict[str, Any]] = {}
     for path in paths:
         if changed_files:
             candidate = root / path
@@ -300,10 +318,23 @@ def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path 
             text = candidate.read_text(encoding="utf-8-sig", errors="replace")
             changed = set()
         else:
-            try:
-                text = _git(root, "show", f"{head}:{path}")
-            except RuntimeError:
+            base_blob = _source_blob(root, base, path)
+            head_blob = _source_blob(root, head, path)
+            if base_blob is None and head_blob is None:
+                raise ValueError(f"classified changed source is absent from both revisions: {path}")
+            source_evidence[path] = {
+                "change": "deleted" if head_blob is None else "added" if base_blob is None else "modified",
+                "base": base_blob,
+                "head": head_blob,
+                "diff": _git(root, "diff", "--no-renames", "--no-ext-diff", "--no-color", base, head, "--", path),
+            }
+            if head_blob is None:
+                # Deleted controls are evidence, never head repair candidates.
+                detected = _review_surfaces(path, base_blob["text"], set())
+                if detected:
+                    surfaces[path] = detected
                 continue
+            text = head_blob["text"]
             changed = _added_lines(root, base, head, path)
         if Path(path).suffix.lower() == ".xaml":
             findings.extend(_scan_xaml(path, text, changed))
@@ -317,6 +348,7 @@ def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path 
         "comparison_base_sha": base.lower(),
         "relevant": bool(paths),
         "changed_files": paths,
+        "source_evidence": source_evidence,
         "static_findings": sorted(findings, key=lambda item: (item["file"], item["line"], item["rule"])),
         "review_surfaces": surfaces,
         "runtime_checks": [

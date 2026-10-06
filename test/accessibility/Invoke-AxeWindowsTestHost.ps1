@@ -96,19 +96,106 @@ namespace IntelligentTerminal.Accessibility
 }
 '@
 
-function Stop-OwnedProcess
+function Get-OwnedProcess
 {
-    param([uint32]$ProcessId)
+    param(
+        [uint32]$ProcessId,
+        [string]$ExpectedExecutable,
+        [datetime]$ActivationStarted
+    )
 
-    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-    if ($process)
+    $process = Get-Process -Id $ProcessId -ErrorAction Stop
+    try
     {
-        $process.CloseMainWindow() | Out-Null
-        if (-not $process.WaitForExit(5000))
+        # Pin the kernel process handle before inspecting identity or retaining the object.
+        $null = $process.Handle
+        $started = $process.StartTime.ToUniversalTime()
+        $executable = $process.MainModule.FileName
+        if ($process.HasExited -or $started -lt $ActivationStarted -or
+            -not [string]::Equals($executable, $ExpectedExecutable, [StringComparison]::OrdinalIgnoreCase))
         {
-            Stop-Process -Id $ProcessId -Force
+            throw 'Activated process identity does not match the newly launched test host.'
+        }
+        return [pscustomobject]@{
+            Process = $process
+            ProcessId = $process.Id
+            StartTime = $started
+            Executable = $executable
+            ExpectedExecutable = $ExpectedExecutable
         }
     }
+    catch
+    {
+        $process.Dispose()
+        throw
+    }
+}
+
+function Stop-OwnedProcess
+{
+    param([object]$OwnedProcess)
+
+    $evidence = [ordered]@{
+        status = 'PASS'
+        process_id = $OwnedProcess.ProcessId
+        start_time = $OwnedProcess.StartTime
+        executable = $OwnedProcess.Executable
+        action = 'already-exited'
+        reason = ''
+    }
+    $process = $OwnedProcess.Process
+    try
+    {
+        if (-not $process.HasExited)
+        {
+            if ($process.Id -ne $OwnedProcess.ProcessId -or
+                $process.StartTime.ToUniversalTime() -ne $OwnedProcess.StartTime -or
+                -not [string]::Equals($process.MainModule.FileName, $OwnedProcess.Executable, [StringComparison]::OrdinalIgnoreCase) -or
+                -not [string]::Equals($OwnedProcess.Executable, $OwnedProcess.ExpectedExecutable, [StringComparison]::OrdinalIgnoreCase))
+            {
+                throw 'Owned process identity changed; refusing termination.'
+            }
+            $evidence.action = 'graceful-close'
+            $process.CloseMainWindow() | Out-Null
+            if (-not $process.WaitForExit(5000))
+            {
+                $evidence.action = 'force-kill'
+                # Kill uses the retained handle, never a fresh lookup of a reusable PID.
+                $process.Kill()
+                if (-not $process.WaitForExit(5000))
+                {
+                    throw 'Owned process did not exit after forced termination.'
+                }
+            }
+        }
+    }
+    catch
+    {
+        $failure = $_.Exception.Message
+        $exited = $false
+        try { $exited = $process.HasExited } catch {}
+        if ($exited)
+        {
+            $evidence.action = 'exited-during-cleanup'
+        }
+        else
+        {
+            $evidence.status = 'BLOCKED'
+            $evidence.reason = $failure
+            Write-Warning "Failed to clean up the owned test host process: $failure" -WarningAction Continue
+        }
+    }
+    finally
+    {
+        try { $process.Dispose() }
+        catch
+        {
+            $evidence.status = 'BLOCKED'
+            $evidence.reason = "Failed to release the owned process handle: $($_.Exception.Message)"
+            Write-Warning $evidence.reason -WarningAction Continue
+        }
+    }
+    return [pscustomobject]$evidence
 }
 
 $resolvedManifest = (Resolve-Path -LiteralPath $ManifestPath).Path
@@ -124,6 +211,9 @@ $previousPackage = Get-AppxPackage -Name 'WindowsTerminal.TestHost' |
     Sort-Object Version -Descending |
     Select-Object -First 1
 $processId = 0
+$ownedProcess = $null
+$axe = $null
+$cleanup = [System.Collections.Generic.List[object]]::new()
 $status = 'BLOCKED'
 $reason = ''
 $axeExitCode = $null
@@ -158,23 +248,36 @@ try
     }
 
     $appUserModelId = "$($package.PackageFamilyName)!taef.executionengine.universal.App"
+    $application = $manifest.Package.Applications.Application |
+        Where-Object { $_.Id -eq 'taef.executionengine.universal.App' } |
+        Select-Object -First 1
+    $expectedExecutable = [IO.Path]::GetFullPath(
+        (Join-Path (Split-Path -Parent $resolvedManifest) $application.Executable))
     $launchSurface = if ($Surface -eq 'fre-settings') { 'fre' } else { $Surface }
+    $activationStarted = [datetime]::UtcNow
     $processId = [IntelligentTerminal.Accessibility.PackagedApp]::Activate(
         $appUserModelId,
         "--accessibility-page=$launchSurface")
+    $ownedProcess = Get-OwnedProcess -ProcessId $processId `
+        -ExpectedExecutable $expectedExecutable -ActivationStarted $activationStarted
+    $process = $ownedProcess.Process
 
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds($LaunchTimeoutSeconds)
     do
     {
-        $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
-        if ($process -and $process.Responding)
+        $process.Refresh()
+        if ($process.HasExited)
+        {
+            throw 'The owned test host exited before becoming responsive.'
+        }
+        if ($process.Responding)
         {
             break
         }
         Start-Sleep -Milliseconds 500
     } while ([DateTimeOffset]::UtcNow -lt $deadline)
 
-    if (-not $process -or -not $process.Responding)
+    if (-not $process.Responding)
     {
         throw "The $Surface accessibility surface did not become responsive within $LaunchTimeoutSeconds seconds."
     }
@@ -200,9 +303,9 @@ try
         -NoNewWindow `
         -RedirectStandardOutput $stdoutPath `
         -RedirectStandardError $stderrPath
+    $null = $axe.Handle
     if (-not $axe.WaitForExit($ScanTimeoutSeconds * 1000))
     {
-        Stop-Process -Id $axe.Id -Force
         throw "Axe.Windows timed out after $ScanTimeoutSeconds seconds (PID $($axe.Id))."
     }
 
@@ -241,36 +344,89 @@ catch
 }
 finally
 {
-    if ($processId)
+    $primaryStatus = $status
+    $primaryReason = $reason
+    if ($axe)
     {
-        Stop-OwnedProcess -ProcessId $processId
+        try
+        {
+            if (-not $axe.HasExited)
+            {
+                $axe.Kill()
+                if (-not $axe.WaitForExit(5000)) { throw 'Scanner did not exit after forced termination.' }
+            }
+        }
+        catch
+        {
+            $cleanup.Add([pscustomobject]@{ status = 'BLOCKED'; action = 'scanner-stop'; reason = $_.Exception.Message })
+            Write-Warning "Failed to clean up the Axe.Windows scanner: $($_.Exception.Message)" -WarningAction Continue
+        }
+        finally
+        {
+            try { $axe.Dispose() }
+            catch
+            {
+                $cleanup.Add([pscustomobject]@{ status = 'BLOCKED'; action = 'scanner-dispose'; reason = $_.Exception.Message })
+                Write-Warning "Failed to release the Axe.Windows scanner handle: $($_.Exception.Message)" -WarningAction Continue
+            }
+        }
+    }
+    if ($ownedProcess)
+    {
+        try
+        {
+            $cleanup.Add((Stop-OwnedProcess -OwnedProcess $ownedProcess))
+        }
+        catch
+        {
+            $cleanup.Add([pscustomobject]@{ status = 'BLOCKED'; action = 'test-host-stop'; reason = $_.Exception.Message })
+            Write-Warning "Failed to clean up the owned test host process: $($_.Exception.Message)" -WarningAction Continue
+        }
     }
     if ($package -and -not $KeepRegistered)
     {
-        Remove-AppxPackage -Package $package.PackageFullName -ErrorAction SilentlyContinue
+        try
+        {
+            Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
+        }
+        catch
+        {
+            $cleanup.Add([pscustomobject]@{ status = 'BLOCKED'; action = 'package-remove'; reason = $_.Exception.Message })
+            Write-Warning "Failed to remove the WindowsTerminal.TestHost registration: $($_.Exception.Message)" -WarningAction Continue
+        }
         if ($previousPackage)
         {
-            $previousManifest = Join-Path $previousPackage.InstallLocation 'AppxManifest.xml'
-            if (Test-Path -LiteralPath $previousManifest)
+            try
             {
-                try
+                $previousManifest = Join-Path $previousPackage.InstallLocation 'AppxManifest.xml'
+                if (-not (Test-Path -LiteralPath $previousManifest))
                 {
-                    Add-AppxPackage -Register $previousManifest -DisableDevelopmentMode
+                    throw 'The previous package manifest is no longer available.'
                 }
-                catch
-                {
-                    Write-Warning "Failed to restore the previous WindowsTerminal.TestHost registration: $($_.Exception.Message)"
-                }
+                Add-AppxPackage -Register $previousManifest -DisableDevelopmentMode
+            }
+            catch
+            {
+                $cleanup.Add([pscustomobject]@{ status = 'BLOCKED'; action = 'package-restore'; reason = $_.Exception.Message })
+                Write-Warning "Failed to restore the previous WindowsTerminal.TestHost registration: $($_.Exception.Message)" -WarningAction Continue
             }
         }
     }
 
+    if (@($cleanup | Where-Object { $_.status -eq 'BLOCKED' }).Count -gt 0)
+    {
+        $status = 'BLOCKED'
+        $reason = "Cleanup failed after $primaryStatus`: $primaryReason"
+    }
     [ordered]@{
         version = 1
         source_sha = $SourceSha.ToLowerInvariant()
         surface = $Surface
         status = $status
         reason = $reason
+        primary_status = $primaryStatus
+        primary_reason = $primaryReason
+        cleanup = @($cleanup.ToArray())
         axe_exit_code = $axeExitCode
         process_id = $processId
         axe_results = if (Test-Path -LiteralPath $axeResultPath) { $axeResultPath } else { $null }

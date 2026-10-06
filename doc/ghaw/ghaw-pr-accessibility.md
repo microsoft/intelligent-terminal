@@ -78,6 +78,11 @@ associated with names/roles/values, automation peers and patterns,
 keyboard/focus, announcements, disabled/busy states, themes/high contrast,
 scaling/clipping, tabs, panes, settings, and agent cards.
 
+Deleted UI source remains relevant. Prepared evidence records its base blob and
+exact deletion diff with a null head blob; the agent must inspect whether an
+operation disappeared or moved, not assume a nonexistent head file is a repair
+candidate. Renames expose both sides, including moves out of UI scope.
+
 Its XAML checks are intentionally conservative:
 
 - An interactive control explicitly assigned to the raw UIA view is a HIGH,
@@ -144,7 +149,8 @@ Automation is available. These JSON artifacts are not `.a11ytest` files and
 do not supply its screenshot or replay capabilities; screenshot capture remains
 an explicit gap.
 A UIA hierarchy JSON is retained for each state, including successful scans,
-with runtime/parent IDs, names, control types, and visibility/focusability.
+with runtime/parent IDs, names, control types, visibility, and keyboard focus
+properties.
 Each scan also records its visible state marker; window count alone is not a
 surface-readiness assertion.
 A blocked launch, scan failure, or Error-level Axe rule fails the native job.
