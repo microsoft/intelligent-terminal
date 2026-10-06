@@ -68,7 +68,7 @@ Describe 'Axe test host owned-process cleanup' -Tag Unit {
             Executable = 'C:\test\TestHostApp.exe'
             ExpectedExecutable = 'C:\test\TestHostApp.exe'
         }
-        Mock Get-Process { throw 'PID relookup must never occur during cleanup.' }
+        Mock Get-Process { throw 'A fresh PID lookup must never occur during cleanup.' }
         Mock Stop-Process { throw 'PID-based termination must never occur.' }
         Mock Write-Warning {}
     }

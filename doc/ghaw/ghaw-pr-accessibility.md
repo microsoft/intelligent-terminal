@@ -7,6 +7,14 @@ testing.
 
 ## Trust and execution model
 
+Installation prerequisite: the workflow and its trusted analyzer, skill, agent,
+and native harness must first be installed together on the base branch.
+`pull_request_target` does not run this newly introduced workflow from its own
+unmerged PR head. It reviews subsequent PR events using installed trusted base
+code. Both staged hosted probes installed those resources before testing.
+Missing base support is a deployment failure; never bootstrap by executing the
+untrusted PR head's analyzer or harness.
+
 The workflow runs on `pull_request_target`, so its compiled definition and
 initial checkout come from the trusted base branch. It fetches the pull request
 head as a Git object and runs the base revision's
@@ -89,6 +97,8 @@ Its XAML checks are intentionally conservative:
   medium-confidence investigation lead. After repository inspection establishes
   high confidence and an existing name source, only the exact raw-view-property
   removal can use the trusted static recipe.
+  Style-only naming remains blocked because the recipe does not authenticate
+  style setters.
 - An apparently icon-only control without a local name source is MEDIUM
   needs-review evidence. Content, `x:Uid`, bindings, styles, labels, and peers
   must be inspected before calling it inaccessible.

@@ -20,6 +20,11 @@ SPEC.loader.exec_module(MODULE)
 
 
 class StaticAnalysisTests(unittest.TestCase):
+    def test_visual_style_is_not_a_trusted_repair_name_source(self):
+        xaml = '<Button Style="{StaticResource VisualButton}" AutomationProperties.AccessibilityView="Raw" />'
+        with self.assertRaisesRegex(ValueError, "existing accessible name source"):
+            MODULE._remove_raw_view_at_line(xaml, 1)
+
     def scan(self, xaml):
         return MODULE._scan_xaml("src/cascadia/TerminalApp/Test.xaml", xaml, set())
 
@@ -237,6 +242,23 @@ class PrepareIntegrationTests(unittest.TestCase):
 
 
 class ValidationTests(unittest.TestCase):
+    def test_style_only_control_cannot_authorize_recipe(self):
+        path = self.root / "src/cascadia/TerminalApp/Test.xaml"
+        original = '<Button Style="{StaticResource VisualButton}" AutomationProperties.AccessibilityView="Raw" />\n'
+        path.write_bytes(original.encode("utf-8"))
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "Style-only reviewed control"], cwd=self.root, check=True)
+        self.head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        prepared = json.loads(self.prepared.read_text())
+        prepared["source_sha"] = self.head
+        self.prepared.write_text(json.dumps(prepared))
+        path.write_bytes(original.replace(' AutomationProperties.AccessibilityView="Raw"', "").encode("utf-8"))
+        with self.assertRaisesRegex(ValueError, "existing accessible name source"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]),
+            )
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.workspace = Path(self.temp.name)

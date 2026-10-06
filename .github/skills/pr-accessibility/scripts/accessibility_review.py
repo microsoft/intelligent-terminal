@@ -178,7 +178,7 @@ def _element_body(text: str, match: re.Match[str], tag: str) -> str:
     return text[match.end() : match.end() + closing.start()]
 
 
-def _has_name_source(attrs: str, body: str) -> bool:
+def _has_name_source(attrs: str, body: str, *, include_style_hint: bool = True) -> bool:
     properties = (
         "AutomationProperties.Name",
         "AutomationProperties.LabeledBy",
@@ -187,8 +187,9 @@ def _has_name_source(attrs: str, body: str) -> bool:
         "Content",
         "PlaceholderText",
         "Text",
-        "Style",
     )
+    if include_style_hint:
+        properties += ("Style",)
     if any(re.search(rf"\b{re.escape(prop)}\s*=\s*(['\"])(?:(?!\1).)+\1", attrs, re.DOTALL) for prop in properties):
         return True
     plain_text = re.sub(r"<[^>]+>", "", body)
@@ -421,7 +422,7 @@ def _remove_raw_view_at_line(text: str, line: int) -> str:
         raise ValueError(f"trusted static repair requires exactly one interactive raw-view control at line {line}")
     match, _, attrs = candidates[0]
     body = _element_body(text, match, match.group("tag").split(":")[-1])
-    if not _has_name_source(attrs, body):
+    if not _has_name_source(attrs, body, include_style_hint=False):
         raise ValueError(f"trusted static repair requires an existing accessible name source at line {line}")
     repaired_opening, count = re.subn(
         r'\s+AutomationProperties\.AccessibilityView\s*=\s*["\']Raw["\']',

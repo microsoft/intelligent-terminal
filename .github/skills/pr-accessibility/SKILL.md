@@ -79,6 +79,9 @@ The source rules are intentionally conservative:
    name source. Make no other hunk or file change; preserve the original
    encoding, BOM, and line endings. Set `repair_recipe` to that
    value and leave `validation` empty for the trusted validator to attest.
+   A style reference alone is not a trusted name source. If naming depends on
+   style setters, leave the finding remaining/blocked; the current recipe does
+   not resolve styles to authenticate that name.
 10. Keep runtime-dependent fixes `remaining` or `blocked`. The agent cannot
     authenticate its own command/result JSON, and the Ubuntu workflow cannot
     validate UIA patterns, focus, announcements, rendering, or scaling.
