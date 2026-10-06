@@ -72,6 +72,7 @@ pub(crate) async fn build_prompt_text(
     shell_mgr: &ShellManager,
     wt_connected: bool,
     pane_context: Option<&PaneContext>,
+    master_conn: Option<&super::conn::ClientLink>,
 ) -> (String, String, String, Option<String>) {
     let is_autofix = autofix_text_kind.is_some();
     let total_started = std::time::Instant::now();
@@ -97,9 +98,17 @@ pub(crate) async fn build_prompt_text(
     // the resulting terminal context and resolver invocation, while the App
     // binds the same target pane to the matching turn before recommendations
     // can execute.
-    let resolved_context =
-        prompt_context::resolve_provider_context(is_autofix, wt_connected, shell_mgr, pane_context)
-            .await;
+    let master_lookup = master_conn.map(prompt_context::MasterSourcePaneSessionLookup::new);
+    let resolved_context = prompt_context::resolve_provider_context(
+        is_autofix,
+        wt_connected,
+        shell_mgr,
+        pane_context,
+        master_lookup
+            .as_ref()
+            .map(|lookup| lookup as &dyn prompt_context::SourcePaneSessionLookup),
+    )
+    .await;
 
     // ── Provider-driven section assembly ────────────────────────────────────
     // Each `### …` context source is a `ContextProvider`; the chain self-gates
@@ -113,6 +122,7 @@ pub(crate) async fn build_prompt_text(
         shell_exe: resolved_context.shell_exe.as_deref(),
         terminal_output: resolved_context.terminal_output.as_deref(),
         planner_terminal_context: resolved_context.planner_terminal_context.as_deref(),
+        agent_session_id: resolved_context.agent_session_id.as_deref(),
         command_resolver_invocation: resolved_context.command_resolver_invocation.as_ref(),
     };
     for provider in prompt_context::default_providers() {
@@ -447,8 +457,18 @@ mod tests {
                 source_pane_id: Some(source.to_string()),
                 ..Default::default()
             };
-            let (built_prompt, _, _, target) =
-                build_prompt_text(1, 0.0, "inspect", None, false, &mgr, true, Some(&context)).await;
+            let (built_prompt, _, _, target) = build_prompt_text(
+                1,
+                0.0,
+                "inspect",
+                None,
+                false,
+                &mgr,
+                true,
+                Some(&context),
+                None,
+            )
+            .await;
             if source == "pane-missing" {
                 assert!(target.is_none());
                 assert!(!built_prompt.contains("### Terminal Context JSON"));
@@ -467,7 +487,7 @@ mod tests {
         let mgr = ShellManager::new();
         let expected = prompt::load_planner_prompt_template();
         let (built_prompt, _source, display_name, target_pane) =
-            build_prompt_text(1, 0.0, "list files", None, true, &mgr, false, None).await;
+            build_prompt_text(1, 0.0, "list files", None, true, &mgr, false, None, None).await;
         assert_eq!(display_name, expected.display_name);
         assert!(
             built_prompt.contains("### Supported Delegate Agents"),
@@ -505,8 +525,18 @@ mod tests {
             "is_agent_pane": false,
         }));
 
-        let (built_prompt, _source, _display_name, target_pane) =
-            build_prompt_text(8, 0.0, "check port 8000", None, true, &mgr, true, None).await;
+        let (built_prompt, _source, _display_name, target_pane) = build_prompt_text(
+            8,
+            0.0,
+            "check port 8000",
+            None,
+            true,
+            &mgr,
+            true,
+            None,
+            None,
+        )
+        .await;
 
         assert!(built_prompt.contains("\"activeTarget\":\"real-pane-guid\""));
         assert_eq!(target_pane.as_deref(), Some("real-pane-guid"));
@@ -541,6 +571,7 @@ mod tests {
             &mgr,
             true,
             Some(&pane_context),
+            None,
         )
         .await;
 
@@ -559,8 +590,18 @@ mod tests {
             "is_agent_pane": false,
         }));
 
-        let (built_prompt, _source, _display_name, target_pane) =
-            build_prompt_text(8, 0.0, "inspect local-tool", None, true, &mgr, true, None).await;
+        let (built_prompt, _source, _display_name, target_pane) = build_prompt_text(
+            8,
+            0.0,
+            "inspect local-tool",
+            None,
+            true,
+            &mgr,
+            true,
+            None,
+            None,
+        )
+        .await;
 
         assert!(built_prompt.contains(r#""--cwd""#));
         assert!(built_prompt.contains(r#""C:\\workspace""#));
@@ -582,6 +623,7 @@ mod tests {
             true,
             &mgr,
             false,
+            None,
             None,
         )
         .await;
@@ -668,6 +710,7 @@ mod tests {
             &mgr,
             false,
             None,
+            None,
         )
         .await;
         assert!(
@@ -687,6 +730,7 @@ mod tests {
             true,
             &mgr,
             false,
+            None,
             None,
         )
         .await;
@@ -709,7 +753,7 @@ mod tests {
             "test precondition: planner template body is non-empty"
         );
         let (built_prompt, _s, _d, _f) =
-            build_prompt_text(4, 0.0, "hi", None, false, &mgr, false, None).await;
+            build_prompt_text(4, 0.0, "hi", None, false, &mgr, false, None, None).await;
         assert!(
             !built_prompt.contains(planner.content.trim()),
             "include_base_prompt=false must omit the base prompt body"
@@ -730,6 +774,7 @@ mod tests {
             false,
             &mgr,
             false,
+            None,
             None,
         )
         .await;
@@ -760,6 +805,7 @@ mod tests {
             true,
             &mgr,
             true,
+            None,
             None,
         )
         .await;
@@ -803,6 +849,7 @@ mod tests {
             &mgr,
             true,
             Some(&ctx),
+            None,
         )
         .await;
         assert!(
@@ -848,6 +895,7 @@ mod tests {
             &mgr,
             true,
             Some(&ctx),
+            None,
         )
         .await;
         assert!(
@@ -891,6 +939,7 @@ mod tests {
                 include_base_prompt,
                 &mgr,
                 true,
+                None,
                 None,
             )
             .await;
