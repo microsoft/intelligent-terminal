@@ -27,12 +27,13 @@ permissions:
 
 engine:
   id: copilot
+  model: auto
   agent: pr-accessibility
   bare: true
 
 timeout-minutes: 15
-max-ai-credits: 30
-max-daily-ai-credits: 90
+max-ai-credits: 500
+max-daily-ai-credits: 100000
 imports:
   - .github/agents/pr-accessibility.agent.md
 

@@ -7,6 +7,10 @@ testing.
 
 ## Trust and execution model
 
+The source worker explicitly selects `auto`, with a per-run ceiling of 500 AI
+credits and a daily ceiling of 100000. Its timeout remains 15 minutes. The
+independent threat detector keeps its 30-credit ceiling and zero retries.
+
 Installation prerequisite: the workflow and its trusted analyzer, skill, agent,
 and native harness must first be installed together on the base branch.
 `pull_request_target` does not run this newly introduced workflow from its own

@@ -818,8 +818,10 @@ class WorkflowContractTests(unittest.TestCase):
     def test_agent_and_detection_have_explicit_spend_caps(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        self.assertIn("max-daily-ai-credits: 90", workflow)
-        self.assertEqual(2, workflow.count("max-ai-credits: 30"))
+        self.assertIn("  model: auto", workflow)
+        self.assertIn("max-daily-ai-credits: 100000", workflow)
+        self.assertEqual(1, workflow.count("max-ai-credits: 500"))
+        self.assertEqual(1, workflow.count("max-ai-credits: 30"))
         self.assertIn("timeout-minutes: 15", workflow)
         self.assertIn("retries: 0", workflow)
 
