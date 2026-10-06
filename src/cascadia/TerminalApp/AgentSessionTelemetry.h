@@ -36,7 +36,6 @@ namespace TerminalApp::AgentSessionTelemetry
     struct Start
     {
         std::string startId;
-        std::string sessionId;
         const char* kind;
         const char* agentId;
         const char* source;
@@ -54,7 +53,7 @@ namespace TerminalApp::AgentSessionTelemetry
         {
             return std::nullopt;
         }
-        for (const auto name : { "start_id", "session_id", "start_kind", "agent_id", "agent_source", "model_source" })
+        for (const auto name : { "start_id", "start_kind", "agent_id", "agent_source", "model_source" })
         {
             if (!value[name].isString() || value[name].asString().empty())
             {
@@ -75,7 +74,6 @@ namespace TerminalApp::AgentSessionTelemetry
         }
         return Start{
             value["start_id"].asString(),
-            value["session_id"].asString(),
             kind == "New" ? "New" : "Load",
             AgentId(value["agent_id"].asString()),
             Bucket<char>(value["agent_source"].asString(), { "host", "wsl" }, "unknown"),

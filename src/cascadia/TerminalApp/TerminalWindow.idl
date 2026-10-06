@@ -154,5 +154,8 @@ namespace TerminalApp
 
         // Protocol bridge
         UInt32 TabCount { get; };
+
+        void SetStartupKeptGroups(Windows.Foundation.Collections.IVectorView<Guid> groups,
+                                  Windows.Foundation.IReference<Windows.Foundation.Rect> bounds);
     }
 }

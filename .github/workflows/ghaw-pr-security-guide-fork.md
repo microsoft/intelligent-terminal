@@ -65,11 +65,15 @@ tools:
     - 'git grep:*'
     - 'git rev-parse:*'
     - 'git show:*'
+    - 'pwsh:*'
 
 jobs:
   prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       trusted_code_revision: ${{ steps.validate.outputs.trusted_code_revision }}
     steps:
@@ -143,9 +147,11 @@ steps:
       TRUSTED_SHA: ${{ github.workflow_sha }}
     run: |
       set -euo pipefail
-      rm -f /tmp/gh-aw/security-scope.json /tmp/gh-aw/security-findings.json
+      mkdir -p /tmp/gh-aw/agent
+      rm -f /tmp/gh-aw/security-scope.json /tmp/gh-aw/agent/security-findings.json
       trusted_validator="$RUNNER_TEMP/security-review.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review.mjs" > "$trusted_validator"
+      cp "$trusted_validator" "$RUNNER_TEMP/gh-aw/security-review-check.mjs"
       node "$trusted_validator" scope \
         --base "$EXPECTED_BASE_SHA" \
         --head "$EXPECTED_HEAD_SHA" \
@@ -154,8 +160,20 @@ steps:
         --mode guide \
         --output /tmp/gh-aw/security-scope.json
       [ "$(node -p "JSON.parse(require('fs').readFileSync('/tmp/gh-aw/security-scope.json','utf8')).baseSha")" = "$COMPARISON_BASE_SHA" ]
+      node "$trusted_validator" init-report \
+        --scope /tmp/gh-aw/security-scope.json \
+        --output /tmp/gh-aw/agent/security-findings.json
 
 pre-agent-steps:
+  - name: Record trusted fork workspace baseline
+    shell: bash
+    run: |
+      set -euo pipefail
+      {
+        git rev-parse HEAD
+        git status --porcelain --untracked-files=all
+        git diff --binary HEAD
+      } | sha256sum > "$RUNNER_TEMP/security-guide-workspace.sha256"
   - name: Enforce credential-free agent checkout
     shell: bash
     run: bash "${RUNNER_TEMP}/gh-aw/actions/clean_git_credentials.sh"
@@ -166,6 +184,8 @@ post-steps:
     env:
       GH_TOKEN: ${{ github.token }}
       EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+      EXPECTED_BASE_SHA: ${{ github.event.inputs.expected_base_sha }}
+      COMPARISON_BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
       REPOSITORY: ${{ github.repository }}
       TRUSTED_SHA: ${{ github.workflow_sha }}
@@ -176,21 +196,36 @@ post-steps:
         echo "::error::Stale fork security review rejected: expected $EXPECTED_HEAD_SHA, found $current_head."
         exit 1
       }
-      [ -z "$(git status --porcelain --untracked-files=all)" ] || {
+      {
+        git rev-parse HEAD
+        git status --porcelain --untracked-files=all
+        git diff --binary HEAD
+      } | sha256sum > "$RUNNER_TEMP/security-guide-workspace.final.sha256"
+      cmp "$RUNNER_TEMP/security-guide-workspace.sha256" "$RUNNER_TEMP/security-guide-workspace.final.sha256" || {
         echo "::error::Fork security guide modified the trusted checkout."
         exit 1
       }
       trusted_validator="$RUNNER_TEMP/security-review-final.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review.mjs" > "$trusted_validator"
+      trusted_scope="$RUNNER_TEMP/security-scope.final.json"
+      node "$trusted_validator" scope \
+        --base "$EXPECTED_BASE_SHA" \
+        --head "$EXPECTED_HEAD_SHA" \
+        --pr "$PR_NUMBER" \
+        --relation fork \
+        --mode guide \
+        --output "$trusted_scope"
+      [ "$(node -p "JSON.parse(require('fs').readFileSync('$trusted_scope','utf8')).baseSha")" = "$COMPARISON_BASE_SHA" ]
       node "$trusted_validator" validate \
-        --scope /tmp/gh-aw/security-scope.json \
-        --report /tmp/gh-aw/security-findings.json \
+        --scope "$trusted_scope" \
+        --report /tmp/gh-aw/agent/security-findings.json \
         --validated /tmp/gh-aw/security-findings.validated.json \
         --summary /tmp/gh-aw/security-summary.md \
         --status /tmp/gh-aw/security-status.txt
       node "$trusted_validator" validate-output \
         --validated /tmp/gh-aw/security-findings.validated.json \
         --agent-output /tmp/gh-aw/agent_output.json
+      cp "$trusted_scope" /tmp/gh-aw/security-scope.json
       cat /tmp/gh-aw/security-summary.md >> "$GITHUB_STEP_SUMMARY"
 
   - name: Upload validated fork security report
@@ -225,7 +260,11 @@ base `${{ github.event.inputs.comparison_base_sha }}` and immutable fork head
 
 Stay on the trusted checkout. Inspect fork objects only with read-only Git
 commands and never execute or copy fork-controlled scripts into an executable
-location. Write `/tmp/gh-aw/security-findings.json` with an empty `patch`.
+location. Complete the prepared `/tmp/gh-aw/agent/security-findings.json` using
+PowerShell file operations, keeping the native identity fields and empty `patch`.
+Use `pwsh` for report writes: shell redirects and edit tools are unavailable.
+If a tool is denied, switch directly to the permitted operation; do not retry
+variants, recreate the native report envelope, or probe tool permissions.
 
 Call `noop` exactly once whether or not findings exist. Never publish or write
 the fork branch. The trusted controller alone publishes the validated rendered

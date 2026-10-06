@@ -30,7 +30,7 @@ jobs:
   security-review:
     name: Intelligent Terminal security review
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 210
     steps:
       - name: Checkout trusted base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,10 +63,8 @@ jobs:
             exit 1
           }
           comparison_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
-          relation=review
           worker=ghaw-pr-security-guide-fork.lock.yml
           if [ "$SAME_REPO" = true ]; then
-            relation=repair
             worker=ghaw-pr-security.lock.yml
           fi
           scope_file="$RUNNER_TEMP/security-scope.json"
@@ -78,9 +76,11 @@ jobs:
             --mode "$([ "$SAME_REPO" = true ] && echo repair || echo guide)" \
             --output "$scope_file"
           applicable="$(node -p "JSON.parse(require('fs').readFileSync('$scope_file','utf8')).applicable")"
-          echo "comparison_base_sha=$comparison_base" >> "$GITHUB_OUTPUT"
-          echo "applicable=$applicable" >> "$GITHUB_OUTPUT"
-          echo "worker=$worker" >> "$GITHUB_OUTPUT"
+          {
+            echo "comparison_base_sha=$comparison_base"
+            echo "applicable=$applicable"
+            echo "worker=$worker"
+          } >> "$GITHUB_OUTPUT"
           if [ "$applicable" != true ]; then
             {
               echo '## Intelligent Terminal security review'
@@ -149,7 +149,7 @@ jobs:
               runId = run?.id;
             }
             if (!runId) throw new Error(`Could not correlate ${process.env.WORKER} for ${dispatchId}.`);
-            const deadline = Date.now() + 50 * 60 * 1000;
+            const deadline = Date.now() + 200 * 60 * 1000;
             while (Date.now() < deadline) {
               run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: runId })).data;
               if (run.status === "completed") {
@@ -160,7 +160,8 @@ jobs:
               }
               await new Promise(resolve => setTimeout(resolve, 15000));
             }
-            throw new Error(`Security worker ${runId} exceeded 50 minutes.`);
+            await github.rest.actions.cancelWorkflowRun({ ...context.repo, run_id: runId });
+            throw new Error(`Security worker ${runId} exceeded 200 minutes and cancellation was requested.`);
 
       - name: Publish worker check card
         if: always() && steps.worker.outputs.run_id != ''
@@ -223,8 +224,10 @@ jobs:
                     -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
                     commit-tree "$tree" -p "$EXPECTED_HEAD_SHA"
             )"
+            git merge-base --is-ancestor "$EXPECTED_HEAD_SHA" "$commit"
             git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
-              push origin "$commit:refs/heads/$HEAD_REF"
+              push --force-with-lease="refs/heads/$HEAD_REF:$EXPECTED_HEAD_SHA" \
+                origin "$commit:refs/heads/$HEAD_REF"
           elif [ "$SAME_REPO" != true ] && [ "$mode" = guide ] && [ "$finding_count" -gt 0 ]; then
             marker='<!-- ghaw-pr-security -->'
             body_file="$RUNNER_TEMP/security-guidance.md"

@@ -1501,6 +1501,7 @@ bool Pane::RepositionAgentPane(SplitDirection splitDirection)
             Controls::Grid::SetColumn(visibleBorder, 0);
         }
 
+        StructureChanged.raise();
         return true;
     }
 
@@ -1533,6 +1534,7 @@ bool Pane::RepositionAgentPane(SplitDirection splitDirection)
     _CreateRowColDefinitions();
     _ApplySplitDefinitions();
 
+    StructureChanged.raise();
     return true;
 }
 
@@ -1646,6 +1648,7 @@ void Pane::_CloseChild(const bool closeFirst)
         // by `Tab::Shutdown` once our Closed bubbles up) takes the leaf
         // branch instead of dereferencing the now-null children.
         _splitState = SplitState::None;
+        StructureChanged.raise();
         Closed.raise(nullptr, nullptr);
         return;
     }
@@ -1666,6 +1669,7 @@ void Pane::_CloseChild(const bool closeFirst)
         {
             // GH#18071: our content is still null after taking the other pane's content,
             //           so just notify our parent that we're closed.
+            StructureChanged.raise();
             Closed.raise(nullptr, nullptr);
             return;
         }
@@ -1830,6 +1834,7 @@ void Pane::_CloseChild(const bool closeFirst)
 
     // Notify the discarded child that it was closed by its parent
     closedChild->ClosedByParent.raise();
+    StructureChanged.raise();
 }
 
 void Pane::_CloseChildRoutine(const bool closeFirst)
@@ -2762,6 +2767,7 @@ void Pane::HidePane(std::shared_ptr<Pane> hiddenPane)
             visibleBorder.BorderThickness(ThicknessHelper::FromLengths(0, 0, 0, 0));
         }
     }
+    StructureChanged.raise();
 }
 
 // Method Description:
@@ -2794,6 +2800,7 @@ void Pane::RestorePane(std::shared_ptr<Pane> hiddenPane)
             _ApplySplitDefinitions();
         }
     }
+    StructureChanged.raise();
 }
 
 // Method Description:
@@ -3560,16 +3567,20 @@ void Pane::_UpdateAgentChipBackground()
 //   provided vector.
 // - If we're a leaf, place our own state into the vector.
 // Arguments:
-// - states: a vector that will receive all the states of all leaves in the tree
+// - states: a vector that will receive all the states and content IDs of all
+//   leaves in the tree
 // Return Value:
 // - <none>
-void Pane::CollectTaskbarStates(std::vector<winrt::TerminalApp::TaskbarState>& states)
+void Pane::CollectTaskbarStates(std::vector<TaskbarStateWithContentId>& states)
 {
     if (_content)
     {
         auto tbState{ winrt::make<winrt::TerminalApp::implementation::TaskbarState>(_content.TaskbarState(),
                                                                                     _content.TaskbarProgress()) };
-        states.push_back(tbState);
+        states.emplace_back(TaskbarStateWithContentId{
+            .CombinedState = std::move(tbState),
+            .ContentId = _contentId,
+        });
     }
     else if (_firstChild && _secondChild)
     {

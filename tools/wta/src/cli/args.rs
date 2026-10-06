@@ -116,6 +116,10 @@ pub(crate) struct Cli {
     #[arg(long)]
     pub(crate) no_autofix: bool,
 
+    /// Host-resolved AllowAutoFix policy for telemetry, not an enforcement flag.
+    #[arg(long, hide = true, value_parser = ["notConfigured", "enabled", "disabled", "unknown"])]
+    pub(crate) autofix_policy_state: Option<String>,
+
     /// Disable automatic agent hook reconciliation at master startup.
     #[arg(long, hide = true)]
     pub(crate) no_session_management: bool,
@@ -489,6 +493,37 @@ pub(crate) enum SessionsAction {
         /// WTA spawned for an Intelligent Terminal agent pane.
         #[arg(long, value_enum, default_value_t = SessionsOriginArg::All)]
         origin: SessionsOriginArg,
+        /// With --json, return a snapshot object including history loading status
+        /// instead of one session per line.
+        #[arg(long, requires = "json")]
+        include_status: bool,
+    },
+    /// Request background host-agent discovery and return the current session snapshot.
+    Refresh {
+        /// Override the wta-master named pipe path.
+        #[arg(long, value_name = "PIPE_NAME")]
+        master: Option<String>,
+    },
+    /// Activate one exact session row from the Sidebar History projection.
+    #[command(hide = true)]
+    Activate {
+        #[arg(long)]
+        session_id: String,
+        #[arg(long)]
+        provider: String,
+        #[arg(long, value_parser = ["host", "wsl"])]
+        location: String,
+        #[arg(long)]
+        wsl_distro: Option<String>,
+        #[arg(long)]
+        universe: Option<String>,
+        #[arg(long)]
+        window_id: u64,
+        #[arg(long)]
+        activation_id: String,
+        /// Read the existing activation outcome without focusing or restoring again.
+        #[arg(long)]
+        status_only: bool,
     },
 }
 

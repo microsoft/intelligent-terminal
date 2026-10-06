@@ -858,6 +858,7 @@ async fn run_acp_app(
 
             let autofix_enabled = !config.no_autofix;
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr), Arc::clone(&yolo_state));
+            app_state.autofix_policy_state = config.autofix_policy_state;
             app_state.set_proposal_channels(Arc::clone(&proposal_channels));
             app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
             app_state.set_initial_yolo_control_owner(

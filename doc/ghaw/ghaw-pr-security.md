@@ -25,7 +25,7 @@ suppress that injection, globally stages safe outputs, and explicitly disables
 noop, missing-data, missing-tool, incomplete-report, and failure issue
 publication. The check-run tool is preview-only and the native validator rejects
 it. After a successful worker, the trusted controller performs the mutually
-exclusive operation: an index-only, non-force fast-forward repair push for
+exclusive operation: an index-only, expected-head-leased fast-forward repair push for
 same-repository PRs, or an idempotent trusted-renderer guidance comment for fork
 PRs.
 
@@ -62,18 +62,28 @@ The report contract limits findings to changed files and assigns stable
   validated JSON is retained for 14 days.
 
 Automatic repair is allowed only when the original finding is HIGH with high
-confidence and strong evidence, the patch is minimal and inside `src/**`,
-`tools/wta/src/**`, or `test/**`, applicable final validation passes, no check
-is failed/blocked, an independent reviewer returns `PASS` for the immutable
+confidence and strong evidence, the patch is minimal and inside existing
+`tools/wta/src/**/*.rs` files, applicable final validation passes, no check
+is failed/blocked, an independent reviewer returns `SOURCE_PASS` for the immutable
 head and exact final patch digest, and the live PR head still equals the
 reviewed SHA. This model review is defense in depth, not a separate credential
 or authorization principal; native checks and safe-output policy remain the
-mechanical boundary. After inference, the trusted post-step creates a fresh
+mechanical boundary. The agent reports only `proposed` repairs. Independent
+source approval occurs before trusted test execution and does not claim test
+success. Native attestation alone promotes an exact, source-approved proposal
+to `fixed` after final-patch validation passes. After inference, the trusted post-step creates a fresh
 checkout of the immutable head, recomputes scope from the dispatch SHAs, copies
 only reported regular non-executable WTA source files without mode changes,
 removes agent-authored passing validation claims, and runs the fixed WTA test
 command in a pinned disposable Rust container with the reconstructed workspace
-mounted read-only, no network, and no GitHub credential passed. Dependencies
+mounted read-only, no network, and no GitHub credential passed. The Linux
+analysis post-step emits only a source-reviewed proposal artifact. A reusable
+`ghaw-pr-security-validate-windows.yml` job reconstructs the immutable head,
+recomputes scope, checks proposal identity/paths/digest, and executes tests only
+inside the trusted public Rust 1.93.0/MSVC image as `ContainerUser`. Final Linux
+promotion waits for that job, verifies its head and patch digest, and creates
+the publication artifact only after native test success. Failed validation or
+unpromoted proposals cannot reach the controller's push path. Dependencies
 are fetched in a separate container from the trusted base; automatic repair is
 blocked unless every complete-PR diff entry has Git status `M` and targets
 existing WTA Rust source. Additions, copies, deletions, renames, and type changes
@@ -89,7 +99,13 @@ Both workers emit exactly one `noop`; all of their gh-aw safe outputs are staged
 and issue-reporting paths are disabled, so they never publish. The controller
 downloads the validated card and exact binary patch. It publishes a
 same-repository repair only as a commit whose parent is the reviewed head and
-uses a non-force push, so a concurrent branch update fails atomically. For a
+verifies the candidate descends from that head, and uses an explicit
+`--force-with-lease=refs/heads/<branch>:<reviewed-head>` compare-and-swap.
+The lease is not permission to rewrite history: the candidate is a child of
+the reviewed head, and the ancestry check is mandatory. A rewind race must
+also be rejected; a non-force push alone would accept that race and restore
+removed commits. Local bare-repository regression coverage verifies the
+rewind and concurrent-advance cases. For a
 fork finding it publishes only the trusted rendered summary. It fails the
 public check when unfixed HIGH findings remain.
 
@@ -136,7 +152,9 @@ The implementation reuses security architecture, not generic prompt wording:
 
 Separate CodeQL, AuditMode/CppCoreCheck, TAEF, and explicit-target Cargo checks
 remain independent evidence. Missing or mismatched-head evidence is reported as
-skipped/blocked, never as a passing native check.
+skipped/blocked, never as a passing native check. A matching-head external
+analyzer may substantiate finding evidence but cannot become a passing local
+validation check or authorize repair.
 
 Detached workers are dispatched on the base branch but fail in `prepare` unless
 `github.workflow_sha` equals the controller-recorded base SHA. Their
@@ -147,6 +165,89 @@ guidance stays on the trusted workflow checkout and reads only fetched Git
 objects. The inline repair gate and skill are restored from gh-aw's trusted
 activation artifact after checkout.
 
+## Hosted-trial readiness
+
+The native setup now initializes `/tmp/gh-aw/agent/security-findings.json`
+directly from immutable scope metadata. The agent fills review content and
+preserves identity fields; an untouched template is invalid. Both workers allow
+PowerShell report writes, matching the restricted-tool correction in #1073.
+The agent must not execute PR-controlled Cargo, formatting, build, or test
+commands. The trusted reconstruction fetch is complete rather than blob-filtered
+so later base-worktree materialization cannot require a removed authenticated
+remote.
+
+Compilation and contract tests alone do not establish hosted readiness. The obsolete
+Rust 1.90 Linux test container has been removed; WTA's Windows APIs require the
+new Windows validation boundary. Successful isolated final-patch validation still needs
+an end-to-end proof. Source approval and native promotion are separate gates;
+their composition, failed-validation rejection, stale-review rejection, and
+digest mismatch are covered locally. Do not spend a
+end-to-end repair trial without checking these final authorization surfaces. This limitation
+does not authorize disabling repair validation or claiming an untested fix.
+
+A supported candidate is an ordinary `windows-2025-vs2026` validation job using its
+preinstalled Windows Docker daemon, while gh-aw reasoning stays on Linux.
+The published label means Windows Server 2025 with Visual Studio 2026; it is
+not `windows-2026`. The repository's primary and packaging SDK pins are
+10.0.26100.0, matching that runner inventory. Its default Rust 1.98.1 does not
+establish compatibility with `ms-prod-1.93`; public Rust 1.93.0 can establish
+version compatibility but not Microsoft production-toolchain provenance.
+The official Rust image inventory does not provide a Windows MSVC image. The
+trusted `build/containers/wta-validation` definition builds one from the pinned
+Server Core base, checksum/signature-verified public VS2026 bootstrapper, and
+checksum-pinned rustup installer. The executor uses its immutable local image
+ID, not a mutable tag. Do not substitute the Linux image, guess a Windows Rust tag, copy arbitrary
+host toolchain directories, or enable nested Hyper-V as a workaround.
+The full image proof below now establishes actual public tool installation and
+offline Windows-target execution. Source approval, final-patch digest binding,
+and publication remain separate gates; a successful baseline image does not
+by itself prove an arbitrary repair or semantic model correctness.
+
+### Verified public environment
+
+The separate native
+[`ghaw-environment-probe.yml`](https://github.com/microsoft/intelligent-terminal/blob/1cdd1eef3e298c9da0107e2b877196621a69a95a/.github/workflows/ghaw-environment-probe.yml)
+passed in the official repository on a non-main branch:
+[run 37208378983](https://github.com/microsoft/intelligent-terminal/actions/runs/37208378983),
+commit `1cdd1eef3e298c9da0107e2b877196621a69a95a`, in 14 minutes 20 seconds.
+It used `windows-2025-vs2026`, image `20260925.250.1`, SDK 10.0.26100.0,
+and public Rust 1.93.0 with the Windows MSVC target, without private ADO setup.
+
+C++ and static-CRT Rust samples compiled and executed. The trusted WTA baseline
+passed `cargo build --locked --offline` and the full Windows-target test command:
+**2,444 passed, 0 failed, 1 ignored, 0 filtered out**. The pinned Server Core
+container exited 0 with process isolation, `network: none`, and a read-only
+input mount. Its guest probe checked a denied input write, absent selected
+host credential/environment variables, and failed public egress against a
+host-positive-control endpoint. Owned-container cleanup passed.
+
+These are actual host/build/base-container results, not full C++ product,
+packaging/UI, arbitrary network-containment, or untrusted automatic-repair
+proof. Official-repository runs do not consume the three private-test attempts.
+
+The full isolated image
+[run 37394030034](https://github.com/microsoft/intelligent-terminal/actions/runs/37394030034)
+passed in **22m42s**, at definition commit
+`252f7b6e939b4f98075e9ac9f22eadc0e2087330`, against trusted source
+`c40ab2727a3c5c498d320ffe90b761f2982c561f`. The built image was
+`sha256:b66d36ad51a2c6e1b4dd01129a69f1d36a3eaccb7922d784ff61222eff159462`.
+It installed public VS2026/MSVC/SDK, Rust 1.93.0, and PowerShell 7.6.6, then ran
+the full WTA suite as `ContainerUser` with network disabled and all source/cache
+mounts read-only: **2,444 passed, 0 failed, 1 ignored, 0 filtered out**.
+Output stays inside the container. WTA's documented hook-bundle override points
+at immutable assets because target output is outside the dev tree; environment
+mutation tests are serialized according to their existing CI requirement.
+Automatic dev-tree discovery is not claimed tested by that override.
+
+Real hosted guide/report transport also passed:
+[run 37390688923](https://github.com/microsoft/intelligent-terminal/actions/runs/37390688923),
+test commit `60c408576ee560a0ce9131273c161676c1e92ae6`, against immutable COM
+fork PR #1075. Native scope, unchanged-worktree, schema, and exactly-one-noop
+checks passed. Model execution took 4m38s; recorded total usage was 94.11423 AIC.
+The remaining low-severity notification suggestion was independently declined
+as UX noise, not a vulnerability; the skill now explicitly excludes such
+suggestions. This evidence proves transport, not universal finding relevance.
+
 ## Local validation
 
 ```powershell
@@ -155,6 +256,24 @@ gh aw compile ghaw-pr-security
 gh aw compile ghaw-pr-security-guide-fork
 gh aw validate ghaw-pr-security ghaw-pr-security-guide-fork
 ```
+
+For preflight, also lint the ordinary controller with actionlint and check the
+native Bash step bodies with ShellCheck. Standalone actionlint 1.7.12 does not
+recognize `copilot-requests` or `concurrency.queue`; gh-aw documents those exact
+compatibility exceptions. Both fields are present in successful localization
+runs at their recorded workflow SHAs. Do not remove required fields or suppress
+unrelated diagnostics to manufacture a clean result. Validate that `queue: max`
+is not combined with `cancel-in-progress: true`.
+
+The three-attempt private-test budget includes setup, image-only/native runs,
+failures, cancellations, reruns, and automatic triggers, not just AI execution.
+Private-repository Copilot authentication is a separate prerequisite: the
+built-in token worked in an existing personal-owned test repository, but that
+does not prove a new repository's inference eligibility. The documented PAT
+alternative uses the `COPILOT_GITHUB_TOKEN` Actions secret and omits
+`copilot-requests: write` in the test workflow source. Keeping that permission
+would select built-in-token inference instead. Do not expose token values,
+silently change production authentication, or spend a trial guessing access.
 
 No repository secrets are required beyond the standard gh-aw Copilot request
 configuration. Enabling the workflow requires owner approval for that existing

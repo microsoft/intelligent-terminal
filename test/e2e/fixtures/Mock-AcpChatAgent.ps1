@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$LogPath,
     [string]$ReleasePromptPath,
+    [string]$HistoryPath,
     [switch]$SupportsImages
 )
 
@@ -61,14 +62,19 @@ while ($true) {
     $request = $line | ConvertFrom-Json
     switch ($request.method) {
         'initialize' {
+            $capabilities = if ($SupportsImages) {
+                @{ promptCapabilities = @{ image = $true } }
+            } else { @{} }
+            if ($HistoryPath) {
+                $capabilities.sessionCapabilities = @{ list = @{}; close = @{} }
+                Write-FixtureLog -Message "initialize|$([DateTimeOffset]::UtcNow.ToString('o'))"
+            }
             Send-AcpMessage @{
                 jsonrpc = '2.0'
                 id = $request.id
                 result = @{
                     protocolVersion = 1
-                    agentCapabilities = if ($SupportsImages) {
-                        @{ promptCapabilities = @{ image = $true } }
-                    } else { @{} }
+                    agentCapabilities = $capabilities
                     agentInfo = @{
                         name = 'Chat Fixture'
                         version = '1.0.0'
@@ -78,11 +84,29 @@ while ($true) {
         }
         'session/new' {
             $sessionCounter++
+            if ($HistoryPath) { Write-FixtureLog -Message "new|$([DateTimeOffset]::UtcNow.ToString('o'))|chat-fixture-$PID-$sessionCounter" }
             Send-AcpMessage @{
                 jsonrpc = '2.0'
                 id = $request.id
                 result = @{ sessionId = "chat-fixture-$PID-$sessionCounter" }
             }
+        }
+        'session/list' {
+            if (-not $HistoryPath) {
+                Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; error = @{ code = -32601; message = 'Method not found' } }
+                break
+            }
+            $history = Get-Content -LiteralPath $HistoryPath -Raw | ConvertFrom-Json -AsHashtable
+            Write-FixtureLog -Message "list|$([DateTimeOffset]::UtcNow.ToString('o'))"
+            Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; result = @{ sessions = @($history.sessions) } }
+        }
+        'session/close' {
+            if (-not $HistoryPath) {
+                Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; error = @{ code = -32601; message = 'Method not found' } }
+                break
+            }
+            Write-FixtureLog -Message "close|$([DateTimeOffset]::UtcNow.ToString('o'))|$($request.params.sessionId)"
+            Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; result = @{} }
         }
         'session/prompt' {
             $sessionId = [string]$request.params.sessionId

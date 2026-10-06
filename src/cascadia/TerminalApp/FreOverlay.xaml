@@ -5,7 +5,7 @@
     FRE (First Run Experience) two-step wizard.
     Full-screen content that replaces the terminal window during first run.
     Page 1: Welcome — feature highlights
-    Page 2: Settings — agent selection + configuration
+    Page 2: Settings — tab layout + agent configuration
 
     Both pages share the same 3-zone layout (Top / Content / Bottom) so
     title, content, and button areas stay aligned across pages.
@@ -25,6 +25,20 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="ms-appx:///Microsoft.Terminal.Settings.Editor/CommonResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <BitmapImage x:Key="FreSidebarImage"
+                                 UriSource="ms-appx:///FREAssets/sidebar.png" />
+                    <BitmapImage x:Key="FreErrorDetectionImage"
+                                 UriSource="ms-appx:///FREAssets/Error-detection.png" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <BitmapImage x:Key="FreSidebarImage"
+                                 UriSource="ms-appx:///FREAssets/sidebar.png" />
+                    <BitmapImage x:Key="FreErrorDetectionImage"
+                                 UriSource="ms-appx:///FREAssets/Error-detection.png" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
 
             <!--  Matches TerminalSettingsEditor's StandardControlMaxWidth  -->
             <x:Double x:Key="StandardControlMaxWidth">1000</x:Double>
@@ -108,7 +122,7 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <!--  Card 1: Error Detection  -->
+                    <!--  Sidebar / session management  -->
                     <Border Grid.Column="0" Background="#FF2D2D2D" CornerRadius="7">
                         <Grid>
                             <Grid.RowDefinitions>
@@ -117,15 +131,17 @@
                             </Grid.RowDefinitions>
                             <Border Grid.Row="0" Background="#FF0C0C0C" CornerRadius="7,7,0,0"
                                     Margin="6,6,6,0">
-                                <Image Source="ms-appx:///FREAssets/FRE_Asset1.png"
+                                <Image x:Name="SidebarImage"
+                                       Source="{ThemeResource FreSidebarImage}"
                                        Stretch="Uniform" />
                             </Border>
                             <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
-                                <TextBlock x:Uid="FreOverlay_Card1Title"
+                                <TextBlock x:Name="SidebarCardTitle"
+                                           x:Uid="FreOverlay_Card2Title"
                                            FontFamily="Segoe UI Variable Text, Segoe UI"
                                            FontSize="13" FontWeight="SemiBold"
                                            Foreground="White" LineHeight="18" />
-                                <TextBlock x:Uid="FreOverlay_Card1Description"
+                                <TextBlock x:Uid="FreOverlay_Card2Description"
                                            FontFamily="Segoe UI Variable Small, Segoe UI"
                                            FontSize="12" Foreground="#8AFFFFFF"
                                            TextWrapping="Wrap" LineHeight="16" />
@@ -133,7 +149,7 @@
                         </Grid>
                     </Border>
 
-                    <!--  Card 2: Session Management  -->
+                    <!--  Autofix / error detection  -->
                     <Border Grid.Column="2" Background="#FF2D2D2D" CornerRadius="7">
                         <Grid>
                             <Grid.RowDefinitions>
@@ -142,15 +158,17 @@
                             </Grid.RowDefinitions>
                             <Border Grid.Row="0" Background="#FF0C0C0C" CornerRadius="7,7,0,0"
                                     Margin="6,6,6,0">
-                                <Image Source="ms-appx:///FREAssets/FRE_Asset2.png"
+                                <Image x:Name="AutofixImage"
+                                       Source="{ThemeResource FreErrorDetectionImage}"
                                        Stretch="Uniform" />
                             </Border>
                             <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
-                                <TextBlock x:Uid="FreOverlay_Card2Title"
+                                <TextBlock x:Name="AutofixCardTitle"
+                                           x:Uid="FreOverlay_Card1Title"
                                            FontFamily="Segoe UI Variable Text, Segoe UI"
                                            FontSize="13" FontWeight="SemiBold"
                                            Foreground="White" LineHeight="18" />
-                                <TextBlock x:Uid="FreOverlay_Card2Description"
+                                <TextBlock x:Uid="FreOverlay_Card1Description"
                                            FontFamily="Segoe UI Variable Small, Segoe UI"
                                            FontSize="12" Foreground="#8AFFFFFF"
                                            TextWrapping="Wrap" LineHeight="16" />
@@ -219,6 +237,34 @@
                                 Spacing="4"
                                 MaxWidth="{StaticResource StandardControlMaxWidth}"
                                 HorizontalAlignment="Center">
+                        <!--  Tab mode  -->
+                        <Border Background="{ThemeResource ExpanderHeaderBackground}"
+                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                MinHeight="64"
+                                Padding="16,12">
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock x:Uid="FreOverlay_TabModeLabel"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="White" />
+                                    <TextBlock x:Name="TabModeDescriptionText"
+                                               x:Uid="FreOverlay_TabModeDescription"
+                                               FontSize="12" Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ComboBox x:Name="TabModeComboBox"
+                                          Grid.Column="1"
+                                          AutomationProperties.AccessibilityView="Content"
+                                          Style="{StaticResource ComboBoxSettingStyle}" />
+                            </Grid>
+                        </Border>
+
                         <!--  Agent  -->
                         <Border Background="{ThemeResource ExpanderHeaderBackground}"
                                 BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"

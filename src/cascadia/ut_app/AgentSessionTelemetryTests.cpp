@@ -3,6 +3,7 @@
 
 #include "precomp.h"
 #include "../TerminalApp/AgentSessionTelemetry.h"
+#include "../TerminalApp/AgentPolicyTelemetry.h"
 
 using namespace WEX::TestExecution;
 namespace Telemetry = TerminalApp::AgentSessionTelemetry;
@@ -15,13 +16,14 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ParsesSessionSettings);
         TEST_METHOD(BucketsPrivateValues);
         TEST_METHOD(RejectsIncompleteSnapshots);
+        TEST_METHOD(AcceptsLegacySnapshotWithoutRetainingSessionId);
+        TEST_METHOD(ReportsRawAutoFixPolicy);
     };
 
     static Json::Value Snapshot()
     {
         Json::Value value{ Json::objectValue };
         value["start_id"] = "0ba8a608-26c5-40a2-8020-5a1cd873f251";
-        value["session_id"] = "session";
         value["start_kind"] = "Load";
         value["agent_id"] = "copilot";
         value["agent_source"] = "wsl";
@@ -34,6 +36,15 @@ namespace TerminalAppUnitTests
         return value;
     }
 
+    void AgentSessionTelemetryTests::ReportsRawAutoFixPolicy()
+    {
+        using ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState;
+        using ::TerminalApp::AgentPolicyTelemetry::AutoFixPolicyName;
+        VERIFY_ARE_EQUAL(std::string{ "notConfigured" }, std::string{ AutoFixPolicyName(PolicyState::NotConfigured) });
+        VERIFY_ARE_EQUAL(std::string{ "enabled" }, std::string{ AutoFixPolicyName(PolicyState::Allowed) });
+        VERIFY_ARE_EQUAL(std::string{ "disabled" }, std::string{ AutoFixPolicyName(PolicyState::Blocked) });
+    }
+
     void AgentSessionTelemetryTests::ParsesSessionSettings()
     {
         const auto parsed = Telemetry::Parse(Snapshot());
@@ -43,6 +54,16 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::string{ "byok" }, std::string{ parsed->modelSource });
         VERIFY_ARE_EQUAL(std::string{ "provider" }, std::string{ parsed->automaticYolo });
         VERIFY_IS_FALSE(parsed->autofix);
+    }
+
+    void AgentSessionTelemetryTests::AcceptsLegacySnapshotWithoutRetainingSessionId()
+    {
+        auto value = Snapshot();
+        value["session_id"] = "private-agent-session";
+        const auto parsed = Telemetry::Parse(value);
+        VERIFY_IS_TRUE(parsed.has_value());
+        VERIFY_ARE_EQUAL(value["start_id"].asString(), parsed->startId);
+        VERIFY_ARE_EQUAL(std::string{ "Load" }, std::string{ parsed->kind });
     }
 
     void AgentSessionTelemetryTests::BucketsPrivateValues()

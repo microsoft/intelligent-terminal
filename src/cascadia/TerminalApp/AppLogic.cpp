@@ -5,6 +5,7 @@
 #include "AppLogic.h"
 #include "AppLogic.g.cpp"
 #include "SettingsLoadEventArgs.h"
+#include "../TerminalSettingsModel/SettingsTelemetry.h"
 
 #include <WtExeUtils.h>
 #include <wil/token_helpers.h>
@@ -190,14 +191,40 @@ namespace winrt::TerminalApp::implementation
         // this as a MTA, before the app is Create()'d
         WINRT_ASSERT(_loadedInitialSettings);
 
+        // AppHost calls Create for each window, including subsequent windows.
+        _LogAppCreatedTelemetry();
+    }
+
+    void AppLogic::_LogAppCreatedTelemetry() const noexcept
+    try
+    {
+        namespace Telemetry = Microsoft::Terminal::Settings::Model::implementation::AgentSettingsTelemetry;
+        const auto globals = _settings.GlobalSettings();
+        const auto primary = Telemetry::GetProviderSnapshot(globals, true);
+        const auto delegate = Telemetry::GetProviderSnapshot(globals, false);
+        const auto policy = Telemetry::SummarizePolicy(*::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
+
         TraceLoggingWrite(
             g_hTerminalAppProvider,
             "AppCreated",
             TraceLoggingDescription("Event emitted when the application is started"),
-            TraceLoggingBool(_settings.GlobalSettings().ShowTabsInTitlebar(), "TabsInTitlebar"),
+            TraceLoggingBool(globals.ShowTabsInTitlebar(), "TabsInTitlebar"),
+            TraceLoggingString(primary.configured, "PrimaryProvider"),
+            TraceLoggingString(primary.effective, "PrimaryEffectiveProvider"),
+            TraceLoggingUInt32(primary.custom.count, "PrimaryCustomConfiguredCount"),
+            TraceLoggingBool(primary.custom.selectedCommandConfigured, "PrimaryCustomSelectedCommandConfigured"),
+            TraceLoggingString(delegate.configured, "DelegateProvider"),
+            TraceLoggingString(delegate.effective, "DelegateEffectiveProvider"),
+            TraceLoggingUInt32(delegate.custom.count, "DelegateCustomConfiguredCount"),
+            TraceLoggingBool(delegate.custom.selectedCommandConfigured, "DelegateCustomSelectedCommandConfigured"),
+            TraceLoggingString(policy.allowedAgentsCategory, "AllowedAgentsPolicy"),
+            TraceLoggingString(policy.allowCustomAgentsCategory, "AllowCustomAgentsPolicy"),
+            TraceLoggingBool(globals.TabLayout() == TabLayout::Vertical, "SidebarEnabled"),
+            TraceLoggingBool(_usingDefaultSettings, "DefaultsFallback"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
+    CATCH_LOG()
 
     // Method Description:
     // - Attempt to load the settings. If we fail for any reason, returns an error.
@@ -425,6 +452,7 @@ namespace winrt::TerminalApp::implementation
             if (initialLoad)
             {
                 _settings = CascadiaSettings::LoadDefaults();
+                _usingDefaultSettings = true;
             }
             else
             {
@@ -444,7 +472,17 @@ namespace winrt::TerminalApp::implementation
         }
         else
         {
+            _usingDefaultSettings = false;
             _settings.LogSettingChanges(true);
+        }
+
+        // Seed from the settings actually applied, including initial-load defaults.
+        // Failed later reloads returned above and must not replace this baseline.
+        const auto globalsForTelemetry = _settings.GlobalSettings();
+        if (const auto previous = _agentProviderTelemetryBaseline.ObserveAppliedSettings(
+                { globalsForTelemetry.AcpAgent(), globalsForTelemetry.DelegateAgent() }))
+        {
+            _settings.LogAgentProviderChanges(previous->primary, previous->delegate);
         }
 
         if (const auto globals = _settings.GlobalSettings();

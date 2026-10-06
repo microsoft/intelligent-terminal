@@ -8,6 +8,7 @@
 
 #include "TitlebarControl.h"
 #include "../../types/inc/ColorFix.hpp"
+#include <winrt/Windows.UI.Xaml.Interop.h>
 
 #include "TitlebarControl.g.cpp"
 
@@ -71,6 +72,26 @@ namespace winrt::TerminalApp::implementation
     void TitlebarControl::Content(IInspectable content)
     {
         ContentRoot().Content(content);
+    }
+
+    DependencyProperty TitlebarControl::ContentDragAreaProperty()
+    {
+        static const auto property = DependencyProperty::RegisterAttached(
+            L"ContentDragArea",
+            winrt::xaml_typename<FrameworkElement>(),
+            winrt::xaml_typename<TerminalApp::TitlebarControl>(),
+            PropertyMetadata{ nullptr });
+        return property;
+    }
+
+    FrameworkElement TitlebarControl::GetContentDragArea(const DependencyObject& target)
+    {
+        return target.GetValue(ContentDragAreaProperty()).try_as<FrameworkElement>();
+    }
+
+    void TitlebarControl::SetContentDragArea(const DependencyObject& target, const FrameworkElement& value)
+    {
+        target.SetValue(ContentDragAreaProperty(), value);
     }
 
     void TitlebarControl::Root_SizeChanged(const IInspectable& /*sender*/,

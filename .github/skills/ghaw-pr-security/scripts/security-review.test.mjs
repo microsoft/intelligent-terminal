@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { chmodSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
-  attestChecks, buildScope, classifyPath, normalizePath, renderReport, validatePatch,
-  validateQueuedOutput, validateReport, stageRepairFiles, validateRepairScope,
+  attestChecks, buildScope, classifyPath, createReportTemplate, normalizePath, renderReport, validatePatch,
+  validateQueuedOutput, validateReport, validateProposal, stageRepairFiles, validateRepairScope,
 } from './security-review.mjs';
 
 const BASE = '1'.repeat(40);
@@ -108,6 +110,14 @@ test('accepts no-findings and medium advice-only reports', () => {
     }],
   });
   assert.match(validateReport(candidate, scope()).findings[0].id, /^ITSEC-[A-F0-9]{12}$/);
+  const wrongDomain = structuredClone(candidate);
+  wrongDomain.findings[0].category = 'cpp-memory';
+  assert.throws(() => validateReport(wrongDomain, scope()), /invalid classification/);
+  const wrongDisposition = structuredClone(candidate);
+  wrongDisposition.findings[0].fixDisposition.state = 'blocked';
+  assert.throws(() => validateReport(wrongDisposition, scope()), /invalid fix disposition/);
+  assert.throws(() => validateReport({ ...candidate, summary: 's'.repeat(801) }, scope()), /at most 800/);
+  assert.doesNotThrow(() => validateReport({ ...candidate, summary: 's'.repeat(800) }, scope()));
 });
 
 test('accepts wrong-session HIGH as blocking and renders it first', () => {
@@ -133,7 +143,7 @@ test('accepts wrong-session HIGH as blocking and renders it first', () => {
   assert.match(renderReport(validated), /Must fix \/ blocking[\s\S]+ITSEC-/);
 });
 
-test('accepts only validated high-confidence HIGH repairs with matching patch', () => {
+test('only native validation promotes independently source-reviewed repair proposals', () => {
   const current = repairScope();
   const candidate = {
     ...report(),
@@ -144,11 +154,11 @@ test('accepts only validated high-confidence HIGH repairs with matching patch', 
       { name: 'wta-tests', status: 'pass', headSha: HEAD, evidence: 'local command: cargo test focused-security-test (exit 0)' },
     ],
     review: {
-      status: 'pass',
+      status: 'source-pass',
       reviewer: 'ghaw-pr-security-reviewer',
       headSha: HEAD,
       patchSha256: PATCH_SHA256,
-      evidence: 'Independent final-patch review returned PASS.',
+      evidence: 'Independent exact-patch source review returned SOURCE_PASS.',
     },
     findings: [{
       rule: 'session-route-target-binding',
@@ -172,25 +182,80 @@ test('accepts only validated high-confidence HIGH repairs with matching patch', 
   validatePatch(validated, ['tools/wta/src/master/mod.rs'], PATCH_TEXT);
   validateQueuedOutput(validated, { items: [{ type: 'noop' }], errors: [] });
   assert.throws(() => validateQueuedOutput(validated, { items: [{ type: 'push_to_pull_request_branch' }] }), /noop/);
+
+  const proposal = structuredClone(candidate);
+  proposal.checks = [candidate.checks[0]];
+  proposal.findings[0].fixDisposition = { state: 'proposed', reason: 'Source-reviewed candidate awaits trusted validation.' };
+  assert.throws(() => validateReport(proposal, current), /fix disposition/);
+  assert.equal(validateProposal(proposal, current).findings[0].fixDisposition.state, 'proposed');
+  assert.throws(() => validateProposal(candidate, current), /cannot claim passing/);
+  const prematurePass = structuredClone(proposal);
+  prematurePass.checks.push(candidate.checks[1]);
+  assert.throws(() => validateProposal(prematurePass, current), /cannot claim passing/);
+  assert.throws(() => validateProposal(proposal, scope('fork')), /same-repository/);
+  const mixedProposalScope = structuredClone(current);
+  mixedProposalScope.changedFiles.push({ status: 'M', path: '.github/workflows/build.yml' });
+  assert.throws(() => validateProposal(proposal, mixedProposalScope), /non-WTA-source/);
+  const sourceRejected = structuredClone(proposal);
+  sourceRejected.review.status = 'fail';
+  assert.throws(() => validateProposal(sourceRejected, current), /independent security review/);
+  assert.throws(() => attestChecks(proposal, HEAD, false, PATCH_TEXT), /trusted final-patch validation/);
+  assert.throws(() => attestChecks(candidate, HEAD, true, PATCH_TEXT), /must propose repairs/);
+  assert.throws(() => attestChecks(proposal, HEAD, true, `${PATCH_TEXT}changed`), /exact final patch/);
+  const failedReview = structuredClone(proposal);
+  failedReview.review.status = 'fail';
+  assert.throws(() => attestChecks(failedReview, HEAD, true, PATCH_TEXT), /SOURCE_PASS/);
+  const staleReview = structuredClone(proposal);
+  staleReview.review.headSha = BASE;
+  assert.throws(() => attestChecks(staleReview, HEAD, true, PATCH_TEXT), /SOURCE_PASS/);
+  const mediumProposal = structuredClone(proposal);
+  mediumProposal.findings[0].severity = 'medium';
+  assert.throws(() => attestChecks(mediumProposal, HEAD, true, PATCH_TEXT), /HIGH\/high-confidence/);
+  const attested = attestChecks(proposal, HEAD, true, PATCH_TEXT);
+  assert.equal(attested.findings[0].fixDisposition.state, 'fixed');
+  const finalReport = validateReport(attested, current);
+  validatePatch(finalReport, ['tools/wta/src/master/mod.rs'], PATCH_TEXT);
+  assert.equal(proposal.findings[0].fixDisposition.state, 'proposed');
+});
+
+test('native report templates preserve immutable identity and cannot pass untouched', () => {
+  for (const current of [scope('fork'), repairScope()]) {
+    const template = createReportTemplate(current);
+    for (const key of ['version', 'prNumber', 'baseSha', 'headSha', 'scopeSha256', 'repositoryRelation', 'mode']) {
+      assert.equal(template[key], current[key]);
+    }
+    assert.throws(() => validateReport(template, current), /summary/);
+    template.summary = 'Reviewed every applicable hunk; no introduced regression found.';
+    assert.doesNotThrow(() => validateReport(template, current));
+    assert.throws(
+      () => validateReport({ ...template, mode: current.mode === 'guide' ? 'repair' : 'guide' }, current),
+      /identity/,
+    );
+  }
+  assert.throws(() => createReportTemplate({}), /immutable scope/);
 });
 
 test('only trusted post-step attestation can authorize a passing repair check', () => {
-  const claimed = report({
+  const current = repairScope();
+  const claimed = {
+    ...createReportTemplate(current),
+    summary: 'Reviewed immutable source and proposed validation evidence.',
     checks: [
       { name: 'deterministic-scope', status: 'pass', headSha: HEAD, evidence: 'Immutable diff classified.' },
       { name: 'wta-tests', status: 'pass', headSha: HEAD, evidence: 'local command: untrusted claim (exit 0)' },
     ],
-  });
+  };
 
   const unattested = attestChecks(claimed, HEAD, false);
   assert.equal(unattested.checks.some(check => check.name === 'wta-tests' && check.status === 'pass'), false);
   const attested = attestChecks(claimed, HEAD, true);
-  assert.match(attested.checks.find(check => check.name === 'wta-tests').evidence, /^trusted isolated container:/);
+  assert.doesNotThrow(() => validateReport(attested, current));
+  assert.match(attested.checks.find(check => check.name === 'wta-tests').evidence, /trusted isolated Windows container:/);
 });
 
 test('automatic repair accepts only modifications to existing WTA Rust source', () => {
   assert.doesNotThrow(() => validateRepairScope(repairScopeWithStatus('M')));
-  for (const status of ['A', 'D', 'T']) {
+  for (const status of ['A', 'D', 'T', 'U', 'X', 'B']) {
     assert.throws(
       () => validateRepairScope(repairScopeWithStatus(status)),
       new RegExp(`${status}:tools/wta/src/master/mod.rs`),
@@ -207,6 +272,14 @@ test('automatic repair accepts only modifications to existing WTA Rust source', 
       'repair',
     )),
     /R100:tools\/wta\/src\/master\/mod.rs/,
+  );
+  assert.throws(
+    () => validateRepairScope(buildScope(
+      BASE, HEAD, 17, 'same-repo',
+      'C100\0tools/wta/src/old.rs\0tools/wta/src/master/mod.rs\0',
+      BASE, 'repair',
+    )),
+    /C100:tools\/wta\/src\/master\/mod.rs/,
   );
 });
 
@@ -291,11 +364,11 @@ test('rejects patch paths without a matching fixed finding', () => {
       { name: 'wta-tests', status: 'pass', headSha: HEAD, evidence: 'local command: cargo test focused-security-test (exit 0)' },
     ],
     review: {
-      status: 'pass',
+      status: 'source-pass',
       reviewer: 'ghaw-pr-security-reviewer',
       headSha: HEAD,
       patchSha256: PATCH_SHA256,
-      evidence: 'Independent final-patch review returned PASS.',
+      evidence: 'Independent exact-patch source review returned SOURCE_PASS.',
     },
     findings: [{
       rule: 'session-route-target-binding',
@@ -422,4 +495,135 @@ test('rejects secret-like diagnostic evidence and unsupported passing checks', (
   assert.throws(() => validateReport(report({
     summary: 'token=abcdefghijklmnopqrstuvwxyz123456',
   }), scope()), /secret material/);
+});
+
+test('native CLI and permitted PowerShell report writes work end to end', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ghaw-security-native-replay-'));
+  const workspace = join(root, 'checkout');
+  mkdirSync(workspace);
+  const validator = fileURLToPath(new URL('./security-review.mjs', import.meta.url));
+  const invoke = (...args) => spawnSync(process.execPath, [validator, ...args], {
+    cwd: workspace, encoding: 'utf8', timeout: 30_000,
+  });
+
+  const git = (...args) => execFileSync('git', args, {
+    cwd: workspace, encoding: 'utf8', timeout: 30_000,
+  }).trim();
+  try {
+    git('init', '--quiet');
+    git('config', 'user.name', 'Local contract fixture');
+    git('config', 'user.email', 'fixture@example.invalid');
+    mkdirSync(join(workspace, 'tools', 'wta', 'src'), { recursive: true });
+    const source = join(workspace, 'tools', 'wta', 'src', 'routing.rs');
+    writeFileSync(source, 'fn route() { /* owner-bound base */ }\n');
+    git('add', '.');
+    git('commit', '--quiet', '-m', 'Local fixture base');
+    const base = git('rev-parse', 'HEAD');
+    writeFileSync(source, 'fn route() { /* changed route for review */ }\n');
+    git('add', '.');
+    git('commit', '--quiet', '-m', 'Local fixture head');
+    const head = git('rev-parse', 'HEAD');
+    // Keep report artifacts outside the checkout, as on the hosted runner.
+    const artifacts = join(root, 'artifacts');
+    mkdirSync(artifacts);
+    for (const [relation, mode] of [['fork', 'guide'], ['same-repo', 'repair']]) {
+      const scopePath = join(artifacts, `${mode}-scope.json`);
+      const reportPath = join(artifacts, `${mode}-report.json`);
+      const validated = join(artifacts, `${mode}-validated.json`);
+      const summary = join(artifacts, `${mode}-summary.md`);
+      const status = join(artifacts, `${mode}-status.txt`);
+      let result = invoke('scope', '--base', base, '--head', head, '--pr', '17',
+        '--relation', relation, '--mode', mode, '--output', scopePath);
+      assert.equal(result.status, 0, result.stderr);
+      result = invoke('init-report', '--scope', scopePath, '--output', reportPath);
+      assert.equal(result.status, 0, result.stderr);
+      const validate = () => invoke('validate', '--scope', scopePath, '--report', reportPath,
+        '--validated', validated, '--summary', summary, '--status', status);
+      result = validate();
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /summary/);
+      result = invoke('check-report', '--scope', scopePath, '--report', reportPath);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /summary/);
+      result = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-Command', `
+        $ErrorActionPreference = 'Stop'
+        $path = $env:SECURITY_REPORT_PATH
+        $report = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $report.summary = 'Reviewed the immutable patch; no regression found.'
+        $json = ConvertTo-Json -InputObject $report -Depth 12
+        [System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
+      `], {
+        cwd: workspace, encoding: 'utf8', timeout: 30_000,
+        env: { ...process.env, SECURITY_REPORT_PATH: reportPath },
+      });
+      assert.equal(result.status, 0, result.stderr || result.error?.message);
+      result = validate();
+      assert.equal(result.status, 0, result.stderr);
+      result = invoke('check-report', '--scope', scopePath, '--report', reportPath);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(readFileSync(status, 'utf8'), 'pass\n');
+      const queue = join(artifacts, `${mode}-queue.json`);
+      writeFileSync(queue, JSON.stringify({ items: [{ type: 'noop' }], errors: [] }));
+      result = invoke('validate-output', '--validated', validated, '--agent-output', queue);
+      assert.equal(result.status, 0, result.stderr);
+      writeFileSync(queue, JSON.stringify({ items: [{ type: 'add_comment' }], errors: [] }));
+      result = invoke('validate-output', '--validated', validated, '--agent-output', queue);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /exactly one noop/);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('repair publication requires the exact reviewed head even after a branch rewind', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ghaw-security-publication-race-'));
+  const checkout = join(root, 'checkout');
+  const remote = join(root, 'remote.git');
+  mkdirSync(checkout);
+  const git = (...args) => execFileSync('git', args, {
+    cwd: checkout, encoding: 'utf8', timeout: 30_000,
+  }).trim();
+  const updateRemote = sha => git('--git-dir', remote, 'update-ref', 'refs/heads/reviewed', sha);
+  try {
+    git('init', '--quiet');
+    git('init', '--quiet', '--bare', remote);
+    git('config', 'user.name', 'Local publication fixture');
+    git('config', 'user.email', 'fixture@example.invalid');
+    git('remote', 'add', 'origin', remote);
+    git('commit', '--quiet', '--allow-empty', '-m', 'Base');
+    const base = git('rev-parse', 'HEAD');
+    git('commit', '--quiet', '--allow-empty', '-m', 'Reviewed head');
+    const reviewed = git('rev-parse', 'HEAD');
+    git('push', '--quiet', 'origin', 'HEAD:refs/heads/reviewed');
+    git('commit', '--quiet', '--allow-empty', '-m', 'Validated repair');
+    const repair = git('rev-parse', 'HEAD');
+    git('merge-base', '--is-ancestor', reviewed, repair);
+    const publish = () => spawnSync('git', [
+      'push', '--quiet', `--force-with-lease=refs/heads/reviewed:${reviewed}`,
+      'origin', `${repair}:refs/heads/reviewed`,
+    ], { cwd: checkout, encoding: 'utf8', timeout: 30_000 });
+    let result = publish();
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/reviewed'), repair);
+    updateRemote(base);
+    // A non-force push alone accepts this race and restores removed history.
+    git('push', '--quiet', 'origin', `${repair}:refs/heads/reviewed`);
+    updateRemote(base);
+    result = publish();
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /stale info|rejected/);
+    assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/reviewed'), base);
+    updateRemote(repair);
+    result = publish();
+    assert.equal(result.status, 0, result.stderr);
+    git('commit', '--quiet', '--allow-empty', '-m', 'Concurrent branch advance');
+    const advanced = git('rev-parse', 'HEAD');
+    git('push', '--quiet', 'origin', `${advanced}:refs/heads/reviewed`);
+    result = publish();
+    assert.notEqual(result.status, 0);
+    assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/reviewed'), advanced);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -5,10 +5,39 @@
 //! this was an inline `mod tests { ... }` block.
 
 use super::*;
+use crate::agent_sessions::SessionLocation;
 use crate::app::tab_state::{collapsed_prompt_preview, PendingTerminalActionProposal};
 use crate::app_contracts::{PermOption, PlanEntry};
 use serde_json::json;
 use std::sync::Mutex;
+
+#[test]
+fn qualified_session_removal_only_demotes_matching_helper_scope() {
+    let params = crate::session_registry::SessionRemovedParams {
+        session_id: agent_client_protocol::schema::v1::SessionId::new("same-id"),
+        history_key: crate::session_registry::HistoryRowKey::new(
+            "claude",
+            SessionLocation::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
+            "same-id",
+            None,
+        ),
+    };
+
+    assert!(session_removed_matches_scope(
+        &params,
+        "claude",
+        &SessionLocation::Wsl {
+            distro: "Ubuntu".to_string(),
+        }
+    ));
+    assert!(!session_removed_matches_scope(
+        &params,
+        "copilot",
+        &SessionLocation::Host
+    ));
+}
 
 /// Custom-agent preflight regression: when the user's `acpAgent` is a
 /// `custom:*` id, the preflight must NOT gate the TUI into Setup mode.
@@ -2015,6 +2044,85 @@ fn tab_renamed_with_missing_fields_is_dropped() {
     assert!(app.tab_sessions.contains_key("AAAA"));
 }
 
+#[test]
+fn tab_renamed_kept_tab_updates_only_its_helpers_window() {
+    let mut app = test_app();
+    app.tab_id = Some("kept-tab".into());
+    app.owner_tab_id = Some("kept-tab".into());
+    app.window_id = Some("old-window".into());
+    app.tab_sessions
+        .insert("kept-tab".into(), TabSession::default());
+    app.session_to_tab
+        .insert("acp-session".into(), "kept-tab".into());
+    let tab_count = app.tab_sessions.len();
+
+    for (tab, window, expected) in [
+        ("other-tab", Some("unrelated-window"), "old-window"),
+        ("kept-tab", None, "old-window"),
+        ("kept-tab", Some("new-window"), "new-window"),
+    ] {
+        app.handle_event(AppEvent::WtEvent {
+            method: "tab_renamed".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "old_tab_id": tab,
+                "new_tab_id": tab,
+                "window_id": window,
+            }),
+        });
+        assert_eq!(app.window_id.as_deref(), Some(expected));
+        assert_eq!(app.owner_tab_id.as_deref(), Some("kept-tab"));
+        assert_eq!(app.tab_id.as_deref(), Some("kept-tab"));
+        assert_eq!(app.tab_sessions.len(), tab_count);
+        assert_eq!(app.session_to_tab["acp-session"], "kept-tab");
+    }
+}
+
+#[test]
+fn kept_tab_reattachment_marks_only_the_owning_live_session() {
+    let mut app = test_app();
+    app.owner_tab_id = Some("owned-tab".into());
+    app.window_id = Some("owned-window".into());
+    app.tab_mut("owned-tab").session_id = Some("original".into());
+
+    for (tab, window) in [("other-tab", "owned-window"), ("owned-tab", "other-window")] {
+        app.handle_event(AppEvent::WtEvent {
+            method: "keep_running_reattached".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({"tab_id": tab, "window_id": window}),
+        });
+        assert!(app.tab_mut("owned-tab").reattached_session_id.is_none());
+    }
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "keep_running_reattached".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({"tab_id": "owned-tab", "window_id": "owned-window"}),
+    });
+    let tab = app.tab_mut("owned-tab");
+    assert_eq!(tab.reattached_session_id.as_deref(), Some("original"));
+    assert!(tab.is_reattached_session());
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "owned-tab".into(),
+        session_id: "new-session".into(),
+        prompt_id: None,
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+    assert!(!app.tab_mut("owned-tab").is_reattached_session());
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "owned-tab".into(),
+        session_id: "original".into(),
+        prompt_id: None,
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+    assert!(!app.tab_mut("owned-tab").is_reattached_session());
+}
+
 // ─── load_session owner_tab_id filter ───────────────────────────────────
 //
 // WT broadcasts `load_session` over shared COM, so every helper in every
@@ -3455,6 +3563,131 @@ fn sessions_changed_with_closed_agents_view_is_noop() {
     app.current_tab_mut().agents_view.snapshot = None;
     app.handle_event(AppEvent::SessionsChanged);
     assert!(master_rx.try_recv().is_err(), "closed UI must not refetch");
+}
+
+#[test]
+fn installation_completion_broadcast_does_not_surface_a_helper_notification() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let messages = app.current_tab().messages.len();
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_availability_changed".into(),
+        pane_id: String::new(),
+        tab_id: Some(DEFAULT_TAB_ID.into()),
+        params: json!({
+            "agent_id": "copilot",
+            "tab_id": DEFAULT_TAB_ID,
+            "installation_completed": true,
+        }),
+    });
+    assert!(app.wt_notifications.is_empty());
+    assert_eq!(app.current_tab().messages.len(), messages);
+    assert!(
+        master_rx.try_recv().is_err(),
+        "helpers must not repeat master's discovery request"
+    );
+}
+
+#[test]
+fn sessions_fallback_only_reads_open_helper_views_in_nonvertical_layouts() {
+    for in_sidebar in [false, true] {
+        for view_open in [false, true] {
+            let (mut app, mut master_rx) = test_app_with_master_rx();
+            app.sessions_in_sidebar = in_sidebar;
+            if view_open {
+                app.current_tab_mut().current_view = View::Agents;
+                app.current_tab_mut().agents_view.snapshot = Some(Vec::new());
+            }
+
+            app.handle_event(AppEvent::SessionsFallbackTick);
+            if view_open && !in_sidebar {
+                assert!(matches!(
+                    master_rx.try_recv(),
+                    Ok(
+                        crate::protocol::acp::client::MasterExtRequest::SessionsList {
+                            rescan: false,
+                            ..
+                        }
+                    )
+                ));
+            } else {
+                assert!(master_rx.try_recv().is_err());
+                assert!(!app.current_tab().agents_view.refetch_in_flight);
+            }
+        }
+    }
+}
+
+#[test]
+fn sessions_fallback_layout_updates_are_scoped_and_preserve_pushes() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.into());
+    app.window_id = Some("42".into());
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_view.snapshot = Some(Vec::new());
+    let update = |window: &str, tab: &str, value: serde_json::Value| AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "window_id": window,
+            "tab_id": tab,
+            "sessions_in_sidebar": value,
+        }),
+    };
+
+    app.handle_event(update("other-window", DEFAULT_TAB_ID, json!(true)));
+    app.handle_event(update("42", "other-tab", json!(true)));
+    assert!(!app.sessions_in_sidebar);
+    app.handle_event(update("42", "", json!(true)));
+    assert!(
+        app.sessions_in_sidebar,
+        "window layout applies to its own helper"
+    );
+    app.handle_event(AppEvent::SessionsFallbackTick);
+    assert!(master_rx.try_recv().is_err());
+
+    app.handle_event(update("42", DEFAULT_TAB_ID, json!("false")));
+    assert!(
+        app.sessions_in_sidebar,
+        "invalid optional fields do not reset layout"
+    );
+    app.handle_event(AppEvent::SessionsChanged);
+    assert!(
+        matches!(
+            master_rx.try_recv(),
+            Ok(crate::protocol::acp::client::MasterExtRequest::SessionsList { rescan: false, .. })
+        ),
+        "push notifications remain independent of the fallback layout gate"
+    );
+    app.current_tab_mut().agents_view.refetch_in_flight = false;
+
+    app.handle_event(update("42", DEFAULT_TAB_ID, json!(false)));
+    assert!(!app.sessions_in_sidebar);
+    assert!(
+        master_rx.try_recv().is_ok(),
+        "returning to helper layout refreshes an open view immediately"
+    );
+    app.current_tab_mut().agents_view.refetch_in_flight = false;
+    app.handle_event(AppEvent::SessionsFallbackTick);
+    assert!(
+        master_rx.try_recv().is_ok(),
+        "nonvertical fallback resumes without reconnecting ACP"
+    );
+}
+
+#[test]
+fn sessions_fallback_does_not_open_a_view_when_layout_changes() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.sessions_in_sidebar = true;
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({"sessions_in_sidebar": false}),
+    });
+    assert!(!app.sessions_in_sidebar);
+    assert!(app.current_tab().agents_view.snapshot.is_none());
+    assert!(master_rx.try_recv().is_err());
 }
 
 // ─── /model and Settings model updates ──────────────────────────────────
@@ -7424,6 +7657,8 @@ fn session_info_for_test(id: &str) -> crate::session_registry::SessionInfo {
     info.title = Some(id.to_string());
     info.status = Some(crate::agent_sessions::AgentStatus::Idle);
     info.cli_source = Some(crate::agent_sessions::CliSource::Claude);
+    info.provider_id = Some("claude".to_string());
+    info.location = crate::agent_sessions::SessionLocation::Host;
     info.last_activity_at_ms = Some(1);
     info
 }
@@ -7731,6 +7966,7 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
     let real_cwd = std::env::temp_dir();
     let real_cwd_str = real_cwd.to_string_lossy().to_string();
     let mut app = test_app();
+    app.window_id = Some("42".into());
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "abc-123".into(),
         cli_source: CliSource::Claude,
@@ -7756,6 +7992,10 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
     // resumed CLI lands in its own WT tab instead of carving up the
     // originating tab.
     assert!(argv.contains("new-tab"), "argv: {}", argv);
+    assert!(
+        argv.contains("--window-id 42"),
+        "resume must target the owning window: {argv}"
+    );
     assert!(
         !argv.contains("split-pane"),
         "argv must NOT use split-pane: {}",
@@ -7829,6 +8069,7 @@ fn enter_on_history_row_with_missing_cwd_omits_d_flag() {
     };
     assert!(!missing.exists());
     let mut app = test_app();
+    app.window_id = Some("42".into());
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "abc-stale".into(),
         cli_source: CliSource::Claude,
@@ -7871,6 +8112,7 @@ fn modified_enter_on_live_row_dispatches_nothing() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
+    app.window_id = Some("42".into());
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "a".into(),
         cli_source: CliSource::Claude,
@@ -7912,20 +8154,26 @@ fn modified_enter_on_live_row_dispatches_nothing() {
 // effect (or NotResumable hint). One or two representative cases
 // per variant is enough; session_mgmt holds the truth table.
 
-/// Class A (AgentPane origin) dead row + plain Enter:
-/// the state machine routes to ResumeInAgentPane (ACP load).
+/// A Class A row selected from a cross-provider history surface routes to
+/// ResumeInAgentPane using the selected row's provider and location.
 #[test]
-fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
-    use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+fn cross_provider_class_a_row_dispatches_resume_in_agent_pane() {
+    use crate::agent_sessions::{
+        CliSource, OriginFilter, SessionEvent, SessionLocation, SessionOrigin,
+    };
     use std::path::PathBuf;
     let mut app = test_app();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    app.window_id = Some("42".into());
+    app.current_agent_id = "copilot".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Host;
+    app.acp_model = Some("caller-model-must-not-leak".into());
     // This test exercises the Class A (AgentPane) Enter routing,
     // which the MVP sessions filter hides. Opt out so the row is
     // visible to the cursor; the dispatch logic under test is
     // unchanged by the filter.
     app.sessions_origin_filter = OriginFilter::All;
-    app.agent_supports_load_session = true;
+    app.agent_supports_load_session = false;
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "abc-class-a".into(),
         cli_source: CliSource::Claude,
@@ -7939,10 +8187,15 @@ fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
     });
     app.agent_sessions
         .set_origin("abc-class-a", SessionOrigin::AgentPane);
+    app.agent_sessions
+        .set_location("abc-class-a", SessionLocation::Host);
 
-    app.current_tab_mut().current_view = View::Agents;
-    app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let row = app
+        .agent_sessions
+        .get(&"abc-class-a".to_string())
+        .expect("row exists")
+        .clone();
+    app.activate_agent_session_routed(&row);
 
     let cmd = app
         .last_dispatched_command_for_test()
@@ -7950,17 +8203,105 @@ fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
     assert_eq!(cmd.kind, DispatchedCommandKind::ResumeInAgentPane);
     let argv = cmd.argv.join(" ");
     assert!(argv.contains("resume_in_new_agent_tab"), "argv: {}", argv);
+    assert!(argv.contains("--window-id 42"), "argv: {}", argv);
     assert!(argv.contains("--session-id abc-class-a"), "argv: {}", argv);
+    let event = crate::wt_protocol_events::take_test_published_events()
+        .into_iter()
+        .filter_map(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .find(|event| event["method"] == "resume_in_new_agent_tab")
+        .expect("resume event should be published");
+    assert_eq!(event["params"]["agent_id"], "claude");
+    assert_eq!(event["params"]["agent_source"], "host");
+    assert!(event["params"].get("wsl_distro").is_none());
+    assert!(event["params"].get("agent_model").is_none());
+}
+
+#[test]
+fn same_target_without_load_session_capability_is_rejected() {
+    use crate::agent_sessions::{
+        CliSource, OriginFilter, SessionEvent, SessionLocation, SessionOrigin,
+    };
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::path::PathBuf;
+
+    let mut app = test_app();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    app.window_id = Some("42".into());
+    app.current_agent_id = "claude".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Host;
+    app.agent_supports_load_session = false;
+    app.sessions_origin_filter = OriginFilter::All;
+    app.agent_sessions.apply(SessionEvent::SessionStarted {
+        key: "same-target-unsupported".into(),
+        cli_source: CliSource::Claude,
+        pane_session_id: "p".into(),
+        cwd: PathBuf::from("/work/project"),
+        title: "t".into(),
+    });
+    app.agent_sessions.apply(SessionEvent::SessionStopped {
+        key: "same-target-unsupported".into(),
+        reason: "user_exit".into(),
+    });
+    app.agent_sessions
+        .set_origin("same-target-unsupported", SessionOrigin::AgentPane);
+    app.agent_sessions
+        .set_location("same-target-unsupported", SessionLocation::Host);
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_list_state.select(Some(0));
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    let command = app
+        .last_dispatched_command_for_test()
+        .expect("not-resumable result should be recorded");
+    assert_eq!(command.kind, DispatchedCommandKind::NotResumable);
+    assert!(
+        crate::wt_protocol_events::take_test_published_events()
+            .into_iter()
+            .all(|raw| !raw.contains("resume_in_new_agent_tab")),
+        "unsupported same-target restore must not publish a resume event"
+    );
+}
+
+#[test]
+fn dead_row_without_owner_window_does_not_dispatch_resume() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::path::PathBuf;
+    let mut app = test_app();
+    app.agent_sessions.apply(SessionEvent::SessionStarted {
+        key: "missing-window".into(),
+        cli_source: CliSource::Claude,
+        pane_session_id: "p".into(),
+        cwd: PathBuf::from("/work/project"),
+        title: "t".into(),
+    });
+    app.agent_sessions.apply(SessionEvent::SessionStopped {
+        key: "missing-window".into(),
+        reason: "user_exit".into(),
+    });
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_list_state.select(Some(0));
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(
+        app.last_dispatched_command_for_test().is_none(),
+        "resume must fail closed without an owning window"
+    );
 }
 
 /// Class A (AgentPane origin) dead row + modified Enter: no dispatch.
 /// The row's only resume style is reachable through a bare Enter.
 #[test]
 fn modified_enter_on_class_a_dead_row_dispatches_nothing() {
-    use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
+    use crate::agent_sessions::{
+        CliSource, OriginFilter, SessionEvent, SessionLocation, SessionOrigin,
+    };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
+    app.window_id = Some("42".into());
     // See enter_on_class_a_dead_row_dispatches_resume_in_agent_pane
     // for the OriginFilter::All rationale — the MVP filter hides
     // Class A rows from the cursor model; this test exercises the
@@ -7980,6 +8321,8 @@ fn modified_enter_on_class_a_dead_row_dispatches_nothing() {
     });
     app.agent_sessions
         .set_origin("abc-class-a-shift", SessionOrigin::AgentPane);
+    app.agent_sessions
+        .set_location("abc-class-a-shift", SessionLocation::Host);
 
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_list_state.select(Some(0));
@@ -8007,6 +8350,7 @@ fn modified_enter_on_class_b_dead_row_dispatches_nothing() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
+    app.window_id = Some("42".into());
     // loadSession IS advertised: a modifier must not divert a Class B
     // row into an agent pane, nor resume it in a shell pane.
     app.agent_supports_load_session = true;
@@ -9269,6 +9613,7 @@ fn hookless_session_snapshot_renders_and_dispatches_resume() {
         request_id,
         sessions: vec![row],
     });
+    app.window_id = Some("42".into());
     assert!(
         app.agent_sessions.iter_sorted().is_empty(),
         "history must not need a local hook row"
@@ -21864,6 +22209,343 @@ fn submit_proposal_prompt(app: &mut App, session_id: &str) {
 
 const TERMINAL_AGENT_PROPOSAL_PAYLOAD: &str = r#"{"schema_version":1,"origin":"terminal_agent","recommended_choice":1,"choices":[{"choice":1,"title":"restart service","rationale":"r","actions":[{"type":"send","input":"Restart-Service foo"}]}]}"#;
 
+fn stage_error_fix_telemetry_proposal(
+    app: &mut App,
+    is_autofix: bool,
+) -> (
+    String,
+    tokio::sync::oneshot::Receiver<
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus,
+    >,
+) {
+    use crate::agent_tools::action_proposal::{
+        channel::{ProposalChannelManager, ProposalValidationStatus},
+        pipe::ProposalPayloadSource,
+        schema::McpActionTool,
+    };
+    app.state = ConnectionState::Connected;
+    app.mode = AppMode::Chat;
+    stage_proposal_session(app, "fix-telemetry");
+    submit_proposal_prompt(app, "fix-telemetry");
+    let tab = app.current_tab_mut();
+    tab.pane_open = true;
+    if is_autofix {
+        tab.turn.prompt_mut().unwrap().autofix = Some(AutofixContext {
+            generation: tab.autofix.generation,
+        });
+    }
+    let manager = Arc::new(ProposalChannelManager::new());
+    app.set_proposal_channels(Arc::clone(&manager));
+    let channel = manager
+        .issue(
+            "fix-telemetry".into(),
+            99,
+            Some("pane-9".into()),
+            is_autofix,
+        )
+        .unwrap();
+    let context = manager.begin_validation(&channel).unwrap();
+    let proposal_id = context.proposal_id.clone();
+    let decision = app.evaluate_direct_terminal_action_proposal(
+        &context,
+        r#"{"summary":"Repair the failure","command":"Get-Date"}"#,
+        ProposalPayloadSource::Mcp(McpActionTool::RunCommandInCurrentShell),
+    );
+    assert_eq!(decision.status, ProposalValidationStatus::Accepted);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    assert!(manager.accept_validation(&proposal_id, tx));
+    (proposal_id, rx)
+}
+
+fn flush_error_fix_telemetry_frame(app: &mut App, width: u16, height: u16) -> String {
+    let text = render_to_text(app, width, height);
+    app.log_error_fix_offered_if_visible();
+    text
+}
+
+#[test]
+fn error_fix_telemetry_requires_display_then_run_and_deduplicates() {
+    use crate::telemetry::capture::{take, Event};
+    take();
+    let mut app = test_app();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = tx;
+    let (proposal_id, mut final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    assert!(take().is_empty(), "validation is not an offer");
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    assert!(!app.commit_terminal_action_proposal(&proposal_id));
+    assert!(take().is_empty(), "committing a hidden card is not display");
+    assert!(flush_error_fix_telemetry_frame(&mut app, 100, 30).contains("Get-Date"));
+    let offer_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
+    assert_eq!(take(), vec![Event::ErrorFixOffered(offer_id)]);
+
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    app.project_active_tab_state();
+    app.turn_close("fix-telemetry");
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(
+        take().is_empty(),
+        "redraw, projection and completion are not offers"
+    );
+
+    app.turn_execute_card("fix-telemetry");
+    assert_eq!(take(), vec![Event::ErrorFixAccepted(offer_id)]);
+    assert!(!rx.try_recv().unwrap().insert_only);
+    assert_eq!(
+        final_rx.try_recv().unwrap(),
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
+    );
+    app.turn_execute_card("fix-telemetry");
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty());
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
+fn error_fix_telemetry_nonoverlapping_autocomplete_allows_offer_and_enter_acceptance() {
+    use crate::telemetry::capture::{take, Event};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    take();
+    let mut app = test_app();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = tx;
+    let (proposal_id, mut final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+    assert!(app.command_popup_state().is_some());
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    assert_eq!(
+        app.current_tab().recommendation_focus,
+        RecommendationFocus::Button
+    );
+    assert_eq!(app.current_tab().selected_button, 0);
+
+    let text = flush_error_fix_telemetry_frame(&mut app, 100, 40);
+    let command_row = text
+        .lines()
+        .position(|line| line.contains("Get-Date"))
+        .unwrap();
+    let popup_row = text
+        .lines()
+        .position(|line| line.contains("/help"))
+        .unwrap();
+    assert!(
+        command_row < popup_row,
+        "the card and autocomplete must both be visible"
+    );
+    assert!(app.command_popup_state().is_some());
+    let offer_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
+    assert_eq!(take(), vec![Event::ErrorFixOffered(offer_id)]);
+    flush_error_fix_telemetry_frame(&mut app, 100, 40);
+    assert!(take().is_empty(), "redrawing must not offer twice");
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(take(), vec![Event::ErrorFixAccepted(offer_id)]);
+    let execution = rx.try_recv().unwrap();
+    assert!(!execution.insert_only);
+    assert_eq!(execution.context.target_pane_id(), Some("pane-9"));
+    assert!(matches!(
+        execution.choice.actions.as_slice(),
+        [crate::coordinator::RecommendedAction::Send { input, .. }] if input == "Get-Date"
+    ));
+    assert_eq!(
+        final_rx.try_recv().unwrap(),
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
+    );
+    assert_eq!(app.current_tab().input, "/", "Run must preserve the draft");
+    assert!(app.current_tab().turn.recommendations().is_none());
+    flush_error_fix_telemetry_frame(&mut app, 100, 40);
+    assert!(take().is_empty());
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
+fn error_fix_telemetry_overlapping_autocomplete_and_clipping_suppress_offer() {
+    use crate::telemetry::capture::{take, Event};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    take();
+    let mut app = test_app();
+    let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    for (width, height) in [(100, 12), (1, 1)] {
+        assert!(app.command_popup_state().is_some());
+        let text = flush_error_fix_telemetry_frame(&mut app, width, height);
+        assert!(!text.contains("Get-Date"), "command is obscured or clipped");
+        assert!(!app.recommendation_rendered);
+        assert!(take().is_empty(), "no offer at {width}x{height}");
+    }
+    let offer_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
+    assert!(flush_error_fix_telemetry_frame(&mut app, 100, 40).contains("Get-Date"));
+    assert_eq!(take(), vec![Event::ErrorFixOffered(offer_id)]);
+}
+
+#[test]
+fn error_fix_telemetry_waits_for_unobscured_open_card() {
+    use crate::telemetry::capture::{take, Event};
+    take();
+    let mut app = test_app();
+    let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    app.current_tab_mut().pane_open = false;
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty(), "stashed pane");
+    app.current_tab_mut().pane_open = true;
+    app.current_tab_mut().current_view = View::Agents;
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty(), "session picker");
+    app.current_tab_mut().current_view = View::Chat;
+    app.help_overlay_visible = true;
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty(), "help overlay");
+    app.help_overlay_visible = false;
+    flush_error_fix_telemetry_frame(&mut app, 1, 1);
+    assert!(take().is_empty(), "no space for card content");
+    flush_error_fix_telemetry_frame(&mut app, 100, 6);
+    let offer_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
+    assert_eq!(
+        take(),
+        vec![Event::ErrorFixOffered(offer_id)],
+        "compact card"
+    );
+}
+
+#[test]
+fn error_fix_telemetry_excludes_insert_cancel_and_failed_dispatch() {
+    use crate::telemetry::capture::take;
+    for action in ["insert", "cancel", "failed", "revoked"] {
+        take();
+        let mut app = test_app();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        if action != "failed" {
+            app.recommendation_tx = tx;
+        }
+        let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        flush_error_fix_telemetry_frame(&mut app, 100, 30);
+        assert_eq!(take().len(), 1);
+        match action {
+            "cancel" => app.turn_cancel("fix-telemetry"),
+            "revoked" => {
+                app.proposal_channels.resolve_final(
+                    &proposal_id,
+                    crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Superseded,
+                );
+                app.turn_execute_card("fix-telemetry");
+            }
+            _ => {
+                app.current_tab_mut().selected_button = usize::from(action == "insert");
+                app.turn_execute_card("fix-telemetry");
+            }
+        }
+        flush_error_fix_telemetry_frame(&mut app, 100, 30);
+        assert!(
+            take().is_empty(),
+            "{action} must not count as Run acceptance"
+        );
+    }
+}
+
+#[test]
+fn error_fix_telemetry_excludes_generic_actions_and_undisplayed_acceptance() {
+    use crate::telemetry::capture::take;
+    for is_autofix in [false, true] {
+        take();
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, is_autofix);
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        if !is_autofix {
+            flush_error_fix_telemetry_frame(&mut app, 100, 30);
+        }
+        app.turn_execute_card("fix-telemetry");
+        assert!(
+            rx.try_recv().is_ok(),
+            "existing execution behavior preserved"
+        );
+        assert!(take().is_empty());
+    }
+}
+
+#[test]
+fn error_fix_telemetry_excludes_analysis_explanation_and_stale_proposals() {
+    use crate::telemetry::capture::take;
+    take();
+    let mut app = test_app();
+    let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty(), "analysis is not a recommendation");
+    app.turn_observe_chunk(
+        "fix-telemetry",
+        ChunkKind::Message,
+        "Here is why it failed.",
+    );
+    app.turn_close("fix-telemetry");
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty(), "explanation is not executable");
+    assert!(!app.commit_terminal_action_proposal(&proposal_id));
+    assert!(take().is_empty(), "stale commit is not an offer");
+}
+
+#[test]
+fn error_fix_telemetry_ignores_stale_generation_and_new_turn_gets_new_id() {
+    use crate::telemetry::capture::{take, Event};
+    take();
+    let mut app = test_app();
+    let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    let old_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
+    app.current_tab_mut().autofix.generation += 1;
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert!(take().is_empty(), "invalidated autofix generation");
+    let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    let new_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
+    assert_ne!(old_id, new_id);
+    flush_error_fix_telemetry_frame(&mut app, 100, 30);
+    assert_eq!(take(), vec![Event::ErrorFixOffered(new_id)]);
+}
+
+#[test]
+fn error_fix_telemetry_policy_is_independent_of_effective_setting() {
+    use crate::telemetry::{
+        capture::{take, Event},
+        AutoFixPolicyState,
+    };
+    let mut app = test_app();
+    assert_eq!(app.autofix_policy_state, AutoFixPolicyState::Unknown);
+    for (wire, policy) in [
+        ("disabled", AutoFixPolicyState::Disabled),
+        ("notConfigured", AutoFixPolicyState::NotConfigured),
+        ("enabled", AutoFixPolicyState::Enabled),
+        ("invalid-private-string", AutoFixPolicyState::Unknown),
+    ] {
+        take();
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_config_changed".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({"autofix_enabled": false, "autofix_policy_state": wire}),
+        });
+        app.handle_event(AppEvent::WtEvent {
+            method: "vt_sequence".into(),
+            pane_id: "failing-pane".into(),
+            tab_id: Some(DEFAULT_TAB_ID.into()),
+            params: json!({"sequence": "osc:133;D;1"}),
+        });
+        assert_eq!(
+            take(),
+            vec![Event::ErrorDetected {
+                policy,
+                enabled: false
+            }]
+        );
+        assert!(!app.autofix_enabled);
+    }
+}
+
 fn stage_direct_proposal(
     app: &mut App,
     manager: &std::sync::Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
@@ -23451,6 +24133,7 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
         },
     };
     let mut app = test_app();
+    app.window_id = Some("42".into());
     app.current_agent_source = crate::agent_source::AgentSource::Wsl {
         distro: "Ubuntu".into(),
     };

@@ -80,6 +80,10 @@ namespace winrt::TerminalApp::implementation
         int32_t SetStartupCommandline(TerminalApp::CommandlineArgs args);
         void SetStartupContent(const winrt::hstring& content, const Windows::Foundation::IReference<Windows::Foundation::Rect>& contentBounds, uint64_t transferId);
         void SetStartupActions(const Windows::Foundation::Collections::IVector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
+        void SetStartupKeptGroups(const Windows::Foundation::Collections::IVectorView<winrt::guid>& groups,
+                                  const Windows::Foundation::IReference<Windows::Foundation::Rect>& bounds);
+
+    public:
         void SetPersistedLayout(const winrt::Microsoft::Terminal::Settings::Model::WindowLayout& layout);
         int32_t ExecuteCommandline(TerminalApp::CommandlineArgs args);
         void SetSettingsStartupArgs(const std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
@@ -182,6 +186,8 @@ namespace winrt::TerminalApp::implementation
         bool _gotSettingsStartupActions{ false };
         std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs> _settingsStartupArgs{};
         Windows::Foundation::IReference<Windows::Foundation::Rect> _contentBounds{ nullptr };
+        std::vector<winrt::guid> _startupKeptGroups;
+        Windows::Foundation::Size _startupKeptSize{};
 
         winrt::com_ptr<TerminalApp::implementation::WindowProperties> _WindowProperties{ nullptr };
 

@@ -29,7 +29,10 @@ review reasoning and the structured report.
   `tools/wta/src/**/*.rs` file. C++, workflow, dependency, test-only, new-file,
   mode-changing, symlink, and submodule repairs remain blocked for guidance.
 - Use only caller-approved read commands for repository inspection. Write only
-  the caller-selected report path.
+  the caller-selected report path and explicitly authorized repair files.
+- Never execute PR-controlled Cargo, build, formatter, test, or other scripts
+  in the agent environment, even in repair mode. Validation execution belongs
+  to the trusted isolated post-step, not a tool-permission workaround.
 - Do not expose credentials, bearer capabilities, pane output, prompts, typed
   input, command lines, or suspected secrets. Describe the data class instead.
 - Report only regressions introduced by the immutable diff. Do not convert
@@ -72,19 +75,35 @@ review reasoning and the structured report.
      analysis from privileged publication, and pin third-party actions.
 5. Read trusted check metadata only when its commit SHA equals the immutable
    head. Never turn absent Linux/Windows, CodeQL, Cargo, MSBuild, or TAEF
-   evidence into a pass.
+   evidence into a pass. Matching-head external checks may support a finding's
+   `analyzer` evidence; they cannot authorize repair or become a passing local
+   validation check. Preserve their real provenance, not invented command
+   evidence. Only trusted final-patch execution can attest a validation PASS.
 6. Remove false positives, documented intended boundary behavior, duplicates,
-   and unrelated pre-existing problems.
-7. In `repair` mode only, consider an automatic fix when all are true:
+   and unrelated pre-existing problems. An ordinary OS failure, OOM condition,
+   or startup exception is not a security finding without a source-supported
+   attacker path and security impact. Do not report intentional fail-closed
+   behavior as a regression or recommend restoring silent unsafe degradation.
+   Severity does not expand scope: exclude pure UX, observability, or feature
+   suggestions, including notifications for correct fail-closed behavior.
+7. In `repair` mode only, propose an automatic fix when all are true:
    - severity and confidence are both HIGH;
    - repository-specific source evidence is strong;
    - the patch is small, localized, preserves intended behavior, and does not
      weaken authorization/detection, add an allowlist, touch CI/security policy,
      or change unrelated dependencies;
-   - every applicable focused validation passes against the final patch;
-   - an independent read-only reviewer re-derives the finding and returns PASS.
-   If any condition is missing, leave the HIGH finding `blocked` with the exact
-   reason. Medium/low findings are never edited.
+   - an independent read-only reviewer re-derives the finding, checks the exact
+     patch and required validation plan, and returns `SOURCE_PASS` bound to the
+     immutable head and patch digest.
+   Report the candidate as `proposed`, with `review.status: source-pass`. Do
+   not claim tests have passed or mark a finding `fixed`. The trusted native
+   post-step alone promotes it after final-patch validation passes and the
+   reviewed digest matches. If source evidence or review is missing, leave the
+   HIGH finding `blocked` with the exact reason. A claim needing unavailable
+   runtime proof cannot earn source approval. Medium/low findings are never edited.
+   If source review rejects a candidate, undo only your candidate edits with
+   the approved tools and leave `patch` empty; do not leave unapproved modified
+   files behind or mark the rejected candidate `proposed`.
 8. Write exactly one report using the output contract below. In repair mode,
    list exact modified paths in `patch`; in guide mode use an empty array.
 
@@ -103,7 +122,30 @@ review reasoning and the structured report.
 
 ## Output contract
 
-Write JSON to the exact caller-selected path:
+The native setup initializes the report from the immutable scope. Preserve
+`version`, `prNumber`, `baseSha`, `headSha`, `scopeSha256`,
+`repositoryRelation`, and `mode`; do not reconstruct or guess them. Complete
+`summary` and review content, and write JSON to the exact caller-selected path.
+An unchanged template with an empty summary is rejected.
+
+Both workers permit `pwsh` for report file operations. Read and update the
+prepared report in one process; never overwrite `/tmp/gh-aw/agent_output.json`,
+which belongs to the runtime. For these workflows the report path is
+`/tmp/gh-aw/agent/security-findings.json`:
+
+```powershell
+$path = '/tmp/gh-aw/agent/security-findings.json'
+$report = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+# Populate summary, checks, findings, review, and patch from source evidence.
+$json = ConvertTo-Json -InputObject $report -Depth 12
+[System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
+```
+
+Use the permitted PowerShell operation rather than shell redirects or edit
+tools in guide mode. After a denied call, switch directly to the approved tool;
+do not retry command variants or invent a second report-generation harness.
+
+The completed JSON has this shape:
 
 ```json
 {
@@ -148,12 +190,48 @@ Write JSON to the exact caller-selected path:
 }
 ```
 
+### Required report limits and final self-check
+
+Keep `summary` to **800 characters maximum**; put traces in findings, not the
+summary. Finding prose fields have a **600-character maximum**; evidence
+references use **300**, evidence details **500**, disposition/review reasons
+**500**, and patch summaries **300**. Use at most 20 findings and 12 checks.
+Domain labels from the scope are not report categories.
+
+Accepted finding categories are `cpp-lifetime`, `memory-safety`,
+`com-authorization`, `command-path`, `session-routing`, `agent-input`,
+`confirmation`, `secret-handling`, `filesystem`, `packaging`,
+`workflow-security`, and `dependency-security`. There is no `cpp-memory`
+category. HIGH guide findings use `blocked`; **medium/low always use
+`advice-only`**, even though the worker is read-only.
+
+After writing the report, run the existing trusted validator through the
+permitted PowerShell operation, before calling `noop`:
+
+```powershell
+$validator = Join-Path $env:RUNNER_TEMP 'gh-aw/security-review-check.mjs'
+& node $validator check-report --scope /tmp/gh-aw/security-scope.json --report /tmp/gh-aw/agent/security-findings.json
+if ($LASTEXITCODE -ne 0) { throw 'Repair the report contract errors before emitting noop.' }
+```
+
+Correct reported field errors directly and recheck the changed report. Do not
+expand limits, truncate evidence mechanically, invent categories, or retry
+denied writing tools. Read-only self-check is advisory; native post-validation
+still recomputes immutable scope and controls publication.
+
 Use an empty `findings` array when no regression is found. Use only categories
 and check names accepted by the trusted validator. Mark unavailable checks
-`skipped` or `blocked` with a precise reason. Never claim `fixed` in read-only
-mode. In repair mode, `fixed` is valid only for HIGH/high-confidence findings
+`skipped` or `blocked` with a precise reason. Agent reports never claim `fixed`;
+use `proposed` only for an independently source-approved repair candidate.
+In the final trusted artifact, `fixed` is valid only for HIGH/high-confidence findings
 with strong evidence, at least one applicable passing validation check, no
-failed/blocked check, a matching patch entry, and independent review PASS.
+failed/blocked check, a matching patch entry, and independent `SOURCE_PASS`.
+The final validator rejects unpromoted proposals; source approval alone never
+authorizes publication.
+The trusted proposal validator checks identity, evidence, source approval,
+allowed paths, and exact patch bytes before any Windows test executor receives
+them. Proposal validation intentionally does not attest test success and is
+not a publication gate.
 Every passing check must name the immutable `headSha`. Agent-reported command
 results are advisory: before authorizing a repair, the trusted post-step creates
 a fresh immutable checkout, copies only reported regular non-executable WTA
@@ -175,7 +253,8 @@ trusted controller publishes only after a successful worker and validated
 artifact:
 
 - same-repository repair: index-only commit based on the reviewed head and a
-  non-force fast-forward push, which fails atomically if the branch raced;
+  push with an explicit expected-head lease and independently enforced
+  fast-forward candidate; branch rewinds and advances are rejected atomically;
 - fork guidance: one idempotent comment containing only the trusted rendered
   report;
 - no patch/findings: no publication.

@@ -6,6 +6,7 @@
 #include "../TerminalSettingsModel/ColorScheme.h"
 #include "../TerminalSettingsModel/CascadiaSettings.h"
 #include "../TerminalSettingsModel/ActionMap.h"
+#include "../TerminalSettingsModel/ActionAndArgs.h"
 #include "JsonTestClass.h"
 #include "TestUtils.h"
 
@@ -21,7 +22,9 @@ namespace SettingsModelUnitTests
 {
     class KeyBindingsTests : public JsonTestClass
     {
-        TEST_CLASS(KeyBindingsTests);
+        BEGIN_TEST_CLASS(KeyBindingsTests)
+            TEST_CLASS_PROPERTY(L"ThreadingModel", L"MTA")
+        END_TEST_CLASS()
 
         TEST_METHOD(KeyChords);
         TEST_METHOD(ManyKeysSameAction);
@@ -42,6 +45,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(KeybindingsWithoutVkey);
         TEST_METHOD(DefaultAgentKeybindings);
         TEST_METHOD(AgentActionsParse);
+        TEST_METHOD(SidebarActionRoundTrip);
+        TEST_METHOD(SidebarKeybindingsRespectOverrides);
     };
 
     void KeyBindingsTests::KeyChords()
@@ -796,6 +801,7 @@ namespace SettingsModelUnitTests
         verifyBinding(L"ctrl+shift+/", L"Terminal.OpenAgentSessions");
         verifyBinding(L"alt+shift+b", L"Terminal.OpenBackgroundAgent");
         verifyBinding(L"alt+shift+/", L"Terminal.OpenAgentDelegation");
+        verifyBinding(L"ctrl+shift+s", L"Terminal.ToggleSidebar");
     }
 
     void KeyBindingsTests::AgentActionsParse()
@@ -837,6 +843,77 @@ namespace SettingsModelUnitTests
             VERIFY_ARE_EQUAL(ShortcutAction::ToggleCommandPalette, actionAndArgs.Action());
             const auto& realArgs = actionAndArgs.Args().as<ToggleCommandPaletteArgs>();
             VERIFY_ARE_EQUAL(realArgs.LaunchMode(), CommandPaletteLaunchMode::AgentDelegation);
+        }
+    }
+
+    void KeyBindingsTests::SidebarActionRoundTrip()
+    {
+        VERIFY_ARE_EQUAL(101, static_cast<int32_t>(ShortcutAction::SaveSnippet), L"Existing action ABI values must not move");
+        for (const auto& json : { Json::Value{ "toggleSidebar" }, VerifyParseSucceeded(R"({ "action": "toggleSidebar" })") })
+        {
+            std::vector<SettingsLoadWarnings> warnings;
+            const auto action = implementation::ActionAndArgs::FromJson(json, warnings);
+            VERIFY_IS_NOT_NULL(action, L"toggleSidebar must parse as a normal configurable action");
+            VERIFY_ARE_EQUAL(ShortcutAction::ToggleSidebar, action->Action());
+            VERIFY_IS_TRUE(warnings.empty());
+            VERIFY_IS_NULL(action->Args());
+            VERIFY_ARE_EQUAL(std::string{ "toggleSidebar" }, implementation::ActionAndArgs::ToJson(*action).asString());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"User.toggleSidebar" }, action->GenerateID());
+            VERIFY_IS_FALSE(action->GenerateName().empty(), L"The sidebar action must have a localized command name");
+        }
+    }
+
+    void KeyBindingsTests::SidebarKeybindingsRespectOverrides()
+    {
+        {
+            const auto defaults = winrt::make_self<implementation::ActionMap>();
+            defaults->LayerJson(VerifyParseSucceeded(R"([
+                { "command": "toggleSidebar", "id": "Terminal.ToggleSidebar", "keys": "ctrl+shift+s" }
+            ])"), OriginTag::InBox);
+            const auto user = winrt::make_self<implementation::ActionMap>();
+            user->AddLeastImportantParent(defaults);
+            user->LayerJson(VerifyParseSucceeded(R"([
+                { "id": "Terminal.ToggleSidebar", "keys": "ctrl+shift+y" }
+            ])"), OriginTag::User);
+            VERIFY_ARE_EQUAL(2u, user->KeyBindings().Size(), L"The user chord supplements rather than removes the default");
+            const auto preferred = user->GetKeyBindingForAction(L"Terminal.ToggleSidebar");
+            VERIFY_IS_NOT_NULL(preferred);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+shift+y" }, KeyChordSerialization::ToString(preferred));
+        }
+
+        struct testCase
+        {
+            std::string json;
+            ShortcutAction expectedAction;
+        };
+
+        const std::array cases{
+            testCase{ R"([ { "command": "unbound", "keys": "ctrl+shift+s" } ])", ShortcutAction::Invalid },
+            testCase{ R"([ { "command": "copy", "keys": "ctrl+shift+s" } ])", ShortcutAction::CopyText },
+            testCase{ R"([ { "command": "paste", "id": "Terminal.ToggleSidebar" } ])", ShortcutAction::PasteText },
+        };
+
+        for (const auto& test : cases)
+        {
+            const auto settings = CascadiaSettings::LoadDefaults();
+            const auto actionMap = winrt::get_self<implementation::ActionMap>(settings.ActionMap());
+            const auto chord = KeyChordSerialization::FromString(L"ctrl+shift+s");
+            const auto defaultCommand = actionMap->GetActionByKeyChord(chord);
+            VERIFY_IS_NOT_NULL(defaultCommand, L"The default sidebar binding must exist before applying user overrides");
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Terminal.ToggleSidebar" }, defaultCommand.ID());
+
+            actionMap->LayerJson(VerifyParseSucceeded(test.json), OriginTag::User);
+            const auto command = actionMap->GetActionByKeyChord(chord);
+            if (test.expectedAction == ShortcutAction::Invalid)
+            {
+                VERIFY_IS_NULL(command);
+                VERIFY_IS_TRUE(actionMap->IsKeyChordExplicitlyUnbound(chord));
+            }
+            else
+            {
+                VERIFY_IS_NOT_NULL(command);
+                VERIFY_ARE_EQUAL(test.expectedAction, command.ActionAndArgs().Action());
+            }
         }
     }
 

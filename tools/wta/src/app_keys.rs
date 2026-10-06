@@ -958,6 +958,7 @@ impl App {
                         .session_id
                         .clone()
                         .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+                    let reattached_session_id = tab.reattached_session_id().map(str::to_string);
                     let pane_context = PaneContext {
                         pane_id: self.pane_id.clone(),
                         tab_id: self.tab_id.clone(),
@@ -972,7 +973,8 @@ impl App {
                     }
                     .with_images(images)
                     .with_byok(is_byok)
-                    .with_agent_id(agent_id);
+                    .with_agent_id(agent_id)
+                    .with_reattached_session(reattached_session_id);
                     prompt_timing_log(
                         prompt.id,
                         prompt.submitted_at_unix_s,

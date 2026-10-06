@@ -244,6 +244,12 @@ namespace winrt::TerminalApp::implementation
         void SendContentToOther(winrt::TerminalApp::RequestReceiveContentArgs args);
 
         uint32_t NumberOfTabs() const;
+        bool CanKeepTabRunning(const winrt::guid& tabId);
+        bool IsTabKeepRunning(const winrt::guid& tabId);
+        void SetTabKeepRunning(const winrt::guid& tabId, bool enabled);
+        bool RestoreKeptGroup(const winrt::guid& groupId);
+        void ShutdownPanes();
+        void SetStartupKeptGroups(std::vector<winrt::guid> groups) noexcept { _startupKeptGroups = std::move(groups); }
 
         // Terminal Protocol Bridge Methods
         uint32_t TabCount() const;
@@ -273,6 +279,7 @@ namespace winrt::TerminalApp::implementation
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);
         void OnAgentSessionsRetired(hstring eventJson);
+        void OnSessionRegistryChanged(hstring eventJson);
 
         til::property_changed_event PropertyChanged;
 
@@ -331,16 +338,58 @@ namespace winrt::TerminalApp::implementation
         // Populated with real TabViewItems via the routed _tabItems() helper.
         TerminalApp::TabStrip _tabStrip{ nullptr };
         bool _isVerticalLayout{ false };
+        bool _isRightToLeft{ false };
+        bool _changingTabLayout{ false };
+        bool _hasTitlebarHost{ false };
+        bool _verticalTitlebarKeyHandlerInstalled{ false };
+        uint64_t _tabLayoutGeneration{ 0 };
+        std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _pendingTabLayout;
+        std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _tabLayoutTransitionTarget;
+        Windows::Foundation::IInspectable _tabLayoutTransitionSelectedItem{ nullptr };
+        bool _tabLayoutTransitionPreviousVertical{ false };
+        bool _isVerticalRailVisible{ true };
+        bool _isVerticalRailCollapsed{ false };
+        winrt::weak_ref<Microsoft::Terminal::Control::TermControl> _sidebarHotkeyReturnControl;
+        TerminalApp::TabStripFilterMode _tabFilterMode{ TerminalApp::TabStripFilterMode::AllTabs };
+        bool _tabSearchActive{ false };
+        winrt::hstring _tabSearchQuery;
+        bool _pendingTabProjectionRefresh{ false };
+        bool _mutatingTabCollections{ false };
+        bool _suppressTabFocusRequests{ false };
+        uint64_t _historyRequestGeneration{ 0 };
+        uint64_t _historyActivationSerial{ 0 };
+        std::unordered_map<std::wstring, winrt::hstring> _historyUnresolvedActivations;
+        bool _preserveSidebarHistory{ false };
+        struct _SidebarHistoryEntryState
+        {
+            bool railWasCollapsed{ false };
+            bool tabSearchHadFocus{ false };
+            winrt::weak_ref<Microsoft::Terminal::Control::TermControl> sourceControl;
+        };
+        std::optional<_SidebarHistoryEntryState> _historyEntryState;
+        Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
+        bool _historyRefreshInFlight{ false };
+        bool _historyRefreshPending{ false };
+        std::shared_ptr<std::atomic<bool>> _historyRefreshCancellation;
+        std::chrono::seconds _historyRetryDelay{ 0 };
+        std::chrono::steady_clock::time_point _historyNextRefresh{};
+        bool _tabDragReorderAuthorized{ false };
+        Windows::Foundation::IInspectable _tabDragSelectedItem{ nullptr };
+        winrt::weak_ref<Tab> _pendingPinTab;
+        bool _pendingPinValue{ false };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
-        // Lives in column 1 of the Root Grid, hugging its left edge, so the
-        // hit strip straddles the column boundary.
+        // Lives in the content column and straddles the rail boundary.
         Windows::UI::Xaml::Controls::Border _verticalRailSplitter{ nullptr };
         Windows::UI::Core::CoreCursor _railSplitterPriorCursor{ nullptr };
-        bool _railSplitterDragging{ false };
+        bool _railSplitterCursorSaved{ false };
+        Windows::UI::Xaml::Input::Pointer _railSplitterPointer{ nullptr };
+        double _verticalRailWidth{ 220.0 };
         double _railSplitterStartWidth{ 0.0 };
         Windows::Foundation::Point _railSplitterStartPointer{};
         Windows::UI::Xaml::Controls::Grid _tabContent{ nullptr };
         Microsoft::UI::Xaml::Controls::SplitButton _newTabButton{ nullptr };
+        Microsoft::UI::Xaml::Controls::SplitButton _horizontalNewTabButton{ nullptr };
+        Microsoft::UI::Xaml::Controls::SplitButton _verticalNewTabButton{ nullptr };
         Windows::UI::Xaml::Controls::MenuFlyout _workspaceFlyout{ nullptr };
         Windows::UI::Xaml::Controls::Button _workspaceDropdown{ nullptr };
         winrt::TerminalApp::ColorPickupFlyout _tabColorPicker{ nullptr };
@@ -352,6 +401,11 @@ namespace winrt::TerminalApp::implementation
         static winrt::com_ptr<Tab> _GetTabImpl(const TerminalApp::Tab& tab);
 
         void _UpdateTabIndices();
+        uint32_t _PinnedTabCount() const;
+        void _RequestPinTab(const winrt::com_ptr<Tab>& tab, bool pinned);
+        void _ApplyPendingPinRequest();
+        void _SetTabPinned(const winrt::com_ptr<Tab>& tab, bool pinned);
+        void _MoveTabToIndex(uint32_t from, uint32_t to, bool selectMoved);
 
         TerminalApp::Tab _settingsTab{ nullptr };
         winrt::Microsoft::Terminal::Settings::Editor::MainPage _settingsMainPage{ nullptr };
@@ -522,6 +576,8 @@ namespace winrt::TerminalApp::implementation
             std::wstring defaultAgentId;
             bool yoloEnabled{ false };
             bool yoloPolicyBlocked{ false };
+            std::string autofixPolicyState{ "unknown" };
+            bool sessionsInSidebar{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
         bool _agentRuntimeConfigInitialized{ false };
@@ -580,7 +636,12 @@ namespace winrt::TerminalApp::implementation
         {
             std::string sessionId;
             std::string cwd;
+            winrt::hstring agentId;
+            winrt::hstring agentModel;
+            winrt::hstring agentSource;
+            winrt::hstring agentWslDistro;
         };
+        std::optional<_PendingLoadSession> _pendingNewTabLoadSession;
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
 
         // Depth of in-flight `ProcessStartupActions` replays. A restored agent
@@ -869,6 +930,15 @@ namespace winrt::TerminalApp::implementation
         void _OpenNewTerminalViaDropdown(const Microsoft::Terminal::Settings::Model::NewTerminalArgs newTerminalArgs);
 
         bool _displayingCloseDialog{ false };
+        bool _windowCloseAccepted{ false };
+        bool _windowPanesShutdown{ false };
+        std::vector<winrt::guid> _startupKeptGroups;
+        bool _restoringStartupKeptGroups{ false };
+        std::vector<winrt::TerminalApp::Tab> _RuntimeTabs() const;
+        std::pair<uint32_t, uint32_t> _KeepRunningTabCounts() const;
+        void _LogKeepRunningMarked(const winrt::com_ptr<Tab>& tab);
+        bool _KeepTabRunning(const winrt::com_ptr<Tab>& tab);
+        friend struct ContentManager;
         void _SettingsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _CommandPaletteButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _AboutButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
@@ -882,6 +952,151 @@ namespace winrt::TerminalApp::implementation
         void _UpdateTitle(const Tab& tab);
         void _UpdateTabIcon(Tab& tab);
         void _UpdateTabView();
+        void _ApplyTabListProjection(
+            const TerminalApp::Tab& changedTab = nullptr,
+            bool refreshPaneItems = true,
+            bool updateBookkeeping = true);
+        void _UpdateTabFilterStatus();
+        void _AttachOrUpdateRichTabControl(const Microsoft::Terminal::Control::TermControl& control);
+        void _DetachRichTabControl(const Microsoft::Terminal::Control::TermControl& control);
+        void _NotifyRichTabControl(
+            const Microsoft::Terminal::Control::TermControl& control,
+            ::Microsoft::Terminal::RichTab::Provider::ActivationEvent reason);
+        void _ReleaseRichTabAttachments(const std::shared_ptr<Pane>& rootPane);
+        struct _RichTabAgentInfo
+        {
+            std::string sessionId;
+            std::string status;
+            std::string providerId;
+            std::optional<uint64_t> lastActivityAtMs;
+            std::optional<winrt::guid> paneSessionId;
+        };
+        std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
+        winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& profileIcon);
+        std::unordered_map<std::string, std::string> _BuildRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
+        void _UpdateRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
+        void _LogSidebarRowFieldsTelemetry() const;
+        void _RefreshRichTabForTab(Tab& tab, bool activate, bool refreshPaneItems = true);
+        void _ApplyRichTabUpdate(
+            uintptr_t controlKey,
+            uint64_t reservation,
+            const ::Microsoft::Terminal::RichTab::Provider::BrokerUpdate& update);
+        static bool _IsKnownAgentCliTitle(std::wstring_view title) noexcept;
+        bool _MatchesPaneAgentScope(const Tab::VisiblePaneSnapshot& pane) const;
+        bool _IsPaneRowProjectionEligible(const Tab::VisiblePaneSnapshot& pane) const;
+        bool _TabHasCliAgent(const winrt::com_ptr<Tab>& tab) const;
+        bool _IsAgentScopeEffective() const noexcept
+        {
+            return _isVerticalLayout &&
+                   _tabFilterMode != TerminalApp::TabStripFilterMode::AllTabs;
+        }
+        bool _IsTabSearchEffective() const noexcept
+        {
+            return _isVerticalLayout &&
+                   _isVerticalRailVisible &&
+                   !_isVerticalRailCollapsed &&
+                   _tabSearchActive;
+        }
+        bool _IsTabListProjectionActive() const noexcept
+        {
+            return _IsAgentScopeEffective() || _IsTabSearchEffective();
+        }
+        bool _IsTabListPositionOperationBlocked() const noexcept
+        {
+            return _IsTabListProjectionActive();
+        }
+        bool _MatchesTabScope(const winrt::com_ptr<Tab>& tab) const;
+        bool _MatchesTabSearch(const Tab& tab, const TerminalApp::TabStripDisplayItem& display = nullptr) const;
+        bool _IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab, const TerminalApp::TabStripDisplayItem& display = nullptr) const;
+        void _ClearTabSearch();
+        void _StartSidebarHistoryRefreshTimer();
+        void _StopSidebarHistoryRefreshTimer();
+        void _CaptureSidebarHistoryEntry();
+        Windows::UI::Xaml::Controls::Control _SidebarFocusedControl() const;
+        bool _TryFocusSidebarInput(const Microsoft::Terminal::Control::TermControl& control);
+        void _FocusSidebarTerminalFallback();
+        void _CloseSidebarHistory(bool restoreFocus);
+        void _RequestSidebarHistoryRefresh(bool initialLoad);
+        void _UpdateSidebarHistoryCurrentSession();
+        static winrt::hstring _SidebarHistoryStatusText(std::string_view status);
+        static winrt::hstring _FormatLocalizedPercentValue(uint32_t progressValue, std::wstring_view languageTag = {});
+        bool _ApplyAgentSessionStatusDelta(std::string_view sessionId,
+                                           std::string_view paneSessionId,
+                                           std::string_view providerId,
+                                           std::optional<uint64_t> lastActivityAtMs,
+                                           std::string_view status);
+        static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs);
+        struct _SidebarHistorySnapshot
+        {
+            enum class State
+            {
+                Loading,
+                Ready,
+                Error,
+                Timeout,
+                InvalidResponse,
+                Cancelled,
+            };
+            State state{ State::Error };
+            std::vector<TerminalApp::TabStripHistoryItem> items;
+        };
+        static _SidebarHistorySnapshot _ParseSidebarHistorySnapshot(const std::string& output);
+        safe_void_coroutine _LoadSidebarHistory(uint64_t generation);
+        void _CompleteSidebarHistoryRefresh(uint64_t generation, _SidebarHistorySnapshot snapshot);
+        struct _SidebarHistoryActivationRequest
+        {
+            std::wstring arguments;
+            winrt::hstring id;
+            bool statusOnly{ false };
+        };
+        struct _SidebarHistoryActivationResult
+        {
+            enum class State
+            {
+                Unknown,
+                Pending,
+                Complete,
+            };
+            State state{ State::Unknown };
+            bool accepted{ false };
+            winrt::hstring detail;
+        };
+        _SidebarHistoryActivationRequest _PrepareSidebarHistoryActivation(TerminalApp::TabStripHistoryItem const& item);
+        static _SidebarHistoryActivationResult _ParseSidebarHistoryActivation(const std::string& output, const winrt::hstring& activationId);
+        void _ReconcileSidebarHistoryActivation(const _SidebarHistoryActivationRequest& request, const _SidebarHistoryActivationResult& result);
+        safe_void_coroutine _ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item);
+        bool _CompleteSidebarHistoryActivation(uint64_t activationSerial, bool accepted, const winrt::hstring& detail);
+        bool _IsCollapsedVerticalRail() const noexcept
+        {
+            return _isVerticalLayout &&
+                   _isVerticalRailVisible &&
+                   _isVerticalRailCollapsed;
+        }
+
+        struct RichTabAttachment
+        {
+            ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId id{ 0 };
+            std::string sessionId;
+            uint64_t reservation{ 0 };
+        };
+        struct RichTabPresentationState
+        {
+            uint64_t sessionIncarnation{ 0 };
+            uint64_t updateSequence{ 0 };
+            std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> presentation;
+        };
+        std::mutex _richTabAttachmentsMutex;
+        std::unordered_map<uintptr_t, RichTabAttachment> _richTabAttachments;
+        std::unordered_map<std::string, RichTabPresentationState> _richTabPresentations;
+        std::unordered_map<std::string, _RichTabAgentInfo> _richTabAgentStatusBySessionId;
+        std::unordered_map<winrt::guid, _RichTabAgentInfo> _richTabAgentStatusByPaneId;
+        bool _richTabAgentStatusSnapshotLoaded{ false };
+        bool _richTabAgentStatusRefreshInFlight{ false };
+        bool _richTabAgentStatusRefreshPending{ false };
+        uint64_t _richTabAgentStatusRequestGeneration{ 0 };
+        uint64_t _nextRichTabAttachmentReservation{ 1 };
+        void _RequestRichTabAgentStatusRefresh();
+        safe_void_coroutine _LoadRichTabAgentStatuses(uint64_t generation);
         void _UpdateTabWidthMode();
         void _SetBackgroundImage(const winrt::Microsoft::Terminal::Settings::Model::IAppearanceConfig& newAppearance);
 
@@ -908,6 +1123,18 @@ namespace winrt::TerminalApp::implementation
         // relaunch it; removed only when the pane itself closes or a new
         // binding replaces it.
         std::unordered_map<winrt::guid, _PaneAgentSession> _paneAgentSessions;
+        // Shell panes with a currently active agent CLI. Unlike the resumable
+        // binding above, this does not require an ACP session id: Copilot may
+        // publish its startup lifecycle event before that id is available.
+        // Keep the lifecycle session id when available so a delayed end from
+        // an older CLI cannot remove a newer session from Agent view.
+        struct _ActiveCliAgentPane
+        {
+            winrt::hstring sessionId;
+            std::vector<winrt::hstring> supersededSessionIds;
+        };
+        std::unordered_map<winrt::guid, _ActiveCliAgentPane> _activeCliAgentPanes;
+        std::unordered_map<winrt::guid, _PaneAgentSession> _interactiveResumeSessions;
         struct _PendingRestoredSessionBinding
         {
             winrt::hstring sessionId;
@@ -920,10 +1147,17 @@ namespace winrt::TerminalApp::implementation
         std::unordered_set<winrt::hstring> _tabsAwaitingRestoredBindings;
         void _NotifyRestoredSessionBindings(const winrt::com_ptr<Tab>& tab);
         void _ReplayRestoredSessionBindings(const winrt::com_ptr<Tab>& tab);
+        void _TryPublishInteractiveResumeBinding(
+            const Microsoft::Terminal::Control::TermControl& control,
+            std::string_view paneId,
+            std::string_view tabId,
+            std::wstring_view agent,
+            std::wstring_view sessionId);
+        void _CompleteInteractiveResumeBinding(std::string_view paneId, std::string_view tabId);
 
         winrt::Windows::Foundation::IAsyncAction _HandleCloseTabRequested(winrt::TerminalApp::Tab tab, bool skipConfirmClose = false);
         void _CloseTabAtIndex(uint32_t index);
-        void _RemoveTab(const winrt::TerminalApp::Tab& tab, bool movingAway = false);
+        void _RemoveTab(const winrt::TerminalApp::Tab& tab, bool movingAway = false, bool keepAlive = false);
         safe_void_coroutine _RemoveTabs(const std::vector<winrt::TerminalApp::Tab> tabs);
         void _SaveWorkspaceIfNeeded();
 
@@ -933,6 +1167,11 @@ namespace winrt::TerminalApp::implementation
         std::string _FindTabIdForControl(const Microsoft::Terminal::Control::TermControl& control);
         std::string _FindTabIdForSessionId(std::string_view sessionId);
         void _RegisterTabEvents(Tab& hostingTab);
+        void _RefreshTabStripPaneItems(
+            const winrt::com_ptr<Tab>& tab,
+            const TerminalApp::TabStripDisplayItem& display = nullptr);
+        void _ActivatePaneFromTabStrip(const TerminalApp::TabStripPaneEventArgs& args);
+        safe_void_coroutine _ClosePaneFromTabStrip(TerminalApp::TabStripPaneEventArgs args);
 
         void _DismissTabContextMenus();
         void _FocusCurrentTab(const bool focusAlways);
@@ -946,6 +1185,7 @@ namespace winrt::TerminalApp::implementation
         bool _MoveTab(winrt::com_ptr<Tab> tab, const Microsoft::Terminal::Settings::Model::MoveTabArgs args);
 
         std::shared_ptr<ThrottledFunc<>> _adjustProcessPriorityThrottled;
+        std::unordered_set<std::wstring> _pendingTabStripPaneCloses;
         void _adjustProcessPriority() const;
 
         template<typename F>
@@ -1045,7 +1285,7 @@ namespace winrt::TerminalApp::implementation
         PointerExited_revoker _tabItemMiddleClickPointerExited;
         PointerCaptureLost_revoker _tabItemMiddleClickPointerCaptureLost;
         void _OnTabPointerPressed(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& eventArgs);
-        safe_void_coroutine _OnTabPointerReleasedCloseTab(IInspectable sender);
+        safe_void_coroutine _OnTabPointerReleasedCloseTab(IInspectable sender, uint64_t layoutGeneration);
 
         void _OnTabSelectionChanged(const IInspectable& sender, const Windows::UI::Xaml::Controls::SelectionChangedEventArgs& eventArgs);
         void _OnTabStripSelectionChanged(const IInspectable& sender, const TerminalApp::TabStripSelectionChangedEventArgs& eventArgs);
@@ -1054,9 +1294,22 @@ namespace winrt::TerminalApp::implementation
         void _OnTabCloseRequested(const IInspectable& sender, const Microsoft::UI::Xaml::Controls::TabViewTabCloseRequestedEventArgs& eventArgs);
         void _OnTabStripCloseRequested(const IInspectable& sender, const TerminalApp::TabStripCloseRequestedEventArgs& eventArgs);
         void _HandleTabCloseRequestedCore(const Microsoft::UI::Xaml::Controls::TabViewItem& tabViewItem);
+        bool _IsActiveTabControl(const IInspectable& sender) const noexcept;
         void _OnFirstLayout(const IInspectable& sender, const IInspectable& eventArgs);
-        void _ApplyVerticalLayoutReshape();
+        void _ApplyVerticalLayoutReshape(bool initializeWidth = false);
+        void _ApplyHorizontalLayoutReshape();
+        void _SetVerticalRailColumnWidth(double width);
+        void _UpdateTabLayoutHost();
+        void _RequestTabLayoutChange(winrt::Microsoft::Terminal::Settings::Model::TabLayout targetLayout);
+        bool _ApplyTabLayout(winrt::Microsoft::Terminal::Settings::Model::TabLayout targetLayout);
+        void _RebuildTabLayout(bool vertical, const winrt::Windows::Foundation::IInspectable& selectedItem, std::string& stage);
+        void _CompleteTabLayoutChange(uint64_t generation);
+        void _ApplyPendingTabLayout();
         void _InstallVerticalRailSplitter();
+        void _SetVerticalRailVisibility(bool visible);
+        void _ToggleSidebarHotkey();
+        void _OnVerticalRailCollapseRequested(const IInspectable& sender, const IInspectable& eventArgs);
+        void _CancelRailSplitterDrag();
         void _SetRailSplitterCursor();
         void _RestoreRailSplitterCursor();
         void _OnRailSplitterPointerEntered(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
@@ -1205,6 +1458,7 @@ namespace winrt::TerminalApp::implementation
         struct ReceivingContentTransfer
         {
             winrt::com_ptr<Tab> sourceTab;
+            bool restoringKeptTab{ false };
             uint64_t firstContentId{ 0 };
             uint32_t actionIndex{ 0 };
             // Reader-thread callbacks may publish only after UI ownership commits.

@@ -1902,6 +1902,28 @@ void CascadiaSettings::_resolveNewTabMenuProfilesSet(const IVector<Model::NewTab
     }
 }
 
+void CascadiaSettings::LogAgentProviderChanges(const winrt::hstring& previousAcpAgent, const winrt::hstring& previousDelegateAgent) const noexcept
+try
+{
+    const auto logRole = [](const char* role, const std::wstring_view previous, const std::wstring_view current) {
+        if (const auto change = AgentSettingsTelemetry::GetProviderChange(previous, current))
+        {
+            TraceLoggingWrite(
+                g_hSettingsModelProvider,
+                "AgentProviderChanged",
+                TraceLoggingDescription("Provider setting changed between accepted application settings loads"),
+                TraceLoggingString(role, "role"),
+                TraceLoggingString(change->from, "from"),
+                TraceLoggingString(change->to, "to"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        }
+    };
+    logRole("primary", previousAcpAgent, _globals->AcpAgent());
+    logRole("delegate", previousDelegateAgent, _globals->DelegateAgent());
+}
+CATCH_LOG()
+
 void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
 {
 #ifndef _DEBUG

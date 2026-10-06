@@ -311,9 +311,10 @@ pub enum AppEvent {
     AgentSessionEvent(crate::agent_sessions::SessionEvent),
     AliveSnapshotLoaded(Vec<crate::session_registry::SessionInfo>),
     AliveSessionAdded(crate::session_registry::SessionInfo),
-    AliveSessionRemoved(agent_client_protocol::schema::v1::SessionId),
+    AliveSessionRemoved(crate::session_registry::SessionRemovedParams),
     AliveJoinUpgrade(Vec<(String, Option<String>)>),
     SessionsChanged,
+    SessionsFallbackTick,
     DirectTerminalActionProposal {
         context: crate::agent_tools::action_proposal::channel::ValidationContext,
         payload: String,

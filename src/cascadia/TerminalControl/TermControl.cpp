@@ -1492,11 +1492,16 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         _initializedTerminal = true;
         // Reattachment must not turn scrollbar initialization into user input
         // that changes the existing core's viewport.
-        _throttledUpdateScrollbar(ScrollBarUpdate{
-            static_cast<double>(_core.ScrollOffset()),
-            static_cast<double>(_core.BufferHeight() - _core.ViewHeight()),
-            0,
-            static_cast<double>(_core.ViewHeight()) });
+        // Match ThrottledFunc's exception boundary for this synchronous update.
+        try
+        {
+            _throttledUpdateScrollbar(ScrollBarUpdate{
+                static_cast<double>(_core.ScrollOffset()),
+                static_cast<double>(_core.BufferHeight() - _core.ViewHeight()),
+                0,
+                static_cast<double>(_core.ViewHeight()) });
+        }
+        CATCH_LOG();
 
         // MSFT 33353327: If the AutomationPeer was created before we were done initializing,
         // make sure it's properly set up now.
@@ -2643,6 +2648,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     hstring TermControl::WorkingDirectory() const
     {
         return _core.WorkingDirectory();
+    }
+
+    bool TermControl::WorkingDirectoryReportedByShell() const
+    {
+        return _core.WorkingDirectoryReportedByShell();
     }
 
     hstring TermControl::ShellName() const

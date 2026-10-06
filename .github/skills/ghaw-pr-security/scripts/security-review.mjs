@@ -31,7 +31,7 @@ function fail(message) {
 
 function text(value, name, max = 600) {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > max) {
-    fail(`${name} must be a non-empty string of at most ${max} characters`);
+    fail(`${name} must be a non-empty string of at most ${max} characters; received ${typeof value === 'string' ? value.length : 'non-string'} characters`);
   }
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)) {
     fail(`${name} contains a control character`);
@@ -171,7 +171,39 @@ function findingId(finding) {
   return `ITSEC-${createHash('sha256').update(anchor).digest('hex').slice(0, 12).toUpperCase()}`;
 }
 
-export function validateReport(report, scope) {
+export function createReportTemplate(scope) {
+  if (!scope || scope.version !== 1 || !SHA.test(scope.baseSha) || !SHA.test(scope.headSha) ||
+      !/^[0-9a-f]{64}$/.test(scope.scopeSha256 ?? '') ||
+      !Number.isInteger(scope.prNumber) || scope.prNumber < 1 ||
+      !['same-repo', 'fork'].includes(scope.repositoryRelation) ||
+      !['guide', 'repair'].includes(scope.mode)) {
+    fail('report template requires a valid immutable scope');
+  }
+  return {
+    version: 1,
+    prNumber: scope.prNumber,
+    baseSha: scope.baseSha,
+    headSha: scope.headSha,
+    scopeSha256: scope.scopeSha256,
+    repositoryRelation: scope.repositoryRelation,
+    mode: scope.mode,
+    summary: '',
+    checks: [
+      {
+        name: 'deterministic-scope',
+        status: 'pass',
+        headSha: scope.headSha,
+        evidence: 'Immutable diff classified by the trusted scope validator.',
+      },
+    ],
+    review: { status: 'not-required', reviewer: 'none', evidence: 'No automatic repair was attempted.' },
+    findings: [],
+    patch: [],
+  };
+}
+
+export function validateReport(report, scope, phase = 'final') {
+  if (!['proposal', 'final'].includes(phase)) fail('unknown report validation phase');
   if (!report || typeof report !== 'object' || Array.isArray(report) || report.version !== 1) {
     fail('report envelope is invalid');
   }
@@ -208,21 +240,21 @@ export function validateReport(report, scope) {
   if (!checks.some(check => check.name === 'deterministic-scope' && check.status === 'pass')) {
     fail('deterministic-scope PASS is required');
   }
-  if (!report.review || !['pass', 'not-required', 'fail'].includes(report.review.status)) {
+  if (!report.review || !['source-pass', 'not-required', 'fail'].includes(report.review.status)) {
     fail('independent review result is invalid');
   }
   const review = {
     status: report.review.status,
     reviewer: text(report.review.reviewer, 'independent reviewer', 100),
     evidence: text(report.review.evidence, 'independent review evidence', 500),
-    ...(report.review.status === 'pass' ? {
+    ...(report.review.status === 'source-pass' ? {
       headSha: report.review.headSha,
       patchSha256: report.review.patchSha256,
     } : {}),
   };
-  if (review.status === 'pass' &&
+  if (review.status === 'source-pass' &&
       (review.headSha !== scope.headSha || !/^[0-9a-f]{64}$/.test(review.patchSha256 ?? ''))) {
-    fail('independent review PASS must bind the immutable head and final patch digest');
+    fail('independent SOURCE_PASS must bind the immutable head and final patch digest');
   }
   if (!Array.isArray(report.findings) || report.findings.length > 20) {
     fail('findings must be an array with at most 20 entries');
@@ -261,22 +293,24 @@ export function validateReport(report, scope) {
     }
     const disposition = finding.fixDisposition?.state;
     const allowedDisposition = finding.severity === 'high'
-      ? (scope.mode === 'repair' ? ['blocked', 'fixed'] : ['blocked'])
+      ? (scope.mode === 'repair'
+        ? ['blocked', phase === 'proposal' ? 'proposed' : 'fixed']
+        : ['blocked'])
       : ['advice-only'];
     if (!allowedDisposition.includes(disposition)) {
       fail(`finding ${index + 1} has an invalid fix disposition`);
     }
-    if (disposition === 'fixed') {
+    if (disposition === 'fixed' || disposition === 'proposed') {
       if (finding.confidence !== 'high' || evidence.every(item => item.kind === 'hypothesis')) {
         fail(`finding ${index + 1} fixed disposition requires high confidence and strong evidence`);
       }
-      if (!checks.some(check => ['wta-tests', 'native-windows', 'cpp-audit-mode'].includes(check.name) && check.status === 'pass')) {
+      if (phase === 'final' && !checks.some(check => ['wta-tests', 'native-windows', 'cpp-audit-mode'].includes(check.name) && check.status === 'pass')) {
         fail(`finding ${index + 1} fixed disposition requires applicable passing validation`);
       }
       if (checks.some(check => ['fail', 'blocked'].includes(check.status))) {
         fail(`finding ${index + 1} fixed disposition is incompatible with failed or blocked validation`);
       }
-      if (review.status !== 'pass' || review.reviewer !== 'ghaw-pr-security-reviewer') {
+      if (review.status !== 'source-pass' || review.reviewer !== 'ghaw-pr-security-reviewer') {
         fail(`finding ${index + 1} fixed disposition requires the independent security review gate`);
       }
     }
@@ -312,7 +346,7 @@ export function validateReport(report, scope) {
     }
     return { path, summary: text(item.summary, `patch item ${index + 1} summary`, 300) };
   });
-  const fixed = findings.filter(finding => finding.fixDisposition.state === 'fixed');
+  const fixed = findings.filter(finding => ['fixed', 'proposed'].includes(finding.fixDisposition.state));
   if (scope.mode === 'guide' && patch.length !== 0) fail('guide mode cannot contain a patch');
   if ((fixed.length === 0) !== (patch.length === 0)) {
     fail('fixed findings and patch entries must either both be present or both be absent');
@@ -328,6 +362,18 @@ export function validateReport(report, scope) {
   return { ...report, summary, checks, review, findings, patch };
 }
 
+export function validateProposal(report, scope) {
+  if (scope.mode !== 'repair' || scope.repositoryRelation !== 'same-repo') {
+    fail('repair proposals require same-repository repair scope');
+  }
+  if (report.checks?.some(check => check.name !== 'deterministic-scope' && check.status === 'pass')) {
+    fail('agent proposal cannot claim passing final-patch validation');
+  }
+  const validated = validateReport(report, scope, 'proposal');
+  if (validated.patch.length > 0) validateRepairScope(scope);
+  return validated;
+}
+
 export function validatePatch(report, actualPaths, patchText = '') {
   const expected = [...new Set(report.patch.map(item => item.path))].sort();
   const actual = [...new Set(actualPaths.map(path => normalizePath(path, 'working tree path')))].sort();
@@ -337,7 +383,7 @@ export function validatePatch(report, actualPaths, patchText = '') {
   if (report.patch.length > 0) {
     const actualDigest = createHash('sha256').update(patchText).digest('hex');
     if (report.review.patchSha256 !== actualDigest) {
-      fail('independent review PASS does not match the final patch digest');
+      fail('independent SOURCE_PASS does not match the final patch digest');
     }
   }
 }
@@ -355,9 +401,25 @@ export function validateQueuedOutput(report, queuedOutput) {
   }
 }
 
-export function attestChecks(report, headSha, wtaTestsPassed) {
+export function attestChecks(report, headSha, wtaTestsPassed, patchText = '') {
   if (!SHA.test(headSha) || report.headSha !== headSha) {
     fail('trusted validation attestation does not match the immutable head');
+  }
+  if (!Array.isArray(report.findings) || report.findings.some(finding => finding.fixDisposition?.state === 'fixed')) {
+    fail('agent reports must propose repairs, not claim trusted fixed results');
+  }
+  const proposed = report.findings.filter(finding => finding.fixDisposition?.state === 'proposed');
+  if (proposed.length > 0) {
+    if (!wtaTestsPassed) fail('proposed repair requires trusted final-patch validation');
+    if (report.mode !== 'repair' || report.repositoryRelation !== 'same-repo' ||
+        proposed.some(finding => finding.severity !== 'high' || finding.confidence !== 'high')) {
+      fail('only same-repository HIGH/high-confidence repairs may be proposed');
+    }
+    if (report.review?.status !== 'source-pass' || report.review.reviewer !== 'ghaw-pr-security-reviewer' ||
+        report.review.headSha !== headSha ||
+        report.review.patchSha256 !== createHash('sha256').update(patchText).digest('hex')) {
+      fail('proposed repair requires independent SOURCE_PASS for the exact final patch');
+    }
   }
   const checks = report.checks
     .filter(check => check.name === 'deterministic-scope' || check.status !== 'pass')
@@ -370,12 +432,21 @@ export function attestChecks(report, headSha, wtaTestsPassed) {
       name: 'wta-tests',
       status: 'pass',
       headSha,
-      evidence: 'trusted isolated container: cargo test --manifest-path tools/wta/Cargo.toml (exit 0) against the final patch',
+      evidence: 'local command: trusted isolated Windows container: cargo test --locked --offline --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml (exit 0) against the final patch',
     };
     if (existing >= 0) checks[existing] = attested;
     else checks.push(attested);
   }
-  return { ...report, checks };
+  const findings = report.findings.map(finding => finding.fixDisposition?.state === 'proposed'
+    ? {
+      ...finding,
+      fixDisposition: {
+        state: 'fixed',
+        reason: 'Independent source review approved the exact patch; trusted isolated final-patch validation passed.',
+      },
+    }
+    : finding);
+  return { ...report, checks, findings };
 }
 
 export function stageRepairFiles(report, sourceRoot, targetRoot) {
@@ -530,15 +601,40 @@ function main() {
     writeFileSync(option('--status'), report.findings.some(finding => finding.severity === 'high' && finding.fixDisposition.state !== 'fixed') ? 'blocking\n' : 'pass\n', { flag: 'wx' });
     return;
   }
+  if (command === 'check-report') {
+    const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
+    const report = JSON.parse(readFileSync(option('--report'), 'utf8'));
+    if (scope.mode === 'repair') validateProposal(report, scope);
+    else validateReport(report, scope);
+    console.log('Report contract is valid; this is not a publication or test attestation.');
+    return;
+  }
   if (command === 'attest') {
     const report = JSON.parse(readFileSync(option('--report'), 'utf8'));
-    const attested = attestChecks(report, option('--head'), process.argv.includes('--wta-tests-passed'));
+    const passed = process.argv.includes('--wta-tests-passed');
+    const attested = attestChecks(report, option('--head'), passed,
+      passed ? git(['diff', '--binary', 'HEAD']) : '');
     writeFileSync(option('--output'), `${JSON.stringify(attested, null, 2)}\n`, { flag: 'wx' });
+    return;
+  }
+  if (command === 'init-report') {
+    const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
+    writeFileSync(option('--output'), `${JSON.stringify(createReportTemplate(scope), null, 2)}\n`, { flag: 'wx' });
     return;
   }
   if (command === 'stage-repair') {
     const report = JSON.parse(readFileSync(option('--report'), 'utf8'));
     stageRepairFiles(report, option('--source'), option('--target'));
+    return;
+  }
+  if (command === 'validate-proposal') {
+    const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
+    const report = validateProposal(JSON.parse(readFileSync(option('--report'), 'utf8')), scope);
+    const modified = git(['diff', '--name-only', '-z', 'HEAD']).split('\0').filter(Boolean);
+    const untracked = git(['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
+    if (untracked.length > 0) fail('repair proposal cannot include untracked files');
+    validatePatch(report, modified, git(['diff', '--binary', 'HEAD']));
+    writeFileSync(option('--output'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
     return;
   }
   if (command === 'validate-repair-scope') {
@@ -560,7 +656,7 @@ function main() {
     }
     return;
   }
-  fail('expected scope, validate-repair-scope, stage-repair, attest, validate, validate-output, or enforce command');
+  fail('expected scope, init-report, check-report, validate-proposal, validate-repair-scope, stage-repair, attest, validate, validate-output, or enforce command');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

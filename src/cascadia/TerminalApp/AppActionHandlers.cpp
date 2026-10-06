@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include "pch.h"
+#include "TabStrip.h"
 #include "../inc/AgentPaneRestore.h"
 #include "App.h"
 
@@ -647,6 +648,20 @@ namespace winrt::TerminalApp::implementation
         args.Handled(res);
     }
 
+    void TerminalPage::_HandleToggleSidebar(const IInspectable& sender,
+                                            const ActionEventArgs& args)
+    {
+        if (sender.try_as<KeyChord>())
+        {
+            _ToggleSidebarHotkey();
+        }
+        else
+        {
+            _OnVerticalRailCollapseRequested(nullptr, nullptr);
+        }
+        args.Handled(true);
+    }
+
     void TerminalPage::_HandleToggleFocusMode(const IInspectable& /*sender*/,
                                               const ActionEventArgs& args)
     {
@@ -705,6 +720,8 @@ namespace winrt::TerminalApp::implementation
         {
             const auto p = LoadCommandPalette();
             const auto v = p.Visibility() == Visibility::Visible ? Visibility::Collapsed : Visibility::Visible;
+            // Prepare the next mode while hidden, including when this action closes the palette.
+            p.Visibility(Visibility::Collapsed);
             p.EnableCommandPaletteMode(realArgs.LaunchMode());
             p.Visibility(v);
             args.Handled(true);
@@ -758,6 +775,11 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto activeTab{ _senderOrFocusedTab(sender) })
         {
+            if (_IsTabListProjectionActive() && !_IsTabVisibleInProjection(activeTab))
+            {
+                args.Handled(false);
+                return;
+            }
             if (!_tabColorPicker)
             {
                 _tabColorPicker = winrt::make<ColorPickupFlyout>();
@@ -797,6 +819,11 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto activeTab{ _senderOrFocusedTab(sender) })
         {
+            if (_IsTabListProjectionActive() && !_IsTabVisibleInProjection(activeTab))
+            {
+                args.Handled(false);
+                return;
+            }
             activeTab->ActivateTabRenamer();
         }
         args.Handled(true);
@@ -819,6 +846,11 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleCloseOtherTabs(const IInspectable& /*sender*/,
                                              const ActionEventArgs& actionArgs)
     {
+        if (_IsTabListPositionOperationBlocked())
+        {
+            actionArgs.Handled(false);
+            return;
+        }
         if (const auto& realArgs = actionArgs.ActionArgs().try_as<CloseOtherTabsArgs>())
         {
             uint32_t index;
@@ -858,6 +890,11 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleCloseTabsAfter(const IInspectable& /*sender*/,
                                              const ActionEventArgs& actionArgs)
     {
+        if (_IsTabListPositionOperationBlocked())
+        {
+            actionArgs.Handled(false);
+            return;
+        }
         if (const auto& realArgs = actionArgs.ActionArgs().try_as<CloseTabsAfterArgs>())
         {
             uint32_t index;
@@ -907,6 +944,11 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto& realArgs = actionArgs.ActionArgs().try_as<MoveTabArgs>())
         {
+            if (_IsTabListPositionOperationBlocked() && realArgs.Window().empty())
+            {
+                actionArgs.Handled(false);
+                return;
+            }
             const auto moved = _MoveTab(_senderOrFocusedTab(sender), realArgs);
             actionArgs.Handled(moved);
         }
@@ -1712,6 +1754,32 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleOpenAgentSessions(const IInspectable& /*sender*/,
                                                 const ActionEventArgs& args)
     {
+        if (_isVerticalLayout)
+        {
+            if (_tabStrip && _isVerticalRailVisible)
+            {
+                if (_tabStrip.HistoryActive())
+                {
+                    _CloseSidebarHistory(true);
+                }
+                else
+                {
+                    _CaptureSidebarHistoryEntry();
+                    if (_isVerticalRailCollapsed)
+                    {
+                        _OnVerticalRailCollapseRequested(nullptr, nullptr);
+                    }
+                    winrt::get_self<implementation::TabStrip>(_tabStrip)->OpenHistory();
+                    if (!_tabStrip.HistoryActive())
+                    {
+                        _historyEntryState.reset();
+                    }
+                }
+            }
+            args.Handled(true);
+            return;
+        }
+
         OutputDebugStringW(L"[AgentPane] _HandleOpenAgentSessions called\n");
         const auto activeTabPre = _GetFocusedTabImpl();
         const auto agentPanePre = activeTabPre ? activeTabPre->FindAgentPane() : nullptr;
