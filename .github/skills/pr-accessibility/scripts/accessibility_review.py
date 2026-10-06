@@ -153,8 +153,8 @@ def _finding(
     }
 
 
-def _overlaps(start: int, end: int, changed: set[int]) -> bool:
-    return not changed or any(start <= line <= end for line in changed)
+def _overlaps(start: int, end: int, changed: set[int] | None) -> bool:
+    return changed is None or any(start <= line <= end for line in changed)
 
 
 def _opening_tags(text: str):
@@ -196,7 +196,7 @@ def _has_name_source(attrs: str, body: str, *, include_style_hint: bool = True) 
     return bool(plain_text.strip())
 
 
-def _scan_xaml(path: str, text: str, changed: set[int]) -> list[dict[str, Any]]:
+def _scan_xaml(path: str, text: str, changed: set[int] | None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     for match, tag, attrs, start_line, end_line in _opening_tags(text):
         if not _overlaps(start_line, end_line, changed):
@@ -260,7 +260,7 @@ def _scan_xaml(path: str, text: str, changed: set[int]) -> list[dict[str, Any]]:
     return findings
 
 
-def _review_surfaces(path: str, text: str, changed: set[int]) -> list[str]:
+def _review_surfaces(path: str, text: str, changed: set[int] | None) -> list[str]:
     selected = "\n".join(
         line for number, line in enumerate(text.splitlines(), 1) if not changed or number in changed
     )
@@ -280,12 +280,14 @@ def _verify_instruction_boundary(root: Path, base: str, head: str) -> None:
     changed = _git(root, "diff", "--name-only", "-z", "--no-renames", base, head, "--").split("\0")
     configuration_directories = {".github", ".claude", ".copilot", ".agents", ".gemini"}
     instruction_names = {"agents.md", "claude.md", "gemini.md", "copilot-instructions.md", "skill.md", ".mcp.json"}
+    trusted_harness_paths = ("test/accessibility/", "build/scripts/get-dependenciesfromappxrecipe.ps1")
     blocked = []
     for path in changed:
         if not path:
             continue
         parts = Path(path.lower()).parts
         if (configuration_directories.intersection(parts)
+                or path.lower().startswith(trusted_harness_paths)
                 or parts[-1] in instruction_names
                 or parts[-1].endswith((".instructions.md", ".agent.md"))):
             blocked.append(path)
@@ -317,7 +319,7 @@ def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path 
             if not candidate.is_file():
                 continue
             text = candidate.read_text(encoding="utf-8-sig", errors="replace")
-            changed = set()
+            changed = None
         else:
             base_blob = _source_blob(root, base, path)
             head_blob = _source_blob(root, head, path)

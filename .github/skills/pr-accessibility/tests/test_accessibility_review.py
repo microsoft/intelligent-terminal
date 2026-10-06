@@ -20,13 +20,17 @@ SPEC.loader.exec_module(MODULE)
 
 
 class StaticAnalysisTests(unittest.TestCase):
+    def test_empty_changed_line_set_does_not_scan_untouched_controls(self):
+        xaml = '<Button Content="Existing" AutomationProperties.AccessibilityView="Raw" />'
+        self.assertEqual([], MODULE._scan_xaml("src/cascadia/TerminalApp/Test.xaml", xaml, set()))
+
     def test_visual_style_is_not_a_trusted_repair_name_source(self):
         xaml = '<Button Style="{StaticResource VisualButton}" AutomationProperties.AccessibilityView="Raw" />'
         with self.assertRaisesRegex(ValueError, "existing accessible name source"):
             MODULE._remove_raw_view_at_line(xaml, 1)
 
     def scan(self, xaml):
-        return MODULE._scan_xaml("src/cascadia/TerminalApp/Test.xaml", xaml, set())
+        return MODULE._scan_xaml("src/cascadia/TerminalApp/Test.xaml", xaml, None)
 
     def test_content_derived_and_resource_names_are_not_flagged(self):
         xaml = """
@@ -82,6 +86,31 @@ class StaticAnalysisTests(unittest.TestCase):
 
 
 class PrepareIntegrationTests(unittest.TestCase):
+    def test_deletion_only_hunk_does_not_authorize_untouched_raw_control(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            path = root / "src/cascadia/TerminalApp/Test.xaml"
+            path.parent.mkdir(parents=True)
+            original = '<Grid>\n<Button Content="Existing" AutomationProperties.AccessibilityView="Raw" />\n<TextBlock Text="Removed" />\n</Grid>\n'
+            path.write_bytes(original.encode("utf-8"))
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "Base"], cwd=root, check=True)
+            base = MODULE._git(root, "rev-parse", "HEAD").strip()
+            path.write_bytes(original.replace('<TextBlock Text="Removed" />\n', "").encode("utf-8"))
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "Delete only text"], cwd=root, check=True)
+            head = MODULE._git(root, "rev-parse", "HEAD").strip()
+            output = root / "prepared.json"
+            MODULE.prepare(root, base, head, output, None)
+            prepared = json.loads(output.read_text())
+            self.assertTrue(prepared["relevant"])
+            self.assertEqual([], prepared["static_findings"])
+            self.assertIn('-<TextBlock Text="Removed" />', prepared["source_evidence"]["src/cascadia/TerminalApp/Test.xaml"]["diff"])
+            self.assertEqual(set(), MODULE._added_lines(root, base, head, "src/cascadia/TerminalApp/Test.xaml"))
+
     @contextlib.contextmanager
     def source_fixture(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
@@ -193,7 +222,7 @@ class PrepareIntegrationTests(unittest.TestCase):
             prepared_path = workspace / "prepared.json"
             MODULE.prepare(root, base, head, prepared_path, None)
             prepared = json.loads(prepared_path.read_text())
-            signal = MODULE._scan_xaml(relative, original, set())[0]
+            signal = MODULE._scan_xaml(relative, original, None)[0]
             prepared["static_findings"] = [signal]
             prepared_path.write_text(json.dumps(prepared), encoding="utf-8")
             finding = dict(signal, confidence="high", disposition="fixed",
@@ -626,7 +655,8 @@ class ValidationTests(unittest.TestCase):
         self.assertNotIn(".idl", MODULE.PATCH_SUFFIXES)
 
     def test_changed_ambient_configuration_blocks_preparation(self):
-        for relative in ("AGENTS.md", ".github/hooks/launch.json", "src/cascadia/TerminalApp/AGENTS.md"):
+        for relative in ("AGENTS.md", ".github/hooks/launch.json", "src/cascadia/TerminalApp/AGENTS.md",
+                         "test/accessibility/Invoke-AxeWindowsScan.ps1"):
             path = self.root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("PR-controlled operating configuration\n", encoding="utf-8")
@@ -714,6 +744,16 @@ class ValidationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_support_paths_trigger_trusted_base_validation(self):
+        root = Path(__file__).parents[4]
+        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        trigger = workflow.split("\npermissions:", 1)[0]
+        for path in ("src/cascadia/LocalTests_TerminalApp/TestHostApp/**",
+                     ".github/agents/pr-accessibility.agent.md", ".github/skills/pr-accessibility/**",
+                     ".github/workflows/ghaw-pr-accessibility.lock.yml", "test/accessibility/**",
+                     "build/scripts/Get-DependenciesFromAppxRecipe.ps1"):
+            self.assertIn(path, trigger)
+
     def test_agent_and_detection_have_explicit_spend_caps(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")

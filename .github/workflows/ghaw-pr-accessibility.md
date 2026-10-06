@@ -12,6 +12,13 @@ on:
       - 'src/cascadia/WindowsTerminal/**'
       - 'src/cascadia/WindowsTerminal_UIATests/**'
       - 'src/cascadia/UIMarkdown/**'
+      - 'src/cascadia/LocalTests_TerminalApp/TestHostApp/**'
+      - '.github/agents/pr-accessibility.agent.md'
+      - '.github/skills/pr-accessibility/**'
+      - '.github/workflows/ghaw-pr-accessibility.md'
+      - '.github/workflows/ghaw-pr-accessibility.lock.yml'
+      - 'test/accessibility/**'
+      - 'build/scripts/Get-DependenciesFromAppxRecipe.ps1'
 
 permissions:
   contents: read

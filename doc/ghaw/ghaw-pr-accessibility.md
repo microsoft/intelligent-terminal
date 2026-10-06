@@ -14,6 +14,10 @@ unmerged PR head. It reviews subsequent PR events using installed trusted base
 code. Both staged hosted probes installed those resources before testing.
 Missing base support is a deployment failure; never bootstrap by executing the
 untrusted PR head's analyzer or harness.
+Policy, harness, and TestHostApp paths also trigger the installed trusted-base
+workflow. Changes to operating policy or trusted harness scripts fail closed
+before agent startup and require a separate trusted maintainer review; host
+source changes exercise the native build/scan lane.
 
 The workflow runs on `pull_request_target`, so its compiled definition and
 initial checkout come from the trusted base branch. It fetches the pull request
@@ -90,6 +94,8 @@ Deleted UI source remains relevant. Prepared evidence records its base blob and
 exact deletion diff with a null head blob; the agent must inspect whether an
 operation disappeared or moved, not assume a nonexistent head file is a repair
 candidate. Renames expose both sides, including moves out of UI scope.
+Deletion-only hunks do not scan untouched remaining controls for repair
+signals. Their removal evidence remains available for model review.
 
 Its XAML checks are intentionally conservative:
 
