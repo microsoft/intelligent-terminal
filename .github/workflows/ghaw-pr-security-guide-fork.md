@@ -49,6 +49,7 @@ permissions:
 engine: copilot
 imports:
   - .github/agents/ghaw-pr-security.agent.md
+  - shared/ghaw-pr-security-tools.md
 
 skills:
   - .github/skills/ghaw-pr-security
@@ -60,12 +61,6 @@ checkout:
 
 tools:
   edit: false
-  bash:
-    - 'git diff:*'
-    - 'git grep:*'
-    - 'git rev-parse:*'
-    - 'git show:*'
-    - 'pwsh:*'
 
 jobs:
   prepare:
@@ -160,6 +155,7 @@ steps:
         --mode guide \
         --output /tmp/gh-aw/security-scope.json
       [ "$(node -p "JSON.parse(require('fs').readFileSync('/tmp/gh-aw/security-scope.json','utf8')).baseSha")" = "$COMPARISON_BASE_SHA" ]
+      cp /tmp/gh-aw/security-scope.json "$RUNNER_TEMP/gh-aw/security-report-scope.json"
       node "$trusted_validator" init-report \
         --scope /tmp/gh-aw/security-scope.json \
         --output /tmp/gh-aw/agent/security-findings.json
@@ -258,13 +254,17 @@ Read `/tmp/gh-aw/security-scope.json`, then follow
 base `${{ github.event.inputs.comparison_base_sha }}` and immutable fork head
 `${{ github.event.inputs.expected_head_sha }}`.
 
-Stay on the trusted checkout. Inspect fork objects only with read-only Git
-commands and never execute or copy fork-controlled scripts into an executable
-location. Complete the prepared `/tmp/gh-aw/agent/security-findings.json` using
-PowerShell file operations, keeping the native identity fields and empty `patch`.
-Use `pwsh` for report writes: shell redirects and edit tools are unavailable.
-If a tool is denied, switch directly to the permitted operation; do not retry
-variants, recreate the native report envelope, or probe tool permissions.
+Stay on the trusted checkout. Inspect every immutable hunk through bounded
+`read-security-diff` path groups and trace base/head source with
+`read-security-source`. Never execute or copy fork-controlled scripts into an
+executable location. Preserve the prepared report's native identity fields and
+empty `patch`, then submit complete JSON as the `report_json` string to
+`submit-security-report`. This fixed capability validates against protected
+native scope before writing `/tmp/gh-aw/agent/security-findings.json`; the
+advisory scope/template is not tool-server authority. Shared tools accept data,
+not shell commands or PR code. Do not write reports through filesystem tools,
+PowerShell, shell redirects, or a validator CLI. If submission reports contract
+errors, correct the JSON and resubmit; never probe denied tool variants.
 
 Call `noop` exactly once whether or not findings exist. Never publish or write
 the fork branch. The trusted controller alone publishes the validated rendered

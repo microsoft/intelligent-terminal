@@ -28,8 +28,9 @@ review reasoning and the structured report.
   immutable head. Edit only a minimal HIGH/high-confidence fix in an existing
   `tools/wta/src/**/*.rs` file. C++, workflow, dependency, test-only, new-file,
   mode-changing, symlink, and submodule repairs remain blocked for guidance.
-- Use only caller-approved read commands for repository inspection. Write only
-  the caller-selected report path and explicitly authorized repair files.
+- Use only caller-approved bounded read tools for repository inspection. Submit
+  report data through the fixed `submit-security-report` capability; filesystem
+  edits are limited to explicitly authorized repair source files.
 - Never execute PR-controlled Cargo, build, formatter, test, or other scripts
   in the agent environment, even in repair mode. Validation execution belongs
   to the trusted isolated post-step, not a tool-permission workaround.
@@ -43,14 +44,20 @@ review reasoning and the structured report.
 1. Read the caller-generated scope manifest before reading PR content. Verify
    the report will use its PR number, comparison-base SHA, head SHA, repository
    relation, and scope hash exactly.
-2. Inspect the exact patch with:
-   `git diff --no-ext-diff --unified=20 <comparison-base> <head> -- <paths>`.
-   Continue in bounded path groups until every relevant hunk is covered.
+2. Inspect the exact immutable patch with `read-security-diff`, passing
+   `paths_json` as a JSON array of at most 20 normalized repository paths
+   (`[]` requests the complete diff). Continue in bounded path groups until
+   every changed hunk has actually been read; do not silently skip truncated
+   output or rely on keyword filters to select findings or discard changes.
    Summaries such as `--stat`, `--name-only`, and PR prose are discovery aids,
-   not review evidence.
-3. Read the applicable invariant sources named in the scope, then trace changed
-   callers, callees, data ownership, error propagation, and tests far enough to
-   prove or refute the behavior. A test name or green check is not proof.
+   not review evidence. Use `read-security-source` with `revision: base` or
+   `head`, normalized `path`, and positive inclusive `start_line`/`end_line`
+   ranges of at most 800 lines to read immutable source bytes.
+3. Read the applicable invariant sources named in the scope through bounded
+   source reads, then trace changed callers, callees, data ownership, error
+   propagation, and tests far enough to prove or refute the behavior. Review
+   reasoning remains model-driven; tools only provide trusted reads and contract
+   checks. A test name or green check is not proof.
 4. Review each applicable domain:
    - **C++/WinRT:** object/callback lifetime, weak/strong references, apartment
      and UI dispatch, integer/buffer arithmetic, HRESULT and exception
@@ -92,9 +99,14 @@ review reasoning and the structured report.
    - the patch is small, localized, preserves intended behavior, and does not
      weaken authorization/detection, add an allowlist, touch CI/security policy,
      or change unrelated dependencies;
-   - an independent read-only reviewer re-derives the finding, checks the exact
-     patch and required validation plan, and returns `SOURCE_PASS` bound to the
-     immutable head and patch digest.
+   - an independent read-only reviewer receives the FULL immutable original
+     diff from `read-security-diff`, base/head source traces and invariants from
+     `read-security-source`, and FULL final candidate patch, native
+     `patchSha256`, and immutable `headSha` from `inspect-security-repair`;
+     it re-derives the finding, checks the exact patch and required validation
+     plan, and returns `SOURCE_PASS` bound to that immutable head and digest.
+     Parent summaries are not source proof. Missing or incomplete source/patch
+     evidence requires `FAIL`. Any later edit requires fresh inspection/review.
    Report the candidate as `proposed`, with `review.status: source-pass`. Do
    not claim tests have passed or mark a finding `fixed`. The trusted native
    post-step alone promotes it after final-patch validation passes and the
@@ -104,8 +116,9 @@ review reasoning and the structured report.
    If source review rejects a candidate, undo only your candidate edits with
    the approved tools and leave `patch` empty; do not leave unapproved modified
    files behind or mark the rejected candidate `proposed`.
-8. Write exactly one report using the output contract below. In repair mode,
-   list exact modified paths in `patch`; in guide mode use an empty array.
+8. Submit one completed report through `submit-security-report` using the output
+   contract below. In repair mode, list exact modified paths in `patch`; in guide
+   mode use an empty array. Correct rejected JSON and resubmit before `noop`.
 
 ## Severity and confidence
 
@@ -125,25 +138,22 @@ review reasoning and the structured report.
 The native setup initializes the report from the immutable scope. Preserve
 `version`, `prNumber`, `baseSha`, `headSha`, `scopeSha256`,
 `repositoryRelation`, and `mode`; do not reconstruct or guess them. Complete
-`summary` and review content, and write JSON to the exact caller-selected path.
+`summary` and review content, and submit complete JSON as the `report_json`
+string to `submit-security-report`.
 An unchanged template with an empty summary is rejected.
 
-Both workers permit `pwsh` for report file operations. Read and update the
-prepared report in one process; never overwrite `/tmp/gh-aw/agent_output.json`,
-which belongs to the runtime. For these workflows the report path is
-`/tmp/gh-aw/agent/security-findings.json`:
-
-```powershell
-$path = '/tmp/gh-aw/agent/security-findings.json'
-$report = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
-# Populate summary, checks, findings, review, and patch from source evidence.
-$json = ConvertTo-Json -InputObject $report -Depth 12
-[System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
-```
-
-Use the permitted PowerShell operation rather than shell redirects or edit
-tools in guide mode. After a denied call, switch directly to the approved tool;
-do not retry command variants or invent a second report-generation harness.
+The shared data-only MCP tools load trusted validator code and immutable scope
+from the protected native `$RUNNER_TEMP/gh-aw` directory outside the agent
+container. Native preparation copies validated scope to
+`security-report-scope.json` there; `/tmp/gh-aw/security-scope.json` is advisory
+context only. `submit-security-report` validates against the protected scope
+before writing its fixed destination `/tmp/gh-aw/agent/security-findings.json`.
+The native prepared report is a template, not permission to write files.
+Never write the report through filesystem/edit tools, PowerShell, shell
+redirects, or a caller-run validator CLI, and never overwrite runtime-owned
+`/tmp/gh-aw/agent_output.json`. No shared tool accepts general shell input or
+executes PR code. After rejection, correct report data and resubmit through the
+same capability; do not probe denied tools or invent another report harness.
 
 The completed JSON has this shape:
 
@@ -205,19 +215,15 @@ Accepted finding categories are `cpp-lifetime`, `memory-safety`,
 category. HIGH guide findings use `blocked`; **medium/low always use
 `advice-only`**, even though the worker is read-only.
 
-After writing the report, run the existing trusted validator through the
-permitted PowerShell operation, before calling `noop`:
+Require an accepted result from `submit-security-report` before calling `noop`.
+Its trusted contract validation replaces model-run file writes and validator
+commands; a JSON parse alone is not a contract check.
 
-```powershell
-$validator = Join-Path $env:RUNNER_TEMP 'gh-aw/security-review-check.mjs'
-& node $validator check-report --scope /tmp/gh-aw/security-scope.json --report /tmp/gh-aw/agent/security-findings.json
-if ($LASTEXITCODE -ne 0) { throw 'Repair the report contract errors before emitting noop.' }
-```
-
-Correct reported field errors directly and recheck the changed report. Do not
+Correct reported field errors in the JSON and resubmit. Do not
 expand limits, truncate evidence mechanically, invent categories, or retry
-denied writing tools. Read-only self-check is advisory; native post-validation
-still recomputes immutable scope and controls publication.
+denied writing tools. Tool acceptance does not attest tests or authorize
+publication; native post-validation still recomputes immutable scope and
+controls publication.
 
 Use an empty `findings` array when no regression is found. Use only categories
 and check names accepted by the trusted validator. Mark unavailable checks

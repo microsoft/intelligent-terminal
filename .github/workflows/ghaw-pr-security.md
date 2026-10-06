@@ -49,6 +49,7 @@ permissions:
 engine: copilot
 imports:
   - .github/agents/ghaw-pr-security.agent.md
+  - shared/ghaw-pr-security-tools.md
 
 skills:
   - .github/skills/ghaw-pr-security
@@ -59,14 +60,6 @@ checkout:
 
 tools:
   edit:
-  bash:
-    - 'git diff:*'
-    - 'git grep:*'
-    - 'git rev-parse:*'
-    - 'git show:*'
-    - 'git status:*'
-    - 'pwsh:*'
-    - 'sha256sum:*'
 
 jobs:
   prepare:
@@ -243,6 +236,7 @@ steps:
         --mode repair \
         --output /tmp/gh-aw/security-scope.json
       [ "$(node -p "JSON.parse(require('fs').readFileSync('/tmp/gh-aw/security-scope.json','utf8')).baseSha")" = "$COMPARISON_BASE_SHA" ]
+      cp /tmp/gh-aw/security-scope.json "$RUNNER_TEMP/gh-aw/security-report-scope.json"
       node "$trusted_validator" init-report \
         --scope /tmp/gh-aw/security-scope.json \
         --output /tmp/gh-aw/agent/security-findings.json
@@ -371,15 +365,26 @@ the reviewed patch digest still matches. All other repairs remain blocked with
 guidance.
 
 For a proposed repair, invoke the registered `ghaw-pr-security-reviewer` after the
-final edit. Give it the comparison base, immutable original head, exact finding,
-final diff, SHA-256 from `git diff --binary HEAD | sha256sum`, and required
-validation plan. Record `review.status: source-pass` only for explicit
-`SOURCE_PASS`, with that exact digest and immutable head. Source approval does
-not claim that later native tests already passed.
+final edit. Use `read-security-diff` to obtain the FULL immutable original diff,
+`read-security-source` for the original base/head source traces and applicable
+invariants, and `inspect-security-repair` for the FULL final candidate patch,
+native `patchSha256`, and immutable `headSha`. Pass these tool-returned bytes and
+identities, the comparison base, exact finding, and required validation plan to
+the reviewer, not a parent summary or selected hunks. If any output is incomplete,
+obtain bounded path/range reads until the full context is available; if it cannot
+be provided, leave the repair blocked. Record `review.status: source-pass` only
+for explicit `SOURCE_PASS` bound to that exact native digest and immutable head.
+Any later edit invalidates approval and requires fresh inspection and review.
+Source approval does not claim that later native tests already passed.
 
 Complete the prepared `/tmp/gh-aw/agent/security-findings.json` exactly as the
 skill specifies, preserve its native identity fields, and list every modified
-path in `patch`. Use PowerShell file operations for report writes. Never execute
+path in `patch`. Submit complete JSON as the `report_json` string to
+`submit-security-report`; only this fixed capability validates against the
+protected native scope and writes the report. Do not write it through filesystem
+tools, shell commands, PowerShell, or a validator CLI. The advisory scope and
+prepared template are context, not tool-server authority. These shared tools
+accept data only; they do not execute model commands or PR code. Never execute
 PR-controlled build scripts, Cargo commands, tests, or other code in the agent
 environment; only trusted isolated post-validation may run them.
 Call `noop` exactly once whether or not a
@@ -391,12 +396,19 @@ blocking with a concrete reason.
 ## agent: `ghaw-pr-security-reviewer`
 ---
 description: Independently verifies a proposed security finding and repair
-tools: ['read', 'search', 'execute']
+tools: ['read', 'search']
 ---
 
 Re-derive the original finding from the immutable comparison-base/head patch,
 then inspect the proposed final patch and required validation plan. Do not trust
-the repair agent's severity, confidence, selected lines, or summary. Return
+the repair agent's severity, confidence, selected lines, or summary. Require the
+FULL original diff from `read-security-diff`, base/head source and invariant
+context from `read-security-source`, and FULL candidate patch with native digest
+and immutable head from `inspect-security-repair`, all provided by the parent.
+This is an independent reasoning pass over native-read evidence, not independent
+execution or permission to use a report writer. Return `FAIL` if source proof,
+full patch context, or native identity/digest is missing or incomplete; do not
+claim independence based on the parent's conclusions. Return
 `SOURCE_PASS` only when every proposed finding is HIGH/high-confidence, the
 original regression is proven, the patch is minimal and preserves intended
 behavior, the validation plan addresses the regression, no lower-severity issue

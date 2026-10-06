@@ -169,8 +169,13 @@ activation artifact after checkout.
 
 The native setup now initializes `/tmp/gh-aw/agent/security-findings.json`
 directly from immutable scope metadata. The agent fills review content and
-preserves identity fields; an untouched template is invalid. Both workers allow
-PowerShell report writes, matching the restricted-tool correction in #1073.
+preserves identity fields; an untouched template is invalid. Both workers use
+the shared fixed-capability MCP report writer. Unlike a general PowerShell
+wildcard, it accepts only bounded report data, validates immutable identity,
+and writes one preselected regular file. Immutable Git inspection also uses
+fixed native read tools, with external diff/textconv, pagers, Git replacement
+refs, and filesystem-monitor hooks disabled. No model shell execution is
+granted. The inline reviewer has read/search context only.
 The agent must not execute PR-controlled Cargo, formatting, build, or test
 commands. The trusted reconstruction fetch is complete rather than blob-filtered
 so later base-worktree materialization cannot require a removed authenticated
@@ -247,6 +252,9 @@ checks passed. Model execution took 4m38s; recorded total usage was 94.11423 AIC
 The remaining low-severity notification suggestion was independently declined
 as UX noise, not a vulnerability; the skill now explicitly excludes such
 suggestions. This evidence proves transport, not universal finding relevance.
+That run used the earlier PowerShell report path. The replacement data-only
+MCP capability boundary is undergoing its own official hosted proof; do not
+reuse the earlier run as evidence that a newly declared tool server works.
 
 ## Local validation
 

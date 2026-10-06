@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   attestChecks, buildScope, classifyPath, createReportTemplate, normalizePath, renderReport, validatePatch,
   validateQueuedOutput, validateReport, validateProposal, stageRepairFiles, validateRepairScope,
+  submitSecurityReport, readSecurityDiff, readSecuritySource, inspectSecurityRepair,
 } from './security-review.mjs';
 
 const BASE = '1'.repeat(40);
@@ -477,6 +478,14 @@ test('fork findings remain noop until trusted controller publication', () => {
   }, 'fork'), scope('fork'));
   validateQueuedOutput(candidate, { items: [{ type: 'noop' }], errors: [] });
   assert.throws(() => validateQueuedOutput(candidate, { items: [{ type: 'add_comment' }] }), /noop/);
+  const exoticPath = 'tools/wta/src/a`[click](https:evil.example).rs';
+  const exoticScope = buildScope(BASE, HEAD, 17, 'fork', `M\0${exoticPath}\0`);
+  const exoticReport = structuredClone(candidate);
+  exoticReport.scopeSha256 = exoticScope.scopeSha256;
+  exoticReport.findings[0].file = exoticPath;
+  const rendered = renderReport(validateReport(exoticReport, exoticScope));
+  assert(!rendered.includes('[click](https:evil.example)'));
+  assert(rendered.includes('a\\`\\[click\\]\\(https\\:evil\\.example\\)\\.rs'));
 });
 
 test('rejects secret-like diagnostic evidence and unsupported passing checks', () => {
@@ -497,7 +506,7 @@ test('rejects secret-like diagnostic evidence and unsupported passing checks', (
   }), scope()), /secret material/);
 });
 
-test('native CLI and permitted PowerShell report writes work end to end', () => {
+test('native CLI and bounded data-only report submission work end to end', () => {
   const root = mkdtempSync(join(tmpdir(), 'ghaw-security-native-replay-'));
   const workspace = join(root, 'checkout');
   mkdirSync(workspace);
@@ -523,6 +532,14 @@ test('native CLI and permitted PowerShell report writes work end to end', () => 
     git('add', '.');
     git('commit', '--quiet', '-m', 'Local fixture head');
     const head = git('rev-parse', 'HEAD');
+    const readScope = buildScope(base, head, 17, 'fork', 'M\0tools/wta/src/routing.rs\0');
+    assert.match(readSecurityDiff(readScope, ['tools/wta/src/routing.rs'], workspace), /changed route for review/);
+    assert.match(readSecuritySource(readScope, 'head', 'tools/wta/src/routing.rs', 1, 1, workspace), /^1: fn route/);
+    assert.throws(() => readSecuritySource(readScope, 'HEAD; arbitrary-command', 'tools/wta/src/routing.rs', 1, 1, workspace), /immutable base\/head/);
+    assert.throws(() => readSecuritySource(readScope, 'head', '../escape', 1, 1, workspace), /normalized/);
+    assert.throws(() => readSecuritySource(readScope, 'head', 'tools/wta/src/routing.rs', 1, 801, workspace), /at most 800/);
+    assert.equal(readSecurityDiff(readScope, ['--ext-diff'], workspace), '');
+    assert.throws(() => inspectSecurityRepair(readScope, workspace), /not available/);
     // Keep report artifacts outside the checkout, as on the hosted runner.
     const artifacts = join(root, 'artifacts');
     mkdirSync(artifacts);
@@ -545,18 +562,10 @@ test('native CLI and permitted PowerShell report writes work end to end', () => 
       result = invoke('check-report', '--scope', scopePath, '--report', reportPath);
       assert.equal(result.status, 1);
       assert.match(result.stderr, /summary/);
-      result = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-Command', `
-        $ErrorActionPreference = 'Stop'
-        $path = $env:SECURITY_REPORT_PATH
-        $report = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
-        $report.summary = 'Reviewed the immutable patch; no regression found.'
-        $json = ConvertTo-Json -InputObject $report -Depth 12
-        [System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
-      `], {
-        cwd: workspace, encoding: 'utf8', timeout: 30_000,
-        env: { ...process.env, SECURITY_REPORT_PATH: reportPath },
-      });
-      assert.equal(result.status, 0, result.stderr || result.error?.message);
+      const current = JSON.parse(readFileSync(scopePath, 'utf8'));
+      const completed = JSON.parse(readFileSync(reportPath, 'utf8'));
+      completed.summary = 'Reviewed the immutable patch; no regression found.';
+      assert.equal(submitSecurityReport(JSON.stringify(completed), current, reportPath).accepted, true);
       result = validate();
       assert.equal(result.status, 0, result.stderr);
       result = invoke('check-report', '--scope', scopePath, '--report', reportPath);
@@ -571,6 +580,31 @@ test('native CLI and permitted PowerShell report writes work end to end', () => 
       assert.equal(result.status, 1);
       assert.match(result.stderr, /exactly one noop/);
     }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('bounded report submission validates data before writing and rejects symlink destinations', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ghaw-security-report-tool-'));
+  const path = join(root, 'report.json');
+  const current = scope('fork');
+  const valid = createReportTemplate(current);
+  valid.summary = 'Reviewed immutable source; no introduced security regression.';
+  writeFileSync(path, 'original');
+  try {
+    assert.throws(() => submitSecurityReport(JSON.stringify({ ...valid, summary: 's'.repeat(801) }), current, path), /at most 800/);
+    assert.equal(readFileSync(path, 'utf8'), 'original');
+    assert.throws(() => submitSecurityReport('x'.repeat(256 * 1024 + 1), current, path), /256 KiB/);
+    const result = submitSecurityReport(JSON.stringify(valid), current, path);
+    assert.equal(result.accepted, true);
+    assert.equal(JSON.parse(readFileSync(path, 'utf8')).headSha, HEAD);
+    const target = join(root, 'outside.json');
+    writeFileSync(target, 'unchanged');
+    unlinkSync(path);
+    symlinkSync(target, path);
+    assert.throws(() => submitSecurityReport(JSON.stringify(valid), current, path), /regular file/);
+    assert.equal(readFileSync(target, 'utf8'), 'unchanged');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
