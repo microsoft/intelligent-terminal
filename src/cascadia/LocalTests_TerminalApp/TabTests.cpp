@@ -5801,6 +5801,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(12.0, icon.Margin().Right);
             VERIFY_ARE_EQUAL(VerticalAlignment::Center, icon.VerticalAlignment());
             VERIFY_IS_FALSE(icon.IsTabStop());
+            VERIFY_ARE_EQUAL(Automation::Peers::AccessibilityView::Raw, Automation::AutomationProperties::GetAccessibilityView(icon));
             const auto title = row.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
             title.Text(L"History session title");
             VERIFY_ARE_EQUAL(1, Grid::GetColumn(title));
@@ -5839,6 +5840,8 @@ namespace TerminalAppLocalTests
                 provider.Text(std::wstring_view{ subtitleValue }.starts_with(L"Localized") ?
                                   L"Localized provider with a very long display name" :
                                   L"Copilot");
+                VERIFY_ARE_EQUAL(provider.Text(), providerText.Text());
+                VERIFY_ARE_EQUAL(Visibility::Visible, providerText.Visibility());
                 providerText.Measure({ 10000, 80 });
                 const auto providerWidth = providerText.DesiredSize().Width;
                 for (const auto statusValue : { L"Idle", L"Waiting for confirmation", L"" })

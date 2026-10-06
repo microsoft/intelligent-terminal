@@ -20,6 +20,8 @@ Describe 'Combined History metadata layout contract' -Tag Unit {
         $icon.Margin | Should -Be '0,0,12,0'
         $icon.VerticalAlignment | Should -Be 'Center'
         $icon.GetAttribute('AutomationProperties.Name') | Should -Be '{x:Bind ProviderDisplayName}'
+        $icon.GetAttribute('AutomationProperties.AccessibilityView') | Should -Be 'Raw'
+        $icon.GetAttribute('ToolTipService.ToolTip') | Should -Be '{x:Bind ProviderDisplayName}'
         $row.SelectSingleNode('p:Grid[@x:Name="HistoryMetadata"]/*[@x:Name="HistoryProviderIcon"]', $ns) | Should -BeNullOrEmpty
     }
     It 'aligns both text rows and keeps time status provider then ownership' {
@@ -81,7 +83,7 @@ Describe 'Combined History real-oracle non-live controls' -Tag Unit {
         }
         function Save-CombinedActionEvidence {}
         function Get-CombinedRows {}
-        function Get-CombinedRawChildren {}
+        function Get-CombinedRawChildren { param($Element, [switch]$ContentView) }
         function Get-CombinedVisiblePart {}
         function Get-CombinedRowText {}
         function New-MetadataPart([string]$Name, [double]$X, [double]$Y, [double]$Width, [double]$Height, [string]$Id = '') {
@@ -105,7 +107,13 @@ Describe 'Combined History real-oracle non-live controls' -Tag Unit {
         )
         Mock Save-CombinedActionEvidence {}
         Mock Get-CombinedRows { $script:row }
-        Mock Get-CombinedRawChildren { if ($args[0] -eq $script:row) { $script:parts } }
+        $script:contentIcon = $false
+        Mock Get-CombinedRawChildren {
+            if ($Element -eq $script:row) {
+                $script:parts
+                if ($ContentView -and $script:contentIcon) { $script:icon }
+            }
+        }
         Mock Get-CombinedVisiblePart { $script:icon }
         Mock Get-CombinedRowText { 'session just now Idle Copilot' }
         Mock Add-Content {}
@@ -119,6 +127,10 @@ Describe 'Combined History real-oracle non-live controls' -Tag Unit {
     }
     It 'rejects a trailing provider icon' {
         $script:icon.Current.BoundingRectangle = [Windows.Rect]::new(180, 28, 16, 16)
+        { Assert-CombinedHistoryMetadata -Title session -Status Idle -Provider Copilot } | Should -Throw
+    }
+    It 'rejects duplicate provider semantics from an icon in Content view' {
+        $script:contentIcon = $true
         { Assert-CombinedHistoryMetadata -Title session -Status Idle -Provider Copilot } | Should -Throw
     }
     It 'rejects an icon aligned only with the metadata rather than both rows' {

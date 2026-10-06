@@ -843,11 +843,9 @@ async fn run_acp_app(
             // in App::handle_event) without restarting the agent pane. The
             // executor snapshots it per choice; the App rebuilds it on change.
             let delegate_agents = Arc::new(std::sync::Mutex::new(
-                crate::coordinator::default_delegate_agent_runtimes(
-                    config.delegate_agent.as_deref(),
-                    Some(config.agent.as_str()),
-                    config.delegate_model.as_deref(),
-                ),
+                vec![config
+                    .resolve_delegate_runtime()
+                    .context("failed to resolve configured delegate provider")?],
             ));
             tokio::spawn(crate::coordinator::run_recommendation_executor(
                 recommendation_rx,

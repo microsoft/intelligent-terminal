@@ -37,6 +37,13 @@ The default agent is Copilot; the agent and model come from Windows Terminal
 settings (`acpAgent` / `acpModel`) and are passed through to master via `--agent`
 / `--agent-id` / `--acp-model`.
 
+Delegate launches likewise receive a resolved `--delegate-agent` command and
+its separate canonical `--delegate-agent-id` (including `custom:<name>`).
+Helper bootstrap and hot settings updates preserve that pair with the delegate
+model. Recommendations and session MCP delegation mark new tabs and supported
+splits as native-agent content at creation, independently of task titles or
+session hooks; ordinary shell workspaces remain unclassified.
+
 When the agent pane is connected to Windows Terminal, the agent-facing contract is
 the local `wta` CLI: the agent shells out to commands like `wta active-pane --json`,
 `wta list-panes --json`, `wta capture-pane --json`, and

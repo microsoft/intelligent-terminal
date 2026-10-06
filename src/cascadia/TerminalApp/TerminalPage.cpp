@@ -2853,6 +2853,7 @@ namespace winrt::TerminalApp::implementation
         const auto customModelLaunch = _CaptureCustomModelLaunchConfiguration(globals);
         return AgentRuntimeConfigSnapshot{
             std::wstring{ _ResolveEffectiveDelegateAgent(globals) },
+            std::wstring{ globals.EffectiveDelegateAgent() },
             std::wstring{ globals.DelegateModel() },
             customModelLaunch ? customModelLaunch->selectionId : std::wstring{},
             ::Microsoft::Terminal::CustomModels::CaptureCatalog(globals.CustomModelProviders()),
@@ -2879,6 +2880,9 @@ namespace winrt::TerminalApp::implementation
         params["autofix_enabled"] = config.autofixEnabled;
         params["autofix_policy_state"] = config.autofixPolicyState;
         params["sessions_in_sidebar"] = config.sessionsInSidebar;
+        params["delegate_agent"] = winrt::to_string(config.delegateAgent);
+        params["delegate_agent_id"] = winrt::to_string(config.delegateAgentId);
+        params["delegate_model"] = winrt::to_string(config.delegateModel);
         return params;
     }
 
@@ -2912,6 +2916,7 @@ namespace winrt::TerminalApp::implementation
         const bool autofixChanged = last.autofixEnabled != current.autofixEnabled;
         const bool autofixPolicyChanged = last.autofixPolicyState != current.autofixPolicyState;
         const bool delegateChanged = last.delegateAgent != current.delegateAgent ||
+                                     last.delegateAgentId != current.delegateAgentId ||
                                      last.delegateModel != current.delegateModel;
         const bool customModelsChanged =
             last.customModelSelection != current.customModelSelection ||
@@ -2940,6 +2945,7 @@ namespace winrt::TerminalApp::implementation
         if (delegateChanged)
         {
             params["delegate_agent"] = winrt::to_string(current.delegateAgent);
+            params["delegate_agent_id"] = winrt::to_string(current.delegateAgentId);
             params["delegate_model"] = winrt::to_string(current.delegateModel);
         }
         if (customModelsChanged)
@@ -3871,6 +3877,7 @@ namespace winrt::TerminalApp::implementation
             pushFlagValue(L"--acp-model", globals.AcpModel());
         }
         pushFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
+        pushFlagValue(L"--delegate-agent-id", globals.EffectiveDelegateAgent());
         pushFlagValue(L"--delegate-model", globals.DelegateModel());
         return extraArgs;
     }
@@ -4183,6 +4190,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
         appendHelperFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
+        appendHelperFlagValue(L"--delegate-agent-id", globals.EffectiveDelegateAgent());
         appendHelperFlagValue(L"--delegate-model", globals.DelegateModel());
         if (!globals.EffectiveAutoFixEnabled())
         {

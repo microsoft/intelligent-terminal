@@ -137,7 +137,7 @@ pub fn default_delegate_agent_runtimes(
     }]
 }
 
-/// Derive a (id, display_name) pair from a delegate agent commandline.
+/// Resolve a launch command while preserving the host's canonical provider identity.
 pub(crate) fn resolve_delegate_runtime_with_provider(
     delegate_agent_cmd: Option<&str>,
     agent_cmd: Option<&str>,
@@ -512,11 +512,13 @@ async fn execute_choice(
                     OpenTarget::Tab => {
                         // Launch the delegate agent directly as the tab process.
                         let result = shell_mgr
-                            .wt_create_tab(
+                            .wt_create_tab_with_background(
                                 commandline.as_deref(),
                                 cwd.as_deref(),
                                 title.as_deref().or(runtime_name),
                                 profile.as_deref(),
+                                false,
+                                runtime.map(|runtime| runtime.id.as_str()),
                             )
                             .await
                             .context("failed to create tab")?;
@@ -536,7 +538,7 @@ async fn execute_choice(
                                 direction.as_deref(),
                                 None,
                                 profile.as_deref(),
-                                None,
+                                runtime.map(|runtime| runtime.id.as_str()),
                             )
                             .await
                             .with_context(|| format!("failed to split pane {}", parent))?;
@@ -1973,11 +1975,185 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((method.to_string(), params));
-            Ok(json!({}))
+            Ok(match method {
+                "create_tab" | "split_pane" => json!({"session_id": "created-pane"}),
+                _ => json!({}),
+            })
         }
 
         fn is_available(&self) -> bool {
             true
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recommendation_executor_preserves_configured_native_provider_at_creation() {
+        use crate::agent_tools::action_proposal::schema::{
+            build_recommendation_set, parse_mcp_action_payload, McpActionTool,
+        };
+        use clap::Parser;
+
+        let _resolver = super::override_test_executable_resolver(|command| {
+            let mut tokens = super::split_windows_commandline(command);
+            tokens[0] = format!("C:\\wta-unit-mock\\{}.exe", tokens[0]);
+            super::join_windows_commandline(&tokens.iter().map(String::as_str).collect::<Vec<_>>())
+        });
+        for (provider, command) in [
+            ("copilot", "copilot"),
+            ("claude", "claude"),
+            ("codex", "codex"),
+            ("gemini", "gemini"),
+            ("opencode", "opencode"),
+            ("custom:review", "pwsh -File C:\\agents\\review.ps1"),
+            ("custom:linux", "wsl.exe -d Ubuntu -- /opt/agents/review"),
+        ] {
+            for placement in ["new_tab", "new_split"] {
+                // Exercise the helper's actual CLI/bootstrap configuration,
+                // not a manually assembled runtime with a repaired identity.
+                let cli = crate::cli::args::Cli::try_parse_from([
+                    "wta",
+                    "--agent",
+                    "copilot --acp",
+                    "--delegate-agent",
+                    command,
+                    "--delegate-agent-id",
+                    provider,
+                    "--delegate-model",
+                    "configured-model",
+                ])
+                .unwrap();
+                let runtime = crate::helper_config(cli)
+                    .resolve_delegate_runtime()
+                    .unwrap();
+                assert_eq!(runtime.id, provider);
+                assert_eq!(runtime.model.as_deref(), Some("configured-model"));
+                let payload = json!({
+                    "summary": "Investigate tests",
+                    "task": "Inspect the repository",
+                    "placement": placement,
+                    "working_directory": "C:\\repo"
+                })
+                .to_string();
+                let wire = parse_mcp_action_payload(
+                    McpActionTool::DelegateTaskInNewWorkspace,
+                    payload.as_bytes(),
+                    false,
+                )
+                .unwrap();
+                let set = build_recommendation_set(
+                    &wire,
+                    false,
+                    Some(&runtime.id),
+                    Some("host-pane"),
+                    None,
+                )
+                .unwrap();
+                let channel = Arc::new(RecordingWtChannel::default());
+                let shell_mgr = Arc::new(
+                    ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>),
+                );
+                let (tx, rx) = mpsc::unbounded_channel();
+                let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+                tx.send(super::ChoiceExecution {
+                    choice: set.choices[0].clone(),
+                    insert_only: false,
+                    context: crate::turn_context::TurnContext::with_target_pane("host-pane"),
+                })
+                .unwrap();
+                drop(tx);
+                super::run_recommendation_executor(
+                    rx,
+                    event_tx,
+                    shell_mgr,
+                    Arc::new(Mutex::new(vec![runtime])),
+                )
+                .await;
+                while let Ok(event) = event_rx.try_recv() {
+                    assert!(
+                        !matches!(event, crate::app_contracts::AppEvent::SystemMessage(_)),
+                        "executor failed"
+                    );
+                }
+                let requests = channel.requests.lock().unwrap();
+                let (method, params) = requests
+                    .iter()
+                    .find(|(method, _)| method == "create_tab" || method == "split_pane")
+                    .expect("executor must create a target");
+                assert_eq!(
+                    method,
+                    if placement == "new_tab" {
+                        "create_tab"
+                    } else {
+                        "split_pane"
+                    }
+                );
+                assert_eq!(params["native_agent_provider_id"], provider);
+                assert_eq!(params["cwd"], "C:\\repo");
+                if placement == "new_split" {
+                    assert_eq!(params["session_id"], "host-pane");
+                } else {
+                    assert_eq!(params["title"], "Investigate tests");
+                }
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recommendation_executor_keeps_ordinary_workspaces_unclassified() {
+        for target in [OpenTarget::Tab, OpenTarget::Panel] {
+            let channel = Arc::new(RecordingWtChannel::default());
+            let shell_mgr = Arc::new(
+                ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>),
+            );
+            let (tx, rx) = mpsc::unbounded_channel();
+            let (event_tx, _event_rx) = mpsc::unbounded_channel();
+            tx.send(super::ChoiceExecution {
+                choice: RecommendationChoice {
+                    choice: 1,
+                    title: "Ordinary shell".into(),
+                    rationale: String::new(),
+                    actions: vec![
+                        RecommendedAction::Open {
+                            target: target.clone(),
+                            parent: None,
+                            cwd: None,
+                            title: Some("copilot".into()),
+                            direction: None,
+                            profile: None,
+                        },
+                        RecommendedAction::OpenAndSend {
+                            target,
+                            parent: None,
+                            cwd: None,
+                            title: None,
+                            direction: None,
+                            profile: None,
+                            agent: None,
+                            input: "echo hello".into(),
+                        },
+                    ],
+                },
+                insert_only: false,
+                context: crate::turn_context::TurnContext::with_target_pane("host-pane"),
+            })
+            .unwrap();
+            drop(tx);
+            super::run_recommendation_executor(
+                rx,
+                event_tx,
+                shell_mgr,
+                Arc::new(Mutex::new(Vec::new())),
+            )
+            .await;
+            let requests = channel.requests.lock().unwrap();
+            let creates: Vec<_> = requests
+                .iter()
+                .filter(|(method, _)| method == "create_tab" || method == "split_pane")
+                .collect();
+            assert_eq!(creates.len(), 2);
+            for (_, params) in creates {
+                assert!(params.get("native_agent_provider_id").is_none());
+            }
         }
     }
 

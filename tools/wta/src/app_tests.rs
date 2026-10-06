@@ -6296,6 +6296,44 @@ fn hot_config_prefers_automatic_yolo_target_and_accepts_legacy_field() {
 }
 
 #[test]
+fn hot_delegate_config_preserves_explicit_provider_with_wrapped_commands() {
+    let mut app = test_app();
+    let shared = Arc::new(std::sync::Mutex::new(Vec::new()));
+    app.set_runtime_agent_config(shared.clone(), "copilot --acp".into(), None, false);
+    for (provider, command) in [
+        ("custom:review", "pwsh -File C:\\agents\\review.ps1"),
+        ("custom:linux", "wsl.exe -d Ubuntu -- /opt/agents/review"),
+        ("claude", "claude"),
+    ] {
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_config_changed".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "delegate_agent": command,
+                "delegate_agent_id": provider,
+                "delegate_model": "selected-model",
+            }),
+        });
+        let runtimes = shared.lock().unwrap();
+        assert_eq!(runtimes.len(), 1);
+        assert_eq!(runtimes[0].id, provider);
+        assert_eq!(runtimes[0].commandline, command);
+        assert_eq!(runtimes[0].model.as_deref(), Some("selected-model"));
+    }
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({"delegate_agent": "pwsh -File C:\\agents\\review.ps1"}),
+    });
+    assert!(
+        shared.lock().unwrap().is_empty(),
+        "unknown custom identity must fail closed"
+    );
+}
+
+#[test]
 fn settings_agent_rebind_ignores_stale_generation_and_converges_to_latest_target() {
     let (mut app, mut restart_rx) = test_app_with_restart_rx();
     app.owner_tab_id = Some("owner-tab".into());
