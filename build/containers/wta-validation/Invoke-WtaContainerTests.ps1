@@ -26,6 +26,13 @@ if ($LASTEXITCODE -ne 0 -or $powerShell -ne '7.6.6') {
 }
 $env:CARGO_TARGET_DIR = 'C:\validation-output'
 $env:CARGO_TERM_COLOR = 'never'
+$bundle = 'C:\workspace\tools\wta\wt-agent-hooks'
+if (-not (Test-Path -LiteralPath (Join-Path $bundle 'codex\.agents\plugins\marketplace.json'))) {
+    throw 'The immutable repository hook bundle is missing.'
+}
+# External target output is not in the dev tree; use WTA's supported bundle lookup.
+$env:WTA_HOOKS_BUNDLE_DIR = $bundle
+$env:RUST_TEST_THREADS = '1'
 Set-Location -LiteralPath 'C:\workspace'
 
 # Keep VsDevCmd and Cargo in one CMD process; cwd preserves the static CRT config.
