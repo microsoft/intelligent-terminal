@@ -38,7 +38,9 @@ head checkout or agent startup. This conservative policy intentionally blocks
 mixed UI-and-configuration PRs; they need a separate trusted review lane rather
 than loading their configuration as agent instructions.
 
-The model receives only read-only Git commands. Pull-request files, comments,
+For inspection, the model receives only read-only Git shell commands; the
+caller separately permits the narrow repair edit and local commit described
+above. Pull-request files, comments,
 logs, and attachments remain untrusted. A final deterministic gate verifies the
 structured report, exact source SHA, allowed patch paths, high-severity and
 high-confidence repair policy, exact trusted-recipe candidate, patch
@@ -107,7 +109,9 @@ validation should:
 1. Build without deploying over the user's running app, launch a test package
    on an interactive desktop, and navigate to each affected state.
 2. Run Axe.Windows against the exact process/window after each state change and
-   retain the `.a11ytest` artifacts.
+   retain the caller-supported scan artifacts. Use `.a11ytest` when screenshot
+   capture works; the pinned smoke harness instead retains the JSON evidence
+   described below.
 3. Verify keyboard-only traversal/activation, focus restoration and traps, and
    UIA pattern invocation.
 4. Observe Narrator announcements and live-region payloads.
@@ -132,10 +136,13 @@ launches real product surfaces in three visible states:
   UI Automation, and waits for the visible `TabModeComboBox` before scanning.
 
 The job downloads Axe.Windows 2.4.2, verifies the archive's pinned SHA-256,
-scans both host windows through its supported automation API, and uploads
+scans all three states through its supported automation API, and uploads
 structured rule/element evidence and per-surface logs. The API uses
 `OutputFileFormat.None` because `.a11ytest` generation unconditionally captures
-a screenshot and can fail on CI desktops even when UI Automation is available.
+a screenshot and has failed with a Win32 invalid-handle error even when UI
+Automation is available. These JSON artifacts are not `.a11ytest` files and
+do not supply its screenshot or replay capabilities; screenshot capture remains
+an explicit gap.
 A UIA hierarchy JSON is retained for each state, including successful scans,
 with runtime/parent IDs, names, control types, and visibility/focusability.
 Each scan also records its visible state marker; window count alone is not a
@@ -256,6 +263,16 @@ results. Runtime-dependent fixes and all medium/low findings remain
 `remaining`, `blocked`, or advice.
 
 ## Validation
+
+### Evidence boundary and remaining gaps
+
+The recorded hosted native PASS in run `37387409312` is evidence for the
+three-state TestHostApp/Axe.Windows smoke lane, not for hosted AI review or
+safe-output publication. Hosted execution of the AI gh-aw path and hosted
+read-only fork review remain unverified. Local validation of those contracts
+does not establish a full production automation run, a coverage percentage,
+or accessibility compliance. Narrator, complete keyboard/focus journeys,
+contrast, scaling, and screenshot capture remain separate validation gaps.
 
 ```powershell
 python .github\skills\pr-accessibility\tests\test_accessibility_review.py
