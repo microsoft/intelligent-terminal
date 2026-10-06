@@ -62,7 +62,7 @@ tools:
   github: false
   bash: []
   cli-proxy: false
-  edit:
+  edit: false
 
 jobs:
   prepare:
@@ -377,6 +377,9 @@ marked `proposed`. Never mark an agent-authored result `fixed`. The trusted
 post-step alone can promote a proposal after final-patch validation passes and
 the reviewed patch digest still matches. All other repairs remain blocked with
 guidance.
+Write proposed source changes only with `write-security-repair`; generic file
+editing is disabled. Native scope/path checks reject report, workflow, Git
+metadata, new-file and unrelated destinations.
 
 For a proposed repair, invoke the registered `ghaw-pr-security-reviewer` after the
 final edit. Use `read-security-diff` to obtain the FULL immutable original diff,

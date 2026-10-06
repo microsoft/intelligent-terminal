@@ -113,8 +113,11 @@ review reasoning and the structured report.
    reviewed digest matches. If source evidence or review is missing, leave the
    HIGH finding `blocked` with the exact reason. A claim needing unavailable
    runtime proof cannot earn source approval. Medium/low findings are never edited.
-   If source review rejects a candidate, undo only your candidate edits with
-   the approved tools and leave `patch` empty; do not leave unapproved modified
+   Apply candidate source text only through `write-security-repair`; generic
+   edit and shell tools are disabled. It accepts only existing modified WTA Rust
+   paths in the protected same-repository repair scope. If source review rejects
+   a candidate, restore the original immutable source using that same bounded
+   writer and leave `patch` empty; do not leave unapproved modified
    files behind or mark the rejected candidate `proposed`.
 8. Submit one completed report through `submit-security-report` using the output
    contract below. In repair mode, list exact modified paths in `patch`; in guide

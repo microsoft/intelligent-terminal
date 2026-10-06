@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   attestChecks, buildScope, classifyPath, createReportTemplate, normalizePath, renderReport, validatePatch,
   validateQueuedOutput, validateReport, validateProposal, stageRepairFiles, validateRepairScope,
-  submitSecurityReport, readSecurityDiff, readSecuritySource, inspectSecurityRepair,
+  submitSecurityReport, readSecurityDiff, readSecuritySource, inspectSecurityRepair, writeSecurityRepair,
 } from './security-review.mjs';
 
 const BASE = '1'.repeat(40);
@@ -567,6 +567,18 @@ test('native CLI and bounded data-only report submission work end to end', () =>
     // Keep report artifacts outside the checkout, as on the hosted runner.
     const artifacts = join(root, 'artifacts');
     mkdirSync(artifacts);
+    const writerScope = buildScope(base, head, 17, 'same-repo',
+      'M\0tools/wta/src/routing.rs\0', base, 'repair');
+    assert.throws(() => writeSecurityRepair(readScope, workspace, 'tools/wta/src/routing.rs', 'x'), /same-repository/);
+    assert.throws(() => writeSecurityRepair(writerScope, workspace, '.github/workflows/review.yml', 'x'), /only existing/);
+    assert.throws(() => writeSecurityRepair(writerScope, workspace, '../outside', 'x'), /normalized/);
+    assert.throws(() => writeSecurityRepair(writerScope, workspace, 'tools/wta/src/routing.rs', '\0'), /without NUL/);
+    const candidateText = 'fn route() { /* bounded repair candidate */ }\n';
+    const repairResult = writeSecurityRepair(writerScope, workspace, 'tools/wta/src/routing.rs', candidateText);
+    assert.match(repairResult.patch, /bounded repair candidate/);
+    assert.equal(readFileSync(source, 'utf8'), candidateText);
+    writeSecurityRepair(writerScope, workspace, 'tools/wta/src/routing.rs',
+      readSecuritySource(writerScope, 'head', 'tools/wta/src/routing.rs', 1, 1, workspace).replace(/^1: /, '') + '\n');
     git('replace', head, base);
     for (const [relation, mode] of [['fork', 'guide'], ['same-repo', 'repair']]) {
       const scopePath = join(artifacts, `${mode}-scope.json`);

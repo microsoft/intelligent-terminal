@@ -192,6 +192,11 @@ key would otherwise auto-add mutable API reads. `bash: []` and
 `cli-proxy: false` select native MCP transport without a model shell. Native
 preparation/post-validation API checks retain their separate read token; it is
 not exposed as an agent GitHub tool.
+Generic editing is disabled in repair mode too. `write-security-repair` accepts
+bounded source text only for existing modified WTA Rust files from protected
+same-repository scope, verifies an immutable regular Git blob and rejects
+symlink escapes. It cannot alter reports, workflows, Git metadata or unrelated
+files. Proposed code still requires independent source approval and native tests.
 The agent must not execute PR-controlled Cargo, formatting, build, or test
 commands. The trusted reconstruction fetch is complete rather than blob-filtered
 so later base-worktree materialization cannot require a removed authenticated

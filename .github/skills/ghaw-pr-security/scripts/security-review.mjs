@@ -427,6 +427,34 @@ export function inspectSecurityRepair(scope, workspace) {
   return { patch, patchSha256: createHash('sha256').update(patch).digest('hex'), headSha: scope.headSha };
 }
 
+export function writeSecurityRepair(scope, workspace, path, content) {
+  if (scope?.repositoryRelation !== 'same-repo') fail('repair writer requires same-repository scope');
+  validateRepairScope(scope);
+  const relative = normalizePath(path);
+  if (!scope.changedFiles.some(file => file.status === 'M' && file.path === relative) ||
+      !/^tools\/wta\/src\/.*\.rs$/.test(relative)) {
+    fail('repair writer accepts only existing modified WTA Rust source in the immutable scope');
+  }
+  if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 512 * 1024 ||
+      content.includes('\0')) fail('repair source must be text of at most 512 KiB without NUL');
+  const root = realpathSync(resolve(workspace));
+  const target = resolve(root, relative);
+  if (!target.startsWith(`${root}${sep}`) || realpathSync(target) !== target ||
+      !lstatSync(target).isFile() || lstatSync(target).isSymbolicLink()) {
+    fail('repair target must be a regular file without symlink ancestors');
+  }
+  const entry = git(['ls-tree', scope.headSha, '--', relative], root).trim();
+  if (!/^100644 blob [0-9a-f]{40}\t/.test(entry)) fail('repair target must be an immutable non-executable Git blob');
+  const platformFlags = process.platform === 'win32' ? constants.O_CREAT : constants.O_NOFOLLOW;
+  const fd = openSync(target, constants.O_WRONLY | constants.O_TRUNC | platformFlags);
+  try {
+    writeFileSync(fd, content);
+  } finally {
+    closeSync(fd);
+  }
+  return inspectSecurityRepair(scope, root);
+}
+
 export function validatePatch(report, actualPaths, patchText = '') {
   const expected = [...new Set(report.patch.map(item => item.path))].sort();
   const actual = [...new Set(actualPaths.map(path => normalizePath(path, 'working tree path')))].sort();

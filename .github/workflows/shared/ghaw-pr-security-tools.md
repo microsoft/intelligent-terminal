@@ -74,4 +74,25 @@ mcp-scripts:
       const validator = await import(pathToFileURL(`${directory}/security-review-check.mjs`).href);
       const scope = JSON.parse(readFileSync(`${directory}/security-report-scope.json`, "utf8"));
       return validator.inspectSecurityRepair(scope, process.env.SECURITY_WORKSPACE);
+
+  write-security-repair:
+    description: 'Replace text only in an existing modified WTA Rust file from authorized same-repository repair scope; guide mode always rejects.'
+    inputs:
+      path:
+        type: string
+        required: true
+      content:
+        type: string
+        required: true
+        description: 'Complete replacement source text, maximum 512 KiB. No commands or new-file paths.'
+    env:
+      SECURITY_NATIVE_DIR: ${{ runner.temp }}/gh-aw
+      SECURITY_WORKSPACE: ${{ github.workspace }}
+    script: |
+      const { readFileSync } = await import("node:fs");
+      const { pathToFileURL } = await import("node:url");
+      const directory = process.env.SECURITY_NATIVE_DIR;
+      const validator = await import(pathToFileURL(`${directory}/security-review-check.mjs`).href);
+      const scope = JSON.parse(readFileSync(`${directory}/security-report-scope.json`, "utf8"));
+      return validator.writeSecurityRepair(scope, process.env.SECURITY_WORKSPACE, path, content);
 ---
