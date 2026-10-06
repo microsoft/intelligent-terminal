@@ -20,7 +20,9 @@
                             review", not "never reviewed")
       - ReviewAtHead       : true iff latest Copilot review's commit.oid == HeadOid
       - NoNewComments      : true iff the latest review body matches
-                             "generated no new comments" / "generated 0 comments"
+                             a legacy zero-comment summary or current
+                             "Findings: None" / "Comments generated: 0 new",
+                             without nonzero previously-missed findings
       - OpenThreadCount    : number of unresolved review threads (from all
                              reviewers); informational — convergence does
                              NOT require this to be zero
@@ -123,6 +125,24 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Test-CopilotReviewHasNoNewFindings {
+    param([AllowEmptyString()][string]$Body)
+
+    $summary = [regex]::Replace($Body, '(?ms)^\s*```[^\r\n]*\r?\n.*?^\s*```\s*$', '')
+    $field = [regex]::Match($summary, '(?im)^\s*\*\*Findings:\*\*\s*(None|\d+)\b')
+    $comments = [regex]::Match($summary, '(?im)^\s*(?:-\s*)?(?:\*\*)?Comments generated:(?:\*\*)?\s*(\d+)\s+new\s*$')
+    $hasZeroFindings = if ($field.Success) {
+        $field.Groups[1].Value -in @('None', '0')
+    } elseif ($comments.Success) {
+        $comments.Groups[1].Value -eq '0'
+    } else {
+        $summary -match '(?i)generated no new comments|generated\s+0\s+comments'
+    }
+    $hasPreviouslyMissed = $Body -match '(?i)Previously missed\s*\([1-9]\d*\)'
+    return $hasZeroFindings -and -not $hasPreviouslyMissed
+}
+
 . "$PSScriptRoot/_lib.ps1"
 
 $coords = Resolve-RepoCoords -Owner $Owner -Repo $Repo
@@ -225,7 +245,7 @@ if ($latest) {
         $reviewAtHead = ($latestCommitOid -eq $pr.headRefOid)
     }
     $bodyText = if ($latest.body) { $latest.body } else { '' }
-    $noNewComments = ($bodyText -match '(?i)generated no new comments|generated\s+0\s+comments|reviewed\s+\d+\s+out\s+of\s+\d+\s+changed\s+files\s+in\s+this\s+pull\s+request\s+and\s+generated\s+no\s+new\s+comments')
+    $noNewComments = Test-CopilotReviewHasNoNewFindings -Body $bodyText
     $bodyHead = if ($bodyText.Length -gt 300) { $bodyText.Substring(0, 300) } else { $bodyText }
 }
 

@@ -158,11 +158,17 @@ def _overlaps(start: int, end: int, changed: set[int] | None) -> bool:
 
 
 def _opening_tags(text: str):
+    text_ranges = [
+        (match.start(), match.end())
+        for match in re.finditer(r"<!--.*?(?:-->|$)|<!\[CDATA\[.*?(?:\]\]>|$)", text, re.DOTALL)
+    ]
     pattern = re.compile(
         r"<(?P<tag>(?:[A-Za-z_][\w.-]*:)?[A-Za-z_][\w.-]*)(?P<attrs>(?:\s[^<>]*?)?)(?P<self>/?)>",
         re.DOTALL,
     )
     for match in pattern.finditer(text):
+        if any(start <= match.start() < end for start, end in text_ranges):
+            continue
         tag = match.group("tag").split(":")[-1]
         start_line = text.count("\n", 0, match.start()) + 1
         end_line = text.count("\n", 0, match.end()) + 1
@@ -192,7 +198,8 @@ def _has_name_source(attrs: str, body: str, *, include_style_hint: bool = True) 
         properties += ("Style",)
     if any(re.search(rf"\b{re.escape(prop)}\s*=\s*(['\"])(?:(?!\1).)+\1", attrs, re.DOTALL) for prop in properties):
         return True
-    plain_text = re.sub(r"<[^>]+>", "", body)
+    visible_body = re.sub(r"<!--.*?(?:-->|$)", "", body, flags=re.DOTALL)
+    plain_text = re.sub(r"<[^>]+>", "", visible_body)
     return bool(plain_text.strip())
 
 

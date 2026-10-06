@@ -20,6 +20,29 @@ SPEC.loader.exec_module(MODULE)
 
 
 class StaticAnalysisTests(unittest.TestCase):
+    def test_comment_text_is_not_a_trusted_control_name(self):
+        source = '<Button AutomationProperties.AccessibilityView="Raw"><FontIcon Glyph="x" /><!-- 2 > 1 --></Button>'
+        with self.assertRaisesRegex(ValueError, "existing accessible name source"):
+            MODULE._remove_raw_view_at_line(source, 1)
+
+    def test_comment_and_cdata_examples_are_not_controls_or_repairs(self):
+        control = '<Button Content="Example" AutomationProperties.AccessibilityView="Raw" />'
+        for source in (f"<!-- {control} -->", f"<![CDATA[{control}]]>", f"<!-- {control}"):
+            with self.subTest(source=source):
+                self.assertEqual([], self.scan(source))
+                with self.assertRaisesRegex(ValueError, "exactly one interactive"):
+                    MODULE._remove_raw_view_at_line(source, 1)
+
+    def test_real_control_after_example_remains_repairable(self):
+        example = '<Button Content="Example" AutomationProperties.AccessibilityView="Raw" />'
+        source = f'<!-- {example} -->\n<Button Content="Actual" AutomationProperties.AccessibilityView="Raw" />'
+        findings = self.scan(source)
+        self.assertEqual(1, len(findings))
+        self.assertEqual(2, findings[0]["line"])
+        repaired = MODULE._remove_raw_view_at_line(source, 2)
+        self.assertTrue(repaired.startswith(f"<!-- {example} -->"))
+        self.assertIn('<Button Content="Actual" />', repaired)
+
     def test_empty_changed_line_set_does_not_scan_untouched_controls(self):
         xaml = '<Button Content="Existing" AutomationProperties.AccessibilityView="Raw" />'
         self.assertEqual([], MODULE._scan_xaml("src/cascadia/TerminalApp/Test.xaml", xaml, set()))
