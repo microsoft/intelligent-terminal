@@ -37,8 +37,10 @@ RUN $ErrorActionPreference = 'Stop'; `
     Invoke-WebRequest -UseBasicParsing -TimeoutSec 180 -Uri 'https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.zip' -OutFile C:\powershell.zip; `
     if ((Get-FileHash C:\powershell.zip -Algorithm SHA256).Hash -ne '02fe458be20493fbdf43f61ea20610b811ee6c738ab1676c61b9cfcd1a33c860') { throw 'PowerShell checksum mismatch.' }; `
     Expand-Archive -LiteralPath C:\powershell.zip -DestinationPath 'C:\Program Files\PowerShell\7'; `
-    & 'C:\Program Files\PowerShell\7\pwsh.exe' -NoProfile -NonInteractive -Command 'if ($PSVersionTable.PSVersion -ne [version]"7.6.6") { exit 1 }'; `
-    if ($LASTEXITCODE -ne 0) { throw 'Public PowerShell installation failed.' }; `
+    $installedVersion = & 'C:\Program Files\PowerShell\7\pwsh.exe' -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()'; `
+    $versionExit = $LASTEXITCODE; `
+    Write-Output ('Public PowerShell version: ' + $installedVersion); `
+    if ($versionExit -ne 0 -or $installedVersion -ne '7.6.6') { throw ('Public PowerShell verification failed: exit=' + $versionExit + ', version=' + $installedVersion) }; `
     Remove-Item C:\powershell.zip
 
 COPY Invoke-WtaContainerTests.ps1 C:\validation\Invoke-WtaContainerTests.ps1
@@ -46,7 +48,7 @@ RUN $ErrorActionPreference = 'Stop'; `
     New-Item -ItemType Directory -Path C:\validation-output | Out-Null; `
     & icacls.exe C:\validation-output /grant '*S-1-5-32-545:(OI)(CI)M'; `
     if ($LASTEXITCODE -ne 0) { throw 'Could not grant guest output access.' }; `
-    & icacls.exe C:\cargo-cache /grant '*S-1-5-32-545:(OI)(CI)M'; `
+    & icacls.exe C:\cargo-cache /grant '*S-1-5-32-545:(RX,W)'; `
     if ($LASTEXITCODE -ne 0) { throw 'Could not grant Cargo cache-root access.' }; `
     & icacls.exe C:\rustup /grant '*S-1-5-32-545:(OI)(CI)RX' /T; `
     if ($LASTEXITCODE -ne 0) { throw 'Could not grant toolchain read access.' }
