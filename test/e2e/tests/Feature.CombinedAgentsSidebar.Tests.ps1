@@ -250,12 +250,12 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 ForEach-Object { $_.Current.Name }) -join ' '
         }
         function Get-CombinedRawChildren {
-            param($Element)
-            $walker = [Windows.Automation.TreeWalker]::RawViewWalker
+            param($Element, [switch]$ContentView)
+            $walker = if ($ContentView) { [Windows.Automation.TreeWalker]::ContentViewWalker } else { [Windows.Automation.TreeWalker]::RawViewWalker }
             $child = $walker.GetFirstChild($Element)
             while ($child) {
                 $child
-                Get-CombinedRawChildren $child
+                Get-CombinedRawChildren $child -ContentView:$ContentView
                 $child = $walker.GetNextSibling($child)
             }
         }
@@ -336,6 +336,14 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $providers = @($textLeaves | Where-Object { $_.Current.Name -eq $Provider })
             $providers.Count | Should -Be 1 -Because 'metadata must expose one visible provider display name'
             $providerPart = $providers[0]
+            $contentParts = @(Get-CombinedRawChildren $row -ContentView)
+            @($contentParts | Where-Object { $_.Current.AutomationId -eq 'HistoryProviderIcon' }).Count |
+                Should -Be 0 -Because 'the decorative provider icon must not duplicate the provider text in Content view'
+            $providerLeaves = @($contentParts | Where-Object {
+                $_.Current.Name -eq $Provider -and
+                    -not @(Get-CombinedRawChildren $_ -ContentView | Where-Object { $_.Current.Name -eq $Provider }).Count
+            })
+            $providerLeaves.Count | Should -Be 1 -Because 'Content view descendants expose the provider once, excluding the row aggregate name'
             @($textLeaves | Where-Object { $_.Current.Name }).Count | Should -Be $(if ($Status) { 4 } else { 3 }) -Because 'the row contains only title, time, meaningful status when present, and provider name'
             $titleBounds = $titlePart.Current.BoundingRectangle
             $timeBounds = $time.Current.BoundingRectangle

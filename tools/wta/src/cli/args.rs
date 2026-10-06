@@ -108,6 +108,10 @@ pub(crate) struct Cli {
     #[arg(long)]
     pub(crate) delegate_agent: Option<String>,
 
+    /// Canonical delegate provider identity, separate from its launch command.
+    #[arg(long)]
+    pub(crate) delegate_agent_id: Option<String>,
+
     /// Model override for the delegate agent
     #[arg(long)]
     pub(crate) delegate_model: Option<String>,

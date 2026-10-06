@@ -570,6 +570,7 @@ namespace winrt::TerminalApp::implementation
         struct AgentRuntimeConfigSnapshot
         {
             std::wstring delegateAgent;
+            std::wstring delegateAgentId;
             std::wstring delegateModel;
             std::wstring customModelSelection;
             std::vector<::Microsoft::Terminal::CustomModels::CatalogEntry> customModels;

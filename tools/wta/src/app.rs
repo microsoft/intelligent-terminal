@@ -2896,18 +2896,30 @@ impl App {
     /// `delegate_agent` / `delegate_model` are the new effective values
     /// (empty string = unset → fall back to deriving from the base agent
     /// cmd). No-op when no executor is wired (tests / manual runs).
-    fn apply_delegate_config(&self, delegate_agent: &str, delegate_model: &str) {
+    fn apply_delegate_config(
+        &self,
+        delegate_agent: &str,
+        delegate_model: &str,
+        delegate_agent_id: Option<&str>,
+    ) {
         let Some(shared) = &self.delegate_agents else {
             return;
         };
         // Treat whitespace-only values as unset so the fallback-to-derived
         // path kicks in (matches the acp_model handling in handle_event).
-        let runtimes = crate::coordinator::default_delegate_agent_runtimes(
+        let runtime = crate::coordinator::resolve_delegate_runtime_with_provider(
             Some(delegate_agent).filter(|s| !s.trim().is_empty()),
             Some(self.delegate_base_agent_cmd.as_str()),
             Some(delegate_model).filter(|s| !s.trim().is_empty()),
+            delegate_agent_id.filter(|id| !id.is_empty()),
         );
-        *shared.lock().unwrap() = runtimes;
+        *shared.lock().unwrap() = match runtime {
+            Ok(runtime) => vec![runtime],
+            Err(error) => {
+                tracing::error!(target: "coordinator", %error, "invalid delegate configuration");
+                Vec::new()
+            }
+        };
         tracing::info!(
             target: "autofix",
             delegate_agent,

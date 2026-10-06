@@ -3040,7 +3040,7 @@ impl App {
                         params.get("yolo_policy_blocked").and_then(|v| v.as_bool()),
                     );
 
-                    // delegate_agent + delegate_model travel together so the
+                    // Delegate identity, command and model travel together so the
                     // delegate runtime table can be rebuilt in one shot.
                     if params.get("delegate_agent").is_some()
                         || params.get("delegate_model").is_some()
@@ -3053,7 +3053,11 @@ impl App {
                             .get("delegate_model")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
-                        self.apply_delegate_config(delegate_agent, delegate_model);
+                        self.apply_delegate_config(
+                            delegate_agent,
+                            delegate_model,
+                            params.get("delegate_agent_id").and_then(|v| v.as_str()),
+                        );
                     }
 
                     // The host resolves agent and model inheritance separately.

@@ -774,7 +774,7 @@
                                                 HorizontalContentAlignment="Stretch"
                                                 VerticalContentAlignment="Stretch"
                                                 AutomationProperties.Name="{x:Bind ProviderDisplayName}"
-                                                AutomationProperties.AccessibilityView="Content"
+                                                AutomationProperties.AccessibilityView="Raw"
                                                 Content="{Binding Foreground, ElementName=HistoryTitleText}"
                                                 ContentTemplate="{x:Bind IconTemplate}"
                                                 ToolTipService.ToolTip="{x:Bind ProviderDisplayName}"
