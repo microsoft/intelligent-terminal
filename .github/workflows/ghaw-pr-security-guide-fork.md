@@ -175,7 +175,10 @@ pre-agent-steps:
       } | sha256sum > "$RUNNER_TEMP/security-guide-workspace.sha256"
   - name: Enforce credential-free agent checkout
     shell: bash
-    run: bash "${RUNNER_TEMP}/gh-aw/actions/clean_git_credentials.sh"
+    run: |
+      set -euo pipefail
+      bash "${RUNNER_TEMP}/gh-aw/actions/clean_git_credentials.sh"
+      node "$RUNNER_TEMP/gh-aw/security-review-check.mjs" verify-credentials --workspace "$GITHUB_WORKSPACE"
 
 post-steps:
   - name: Reject stale or malformed fork guidance

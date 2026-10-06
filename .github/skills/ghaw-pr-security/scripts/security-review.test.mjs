@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   attestChecks, buildScope, classifyPath, createReportTemplate, normalizePath, renderReport, validatePatch,
   validateQueuedOutput, validateReport, validateProposal, stageRepairFiles, validateRepairScope,
-  submitSecurityReport, readSecurityDiff, readSecuritySource, inspectSecurityRepair, writeSecurityRepair,
+  submitSecurityReport, readSecurityDiff, readSecuritySource, inspectSecurityRepair, writeSecurityRepair, verifyCredentialFree,
 } from './security-review.mjs';
 
 const BASE = '1'.repeat(40);
@@ -74,7 +74,7 @@ function report(overrides = {}, relation = 'same-repo') {
 }
 
 test('classifies project trust boundaries', () => {
-  assert.deepEqual(classifyPath('tools/wta/src/master/mod.rs'), ['session-routing', 'wta', 'wta-rust']);
+  assert.deepEqual(classifyPath('tools/wta/src/master/mod.rs'), ['build-tooling', 'session-routing', 'wta', 'wta-rust']);
   assert(classifyPath('src/cascadia/TerminalProtocol/TerminalProtocol.idl').includes('com-protocol'));
   assert(classifyPath('src/cascadia/TerminalSettingsEditor/Settings.xaml').includes('product-source'));
   assert(classifyPath('src/cascadia/TerminalApp/TerminalApp.vcxproj').includes('product-source'));
@@ -84,6 +84,34 @@ test('classifies project trust boundaries', () => {
   assert(classifyPath('.github/skills/reviewer/SKILL.md').includes('workflow-credentials'));
   assert(classifyPath('.github/policies/resourceManagement.yml').includes('workflow-credentials'));
   assert(classifyPath('.github/instructions/security.instructions.md').includes('workflow-credentials'));
+  assert(classifyPath('tools/razzle.cmd').includes('build-tooling'));
+});
+
+test('credential postcondition rejects retained helpers and headers rather than trusting cleanup exit', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ghaw-credential-postcondition-'));
+  const previousGlobal = process.env.GIT_CONFIG_GLOBAL;
+  const previousSystem = process.env.GIT_CONFIG_NOSYSTEM;
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', timeout: 30_000 });
+  try {
+    process.env.GIT_CONFIG_GLOBAL = join(root, 'isolated.gitconfig');
+    process.env.GIT_CONFIG_NOSYSTEM = '1';
+    writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
+    git('init', '--quiet');
+    assert.equal(verifyCredentialFree(root), true);
+    git('config', 'credential.helper', 'retained-test-helper');
+    assert.throws(() => verifyCredentialFree(root), /remains after cleanup/);
+    git('config', '--unset-all', 'credential.helper');
+    git('config', 'http.https://github.com/.extraheader', 'synthetic-test-header');
+    assert.throws(() => verifyCredentialFree(root), /remains after cleanup/);
+    git('config', '--unset-all', 'http.https://github.com/.extraheader');
+    assert.equal(verifyCredentialFree(root), true);
+  } finally {
+    if (previousGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+    else process.env.GIT_CONFIG_GLOBAL = previousGlobal;
+    if (previousSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
+    else process.env.GIT_CONFIG_NOSYSTEM = previousSystem;
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('sensitive source paths remain applicable after rename or copy outside their domain', () => {

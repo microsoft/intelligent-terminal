@@ -207,12 +207,26 @@ jobs:
         timeout-minutes: 8
         run: |
           $ErrorActionPreference = 'Stop'
-          rustup toolchain install 1.93.0 --profile minimal --target x86_64-pc-windows-msvc
-          if ($LASTEXITCODE -ne 0) { throw 'Public Rust installation failed.' }
-          $version = rustc --version --verbose
-          if ($LASTEXITCODE -ne 0 -or $version -notcontains 'release: 1.93.0' -or $version -notcontains 'host: x86_64-pc-windows-msvc') { throw 'Unexpected host Rust.' }
           $env:CARGO_HOME = Join-Path $env:RUNNER_TEMP 'ghaw-windows-cargo'
-          New-Item -ItemType Directory -Path $env:CARGO_HOME | Out-Null
+          $env:RUSTUP_HOME = Join-Path $env:RUNNER_TEMP 'ghaw-windows-rustup'
+          $installer = Join-Path $env:RUNNER_TEMP 'ghaw-public-rustup-init.exe'
+          Invoke-WebRequest -Uri 'https://static.rust-lang.org/rustup/archive/1.29.1/x86_64-pc-windows-msvc/rustup-init.exe' -OutFile $installer -TimeoutSec 60
+          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne '6f4bef66261261fcb43131be8720bab817d403a09edec7455c371974b90bdb7e') {
+              throw 'Public host Rust installer checksum mismatch.'
+          }
+          $process = Start-Process -FilePath $installer -ArgumentList '-y --no-modify-path --profile minimal --default-host x86_64-pc-windows-msvc --default-toolchain 1.93.0' -PassThru
+          try {
+              if (-not $process.WaitForExit(240000)) {
+                  $closed = $process.CloseMainWindow()
+                  if (-not $process.WaitForExit(1000)) { & taskkill.exe /PID $process.Id /T /F }
+                  throw "Public host Rust setup timed out: PID=$($process.Id), gracefulClose=$closed."
+              }
+              if ($process.ExitCode -ne 0) { throw "Public host Rust setup failed: $($process.ExitCode)." }
+          } finally {
+              Remove-Item -LiteralPath $installer
+          }
+          $version = & (Join-Path $env:CARGO_HOME 'bin\rustc.exe') --version --verbose
+          if ($LASTEXITCODE -ne 0 -or $version -notcontains 'release: 1.93.0' -or $version -notcontains 'host: x86_64-pc-windows-msvc') { throw 'Unexpected host Rust.' }
           git -C (Join-Path $env:GITHUB_WORKSPACE 'reconstruction') worktree add --quiet --detach (Join-Path $env:GITHUB_WORKSPACE 'dependency-base') $env:BASE_SHA
           if ($LASTEXITCODE -ne 0) { throw 'Cannot create separate immutable trusted dependency checkout.' }
           Set-Location (Join-Path $env:GITHUB_WORKSPACE 'dependency-base')
@@ -220,7 +234,7 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $sha -cne $env:BASE_SHA) { throw 'Dependency checkout is not trusted observed base.' }
           $sources = @(Select-String -Path tools\wta\Cargo.lock -Pattern '^source = ' | ForEach-Object Line | Sort-Object -Unique)
           if ($sources.Count -ne 1 -or $sources[0] -ne 'source = "registry+https://github.com/rust-lang/crates.io-index"') { throw 'Dependencies are not exclusively public crates.io.' }
-          cargo fetch --locked --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
+          & (Join-Path $env:CARGO_HOME 'bin\cargo.exe') fetch --locked --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
           if ($LASTEXITCODE -ne 0) { throw 'Trusted base dependency fetch failed.' }
           New-Item -ItemType Directory -Path (Join-Path $env:CARGO_HOME 'git') -Force | Out-Null
           $version | Set-Content (Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof\host-rust.txt')

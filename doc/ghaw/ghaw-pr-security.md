@@ -36,7 +36,8 @@ API read must still return the same head.
 Rename/copy classification includes both source and destination paths, so moving
 a sensitive file into an unrelated directory does not suppress review. All
 `.github/**` automation, including policies and instructions, is included in
-both triggering and classification. Report validation rejects common bearer
+both triggering and classification. The `tools/**` surface also covers build
+entrypoints such as `tools/razzle.cmd`, not only WTA. Report validation rejects common bearer
 and labeled session-capability forms without claiming universal secret detection.
 Each worker rematerializes the validator from `github.workflow_sha`, not from
 agent-edited bytes.
@@ -201,6 +202,9 @@ The agent must not execute PR-controlled Cargo, formatting, build, or test
 commands. The trusted reconstruction fetch is complete rather than blob-filtered
 so later base-worktree materialization cannot require a removed authenticated
 remote.
+The custom pre-agent cleanup is fail-closed and checks the resulting Git
+configuration for retained helpers, authentication headers and authenticated
+remote URLs. It does not rely only on the compiler's later best-effort cleanup.
 
 Compilation and contract tests alone do not establish hosted readiness. The obsolete
 Rust 1.90 Linux test container has been removed; WTA's Windows APIs require the
@@ -221,8 +225,12 @@ version compatibility but not Microsoft production-toolchain provenance.
 The official Rust image inventory does not provide a Windows MSVC image. The
 trusted `build/containers/wta-validation` definition builds one from the pinned
 Server Core base, checksum/signature-verified public VS2026 bootstrapper, and
-checksum-pinned rustup installer. The executor uses its immutable local image
-ID, not a mutable tag. Do not substitute the Linux image, guess a Windows Rust tag, copy arbitrary
+checksum-pinned rustup installer.
+Host dependency preparation likewise uses the checksum-pinned public rustup
+1.29.1 installer, isolated Cargo/Rustup directories, and explicit installed
+executables rather than the mutable preinstalled runner toolchain.
+The executor uses its immutable local image ID, not a mutable tag. Do not
+substitute the Linux image, guess a Windows Rust tag, copy arbitrary
 host toolchain directories, or enable nested Hyper-V as a workaround.
 The full image proof below now establishes actual public tool installation and
 offline Windows-target execution. Source approval, final-patch digest binding,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, closeSync, constants, copyFileSync, lstatSync, openSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import process from 'node:process';
@@ -67,6 +67,7 @@ export function classifyPath(path) {
   if (/^tools\/wta\//.test(path)) {
     domains.add('wta');
   }
+  if (/^tools\//.test(path)) domains.add('build-tooling');
   if (/^src\/.*\.(?:cpp|c|h|hpp|idl)$/.test(path)) {
     domains.add('cpp-memory');
   }
@@ -455,6 +456,23 @@ export function writeSecurityRepair(scope, workspace, path, content) {
   return inspectSecurityRepair(scope, root);
 }
 
+export function verifyCredentialFree(workspace) {
+  const query = pattern => {
+    const result = spawnSync('git', [
+      '-c', 'core.fsmonitor=false', 'config', '--get-regexp', pattern,
+    ], { cwd: workspace, encoding: 'utf8', timeout: 30_000 });
+    if (result.error || ![0, 1].includes(result.status)) fail('could not verify Git credential postcondition');
+    return result.status === 0 ? result.stdout : '';
+  };
+  if (query('^(credential(\\..*)?\\.helper|http(\\..*)?\\.extraheader)$')) {
+    fail('Git credential helper or authentication header remains after cleanup');
+  }
+  if (/https?:\/\/[^/\s]*@/i.test(query('^remote\\..*\\.url$'))) {
+    fail('authenticated Git remote remains after cleanup');
+  }
+  return true;
+}
+
 export function validatePatch(report, actualPaths, patchText = '') {
   const expected = [...new Set(report.patch.map(item => item.path))].sort();
   const actual = [...new Set(actualPaths.map(path => normalizePath(path, 'working tree path')))].sort();
@@ -686,6 +704,11 @@ function main() {
     if (scope.mode === 'repair') validateProposal(report, scope);
     else validateReport(report, scope);
     console.log('Report contract is valid; this is not a publication or test attestation.');
+    return;
+  }
+  if (command === 'verify-credentials') {
+    verifyCredentialFree(option('--workspace'));
+    console.log('Git credential postcondition verified.');
     return;
   }
   if (command === 'attest') {
