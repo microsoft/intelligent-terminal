@@ -24,6 +24,11 @@ initial checkout come from the trusted base branch. It fetches the pull request
 head as a Git object and runs the base revision's
 `.github/skills/pr-accessibility/scripts/accessibility_review.py` against those
 head blobs. Only after deterministic preparation does it switch the worktree to
+Source scope uses the immutable merge base of trusted base and PR head, as in
+the localization workflow. This prevents newer base-only policy or UI additions
+from being misclassified as feature deletions. Prepared evidence preserves
+`trusted_base_sha` separately from `comparison_base_sha`; trust and publication
+identity still use the caller's immutable revisions. Only after deterministic preparation does it switch the worktree to
 the verified immutable head for model inspection. It never imports or executes
 pull-request code.
 The checkout uses the actual PR head branch name after validating its ref

@@ -109,6 +109,44 @@ class StaticAnalysisTests(unittest.TestCase):
 
 
 class PrepareIntegrationTests(unittest.TestCase):
+    def test_base_only_policy_and_ui_updates_are_not_pr_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=root, check=True)
+            path = root / "src/cascadia/TerminalApp/Test.xaml"
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b'<Button Content="Open" />\n')
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "Common ancestor"], cwd=root, check=True)
+            ancestor = MODULE._git(root, "rev-parse", "HEAD").strip()
+            subprocess.run(["git", "checkout", "-qb", "base-update"], cwd=root, check=True)
+            skill = root / ".github/skills/pr-accessibility/SKILL.md"
+            skill.parent.mkdir(parents=True)
+            skill.write_text("Trusted base policy\n", encoding="utf-8")
+            (path.parent / "BaseOnly.xaml").write_bytes(b'<Button Content="Base only" />\n')
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "Base policy and UI advance"], cwd=root, check=True)
+            trusted_base = MODULE._git(root, "rev-parse", "HEAD").strip()
+            subprocess.run(["git", "checkout", "-qb", "feature", ancestor], cwd=root, check=True)
+            path.write_bytes(b'<Button Content="Open" AutomationProperties.AccessibilityView="Raw" />\n')
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "Feature changes one control"], cwd=root, check=True)
+            head = MODULE._git(root, "rev-parse", "HEAD").strip()
+            with self.assertRaisesRegex(ValueError, "operating instructions"):
+                MODULE._verify_instruction_boundary(root, trusted_base, head)
+            output = root / "prepared.json"
+            MODULE.prepare(root, trusted_base, head, output, None)
+            prepared = json.loads(output.read_text())
+            self.assertEqual(trusted_base, prepared["trusted_base_sha"])
+            self.assertEqual(ancestor, prepared["comparison_base_sha"])
+            self.assertEqual(["src/cascadia/TerminalApp/Test.xaml"], prepared["changed_files"])
+            self.assertEqual(1, len(prepared["static_findings"]))
+            self.assertEqual("AXSTATIC001", prepared["static_findings"][0]["rule"])
+            self.assertEqual(ancestor, prepared["source_evidence"]["src/cascadia/TerminalApp/Test.xaml"]["base"]["source_sha"])
+
     def test_deletion_only_hunk_does_not_authorize_untouched_raw_control(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

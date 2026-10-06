@@ -314,8 +314,11 @@ def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path 
     else:
         if not re.fullmatch(r"[0-9a-fA-F]{40}", base):
             raise ValueError("base SHA must be an exact 40-character hexadecimal value")
-        _verify_instruction_boundary(root, base, head)
-        paths = _changed_paths(root, base, head)
+        comparison_base = _git(root, "merge-base", base, head).strip()
+        _verify_instruction_boundary(root, comparison_base, head)
+        paths = _changed_paths(root, comparison_base, head)
+    if changed_files:
+        comparison_base = base
 
     findings: list[dict[str, Any]] = []
     surfaces: dict[str, list[str]] = {}
@@ -328,7 +331,7 @@ def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path 
             text = candidate.read_text(encoding="utf-8-sig", errors="replace")
             changed = None
         else:
-            base_blob = _source_blob(root, base, path)
+            base_blob = _source_blob(root, comparison_base, path)
             head_blob = _source_blob(root, head, path)
             if base_blob is None and head_blob is None:
                 raise ValueError(f"classified changed source is absent from both revisions: {path}")
@@ -336,7 +339,7 @@ def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path 
                 "change": "deleted" if head_blob is None else "added" if base_blob is None else "modified",
                 "base": base_blob,
                 "head": head_blob,
-                "diff": _git(root, "diff", "--no-renames", "--no-ext-diff", "--no-color", base, head, "--", path),
+                "diff": _git(root, "diff", "--no-renames", "--no-ext-diff", "--no-color", comparison_base, head, "--", path),
             }
             if head_blob is None:
                 # Deleted controls are evidence, never head repair candidates.
@@ -345,7 +348,7 @@ def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path 
                     surfaces[path] = detected
                 continue
             text = head_blob["text"]
-            changed = _added_lines(root, base, head, path)
+            changed = _added_lines(root, comparison_base, head, path)
         if Path(path).suffix.lower() == ".xaml":
             findings.extend(_scan_xaml(path, text, changed))
         detected = _review_surfaces(path, text, changed)
@@ -355,7 +358,8 @@ def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path 
     report = {
         "version": 1,
         "source_sha": head.lower(),
-        "comparison_base_sha": base.lower(),
+        "comparison_base_sha": comparison_base.lower(),
+        "trusted_base_sha": base.lower(),
         "relevant": bool(paths),
         "changed_files": paths,
         "source_evidence": source_evidence,
