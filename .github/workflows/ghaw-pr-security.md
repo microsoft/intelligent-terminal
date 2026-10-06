@@ -59,6 +59,9 @@ checkout:
   fetch-depth: 0
 
 tools:
+  github: false
+  bash: []
+  cli-proxy: false
   edit:
 
 jobs:

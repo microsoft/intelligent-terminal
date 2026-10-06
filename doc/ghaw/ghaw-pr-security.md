@@ -187,6 +187,11 @@ and writes one preselected regular file. Immutable Git inspection also uses
 fixed native read tools, with external diff/textconv, pagers, Git replacement
 refs, and filesystem-monitor hooks disabled. No model shell execution is
 granted. The inline reviewer has read/search context only.
+The default GitHub MCP server is explicitly disabled; an omitted `tools.github`
+key would otherwise auto-add mutable API reads. `bash: []` and
+`cli-proxy: false` select native MCP transport without a model shell. Native
+preparation/post-validation API checks retain their separate read token; it is
+not exposed as an agent GitHub tool.
 The agent must not execute PR-controlled Cargo, formatting, build, or test
 commands. The trusted reconstruction fetch is complete rather than blob-filtered
 so later base-worktree materialization cannot require a removed authenticated
