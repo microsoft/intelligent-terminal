@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, constants, copyFileSync, lstatSync, openSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -96,11 +96,13 @@ export function classifyPath(path) {
   return [...domains].sort();
 }
 
-function git(args) {
-  return execFileSync('git', args, {
+function git(args, cwd) {
+  return execFileSync('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '--no-pager', ...args], {
     encoding: 'utf8',
     maxBuffer: 16 * 1024 * 1024,
     timeout: 30_000,
+    ...(cwd ? { cwd } : {}),
+    env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1', GIT_PAGER: 'cat' },
   });
 }
 
@@ -374,6 +376,52 @@ export function validateProposal(report, scope) {
   return validated;
 }
 
+export function submitSecurityReport(json, scope, outputPath) {
+  if (typeof json !== 'string' || Buffer.byteLength(json, 'utf8') > 256 * 1024) {
+    fail('report input must be JSON text of at most 256 KiB');
+  }
+  const input = JSON.parse(json);
+  const report = scope.mode === 'repair' ? validateProposal(input, scope) : validateReport(input, scope);
+  const path = resolve(outputPath);
+  const stat = lstatSync(path);
+  if (!stat.isFile() || stat.isSymbolicLink() || realpathSync(path) !== path) {
+    fail('native report destination must remain a regular file without symlink ancestors');
+  }
+  const platformFlags = process.platform === 'win32' ? constants.O_CREAT : constants.O_NOFOLLOW;
+  const fd = openSync(path, constants.O_WRONLY | constants.O_TRUNC | platformFlags);
+  try {
+    writeFileSync(fd, `${JSON.stringify(report, null, 2)}\n`);
+  } finally {
+    closeSync(fd);
+  }
+  return { accepted: true, mode: report.mode, findings: report.findings.length, patchEntries: report.patch.length };
+}
+
+export function readSecurityDiff(scope, paths = [], workspace) {
+  if (!SHA.test(scope?.baseSha ?? '') || !SHA.test(scope?.headSha ?? '') ||
+      !Array.isArray(paths) || paths.length > 20) fail('immutable diff inputs are invalid');
+  const selected = paths.map(path => normalizePath(path));
+  return git(['--no-pager', 'diff', '--no-ext-diff', '--no-textconv', '--unified=20',
+    scope.baseSha, scope.headSha, '--', ...selected], workspace);
+}
+
+export function readSecuritySource(scope, revision, path, startLine = 1, endLine = 400, workspace) {
+  const sha = revision === 'base' ? scope?.baseSha : revision === 'head' ? scope?.headSha : '';
+  if (!SHA.test(sha ?? '') || !Number.isInteger(startLine) || startLine < 1 ||
+      !Number.isInteger(endLine) || endLine < startLine || endLine - startLine >= 800) {
+    fail('source read needs immutable base/head and a range of at most 800 lines');
+  }
+  const content = git(['cat-file', 'blob', `${sha}:${normalizePath(path)}`], workspace);
+  return content.split('\n').slice(startLine - 1, endLine)
+    .map((line, index) => `${startLine + index}: ${line}`).join('\n');
+}
+
+export function inspectSecurityRepair(scope, workspace) {
+  if (scope?.mode !== 'repair' || !SHA.test(scope.headSha ?? '')) fail('repair inspection is not available in guide mode');
+  const patch = git(['--no-pager', 'diff', '--no-ext-diff', '--no-textconv', '--binary', scope.headSha, '--'], workspace);
+  return { patch, patchSha256: createHash('sha256').update(patch).digest('hex'), headSha: scope.headSha };
+}
+
 export function validatePatch(report, actualPaths, patchText = '') {
   const expected = [...new Set(report.patch.map(item => item.path))].sort();
   const actual = [...new Set(actualPaths.map(path => normalizePath(path, 'working tree path')))].sort();
@@ -543,7 +591,7 @@ export function renderReport(report) {
         '',
         `#### ${finding.id} — ${finding.severity.toUpperCase()} / ${finding.confidence} confidence`,
         '',
-        `\`${finding.file}:${finding.startLine}-${finding.endLine}\` · \`${finding.category}\` · \`${finding.rule}\``,
+        `${escapeMarkdown(finding.file)}:${finding.startLine}-${finding.endLine} · \`${finding.category}\` · \`${finding.rule}\``,
         '',
         `**Observed:** ${escapeMarkdown(finding.observed)}`,
         '',

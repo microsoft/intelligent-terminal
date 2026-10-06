@@ -21,6 +21,7 @@ permissions:
 engine: copilot
 imports:
   - .github/agents/ghaw-pr-security.agent.md
+  - shared/ghaw-pr-security-tools.md
 
 skills:
   - .github/skills/ghaw-pr-security
@@ -32,12 +33,6 @@ checkout:
 
 tools:
   edit: false
-  bash:
-    - 'git diff:*'
-    - 'git grep:*'
-    - 'git rev-parse:*'
-    - 'git show:*'
-    - 'pwsh:*'
 
 jobs:
   prepare:
@@ -118,6 +113,7 @@ steps:
         --pr 1075 --relation fork --mode guide \
         --output /tmp/gh-aw/security-scope.json
       [ "$(node -p "JSON.parse(require('fs').readFileSync('/tmp/gh-aw/security-scope.json','utf8')).baseSha")" = c40ab2727a3c5c498d320ffe90b761f2982c561f ]
+      cp /tmp/gh-aw/security-scope.json "$RUNNER_TEMP/gh-aw/security-report-scope.json"
       node "$trusted_dir/security-review.mjs" init-report \
         --scope /tmp/gh-aw/security-scope.json \
         --output /tmp/gh-aw/agent/security-findings.json
@@ -225,20 +221,27 @@ Read `/tmp/gh-aw/security-scope.json`, then follow the trusted
 `.github/skills/ghaw-pr-security/SKILL.md` and shared agent in `guide` mode.
 Use exactly `scope.baseSha` and `scope.headSha` for the historical comparison,
 not the authoring/test branch, current main, or workflow SHA. Read every patch
-hunk in bounded path groups with read-only Git commands; summaries alone do
-not constitute review. Inspect source bytes, never execute PR-controlled code.
+hunk in bounded path groups with `read-security-diff`; summaries alone do not
+constitute review. Trace immutable base/head source bytes with
+`read-security-source`, never execute PR-controlled code.
 
-Remain on the trusted authoring checkout. Complete only the native prepared
-`/tmp/gh-aw/agent/security-findings.json` with permitted PowerShell operations,
-preserving every identity field and an empty `patch`. Do not recreate the
-report envelope, write runtime agent output, add report wrappers, run another
-agent or CLI session, probe denied tools, or expose secret-bearing source data.
-The shared skill supplies all review reasoning and the report contract.
-Use the permitted inline `pwsh` file operations immediately, not bash heredocs,
-redirection, temporary payload files, or the edit tool. Run the trusted
-`check-report` operation from the skill before `noop`; a JSON parse alone is not
-a contract check. Keep the summary under 800 characters, use only accepted
+Remain on the trusted authoring checkout. Preserve every native report identity
+field and an empty `patch`, then submit complete JSON as the `report_json` string
+to `submit-security-report`. This fixed data-only capability checks the contract
+against protected native scope before writing
+`/tmp/gh-aw/agent/security-findings.json`; the advisory scope/template does not
+authorize tool-server operations. Do not recreate the report envelope, write
+runtime agent output, add report wrappers, run another agent or CLI session,
+probe denied tools, or expose secret-bearing source data. The shared skill
+supplies all review reasoning and the report contract. Never write reports via
+filesystem tools, PowerShell, shell redirects, temporary payload files, or a
+validator CLI. Correct rejected JSON and resubmit until the tool accepts it
+before `noop`. Keep the summary under 800 characters, use only accepted
 categories, and mark medium/low findings `advice-only`.
+
+The earlier hosted PowerShell transport pass does not prove these fixed MCP
+capabilities work in the hosted runtime. This workflow requires a fresh hosted
+capability proof before transport readiness can be claimed.
 
 Call `noop` exactly once, including when HIGH findings remain blocked. Do not
 emit comments, commits, issues, check runs, or any other output. The trusted
