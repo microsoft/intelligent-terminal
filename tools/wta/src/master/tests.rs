@@ -10238,6 +10238,46 @@ async fn sessions_list_handler_returns_registry_snapshot_payload() {
 }
 
 #[tokio::test]
+async fn source_pane_session_handler_returns_live_registry_identity() {
+    use crate::session_registry::{self, SessionInfo};
+    use std::path::PathBuf;
+
+    let state = make_state();
+    let mut row = SessionInfo::new(SessionId::new("agent-session"), PathBuf::from("C:\\repo"));
+    row.status = Some(crate::agent_sessions::AgentStatus::Idle);
+    row.pane_session_id = Some("{ABCDEFAB-1234-5678-9ABC-DEFABCDEFABC}".into());
+    state.registry.upsert(row.clone()).await;
+
+    let resp = handle_source_pane_session_by_pane(
+        &state,
+        &session_registry::SourcePaneSessionByPaneParams {
+            pane_session_id: "abcdefab-1234-5678-9abc-defabcdefabc".into(),
+        },
+    )
+    .await
+    .expect("source pane lookup succeeds");
+    let parsed =
+        session_registry::parse_source_pane_session_by_pane_response(&resp.0).expect("parses");
+    assert_eq!(parsed.session_id, Some(row.session_id));
+}
+
+#[tokio::test]
+async fn source_pane_session_handler_omits_missing_identity() {
+    let state = make_state();
+    let resp = handle_source_pane_session_by_pane(
+        &state,
+        &crate::session_registry::SourcePaneSessionByPaneParams {
+            pane_session_id: "missing-pane".into(),
+        },
+    )
+    .await
+    .expect("source pane lookup succeeds");
+    let parsed = crate::session_registry::parse_source_pane_session_by_pane_response(&resp.0)
+        .expect("parses");
+    assert_eq!(parsed.session_id, None);
+}
+
+#[tokio::test]
 async fn sidebar_activation_uses_exact_collision_row_and_replays_receipt() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{

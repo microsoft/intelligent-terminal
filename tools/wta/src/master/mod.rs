@@ -4522,6 +4522,9 @@ impl HelperHandler {
             }
             Req::SessionFocus(p) => handle_session_focus(&self.state, &p).await,
             Req::CloseTabSession(p) => handle_close_tab_session(&self.state, &p, false).await,
+            Req::SourcePaneSessionByPane(p) => {
+                handle_source_pane_session_by_pane(&self.state, &p).await
+            }
             Req::ForwardToAgent(raw) => {
                 self.resolved_agent("ext_method")?
                     .conn
@@ -7686,6 +7689,20 @@ mod history_background_tests {
         }
     }
 }
+
+async fn handle_source_pane_session_by_pane(
+    state: &std::sync::Arc<MasterStateInner>,
+    parsed: &crate::session_registry::SourcePaneSessionByPaneParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let session_id = state
+        .registry
+        .lookup_active_by_pane(&parsed.pane_session_id)
+        .await
+        .map(|info| info.session_id);
+    let raw = crate::session_registry::build_source_pane_session_by_pane_response(session_id);
+    Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+}
+
 struct SessionActivationReceipt {
     params: crate::session_registry::SessionActivateParams,
     response: crate::session_registry::SessionActivateResponse,
