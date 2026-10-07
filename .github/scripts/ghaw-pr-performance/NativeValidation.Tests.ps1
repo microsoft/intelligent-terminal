@@ -6,7 +6,9 @@ Set-StrictMode -Version Latest
 if (-not $IsWindows) { throw 'These native fixture tests require Windows.' }
 $validator = Join-Path $PSScriptRoot 'validate-native.ps1'
 $runtime = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\skills\pr-performance-review\scripts\performance-review.mjs'))
-$fixture = Join-Path (Get-Location).Path ('.native-validation-fixture-' + [guid]::NewGuid().ToString('N'))
+$workspace = Join-Path (Get-Location).Path ('.native-validation-fixture-' + [guid]::NewGuid().ToString('N'))
+$fixture = Join-Path $workspace 'candidate'
+$targetParent = Join-Path $workspace 'targets'
 $utf8 = [Text.UTF8Encoding]::new($false)
 $baseline = "fn work() -> usize { 4 }`nfn fail() { panic!(`"expected`"); }`n#[cfg(test)] mod tests { #[test] fn focused() { assert_eq!(super::work(), 4); } #[test] fn focused_extra() { assert_eq!(super::work(), 4); } #[test] #[should_panic] fn panics() { super::fail(); } }`n"
 $manifest = "[package]`nname = `"native-validation-fixture`"`nversion = `"0.0.0`"`nedition = `"2021`"`n"
@@ -20,7 +22,7 @@ function Format-Fixture {
     $messages = & cargo fmt --manifest-path (Join-Path $fixture 'tools\wta\Cargo.toml') 2>&1
     if ($LASTEXITCODE -ne 0) { throw "Fixture formatting failed: $messages" }
 }
-function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$ErrorPattern = '', [bool]$Unformatted = $false, [bool]$DirtyStart = $false) {
+function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$ErrorPattern = '', [bool]$Unformatted = $false, [bool]$DirtyStart = $false, [scriptblock]$BeforeValidation = {}) {
     $null = Git @('read-tree', '--empty')
     $null = Git @('read-tree', $script:head)
     $sourcePath = Join-Path $fixture 'tools\wta\src\lib.rs'
@@ -55,11 +57,23 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
             checks = @(@{ name = 'Performance measurement'; status = 'unavailable'; command = 'not run'; exitCode = $null; detail = 'Fixture only' })
         }
     }
-    $proposalPath = Join-Path $fixture "$Name.json"
+    $proposalPath = Join-Path $workspace "$Name.json"
     [IO.File]::WriteAllText($proposalPath, ($proposal | ConvertTo-Json -Depth 20), $utf8)
     if ($DirtyStart) { [IO.File]::WriteAllText($sourcePath, $Source, $utf8) }
-    $messages = & pwsh -NoProfile -File $validator -ProposalPath $proposalPath -RepositoryRoot $fixture -TrustedRuntimePath $runtime 2>&1
-    $exit = $LASTEXITCODE
+    & $BeforeValidation
+    $previousTemp = $env:RUNNER_TEMP
+    $previousTarget = $env:CARGO_TARGET_DIR
+    try {
+        $env:RUNNER_TEMP = $targetParent
+        # The validator must override a caller's in-checkout target path, child-only.
+        $env:CARGO_TARGET_DIR = Join-Path $fixture 'tools\wta\target'
+        $messages = & pwsh -NoProfile -File $validator -ProposalPath $proposalPath -RepositoryRoot $fixture -TrustedRuntimePath $runtime 2>&1
+        $exit = $LASTEXITCODE
+        if ($env:CARGO_TARGET_DIR -cne (Join-Path $fixture 'tools\wta\target')) { throw 'Native step changed parent target directory.' }
+    } finally {
+        $env:RUNNER_TEMP = $previousTemp
+        $env:CARGO_TARGET_DIR = $previousTarget
+    }
     if ($ErrorPattern) {
         if ($exit -eq 0 -or ($messages -join "`n") -notmatch $ErrorPattern) {
             throw "$Name did not fail as expected (exit ${exit}): $messages"
@@ -78,6 +92,52 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
     if ($Name -eq 'full-suite-failure' -and ($messages -join "`n") -notmatch 'focused-tests: 1 native test\(s\) passed') {
         throw "Full-suite regression did not first pass the focused test: $messages"
     }
+    if ($Name -match 'config|runner|membership' -and ($messages -join "`n") -match 'full-suite: cargo') {
+        throw "Repository-local injection reached the full suite: $messages"
+    }
+    if ($Name -eq 'force-staged-config-fake-runner-injection') {
+        $null = Git @('ls-files', '--error-unmatch', '.cargo/config.toml', 'fixture-fake-runner.cmd')
+        if ((Git @('ls-files', '--others', '-z')).Length -gt 0) {
+            throw 'Staged injection did not reproduce the empty-untracked-list bypass.'
+        }
+    }
+    if ($Name -eq 'core-worktree-config-fake-runner-injection') {
+        if ((Git @('ls-files', '--others', '-z')).Length -gt 0) {
+            throw 'Worktree diversion did not hide the actual-root injection from Git.'
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $fixture '.cargo\config.toml'))) {
+            throw 'Worktree diversion fixture did not leave the actual-root injected config.'
+        }
+        $null = Git @('config', '--unset', 'core.worktree')
+    }
+    if ($Name -match '^initial-' -and ($messages -join "`n") -match 'original-test-listing: cargo') {
+        throw "Initial untracked checkout ran Cargo: $messages"
+    }
+    if ($Name -match '^initial-|^generated-lock-' -and ($messages -join "`n") -match 'native test\(s\) passed') {
+        throw "Negative pre-test fixture claimed executed tests: $messages"
+    }
+    if ($Name -eq 'generated-lock-blocked' -and ($messages -join "`n") -notmatch '(?s)lock file.*--locked') {
+        throw "Cargo did not reject lock generation with --locked: $messages"
+    }
+    if ($Name -match 'fake-runner-injection' -and -not (Test-Path -LiteralPath (Join-Path $fixture 'fixture-fake-runner.cmd'))) {
+        throw 'Validator silently removed the suspicious runner.'
+    }
+    if ($Name -eq 'initial-ignored-config' -and -not (Test-Path -LiteralPath (Join-Path $fixture '.cargo\config.toml'))) {
+        throw 'Validator silently removed the initial suspicious config.'
+    }
+    if ($Name -eq 'external-target-artifacts') {
+        if (Test-Path -LiteralPath (Join-Path $fixture 'tools\wta\target')) { throw 'Cargo used an in-checkout target directory.' }
+        $targets = @(Get-ChildItem -LiteralPath $targetParent -Directory)
+        if ($targets.Count -ne 3 -or @($targets | Where-Object { -not (Test-Path (Join-Path $_.FullName 'x86_64-pc-windows-msvc\debug')) }).Count -gt 0) {
+            throw 'Compiled listing, focused test and full suite did not use distinct external target directories.'
+        }
+    }
+    # Remove only paths deliberately created by these isolated fixtures, never arbitrary checkout files.
+    foreach ($knownPath in @('.cargo', 'fixture-fake-runner.cmd')) {
+        $localPath = Join-Path $fixture $knownPath
+        if (Test-Path -LiteralPath $localPath) { Remove-Item -LiteralPath $localPath -Recurse -Force }
+    }
+    if (Test-Path -LiteralPath $targetParent) { Remove-Item -LiteralPath $targetParent -Recurse -Force }
     $script:count++
     Write-Output "PASS $Name"
 }
@@ -86,8 +146,10 @@ try {
     $null = [IO.Directory]::CreateDirectory((Join-Path $fixture 'tools\wta\src'))
     [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\Cargo.toml'), $manifest, $utf8)
     [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\src\lib.rs'), $baseline, $utf8)
-    [IO.File]::WriteAllText((Join-Path $fixture '.gitignore'), "/tools/wta/target/`n/tools/wta/Cargo.lock`n", $utf8)
+    [IO.File]::WriteAllText((Join-Path $fixture '.gitignore'), "/tools/wta/target/`n/.cargo/`n/fixture-fake-runner.cmd`n", $utf8)
     Format-Fixture
+    $lockMessages = & cargo generate-lockfile --manifest-path (Join-Path $fixture 'tools\wta\Cargo.toml') 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Fixture lock generation failed: $lockMessages" }
     $baseline = [IO.File]::ReadAllText((Join-Path $fixture 'tools\wta\src\lib.rs'))
     $null = Git @('init', '--quiet')
     $null = Git @('config', 'core.autocrlf', 'false')
@@ -103,6 +165,32 @@ try {
     $script:head = Git @('rev-parse', 'HEAD')
     $repair = $baseline.Replace("    4`n", "    2 + 2`n")
     Test-Case 'valid-windows-run' $repair 'tests::focused'
+    $externalArtifacts = @'
+    static CHECK: std::sync::Once = std::sync::Once::new();
+    CHECK.call_once(|| {
+        let target = std::path::PathBuf::from(std::env::var_os("CARGO_TARGET_DIR").unwrap());
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+        assert!(!target.canonicalize().unwrap().starts_with(root));
+        let marker = target.join("native-stage-marker");
+        assert!(!marker.exists(), "reused mutable stage artifacts");
+        std::fs::write(marker, b"ordinary external artifact").unwrap();
+    });
+    2 + 2
+'@
+    Test-Case 'external-target-artifacts' ($repair.Replace("    2 + 2`n", $externalArtifacts + "`n")) 'tests::focused'
+    Test-Case 'initial-ignored-config' $repair 'tests::focused' 'initial-checkout: untracked workspace paths' $false $false {
+        $null = [IO.Directory]::CreateDirectory((Join-Path $fixture '.cargo'))
+        [IO.File]::WriteAllText((Join-Path $fixture '.cargo\config.toml'), "[target.x86_64-pc-windows-msvc]`nrunner = `"fixture-fake-runner.cmd`"`n", $utf8)
+    }
+    Test-Case 'initial-untracked-config' $repair 'tests::focused' 'initial-checkout: untracked workspace paths' $false $false {
+        [IO.File]::WriteAllText((Join-Path $fixture 'untracked-config.toml'), '# suspicious untracked file', $utf8)
+    }
+    Remove-Item -LiteralPath (Join-Path $fixture 'untracked-config.toml')
+    Test-Case 'initial-source-reparse-point' $repair 'tests::focused' 'initial-checkout: source checkout reparse points are not allowed' $false $false {
+        $junctionTarget = Join-Path $workspace 'junction-content'
+        $null = [IO.Directory]::CreateDirectory($junctionTarget)
+        $null = New-Item -ItemType Junction -Path (Join-Path $fixture '.cargo') -Target $junctionTarget
+    }
     Test-Case 'format-failure' ($baseline.Replace("    4`n", "  4`n")) 'tests::focused' 'format-check: native validation failed with exit code' $true
     Test-Case 'failed-test' ($baseline.Replace("    4`n", "    5`n")) 'tests::focused' 'focused-tests: native validation failed with exit code'
     Test-Case 'exact-unknown-function' $repair 'tests::unknown_function' 'selector must name exactly one existing test in compiled original HEAD'
@@ -127,6 +215,46 @@ fn work() -> usize {
     $runtimeStart = $baseline.IndexOf('fn work()')
     $runtimeEnd = $baseline.IndexOf('fn fail()')
     $replaceWork = { param($body) $baseline.Substring(0, $runtimeStart) + $body + "`n" + $baseline.Substring($runtimeEnd) }
+    $runnerInjection = @'
+fn work() -> usize {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    std::fs::create_dir_all(root.join(".cargo")).unwrap();
+    let runner = ["@echo off\r\necho te", "st tests::focused ... ok\r\necho te",
+        "st result: ok. 1 passed; 0 failed;\r\nexit /b 0\r\n"].concat();
+    std::fs::write(root.join("fixture-fake-runner.cmd"), runner).unwrap();
+    std::fs::write(root.join(".cargo/config.toml"),
+        "[target.x86_64-pc-windows-msvc]\nrunner = \"fixture-fake-runner.cmd\"\n").unwrap();
+    4
+}
+'@
+    Test-Case 'ignored-config-fake-runner-injection' (& $replaceWork $runnerInjection) 'tests::focused' 'focused-tests: untracked workspace paths'
+    $forceStage = @'
+    assert!(std::process::Command::new("git").arg("-C").arg(&root)
+        .args(["add", "-f", ".cargo/config.toml", "fixture-fake-runner.cmd"]).status().unwrap().success());
+'@
+    Test-Case 'force-staged-config-fake-runner-injection' (& $replaceWork ($runnerInjection.Replace('    4', $forceStage + "`n    4"))) 'tests::focused' 'focused-tests: untracked workspace paths'
+    $divertWorktree = @'
+    let alternate = root.parent().unwrap().join("alternate-worktree");
+    std::fs::create_dir_all(&alternate).unwrap();
+    assert!(std::process::Command::new("git").arg("-C").arg(&root)
+        .args(["config", "core.worktree"]).arg(alternate).status().unwrap().success());
+    let hidden = std::process::Command::new("git").arg("-C").arg(&root)
+        .args(["ls-files", "--others", "-z"]).output().unwrap();
+    assert!(hidden.status.success() && hidden.stdout.is_empty());
+'@
+    Test-Case 'core-worktree-config-fake-runner-injection' (& $replaceWork ($runnerInjection.Replace('    4', $divertWorktree + "`n    4"))) 'tests::focused' 'focused-tests: untracked workspace paths'
+    $untrackedInjection = $runnerInjection.Replace('root.join(".cargo/config.toml")', 'root.join("untracked-config.toml")')
+    Test-Case 'untracked-config-fake-runner-injection' (& $replaceWork $untrackedInjection) 'tests::focused' 'focused-tests: untracked workspace paths'
+    Remove-Item -LiteralPath (Join-Path $fixture 'untracked-config.toml')
+    $removeMembership = @'
+fn work() -> usize {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    assert!(std::process::Command::new("git").arg("-C").arg(root)
+        .args(["update-index", "--force-remove", "tools/wta/Cargo.toml"]).status().unwrap().success());
+    4
+}
+'@
+    Test-Case 'tracked-index-membership-removal' (& $replaceWork $removeMembership) 'tests::focused' 'focused-tests: changed tracked workspace path membership'
     Test-Case 'tracked-manifest-mutation' (& $replaceWork $mutation) 'tests::focused' 'changed tracked workspace bytes: tools/wta/Cargo.toml'
     $flag = @'
 let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -158,7 +286,21 @@ fn work() -> usize {
             [Environment]::SetEnvironmentVariable($key, $originalEnvironment[$key], 'Process')
         }
     }
+    # A committed stale lock must fail Cargo's --locked check, not be regenerated.
+    $null = Git @('read-tree', $script:head)
+    [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\src\lib.rs'), $baseline, $utf8)
+    $manifest = $manifest.Replace('0.0.0', '0.0.1')
+    [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\Cargo.toml'), $manifest, $utf8)
+    $null = Git @('add', 'tools/wta/Cargo.toml')
+    $null = Git @('-c', 'user.name=Native Fixture', '-c', 'user.email=fixture@invalid', '-c', 'core.hooksPath=NUL',
+        'commit', '--quiet', '-m', "Immutable stale-lock fixture`n`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>")
+    $script:head = Git @('rev-parse', 'HEAD')
+    $lockBefore = (Get-FileHash -LiteralPath (Join-Path $fixture 'tools\wta\Cargo.lock')).Hash
+    Test-Case 'generated-lock-blocked' $repair 'tests::focused' 'original-test-listing: native validation failed with exit code'
+    if ((Get-FileHash -LiteralPath (Join-Path $fixture 'tools\wta\Cargo.lock')).Hash -cne $lockBefore) {
+        throw '--locked changed the tracked lockfile.'
+    }
     Write-Output "Passed $count native step fixture cases."
 } finally {
-    if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture -Recurse -Force }
+    if (Test-Path -LiteralPath $workspace) { Remove-Item -LiteralPath $workspace -Recurse -Force }
 }

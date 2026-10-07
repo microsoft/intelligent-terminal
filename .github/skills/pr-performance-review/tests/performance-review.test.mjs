@@ -502,8 +502,8 @@ test('proposals accept only bounded regular WTA replacements and agreeing fixed 
         [value => { value.validationPlan.testFilter = 'tests; cmd.exe'; }, /supported focused native/],
         [value => { value.validationPlan.testFilter = 'other::tests::preserves_state'; }, /must agree/],
         [value => { delete value.report.validationPlan; }, /supported focused native/],
-        [value => { value.files = []; }, /between one and five/],
-        [value => { value.files = Array(6).fill(value.files[0]); }, /between one and five/],
+        [value => { value.files = []; }, /between one and three/],
+        [value => { value.files = Array(4).fill(value.files[0]); }, /between one and three/],
         [value => { value.files.push({ ...value.files[0] }); }, /unique, regular WTA/],
         [value => { value.files[0].mode = '100755'; }, /unique, regular WTA/],
         [value => { value.files[0].mode = '120000'; }, /unique, regular WTA/],
@@ -689,6 +689,132 @@ test('inline Rust test source is immutable Git data, including markers, gates, m
         }
         assert.throws(() => reconstructTree(replacement('fn runtime() {}\n#[test] fn added() {}\n'), expected.baseSha),
             /immutable original Rust test/);
+    });
+});
+
+test('large original modules permit small actual edits while preserving trailing inline tests', () => {
+    withRepository(({ git, write, expected, output }) => {
+        const filename = 'tools/wta/src/master/mod.rs';
+        const original = Array.from({ length: 3000 }, (_, i) => `fn work_${i}() -> usize { ${i} }\n`).join('') +
+            '#[cfg(test)]\nmod tests { #[test] fn selected() {} }\n';
+        assert.ok(Buffer.byteLength(original) > 64 * 1024);
+        write(filename, original);
+        git(['add', '--all']);
+        git(['commit', '--quiet', '-m', 'large immutable module']);
+        expected.headSha = git(['rev-parse', 'HEAD']);
+        const baselinePath = path.join(output, 'baseline.json');
+        const scope = prepareScope(expected, output, baselinePath);
+        const candidate = original.replace('fn work_0() -> usize { 0 }', 'fn work_0() -> usize { 1 }');
+        const files = [{ path: filename, mode: '100644', contents: Buffer.from(candidate).toString('base64') }];
+        // The workspace is not the immutable comparison authority.
+        write(filename, candidate);
+        const tree = reconstructTree(files, expected.headSha, expected.baseSha);
+        const value = proposal();
+        value.report.identity = expected;
+        assert.equal(sealProposal(scope, value.report, JSON.parse(fs.readFileSync(baselinePath)), expected).proposal.treeSha, tree);
+        assert.match(git(['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--numstat', expected.headSha, tree]), /^1\t1\t/);
+    });
+});
+
+test('actual immutable-head line ceilings allow 100 and reject 101, including rewrites and aggregate edits', () => {
+    withRepository(({ git, write, expected }) => {
+        const paths = ['tools/wta/src/master/mod.rs', 'tools/wta/src/second.rs', 'tools/wta/src/third.rs'];
+        const originals = paths.map((_, file) => Array.from({ length: 50 }, (_, i) => `fn original_${file}_${i}() {}\n`).join(''));
+        paths.forEach((filename, i) => write(filename, originals[i]));
+        git(['add', '--all']);
+        git(['commit', '--quiet', '-m', 'line ceiling originals']);
+        expected.headSha = git(['rev-parse', 'HEAD']);
+        const replacements = contents => contents.map((source, i) => ({
+            path: paths[i], mode: '100644', contents: Buffer.from(source).toString('base64'),
+        }));
+        const rewrite = Array.from({ length: 50 }, (_, i) => `fn rewritten_${i}() {}\n`).join('');
+        assert.doesNotThrow(() => reconstructTree(replacements([rewrite]), expected.headSha, expected.baseSha));
+        assert.throws(() => reconstructTree(replacements([rewrite + 'fn extra() {}\n']), expected.headSha, expected.baseSha),
+            /100 added-plus-deleted-line/);
+        const edit = (original, count) => original.split('\n').map((line, i) => i < count ? line.replace('original', 'changed') : line).join('\n');
+        const hundred = originals.map((original, i) => edit(original, i === 2 ? 16 : 17));
+        assert.doesNotThrow(() => reconstructTree(replacements(hundred), expected.headSha, expected.baseSha));
+        hundred[2] += 'fn one_more() {}\n';
+        assert.throws(() => reconstructTree(replacements(hundred), expected.headSha, expected.baseSha), /100 added-plus-deleted-line/);
+        assert.throws(() => reconstructTree(replacements(originals.map(() => rewrite)), expected.headSha), /100 added-plus-deleted-line/);
+        assert.throws(() => reconstructTree([...replacements(originals), {
+            path: 'tools/wta/src/fourth.rs', mode: '100644', contents: Buffer.from('fn extra() {}\n').toString('base64'),
+        }], expected.headSha), /between one and three/);
+        assert.throws(() => reconstructTree(replacements(['x'.repeat(256 * 1024 + 1)]), expected.headSha), /transport size limit/);
+    });
+});
+
+test('exact UTF-8 zero-context diff bytes permit 16 KiB and reject the next byte at every helper gate', () => {
+    withRepository(({ root, git, write, expected, output }) => {
+        const filename = 'tools/wta/src/master/mod.rs';
+        const baselinePath = path.join(output, 'baseline.json');
+        const scope = prepareScope(expected, output, baselinePath);
+        const baseline = JSON.parse(fs.readFileSync(baselinePath));
+        const replacement = contents => [{ path: filename, mode: '100644', contents: Buffer.from(contents).toString('base64') }];
+        const diffArgs = ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--no-color', '--unified=0'];
+        const measure = tree => execFileSync('git', [...diffArgs, expected.headSha, tree, '--'], { cwd: root }).length;
+        const initialTree = reconstructTree(replacement('// \n'), expected.headSha, expected.baseSha);
+        const padding = 16 * 1024 - measure(initialTree);
+        const exact = '// ' + 'é'.repeat(Math.floor(padding / 2)) + 'x'.repeat(padding % 2) + '\n';
+        const tree = reconstructTree(replacement(exact), expected.headSha, expected.baseSha);
+        assert.equal(measure(tree), 16 * 1024);
+        write(filename, exact);
+        const value = proposal();
+        value.report.identity = expected;
+        const sealed = sealProposal(scope, value.report, baseline, expected).proposal;
+        assert.equal(sealed.treeSha, tree);
+        const oversized = exact.replace('\n', 'x\n');
+        write(filename, oversized);
+        // Independently measure the rejected tree; don't infer bytes from candidate file length.
+        git(['add', '--all']);
+        const oversizedTree = git(['write-tree']);
+        git(['reset', '--mixed', expected.headSha]);
+        assert.equal(measure(oversizedTree), 16 * 1024 + 1);
+        assert.throws(() => reconstructTree(replacement(oversized), expected.headSha, expected.baseSha), /16 KiB byte limit/);
+        assert.throws(() => sealProposal(scope, value.report, baseline, expected), /16 KiB byte limit/);
+        sealed.files = replacement(oversized);
+        sealed.treeSha = oversizedTree;
+        assert.doesNotThrow(() => validateProposal(sealed, expected)); // Blob transport alone is not the actual-diff gate.
+        const proposalPath = path.join(output, 'oversized.json');
+        fs.writeFileSync(proposalPath, JSON.stringify(sealed));
+        for (const command of ['validate-proposal', 'apply-proposal']) {
+            const result = spawnSync(process.execPath, [helperPath, command, '--input', proposalPath,
+                '--pr', String(expected.prNumber), '--base', expected.baseSha, '--head', expected.headSha],
+            { cwd: root, encoding: 'utf8' });
+            assert.equal(result.status, 1);
+            assert.match(result.stderr, /16 KiB byte limit/);
+            assert.equal(git(['write-tree']), git(['rev-parse', 'HEAD^{tree}']));
+        }
+        const reportPath = path.join(output, 'report.json');
+        const agentPath = path.join(output, 'agent.json');
+        fs.writeFileSync(reportPath, JSON.stringify(value.report));
+        fs.writeFileSync(agentPath, JSON.stringify({ items: [{ type: 'validate_performance_repair', confirm: true }] }));
+        const result = spawnSync(process.execPath, [helperPath, 'gate', '--mode', 'repair', '--output-dir', output,
+            '--baseline', baselinePath, '--report', reportPath, '--agent-output', agentPath,
+            '--pr', String(expected.prNumber), '--base', expected.baseSha, '--head', expected.headSha],
+        { cwd: root, encoding: 'utf8' });
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /16 KiB byte limit/);
+        assert.equal(fs.existsSync(path.join(output, 'performance-proposal.json')), false);
+    });
+});
+
+test('zero-context byte ceilings cover the aggregate patch, not each replacement separately', () => {
+    withRepository(({ git, write, expected }) => {
+        const paths = ['tools/wta/src/master/mod.rs', 'tools/wta/src/second.rs'];
+        write(paths[1], 'fn other() {}\n');
+        git(['add', '--all']);
+        git(['commit', '--quiet', '-m', 'aggregate byte originals']);
+        expected.headSha = git(['rev-parse', 'HEAD']);
+        const files = paths.map(filename => ({
+            path: filename, mode: '100644',
+            contents: Buffer.from('// ' + 'é'.repeat(4050) + '\n').toString('base64'),
+        }));
+        for (const file of files)
+            assert.doesNotThrow(() => reconstructTree([file], expected.headSha, expected.baseSha));
+        assert.throws(() => reconstructTree(files, expected.headSha, expected.baseSha), /16 KiB byte limit/);
+        const binary = [{ ...files[0], contents: Buffer.from('fn head() {}\n\0').toString('base64') }];
+        assert.throws(() => reconstructTree(binary, expected.headSha), /numeric Git line counts/);
     });
 });
 

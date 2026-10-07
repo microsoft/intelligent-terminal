@@ -7,6 +7,10 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
+const MAX_REPAIR_FILES = 3;
+const MAX_REPAIR_LINES = 100;
+const MAX_REPAIR_DIFF_BYTES = 16 * 1024;
+const MAX_REPAIR_BLOB_BYTES = 256 * 1024;
 const SOURCE_EXTENSIONS = new Set(['.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hlsl', '.idl', '.ixx', '.rs', '.xaml']);
 const LEVELS = ['high', 'medium', 'low'];
 const DIMENSIONS = ['application-performance', 'responsiveness', 'memory-growth', 'ci-runtime-cost'];
@@ -313,8 +317,7 @@ export function validateProposal(proposal, expected) {
     validatePlan(plan);
     if (proposal.report.validationPlan?.type !== plan.type || proposal.report.validationPlan?.testFilter !== plan.testFilter)
         fail('report and native proposal validation plans must agree');
-    if (!Array.isArray(proposal.files) || !proposal.files.length || proposal.files.length > 5)
-        fail('repair must replace between one and five existing candidate source files');
+    validateRepairFileCount(proposal.files);
     const paths = new Set();
     let size = 0;
     for (const file of proposal.files) {
@@ -325,7 +328,7 @@ export function validateProposal(proposal, expected) {
         paths.add(file.path);
         size += Buffer.from(file.contents, 'base64').length;
     }
-    if (size > 256 * 1024) fail('repair source content exceeds the localized-fix size limit');
+    if (size > MAX_REPAIR_BLOB_BYTES) fail('repair source content exceeds the transport size limit');
     const covered = new Set();
     for (const finding of proposal.report.findings.filter(finding => finding.fixDisposition === 'proposed')) {
         const location = /^([^:]+):([1-9][0-9]*)$/.exec(finding.location);
@@ -360,7 +363,32 @@ function preserveOriginalTests(original, candidate) {
         fail('repair must preserve the immutable original Rust test markers and protected suffix byte-for-byte');
 }
 
+function validateRepairFileCount(files) {
+    if (!Array.isArray(files) || !files.length || files.length > MAX_REPAIR_FILES)
+        fail('repair must replace between one and three existing candidate source files');
+}
+
+function validateRepairDiff(headSha, treeSha) {
+    const args = ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--no-color'];
+    const rows = git([...args, '--numstat', '-z', headSha, treeSha, '--']).split('\0').filter(Boolean);
+    let lines = 0;
+    for (const row of rows) {
+        const [added, deleted, filename, extra] = row.split('\t');
+        if (extra !== undefined || !filename || !/^\d+$/.test(added) || !/^\d+$/.test(deleted))
+            fail('repair actual diff must have numeric Git line counts');
+        lines += Number(added) + Number(deleted);
+    }
+    if (rows.length > MAX_REPAIR_FILES || lines > MAX_REPAIR_LINES)
+        fail('repair actual diff exceeds the three-file / 100 added-plus-deleted-line limit; use manual handoff');
+    const patch = git([...args, '--unified=0', headSha, treeSha, '--'], {}, { encoding: null });
+    if (patch.length > MAX_REPAIR_DIFF_BYTES)
+        fail('repair actual zero-context diff exceeds the 16 KiB byte limit; use manual handoff');
+}
+
 export function reconstructTree(files, headSha, baseSha) {
+    validateRepairFileCount(files);
+    if (files.reduce((size, file) => size + Buffer.from(file.contents, 'base64').length, 0) > MAX_REPAIR_BLOB_BYTES)
+        fail('repair source content exceeds the transport size limit');
     if (baseSha) {
         const allowed = new Set(changedPaths(baseSha, headSha).filter(filename => classifyFile({ filename }).role === 'candidate'));
         if (files.some(file => !allowed.has(file.path))) fail('publication replacement is outside the immutable original candidate scope');
@@ -375,7 +403,10 @@ export function reconstructTree(files, headSha, baseSha) {
             const blob = git(['hash-object', '-w', '--stdin'], {}, { input: candidate }).trim();
             git(['update-index', '--add', '--cacheinfo', `${file.mode},${blob},${file.path}`], env);
         }
-        return git(['write-tree'], env).trim();
+        const tree = git(['write-tree'], env).trim();
+        // Immutable-head diff ceilings are necessary, not proof of behavioral locality.
+        validateRepairDiff(headSha, tree);
+        return tree;
     });
 }
 
@@ -384,11 +415,12 @@ export function sealProposal(scope, report, baseline, expected) {
     if (!SHA_PATTERN.test(baseline?.treeSha ?? '')) fail('trusted preparation baseline is missing');
     const tree = workspaceTree();
     const changedFiles = changedPaths(baseline.treeSha, tree);
+    validateRepairFileCount(changedFiles);
     const files = changedFiles.map(filename => {
         if (!scope.candidates.some(file => file.filename === filename)) fail('repair changes must be confined to original candidate files');
         const entry = git(['ls-tree', tree, '--', `:(literal)${filename}`]).trim().match(/^(100644) blob ([0-9a-f]{40})\t/);
         if (!entry) fail('repair deletes or changes the mode of a source file');
-        const content = git(['cat-file', 'blob', entry[2]], {}, { encoding: null, maxBuffer: 256 * 1024 });
+        const content = git(['cat-file', 'blob', entry[2]], {}, { encoding: null, maxBuffer: MAX_REPAIR_BLOB_BYTES });
         return { path: filename, mode: entry[1], contents: content.toString('base64') };
     });
     const proposal = {

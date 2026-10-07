@@ -101,6 +101,20 @@ finding. Category labels alone do not authorize edits: concurrency and session
 findings can qualify at WTA locations; C++ findings cannot justify unrelated
 WTA changes.
 
+Keep proposals within the fixed conservative native-autofix ceilings: at most
+three replacement files, 100 total added plus deleted lines, and 16 KiB of
+UTF-8 zero-context Git diff bytes against the immutable reviewed head.
+Trusted reconstruction enforces these limits during sealing, native
+validation/application, and publisher reconstruction. Git `--numstat` supplies
+line counts; `--unified=0` supplies actual patch bytes, with external diff,
+text conversion, and renames disabled. The aggregate 256 KiB replacement-blob
+transport cap remains separate; file length is not an edit-size proxy.
+Large original modules can qualify when their actual edits meet every gate.
+These necessary ceilings do not prove behavior preservation or semantic
+locality and do not configure model routing. If any ceiling is exceeded, leave
+the finding unresolved with a manual handoff rather than splitting or weakening
+the proposal to bypass policy.
+
 Preserve original inline tests byte-for-byte. Trusted reconstruction compares
 Git blobs from the immutable head, never the editable workspace. Its
 dependency-free lexical guard freezes the suffix from the first `test` or
@@ -122,6 +136,16 @@ explicit-target WTA suite. Native validation must resolve the exact qualified te
 immutable head and execute it with exact matching; passing an unrelated
 substring-selected group is not proof. Failure in any stage blocks publication.
 
+Native Cargo stages require a source-only checkout: untracked paths, including
+ignored files, and changes to original index path membership are rejected
+initially and between stages. Physical file inspection uses the actual
+checkout root independently of mutable Git metadata; source reparse points
+are rejected. Tests use `--locked`
+and fresh external target directories so later stages do not reuse artifacts
+that an earlier test could modify. Cold builds may exhaust the unchanged
+30-minute validation deadline; report that as blocked with a manual handoff,
+not a pass or a reason to weaken the gates.
+
 Do not claim that Linux has run Windows tests. Do not commit, call a branch-push
 tool, or mark a proposal `fixed`. Trusted post-processing captures the exact
 candidate blobs; a read-only Windows job runs the fixed validation commands
@@ -129,6 +153,8 @@ and requires executed passing tests. GitHub records the job result. The trusted 
 checks that result and the original sealed blobs before committing with
 immutable-head CAS. It never consumes a receipt or files written by test code.
 Only the publisher can render a proposal as `fixed`.
+These are publication and validation gates, not a full sandbox for candidate
+code executed by Cargo; passing tests alone do not prove behavioral equivalence.
 
 Native C++ repairs currently lack a supported backend; keep them unresolved and
 unedited with the relevant MSBuild/TAEF handoff. This limitation does not block

@@ -22,7 +22,7 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     fs.mkdirSync(path.join(root, 'tools', 'wta', 'src'), { recursive: true });
     fs.writeFileSync(path.join(root, 'tools', 'wta', 'Cargo.toml'),
         '[package]\nname="performance-pipeline-fixture"\nversion="0.1.0"\nedition="2021"\n');
-    fs.writeFileSync(path.join(root, '.gitignore'), '/tools/wta/target/\n/tools/wta/Cargo.lock\n');
+    fs.writeFileSync(path.join(root, '.gitignore'), '/tools/wta/target/\n');
     const sourcePath = path.join(root, 'tools', 'wta', 'src', 'lib.rs');
     let baselineSource = 'pub fn work(n: usize) -> usize { n }\n' +
         '#[cfg(test)] mod tests { #[test] fn work_is_linear() { assert_eq!(super::work(1000), 1000); } }\n';
@@ -31,6 +31,9 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
         encoding: 'utf8', timeout: 15000,
     });
     formatFixture();
+    execFileSync('cargo', ['generate-lockfile', '--manifest-path', path.join(root, 'tools', 'wta', 'Cargo.toml')], {
+        encoding: 'utf8', timeout: 15000,
+    });
     baselineSource = fs.readFileSync(sourcePath, 'utf8');
     const git = args => execFileSync('git', args, { encoding: 'utf8', timeout: 15000 }).trim();
     git(['init', '--quiet', '--initial-branch=main']);
@@ -116,7 +119,7 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
         encoding: 'utf8', timeout: 180000,
     });
     assert.equal(native.status, 0, `${native.stdout}\n${native.stderr}`);
-    assert.match(native.stdout, /original-test-listing: cargo test --target x86_64-pc-windows-msvc --manifest-path tools\\wta\\Cargo.toml -- --list/);
+    assert.match(native.stdout, /original-test-listing: cargo test --locked --target x86_64-pc-windows-msvc --manifest-path tools\\wta\\Cargo.toml -- --list/);
     assert.match(native.stdout, /original HEAD contains tests::work_is_linear: test \(listing only, not a passing test claim\)/);
     assert.ok(native.stdout.indexOf('original-test-listing: cargo') < native.stdout.indexOf('format-check: cargo'));
     assert.match(native.stdout, /format-check: cargo fmt .* -- --check/);
@@ -124,6 +127,9 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     assert.match(native.stdout, /^test tests::work_is_linear \.\.\. ok\r?$/m);
     assert.match(native.stdout, /focused-tests: 1 native test\(s\) passed/);
     assert.match(native.stdout, /full-suite: 1 native test\(s\) passed/);
+    assert.equal(fs.existsSync(path.join(root, 'tools', 'wta', 'target')), false);
+    assert.equal(fs.readdirSync(artifactRoot).filter(name => name.startsWith('performance-native-target-')).length, 3);
+    assert.equal(git(['ls-files', '--others']), '', 'all build artifacts stay outside the checkout');
     assert.equal(fs.existsSync(nativeOut), false, 'native test step must not produce publication authority');
     const proposalPath = path.join(out, 'performance-proposal.json');
     const proposal = JSON.parse(fs.readFileSync(proposalPath));

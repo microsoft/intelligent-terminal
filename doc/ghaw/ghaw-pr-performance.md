@@ -64,6 +64,23 @@ The current automatic native backend supports focused Windows WTA Rust tests;
 C++ findings require an applicable MSBuild/TAEF handoff and remain manual.
 Fork guidance names the reviewed head and uses best-effort freshness checking.
 
+Native autofix uses fixed conservative limits, not model-routing settings:
+at most **three replacement files**, **100 total added plus deleted lines**,
+and **16 KiB of UTF-8 zero-context Git diff bytes** against the immutable
+reviewed head. The shared reconstruction path enforces these limits at
+sealing, native validation/application, and publisher reconstruction, before
+publication. Line counts come from Git `--numstat`; byte counts measure the
+complete `--unified=0` patch, including headers. Both disable external diff,
+text conversion, and renames. Binary/non-numeric line counts fail closed.
+The aggregate **256 KiB replacement-blob transport cap** remains independent;
+it is not a small-diff boundary. Large original files with small actual edits
+remain eligible when inline-test protection and all other gates permit them.
+Local fixtures verify the inclusive 100-line/16,384-byte boundaries and reject
+101 lines/16,385 bytes, aggregate multi-file edits, and larger module rewrites.
+These are necessary ceilings, not proof of behavior preservation or semantic
+locality. Over-limit repairs require an unresolved finding and manual handoff;
+do not split proposals to evade the policy.
+
 Local third-review hardening protects inline test source using immutable Git
 head blobs during sealing, native proposal validation/application, and publisher
 reconstruction. The dependency-free lexical policy freezes the suffix from the
@@ -77,6 +94,19 @@ modules or test-only helpers can conservatively block otherwise safe repairs.
 This is not a Rust parser: custom macros without recognized test words and
 changes to runtime helpers are not semantic test-preservation guarantees.
 Original compiled test listing and exact native execution remain mandatory.
+The native job checks original test identity, formatting, exact focused and
+full-suite execution, and tracked-source mutation. It also rejects all
+untracked repository-local paths, including ignored files, before and after
+each stage, and rejects changes to the immutable original index path
+membership so staging injected files cannot hide them. Physical source
+inspection is anchored to the actual checkout, not candidate-mutable
+`core.worktree`; source reparse points are rejected. Cargo tests use
+tracked locks with `--locked` and separate fresh
+external target directories to prevent mutable artifact reuse between stages.
+These cold builds can exceed the unchanged total 30-minute deadline, requiring
+a blocked outcome and manual handoff. This is not a full host sandbox
+for candidate code executed by Cargo, nor proof of behavioral equivalence;
+the sealed publication tree and GitHub-recorded result remain separate authority.
 
 Pending reports reject all model-authored `pass` checks, not just native claims.
 Not-run checks are honestly `unavailable`; the publisher appends native success
