@@ -56,6 +56,10 @@ engine:
     GH_AW_OTLP_ENDPOINTS: "${{ '' }}"
     GH_AW_OTLP_ALL_HEADERS: "${{ '' }}"
   args: ['--excluded-tools', 'task', 'read_agent', 'write_agent', 'list_agents']
+  command: 'exec node "${RUNNER_TEMP}/gh-aw/security-review-native/security-review-driver.mjs" "${RUNNER_TEMP}/gh-aw/bin/copilot"'
+  harness:
+    max-retries: 0
+    watchdog-timeout: 600
 imports:
   - .github/agents/ghaw-pr-security.agent.md
   - shared/ghaw-pr-security-tools.md
@@ -73,6 +77,11 @@ tools:
   bash: []
   cli-proxy: false
   edit: false
+
+sandbox:
+  mcp:
+    env:
+      MCP_GATEWAY_LOG_DIR: /tmp/gh-aw-security-private/mcp-gateway
 
 jobs:
   prepare:
@@ -131,6 +140,19 @@ safe-outputs:
     create-issue: false
 
 steps:
+  - name: Install pinned CLI for the trusted security driver
+    shell: bash
+    env:
+      GH_HOST: github.com
+    run: |
+      set -euo pipefail
+      bash "${RUNNER_TEMP}/gh-aw/actions/install_copilot_cli.sh" 1.0.90
+      binary="$(command -v copilot)"
+      [ -x "$binary" ]
+      mkdir -p "$RUNNER_TEMP/gh-aw/bin"
+      cp "$binary" "$RUNNER_TEMP/gh-aw/bin/copilot"
+      chmod 755 "$RUNNER_TEMP/gh-aw/bin/copilot"
+
   - name: Fetch immutable fork head
     shell: bash
     env:
@@ -164,6 +186,11 @@ steps:
       trusted_validator="$RUNNER_TEMP/security-review.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review.mjs" > "$trusted_validator"
       cp "$trusted_validator" "$RUNNER_TEMP/gh-aw/security-review-check.mjs"
+      driver_dir="$RUNNER_TEMP/gh-aw/security-review-native"
+      mkdir -p "$driver_dir"
+      cp "$trusted_validator" "$driver_dir/security-review.mjs"
+      git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review-driver.mjs" > "$driver_dir/security-review-driver.mjs"
+      git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/prepare-security-review-private-logs.mjs" > "$driver_dir/prepare-security-review-private-logs.mjs"
       node "$trusted_validator" scope \
         --base "$EXPECTED_BASE_SHA" \
         --head "$EXPECTED_HEAD_SHA" \
@@ -178,6 +205,15 @@ steps:
         --output /tmp/gh-aw/agent/security-findings.json
 
 pre-agent-steps:
+  - name: Prepare private security review log sinks before native services
+    shell: bash
+    run: |
+      set -euo pipefail
+      node "$RUNNER_TEMP/gh-aw/security-review-native/prepare-security-review-private-logs.mjs" \
+        --actions-dir "$RUNNER_TEMP/gh-aw/actions" \
+        --private-root /tmp/gh-aw-security-private \
+        --collected-root /tmp/gh-aw \
+        --workspace "$GITHUB_WORKSPACE"
   - name: Restore immutable skill bytes after generated skill installation
     shell: bash
     env:

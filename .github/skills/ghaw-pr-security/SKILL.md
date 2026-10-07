@@ -20,6 +20,10 @@ review reasoning and the structured report.
   [`./scripts/security-review-driver.mjs`](./scripts/security-review-driver.mjs)
 - Deterministic fixed-route driver tests:
   [`./scripts/security-review-driver.test.mjs`](./scripts/security-review-driver.test.mjs)
+- Trusted pre-inference private-log preparation:
+  [`./scripts/prepare-security-review-private-logs.mjs`](./scripts/prepare-security-review-private-logs.mjs)
+- Private-log hash/path/ordering tests:
+  [`./scripts/prepare-security-review-private-logs.test.mjs`](./scripts/prepare-security-review-private-logs.test.mjs)
 
 ## Non-negotiable boundaries
 
@@ -252,6 +256,49 @@ The driver obtains them from native inspection and requires the actual fixed
 reviewer response to attest those same values. These are not fields the primary
 may claim through report submission.
 
+### Transcript privacy
+
+The trusted driver checks complete primary/reviewer JSONL and immutable native
+source results in memory; it does not write raw driver transcripts. Phase
+diagnostics contain only output byte counts and SHA-256 digests. After validating
+the native report and exactly one successful primary `noop`, it forwards a
+report-derived summary/finding/check metadata message and successful terminal
+result with a hashed session identifier and allowlisted numeric usage fields.
+The same projection is written as public `events.jsonl` for the native summary
+collector. Native safe-output transport remains authoritative; no raw tool
+arguments/results or model analysis messages are forwarded to harness stdout.
+Entrypoint failures emit a fixed diagnostic, not native exception text.
+Native Git and GitHub subprocesses explicitly capture output; command failures
+retain raw diagnostics only in their in-memory exception cause, with a fixed
+public error message. Both worker routes use the same driver; guide mode runs
+only the primary and cannot initiate independent repair review.
+
+Before native MCP/gateway startup or inference, both workers run the trusted
+`prepare-security-review-private-logs.mjs` helper. It verifies both pinned shell
+asset SHA-256 values, exact replacement counts, and regular paths before writes.
+It replaces raw session copying with a constant notice and redirects the native
+MCP server's complete log/stderr sink outside collected roots. Existing known
+diagnostic sinks are retained by moving them into private evidence storage,
+never deleted. The helper creates owner-only host directories and write probes.
+Strict-supported `sandbox.mcp.env` transports a literal private MCPG log directory
+into Docker; `sandbox.mcp.args` is rejected by strict compilation.
+
+The driver separately creates owner-only phase homes/configuration/log directories
+inside the agent container, copies only trusted settings/MCP configuration, and
+overrides compiler CLI log/config paths. These private sibling paths are outside
+the `/tmp/gh-aw` artifact and summary roots. The host MCP private root and the
+AWF inner CLI private root are separate filesystem namespaces.
+
+This is **not** a source-secret scanner or a universal diagnostic privacy claim.
+Report-derived summary prose remains an explicitly permitted validated output.
+The pinned threat detector receives native `agent_output.json` (one `noop`),
+workflow context, and applicable patch/memory inputs, not CLI session JSONL or
+the private native source logs. It does not independently inspect the raw source
+transcript. Public raw conversational/tool diagnostics are intentionally replaced
+with metadata; native token-usage telemetry and final repair validation remain
+separate. Real AWF mount/persistence and detector execution require hosted proof;
+local projection/collector fixtures are not that proof.
+
 ### Required report limits and final self-check
 
 Keep `summary` to **800 characters maximum**; put traces in findings, not the
@@ -322,6 +369,7 @@ artifact:
 ```powershell
 node --test .github\skills\ghaw-pr-security\scripts\security-review.test.mjs
 node --test .github\skills\ghaw-pr-security\scripts\security-review-driver.test.mjs
+node --test .github\skills\ghaw-pr-security\scripts\prepare-security-review-private-logs.test.mjs
 ```
 
 Driver tests inject fake child processes to verify contracts, routing, evidence,
