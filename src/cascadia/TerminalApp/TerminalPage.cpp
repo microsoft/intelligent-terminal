@@ -7079,7 +7079,8 @@ namespace winrt::TerminalApp::implementation
             }
             else if (title.empty() && !cwd.empty())
             {
-                title = std::filesystem::path{ winrt::to_hstring(cwd).c_str() }.filename().string();
+                title = winrt::to_string(winrt::hstring{
+                    std::filesystem::path{ winrt::to_hstring(cwd).c_str() }.filename().native() });
             }
             if (title.empty())
             {

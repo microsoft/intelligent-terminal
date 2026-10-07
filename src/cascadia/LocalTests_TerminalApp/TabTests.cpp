@@ -403,6 +403,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryTelemetryWaitsForReady);
         TEST_METHOD(VerticalTabHistorySnapshotRejectsMalformedResponse);
         TEST_METHOD(VerticalTabHistoryTitlesUseFirstLine);
+        TEST_METHOD(VerticalTabHistoryTitlelessUnicodeBasename);
         TEST_METHOD(VerticalTabHistoryIgnoresStaleLoadingResult);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesCollection);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
@@ -6950,6 +6951,33 @@ namespace TerminalAppLocalTests
                 const auto parsed = Page::_ParseSidebarHistorySnapshot(response);
                 VERIFY_IS_TRUE(parsed.state == Page::_SidebarHistorySnapshot::State::Ready);
                 VERIFY_IS_TRUE(parsed.items.empty());
+            }
+        });
+    }
+
+    void TabTests::VerticalTabHistoryTitlelessUnicodeBasename()
+    {
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            const winrt::hstring basename{ L"\u4f1a\u8bdd\U0001f680" };
+            const winrt::hstring cwd{ winrt::hstring{ L"C:\\workspace\\" } + basename };
+            const winrt::hstring explicitTitle{ L"Explicit \u6807\u9898\U0001f600" };
+            for (const auto& inputTitle : { winrt::hstring{}, explicitTitle })
+            {
+                Json::Value response;
+                response["history_status"] = "ready";
+                auto& row = response["sessions"][0];
+                row["session_id"] = "unicode-basename";
+                row["provider_id"] = "copilot";
+                row["location"] = "Host";
+                row["status"] = "Historical";
+                row["cwd"] = winrt::to_string(cwd);
+                row["title"] = winrt::to_string(inputTitle);
+                const auto snapshot = Page::_ParseSidebarHistorySnapshot(Json::writeString(Json::StreamWriterBuilder{}, response));
+                VERIFY_IS_TRUE(snapshot.state == Page::_SidebarHistorySnapshot::State::Ready);
+                VERIFY_ARE_EQUAL(size_t{ 1 }, snapshot.items.size());
+                VERIFY_ARE_EQUAL(inputTitle.empty() ? basename : explicitTitle, snapshot.items.front().Title());
+                VERIFY_ARE_EQUAL(cwd, snapshot.items.front().Cwd());
             }
         });
     }
