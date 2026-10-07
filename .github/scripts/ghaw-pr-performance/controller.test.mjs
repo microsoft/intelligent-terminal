@@ -19,6 +19,14 @@ test('repair publication uses the repository Actions token, not a recursion-trig
     assert.match(workflow, /name: Publish only the tested tree with immutable-head CAS[\s\S]*?with:\s+github-token: \$\{\{ github\.token \}\}/);
 });
 
+test('controller job leaves bounded preparation and reporting headroom beyond its worker deadline', () => {
+    const jobMinutes = Number(workflow.match(/timeout-minutes:\s*(\d+)/)?.[1]);
+    const workerMinutes = Number(source.match(/const deadline = Date\.now\(\) \+ (\d+) \* 60 \* 1000/)?.[1]);
+    assert.equal(jobMinutes, 90);
+    assert.equal(workerMinutes, 68);
+    assert.ok(jobMinutes - workerMinutes >= 20);
+});
+
 async function simulate({ fork = false, conclusion = 'success', agent = true, timeout = false } = {}) {
     const calls = [];
     const outputs = {};

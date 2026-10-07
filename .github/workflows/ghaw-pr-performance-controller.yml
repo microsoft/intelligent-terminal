@@ -19,7 +19,7 @@ jobs:
   performance-review:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
     outputs:
       worker_run_id: ${{ steps.worker.outputs.run_id }}
       review_status: ${{ steps.verdict.outputs.status }}
