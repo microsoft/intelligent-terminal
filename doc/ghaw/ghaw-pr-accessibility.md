@@ -67,11 +67,12 @@ structured report, exact source SHA, allowed patch paths, high-severity and
 high-confidence repair policy, exact trusted-recipe candidate, patch
 attribution, absence of untracked files, and absence of new literal accessible
 strings. It rejects all model-authored validation claims and adds its own
-attestation only after the candidate matches. A separate post-step queries the
+attestation only after the candidate matches.
 Every prepared static signal is also accounted for by stable ID: an actual
 finding or a separately explained false positive in `dismissed_signals`.
 Coverage is deterministic; dismissal reasoning remains model/domain judgment,
-not a new script engine or proof that the source has no accessibility defect. A separate post-step queries the
+not a new script engine or proof that the source has no accessibility defect.
+A separate post-step queries the
 current PR head immediately before safe-output publication. Workflow
 concurrency and that freshness check narrow, but cannot eliminate, the
 asynchronous race between the check and publication.
