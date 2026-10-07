@@ -59,6 +59,8 @@ blocking, or resource lifetime. MEDIUM/LOW are advice-only. A microbenchmark
 is not end-to-end proof; noisy measurements need samples and spread.
 Published evidence entries retain measurement kind, sample count and spread
 when supplied; source-only evidence retains its existing format.
+Measurement-only fields are rejected on source/proof entries; optional
+measurement metadata is typed, with positive sample counts and reported spread.
 
 After the agent stops, the repair worker requires an absent
 `.performance-trusted` directory and creates a fresh pinned checkout of the
@@ -137,7 +139,12 @@ inspection is anchored to the actual checkout, not candidate-mutable
 `core.worktree`; source reparse points are rejected. Cargo tests use
 tracked locks with `--locked` and separate fresh
 external target directories to prevent mutable artifact reuse between stages.
-These cold builds can exceed the unchanged total 30-minute deadline, requiring
+Each Cargo stage also uses a fresh external `CARGO_HOME`, isolating user-level
+configuration and registry state from earlier code. Captured ancestor Cargo
+configurations also remain unchanged: both config names, including initially
+absent files, are checked before and after stages.
+Changed or reparsed ancestor inputs block validation. Cold downloads and
+builds can exceed the unchanged total 30-minute deadline, requiring
 a blocked outcome and manual handoff. This is not a full host sandbox
 for candidate code executed by Cargo, nor proof of behavioral equivalence;
 the sealed publication tree and GitHub-recorded result remain separate authority.

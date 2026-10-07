@@ -243,6 +243,30 @@ test('rejects noisy measurements without samples and spread', () => {
     assert.throws(() => validateReport(bad, identity), /at least three samples/);
 });
 
+test('source and proof evidence cannot acquire measurement-only metadata', () => {
+    for (const type of ['source', 'complexity-proof', 'blocking-proof', 'resource-proof']) {
+        for (const [key, value] of Object.entries({ kind: 'profile', noisy: false, samples: 3, spread: '9-10 ms' })) {
+            const evidence = { type, detail: 'Immutable source proof.', [key]: value };
+            assert.throws(() => validateReport(report([finding({ evidence: [evidence] })]), identity), /measurement-only/);
+        }
+    }
+});
+
+test('optional measurement metadata is typed and meaningful when present', () => {
+    const evidence = { type: 'measurement', kind: 'profile', detail: 'Native profile observations.' };
+    assert.doesNotThrow(() => validateReport(report([finding({ evidence: [evidence] })]), identity));
+    for (const [key, values] of Object.entries({
+        noisy: ['true', 0, null], samples: [0, -1, 1.5, '3', null], spread: ['', 'x', 1, null],
+    })) {
+        for (const value of values) {
+            assert.throws(() => validateReport(report([finding({ evidence: [{ ...evidence, [key]: value }] })]), identity));
+        }
+    }
+    assert.doesNotThrow(() => validateReport(report([finding({
+        evidence: [{ ...evidence, noisy: true, samples: 3, spread: '9-10 ms' }],
+    })]), identity));
+});
+
 test('concurrency is a schema category, not a keyword-based proof classifier', () => {
     const valid = report([finding({
         category: 'concurrency',

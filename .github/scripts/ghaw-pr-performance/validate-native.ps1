@@ -107,6 +107,51 @@ foreach ($replacement in $replacements) {
     }
 }
 $expectedHashes = $originalHashes
+function Get-AncestorConfigHash([string]$ConfigPath) {
+    $cargoDirectory = [IO.Path]::GetDirectoryName($ConfigPath)
+    foreach ($pathToInspect in @($cargoDirectory, $ConfigPath)) {
+        try { $attributes = [IO.File]::GetAttributes($pathToInspect) }
+        catch [IO.FileNotFoundException] { return $null }
+        catch [IO.DirectoryNotFoundException] { return $null }
+        if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Cargo ancestor configuration reparse points are not allowed: $pathToInspect"
+        }
+        $isDirectory = ($attributes -band [IO.FileAttributes]::Directory) -ne 0
+        if ($isDirectory -ne ($pathToInspect -eq $cargoDirectory)) {
+            throw "Cargo ancestor configuration has an unexpected file type: $pathToInspect"
+        }
+    }
+    return (Get-FileHash -LiteralPath $ConfigPath -Algorithm SHA256).Hash
+}
+# Cargo discovers both names above its working directory, independently of CARGO_HOME.
+# Capture absent paths too, before original-head build scripts can run.
+$ancestorDirectories = @()
+$ancestorConfigs = @(
+    $ancestor = [IO.Directory]::GetParent($root)
+    while ($null -ne $ancestor) {
+        $ancestorDirectories += $ancestor.FullName
+        if (([IO.File]::GetAttributes($ancestor.FullName) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Cargo ancestor directory reparse points are not allowed: $($ancestor.FullName)"
+        }
+        foreach ($name in @('config', 'config.toml')) {
+            $configPath = Join-Path $ancestor.FullName ('.cargo\' + $name)
+            [pscustomobject]@{ Path = $configPath; Hash = Get-AncestorConfigHash $configPath }
+        }
+        $ancestor = $ancestor.Parent
+    }
+)
+function Assert-AncestorConfigHashes([string]$Stage) {
+    foreach ($directory in $ancestorDirectories) {
+        if (([IO.File]::GetAttributes($directory) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "${Stage}: Cargo ancestor directory reparse points are not allowed: $directory"
+        }
+    }
+    foreach ($config in $ancestorConfigs) {
+        if ($config.Hash -cne (Get-AncestorConfigHash $config.Path)) {
+            throw "${Stage}: changed Cargo ancestor configuration: $($config.Path)"
+        }
+    }
+}
 function Assert-ExpectedSourceHashes([string]$Stage) {
     $observed = Get-TrackedHashes
     foreach ($path in $paths) {
@@ -114,20 +159,29 @@ function Assert-ExpectedSourceHashes([string]$Stage) {
     }
 }
 $filter = $proposal.validationPlan.testFilter
+$rustupHome = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $env:USERPROFILE '.rustup' }
+$rustupHome = [IO.Path]::GetFullPath($rustupHome)
 # Actions must impose a 32-minute step deadline and owns cleanup of descendants.
 function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireTests = $false, [string]$NameCheck = '') {
+    Assert-AncestorConfigHashes $Stage
     Assert-SourceOnlyCheckout $Stage
     Assert-ExpectedSourceHashes $Stage
-    # Never reuse artifacts that an earlier test process could have modified.
+    # Never reuse artifacts or Cargo configuration/registry state from earlier code.
     # Actions owns hosted cleanup; local callers own their isolated temporary parent.
     $targetParent = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
     $targetDirectory = [IO.Path]::GetFullPath((Join-Path $targetParent ('performance-native-target-' + [guid]::NewGuid().ToString('N'))))
-    if ($targetDirectory.Equals($root, [StringComparison]::OrdinalIgnoreCase) -or
-        $targetDirectory.StartsWith($root.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'Native Cargo target directory must be outside the candidate checkout.'
+    $cargoHome = [IO.Path]::GetFullPath((Join-Path $targetParent ('performance-native-cargo-home-' + [guid]::NewGuid().ToString('N'))))
+    foreach ($directory in @($targetDirectory, $cargoHome)) {
+        if ($directory.Equals($root, [StringComparison]::OrdinalIgnoreCase) -or
+            $directory.StartsWith($root.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Native Cargo stage directories must be outside the candidate checkout.'
+        }
+        if (Test-Path -LiteralPath $directory) { throw 'Native Cargo stage directories must be fresh.' }
     }
+    $null = [IO.Directory]::CreateDirectory($cargoHome)
     if ($Arguments[0] -eq 'test') { $null = [IO.Directory]::CreateDirectory($targetDirectory) }
     Write-Output "${Stage}: cargo $($Arguments -join ' ')"
+    Write-Output "${Stage}: CARGO_HOME=$cargoHome"
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = (Get-Command cargo -CommandType Application -ErrorAction Stop).Source
     $start.WorkingDirectory = $root
@@ -141,6 +195,8 @@ function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireT
         }
     }
     $start.Environment['CARGO_TARGET_DIR'] = $targetDirectory
+    $start.Environment['CARGO_HOME'] = $cargoHome
+    $start.Environment['RUSTUP_HOME'] = $rustupHome
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $start
     $started = $false
@@ -183,6 +239,7 @@ function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireT
             $process.WaitForExit(10000) | Out-Null
         }
         $process.Dispose()
+        Assert-AncestorConfigHashes $Stage
         Assert-SourceOnlyCheckout $Stage
         Assert-ExpectedSourceHashes $Stage
     }

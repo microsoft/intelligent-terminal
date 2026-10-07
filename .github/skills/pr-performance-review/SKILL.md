@@ -142,9 +142,12 @@ Native Cargo stages require a source-only checkout: untracked paths, including
 ignored files, and changes to original index path membership are rejected
 initially and between stages. Physical file inspection uses the actual
 checkout root independently of mutable Git metadata; source reparse points
-are rejected. Tests use `--locked`
-and fresh external target directories so later stages do not reuse artifacts
-that an earlier test could modify. Cold builds may exhaust the unchanged
+are rejected. Tests use `--locked`, and every Cargo stage uses a fresh external
+`CARGO_HOME` as well as a separate target directory. Later stages do not reuse
+configuration, registry state or artifacts that earlier code could modify.
+Cargo's ancestor `config`/`config.toml` files are captured before execution,
+including absent paths, and must retain presence and bytes between stages.
+Cold registry downloads and builds may exhaust the unchanged
 30-minute validation deadline; report that as blocked with a manual handoff,
 not a pass or a reason to weaken the gates.
 
@@ -219,11 +222,7 @@ body. Native post-processing owns file writes and final card rendering.
       "details": "OS/build/tooling or why unavailable"
     },
     "evidence": [{
-      "type": "source | measurement | complexity-proof | blocking-proof | resource-proof",
-      "kind": "microbenchmark | end-to-end | profile",
-      "noisy": false,
-      "samples": 5,
-      "spread": "p50/p95/range when noisy",
+      "type": "source | complexity-proof | blocking-proof | resource-proof",
       "detail": "specific proof"
     }],
     "proposedFix": "small recommendation or applied change",
@@ -245,6 +244,12 @@ Stable IDs start with `PERF-` and use a bounded source/defect identifier,
 not array order or an arbitrary fixed character count. `exitCode` is `null`
 when not run; every `unavailable` check requires `exitCode: null`.
 `validationPlan` is required only for proposals.
+For measurement evidence use `type: measurement` and a required `kind` of
+`microbenchmark`, `end-to-end` or `profile`. Optional `noisy` must be boolean,
+`samples` must be a positive integer, and `spread` must be a string of at least
+three characters describing the observed spread.
+Noisy measurements require at least three samples and reported spread.
+Source/proof evidence must omit all four measurement-only fields.
 The schema example deliberately omits `testFilter`: add that required field
 using the actual test name you read, not a sample value.
 Status `fixed` is reserved for the published card after native validation.

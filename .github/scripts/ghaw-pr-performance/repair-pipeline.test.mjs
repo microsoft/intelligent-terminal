@@ -24,6 +24,21 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     fs.writeFileSync(path.join(root, '.gitignore'), '/tools/wta/target/\n');
     fs.writeFileSync(path.join(root, 'tools', 'wta', 'build.rs'), `
 fn main() {
+    let home = std::path::PathBuf::from(std::env::var_os("CARGO_HOME").unwrap());
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+    assert!(!home.canonicalize().unwrap().starts_with(root));
+    assert!(!home.join("config.toml").exists(), "reused Cargo configuration");
+    assert!(!home.join("registry/data/poison-sentinel").exists(), "reused registry data");
+    std::fs::create_dir_all(home.join("registry/data")).unwrap();
+    std::fs::write(home.join("registry/data/poison-sentinel"), b"poisoned registry source").unwrap();
+    std::fs::write(home.join("fake-runner.cmd"), r"@echo off
+echo test tests::work_is_linear ... ok
+echo test result: ok. 1 passed; 0 failed;
+exit /b 0
+").unwrap();
+    let runner = home.join("fake-runner.cmd").to_string_lossy().replace(char::from(92), "/");
+    std::fs::write(home.join("config.toml"),
+        format!("[target.x86_64-pc-windows-msvc]\\nrunner = '{}'\\n", runner)).unwrap();
     if let (Ok(downloads), Ok(workspace)) = (std::env::var("RUNNER_TEMP"), std::env::var("GITHUB_WORKSPACE")) {
         let downloads = std::path::Path::new(&downloads);
         if downloads.join("alternative.json").exists() {
@@ -37,7 +52,12 @@ fn main() {
 `);
     const sourcePath = path.join(root, 'tools', 'wta', 'src', 'lib.rs');
     let baselineSource = 'pub fn work(n: usize) -> usize { n }\n' +
-        '#[cfg(test)] mod tests { #[test] fn work_is_linear() { assert_eq!(super::work(1000), 1000); } }\n';
+        `#[cfg(test)] mod tests { #[test] fn work_is_linear() {
+            let home = std::path::PathBuf::from(std::env::var_os("CARGO_HOME").unwrap());
+            assert!(home.join("registry/data/poison-sentinel").exists());
+            std::fs::write(home.join("actual-test-executed"), b"real compiled test ran").unwrap();
+            assert_eq!(super::work(1000), 1000);
+        } }\n`;
     fs.writeFileSync(sourcePath, baselineSource);
     const formatFixture = () => execFileSync('cargo', ['fmt', '--manifest-path', path.join(root, 'tools', 'wta', 'Cargo.toml')], {
         encoding: 'utf8', timeout: 15000,
@@ -149,6 +169,7 @@ fn main() {
     const native = spawnSync('pwsh', ['-NoProfile', '-Command', command], {
         cwd: path.join(workspace, workingDirectory),
         env: { ...process.env, GITHUB_WORKSPACE: workspace, RUNNER_TEMP: nativeArtifacts,
+            CARGO_HOME: path.join(root, 'caller-cargo-home'),
             PR_NUMBER: '42', BASE_SHA: baseSha, HEAD_SHA: headSha },
         encoding: 'utf8', timeout: 180000,
     });
@@ -163,6 +184,18 @@ fn main() {
     assert.match(native.stdout, /full-suite: 1 native test\(s\) passed/);
     assert.equal(fs.existsSync(path.join(root, 'tools', 'wta', 'target')), false);
     assert.equal(fs.readdirSync(nativeArtifacts).filter(name => name.startsWith('performance-native-target-')).length, 3);
+    const homes = fs.readdirSync(nativeArtifacts).filter(name => name.startsWith('performance-native-cargo-home-'))
+        .map(name => path.join(nativeArtifacts, name));
+    assert.equal(homes.length, 4, 'listing, formatting, focused and full stages each have a fresh Cargo home');
+    const poisonedHomes = homes.filter(home => fs.existsSync(path.join(home, 'registry', 'data', 'poison-sentinel')));
+    assert.equal(poisonedHomes.length, 3, 'all three real compiled build scripts poison only their own Cargo home');
+    for (const home of poisonedHomes) {
+        assert.ok(fs.existsSync(path.join(home, 'config.toml')));
+        assert.ok(fs.existsSync(path.join(home, 'fake-runner.cmd')));
+    }
+    assert.equal(homes.filter(home => fs.existsSync(path.join(home, 'actual-test-executed'))).length, 2,
+        'focused and full stages execute actual compiled tests, not the fake runner output');
+    assert.equal(fs.existsSync(path.join(root, 'caller-cargo-home')), false, 'caller Cargo home override is ignored');
     assert.equal(git(['ls-files', '--others']), '', 'all build artifacts stay outside the checkout');
     assert.equal(fs.existsSync(nativeOut), false, 'native test step must not produce publication authority');
     assert.ok(fs.existsSync(path.join(nativeArtifacts, 'tampering-observed')), 'real compiled build.rs must perform the attack');

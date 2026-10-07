@@ -136,9 +136,18 @@ export function validateReport(report, expected) {
         for (const evidence of finding.evidence) {
             if (!['source', ...PROOF_TYPES].includes(evidence?.type)) fail(`${prefix} contains an invalid evidence type`);
             requireString(evidence.detail, `${prefix}.evidence.detail`, 3);
-            if (evidence.type !== 'measurement') continue;
+            if (evidence.type !== 'measurement') {
+                if (['kind', 'noisy', 'samples', 'spread'].some(key => Object.hasOwn(evidence, key)))
+                    fail(`${prefix} source/proof evidence cannot contain measurement-only fields`);
+                continue;
+            }
             if (!['microbenchmark', 'end-to-end', 'profile'].includes(evidence.kind))
                 fail(`${prefix} measurement must distinguish microbenchmark, end-to-end, or profile`);
+            if (evidence.noisy !== undefined && typeof evidence.noisy !== 'boolean')
+                fail(`${prefix} measurement noisy must be boolean when present`);
+            if (evidence.samples !== undefined && (!Number.isInteger(evidence.samples) || evidence.samples < 1))
+                fail(`${prefix} measurement samples must be a positive integer when present`);
+            if (evidence.spread !== undefined) requireString(evidence.spread, `${prefix}.evidence.spread`, 3);
             if (evidence.noisy === true && (!Number.isInteger(evidence.samples) || evidence.samples < 3 ||
                 typeof evidence.spread !== 'string' || evidence.spread.length < 3))
                 fail(`${prefix} noisy measurement needs at least three samples and reported spread`);

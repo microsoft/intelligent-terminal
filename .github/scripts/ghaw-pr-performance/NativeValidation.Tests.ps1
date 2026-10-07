@@ -89,16 +89,20 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
     & $BeforeValidation
     $previousTemp = $env:RUNNER_TEMP
     $previousTarget = $env:CARGO_TARGET_DIR
+    $previousHome = $env:CARGO_HOME
     try {
         $env:RUNNER_TEMP = $targetParent
         # The validator must override a caller's in-checkout target path, child-only.
         $env:CARGO_TARGET_DIR = Join-Path $fixture 'tools\wta\target'
+        $env:CARGO_HOME = Join-Path $fixture 'caller-cargo-home'
         $messages = & pwsh -NoProfile -File $validator -ProposalPath $proposalPath -RepositoryRoot $fixture -TrustedRuntimePath $caseRuntime 2>&1
         $exit = $LASTEXITCODE
         if ($env:CARGO_TARGET_DIR -cne (Join-Path $fixture 'tools\wta\target')) { throw 'Native step changed parent target directory.' }
+        if ($env:CARGO_HOME -cne (Join-Path $fixture 'caller-cargo-home')) { throw 'Native step changed parent Cargo home.' }
     } finally {
         $env:RUNNER_TEMP = $previousTemp
         $env:CARGO_TARGET_DIR = $previousTarget
+        $env:CARGO_HOME = $previousHome
     }
     if ($ErrorPattern) {
         if ($exit -eq 0 -or ($messages -join "`n") -notmatch $ErrorPattern) {
@@ -165,10 +169,53 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
     }
     if ($Name -eq 'external-target-artifacts') {
         if (Test-Path -LiteralPath (Join-Path $fixture 'tools\wta\target')) { throw 'Cargo used an in-checkout target directory.' }
-        $targets = @(Get-ChildItem -LiteralPath $targetParent -Directory)
-        if ($targets.Count -ne 3 -or @($targets | Where-Object { -not (Test-Path (Join-Path $_.FullName 'x86_64-pc-windows-msvc\debug')) }).Count -gt 0) {
+        $targets = @(Get-ChildItem -LiteralPath $targetParent -Directory -Filter 'performance-native-target-*')
+        $homes = @(Get-ChildItem -LiteralPath $targetParent -Directory -Filter 'performance-native-cargo-home-*')
+        if ($targets.Count -ne 3 -or $homes.Count -ne 4 -or @($targets | Where-Object { -not (Test-Path (Join-Path $_.FullName 'x86_64-pc-windows-msvc\debug')) }).Count -gt 0) {
             throw 'Compiled listing, focused test and full suite did not use distinct external target directories.'
         }
+    }
+    if ($Name -eq 'stage-cargo-home-poisoning') {
+        $homes = @(Get-ChildItem -LiteralPath $targetParent -Directory -Filter 'performance-native-cargo-home-*')
+        $poisoned = @($homes | Where-Object { Test-Path (Join-Path $_.FullName 'registry\data\poison-sentinel') })
+        $executed = @($homes | Where-Object { Test-Path (Join-Path $_.FullName 'actual-execution-observed') })
+        if ($homes.Count -ne 4 -or $poisoned.Count -ne 3 -or $executed.Count -ne 2) {
+            throw 'Original listing, format, focused and full stages did not isolate Cargo homes and execute real tests.'
+        }
+        foreach ($stageHome in $poisoned) {
+            if (-not (Test-Path (Join-Path $stageHome.FullName 'config.toml')) -or
+                -not (Test-Path (Join-Path $stageHome.FullName 'fake-runner.cmd'))) { throw 'Compiled build.rs did not poison Cargo state.' }
+        }
+    }
+    if ($Name -like 'ancestor-config-*') {
+        if (($messages -join "`n") -match 'format-check: cargo|focused-tests: cargo|full-suite: cargo') {
+            throw 'Changed ancestor Cargo configuration reached candidate stages.'
+        }
+        if (-not (Test-Path (Join-Path $workspace 'ancestor-poisoning-observed'))) {
+            throw 'Original compiled build.rs did not inject ancestor configuration.'
+        }
+        # Prove ordinary Cargo discovers the injected ancestor even with a fresh home.
+        $savedHome = $env:CARGO_HOME
+        $savedTarget = $env:CARGO_TARGET_DIR
+        Push-Location $fixture
+        try {
+            $env:CARGO_HOME = Join-Path $workspace 'discovery-home'
+            $env:CARGO_TARGET_DIR = Join-Path $workspace 'discovery-target'
+            $discovery = & cargo test --locked --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml tests::focused -- --exact 2>&1
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $workspace 'fake-ancestor-runner-executed'))) {
+                throw "Cargo did not discover the real ancestor fake runner: $discovery"
+            }
+        } finally {
+            Pop-Location
+            $env:CARGO_HOME = $savedHome
+            $env:CARGO_TARGET_DIR = $savedTarget
+        }
+        Remove-Item -LiteralPath (Join-Path $workspace 'ancestor-poisoning-observed'), (Join-Path $workspace 'fake-ancestor-runner-executed')
+        Remove-Item -LiteralPath (Join-Path $workspace 'discovery-home'), (Join-Path $workspace 'discovery-target') -Recurse -Force
+    }
+    foreach ($ownedAncestorPath in @('.cargo', 'ancestor-tamper-name')) {
+        $ownedPath = Join-Path $workspace $ownedAncestorPath
+        if (Test-Path -LiteralPath $ownedPath) { Remove-Item -LiteralPath $ownedPath -Recurse -Force }
     }
     # Remove only paths deliberately created by these isolated fixtures, never arbitrary checkout files.
     foreach ($knownPath in @('.cargo', 'fixture-fake-runner.cmd')) {
@@ -307,6 +354,11 @@ fn work() -> usize {
         assert!(std::env::var_os(key).is_none(), "inherited {}", key);
     }
     assert_eq!(std::env::var("RUNNER_TRACKING_ID").unwrap(), "native-step-fixture");
+    let home = std::path::PathBuf::from(std::env::var_os("CARGO_HOME").unwrap());
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+    assert!(!home.canonicalize().unwrap().starts_with(root));
+    assert!(home.file_name().unwrap().to_str().unwrap().starts_with("performance-native-cargo-home-"));
+    assert!(std::path::Path::new(&std::env::var_os("RUSTUP_HOME").unwrap()).is_dir());
     4
 }
 '@
@@ -328,7 +380,31 @@ fn work() -> usize {
     $buildScript = @'
 fn main() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+    let root = std::path::PathBuf::from(root.to_string_lossy().trim_start_matches(r"\\?\"));
     let external = root.parent().unwrap();
+    if let Ok(name) = std::fs::read_to_string(external.join("ancestor-tamper-name")) {
+        let config_dir = external.join(".cargo");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let runner_path = config_dir.join("fake-runner.cmd");
+        std::fs::write(&runner_path, format!(
+            "@echo off\r\necho executed > \"{}\"\r\necho test tests::focused ... ok\r\necho test result: ok. 1 passed; 0 failed;\r\nexit /b 0\r\n",
+            external.join("fake-ancestor-runner-executed").display())).unwrap();
+        let runner = runner_path.to_string_lossy().replace('\\', "/");
+        std::fs::write(config_dir.join(name.trim()), format!(
+            "[target.x86_64-pc-windows-msvc]\nrunner = '{}'\n", runner)).unwrap();
+        std::fs::write(external.join("ancestor-poisoning-observed"), b"compiled original injection").unwrap();
+    }
+    let home = std::path::PathBuf::from(std::env::var_os("CARGO_HOME").unwrap());
+    assert!(!home.canonicalize().unwrap().starts_with(&root));
+    assert!(!home.join("config.toml").exists(), "reused mutable Cargo config");
+    assert!(!home.join("registry/data/poison-sentinel").exists(), "reused mutable registry data");
+    std::fs::create_dir_all(home.join("registry/data")).unwrap();
+    std::fs::write(home.join("registry/data/poison-sentinel"), b"modified registry source").unwrap();
+    std::fs::write(home.join("fake-runner.cmd"),
+        "@echo off\r\necho test tests::focused ... ok\r\necho test result: ok. 1 passed; 0 failed;\r\nexit /b 0\r\n").unwrap();
+    let runner = home.join("fake-runner.cmd").to_string_lossy().replace('\\', "/");
+    std::fs::write(home.join("config.toml"),
+        format!("[target.x86_64-pc-windows-msvc]\nrunner = '{}'\n", runner)).unwrap();
     if let Ok(mode) = std::fs::read_to_string(external.join("tamper-mode")) {
         if mode.contains("proposal") {
             std::fs::copy(external.join("alternative.json"), external.join("downloaded-proposal.json")).unwrap();
@@ -348,9 +424,38 @@ fn main() {
     $null = Git @('-c', 'user.name=Native Fixture', '-c', 'user.email=fixture@invalid', '-c', 'core.hooksPath=NUL',
         'commit', '--quiet', '-m', "Immutable external-input attack fixture`n`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>")
     $script:head = Git @('rev-parse', 'HEAD')
+    $executionMarker = @'
+    let home = std::path::PathBuf::from(std::env::var_os("CARGO_HOME").unwrap());
+    assert!(home.join("registry/data/poison-sentinel").exists());
+    std::fs::write(home.join("actual-execution-observed"), b"actual compiled execution observed").unwrap();
+    2 + 2
+'@
+    Test-Case 'stage-cargo-home-poisoning' ($repair.Replace("    2 + 2`n", $executionMarker + "`n")) 'tests::focused'
     foreach ($attack in @('proposal', 'runtime', 'proposal-runtime')) {
         Test-Case "original-listing-$attack-tampering" ($baseline.Replace("    4`n", "    5`n")) 'tests::focused' `
             'focused-tests: native validation failed with exit code' $false $false {} $attack
+    }
+    foreach ($configName in @('config', 'config.toml')) {
+        Test-Case "ancestor-config-created-$configName" $repair 'tests::focused' `
+            'original-test-listing: changed Cargo ancestor configuration' $false $false {
+                [IO.File]::WriteAllText((Join-Path $workspace 'ancestor-tamper-name'), $configName, $utf8)
+            }
+    }
+    Test-Case 'ancestor-config-modified' $repair 'tests::focused' `
+        'original-test-listing: changed Cargo ancestor configuration' $false $false {
+            $null = [IO.Directory]::CreateDirectory((Join-Path $workspace '.cargo'))
+            [IO.File]::WriteAllText((Join-Path $workspace '.cargo\config.toml'), "[net]`noffline = true`n", $utf8)
+            [IO.File]::WriteAllText((Join-Path $workspace 'ancestor-tamper-name'), 'config.toml', $utf8)
+        }
+    Test-Case 'ancestor-reparse-config-directory' $repair 'tests::focused' `
+        'Cargo ancestor configuration reparse points are not allowed' $false $false {
+            $junctionTarget = Join-Path $workspace 'ancestor-junction-content'
+            $null = [IO.Directory]::CreateDirectory($junctionTarget)
+            $null = New-Item -ItemType Junction -Path (Join-Path $workspace '.cargo') -Target $junctionTarget
+        }
+    Test-Case 'unchanged-ancestor-inputs' $repair 'tests::focused' '' $false $false {
+        $null = [IO.Directory]::CreateDirectory((Join-Path $workspace '.cargo'))
+        [IO.File]::WriteAllText((Join-Path $workspace '.cargo\config.toml'), "[net]`noffline = true`n", $utf8)
     }
     # A committed stale lock must fail Cargo's --locked check, not be regenerated.
     $null = Git @('read-tree', $script:head)
