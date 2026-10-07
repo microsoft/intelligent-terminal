@@ -527,11 +527,9 @@ namespace winrt::TerminalApp::implementation
 
         InitializeComponent();
 
-        // Materialize the named section before applying state to its deferred resources.
-        static_cast<void>(Resources().Lookup(box_value(L"HistorySection")));
         // ItemsControl handles a UIElement item as its own content; it must not
         // also be the data item for the section's DataTemplate.
-        _historySectionItem = box_value(HistoryHeader().Text());
+        _historySectionItem = box_value(RS_(L"VerticalTabsSessionHistoryHeader/Text"));
         const auto selector = winrt::make_self<TabStripItemTemplateSelector>();
         selector->LiveTemplate = ItemsList().ItemTemplate();
         selector->HistoryTemplate = Resources().Lookup(box_value(L"HistoryRowTemplate")).as<DataTemplate>();
@@ -1924,18 +1922,49 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TabStrip::OnHistoryExpandedChanged(IInspectable const&, RoutedEventArgs const&)
+    Grid TabStrip::HistorySection()
     {
-        // Checked can be raised while InitializeComponent is still creating the header.
-        if (_viewportItems && ItemsList() && HistoryChevron() && HistoryStatusPanel())
+        const auto container = ItemsList().ContainerFromItem(_historySectionItem).try_as<ListViewItem>();
+        const auto root = container ? container.ContentTemplateRoot().try_as<Grid>() : nullptr;
+        return root && root == _historySection.get() ? root : nullptr;
+    }
+
+    void TabStrip::OnHistorySectionLoaded(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        if (const auto root = sender.try_as<Grid>())
         {
-            const auto expanded = HistoryHeaderButton().IsChecked().Value();
-            HistoryChevron().Glyph(expanded ? L"\xE70D" : L"\xE76C");
-            HistoryStatusPanel().Visibility(expanded ? Visibility::Visible : Visibility::Collapsed);
-            const auto action = expanded ? RS_(L"VerticalTabsCollapseRecentSessions") : RS_(L"VerticalTabsExpandRecentSessions");
-            ToolTipService::SetToolTip(HistoryHeaderButton(), box_value(action));
-            WUX::Automation::AutomationProperties::SetHelpText(HistoryHeaderButton(), action);
-            _syncViewportItems();
+            const auto container = ItemsList().ContainerFromItem(_historySectionItem).try_as<ListViewItem>();
+            if (container && container.ContentTemplateRoot() == root)
+            {
+                _historySection = winrt::make_weak(root);
+                const auto previousSync = std::exchange(_syncingHistorySection, true);
+                const auto endSync = wil::scope_exit([&]() noexcept { _syncingHistorySection = previousSync; });
+                _updateHistoryVisualState();
+            }
+        }
+    }
+
+    void TabStrip::OnHistorySectionUnloaded(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        if (_historySection.get() == sender)
+        {
+            _historySection = {};
+        }
+    }
+
+    void TabStrip::OnHistoryExpandedChanged(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        if (_syncingHistorySection)
+        {
+            return;
+        }
+        if (const auto button = sender.try_as<TerminalApp::TabStripHistoryHeader>())
+        {
+            if (button == HistoryHeaderButton())
+            {
+                _historyExpanded = button.IsChecked().Value();
+                _updateHistoryVisualState();
+            }
         }
     }
 
@@ -2492,7 +2521,11 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::_updateHistoryVisualState()
     {
         const auto visible = _historyActive && !_isRailCollapsed;
-        HistorySection().Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
+        const auto section = HistorySection();
+        if (section)
+        {
+            section.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
+        }
         TabsToolbar().Visibility(Visibility::Visible);
         VerticalTabsHeader().Text(visible ? RS_(L"VerticalTabsHistoryHeader/Text") :
                                            RS_(L"VerticalTabsHeader/Text"));
@@ -2508,35 +2541,46 @@ namespace winrt::TerminalApp::implementation
         FilterStatusBar().Visibility(!visible && _filterMode != TerminalApp::TabStripFilterMode::AllTabs ?
                                          Visibility::Visible :
                                          Visibility::Collapsed);
-        HistoryLoadingIndicator().IsActive(visible && _historyLoading);
-        HistoryLoadingIndicator().Visibility(visible && _historyLoading ? Visibility::Visible : Visibility::Collapsed);
         ItemsList().IsItemClickEnabled(visible && !_historyActivating && !_historyLoading);
-        WUX::Automation::AutomationProperties::SetName(HistoryHeaderButton(), HistoryHeader().Text());
-        const auto historyAction = HistoryHeaderButton().IsChecked().Value() ?
-                                       RS_(L"VerticalTabsCollapseRecentSessions") : RS_(L"VerticalTabsExpandRecentSessions");
-        ToolTipService::SetToolTip(HistoryHeaderButton(), box_value(historyAction));
-        WUX::Automation::AutomationProperties::SetHelpText(HistoryHeaderButton(), historyAction);
-        if (!visible || _historyLoading)
+        if (section)
         {
-            HistoryMessage().Visibility(Visibility::Collapsed);
+            const auto previousSync = std::exchange(_syncingHistorySection, true);
+            const auto endSync = wil::scope_exit([&]() noexcept { _syncingHistorySection = previousSync; });
+            HistoryHeaderButton().IsChecked(_historyExpanded);
+            HistoryChevron().Glyph(_historyExpanded ? L"\xE70D" : L"\xE76C");
+            HistoryStatusPanel().Visibility(_historyExpanded ? Visibility::Visible : Visibility::Collapsed);
+            HistoryLoadingIndicator().IsActive(visible && _historyExpanded && _historyLoading);
+            HistoryLoadingIndicator().Visibility(visible && _historyLoading ? Visibility::Visible : Visibility::Collapsed);
+            WUX::Automation::AutomationProperties::SetName(HistoryHeaderButton(), HistoryHeader().Text());
+            const auto historyAction = _historyExpanded ?
+                                           RS_(L"VerticalTabsCollapseRecentSessions") : RS_(L"VerticalTabsExpandRecentSessions");
+            ToolTipService::SetToolTip(HistoryHeaderButton(), box_value(historyAction));
+            WUX::Automation::AutomationProperties::SetHelpText(HistoryHeaderButton(), historyAction);
+            if (!visible || _historyLoading)
+            {
+                HistoryMessage().Visibility(Visibility::Collapsed);
+            }
+            else if (const auto error = HistoryError(); !error.empty())
+            {
+                HistoryMessage().Text(error);
+                HistoryMessage().Visibility(Visibility::Visible);
+            }
+            else if (_historyItems.Size() == 0)
+            {
+                HistoryMessage().Text(_historySnapshot.empty() ?
+                                          RS_(L"VerticalTabsHistoryEmpty") :
+                                          RS_(L"VerticalTabsHistoryNoMatches"));
+                HistoryMessage().Visibility(Visibility::Visible);
+            }
+            else
+            {
+                HistoryMessage().Visibility(Visibility::Collapsed);
+            }
         }
-        else if (const auto error = HistoryError(); !error.empty())
+        if (!_syncingHistorySection)
         {
-            HistoryMessage().Text(error);
-            HistoryMessage().Visibility(Visibility::Visible);
+            _syncViewportItems();
         }
-        else if (_historyItems.Size() == 0)
-        {
-            HistoryMessage().Text(_historySnapshot.empty() ?
-                                      RS_(L"VerticalTabsHistoryEmpty") :
-                                      RS_(L"VerticalTabsHistoryNoMatches"));
-            HistoryMessage().Visibility(Visibility::Visible);
-        }
-        else
-        {
-            HistoryMessage().Visibility(Visibility::Collapsed);
-        }
-        _syncViewportItems();
     }
 
     void TabStrip::_syncViewportItems()
@@ -2596,7 +2640,7 @@ namespace winrt::TerminalApp::implementation
                     ++headerIndex;
                 }
             }
-            const auto historyCount = HistoryHeaderButton().IsChecked().Value() ? _historyItems.Size() : 0;
+            const auto historyCount = _historyExpanded ? _historyItems.Size() : 0;
             for (uint32_t index = 0; index < historyCount; ++index)
             {
                 const auto slot = headerIndex + 1 + index;

@@ -339,6 +339,13 @@ namespace winrt::TerminalApp::implementation
         void ClearHistorySearch();
         void OpenHistory();
         bool HistoryActive() const noexcept { return _historyActive; }
+        winrt::Windows::UI::Xaml::Controls::Grid HistorySection();
+        TerminalApp::TabStripHistoryHeader HistoryHeaderButton() { return _historyElement(L"HistoryHeaderButton").try_as<TerminalApp::TabStripHistoryHeader>(); }
+        winrt::Windows::UI::Xaml::Controls::TextBlock HistoryHeader() { return _historyElement(L"HistoryHeader").try_as<winrt::Windows::UI::Xaml::Controls::TextBlock>(); }
+        winrt::Windows::UI::Xaml::Controls::FontIcon HistoryChevron() { return _historyElement(L"HistoryChevron").try_as<winrt::Windows::UI::Xaml::Controls::FontIcon>(); }
+        winrt::Windows::UI::Xaml::Controls::Grid HistoryStatusPanel() { return _historyElement(L"HistoryStatusPanel").try_as<winrt::Windows::UI::Xaml::Controls::Grid>(); }
+        winrt::Windows::UI::Xaml::Controls::ProgressRing HistoryLoadingIndicator() { return _historyElement(L"HistoryLoadingIndicator").try_as<winrt::Windows::UI::Xaml::Controls::ProgressRing>(); }
+        winrt::Windows::UI::Xaml::Controls::TextBlock HistoryMessage() { return _historyElement(L"HistoryMessage").try_as<winrt::Windows::UI::Xaml::Controls::TextBlock>(); }
         void HistoryActive(bool value);
         bool HistoryLoading() const noexcept { return _historyLoading; }
         void HistoryLoading(bool value);
@@ -418,6 +425,10 @@ namespace winrt::TerminalApp::implementation
         void OnSearchBoxKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
         void OnHistoryExpandedChanged(winrt::Windows::Foundation::IInspectable const& sender,
+                                      winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnHistorySectionLoaded(winrt::Windows::Foundation::IInspectable const& sender,
+                                    winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnHistorySectionUnloaded(winrt::Windows::Foundation::IInspectable const& sender,
                                       winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnHistoryItemClick(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Controls::ItemClickEventArgs const& e);
@@ -527,6 +538,14 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripDisplayItem> _displayItems{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> _viewportItems{ nullptr };
         winrt::Windows::Foundation::IInspectable _historySectionItem{ nullptr };
+        winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Grid> _historySection;
+        bool _historyExpanded{ true };
+        bool _syncingHistorySection{ false };
+        winrt::Windows::UI::Xaml::FrameworkElement _historyElement(const wchar_t* name)
+        {
+            const auto root = HistorySection();
+            return root ? root.FindName(name).try_as<winrt::Windows::UI::Xaml::FrameworkElement>() : nullptr;
+        }
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> _historyItems{ nullptr };
         std::vector<TerminalApp::TabStripHistoryItem> _historySnapshot;
         std::vector<std::vector<winrt::hstring>> _historySearchTerms;

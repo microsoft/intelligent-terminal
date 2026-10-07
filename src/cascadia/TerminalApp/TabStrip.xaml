@@ -103,63 +103,63 @@
                 <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
                 <Setter Property="Opacity" Value="1" />
             </Style>
-            <Grid x:Name="HistorySection"
-                  x:Key="HistorySection"
-                  Background="Transparent">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <local:TabStripHistoryHeader x:Name="HistoryHeaderButton"
-                                            AutomationProperties.AutomationId="HistoryHeaderButton"
-                                            MinHeight="44"
-                                            Padding="12,0"
-                                            HorizontalAlignment="Stretch"
-                                            HorizontalContentAlignment="Stretch"
-                                            Background="Transparent"
-                                            BorderThickness="0"
-                                            IsChecked="True"
-                                            Checked="OnHistoryExpandedChanged"
-                                            Unchecked="OnHistoryExpandedChanged">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="HistoryHeader"
-                                   x:Uid="VerticalTabsSessionHistoryHeader"
-                                   VerticalAlignment="Center"
-                                   FontWeight="SemiBold" />
-                        <FontIcon x:Name="HistoryChevron"
-                                  Grid.Column="1"
-                                  FontSize="10"
-                                  Glyph="&#xE70D;"
-                                  AutomationProperties.AccessibilityView="Raw" />
-                    </Grid>
-                </local:TabStripHistoryHeader>
-                <Grid x:Name="HistoryStatusPanel" Grid.Row="1">
-                    <ProgressRing x:Name="HistoryLoadingIndicator"
-                                  Width="24"
-                                  Height="24"
-                                  Margin="0,8"
-                                  HorizontalAlignment="Center"
-                                  IsActive="False"
-                                  Visibility="Collapsed" />
-                    <TextBlock x:Name="HistoryMessage"
-                               Margin="16,0"
-                               HorizontalAlignment="Center"
-                               LineHeight="20"
-                               LineStackingStrategy="BlockLineHeight"
-                               MaxLines="3"
-                               TextAlignment="Center"
-                               TextTrimming="CharacterEllipsis"
-                               TextWrapping="Wrap"
-                               ToolTipService.ToolTip="{Binding Text, ElementName=HistoryMessage}"
-                               Visibility="Collapsed" />
-                </Grid>
-            </Grid>
             <DataTemplate x:Key="HistoryHeaderTemplate">
-                <ContentPresenter Content="{StaticResource HistorySection}" />
+                <Grid x:Name="HistorySection"
+                      Background="Transparent"
+                      Loaded="OnHistorySectionLoaded"
+                      Unloaded="OnHistorySectionUnloaded">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <local:TabStripHistoryHeader x:Name="HistoryHeaderButton"
+                                                AutomationProperties.AutomationId="HistoryHeaderButton"
+                                                MinHeight="44"
+                                                Padding="12,0"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Stretch"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                IsChecked="True"
+                                                Checked="OnHistoryExpandedChanged"
+                                                Unchecked="OnHistoryExpandedChanged">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="HistoryHeader"
+                                       x:Uid="VerticalTabsSessionHistoryHeader"
+                                       VerticalAlignment="Center"
+                                       FontWeight="SemiBold" />
+                            <FontIcon x:Name="HistoryChevron"
+                                      Grid.Column="1"
+                                      FontSize="10"
+                                      Glyph="&#xE70D;"
+                                      AutomationProperties.AccessibilityView="Raw" />
+                        </Grid>
+                    </local:TabStripHistoryHeader>
+                    <Grid x:Name="HistoryStatusPanel" Grid.Row="1">
+                        <ProgressRing x:Name="HistoryLoadingIndicator"
+                                      Width="24"
+                                      Height="24"
+                                      Margin="0,8"
+                                      HorizontalAlignment="Center"
+                                      IsActive="False"
+                                      Visibility="Collapsed" />
+                        <TextBlock x:Name="HistoryMessage"
+                                   Margin="16,0"
+                                   HorizontalAlignment="Center"
+                                   LineHeight="20"
+                                   LineStackingStrategy="BlockLineHeight"
+                                   MaxLines="3"
+                                   TextAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   TextWrapping="Wrap"
+                                   ToolTipService.ToolTip="{Binding Text, ElementName=HistoryMessage}"
+                                   Visibility="Collapsed" />
+                    </Grid>
+                </Grid>
             </DataTemplate>
             <DataTemplate x:Key="HistoryRowTemplate" x:DataType="local:TabStripHistoryItem">
                 <Grid Padding="12,8" Loaded="OnHistoryRowLoaded">
