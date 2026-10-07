@@ -68,6 +68,10 @@ high-confidence repair policy, exact trusted-recipe candidate, patch
 attribution, absence of untracked files, and absence of new literal accessible
 strings. It rejects all model-authored validation claims and adds its own
 attestation only after the candidate matches. A separate post-step queries the
+Every prepared static signal is also accounted for by stable ID: an actual
+finding or a separately explained false positive in `dismissed_signals`.
+Coverage is deterministic; dismissal reasoning remains model/domain judgment,
+not a new script engine or proof that the source has no accessibility defect. A separate post-step queries the
 current PR head immediately before safe-output publication. Workflow
 concurrency and that freshness check narrow, but cannot eliminate, the
 asynchronous race between the check and publication.
@@ -178,6 +182,13 @@ results.
 
 The same workflow also runs an independent `Native Axe.Windows smoke` job on
 an ephemeral GitHub-hosted Windows runner. It checks out the immutable PR head
+It calls the same-repository `native-accessibility.yml` reusable workflow
+without inherited secrets. GitHub does not propagate caller workflow-level
+environment variables to that workflow, so gh-aw's global OTLP telemetry
+credentials cannot reach PR-controlled build code. The native workflow declares
+only a read-scoped contents token, takes four immutable source-identity inputs,
+and executes the unchanged native steps on `windows-2025-vs2026`.
+This is one workflow execution, not another dispatch or private-budget attempt. It checks out the immutable PR head
 without persisted credentials, builds the existing packaged `TestHostApp`, and
 launches real product surfaces in three visible states:
 

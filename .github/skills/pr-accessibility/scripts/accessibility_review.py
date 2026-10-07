@@ -423,6 +423,55 @@ def _untracked_paths(root: Path) -> list[str]:
     return sorted({_normalize(line) for line in output.splitlines() if line.strip()})
 
 
+def _validate_signal_coverage(prepared: dict[str, Any], report: dict[str, Any], findings: list[Any]) -> list[str]:
+    errors: list[str] = []
+    prepared_by_id = {
+        item["stable_id"]: item for item in prepared.get("static_findings", [])
+        if isinstance(item, dict) and isinstance(item.get("stable_id"), str)
+    }
+    prepared_ids = set(prepared_by_id)
+    finding_ids: set[str] = set()
+    for item in findings:
+        if not isinstance(item, dict) or not isinstance(item.get("stable_id"), str):
+            continue
+        stable_id = item["stable_id"]
+        if stable_id in finding_ids:
+            errors.append(f"{stable_id}: duplicate finding stable_id")
+        signal = prepared_by_id.get(stable_id)
+        if signal and (item.get("file") != signal.get("file") or item.get("line") != signal.get("line")):
+            errors.append(f"{stable_id}: reported signal location must match its prepared source location")
+        finding_ids.add(stable_id)
+
+    dismissals = report.get("dismissed_signals", [])
+    if not isinstance(dismissals, list):
+        errors.append("report dismissed_signals must be an array")
+        dismissals = []
+    dismissed_ids: set[str] = set()
+    for index, item in enumerate(dismissals):
+        if not isinstance(item, dict):
+            errors.append(f"dismissed_signals[{index}]: dismissal must be an object")
+            continue
+        stable_id = item.get("stable_id")
+        if not isinstance(stable_id, str) or not stable_id.strip():
+            errors.append(f"dismissed_signals[{index}]: stable_id must be a non-empty string")
+        else:
+            if stable_id not in prepared_ids:
+                errors.append(f"{stable_id}: dismissal must reference a known prepared stable_id")
+            if stable_id in dismissed_ids:
+                errors.append(f"{stable_id}: duplicate dismissed stable_id")
+            if stable_id in finding_ids:
+                errors.append(f"{stable_id}: signal cannot be both reported and dismissed")
+            dismissed_ids.add(stable_id)
+        # Require an explanation, not a verdict; domain review still judges its truth.
+        for field in ("reason", "evidence"):
+            value = item.get(field)
+            if not isinstance(value, str) or len(value.strip()) < 12 or len(re.findall(r"\w+", value)) < 3:
+                errors.append(f"dismissed_signals[{index}]: {field} must be a meaningful explanation")
+    for stable_id in sorted(prepared_ids - finding_ids - dismissed_ids):
+        errors.append(f"{stable_id}: prepared signal must be reported as a finding or explicitly dismissed")
+    return errors
+
+
 def _remove_raw_view_at_line(text: str, line: int) -> str:
     candidates = [
         (match, tag, attrs)
@@ -575,6 +624,7 @@ def validate(
     if not isinstance(findings, list):
         errors.append("report findings must be an array")
         findings = []
+    errors.extend(_validate_signal_coverage(prepared, report, findings))
     runtime_checks = report.get("runtime_checks")
     expected_runtime = prepared.get("runtime_checks", [])
     if not isinstance(runtime_checks, list):

@@ -155,6 +155,11 @@ from rule, normalized path, line, and normalized evidence.
 
 Emit only actual findings. Do not serialize false positives as findings and do
 not invent severities or dispositions outside the caller's enum. Put only
+Every prepared signal must be accounted for: preserve its stable ID in an
+actual finding, or explain its dismissal separately in `dismissed_signals`
+with specific repository `reason` and `evidence`. No duplicate, unknown,
+unexplained, or silently omitted signal is permitted. The trusted gate checks
+coverage, not the semantic truth of a model's dismissal. Put only
 actually executed checks in `validation`, using the caller's required object
 shape; describe unavailable checks in `runtime_checks`, never as validation
 strings. For a proposed trusted static repair, leave `validation` empty. The

@@ -332,6 +332,13 @@ class PrepareIntegrationTests(unittest.TestCase):
 
 
 class ValidationTests(unittest.TestCase):
+    def test_prepared_signal_id_cannot_be_reused_at_an_unrelated_location(self):
+        with self.assertRaisesRegex(ValueError, "reported signal location must match"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding(disposition="remaining", line=2)]),
+            )
+
     def test_style_only_control_cannot_authorize_recipe(self):
         path = self.root / "src/cascadia/TerminalApp/Test.xaml"
         original = '<Button Style="{StaticResource VisualButton}" AutomationProperties.AccessibilityView="Raw" />\n'
@@ -397,7 +404,13 @@ class ValidationTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def report(self, findings=None, patch_files=None):
+    def report(self, findings=None, patch_files=None, dismissed_signals=None):
+        if dismissed_signals is None:
+            dismissed_signals = [] if findings else [{
+                "stable_id": "AX-HIGH-1",
+                "reason": "Synthetic fixture assumes Test.xaml delegates the operation to an accessible companion control.",
+                "evidence": "Synthetic companion Test2.xaml exposes the Save button in the control view.",
+            }]
         report = self.workspace / "report.json"
         report.write_text(
             json.dumps(
@@ -405,6 +418,7 @@ class ValidationTests(unittest.TestCase):
                     "version": 1,
                     "source_sha": self.head,
                     "findings": findings or [],
+                    "dismissed_signals": dismissed_signals,
                     "patch_files": patch_files or [],
                     "runtime_checks": [
                         {"id": "axe-windows-uia", "status": "SKIPPED", "reason": "interactive Windows required"}
@@ -555,6 +569,88 @@ class ValidationTests(unittest.TestCase):
 
     def test_no_findings_is_valid_and_native_runtime_remains_skipped(self):
         MODULE.validate(self.root, self.head, self.head, True, self.prepared, self.report())
+
+    def test_omitted_high_signal_with_noop_is_rejected(self):
+        report = self.report(dismissed_signals=[])
+        data = json.loads(report.read_text())
+        del data["dismissed_signals"]
+        report.write_text(json.dumps(data))
+        queue = self.workspace / "safeoutputs.jsonl"
+        queue.write_text(json.dumps({"type": "noop", "message": "No eligible repair"}) + "\n")
+        with self.assertRaisesRegex(ValueError, "AX-HIGH-1: prepared signal must be reported"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, report, queue, self.workspace)
+
+    def test_matching_remaining_finding_accounts_for_signal_without_dismissal_field(self):
+        report = self.report([self.finding(disposition="remaining")])
+        data = json.loads(report.read_text())
+        del data["dismissed_signals"]
+        report.write_text(json.dumps(data))
+        MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+
+    def test_explicit_false_positive_is_not_serialized_as_finding_or_pass(self):
+        report = self.report()
+        before = report.read_text()
+        MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+        self.assertEqual(before, report.read_text())
+        data = json.loads(report.read_text())
+        self.assertEqual([], data["findings"])
+        self.assertEqual([], data["patch_files"])
+        self.assertEqual("SKIPPED", data["runtime_checks"][0]["status"])
+        self.assertEqual("AX-HIGH-1", data["dismissed_signals"][0]["stable_id"])
+
+    def test_invalid_dismissals_are_rejected(self):
+        valid = json.loads(self.report().read_text())["dismissed_signals"][0]
+        cases = [
+            ("unknown", [{**valid, "stable_id": "AX-UNKNOWN"}], "known prepared"),
+            ("duplicate", [valid, valid], "duplicate dismissed"),
+            ("missing reason", [{key: value for key, value in valid.items() if key != "reason"}], "reason"),
+            ("missing evidence", [{key: value for key, value in valid.items() if key != "evidence"}], "evidence"),
+            ("blank reason", [{**valid, "reason": "  "}], "reason"),
+            ("blank evidence", [{**valid, "evidence": "\n"}], "evidence"),
+            ("verdict only", [{**valid, "reason": "false positive"}], "reason"),
+            ("wrong type", [{**valid, "evidence": ["Test.xaml"]}], "evidence"),
+            ("nonobject", [None], "object"),
+            ("nonarray", {}, "array"),
+        ]
+        for name, dismissals, message in cases:
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, message):
+                MODULE.validate(
+                    self.root, self.head, self.head, True, self.prepared,
+                    self.report(dismissed_signals=dismissals),
+                )
+
+    def test_signal_cannot_be_reported_and_dismissed(self):
+        dismissal = json.loads(self.report().read_text())["dismissed_signals"][0]
+        with self.assertRaisesRegex(ValueError, "both reported and dismissed"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding(disposition="remaining")], dismissed_signals=[dismissal]),
+            )
+
+    def test_duplicate_findings_are_rejected(self):
+        finding = self.finding(disposition="remaining")
+        with self.assertRaisesRegex(ValueError, "duplicate finding"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, self.report([finding, finding]))
+
+    def test_new_findings_do_not_account_for_prepared_signal(self):
+        finding = self.finding(stable_id="AX-NEW", disposition="remaining")
+        with self.assertRaisesRegex(ValueError, "AX-HIGH-1: prepared signal must be reported"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, self.report([finding]))
+        dismissal = json.loads(self.report().read_text())["dismissed_signals"][0]
+        MODULE.validate(
+            self.root, self.head, self.head, True, self.prepared,
+            self.report([finding], dismissed_signals=[dismissal]),
+        )
+
+    def test_empty_prepared_signals_allow_legacy_empty_report(self):
+        prepared = json.loads(self.prepared.read_text())
+        prepared["static_findings"] = []
+        self.prepared.write_text(json.dumps(prepared))
+        report = self.report(dismissed_signals=[])
+        data = json.loads(report.read_text())
+        del data["dismissed_signals"]
+        report.write_text(json.dumps(data))
+        MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
 
     def test_native_runtime_cannot_be_reported_as_passed(self):
         report = self.report()
@@ -987,8 +1083,8 @@ class WorkflowContractTests(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt" and shutil.which("pwsh"), "Windows PowerShell host required")
     def test_native_enforcement_rejects_success_without_state_evidence(self):
         root = Path(__file__).parents[4]
-        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        section = workflow.split("      - name: Enforce native scan results", 1)[1].split("\nsteps:", 1)[0]
+        workflow = (root / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
+        section = workflow.split("      - name: Enforce native scan results", 1)[1]
         script = textwrap.dedent(section.split("        run: |\n", 1)[1])
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
@@ -1075,6 +1171,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertRegex(agent, r"(?m)^    needs: activation$")
         runtime = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  native-runtime:\n", 1)[1], maxsplit=1)[0]
         self.assertRegex(runtime, r"(?m)^    needs: agent$")
+        self.assertIn("uses: ./.github/workflows/native-accessibility.yml", runtime)
 
     def test_pr_publication_is_single_mode_and_fail_closed(self):
         root = Path(__file__).parents[4]
@@ -1088,7 +1185,14 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_native_runtime_job_uses_pinned_ephemeral_windows_lane(self):
         root = Path(__file__).parents[4]
-        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        caller = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        native_job = caller.split("\n  native-runtime:\n", 1)[1].split("\nsteps:", 1)[0]
+        self.assertIn("uses: ./.github/workflows/native-accessibility.yml", native_job)
+        self.assertIn("with:", native_job)
+        self.assertNotIn("secrets: inherit", native_job)
+        self.assertNotIn("runs-on:", native_job)
+        self.assertNotIn("steps:", native_job)
+        workflow = (root / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         self.assertIn("runs-on: windows-2025-vs2026", workflow)
         self.assertIn("persist-credentials: false", workflow)
         self.assertIn("AECA43F41C89B3FFB1DB84011539E609ECD7CB3BADD6E78FADA2ADA327D10A64", workflow)

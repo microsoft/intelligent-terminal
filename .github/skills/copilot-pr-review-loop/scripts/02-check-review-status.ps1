@@ -22,7 +22,8 @@
       - NoNewComments      : true iff the latest review body matches
                              a legacy zero-comment summary or current
                              "Findings: None" / "Comments generated: 0 new",
-                             without nonzero previously-missed findings
+                             with every present structured summary zero
+                             and no nonzero previously-missed findings
       - OpenThreadCount    : number of unresolved review threads (from all
                              reviewers); informational — convergence does
                              NOT require this to be zero
@@ -129,18 +130,32 @@ $ErrorActionPreference = 'Stop'
 function Test-CopilotReviewHasNoNewFindings {
     param([AllowEmptyString()][string]$Body)
 
-    $summary = [regex]::Replace($Body, '(?ms)^\s*```[^\r\n]*\r?\n.*?^\s*```\s*$', '')
-    $field = [regex]::Match($summary, '(?im)^\s*\*\*Findings:\*\*\s*(None|\d+)\b')
-    $comments = [regex]::Match($summary, '(?im)^\s*(?:-\s*)?(?:\*\*)?Comments generated:(?:\*\*)?\s*(\d+)\s+new\s*$')
-    $hasZeroFindings = if ($field.Success) {
-        $field.Groups[1].Value -in @('None', '0')
-    } elseif ($comments.Success) {
-        $comments.Groups[1].Value -eq '0'
-    } else {
-        $summary -match '(?i)generated no new comments|generated\s+0\s+comments'
+    $fenceCharacter = $null
+    $fenceLength = 0
+    $summaryLines = foreach ($line in ($Body -split '\r?\n')) {
+        if ($fenceCharacter) {
+            if ($line -match ('^\s*' + [regex]::Escape($fenceCharacter) + '{' + $fenceLength + ',}\s*$')) {
+                $fenceCharacter = $null
+            }
+            continue
+        }
+        if ($line -match '^\s*>') { continue }
+        if ($line -match '^\s*(`{3,}|~{3,})') {
+            $fenceCharacter = $Matches[1].Substring(0, 1)
+            $fenceLength = $Matches[1].Length
+            continue
+        }
+        $line
     }
-    $hasPreviouslyMissed = $Body -match '(?i)Previously missed\s*\([1-9]\d*\)'
-    return $hasZeroFindings -and -not $hasPreviouslyMissed
+    $summary = ($summaryLines -join "`n") -replace '\*\*', ''
+    $fields = [regex]::Matches($summary, '(?im)^[ \t]*(?:[-+*][ \t]+)?(?:Findings:[ \t]*(?<count>None|\d+)\b|Comments generated:[ \t]*(?<count>\d+)[ \t]+new\b)')
+    # Every explicit summary constrains the result; none can override another.
+    foreach ($field in $fields) {
+        if ($field.Groups['count'].Value -notmatch '^(?:None|0+)$') { return $false }
+    }
+    if ($summary -match '(?i)Previously missed\s*\(0*[1-9]\d*\)') { return $false }
+    if ($fields.Count -gt 0) { return $true }
+    return $summary -match '(?i)generated no new comments|generated\s+0\s+comments'
 }
 
 . "$PSScriptRoot/_lib.ps1"
