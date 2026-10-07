@@ -3,6 +3,16 @@ name: 'Intelligent Terminal Security Reviewer'
 description: 'Reviews immutable Intelligent Terminal pull request diffs and repairs only when the caller authorizes it'
 user-invocable: false
 disable-model-invocation: true
+tools:
+  - read
+  - skill
+  - agent
+  - mcpscripts/read_security_diff
+  - mcpscripts/read_security_source
+  - mcpscripts/inspect_security_repair
+  - mcpscripts/write_security_repair
+  - mcpscripts/submit_security_report
+  - safeoutputs/noop
 ---
 
 # Intelligent Terminal Security Reviewer

@@ -5,7 +5,7 @@ description: 'One official, narrowly push-triggered acceptance run using the pro
 on:
   push:
     branches:
-      - 'test/yeelam/ghaw-security-repair-e2e-20261007'
+      - 'test/yeelam/ghaw-security-repair-e2e-20261007-r2'
 
 permissions:
   contents: read
@@ -18,7 +18,7 @@ permissions:
 engine:
   id: copilot
   agent: ghaw-pr-security
-  model: auto
+  model: gpt-5.6-luna
   version: '1.0.90'
 imports:
   - .github/agents/ghaw-pr-security.agent.md
@@ -66,7 +66,7 @@ jobs:
           [ "$REPOSITORY" = microsoft/intelligent-terminal ]
           [ "$ACTOR" = yeelam-gordon ]
           [ "$EVENT" = push ]
-          [ "$REF" = refs/heads/test/yeelam/ghaw-security-repair-e2e-20261007 ]
+          [ "$REF" = refs/heads/test/yeelam/ghaw-security-repair-e2e-20261007-r2 ]
           [ "$ATTEMPT" = 1 ]
           [[ "$WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]
           [ "$WORKFLOW_SHA" = "$HEAD_SHA" ]
@@ -89,8 +89,8 @@ jobs:
             const {execFileSync} = await import('node:child_process');
             const {mkdirSync, writeFileSync} = await import('node:fs');
             const base = process.env.BASE_SHA;
-            const baseRef = 'test/yeelam/ghaw-security-repair-e2e-20261007';
-            const headRef = 'test/yeelam/ghaw-security-repair-fixture-20261007';
+            const baseRef = 'test/yeelam/ghaw-security-repair-e2e-20261007-r2';
+            const headRef = 'test/yeelam/ghaw-security-repair-fixture-20261007-r2';
             const path = 'tools/wta/src/master/session_mcp.rs';
             const fixtureNumber = Number(context.runNumber);
             if (!Number.isSafeInteger(fixtureNumber) || fixtureNumber < 1) throw new Error('Invalid fixture ordinal');
@@ -101,7 +101,7 @@ jobs:
             const liveBase = (await github.rest.git.getRef({...context.repo, ref:`heads/${baseRef}`})).data;
             if (liveBase.object.sha !== base) throw new Error('Base raced');
             const associated = (await github.rest.pulls.list({...context.repo,
-              head:'microsoft:test/yeelam/ghaw-security-repair-fixture-20261007', state:'all', per_page:100})).data;
+              head:'microsoft:test/yeelam/ghaw-security-repair-fixture-20261007-r2', state:'all', per_page:100})).data;
             if (associated.length !== 0) throw new Error('Fixture branch has an associated PR');
             try {
               await github.rest.git.getRef({...context.repo, ref:`heads/${headRef}`});
@@ -235,10 +235,10 @@ jobs:
           TESTED_HEAD_SHA: ${{ needs.validate_windows.outputs.source_head_sha }}
         run: |
           set -euo pipefail
-          [ "$HEAD_REF" = test/yeelam/ghaw-security-repair-fixture-20261007 ]
+          [ "$HEAD_REF" = test/yeelam/ghaw-security-repair-fixture-20261007-r2 ]
           [ "$TRUSTED_SHA" = "$EXPECTED_BASE_SHA" ]
           [ "$(gh api "/repos/$REPOSITORY/git/ref/heads/$HEAD_REF" --jq .object.sha)" = "$EXPECTED_HEAD_SHA" ]
-          [ "$(gh api "/repos/$REPOSITORY/git/ref/heads/test/yeelam/ghaw-security-repair-e2e-20261007" --jq .object.sha)" = "$EXPECTED_BASE_SHA" ]
+          [ "$(gh api "/repos/$REPOSITORY/git/ref/heads/test/yeelam/ghaw-security-repair-e2e-20261007-r2" --jq .object.sha)" = "$EXPECTED_BASE_SHA" ]
           validator="$RUNNER_TEMP/security-review-final.mjs"
           git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review.mjs" > "$validator"
           proposal="$RUNNER_TEMP/security-proposal"
@@ -316,12 +316,12 @@ jobs:
         run: |
           set -euo pipefail
           [ "$GITHUB_REPOSITORY" = microsoft/intelligent-terminal ]
-          [ "$HEAD_REF" = test/yeelam/ghaw-security-repair-fixture-20261007 ]
+          [ "$HEAD_REF" = test/yeelam/ghaw-security-repair-fixture-20261007-r2 ]
           [ "$TESTS_PASSED" = true ]
           [ "$TESTED_HEAD_SHA" = "$EXPECTED_HEAD_SHA" ]
           [ "$TRUSTED_SHA" = "$EXPECTED_BASE_SHA" ]
           [ "$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/heads/$HEAD_REF" --jq .object.sha)" = "$EXPECTED_HEAD_SHA" ]
-          [ "$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/heads/test/yeelam/ghaw-security-repair-e2e-20261007" --jq .object.sha)" = "$EXPECTED_BASE_SHA" ]
+          [ "$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/heads/test/yeelam/ghaw-security-repair-e2e-20261007-r2" --jq .object.sha)" = "$EXPECTED_BASE_SHA" ]
           git -c credential.helper= -c 'credential.helper=!gh auth git-credential' fetch --quiet --no-tags origin "$EXPECTED_HEAD_SHA"
           final="$RUNNER_TEMP/security-publication"
           validator="$GITHUB_WORKSPACE/.github/skills/ghaw-pr-security/scripts/security-review.mjs"
@@ -443,7 +443,7 @@ jobs:
           script: |
             if (context.repo.owner !== 'microsoft' || context.repo.repo !== 'intelligent-terminal') throw new Error('Wrong cleanup repository');
             const associated = (await github.rest.pulls.list({...context.repo,
-              head:'microsoft:test/yeelam/ghaw-security-repair-fixture-20261007', state:'all', per_page:100})).data;
+              head:'microsoft:test/yeelam/ghaw-security-repair-fixture-20261007-r2', state:'all', per_page:100})).data;
             if (associated.length !== 0) throw new Error('Fixture branch must remain PR-free');
             if (process.env.PUBLISH_RESULT !== 'success') throw new Error('No completed native publication; retained refs are failure evidence only');
             const {readFileSync} = await import('node:fs');
@@ -451,7 +451,7 @@ jobs:
             if (receipt.fixtureIdentityType !== 'branch' || receipt.fixtureNumber !== Number(process.env.FIXTURE_NUMBER) ||
                 receipt.runId !== String(context.runId) || receipt.baseSha !== process.env.BASE_SHA ||
                 receipt.sourceHeadSha !== process.env.HEAD_SHA || receipt.testedHeadSha !== process.env.HEAD_SHA ||
-                receipt.ref !== 'refs/heads/test/yeelam/ghaw-security-repair-fixture-20261007' ||
+                receipt.ref !== 'refs/heads/test/yeelam/ghaw-security-repair-fixture-20261007-r2' ||
                 receipt.publicationFinished !== true || receipt.prRoutingExercised !== false ||
                 receipt.commentPathExercised !== false) throw new Error('Invalid native publication receipt');
             core.summary.addRaw('Audit branch retained. PR routing and comment paths were not exercised; Windows adapter owns local container cleanup.');
@@ -493,7 +493,7 @@ steps:
       TRUSTED_SHA: ${{ github.workflow_sha }}
     run: |
       set -euo pipefail
-      [ "$HEAD_REF" = test/yeelam/ghaw-security-repair-fixture-20261007 ]
+      [ "$HEAD_REF" = test/yeelam/ghaw-security-repair-fixture-20261007-r2 ]
       [ "$TRUSTED_SHA" = "$EXPECTED_BASE_SHA" ]
       mkdir -p /tmp/gh-aw/agent
       rm -f /tmp/gh-aw/security-scope.json /tmp/gh-aw/agent/security-findings.json
@@ -556,11 +556,11 @@ post-steps:
       TRUSTED_SHA: ${{ github.workflow_sha }}
     run: |
       set -euo pipefail
-      [ "$HEAD_REF" = test/yeelam/ghaw-security-repair-fixture-20261007 ]
+      [ "$HEAD_REF" = test/yeelam/ghaw-security-repair-fixture-20261007-r2 ]
       [ "$TRUSTED_SHA" = "$EXPECTED_BASE_SHA" ]
       current_head="$(gh api "/repos/$REPOSITORY/git/ref/heads/$HEAD_REF" --jq .object.sha)"
       [ "$current_head" = "$EXPECTED_HEAD_SHA" ]
-      [ "$(gh api "/repos/$REPOSITORY/git/ref/heads/test/yeelam/ghaw-security-repair-e2e-20261007" --jq .object.sha)" = "$EXPECTED_BASE_SHA" ]
+      [ "$(gh api "/repos/$REPOSITORY/git/ref/heads/test/yeelam/ghaw-security-repair-e2e-20261007-r2" --jq .object.sha)" = "$EXPECTED_BASE_SHA" ]
       trusted_validator="$RUNNER_TEMP/security-review-final.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review.mjs" > "$trusted_validator"
       source_workspace="$GITHUB_WORKSPACE"

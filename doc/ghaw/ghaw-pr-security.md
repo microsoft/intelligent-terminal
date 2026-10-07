@@ -47,7 +47,13 @@ Both workers import the same mode-aware
 `.github/skills/ghaw-pr-security/SKILL.md`; the skill's bundled script owns
 mechanical scope/report validation. Both also select that native primary with
 `engine.agent: ghaw-pr-security`; importing its text alone does not replace
-the CLI's default primary or its generic security-review delegation.
+the CLI's default primary or its generic security-review delegation. Both pin
+CLI 1.0.90, matching the actual restricted-model validation rather than relying
+on the compiler fallback or a changing compatibility-map selection.
+The primary profile explicitly lists only trusted-input reads, skill/agent
+invocation, the five native capabilities and `safeoutputs/noop`. Selecting a
+custom profile without a tool list would otherwise expose the CLI's default
+shell/edit tools, even when the workflow supplies only native MCP approvals.
 The workflow selects `guide` or `repair`
 mode and supplies the corresponding tools, so review-only and repair behavior
 do not require duplicate primary agents. The repair workflow embeds only its
