@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -8,13 +9,16 @@ import { publishRepair } from './publish-repair.mjs';
 
 const runtime = fileURLToPath(new URL('../../skills/pr-performance-review/scripts/performance-review.mjs', import.meta.url));
 const validator = fileURLToPath(new URL('./validate-native.ps1', import.meta.url));
+const compiledWorkflow = fileURLToPath(new URL('../../workflows/ghaw-pr-performance.lock.yml', import.meta.url));
 
 test('sealed HIGH proposal runs real Windows tests and reaches staged CAS publication', async t => {
     assert.equal(process.platform, 'win32', 'this integration check needs the supported Windows environment');
-    const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-native-pipeline-'));
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'performance-native-pipeline-'));
+    const root = path.join(workspace, 'candidate');
     const previous = process.cwd();
+    fs.mkdirSync(root);
     process.chdir(root);
-    t.after(() => { process.chdir(previous); fs.rmSync(root, { recursive: true, force: true }); });
+    t.after(() => { process.chdir(previous); fs.rmSync(workspace, { recursive: true, force: true }); });
     fs.mkdirSync(path.join(root, 'tools', 'wta', 'src'), { recursive: true });
     fs.writeFileSync(path.join(root, 'tools', 'wta', 'Cargo.toml'),
         '[package]\nname="performance-pipeline-fixture"\nversion="0.1.0"\nedition="2021"\n');
@@ -46,7 +50,7 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     const artifactRoot = fs.mkdtempSync(path.join(previous, '.performance-pipeline-artifacts-'));
     t.after(() => fs.rmSync(artifactRoot, { recursive: true, force: true }));
     const baseline = path.join(artifactRoot, 'baseline.json');
-    const out = path.join(artifactRoot, 'proposal');
+    const out = path.join(artifactRoot, 'performance-proposal');
     const run = args => spawnSync(process.execPath, [runtime, ...args], {
         encoding: 'utf8', timeout: 30000,
     });
@@ -82,9 +86,33 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     git(['read-tree', headSha]);
     fs.writeFileSync(sourcePath, headSource);
     const nativeOut = path.join(artifactRoot, 'native');
-    const native = spawnSync('pwsh', ['-NoProfile', '-File', validator,
-        '-ProposalPath', path.join(out, 'performance-proposal.json'),
-        '-RepositoryRoot', root, '-TrustedRuntimePath', runtime], {
+    const trustedRuntime = path.join(workspace, 'trust', '.github', 'skills', 'pr-performance-review', 'scripts', 'performance-review.mjs');
+    const trustedValidator = path.join(workspace, 'trust', '.github', 'scripts', 'ghaw-pr-performance', 'validate-native.ps1');
+    for (const [source, destination] of [[runtime, trustedRuntime], [validator, trustedValidator]]) {
+        fs.mkdirSync(path.dirname(destination), { recursive: true });
+        fs.copyFileSync(source, destination);
+    }
+    const wrongDirectory = spawnSync(process.execPath, [trustedRuntime, 'validate-proposal',
+        '--input', path.join(out, 'performance-proposal.json'), ...identity], {
+        cwd: workspace, encoding: 'utf8', timeout: 30000,
+    });
+    assert.notEqual(wrongDirectory.status, 0, 'the hosted workspace root is not a Git checkout');
+    assert.notEqual(spawnSync('git', ['rev-parse', '--is-inside-work-tree'], {
+        cwd: workspace, timeout: 15000,
+    }).status, 0);
+    assert.match(wrongDirectory.stderr, /performance-review: Command failed: git/);
+    const step = fs.readFileSync(compiledWorkflow, 'utf8')
+        .match(/      - name: Validate and test the exact candidate tree\r?\n([\s\S]*?)(?=\r?\n      - name:|$)/)?.[1];
+    assert.ok(step, 'execute the actual compiled Windows validation step');
+    const workingDirectory = step.match(/^        working-directory: (.+)$/m)?.[1].trim();
+    assert.equal(workingDirectory, 'candidate');
+    const runBlock = step.match(/        run: \|\r?\n((?: {10}[^\n]*(?:\n|$))+)/)?.[1];
+    assert.ok(runBlock);
+    const command = runBlock.split(/\r?\n/).map(line => line.slice(10)).join('\n');
+    const native = spawnSync('pwsh', ['-NoProfile', '-Command', command], {
+        cwd: path.join(workspace, workingDirectory),
+        env: { ...process.env, GITHUB_WORKSPACE: workspace, RUNNER_TEMP: artifactRoot,
+            PR_NUMBER: '42', BASE_SHA: baseSha, HEAD_SHA: headSha },
         encoding: 'utf8', timeout: 180000,
     });
     assert.equal(native.status, 0, `${native.stdout}\n${native.stderr}`);

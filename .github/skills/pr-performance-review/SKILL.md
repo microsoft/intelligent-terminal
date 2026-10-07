@@ -95,6 +95,25 @@ repository directories or the crate name; do not prefix `tools`, `wta`, or
 Dedicated `tests.rs`, `*_tests.rs`, and WTA's `test_support.rs` are supporting evidence, not
 automatic repair targets. Do not alter them to make a repair pass.
 
+Bind each proposed finding's canonical repository `path:line` location to a
+sealed WTA Rust replacement, and cover every replacement with a proposed
+finding. Category labels alone do not authorize edits: concurrency and session
+findings can qualify at WTA locations; C++ findings cannot justify unrelated
+WTA changes.
+
+Preserve original inline tests byte-for-byte. Trusted reconstruction compares
+Git blobs from the immutable head, never the editable workspace. Its
+dependency-free lexical guard freezes the suffix from the first `test` or
+`rstest` word, extended back to any preceding attribute opener or `mod` word.
+Freeze their complete lines, including prefixes that could comment out tokens.
+This deliberately overblocks comments, strings, early test helpers, and runtime
+code after preceding attributes/modules; use manual handoff when blocked.
+It covers common multiline `cfg`/`cfg_attr` gates and qualified `tokio::test`
+attributes, but is not a Rust parser or proof of semantic equivalence. Unknown
+custom test macros without those words and runtime helpers remain limitations.
+Do not introduce, remove, rename, or weaken markers, gates, modules, or tests.
+A runtime-only prefix repair with unchanged trailing inline tests is supported.
+
 Format the proposed Rust change before sealing it. Use the standard
 `cargo fmt --manifest-path tools/wta/Cargo.toml`, inspect its diff, and keep only
 the permitted repair changes. Native validation checks formatting without
@@ -179,6 +198,10 @@ when not run. `validationPlan` is required only for proposals.
 The schema example deliberately omits `testFilter`: add that required field
 using the actual test name you read, not a sample value.
 Status `fixed` is reserved for the published card after native validation.
+Pending proposal checks must not use `pass`, including source-only passes or
+claimed native/benchmark successes. Record not-run checks as `unavailable`
+with `exitCode: null`. The trusted publisher independently records
+GitHub-reported native success; model checks never become native authority.
 Use `pending_validation` for eligible HIGH proposals, `action_required` when unresolved HIGH remains,
 `advisory` for only MEDIUM/LOW, `pass` for no findings, and `blocked` when a
 check errors.

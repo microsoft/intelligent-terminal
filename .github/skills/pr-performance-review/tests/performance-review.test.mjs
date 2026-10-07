@@ -64,6 +64,7 @@ function report(findings = [], checks = []) {
 function proposal() {
     const value = report([finding({
         severity: 'high', confidence: 'high', fixDisposition: 'proposed', category: 'wta-runtime',
+        location: 'tools/wta/src/master/mod.rs:1',
         evidence: [{ type: 'complexity-proof', detail: 'Repeated nested enumeration requires quadratic work.' }],
     })]);
     value.mode = 'repair';
@@ -330,7 +331,10 @@ test('repair mode accepts HIGH proposals but never authorizes model-authored fix
         { ...repairIdentity, changedFiles: ['src/buffer/out/TextBuffer.cpp'] }
     ), /model-authored fixed/);
     const proposed = structuredClone(fixed);
+    proposed.checks = [{ name: 'Focused regression', status: 'unavailable', command: 'not run',
+        exitCode: null, detail: 'Awaiting trusted native validation.' }];
     proposed.findings[0].fixDisposition = 'proposed';
+    proposed.findings[0].validation = 'Native validation pending.';
     proposed.status = 'pending_validation';
     proposed.validationPlan = { type: 'wta-unit', testFilter: 'tests::actual_test' };
     assert.doesNotThrow(() => gatePublication(
@@ -573,6 +577,11 @@ test('repair proposals require exactly one confirmed validation tool; fake pass 
     const expected = { ...identity, mode: 'repair', changedFiles: valid.files.map(file => file.path) };
     const scope = classifyPullRequest(valid.files.map(file => ({ filename: file.path })), identity);
     valid.report.checks.push({ name: 'Fake native pass', status: 'pass', command: 'invented', exitCode: 0, detail: 'Model claimed native success.' });
+    assert.throws(() => validateReport(valid.report, expected), /cannot contain model-authored pass checks/);
+    assert.throws(() => gatePublication(scope, valid.report, {
+        items: [{ type: 'validate_performance_repair', confirm: true }],
+    }, expected), /cannot contain model-authored pass checks/);
+    valid.report.checks[0] = { name: 'Native validation', status: 'unavailable', command: 'not run', exitCode: null, detail: 'Awaiting trusted Windows validation.' };
     for (const items of [
         [{ type: 'push_to_pull_request_branch' }],
         [{ type: 'add_comment', body: renderReport(valid.report) }],
@@ -591,6 +600,96 @@ test('repair proposals require exactly one confirmed validation tool; fake pass 
             items: [{ type: 'validate_performance_repair', confirm }],
         }, expected));
     }
+});
+
+test('every proposed location is canonical and bound to a covered sealed replacement, independently of category', () => {
+    const expected = { ...identity, mode: 'repair' };
+    for (const category of ['concurrency', 'session-log-enumeration', 'wta-runtime']) {
+        const value = proposal();
+        value.report.findings[0].category = category;
+        assert.equal(validateProposal(value, expected), value);
+    }
+    for (const location of [
+        'src/renderer/atlas/AtlasEngine.cpp:1', 'tools/wta/src/unchanged.rs:1',
+        'tools\\wta\\src\\master\\mod.rs:1', './tools/wta/src/master/mod.rs:1',
+        'tools/wta/src/master/mod.rs:0', 'tools/wta/src/master/mod.rs:01',
+        'tools/wta/src/master/mod.rs:1:2', 'tools/wta/src/master/mod.rs',
+    ]) {
+        const value = proposal();
+        value.report.findings[0].location = location;
+        assert.throws(() => validateProposal(value, expected), /canonical|safe repository-relative/);
+    }
+    const value = proposal();
+    value.files.push({ ...value.files[0], path: 'tools/wta/src/extra.rs' });
+    assert.throws(() => validateProposal(value, expected), /covered by a proposed finding/);
+    value.report.findings.push(finding({
+        ...value.report.findings[0], id: 'PERF-EXTRA', location: 'tools/wta/src/extra.rs:3',
+    }));
+    assert.equal(validateProposal(value, expected), value);
+    value.report.findings[1].location = 'src/renderer/atlas/AtlasEngine.cpp:1';
+    assert.throws(() => validateProposal(value, expected), /canonical/);
+});
+
+test('inline Rust test source is immutable Git data, including markers, gates, modules and every trailing test', () => {
+    withRepository(({ git, write, expected, output }) => {
+        const filename = 'tools/wta/src/master/mod.rs';
+        const suffix = '#[cfg(test)]\nmod tests {\n    #[test]\n    fn selected() { assert_eq!(super::work(), 2); }\n' +
+            '    #[tokio::test]\n    async fn other() { assert!(true); }\n}\n';
+        const original = 'fn work() -> usize { 2 }\n' + suffix;
+        write('tools\\wta\\src\\master\\mod.rs', original);
+        git(['add', '--all']);
+        git(['commit', '--quiet', '-m', 'inline original']);
+        expected.headSha = git(['rev-parse', 'HEAD']);
+        const replacement = contents => [{ path: filename, mode: '100644', contents: Buffer.from(contents).toString('base64') }];
+        const candidate = original.replace('usize { 2 }', 'usize { 3 }');
+        assert.doesNotThrow(() => reconstructTree(replacement(candidate), expected.headSha, expected.baseSha));
+        for (const changed of [
+            candidate.replace('super::work(), 2', 'super::work(), 3'),
+            candidate.replace('assert!(true)', 'assert!(false)'),
+            candidate.replace('cfg(test)', 'cfg(any())'),
+            candidate.replace('mod tests', 'mod renamed'),
+            candidate.replace('#[test]', '#[ignore]'),
+            candidate.replace('#[tokio::test]', ''),
+            candidate.replace('fn selected', 'fn renamed'),
+            candidate.replace(suffix, ''),
+            candidate + '#[test] fn added() {}\n',
+            '#[test] fn added() {}\n' + candidate,
+        ]) {
+            // A model-mutated workspace must never become the comparison authority.
+            write('tools\\wta\\src\\master\\mod.rs', changed);
+            assert.throws(() => reconstructTree(replacement(changed), expected.headSha), /immutable original Rust test/);
+            const baselinePath = path.join(output, 'baseline.json');
+            const scope = prepareScope(expected, output, baselinePath);
+            const value = proposal();
+            value.report.identity = expected;
+            write('tools\\wta\\src\\master\\mod.rs', changed + '// model edit\n');
+            assert.throws(() => sealProposal(scope, value.report, JSON.parse(fs.readFileSync(baselinePath)), expected),
+                /immutable original Rust test/);
+        }
+        for (const gate of [
+            '#[\n cfg(\n any(windows, test)\n )\n]\nmod tests { #[test] fn selected() {} }\n',
+            '#[cfg_attr(\n test,\n allow(dead_code)\n)]\nfn helper() {}\n',
+            '#[tokio::test]\nasync fn selected() {}\n',
+            '#[cfg(windows)]\nmod custom {\n#[tokio::test]\nasync fn selected() {}\n}\n',
+            '    #[cfg(windows)]\n    mod custom {\n#[tokio::test]\nasync fn selected() {}\n}\n',
+            '    mod custom {\n#[test]\nfn selected() {}\n}\n',
+        ]) {
+            write('tools\\wta\\src\\master\\mod.rs', 'fn runtime() {}\n' + gate);
+            git(['add', filename]);
+            git(['commit', '--quiet', '-m', 'gate pattern']);
+            const head = git(['rev-parse', 'HEAD']);
+            assert.doesNotThrow(() => reconstructTree(replacement('fn repaired() {}\n' + gate), head));
+            assert.throws(() => reconstructTree(replacement('fn repaired() {}\n' + gate.replace(/test/g, 'renamed')), head),
+                /immutable original Rust test/);
+            for (const token of ['#[cfg(windows)]', 'mod custom', '#[test]', '#[tokio::test]']) {
+                if (!gate.includes(token)) continue;
+                assert.throws(() => reconstructTree(replacement('fn repaired() {}\n' + gate.replace(token, `//${token}`)), head),
+                    /immutable original Rust test/, `commenting ${token} must not bypass the suffix guard`);
+            }
+        }
+        assert.throws(() => reconstructTree(replacement('fn runtime() {}\n#[test] fn added() {}\n'), expected.baseSha),
+            /immutable original Rust test/);
+    });
 });
 
 test('Git preparation and sealing separate trusted restoration from model source edits and preserve raw blobs', () => {

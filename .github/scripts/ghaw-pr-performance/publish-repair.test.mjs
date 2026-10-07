@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { publishRepair } from './publish-repair.mjs';
 import { reconstructTree } from '../../skills/pr-performance-review/scripts/performance-review.mjs';
 
 function fixture(t) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'performance-publisher-'));
+    const root = fs.mkdtempSync(path.join(process.cwd(), 'performance-publisher-'));
     const previous = process.cwd();
     process.chdir(root);
     t.after(() => { process.chdir(previous); fs.rmSync(root, { recursive: true, force: true }); });
@@ -44,7 +43,7 @@ function fixture(t) {
                 nativeEnvironment: { architecture: 'windows-x64', details: 'Native focused test fixture' },
                 evidence: [{ type: 'complexity-proof', detail: 'Nested traversal repeats for every input item.' }],
                 proposedFix: 'Restore the linear iteration', validation: 'Native test requested', fixDisposition: 'proposed',
-            }], checks: [{ name: 'Actual native test', command: 'cargo test', exitCode: 0, status: 'pass', detail: 'One test passed' }] },
+            }], checks: [{ name: 'Native test', command: 'not run', exitCode: null, status: 'unavailable', detail: 'Awaiting trusted native job' }] },
     };
     const proposalPath = path.join(root, 'proposal.json');
     const write = () => fs.writeFileSync(proposalPath, JSON.stringify(proposal));
@@ -96,8 +95,18 @@ test('publisher rejects content altered after native validation', async t => {
 test('publisher independently rejects a replacement outside original PR candidates', async t => {
     const f = fixture(t);
     f.proposal.files[0].path = 'tools/wta/src/unrelated.rs';
+    f.proposal.report.findings[0].location = 'tools/wta/src/unrelated.rs:1';
     f.write();
     await assert.rejects(() => publishRepair(f), /outside the immutable original candidate/);
+    assert.equal(f.calls.length, 0);
+});
+
+test('publisher rejects model-authored pass checks even after GitHub records native success', async t => {
+    const f = fixture(t);
+    f.proposal.report.checks.push({ name: 'Invented benchmark', command: 'not run', exitCode: 0,
+        status: 'pass', detail: 'Model-authored success claim' });
+    f.write();
+    await assert.rejects(() => publishRepair(f), /cannot contain model-authored pass checks/);
     assert.equal(f.calls.length, 0);
 });
 

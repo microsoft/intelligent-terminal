@@ -141,6 +141,7 @@ safe-outputs:
             path: '${{ runner.temp }}\performance-proposal'
         - name: Validate and test the exact candidate tree
           timeout-minutes: 32
+          working-directory: candidate
           shell: pwsh
           env:
             PR_NUMBER: ${{ github.event.inputs.pr_number }}

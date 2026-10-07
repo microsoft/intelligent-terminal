@@ -8,7 +8,7 @@ $validator = Join-Path $PSScriptRoot 'validate-native.ps1'
 $runtime = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\skills\pr-performance-review\scripts\performance-review.mjs'))
 $fixture = Join-Path (Get-Location).Path ('.native-validation-fixture-' + [guid]::NewGuid().ToString('N'))
 $utf8 = [Text.UTF8Encoding]::new($false)
-$baseline = "#[cfg(test)] mod tests { #[test] fn focused() { assert_eq!(2 + 2, 4); } #[test] #[should_panic] fn panics() { panic!(`"expected`"); } }`n"
+$baseline = "fn work() -> usize { 4 }`nfn fail() { panic!(`"expected`"); }`n#[cfg(test)] mod tests { #[test] fn focused() { assert_eq!(super::work(), 4); } #[test] fn focused_extra() { assert_eq!(super::work(), 4); } #[test] #[should_panic] fn panics() { super::fail(); } }`n"
 $manifest = "[package]`nname = `"native-validation-fixture`"`nversion = `"0.0.0`"`nedition = `"2021`"`n"
 $count = 0
 function Git([string[]]$Arguments) {
@@ -95,48 +95,54 @@ try {
     $null = Git @('-c', 'user.name=Native Fixture', '-c', 'user.email=fixture@invalid', '-c', 'core.hooksPath=NUL',
         'commit', '--quiet', '-m', "Local native validation fixture`n`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>")
     $script:base = Git @('rev-parse', 'HEAD')
-    $baseline += "// Immutable PR candidate fixture`n"
+    $baseline = "// Immutable PR candidate fixture`n" + $baseline
     [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\src\lib.rs'), $baseline, $utf8)
     $null = Git @('add', 'tools/wta/src/lib.rs')
     $null = Git @('-c', 'user.name=Native Fixture', '-c', 'user.email=fixture@invalid', '-c', 'core.hooksPath=NUL',
         'commit', '--quiet', '-m', "Immutable fixture PR head`n`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>")
     $script:head = Git @('rev-parse', 'HEAD')
-    Test-Case 'valid-windows-run' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'tests::focused'
-    Test-Case 'format-failure' "#[cfg(test)] mod tests { #[test] fn focused() { assert_eq!(2 + 2, 4); } }`n" 'tests::focused' 'format-check: native validation failed with exit code' $true
-    Test-Case 'failed-test' ($baseline.Replace('2 + 2, 4', '2 + 2, 5')) 'tests::focused' 'focused-tests: native validation failed with exit code'
-    Test-Case 'exact-unknown-function' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'tests::unknown_function' 'selector must name exactly one existing test in compiled original HEAD'
-    Test-Case 'broad-module-filter' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'tests' 'focused native WTA validation|selector must name exactly one existing test'
-    Test-Case 'proposal-added-test' ($baseline + "#[cfg(test)] mod added { #[test] fn new_test() {} }`n") 'added::new_test' 'selector must name exactly one existing test in compiled original HEAD'
-    Test-Case 'exact-no-substring-matches' ($baseline.Replace('fn focused()', 'fn focused_extra() {} #[test] fn focused()')) 'tests::focused'
-    Test-Case 'named-should-panic' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'tests::panics'
-    Test-Case 'dirty-original-head' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'tests::focused' 'clean tracked HEAD files before original test listing' $false $true
-    Test-Case 'full-suite-failure' ($baseline + "#[test] fn outside_focus_fails() { assert_eq!(2 + 2, 5); }`n") 'tests::focused' 'full-suite: native validation failed with exit code'
+    $repair = $baseline.Replace("    4`n", "    2 + 2`n")
+    Test-Case 'valid-windows-run' $repair 'tests::focused'
+    Test-Case 'format-failure' ($baseline.Replace("    4`n", "  4`n")) 'tests::focused' 'format-check: native validation failed with exit code' $true
+    Test-Case 'failed-test' ($baseline.Replace("    4`n", "    5`n")) 'tests::focused' 'focused-tests: native validation failed with exit code'
+    Test-Case 'exact-unknown-function' $repair 'tests::unknown_function' 'selector must name exactly one existing test in compiled original HEAD'
+    Test-Case 'broad-module-filter' $repair 'tests' 'focused native WTA validation|selector must name exactly one existing test'
+    Test-Case 'proposal-added-test' ($baseline + "#[cfg(test)] mod added { #[test] fn new_test() {} }`n") 'added::new_test' 'immutable original Rust test'
+    Test-Case 'modified-selected-test' ($baseline.Replace('super::work(), 4', 'super::work(), 5')) 'tests::focused' 'immutable original Rust test'
+    Test-Case 'removed-test-gate' ($baseline.Replace('#[cfg(test)]', '')) 'tests::focused' 'immutable original Rust test'
+    Test-Case 'exact-no-substring-matches' $repair 'tests::focused'
+    Test-Case 'named-should-panic' $repair 'tests::panics'
+    Test-Case 'dirty-original-head' $repair 'tests::focused' 'clean tracked HEAD files before original test listing' $false $true
+    Test-Case 'full-suite-failure' ($baseline.Replace('panic!("expected");', 'return;')) 'tests::focused' 'full-suite: native validation failed with exit code'
     $mutation = @'
-#[cfg(test)] mod tests {
-    #[test] fn focused() {
+fn work() -> usize {
         use std::io::Write;
         // INDEX_FLAG
         std::fs::OpenOptions::new().append(true)
             .open(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap()
-            .write_all(b"\n# changed by test\n").unwrap();
-    }
+            .write_all(b"\n# changed by runtime\n").unwrap();
+        4
 }
 '@
-    Test-Case 'tracked-manifest-mutation' $mutation 'tests::focused' 'changed tracked workspace bytes: tools/wta/Cargo.toml'
+    $runtimeStart = $baseline.IndexOf('fn work()')
+    $runtimeEnd = $baseline.IndexOf('fn fail()')
+    $replaceWork = { param($body) $baseline.Substring(0, $runtimeStart) + $body + "`n" + $baseline.Substring($runtimeEnd) }
+    Test-Case 'tracked-manifest-mutation' (& $replaceWork $mutation) 'tests::focused' 'changed tracked workspace bytes: tools/wta/Cargo.toml'
     $flag = @'
 let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         assert!(std::process::Command::new("git").arg("-C").arg(root)
             .args(["update-index", "--assume-unchanged", "tools/wta/Cargo.toml"]).status().unwrap().success());
 '@
-    Test-Case 'assume-unchanged-manifest-mutation' ($mutation.Replace('// INDEX_FLAG', $flag)) 'tests::focused' 'changed tracked workspace bytes: tools/wta/Cargo.toml'
+    Test-Case 'assume-unchanged-manifest-mutation' (& $replaceWork ($mutation.Replace('// INDEX_FLAG', $flag))) 'tests::focused' 'changed tracked workspace bytes: tools/wta/Cargo.toml'
     $environmentTest = @'
-#[cfg(test)] mod tests { #[test] fn focused() {
+fn work() -> usize {
     for key in ["GH_TOKEN", "COPILOT_GITHUB_TOKEN", "ACTIONS_RUNTIME_TOKEN", "GH_AW_GITHUB_READ_TOKEN",
                 "OTEL_EXPORTER_OTLP_HEADERS", "GITHUB_ENV", "GITHUB_OUTPUT"] {
         assert!(std::env::var_os(key).is_none(), "inherited {}", key);
     }
     assert_eq!(std::env::var("RUNNER_TRACKING_ID").unwrap(), "native-step-fixture");
-} }
+    4
+}
 '@
     $originalEnvironment = @{}
     try {
@@ -145,7 +151,7 @@ let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
             $originalEnvironment[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
             [Environment]::SetEnvironmentVariable($key, 'native-step-fixture', 'Process')
         }
-        Test-Case 'child-environment-only' $environmentTest 'tests::focused'
+        Test-Case 'child-environment-only' (& $replaceWork $environmentTest) 'tests::focused'
         if ($env:GH_TOKEN -cne 'native-step-fixture') { throw 'Native step changed parent authentication.' }
     } finally {
         foreach ($key in $originalEnvironment.Keys) {

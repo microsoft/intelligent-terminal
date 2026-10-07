@@ -21,6 +21,9 @@ end-to-end proof, not a claim that every native performance scenario is covered.
 3. Eligible same-repo HIGH changes are proposals, not model-authored claims of
    passing tests. Trusted post-processing seals their exact Git blobs and
    confines them to the original candidate files.
+   Each proposed canonical `path:line` must identify a sealed WTA Rust
+   replacement, and every replacement must be covered. Concurrency/session
+   categories remain eligible by actual location, not category label.
 4. A read-only Windows Actions job resolves the exact test in the immutable
    original head before applying the proposal. It then checks formatting,
    runs that test with exact matching, and runs the full explicit-target suite.
@@ -61,6 +64,26 @@ The current automatic native backend supports focused Windows WTA Rust tests;
 C++ findings require an applicable MSBuild/TAEF handoff and remain manual.
 Fork guidance names the reviewed head and uses best-effort freshness checking.
 
+Local third-review hardening protects inline test source using immutable Git
+head blobs during sealing, native proposal validation/application, and publisher
+reconstruction. The dependency-free lexical policy freezes the suffix from the
+first `test`/`rstest` word, extended to any earlier attribute opener or `mod`
+word. It handles common multiline cfg/cfg_attr and qualified test attributes.
+The complete marker/token lines are frozen, including potential comment prefixes.
+All selected/other test bodies, trailing additions, gates and module declarations
+in that suffix must remain byte-identical. Runtime prefix repairs with unchanged
+trailing inline tests remain supported. Comments/strings and early attributes,
+modules or test-only helpers can conservatively block otherwise safe repairs.
+This is not a Rust parser: custom macros without recognized test words and
+changes to runtime helpers are not semantic test-preservation guarantees.
+Original compiled test listing and exact native execution remain mandatory.
+
+Pending reports reject all model-authored `pass` checks, not just native claims.
+Not-run checks are honestly `unavailable`; the publisher appends native success
+independently from GitHub's recorded result. Guide-source checks and other
+statuses retain their existing contract. This round has local fixture evidence
+only; no additional hosted replay was authorized or performed.
+
 Authentication is unchanged from localization: `copilot-requests: write`
 uses the Actions token. No speculative `COPILOT_GITHUB_TOKEN` requirement.
 
@@ -76,9 +99,8 @@ no custom model router or mid-run switching mechanism is introduced.
 ## Local checks
 
 ```powershell
-node --test .github\skills\pr-performance-review\tests\performance-review.test.mjs .github\scripts\ghaw-pr-performance\controller.test.mjs .github\scripts\ghaw-pr-performance\runtime.test.mjs .github\scripts\ghaw-pr-performance\publish-repair.test.mjs .github\scripts\ghaw-pr-performance\guide-report.test.mjs
+node --test .github\skills\pr-performance-review\tests\performance-review.test.mjs .github\scripts\ghaw-pr-performance\controller.test.mjs .github\scripts\ghaw-pr-performance\runtime.test.mjs .github\scripts\ghaw-pr-performance\publish-repair.test.mjs .github\scripts\ghaw-pr-performance\repair-pipeline.test.mjs .github\scripts\ghaw-pr-performance\guide-report.test.mjs
 pwsh -NoProfile -File .github\scripts\ghaw-pr-performance\NativeValidation.Tests.ps1
-node --test .github\scripts\ghaw-pr-performance\repair-pipeline.test.mjs
 gh aw compile ghaw-pr-performance ghaw-pr-performance-guide-forkedrepo --validate
 ```
 

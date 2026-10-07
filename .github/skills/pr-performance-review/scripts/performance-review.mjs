@@ -150,6 +150,8 @@ export function validateReport(report, expected) {
         if (!['pass', 'regression', 'noisy', 'unavailable', 'error'].includes(check.status) ||
             !(check.exitCode === null || Number.isInteger(check.exitCode))) fail(`${prefix} has an invalid status or exitCode`);
         if (check.status === 'pass' && check.exitCode !== 0) fail(`${prefix} passing checks must exit 0`);
+        if (report.status === 'pending_validation' && check.status === 'pass')
+            fail(`${prefix} pending_validation reports cannot contain model-authored pass checks`);
         if (check.status === 'regression' && !report.findings.length) fail(`${prefix} regression checks require at least one finding`);
     }
     const expectedStatus = report.checks.some(check => check.status === 'error') ? 'blocked' :
@@ -324,7 +326,38 @@ export function validateProposal(proposal, expected) {
         size += Buffer.from(file.contents, 'base64').length;
     }
     if (size > 256 * 1024) fail('repair source content exceeds the localized-fix size limit');
+    const covered = new Set();
+    for (const finding of proposal.report.findings.filter(finding => finding.fixDisposition === 'proposed')) {
+        const location = /^([^:]+):([1-9][0-9]*)$/.exec(finding.location);
+        if (!location || classifyFile({ filename: location[1] }).role !== 'candidate' || !paths.has(location[1]))
+            fail('every proposed finding needs a canonical path:line location in a sealed WTA Rust replacement');
+        covered.add(location[1]);
+    }
+    if ([...paths].some(filename => !covered.has(filename)))
+        fail('every replacement file must be covered by a proposed finding');
     return proposal;
+}
+
+function protectedTestSuffix(contents) {
+    // Deliberately lexical: comments/strings can block repairs, never justify ignoring a marker.
+    const source = contents.toString('latin1');
+    const marker = /\b(?:test|rstest)\b/.exec(source);
+    if (!marker) return null;
+    let start = source.lastIndexOf('\n', marker.index) + 1;
+    const declarations = /#\s*!?\s*\[|\bmod\b/g;
+    for (const match of source.matchAll(declarations)) {
+        if (match.index > marker.index) break;
+        // Include the full line so a comment prefix cannot disable a preserved token.
+        start = Math.min(start, source.lastIndexOf('\n', match.index) + 1);
+    }
+    return contents.subarray(start);
+}
+
+function preserveOriginalTests(original, candidate) {
+    const before = protectedTestSuffix(original);
+    const after = protectedTestSuffix(candidate);
+    if ((before === null) !== (after === null) || (before !== null && !before.equals(after)))
+        fail('repair must preserve the immutable original Rust test markers and protected suffix byte-for-byte');
 }
 
 export function reconstructTree(files, headSha, baseSha) {
@@ -336,7 +369,10 @@ export function reconstructTree(files, headSha, baseSha) {
         for (const file of files) {
             const entry = git(['ls-tree', headSha, '--', `:(literal)${file.path}`]).trim();
             if (!entry.startsWith(`${file.mode} blob `)) fail('repair may only replace an existing regular file without changing its mode');
-            const blob = git(['hash-object', '-w', '--stdin'], {}, { input: Buffer.from(file.contents, 'base64') }).trim();
+            const candidate = Buffer.from(file.contents, 'base64');
+            const original = git(['cat-file', 'blob', `${headSha}:${file.path}`], {}, { encoding: null });
+            preserveOriginalTests(original, candidate);
+            const blob = git(['hash-object', '-w', '--stdin'], {}, { input: candidate }).trim();
             git(['update-index', '--add', '--cacheinfo', `${file.mode},${blob},${file.path}`], env);
         }
         return git(['write-tree'], env).trim();
@@ -400,7 +436,11 @@ function main() {
         case 'validate-proposal':
         case 'apply-proposal': {
             const proposal = validateProposal(readJson(option(args, '--input')), expected);
-            if (command === 'validate-proposal') break;
+            if (command === 'validate-proposal') {
+                if (reconstructTree(proposal.files, expected.headSha, expected.baseSha) !== proposal.treeSha)
+                    fail('proposal blobs do not match the sealed tree');
+                break;
+            }
             if (git(['rev-parse', 'HEAD']).trim() !== expected.headSha) fail('native checkout must equal the immutable reviewed head');
             const tree = reconstructTree(proposal.files, expected.headSha, expected.baseSha);
             if (tree !== proposal.treeSha) fail('proposal blobs do not match the sealed tree');
