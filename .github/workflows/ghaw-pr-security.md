@@ -418,7 +418,7 @@ blocking with a concrete reason.
 ## agent: `ghaw-pr-security-reviewer`
 ---
 description: Independently verifies a proposed security finding and repair
-tools: ['read', 'mcpscripts/read-security-diff', 'mcpscripts/read-security-source', 'mcpscripts/inspect-security-repair']
+tools: ['read', 'mcpscripts/read_security_diff', 'mcpscripts/read_security_source', 'mcpscripts/inspect_security_repair']
 ---
 
 Re-derive the original finding from the immutable comparison-base/head patch,
