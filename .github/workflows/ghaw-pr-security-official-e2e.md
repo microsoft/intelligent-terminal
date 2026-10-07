@@ -629,7 +629,7 @@ post-steps:
 
 timeout-minutes: 15
 max-ai-credits: 30
-max-daily-ai-credits: 30
+max-daily-ai-credits: 60
 concurrency:
   group: official-security-e2e-single-attempt
   job-discriminator: ${{ github.run_id }}
