@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import {
   buildScope, createReportTemplate, submitSecurityReport, validateCandidate, validateProposal, validateReport,
@@ -167,13 +168,19 @@ function withFixture(run) {
   try {
     const workspace = join(root, 'candidate');
     mkdirSync(workspace);
-    const reportPath = join(root, 'report.json');
+    const reportDirectory = join(root, 'collected', 'agent');
+    mkdirSync(reportDirectory, { recursive: true });
+    const reportPath = join(reportDirectory, 'report.json');
     const scopePath = join(root, 'scope.json');
     const binary = join(root, 'copilot.exe');
+    const profileSource = join(root, 'profile');
+    mkdirSync(profileSource);
+    writeFileSync(join(profileSource, 'settings.json'), '{"builtInAgents":{"rubberDuck":false}}');
+    writeFileSync(join(profileSource, 'mcp-config.json'), '{"mcpServers":{"fixture":{}}}');
     writeFileSync(binary, 'Fake process fixture; never executed.');
     writeFileSync(scopePath, JSON.stringify(scope));
     writeFileSync(reportPath, JSON.stringify(createReportTemplate(scope)));
-    return run({ workspace, reportPath, scopePath, binary });
+    return run({ workspace, reportPath, scopePath, binary, profileSource, privateRoot: join(root, 'private') });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -333,6 +340,12 @@ function driverOptions(fixture, events = reviewerEvents(), hooks = {}) {
       assert.equal(options.shell, false);
       assert.equal(options.cwd, fixture.workspace);
       assert.equal(options.timeout, 540_000);
+      assert.equal(options.env.COPILOT_HOME, join(options.env.HOME, '.copilot'));
+      assert.equal(options.env.XDG_CONFIG_HOME, options.env.HOME);
+      assert(options.env.HOME.startsWith(fixture.privateRoot));
+      assert.equal(readFileSync(join(options.env.COPILOT_HOME, 'mcp-config.json'), 'utf8'),
+        '{"mcpServers":{"fixture":{}}}');
+      assert.equal(args[args.lastIndexOf('--log-dir') + 1], join(options.env.HOME, 'logs'));
       invocation++;
       if (invocation === 1) {
         assert.equal(args[args.lastIndexOf('--agent') + 1], 'ghaw-pr-security');
@@ -401,6 +414,18 @@ test('compiler arguments retain transport and approvals but both fixed phases ex
   assert.throws(() => buildPhaseArguments(['--resume', 'any-session'], 'primary'), /cannot resume/);
 });
 
+test('repair and guide workers both install and invoke the protected metadata-only driver', () => {
+  for (const name of ['ghaw-pr-security', 'ghaw-pr-security-guide-fork']) {
+    const workflow = readFileSync(new URL(`../../../workflows/${name}.md`, import.meta.url), 'utf8');
+    assert(workflow.includes('command: \'exec node "${RUNNER_TEMP}/gh-aw/security-review-native/security-review-driver.mjs"'));
+    assert(workflow.includes('install_copilot_cli.sh" 1.0.90'));
+    assert(workflow.includes('max-retries: 0'));
+    assert(workflow.includes('watchdog-timeout: 600'));
+    assert(workflow.includes('git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review-driver.mjs"'));
+    assert(workflow.includes('cp "$trusted_validator" "$driver_dir/security-review.mjs"'));
+  }
+});
+
 test('deterministic fake children prove sequential fixed routing, exact native evidence, and proposal stamping', () => {
   withFixture(fixture => {
     const result = runSecurityReviewDriver(driverOptions(fixture));
@@ -425,10 +450,13 @@ test('fixed transition diagnostics precede each bounded child without exposing m
       return runChild(...args);
     };
     assert.equal(runSecurityReviewDriver(options).reviewed, true);
-    assert.deepEqual(observed, [
+    assert.deepEqual(observed.filter(message => !message.includes('output bytes=')), [
       '[security-review-driver] starting primary', 'child-start',
       '[security-review-driver] starting fixed independent reviewer', 'child-start',
     ]);
+    const digests = observed.filter(message => message.includes('output bytes='));
+    assert.equal(digests.length, 2);
+    assert(digests.every(message => /^\[security-review-driver\] (primary|reviewer) output bytes=\d+ sha256=[0-9a-f]{64}$/.test(message)));
   });
   withFixture(fixture => {
     const options = driverOptions(fixture);
@@ -616,6 +644,169 @@ test('unpatched report runs only primary and never requires or invents independe
     options.inspect = () => ({ headSha: HEAD, patch: '', patchSha256: createHash('sha256').update('').digest('hex'), paths: [] });
     assert.equal(runSecurityReviewDriver(options).reviewed, false);
     assert.equal(JSON.parse(readFileSync(fixture.reportPath)).review.status, 'not-required');
+  });
+});
+
+test('source-bearing transcripts stay in memory across repair, guide, no-patch, and failure paths', () => {
+  const sentinel = 'DUMMY_SOURCE_SECRET_SENTINEL_NOT_A_REAL_SECRET';
+  for (const scenario of ['repair', 'guide', 'no-patch', 'primary-failure', 'primary-timeout', 'malformed-primary',
+    'reviewer-failure', 'reviewer-timeout', 'reviewer-rejection', 'source-mismatch', 'emitter-failure']) {
+    withFixture(fixture => {
+      const guide = scenario === 'guide';
+      const currentScope = guide ? buildScope(BASE, HEAD, 17, 'fork', `M\0${PATH}\0`, BASE, 'guide') : scope;
+      writeFileSync(fixture.scopePath, JSON.stringify(currentScope));
+      const noPatch = guide || scenario === 'no-patch';
+      const options = driverOptions(fixture, reviewerEvents(), {
+        candidate: () => noPatch ? { ...createReportTemplate(currentScope), summary: 'No safe repair.' } : candidate(),
+      });
+      const originalRun = options.runChild;
+      const diff = `${DIFF}${sentinel}\n`;
+      const patch = `${PATCH}${sentinel}\n`;
+      const nativeInspection = { ...inspection, patch,
+        patchSha256: createHash('sha256').update(patch).digest('hex') };
+      options.inspect = () => noPatch ? { headSha: HEAD, patch: '',
+        patchSha256: createHash('sha256').update('').digest('hex'), paths: [] } : nativeInspection;
+      options.readDiff = () => diff;
+      options.readSource = (scope, revision, path, start, end) =>
+        sourceForRange(revision, path, start, end).replaceAll('source.', `source. ${sentinel}`);
+      let launches = 0;
+      let emitted = '';
+      const diagnostics = [];
+      options.logger = message => diagnostics.push(message);
+      options.emitPrimary = value => {
+        emitted += value;
+        if (scenario === 'emitter-failure') throw new Error(sentinel);
+      };
+      options.runChild = (...args) => {
+        launches++;
+        if (guide && launches === 1) {
+          const accepted = submitSecurityReport(JSON.stringify({
+            ...createReportTemplate(currentScope), summary: 'Guidance only.',
+          }), currentScope, fixture.reportPath);
+          return { status: 0, stdout: output([
+            ...call('mcpscripts-read_security_diff', { diff }),
+            ...call('mcpscripts-submit_security_report', accepted),
+            ...call('safeoutputs-noop', { accepted: true }), terminal(),
+          ]), stderr: sentinel };
+        }
+        const result = originalRun(...args);
+        if (launches === 1) {
+          const events = JSON.parse(`[${result.stdout.trim().split('\n').join(',')}]`);
+          events.splice(0, 0, ...call('mcpscripts-read_security_diff', { diff }),
+            { type: 'assistant.message', data: { content: sentinel } });
+          events.at(-1).sessionId = sentinel;
+          events.at(-1).usage = { inputTokens: 7, extra: sentinel, outputTokens: sentinel };
+          result.stdout = scenario === 'malformed-primary' ? sentinel : output(events);
+          if (scenario === 'primary-failure') result.status = 1;
+        } else {
+          const events = reviewerEvents();
+          events[1].data.result.content = JSON.stringify({ baseSha: BASE, headSha: HEAD, diff });
+          for (const [index, revision] of [[3, 'base'], [5, 'head']]) {
+            events[index].data.result.content = JSON.stringify({ revision, path: PATH,
+              source: options.readSource(scope, revision, PATH, 1, 2) });
+          }
+          events[7].data.result.content = JSON.stringify(nativeInspection);
+          const response = JSON.parse(events[8].data.content);
+          response.patchSha256 = nativeInspection.patchSha256;
+          if (scenario === 'reviewer-rejection') response.status = 'FAIL';
+          events[8].data.content = JSON.stringify(response);
+          result.stdout = output(events);
+          if (scenario === 'reviewer-failure') result.status = 1;
+          if (scenario === 'source-mismatch') {
+            events[3].data.result.content = JSON.stringify({ revision: 'base', path: PATH,
+              source: `1: Forged source. ${sentinel}` });
+            result.stdout = output(events);
+          }
+        }
+        if ((launches === 1 && scenario === 'primary-timeout') ||
+            (launches === 2 && scenario === 'reviewer-timeout')) {
+          result.status = null;
+          result.signal = 'SIGKILL';
+          result.error = new Error(sentinel);
+        }
+        return { ...result, stderr: sentinel };
+      };
+      if (scenario.includes('failure') || scenario.includes('rejection') || scenario.endsWith('-timeout') ||
+          ['malformed-primary', 'source-mismatch'].includes(scenario)) {
+        assert.throws(() => runSecurityReviewDriver(options));
+      } else {
+        assert.equal(runSecurityReviewDriver(options).reviewed, !noPatch);
+      }
+      assert(launches <= 2);
+      assert(!emitted.includes(sentinel));
+      assert(!diagnostics.join('\n').includes(sentinel));
+      const files = readdirSync(resolve(fixture.reportPath, '..'));
+      assert(!files.some(path => path.startsWith('security-driver-')));
+      assert(!readFileSync(fixture.reportPath, 'utf8').includes(sentinel));
+      if (emitted) {
+        const messages = emitted.trim().split('\n').map(line => JSON.parse(line));
+        const result = messages.at(-1);
+        assert.equal(messages[0].type, 'assistant.message');
+        assert.equal(JSON.parse(messages[0].data.content).headSha, HEAD);
+        assert.equal(result.type, 'result');
+        assert.equal(result.exitCode, 0);
+        assert.match(result.sessionId, /^[0-9a-f]{64}$/);
+        if (!guide) assert.deepEqual(result.usage, { inputTokens: 7 });
+      }
+      if (scenario === 'emitter-failure') {
+        assert.equal(JSON.parse(readFileSync(fixture.reportPath)).review.status, 'pending');
+      } else if (emitted) {
+        const collected = readFileSync(resolve(fixture.reportPath, '..', '..', 'sandbox', 'agent', 'logs', 'events.jsonl'), 'utf8');
+        assert.equal(collected, emitted);
+        assert(!collected.includes(sentinel));
+      }
+    });
+  }
+});
+
+test('existing raw evidence is neither rewritten nor deleted', () => {
+  withFixture(fixture => {
+    const evidence = resolve(fixture.reportPath, '..', 'security-driver-primary.jsonl');
+    const original = 'DUMMY_SOURCE_SECRET_SENTINEL_NOT_A_REAL_SECRET';
+    writeFileSync(evidence, original);
+    assert.equal(runSecurityReviewDriver(driverOptions(fixture)).reviewed, true);
+    assert.equal(readFileSync(evidence, 'utf8'), original);
+  });
+});
+
+test('entrypoint never forwards source-bearing native error messages to harness stderr', () => {
+  const sentinel = 'DUMMY_SOURCE_SECRET_SENTINEL_NOT_A_REAL_SECRET';
+  assert.throws(() => execFileSync(process.execPath, [
+    resolve('.github/skills/ghaw-pr-security/scripts/security-review-driver.mjs'), resolve(sentinel),
+  ], { cwd: process.cwd(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), error => {
+    assert.equal(error.status, 1);
+    assert(!error.stdout.includes(sentinel));
+    assert(!error.stderr.includes(sentinel));
+    assert.match(error.stderr, /security driver: failed/);
+    return true;
+  });
+});
+
+test('real failing native Git source reads capture stderr without leaking it from a subprocess', () => {
+  const sentinel = 'DUMMY_SOURCE_SECRET_SENTINEL_NOT_A_REAL_SECRET';
+  withSourceFixture('old\n', 'new\n', (current, workspace) => {
+    const module = pathToFileURL(resolve('.github/skills/ghaw-pr-security/scripts/security-review.mjs')).href;
+    const program = `
+      import { readSecuritySource } from ${JSON.stringify(module)};
+      try {
+        readSecuritySource(${JSON.stringify(current)}, 'head', ${JSON.stringify(`${sentinel}.rs`)},
+          1, 1, ${JSON.stringify(workspace)});
+        process.exitCode = 2;
+      } catch (error) {
+        if (!error.cause?.stderr?.includes(${JSON.stringify(sentinel)})) process.exitCode = 3;
+        else process.exitCode = 1;
+        process.stderr.write(error.message + '\\n');
+      }
+    `;
+    assert.throws(() => execFileSync(process.execPath, ['--input-type=module', '--eval', program], {
+      cwd: workspace, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    }), error => {
+      assert.equal(error.status, 1);
+      assert(!error.stdout.includes(sentinel));
+      assert(!error.stderr.includes(sentinel));
+      assert.match(error.stderr, /raw diagnostics withheld/);
+      return true;
+    });
   });
 });
 

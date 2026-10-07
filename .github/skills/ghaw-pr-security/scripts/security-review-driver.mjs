@@ -2,7 +2,8 @@
 
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { closeSync, constants, lstatSync, openSync, readFileSync, realpathSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, constants, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, writeFileSync, writeSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -61,13 +62,14 @@ function writeReport(path, report) {
   }
 }
 
-export function buildPhaseArguments(argv, phase, prompt = '') {
+export function buildPhaseArguments(argv, phase, prompt = '', logDir) {
   if (!Array.isArray(argv) || argv.some(value => typeof value !== 'string' || value.includes('\0'))) {
     fail('compiler arguments must be strings');
   }
   if (!['primary', 'reviewer'].includes(phase)) fail('unknown invocation phase');
   const result = [];
-  const removedValues = new Set(['--agent', '--output-format', '--available-tools', '--excluded-tools', '--prefer-version']);
+  const removedValues = new Set(['--agent', '--output-format', '--available-tools', '--excluded-tools', '--prefer-version',
+    '--log-dir', '--log-level', '--config-dir', '--usage-output-file']);
   if (phase === 'reviewer') {
     for (const flag of ['--prompt', '--prompt-file', '-p', '--usage-output-file']) removedValues.add(flag);
   }
@@ -95,6 +97,10 @@ export function buildPhaseArguments(argv, phase, prompt = '') {
     '--output-format', 'json', '--excluded-tools', ...EXCLUDED,
     '--available-tools', ...(phase === 'primary' ? PRIMARY_TOOLS : ['view', ...READ_TOOLS]),
     '--deny-tool', 'shell', '--deny-tool', 'write');
+  if (logDir !== undefined) {
+    if (!isAbsolute(logDir)) fail('phase log directory must be absolute');
+    result.push('--log-level', 'all', '--log-dir', logDir);
+  }
   if (phase === 'reviewer') {
     result.push('--deny-tool', 'mcpscripts(write_security_repair)',
       '--deny-tool', 'mcpscripts(submit_security_report)',
@@ -144,6 +150,26 @@ export function parseTranscript(output, allowedTools) {
   }
   if (starts.size !== completed.size) fail('unfinished tool invocation');
   return { events, calls };
+}
+
+export function projectSecurityReviewOutput(transcript, report) {
+  const result = transcript.events.at(-1);
+  const usage = {};
+  for (const key of ['inputTokens', 'outputTokens', 'totalTokens', 'input_tokens', 'output_tokens',
+    'total_tokens', 'premiumRequests', 'totalApiDurationMs']) {
+    const value = result.usage?.[key];
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) usage[key] = value;
+  }
+  // Safe outputs use the native MCP side channel, not forwarded tool payloads.
+  return `${JSON.stringify({ type: 'assistant.message', data: {
+    phase: 'final_answer', toolRequests: [], content: JSON.stringify({
+      summary: report.summary, headSha: report.headSha, reviewStatus: report.review.status,
+      findings: report.findings.map(({ rule, severity, confidence, file, startLine, endLine }) =>
+        ({ rule, severity, confidence, file, startLine, endLine })),
+      checks: report.checks.map(({ name, status }) => ({ name, status })),
+    }),
+  } })}\n${JSON.stringify({ type: 'result', exitCode: 0,
+    sessionId: createHash('sha256').update(result.sessionId).digest('hex'), usage })}\n`;
 }
 
 function nativeResult(call) {
@@ -299,6 +325,7 @@ function inspectCandidate(scope, workspace) {
   const inspection = inspectSecurityRepair(scope, workspace);
   const args = ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '--no-pager'];
   const options = { cwd: workspace, encoding: 'utf8', timeout: 30_000, maxBuffer: MAX_OUTPUT,
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1', GIT_PAGER: 'cat' } };
   const head = execFileSync('git', [...args, 'rev-parse', 'HEAD'], options).trim();
   if (head !== scope.headSha) fail('candidate checkout changed immutable head');
@@ -326,6 +353,8 @@ export function runSecurityReviewDriver({
   runChild = spawnSync, inspect = inspectCandidate, readDiff = readSecurityDiff, readSource = readSecuritySource,
   emitPrimary = output => process.stdout.write(output),
   logger = message => writeSync(process.stderr.fd, `${message}\n`), timeout = 540_000,
+  privateRoot = resolve(dirname(reportPath), '..', '..', 'gh-aw-security-private'),
+  profileSource = dirname(process.env.GH_AW_MCP_CONFIG ?? resolve(process.env.HOME ?? homedir(), '.copilot', 'mcp-config.json')),
 } = {}) {
   const root = realpathSync(resolve(workspace));
   const executable = protectedPath(binary, root);
@@ -338,24 +367,42 @@ export function runSecurityReviewDriver({
   createReportTemplate(scope);
   regularPath(reportPath);
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > 540_000) fail('phase timeout exceeds trusted bound');
+  const privateDirectory = resolve(privateRoot);
+  const collectedDirectory = resolve(dirname(reportPath), '..');
+  if (privateDirectory === root || privateDirectory.startsWith(`${root}${sep}`) ||
+      privateDirectory === collectedDirectory || privateDirectory.startsWith(`${collectedDirectory}${sep}`)) {
+    fail('private diagnostics must be outside candidate and report directories');
+  }
+  if (realpathSync(dirname(privateDirectory)) !== dirname(privateDirectory)) fail('private diagnostics parent has symlink ancestors');
+  mkdirSync(privateDirectory, { recursive: true, mode: 0o700 });
+  if (!lstatSync(privateDirectory).isDirectory() || realpathSync(privateDirectory) !== privateDirectory) {
+    fail('private diagnostics directory must not have symlink ancestors');
+  }
+  if (process.platform !== 'win32' && (lstatSync(privateDirectory).mode & 0o077)) {
+    fail('private diagnostics directory permissions must be owner-only');
+  }
+  const profiles = ['settings.json', 'mcp-config.json'].map(name => ({
+    name, bytes: readFileSync(protectedPath(resolve(profileSource, name), root)),
+  }));
   const launch = (phase, prompt) => {
+    const phaseHome = mkdtempSync(resolve(privateDirectory, `${phase}-`));
+    const configDir = resolve(phaseHome, '.copilot');
+    const logDir = resolve(phaseHome, 'logs');
+    mkdirSync(configDir, { mode: 0o700 });
+    mkdirSync(logDir, { mode: 0o700 });
+    for (const { name, bytes } of profiles) writeFileSync(resolve(configDir, name), bytes, { flag: 'wx', mode: 0o600 });
     logger(phase === 'primary'
       ? '[security-review-driver] starting primary'
       : '[security-review-driver] starting fixed independent reviewer');
-    const result = runChild(executable, buildPhaseArguments(argv, phase, prompt), {
-      cwd: root, env: { ...process.env, COPILOT_AUTO_UPDATE: 'false', COPILOT_CLI_VERSION: '1.0.90' },
+    const result = runChild(executable, buildPhaseArguments(argv, phase, prompt, logDir), {
+      cwd: root, env: { ...process.env, COPILOT_AUTO_UPDATE: 'false', COPILOT_CLI_VERSION: '1.0.90',
+        HOME: phaseHome, XDG_CONFIG_HOME: phaseHome, COPILOT_HOME: configDir },
       shell: false, encoding: 'utf8', timeout, maxBuffer: MAX_OUTPUT, killSignal: 'SIGKILL',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     if (typeof result.stdout !== 'string' || Buffer.byteLength(result.stdout) > MAX_OUTPUT) fail(`${phase} output exceeds limit`);
-    const logPath = resolve(dirname(reportPath), `security-driver-${phase}.jsonl`);
-    if (realpathSync(dirname(logPath)) !== dirname(logPath)) fail('driver log directory has symlink ancestors');
-    const fd = openSync(logPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
-    try {
-      writeFileSync(fd, result.stdout);
-    } finally {
-      closeSync(fd);
-    }
+    logger(`[security-review-driver] ${phase} output bytes=${Buffer.byteLength(result.stdout)} sha256=${
+      createHash('sha256').update(result.stdout).digest('hex')}`);
     if (result.error || result.signal || result.status !== 0) fail(`${phase} CLI failed, timed out, or exceeded output limit`);
     return result.stdout;
   };
@@ -372,8 +419,16 @@ export function runSecurityReviewDriver({
     ? validateCandidate(candidateInput, scope)
     : validateReport(candidateInput, scope);
   if (readFileSync(scopePath, 'utf8') !== scopeBytes) fail('protected scope changed during primary');
+  const emitReport = report => {
+    const metadata = projectSecurityReviewOutput(transcript, report);
+    emitPrimary(metadata);
+    const publicLogs = resolve(dirname(reportPath), '..', 'sandbox', 'agent', 'logs');
+    mkdirSync(publicLogs, { recursive: true, mode: 0o700 });
+    if (realpathSync(publicLogs) !== publicLogs) fail('public metadata directory has symlink ancestors');
+    writeFileSync(resolve(publicLogs, 'events.jsonl'), metadata, { flag: 'wx', mode: 0o600 });
+  };
   if (scope.mode === 'guide') {
-    emitPrimary(primary);
+    emitReport(candidate);
     return { mode: scope.mode, reviewed: false };
   }
   const before = inspect(scope, root);
@@ -384,7 +439,7 @@ export function runSecurityReviewDriver({
   }
   if (candidate.patch.length === 0) {
     validateProposal(candidate, scope);
-    emitPrimary(primary);
+    emitReport(candidate);
     return { mode: scope.mode, reviewed: false };
   }
   const originalDiff = readDiff(scope, [], root);
@@ -409,7 +464,7 @@ export function runSecurityReviewDriver({
   try {
     writeReport(reportPath, proposal);
     validateProposal(readReport(reportPath), scope);
-    emitPrimary(primary);
+    emitReport(proposal);
   } catch (error) {
     writeReport(reportPath, candidate);
     throw error;
@@ -421,7 +476,8 @@ if (process.argv[1] && resolve(process.argv[1]) === SOURCE) {
   try {
     runSecurityReviewDriver({ binary: process.argv[2], argv: process.argv.slice(3) });
   } catch (error) {
-    process.stderr.write(`${error.message}\n`);
+    // Native/JSON/process errors can contain source bytes or secret-bearing paths.
+    process.stderr.write('security driver: failed; inspect metadata diagnostics and report status\n');
     process.exitCode = 1;
   }
 }

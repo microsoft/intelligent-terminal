@@ -105,8 +105,16 @@ export function classifyPath(path) {
   return [...domains].sort();
 }
 
+function capturedCommand(command, args, options) {
+  try {
+    return execFileSync(command, args, { ...options, stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch (cause) {
+    throw new Error('security-review: native command failed; raw diagnostics withheld', { cause });
+  }
+}
+
 function git(args, cwd, environment = {}) {
-  return execFileSync('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '--no-pager', ...args], {
+  return capturedCommand('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '--no-pager', ...args], {
     encoding: 'utf8',
     maxBuffer: 16 * 1024 * 1024,
     timeout: 30_000,
@@ -635,7 +643,7 @@ export function validateRepairChanges(scope, patch) {
 function prospectiveRepairPatch(scope, root, entries) {
   const directory = mkdtempSync(resolve(root, '.security-repair-index-'));
   const env = { ...process.env, GIT_NO_REPLACE_OBJECTS: '1', GIT_PAGER: 'cat', GIT_INDEX_FILE: resolve(directory, 'index') };
-  const run = (args, input) => execFileSync('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '--no-pager', ...args], {
+  const run = (args, input) => capturedCommand('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '--no-pager', ...args], {
     cwd: root, env, input, encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024,
   });
   try {
@@ -715,7 +723,7 @@ export function verifyCredentialFree(workspace) {
   const query = pattern => {
     const result = spawnSync('git', [
       '-c', 'core.fsmonitor=false', 'config', '--get-regexp', pattern,
-    ], { cwd: workspace, encoding: 'utf8', timeout: 30_000 });
+    ], { cwd: workspace, encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'] });
     if (result.error || ![0, 1].includes(result.status)) fail('could not verify Git credential postcondition');
     return result.status === 0 ? result.stdout : '';
   };
@@ -996,7 +1004,7 @@ export function preparePublication({ environment = process.env, request, paths =
       !/^[1-9][0-9]*$/.test(pr ?? '') || !/^[1-9][0-9]*$/.test(runId ?? '') ||
       !SHA.test(head ?? '') || !SHA.test(base ?? '') ||
       !['true', 'false'].includes(environment.SAME_REPO)) fail('publication inputs are invalid');
-  const api = request ?? (endpoint => JSON.parse(execFileSync('gh', ['api', `/repos/${repository}/${endpoint}`], {
+  const api = request ?? (endpoint => JSON.parse(capturedCommand('gh', ['api', `/repos/${repository}/${endpoint}`], {
     encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024,
   })));
   const sameRepo = environment.SAME_REPO === 'true';

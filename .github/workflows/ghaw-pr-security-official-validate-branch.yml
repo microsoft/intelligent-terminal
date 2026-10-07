@@ -1,0 +1,477 @@
+name: TEST ONLY official branch Windows security repair validation
+
+# Reuses the production native validator; only the live identity adapter is branch-based.
+# No PR routing or dynamic-review suppression is claimed by this acceptance fixture.
+on:
+  workflow_call:
+    inputs:
+      trusted_workflow_sha:
+        type: string
+        required: true
+      expected_base_sha:
+        type: string
+        required: true
+      expected_head_sha:
+        type: string
+        required: true
+      comparison_base_sha:
+        type: string
+        required: true
+      fixture_number:
+        type: string
+        required: true
+      head_ref:
+        type: string
+        required: true
+      proposal_artifact:
+        type: string
+        required: true
+    outputs:
+      tests_passed:
+        description: True only for a digest-bound patch with verified native container exit zero.
+        value: ${{ jobs.validate.outputs.tests_passed }}
+      tested_patch_sha256:
+        value: ${{ jobs.validate.outputs.tested_patch_sha256 }}
+      source_head_sha:
+        value: ${{ jobs.validate.outputs.source_head_sha }}
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+jobs:
+  validate:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 100
+    outputs:
+      tests_passed: ${{ steps.tests.outputs.tests_passed == 'true' && steps.cleanup.outcome == 'success' && steps.logs.outcome == 'success' && steps.proof.outcome == 'success' }}
+      tested_patch_sha256: ${{ steps.tests.outputs.tested_patch_sha256 }}
+      source_head_sha: ${{ steps.candidate.outputs.source_head_sha }}
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      TRUSTED_SHA: ${{ inputs.trusted_workflow_sha }}
+      WORKFLOW_SHA: ${{ github.workflow_sha }}
+      BASE_SHA: ${{ inputs.expected_base_sha }}
+      HEAD_SHA: ${{ inputs.expected_head_sha }}
+      COMPARISON_SHA: ${{ inputs.comparison_base_sha }}
+      # Synthetic run ordinal used only by the protected validator's legacy prNumber schema.
+      PR_NUMBER: ${{ inputs.fixture_number }}
+      HEAD_REF: ${{ inputs.head_ref }}
+      PROPOSAL_ARTIFACT: ${{ inputs.proposal_artifact }}
+      RUSTUP_TOOLCHAIN: 1.93.0
+      CARGO_TERM_COLOR: never
+      GIT_CONFIG_NOSYSTEM: '1'
+      DOCKER_HOST: npipe:////./pipe/docker_engine
+      DOCKER_CONTEXT: ''
+
+    steps:
+      - name: Guard official test push and live branch identity
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof'
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          if ($env:GITHUB_REPOSITORY -cne 'microsoft/intelligent-terminal' -or
+              $env:GITHUB_REPOSITORY_OWNER -cne 'microsoft' -or
+              $env:GITHUB_ACTOR -cne 'yeelam-gordon' -or
+              $env:GITHUB_EVENT_NAME -cne 'push' -or
+              $env:GITHUB_RUN_ATTEMPT -cne '1') { throw 'Only the single authorized official test push is permitted.' }
+          foreach ($sha in @($env:TRUSTED_SHA, $env:BASE_SHA, $env:HEAD_SHA, $env:COMPARISON_SHA)) {
+            if ($sha -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid immutable SHA input.' }
+          }
+          if ($env:TRUSTED_SHA -cne $env:WORKFLOW_SHA -or $env:BASE_SHA -cne $env:TRUSTED_SHA -or
+              $env:COMPARISON_SHA -cne $env:BASE_SHA -or $env:HEAD_SHA -ceq $env:BASE_SHA) {
+            throw 'Authoring revision and immutable fixture base do not match this workflow.'
+          }
+          if ($env:HEAD_REF -cne 'test/yeelam/ghaw-security-repair-fixture-20261007-r8') { throw 'Unexpected fixture branch.' }
+          if ($env:PR_NUMBER -notmatch '^[1-9][0-9]{0,8}$' -or $env:PR_NUMBER -cne $env:GITHUB_RUN_NUMBER) {
+            throw 'Fixture ordinal must be this run number, not a PR identity.'
+          }
+          $artifact = "ghaw-pr-security-proposal-$env:PR_NUMBER-$env:HEAD_SHA"
+          if ($env:PROPOSAL_ARTIFACT -cne $artifact) { throw 'Candidate artifact must have the exact same-run identity name.' }
+          $raw = gh api "/repos/$env:GITHUB_REPOSITORY"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify official repository.' }
+          $repo = $raw | ConvertFrom-Json
+          if ($repo.full_name -cne $env:GITHUB_REPOSITORY -or $repo.private -ne $false) { throw 'Exact public official repository required.' }
+          $raw = gh api "/repos/$env:GITHUB_REPOSITORY/git/ref/heads/test/yeelam/ghaw-security-repair-e2e-20261007-r8"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify live fixture base ref.' }
+          $base = $raw | ConvertFrom-Json
+          if ($base.ref -cne 'refs/heads/test/yeelam/ghaw-security-repair-e2e-20261007-r8' -or
+              $base.object.type -cne 'commit' -or $base.object.sha -cne $env:BASE_SHA) { throw 'Fixture base ref raced.' }
+          $raw = gh api "/repos/$env:GITHUB_REPOSITORY/git/ref/heads/$env:HEAD_REF"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify live fixture head ref.' }
+          $head = $raw | ConvertFrom-Json
+          if ($head.ref -cne "refs/heads/$env:HEAD_REF" -or
+              $head.object.type -cne 'commit' -or $head.object.sha -cne $env:HEAD_SHA) { throw 'Fixture head ref raced.' }
+          # Read-only list, not PR allocation or PR identity. A PR would invalidate this branch-only experiment.
+          $raw = gh api "/repos/$env:GITHUB_REPOSITORY/pulls?state=all&head=microsoft%3Atest%2Fyeelam%2Fghaw-security-repair-fixture-20261007-r8&per_page=100"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify absence of associated PRs.' }
+          if (@($raw | ConvertFrom-Json).Count -ne 0) { throw 'Fixture branch must have no associated PR.' }
+          [ordered]@{
+            identityType = 'branch'
+            repository = $env:GITHUB_REPOSITORY
+            trustedWorkflowSha = $env:TRUSTED_SHA
+            baseSha = $env:BASE_SHA
+            headSha = $env:HEAD_SHA
+            nativeHead = $head.object.sha
+            baseRef = 'test/yeelam/ghaw-security-repair-e2e-20261007-r8'
+            headRef = $env:HEAD_REF
+            comparisonBaseSha = $env:COMPARISON_SHA
+            fixtureNumber = $env:PR_NUMBER
+            legacyReportOrdinal = 'prNumber is a synthetic run ordinal, not a GitHub PR'
+            proposalArtifact = $artifact
+            runId = $env:GITHUB_RUN_ID
+            attempt = $env:GITHUB_RUN_ATTEMPT
+            testsPassed = $false
+            isolation = 'process; shared host kernel, not hardware isolation'
+          } | ConvertTo-Json | Set-Content (Join-Path $evidence 'identity.json')
+          $env:GIT_CONFIG_GLOBAL = Join-Path $env:RUNNER_TEMP 'ghaw-windows-global.gitconfig'
+          "GIT_CONFIG_GLOBAL=$env:GIT_CONFIG_GLOBAL" | Add-Content $env:GITHUB_ENV
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot configure byte-preserving checkout.' }
+
+      - name: Checkout trusted authoring code
+        timeout-minutes: 3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.trusted_workflow_sha }}
+          path: trusted-code
+          persist-credentials: false
+
+      - name: Checkout immutable same-repository original head
+        timeout-minutes: 3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ inputs.expected_head_sha }}
+          path: reconstruction
+          persist-credentials: false
+          lfs: false
+          submodules: false
+
+      - name: Download candidate from this run only
+        timeout-minutes: 3
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ${{ inputs.proposal_artifact }}
+          path: ${{ runner.temp }}\ghaw-windows-candidate
+
+      - name: Recompute trusted scope and validate exact proposed patch
+        id: candidate
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof'
+          $candidate = Join-Path $env:RUNNER_TEMP 'ghaw-windows-candidate'
+          $files = @(Get-ChildItem -LiteralPath $candidate -Force -Recurse)
+          $allowed = @('security-scope.proposed.json', 'security-findings.proposed.json', 'security-repair.patch')
+          if ($files.Count -ne 3 -or @($files | Where-Object {
+                $_.PSIsContainer -or $_.Name -notin $allowed -or $_.DirectoryName -ne $candidate -or
+                ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $_.Length -gt 4MB
+              }).Count -ne 0) { throw 'Candidate must contain only three bounded scope/report/patch files.' }
+          $trusted = Join-Path $env:GITHUB_WORKSPACE 'trusted-code'
+          $trustedHead = git -C $trusted rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $trustedHead -cne $env:TRUSTED_SHA) { throw 'Trusted checkout identity mismatch.' }
+          $env:VALIDATOR = Join-Path $trusted '.github\skills\ghaw-pr-security\scripts\security-review.mjs'
+          $env:REPORT = Join-Path $candidate 'security-findings.proposed.json'
+          $env:SCOPE = Join-Path $evidence 'scope.json'
+          $env:PATCH = Join-Path $candidate 'security-repair.patch'
+          Set-Location (Join-Path $env:GITHUB_WORKSPACE 'reconstruction')
+          $head = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:HEAD_SHA) { throw 'Original head checkout mismatch.' }
+          # Authentication exists only for this fetch, not in Git config or guest inputs.
+          try {
+            $env:GIT_CONFIG_COUNT = '1'
+            $env:GIT_CONFIG_KEY_0 = "http.$env:GITHUB_SERVER_URL/.extraheader"
+            $env:GIT_CONFIG_VALUE_0 = 'AUTHORIZATION: basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("x-access-token:$env:GH_TOKEN"))
+            git fetch --quiet --no-tags origin $env:BASE_SHA
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch immutable observed base.' }
+            git fetch --quiet --no-tags --unshallow origin
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch ancestry for trusted merge-base scope.' }
+          } finally {
+            Remove-Item Env:GIT_CONFIG_COUNT, Env:GIT_CONFIG_KEY_0, Env:GIT_CONFIG_VALUE_0, Env:GH_TOKEN -ErrorAction SilentlyContinue
+          }
+          git remote remove origin
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot remove reconstruction remote.' }
+          git -c core.autocrlf=false checkout --quiet --force --detach $env:HEAD_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot reconstruct byte-preserving head.' }
+          $parent = git rev-list --parents -n 1 $env:HEAD_SHA
+          if ($LASTEXITCODE -ne 0 -or $parent -cne "$env:HEAD_SHA $env:BASE_SHA") { throw 'Fixture must have exactly the trusted base as its single parent.' }
+          node $env:VALIDATOR scope --base $env:BASE_SHA --head $env:HEAD_SHA --pr $env:PR_NUMBER --relation same-repo --mode repair --output $env:SCOPE
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted scope computation failed.' }
+          $scope = Get-Content -LiteralPath $env:SCOPE -Raw | ConvertFrom-Json
+          if ($scope.baseSha -cne $env:COMPARISON_SHA -or $scope.observedBaseSha -cne $env:BASE_SHA -or $scope.headSha -cne $env:HEAD_SHA) {
+            throw 'Recomputed comparison scope does not match dispatch.'
+          }
+          # Envelope authorization before Git applies bytes; shared CLI checks actual paths/digest afterward.
+          node --input-type=module -e "import {pathToFileURL} from 'node:url'; import {readFileSync} from 'node:fs'; const {validateProposal}=await import(pathToFileURL(process.env.VALIDATOR)); validateProposal(JSON.parse(readFileSync(process.env.REPORT,'utf8')),JSON.parse(readFileSync(process.env.SCOPE,'utf8')));"
+          if ($LASTEXITCODE -ne 0) { throw 'Proposal authorization failed.' }
+          $report = Get-Content -LiteralPath $env:REPORT -Raw | ConvertFrom-Json
+          if ($report.patch.Count -gt 0) {
+            node $env:VALIDATOR validate-repair-scope --scope $env:SCOPE
+            if ($LASTEXITCODE -ne 0) { throw 'Git comparison is outside WTA Rust modification-only repair scope.' }
+            foreach ($item in $report.patch) {
+              $entry = git ls-tree HEAD -- $item.path
+              if ($LASTEXITCODE -ne 0 -or $entry -notmatch '^100644 blob ') { throw 'Repair must target a regular non-executable tracked blob.' }
+            }
+            $digest = (Get-FileHash -LiteralPath $env:PATCH -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($digest -cne $report.review.patchSha256) { throw 'Candidate bytes differ from independent SOURCE_PASS digest.' }
+            git apply --check --binary $env:PATCH
+            if ($LASTEXITCODE -ne 0) { throw 'Candidate patch cannot apply to immutable head.' }
+            git apply --binary $env:PATCH
+            if ($LASTEXITCODE -ne 0) { throw 'Candidate patch application failed.' }
+            $summary = @(git diff --summary HEAD)
+            if ($LASTEXITCODE -ne 0 -or $summary.Count -ne 0) { throw 'Repair cannot create, delete, rename or change file modes.' }
+            "has_patch=true" | Add-Content $env:GITHUB_OUTPUT
+            "patch_sha256=$digest" | Add-Content $env:GITHUB_OUTPUT
+          } else {
+            if ((Get-Item -LiteralPath $env:PATCH).Length -ne 0) { throw 'No-patch proposal carries patch bytes.' }
+            "has_patch=false" | Add-Content $env:GITHUB_OUTPUT
+          }
+          node $env:VALIDATOR validate-proposal --scope $env:SCOPE --report $env:REPORT --output (Join-Path $evidence 'proposal.validated.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Applied paths or exact final-patch digest failed shared validation.' }
+          "source_head_sha=$env:HEAD_SHA" | Add-Content $env:GITHUB_OUTPUT
+
+      - name: Start and await the installed Windows Docker service
+        if: steps.candidate.outputs.has_patch == 'true'
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof'
+          . (Join-Path $env:GITHUB_WORKSPACE 'trusted-code\build\scripts\Wait-WindowsDocker.ps1')
+          Wait-WindowsDocker -EvidenceDirectory $evidence -DiagnosticPrefix docker-startup |
+            ConvertTo-Json -Depth 6 | Set-Content (Join-Path $evidence 'docker-ready.json')
+
+      - name: Fetch public dependencies only from trusted base
+        if: steps.candidate.outputs.has_patch == 'true'
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:CARGO_HOME = Join-Path $env:RUNNER_TEMP 'ghaw-windows-cargo'
+          $env:RUSTUP_HOME = Join-Path $env:RUNNER_TEMP 'ghaw-windows-rustup'
+          $setup = Join-Path $env:RUNNER_TEMP 'ghaw-public-rustup'
+          New-Item -ItemType Directory -Path $setup | Out-Null
+          $installer = Join-Path $setup 'rustup-init.exe'
+          Invoke-WebRequest -Uri 'https://static.rust-lang.org/rustup/archive/1.29.1/x86_64-pc-windows-msvc/rustup-init.exe' -OutFile $installer -TimeoutSec 60
+          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne '6f4bef66261261fcb43131be8720bab817d403a09edec7455c371974b90bdb7e') {
+              throw 'Public host Rust installer checksum mismatch.'
+          }
+          $stdout = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof\host-rustup.stdout.log'
+          $stderr = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof\host-rustup.stderr.log'
+          $process = Start-Process -FilePath $installer -ArgumentList '-y --no-modify-path --profile minimal --default-host x86_64-pc-windows-msvc --default-toolchain 1.93.0' -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+          try {
+              if (-not $process.WaitForExit(240000)) {
+                  $closed = $process.CloseMainWindow()
+                  if (-not $process.WaitForExit(1000)) { & taskkill.exe /PID $process.Id /T /F }
+                  throw "Public host Rust setup timed out: PID=$($process.Id), gracefulClose=$closed."
+              }
+              if ($process.ExitCode -ne 0) {
+                Get-Content -LiteralPath $stdout, $stderr -Tail 80
+                throw "Public host Rust setup failed: $($process.ExitCode)."
+              }
+          } finally {
+              Remove-Item -LiteralPath $installer
+          }
+          $version = & (Join-Path $env:CARGO_HOME 'bin\rustc.exe') --version --verbose
+          if ($LASTEXITCODE -ne 0 -or $version -notcontains 'release: 1.93.0' -or $version -notcontains 'host: x86_64-pc-windows-msvc') { throw 'Unexpected host Rust.' }
+          git -C (Join-Path $env:GITHUB_WORKSPACE 'reconstruction') worktree add --quiet --detach (Join-Path $env:GITHUB_WORKSPACE 'dependency-base') $env:BASE_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot create separate immutable trusted dependency checkout.' }
+          Set-Location (Join-Path $env:GITHUB_WORKSPACE 'dependency-base')
+          $sha = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $sha -cne $env:BASE_SHA) { throw 'Dependency checkout is not trusted observed base.' }
+          $sources = @(Select-String -Path tools\wta\Cargo.lock -Pattern '^source = ' | ForEach-Object Line | Sort-Object -Unique)
+          if ($sources.Count -ne 1 -or $sources[0] -ne 'source = "registry+https://github.com/rust-lang/crates.io-index"') { throw 'Dependencies are not exclusively public crates.io.' }
+          & (Join-Path $env:CARGO_HOME 'bin\cargo.exe') fetch --locked --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted base dependency fetch failed.' }
+          New-Item -ItemType Directory -Path (Join-Path $env:CARGO_HOME 'git') -Force | Out-Null
+          $version | Set-Content (Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof\host-rust.txt')
+
+      - name: Build trusted validation image
+        if: steps.candidate.outputs.has_patch == 'true'
+        timeout-minutes: 43
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof'
+          . (Join-Path $env:GITHUB_WORKSPACE 'trusted-code\build\scripts\Wait-WindowsDocker.ps1')
+          $docker = Wait-WindowsDocker -EvidenceDirectory $evidence -DiagnosticPrefix docker-build
+          # Runner-images Install-Docker.ps1 delegates to Windows-Containers installation:
+          # 8ea2a92d8dfa7815abcf5cc44a756a0ac3d0f513 defaults DockerDataPath to ProgramData\docker.
+          # That prior art does not prove D: storage; daemon-reported DockerRootDir is authoritative here.
+          # Estimated allocations are summed on shared volumes; execution remains the proof.
+          $storage = @(
+            @{ purpose = 'Docker layers and internal guest test outputs'; path = $docker.DockerRootDir; allocation = 25GB },
+            @{ purpose = 'Host public Rust'; path = $env:USERPROFILE; allocation = 1GB },
+            @{ purpose = 'Fetched Cargo cache and retained proof'; path = $env:RUNNER_TEMP; allocation = 1536MB },
+            @{ purpose = 'Immutable repository checkouts'; path = $env:GITHUB_WORKSPACE; allocation = 512MB }
+          )
+          $volumes = @{}
+          foreach ($item in $storage) {
+            $volume = @(Get-Volume -FilePath $item.path -ErrorAction Stop)
+            if ($volume.Count -ne 1) { throw 'Cannot determine an exact storage volume.' }
+            $item.volumeId = $volume[0].UniqueId
+            $item.freeBytes = $volume[0].SizeRemaining
+            if (-not $volumes.ContainsKey($item.volumeId)) {
+              $volumes[$item.volumeId] = @{ free = $item.freeBytes; required = 2GB }
+            }
+            $volumes[$item.volumeId].required += $item.allocation
+          }
+          [ordered]@{
+            dockerRootDir = $docker.DockerRootDir
+            storage = $storage
+            capacityStatus = 'Experimental allocations plus 2 GiB reserve per actual volume; not a peak-space guarantee'
+            osVersion = [Environment]::OSVersion.Version.ToString()
+            imageVersion = $env:ImageVersion
+          } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $evidence 'preflight.json')
+          if (@($volumes.Values | Where-Object { $_.free -lt $_.required }).Count -ne 0) { throw 'An actual storage volume does not meet its allocated budget; no broad pruning permitted.' }
+          if ([Environment]::OSVersion.Version.Build -ne 26100) { throw 'Runner kernel build differs from pinned Server Core.' }
+          $context = Join-Path $env:GITHUB_WORKSPACE 'trusted-code\build\containers\wta-validation'
+          $files = @(Get-ChildItem -LiteralPath $context -Force -Recurse)
+          if ($files.Count -ne 2 -or @($files | Where-Object { $_.PSIsContainer -or $_.Name -notin @('Dockerfile', 'Invoke-WtaContainerTests.ps1') -or ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) }).Count -ne 0) {
+            throw 'Unexpected trusted image context.'
+          }
+          docker build --isolation=process --iidfile (Join-Path $evidence 'image.id') $context 2>&1 | Tee-Object -FilePath (Join-Path $evidence 'build.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted public toolchain image build failed.' }
+          $image = (Get-Content (Join-Path $evidence 'image.id') -Raw).Trim()
+          if ($image -notmatch '^sha256:[0-9a-f]{64}$') { throw 'Missing immutable image ID.' }
+          $manifest = docker image inspect $image
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect built image.' }
+          $manifest | Set-Content (Join-Path $evidence 'image.json')
+
+      - name: Test exact reviewed patch in offline ContainerUser image
+        id: tests
+        if: steps.candidate.outputs.has_patch == 'true'
+        timeout-minutes: 21
+        env:
+          PATCH_SHA256: ${{ steps.candidate.outputs.patch_sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof'
+          $image = (Get-Content (Join-Path $evidence 'image.id') -Raw).Trim()
+          if ($image -notmatch '^sha256:[0-9a-f]{64}$') { throw 'Invalid image ID.' }
+          $name = "ghaw-security-windows-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-$env:PR_NUMBER"
+          $source = Join-Path $env:GITHUB_WORKSPACE 'reconstruction'
+          $cache = Join-Path $env:RUNNER_TEMP 'ghaw-windows-cargo'
+          'Container creation attempted; cleanup must independently verify ownership.' | Set-Content (Join-Path $evidence 'container-create-attempted.txt')
+          docker create --name $name --label "ghaw.security.run=$env:GITHUB_RUN_ID" --label "ghaw.security.attempt=$env:GITHUB_RUN_ATTEMPT" --label "ghaw.security.fixture=$env:PR_NUMBER" --isolation=process --network none --mount "type=bind,source=$source,target=C:\workspace,readonly" --mount "type=bind,source=$cache\registry,target=C:\cargo-cache\registry,readonly" --mount "type=bind,source=$cache\git,target=C:\cargo-cache\git,readonly" --env CARGO_NET_OFFLINE=true --env RUSTUP_TOOLCHAIN=1.93.0 $image
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot create validation container.' }
+          $raw = docker inspect $name
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect validation controls.' }
+          $container = @($raw | ConvertFrom-Json)[0]
+          $manifest = @(Get-Content (Join-Path $evidence 'image.json') -Raw | ConvertFrom-Json)[0]
+          $expectedEnv = @($manifest.Config.Env | Where-Object { $_ -notmatch '^(CARGO_NET_OFFLINE|RUSTUP_TOOLCHAIN)=' }) + @('CARGO_NET_OFFLINE=true', 'RUSTUP_TOOLCHAIN=1.93.0')
+          $mounts = @($container.Mounts)
+          if ($container.Image -ne $image -or $container.Config.User -cne 'ContainerUser' -or
+              $container.HostConfig.NetworkMode -ne 'none' -or $container.HostConfig.Isolation -ne 'process' -or
+              $mounts.Count -ne 3 -or @($mounts | Where-Object { $_.RW -or $_.Type -ne 'bind' }).Count -ne 0 -or
+              @($mounts | Where-Object { $_.Destination -eq 'C:\workspace' -and $_.Source -ieq $source }).Count -ne 1 -or
+              @($mounts | Where-Object { $_.Destination -eq 'C:\cargo-cache\registry' -and $_.Source -ieq "$cache\registry" }).Count -ne 1 -or
+              @($mounts | Where-Object { $_.Destination -eq 'C:\cargo-cache\git' -and $_.Source -ieq "$cache\git" }).Count -ne 1 -or
+              @(Compare-Object ($expectedEnv | Sort-Object) ($container.Config.Env | Sort-Object)).Count -ne 0 -or
+              @($container.Config.Env | Where-Object { $_ -match '^(GITHUB_TOKEN|GH_TOKEN|COPILOT_GITHUB_TOKEN|ACTIONS_RUNTIME_TOKEN)=' }).Count -ne 0) {
+            throw 'Guest userid, credential-free environment, immutable image or mount controls failed.'
+          }
+          $raw | Set-Content (Join-Path $evidence 'container-created.json')
+          docker start --attach $name 2>&1 | Tee-Object -FilePath (Join-Path $evidence 'tests.log')
+          $attachExit = $LASTEXITCODE
+          $raw = docker inspect $name
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect trusted host test exit.' }
+          $raw | Set-Content (Join-Path $evidence 'container-final.json')
+          $container = @($raw | ConvertFrom-Json)[0]
+          if ($attachExit -ne 0 -or $container.State.Status -ne 'exited' -or $container.State.Running -ne $false -or
+              $container.State.ExitCode -ne 0 -or $container.State.OOMKilled -or $container.State.Error) {
+            throw "Native patch tests failed: attach=$attachExit, exit=$($container.State.ExitCode)."
+          }
+          [ordered]@{
+            identityType = 'branch'
+            repository = $env:GITHUB_REPOSITORY
+            fixtureNumber = $env:PR_NUMBER
+            runId = $env:GITHUB_RUN_ID
+            attempt = $env:GITHUB_RUN_ATTEMPT
+            trustedWorkflowSha = $env:TRUSTED_SHA
+            baseSha = $env:BASE_SHA
+            headSha = $env:HEAD_SHA
+            nativeHead = $env:HEAD_SHA
+            headRef = $env:HEAD_REF
+            baseRef = 'test/yeelam/ghaw-security-repair-e2e-20261007-r8'
+            comparisonBaseSha = $env:COMPARISON_SHA
+            patchSha256 = $env:PATCH_SHA256
+            scopeSha256 = (Get-Content (Join-Path $evidence 'scope.json') -Raw | ConvertFrom-Json).scopeSha256
+            review = (Get-Content (Join-Path $evidence 'proposal.validated.json') -Raw | ConvertFrom-Json).review
+            imageId = $image
+            containerId = $container.Id
+            exitCode = $container.State.ExitCode
+            testsPassed = $true
+            command = 'cargo test --locked --offline --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml'
+          } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $evidence 'result.json')
+          "tests_passed=true" | Add-Content $env:GITHUB_OUTPUT
+          "tested_patch_sha256=$env:PATCH_SHA256" | Add-Content $env:GITHUB_OUTPUT
+
+      - name: Independently clean only owned validation container
+        id: cleanup
+        if: always() && steps.candidate.outputs.has_patch == 'true'
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:PR_NUMBER -notmatch '^[1-9][0-9]{0,8}$') { return }
+          $evidence = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof'
+          if (-not (Test-Path -LiteralPath (Join-Path $evidence 'container-create-attempted.txt'))) {
+            Write-Warning 'Validation container creation was never attempted; no owned container to clean. Native validation remains unproven.'
+            return
+          }
+          $name = "ghaw-security-windows-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-$env:PR_NUMBER"
+          $names = @(docker container ls --all --filter "name=^$name$" --format '{{.Names}}')
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot query cleanup ownership.' }
+          if ($names.Count -eq 0) { return }
+          if ($names.Count -ne 1 -or $names[0] -ne $name) { throw 'Ambiguous cleanup ownership.' }
+          $raw = docker inspect $name
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect owned container.' }
+          $container = @($raw | ConvertFrom-Json)[0]
+          if ($container.Config.Labels.'ghaw.security.run' -ne $env:GITHUB_RUN_ID -or
+              $container.Config.Labels.'ghaw.security.attempt' -ne $env:GITHUB_RUN_ATTEMPT -or
+              $container.Config.Labels.'ghaw.security.fixture' -ne $env:PR_NUMBER) { throw 'Refusing unowned container cleanup.' }
+          $evidence = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof'
+          try {
+            docker logs --tail 2000 $container.Id 2>&1 | Set-Content (Join-Path $evidence 'container-tail.log')
+            if ($LASTEXITCODE -ne 0) { throw 'Container log retention failed.' }
+            $raw | Set-Content (Join-Path $evidence 'container-cleanup.json')
+          } finally {
+            docker rm --force $container.Id
+            if ($LASTEXITCODE -ne 0) { throw 'Owned container removal failed.' }
+          }
+
+      - name: Bound retained evidence logs
+        id: logs
+        if: always()
+        timeout-minutes: 1
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof'
+          foreach ($file in @(Get-ChildItem -LiteralPath $evidence -Filter '*.log' -ErrorAction SilentlyContinue)) {
+            if ($file.Length -gt 2MB) {
+              $stream = [IO.File]::OpenRead($file.FullName)
+              try {
+                $null = $stream.Seek(-2MB, [IO.SeekOrigin]::End)
+                $tail = [byte[]]::new(2MB)
+                $stream.ReadExactly($tail)
+              } finally { $stream.Dispose() }
+              [IO.File]::WriteAllBytes($file.FullName, $tail)
+            }
+          }
+
+      - name: Preserve digest-bound native proof even on failure
+        id: proof
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ghaw-pr-security-windows-proof-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.fixture_number }}
+          path: ${{ runner.temp }}\ghaw-windows-proof
+          if-no-files-found: error
+          retention-days: 7
