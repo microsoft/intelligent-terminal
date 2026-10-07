@@ -220,6 +220,37 @@ function sourceFixtureEvents(current, diff, ranges) {
   return events;
 }
 
+test('real multi-hunk absolute coordinates retain all preceding line deltas without double accumulation', () => {
+  const original = Array.from({ length: 200 }, (_, index) => `Original line ${index + 1}`);
+  for (const secondInsertion of [false, true]) {
+    const changed = [...original];
+    changed.splice(4, 0, 'Inserted first line', 'Inserted second line');
+    if (secondInsertion) changed.splice(101, 0, 'Inserted later line');
+    else changed[101] = 'Changed original line 100';
+    withSourceFixture(`${original.join('\n')}\n`, `${changed.join('\n')}\n`, (current, workspace) => {
+      const diff = readSecurityDiff(current, [], workspace);
+      const hunks = [...diff.matchAll(/^@@ -(\d+),(\d+) \+(\d+),(\d+) @@/gm)];
+      assert.equal(hunks.length, 2);
+      const delta = secondInsertion ? 3 : 2;
+      assert.equal(Number(hunks[1][3]) - Number(hunks[1][1]), 2);
+      const findingLine = 175;
+      const baseLine = findingLine - delta;
+      const findings = [{ ...candidate().findings[0], startLine: findingLine, endLine: findingLine }];
+      const events = base => sourceFixtureEvents(current, diff, [
+        ['head', findingLine, findingLine, readSecuritySource(current, 'head', PATH, findingLine, findingLine, workspace)],
+        ['base', base, base, readSecuritySource(current, 'base', PATH, base, base, workspace)],
+      ]);
+      const validate = base => validateTranscript(output(events(base)), current,
+        { ...inspection, headSha: current.headSha }, diff, [PATH],
+        paths => readSecurityDiff(current, paths, workspace), findings,
+        (revision, path, start, end) => readSecuritySource(current, revision, path, start, end, workspace));
+      assert.equal(validate(baseLine).status, 'SOURCE_PASS');
+      assert.throws(() => validate(findingLine), /source.*coverage/);
+      assert.throws(() => validate(baseLine - 2), /source.*coverage/);
+    });
+  }
+});
+
 for (const [name, headContent, findingLine, ranges] of [
   ['newline phantom EOF', 'new\n', 2, [['base', 2, 2, '2: '], ['head', 2, 2, '2: ']]],
   ['deleted empty head', '', 1, [['base', 2, 2, '2: '], ['head', 1, 1, '1: ']]],
@@ -663,11 +694,11 @@ test('oversized serialized expansion rejects atomically before native destinatio
     const report = { ...createReportTemplate(scope), summary: 'No repair proposed.', extra: nested };
     const compact = JSON.stringify(report);
     assert(Buffer.byteLength(compact) < 10 * 1024);
-    const normalized = validateCandidate(report, scope);
-    assert(Buffer.byteLength(`${JSON.stringify(normalized, null, 2)}\n`) > SECURITY_REPORT_MAX_BYTES);
+    assert.throws(() => validateCandidate(report, scope));
+    assert(Buffer.byteLength(`${JSON.stringify(report, null, 2)}\n`) > SECURITY_REPORT_MAX_BYTES);
     const original = readFileSync(reportPath, 'utf8');
-    assert.throws(() => serializeSecurityReport(normalized), /64 KiB native output limit/);
-    assert.throws(() => submitSecurityReport(compact, scope, reportPath), /64 KiB native output limit/);
+    assert.throws(() => serializeSecurityReport(report), /64 KiB native output limit/);
+    assert.throws(() => submitSecurityReport(compact, scope, reportPath));
     assert.equal(readFileSync(reportPath, 'utf8'), original);
     assert.throws(() => submitSecurityReport('{malformed', scope, reportPath));
     assert.equal(readFileSync(reportPath, 'utf8'), original);

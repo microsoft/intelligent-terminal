@@ -293,6 +293,16 @@ test('only native validation promotes independently source-reviewed repair propo
     patch: [{ path: 'tools/wta/src/master/mod.rs', summary: 'Restore owner-bound lookup.' }],
   };
   const validated = validateReport(candidate, current);
+  const nestedExtras = JSON.parse(JSON.stringify(candidate));
+  for (const object of [
+    ...nestedExtras.checks, nestedExtras.review, ...nestedExtras.findings,
+    ...nestedExtras.findings.flatMap(finding => [...finding.evidence, finding.fixDisposition]),
+    ...nestedExtras.patch,
+  ]) {
+    Object.assign(object, JSON.parse('{"extra":{"password":"synthetic_credential_material_123456"},"__proto__":{"shadow":true},"constructor":{"prototype":{"shadow":true}}}'));
+  }
+  assert.deepEqual(validateReport(nestedExtras, current), validated);
+  assert.throws(() => validateReport({ ...candidate, extra: {} }, current), /unsupported fields/);
   validatePatch(validated, ['tools/wta/src/master/mod.rs'], PATCH_TEXT);
   validateQueuedOutput(validated, { items: [{ type: 'noop' }], errors: [] });
   assert.throws(() => validateQueuedOutput(validated, { items: [{ type: 'push_to_pull_request_branch' }] }), /noop/);
@@ -302,12 +312,14 @@ test('only native validation promotes independently source-reviewed repair propo
   proposal.findings[0].fixDisposition = { state: 'proposed', reason: 'Source-reviewed candidate awaits trusted validation.' };
   assert.throws(() => validateReport(proposal, current), /fix disposition/);
   assert.equal(validateProposal(proposal, current).findings[0].fixDisposition.state, 'proposed');
+  assert.throws(() => validateProposal({ ...proposal, extra: {} }, current), /unsupported fields/);
   const pending = structuredClone(proposal);
   pending.review = {
     status: 'pending', reviewer: 'ghaw-pr-security-reviewer',
     evidence: 'Trusted driver must launch the independent reviewer.',
   };
   assert.equal(validateCandidate(pending, current).review.status, 'pending');
+  assert.throws(() => validateCandidate({ ...pending, extra: {} }, current), /unsupported fields/);
   assert.throws(() => validateCandidate(proposal, current), /review|pending|source-pass/i);
   assert.throws(() => validateCandidate(candidate, current), /passing|pending/i);
   assert.throws(() => validateCandidate(pending, scope('fork')), /same-repository|repair/i);
@@ -370,6 +382,74 @@ test('native report templates preserve immutable identity and cannot pass untouc
     );
   }
   assert.throws(() => createReportTemplate({}), /immutable scope/);
+});
+
+test('report envelope rejects unknown JSON fields before text validation without reflecting input', () => {
+  for (const input of [null, [], true, 1, 'report']) {
+    assert.throws(() => validateReport(input, scope()), /report envelope is invalid/);
+  }
+  const payloads = [
+    { extra: { nested: { authorization: 'Bearer synthetic_credential_material_123456' } } },
+    { harmlessMetadata: 'innocuous' },
+    JSON.parse('{"__proto__":{"prNumber":999}}'),
+    { constructor: { prototype: { headSha: BASE } } },
+    { prototype: { scopeSha256: '0'.repeat(64) } },
+    { 'password=synthetic_credential_material_123456': 'untrusted' },
+  ];
+  for (const extra of payloads) {
+    const input = JSON.parse(JSON.stringify({ ...report(), ...extra }));
+    assert.throws(() => validateReport(input, scope()), {
+      message: 'report envelope contains unsupported fields',
+    });
+    input.summary = '';
+    assert.throws(() => validateReport(input, scope()), {
+      message: 'report envelope contains unsupported fields',
+    });
+  }
+  const inheritedIdentity = report();
+  delete inheritedIdentity.headSha;
+  Object.setPrototypeOf(inheritedIdentity, { headSha: HEAD });
+  assert.throws(() => validateReport(inheritedIdentity, scope()), /report envelope is invalid/);
+  for (const key of ['prNumber', 'baseSha', 'headSha', 'scopeSha256', 'repositoryRelation', 'mode']) {
+    const shadowed = report();
+    shadowed[key] = key === 'prNumber' ? 999 : 'shadowed';
+    assert.throws(() => validateReport(JSON.parse(JSON.stringify(shadowed)), scope()), /immutable scope|identity/);
+  }
+});
+
+test('native submission leaves destination bytes unchanged on rejected report envelopes', () => {
+  const root = mkdtempSync(join(process.cwd(), '.security-report-envelope-'));
+  try {
+    const path = join(root, 'report.json');
+    for (const current of [scope('fork'), repairScope()]) {
+      const initialized = Buffer.from(`${JSON.stringify(createReportTemplate(current), null, 2)}\n`);
+      writeFileSync(path, initialized);
+      const valid = { ...createReportTemplate(current), summary: 'Reviewed immutable source.' };
+      for (const extra of [
+        { extra: { nested: { password: 'synthetic_credential_material_123456' } } },
+        { harmlessMetadata: true },
+        JSON.parse('{"__proto__":{"mode":"guide"}}'),
+        { constructor: { prototype: { prNumber: 999 } } },
+        { prototype: { headSha: BASE } },
+      ]) {
+        assert.throws(() => submitSecurityReport(JSON.stringify({ ...valid, ...extra }), current, path), {
+          message: 'report envelope contains unsupported fields',
+        });
+        assert.deepEqual(readFileSync(path), initialized);
+      }
+      for (const key of ['prNumber', 'baseSha', 'headSha', 'scopeSha256', 'repositoryRelation', 'mode']) {
+        const shadowed = { ...valid, [key]: key === 'prNumber' ? 999 : 'shadowed' };
+        assert.throws(() => submitSecurityReport(JSON.stringify(shadowed), current, path), /immutable scope|identity/);
+        assert.deepEqual(readFileSync(path), initialized);
+      }
+      assert.equal(submitSecurityReport(JSON.stringify(valid), current, path).accepted, true);
+      const saved = JSON.parse(readFileSync(path, 'utf8'));
+      assert.deepEqual(saved, validateReport(valid, current));
+      assert.deepEqual(Object.keys(saved), Object.keys(createReportTemplate(current)));
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('only trusted post-step attestation can authorize a passing repair check', () => {

@@ -99,6 +99,20 @@ its activity timer before each child launch, so the primary's accepted terminal
 Harness retries are disabled to avoid replaying a completed primary and
 exhausting its one-output capability.
 
+Both workers clear the configured telemetry credential/composite variables
+`OTEL_EXPORTER_OTLP_HEADERS`, `GH_AW_OTLP_ENDPOINTS`, and
+`GH_AW_OTLP_ALL_HEADERS` through supported `engine.env` overrides. These become
+empty step-level values before the host shell and AWF sandbox start, so they
+are absent as credentials from the wrapper's initial environment, not just a
+filtered model-child environment. Pinned AWF's API-proxy exclusion set already
+removes GitHub token variables from the model container while preserving
+host-side inference authentication and model transport. Native runner/gateway
+telemetry steps remain unchanged; authenticated AWF inference-side telemetry
+export may be unavailable. This covers the configured credential paths, not
+every possible unknown secret variable. Local direct-inference proofs use an
+explicit caller-supplied inference credential and are not evidence of the
+hosted proxy's token-free model environment.
+
 The report contract limits findings to changed files and assigns stable
 `ITSEC-<hash>` IDs from rule/category/path/line. It independently enforces:
 
@@ -111,6 +125,9 @@ The report contract limits findings to changed files and assigns stable
   report; arbitrary agent-authored comment bodies are rejected.
 - secret-like content, unsafe paths, malformed reports, stale SHAs, more than 20
   findings, and invalid `fixed` claims are rejected.
+- unknown top-level report properties are rejected before content validation or
+  serialization; native output uses an explicit envelope, so unvalidated
+  extension payloads cannot bypass the known-field secret checks.
 - the job summary separates blocking HIGH findings from considerations and the
   validated JSON is retained for 14 days.
 

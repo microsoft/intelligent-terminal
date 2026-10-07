@@ -10,6 +10,10 @@ import { fileURLToPath } from 'node:url';
 export const SECURITY_REPORT_MAX_BYTES = 64 * 1024;
 
 const SHA = /^[0-9a-f]{40}$/;
+const REPORT_KEYS = new Set([
+  'version', 'prNumber', 'baseSha', 'headSha', 'scopeSha256',
+  'repositoryRelation', 'mode', 'summary', 'checks', 'review', 'findings', 'patch',
+]);
 const SAFE_RULE = /^[a-z][a-z0-9-]{2,63}$/;
 const CATEGORIES = new Set([
   'cpp-lifetime', 'memory-safety', 'com-authorization', 'command-path',
@@ -217,7 +221,13 @@ export function validateReport(report, scope, phase = 'final') {
   if (phase === 'candidate' && (scope.mode !== 'repair' || scope.repositoryRelation !== 'same-repo')) {
     fail('candidate validation is available only for same-repository repair submission');
   }
-  if (!report || typeof report !== 'object' || Array.isArray(report) || report.version !== 1) {
+  if (!report || typeof report !== 'object' || Array.isArray(report)) {
+    fail('report envelope is invalid');
+  }
+  if (Reflect.ownKeys(report).some(key => !REPORT_KEYS.has(key))) {
+    fail('report envelope contains unsupported fields');
+  }
+  if ([...REPORT_KEYS].some(key => !Object.hasOwn(report, key)) || report.version !== 1) {
     fail('report envelope is invalid');
   }
   for (const key of ['baseSha', 'headSha']) {
@@ -379,7 +389,16 @@ export function validateReport(report, scope, phase = 'final') {
   for (const item of patch) {
     if (!fixedPaths.has(item.path)) fail(`patch path ${item.path} has no fixed finding`);
   }
-  return { ...report, summary, checks, review, findings, patch };
+  return {
+    version: report.version,
+    prNumber: report.prNumber,
+    baseSha: report.baseSha,
+    headSha: report.headSha,
+    scopeSha256: report.scopeSha256,
+    repositoryRelation: report.repositoryRelation,
+    mode: report.mode,
+    summary, checks, review, findings, patch,
+  };
 }
 
 export function validateProposal(report, scope) {

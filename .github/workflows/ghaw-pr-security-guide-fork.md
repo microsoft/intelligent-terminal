@@ -50,6 +50,11 @@ engine:
   id: copilot
   agent: ghaw-pr-security
   version: '1.0.90'
+  env:
+    # Telemetry credentials remain available to native runner/gateway steps only.
+    OTEL_EXPORTER_OTLP_HEADERS: "${{ '' }}"
+    GH_AW_OTLP_ENDPOINTS: "${{ '' }}"
+    GH_AW_OTLP_ALL_HEADERS: "${{ '' }}"
   args: ['--excluded-tools', 'task', 'read_agent', 'write_agent', 'list_agents']
 imports:
   - .github/agents/ghaw-pr-security.agent.md
