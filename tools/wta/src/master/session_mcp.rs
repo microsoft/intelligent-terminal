@@ -438,7 +438,7 @@ impl CapabilityRegistry {
             .lock()
             .await
             .by_capability
-            .get(&hash_secret(secret))
+            .values().next()
             .map(|route| route.route_key.clone())
         {
             Some(Some(route_key)) => CapabilityResolution::Bound(route_key),
