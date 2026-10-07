@@ -383,8 +383,8 @@ export function validateProposal(report, scope) {
 }
 
 export function submitSecurityReport(json, scope, outputPath) {
-  if (typeof json !== 'string' || Buffer.byteLength(json, 'utf8') > 256 * 1024) {
-    fail('report input must be JSON text of at most 256 KiB');
+  if (typeof json !== 'string' || Buffer.byteLength(json, 'utf8') > 10 * 1024) {
+    fail('report input must be JSON text of at most 10 KiB');
   }
   const input = JSON.parse(json);
   const report = scope.mode === 'repair' ? validateProposal(input, scope) : validateReport(input, scope);
@@ -428,7 +428,7 @@ export function inspectSecurityRepair(scope, workspace) {
   return { patch, patchSha256: createHash('sha256').update(patch).digest('hex'), headSha: scope.headSha };
 }
 
-export function writeSecurityRepair(scope, workspace, path, content) {
+function securityRepairTarget(scope, workspace, path) {
   if (scope?.repositoryRelation !== 'same-repo') fail('repair writer requires same-repository scope');
   validateRepairScope(scope);
   const relative = normalizePath(path);
@@ -436,8 +436,6 @@ export function writeSecurityRepair(scope, workspace, path, content) {
       !/^tools\/wta\/src\/.*\.rs$/.test(relative)) {
     fail('repair writer accepts only existing modified WTA Rust source in the immutable scope');
   }
-  if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 512 * 1024 ||
-      content.includes('\0')) fail('repair source must be text of at most 512 KiB without NUL');
   const root = realpathSync(resolve(workspace));
   const target = resolve(root, relative);
   if (!target.startsWith(`${root}${sep}`) || realpathSync(target) !== target ||
@@ -446,6 +444,13 @@ export function writeSecurityRepair(scope, workspace, path, content) {
   }
   const entry = git(['ls-tree', scope.headSha, '--', relative], root).trim();
   if (!/^100644 blob [0-9a-f]{40}\t/.test(entry)) fail('repair target must be an immutable non-executable Git blob');
+  return { root, target };
+}
+
+export function writeSecurityRepair(scope, workspace, path, content) {
+  const { root, target } = securityRepairTarget(scope, workspace, path);
+  if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 512 * 1024 ||
+      content.includes('\0')) fail('repair source must be text of at most 512 KiB without NUL');
   const platformFlags = process.platform === 'win32' ? constants.O_CREAT : constants.O_NOFOLLOW;
   const fd = openSync(target, constants.O_WRONLY | constants.O_TRUNC | platformFlags);
   try {
@@ -454,6 +459,29 @@ export function writeSecurityRepair(scope, workspace, path, content) {
     closeSync(fd);
   }
   return inspectSecurityRepair(scope, root);
+}
+
+export function replaceSecurityRepairText(scope, workspace, path, editsJson) {
+  const { target } = securityRepairTarget(scope, workspace, path);
+  if (typeof editsJson !== 'string' || Buffer.byteLength(editsJson, 'utf8') > 8192) {
+    fail('repair edits must be JSON text of at most 8 KiB');
+  }
+  const edits = JSON.parse(editsJson);
+  if (!Array.isArray(edits) || edits.length < 1 || edits.length > 8) {
+    fail('repair requires 1 to 8 exact text replacements');
+  }
+  const bytes = readFileSync(target);
+  let content = bytes.toString('utf8');
+  if (!Buffer.from(content, 'utf8').equals(bytes)) fail('repair target must contain valid UTF-8 source');
+  for (const edit of edits) {
+    if (!edit || typeof edit.oldText !== 'string' || edit.oldText.length === 0 ||
+        typeof edit.newText !== 'string' || edit.oldText.includes('\0') || edit.newText.includes('\0')) {
+      fail('each repair edit requires nonempty oldText and NUL-free source text');
+    }
+    if (content.split(edit.oldText).length !== 2) fail('repair oldText must match exactly once');
+    content = content.replace(edit.oldText, () => edit.newText);
+  }
+  return writeSecurityRepair(scope, workspace, path, content);
 }
 
 export function verifyCredentialFree(workspace) {

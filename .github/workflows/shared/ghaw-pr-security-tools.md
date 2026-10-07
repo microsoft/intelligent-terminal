@@ -81,10 +81,10 @@ mcp-scripts:
       path:
         type: string
         required: true
-      content:
+      edits_json:
         type: string
         required: true
-        description: 'Complete replacement source text, maximum 512 KiB. No commands or new-file paths.'
+        description: 'JSON array of 1 to 8 exact oldText/newText replacements, maximum 8 KiB. Each oldText must match once; no commands or new-file paths.'
     env:
       SECURITY_NATIVE_DIR: ${{ runner.temp }}/gh-aw
       SECURITY_WORKSPACE: ${{ github.workspace }}
@@ -94,5 +94,5 @@ mcp-scripts:
       const directory = process.env.SECURITY_NATIVE_DIR;
       const validator = await import(pathToFileURL(`${directory}/security-review-check.mjs`).href);
       const scope = JSON.parse(readFileSync(`${directory}/security-report-scope.json`, "utf8"));
-      return validator.writeSecurityRepair(scope, process.env.SECURITY_WORKSPACE, path, content);
+      return validator.replaceSecurityRepairText(scope, process.env.SECURITY_WORKSPACE, path, edits_json);
 ---

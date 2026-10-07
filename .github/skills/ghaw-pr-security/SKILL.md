@@ -115,7 +115,10 @@ review reasoning and the structured report.
    runtime proof cannot earn source approval. Medium/low findings are never edited.
    Apply candidate source text only through `write-security-repair`; generic
    edit and shell tools are disabled. It accepts only existing modified WTA Rust
-   paths in the protected same-repository repair scope. If source review rejects
+   paths in the protected same-repository repair scope. Supply `edits_json`
+   with 1 to 8 exact `oldText`/`newText` replacements, at most 8 KiB total.
+   Each old fragment must occur once; all edits are checked before any bytes
+   are written. Do not re-emit a whole source file. If source review rejects
    a candidate, restore the original immutable source using that same bounded
    writer and leave `patch` empty; do not leave unapproved modified
    files behind or mark the rejected candidate `proposed`.
@@ -143,6 +146,7 @@ The native setup initializes the report from the immutable scope. Preserve
 `repositoryRelation`, and `mode`; do not reconstruct or guess them. Complete
 `summary` and review content, and submit complete JSON as the `report_json`
 string to `submit-security-report`.
+The complete JSON string must fit 10 KiB, matching the native MCP input limit.
 An unchanged template with an empty summary is rejected.
 
 The shared data-only MCP tools load trusted validator code and immutable scope
