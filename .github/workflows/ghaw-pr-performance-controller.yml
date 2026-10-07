@@ -1,0 +1,283 @@
+name: Performance Review
+run-name: 'Performance Review for PR #${{ github.event.pull_request.number }}'
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  actions: write
+  checks: write
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: ghaw-pr-performance-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  performance-review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    outputs:
+      worker_run_id: ${{ steps.worker.outputs.run_id }}
+      review_status: ${{ steps.verdict.outputs.status }}
+      comparison_base_sha: ${{ steps.gate.outputs.comparison_base_sha }}
+    steps:
+      - name: Checkout trusted base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Classify and resolve immutable scope
+        id: gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          remote_ref="refs/remotes/origin/performance-pr-${PR_NUMBER}"
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            fetch --no-tags origin "refs/pull/${PR_NUMBER}/head:${remote_ref}"
+          fetched_head="$(git rev-parse "$remote_ref")"
+          test "$fetched_head" = "$HEAD_SHA"
+          comparison_base="$(git merge-base "$BASE_SHA" "$fetched_head")"
+          node .github/skills/pr-performance-review/scripts/performance-review.mjs prepare \
+            --output-dir "$RUNNER_TEMP/performance-scope" \
+            --pr "$PR_NUMBER" --base "$comparison_base" --head "$HEAD_SHA"
+          applicable="$(node -e "const s=require(process.argv[1]);process.stdout.write(String(s.applicable))" "$RUNNER_TEMP/performance-scope/performance-scope.json")"
+          echo "applicable=$applicable" >> "$GITHUB_OUTPUT"
+          echo "comparison_base_sha=$comparison_base" >> "$GITHUB_OUTPUT"
+          if [ "$applicable" != "true" ]; then
+            {
+              echo "## Performance review"
+              echo
+              echo "No performance-sensitive product source changed; agent inference skipped."
+              echo
+              echo "- AI Credits: **0**"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Dispatch and wait for isolated worker
+        id: worker
+        if: steps.gate.outputs.applicable == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          COMPARISON_BASE_SHA: ${{ steps.gate.outputs.comparison_base_sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const sameRepo = process.env.SAME_REPO === "true";
+            const worker = sameRepo
+              ? "ghaw-pr-performance.lock.yml"
+              : "ghaw-pr-performance-guide-forkedrepo.lock.yml";
+            const dispatchId =
+              `ghaw-pr-performance-${pr.number}-${process.env.EXPECTED_HEAD_SHA}-${context.runId}-${context.runAttempt}`;
+            const inputs = {
+              dispatch_id: dispatchId,
+              pr_number: String(pr.number),
+              repo: `${context.repo.owner}/${context.repo.repo}`,
+              expected_head_sha: process.env.EXPECTED_HEAD_SHA,
+              expected_base_sha: process.env.EXPECTED_BASE_SHA,
+              comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+              head_ref: process.env.HEAD_REF,
+              base_ref: process.env.BASE_REF,
+              head_repo: process.env.HEAD_REPO,
+              same_repo: String(sameRepo),
+              aw_context: JSON.stringify(sameRepo ? {
+                run_id: String(context.runId),
+                workflow_id: "ghaw-pr-performance-controller",
+                item_type: "pull_request",
+                item_number: pr.number,
+                repo: `${context.repo.owner}/${context.repo.repo}`,
+                event_type: "pull_request",
+                head_sha: process.env.EXPECTED_HEAD_SHA,
+                base_sha: process.env.EXPECTED_BASE_SHA,
+                comparison_base_sha: process.env.COMPARISON_BASE_SHA
+              } : {
+                run_id: String(context.runId),
+                workflow_id: "ghaw-pr-performance-controller",
+                event_type: "workflow_dispatch",
+                source_pr_number: pr.number,
+                head_sha: process.env.EXPECTED_HEAD_SHA
+              })
+            };
+            const startedAt = Date.now() - 5000;
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: worker,
+              ref: process.env.BASE_REF,
+              inputs
+            });
+            let run;
+            for (let attempt = 0; attempt < 20 && !run; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: worker,
+                event: "workflow_dispatch",
+                branch: process.env.BASE_REF,
+                per_page: 50
+              });
+              run = runs.data.workflow_runs.find(candidate =>
+                Date.parse(candidate.created_at) >= startedAt &&
+                candidate.display_title.includes(dispatchId));
+            }
+            if (!run) throw new Error(`Could not correlate ${worker} for ${dispatchId}.`);
+            const deadline = Date.now() + 68 * 60 * 1000;
+            while (Date.now() < deadline) {
+              run = (await github.rest.actions.getWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run.id
+              })).data;
+              if (run.status === "completed") {
+                core.setOutput("run_id", String(run.id));
+                core.setOutput("run_url", run.html_url);
+                core.setOutput("conclusion", run.conclusion || "failure");
+                if (run.conclusion !== "success") {
+                  throw new Error(`${worker} run ${run.id} concluded ${run.conclusion}.`);
+                }
+                const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: run.id,
+                  per_page: 100
+                });
+                const agentJob = jobs.find(job => job.name === "agent");
+                if (agentJob?.conclusion !== "success" ||
+                    !agentJob.steps?.some(step =>
+                      step.name === "Execute GitHub Copilot CLI" && step.conclusion === "success")) {
+                  throw new Error(`Worker ${run.id} did not complete the agent execution step.`);
+                }
+                return;
+              }
+              await new Promise(resolve => setTimeout(resolve, 15000));
+            }
+            await github.rest.actions.cancelWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id
+            });
+            throw new Error(`${worker} run ${run.id} exceeded 68 minutes.`);
+
+      - name: Enforce domain verdict rather than workflow success alone
+        id: verdict
+        if: steps.worker.outputs.conclusion == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.worker.outputs.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ steps.gate.outputs.comparison_base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name performance-result --dir "$RUNNER_TEMP/performance-result"
+          status="$(node .github/skills/pr-performance-review/scripts/performance-review.mjs verdict \
+            --input "$RUNNER_TEMP/performance-result/performance-verdict.json" \
+            --pr "$PR_NUMBER" --base "$BASE_SHA" --head "$HEAD_SHA" --print-status true)"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Download immutable sealed proposal
+        if: steps.verdict.outputs.status == 'pending_validation' && github.event.pull_request.head.repo.id == github.repository_id
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.worker.outputs.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name performance-result --dir "$RUNNER_TEMP/performance-native-result"
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            fetch --no-tags origin "refs/pull/${PR_NUMBER}/head:refs/remotes/origin/performance-publish-${PR_NUMBER}"
+      - name: Publish only the tested tree with immutable-head CAS
+        id: publish_repair
+        if: steps.verdict.outputs.status == 'pending_validation' && github.event.pull_request.head.repo.id == github.repository_id
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RUN_ID: ${{ steps.worker.outputs.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          COMPARISON_BASE_SHA: ${{ steps.gate.outputs.comparison_base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        with:
+          script: |
+            const path = require("path");
+            const { pathToFileURL } = require("url");
+            const { publishRepair } = await import(pathToFileURL(
+              path.join(process.env.GITHUB_WORKSPACE, ".github/scripts/ghaw-pr-performance/publish-repair.mjs")).href);
+            const result = await publishRepair({
+              github,
+              proposalPath: path.join(process.env.RUNNER_TEMP, "performance-native-result/performance-proposal.json"),
+              workerRunId: Number(process.env.RUN_ID),
+              expected: {
+                prNumber: Number(process.env.PR_NUMBER),
+                baseSha: process.env.COMPARISON_BASE_SHA,
+                headSha: process.env.HEAD_SHA,
+                expectedBaseSha: process.env.BASE_SHA,
+                repository: `${context.repo.owner}/${context.repo.repo}`,
+                headRepository: process.env.HEAD_REPO,
+                headRef: process.env.HEAD_REF, baseRef: process.env.BASE_REF
+              }
+            });
+            core.setOutput("head_sha", result.commitSha);
+            core.setOutput("commit_url", result.url);
+            await core.summary.addRaw(result.card)
+              .addLink("Validated commit", result.url).write();
+
+      - name: Publish linked PR run report
+        if: always() && steps.gate.outputs.applicable == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RUN_OUTCOME: ${{ job.status }}
+          REVIEW_STATUS: ${{ steps.verdict.outputs.status }}
+          REVIEWED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUBLISHED_HEAD_SHA: ${{ steps.publish_repair.outputs.head_sha }}
+          PUBLISHED_COMMIT_URL: ${{ steps.publish_repair.outputs.commit_url }}
+          CONTROLLER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WORKER_RUN_URL: ${{ steps.worker.outputs.run_url }}
+          WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
+        with:
+          script: |
+            const head = process.env.PUBLISHED_HEAD_SHA || process.env.REVIEWED_HEAD_SHA;
+            const result = process.env.PUBLISHED_HEAD_SHA ? "fixed" : process.env.REVIEW_STATUS || "see worker report";
+            const summary = [
+              `Run outcome: **${process.env.RUN_OUTCOME}**; review result: **${result}**`,
+              `Reviewed head: \`${process.env.REVIEWED_HEAD_SHA}\``,
+              `[Controller run report](${process.env.CONTROLLER_RUN_URL})`,
+              process.env.WORKER_RUN_URL
+                ? `[Agentic worker report](${process.env.WORKER_RUN_URL}) — ${process.env.WORKER_CONCLUSION}`
+                : "Agentic worker was not started or could not be correlated.",
+              process.env.PUBLISHED_COMMIT_URL ? `[Validated repair commit](${process.env.PUBLISHED_COMMIT_URL})` : ""
+            ].filter(Boolean).join("\n\n");
+            await github.rest.checks.create({
+              ...context.repo,
+              name: "Performance review",
+              head_sha: head,
+              status: "completed",
+              conclusion: process.env.RUN_OUTCOME,
+              details_url: process.env.CONTROLLER_RUN_URL,
+              external_id: `${context.runId}-${context.runAttempt}`,
+              output: { title: "Performance review run report", summary }
+            });
+            await core.summary.addRaw(summary).write();

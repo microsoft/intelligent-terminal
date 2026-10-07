@@ -1,0 +1,26 @@
+{
+  "purpose": "Bounded source-reasoning evaluation, not native benchmark or repair proof.",
+  "cases": [
+    {
+      "id": "event-amplification",
+      "scenario": "One snapshot refresh visits every session. The vector size is user-controlled and may contain 100,000 sessions; the outer caller is unchanged.",
+      "base": "void Refresh(const std::vector<Session>& sessions) { for (const auto& s : sessions) { UpdateStatus(s); } } void UpdateStatus(const Session& s) { DrawStatus(s.status); }",
+      "head": "void Refresh(const std::vector<Session>& sessions) { for (const auto& s : sessions) { UpdateStatus(s, sessions); } } void UpdateStatus(const Session& s, const std::vector<Session>& sessions) { for (const auto& candidate : sessions) { if (candidate.id == s.id) { DrawStatus(candidate.status); break; } } }",
+      "constraints": "Assume unique IDs and stable vector order. No timing samples or native test environment are supplied. Do not invent measurements or claim a fix."
+    },
+    {
+      "id": "single-copy-not-a-regression",
+      "scenario": "This function runs once per process startup and copies one 64-byte configuration string. No repeated caller was changed and no measurements are supplied.",
+      "base": "std::string LoadName(const Config& config) { return config.name; }",
+      "head": "std::string LoadName(const Config& config) { auto name = config.name; return name; }",
+      "constraints": "Distinguish a possible copy from a proved material regression. No edit is justified merely because a local variable was added."
+    },
+    {
+      "id": "noisy-microbenchmark",
+      "scenario": "A developer supplied three replay-only samples, not end-to-end observations: base [10, 100, 11] ms and head [12, 9, 13] ms. Hardware, compiler configuration, and background load are unspecified.",
+      "base": "void Submit() { Enqueue(event); }",
+      "head": "void Submit() { Enqueue(event); }",
+      "constraints": "No source behavior changed. Report sample count and spread if discussing measurements; do not claim a causal regression, native validation, or end-to-end impact."
+    }
+  ]
+}

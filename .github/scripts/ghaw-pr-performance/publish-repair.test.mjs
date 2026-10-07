@@ -1,0 +1,128 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import { publishRepair } from './publish-repair.mjs';
+import { reconstructTree } from '../../skills/pr-performance-review/scripts/performance-review.mjs';
+
+function fixture(t) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'performance-publisher-'));
+    const previous = process.cwd();
+    process.chdir(root);
+    t.after(() => { process.chdir(previous); fs.rmSync(root, { recursive: true, force: true }); });
+    const git = args => execFileSync('git', args, { encoding: 'utf8', timeout: 15000 }).trim();
+    git(['init', '--quiet', '--initial-branch=main']);
+    fs.mkdirSync(path.join(root, 'tools', 'wta', 'src'), { recursive: true });
+    const filename = 'tools/wta/src/fixture.rs';
+    fs.writeFileSync(path.join(root, 'tools', 'wta', 'src', 'fixture.rs'), 'pub fn render() -> usize { 1 }\n');
+    fs.writeFileSync(path.join(root, 'tools', 'wta', 'src', 'unrelated.rs'), 'pub fn unrelated() {}\n');
+    git(['add', '.']);
+    git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'head']);
+    const baseSha = git(['rev-parse', 'HEAD']);
+    fs.writeFileSync(path.join(root, 'tools', 'wta', 'src', 'fixture.rs'), 'pub fn render() -> usize { 2 }\n');
+    git(['add', '.']);
+    git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'candidate']);
+    const headSha = git(['rev-parse', 'HEAD']);
+    const expected = { prNumber: 42, baseSha, headSha, expectedBaseSha: baseSha,
+        repository: 'owner/repo', headRepository: 'owner/repo', headRef: 'topic', baseRef: 'main' };
+    const files = [{ path: filename, mode: '100644',
+        contents: Buffer.from('pub fn render() -> usize { 3 }\n').toString('base64') }];
+    const treeSha = reconstructTree(files, headSha);
+    const proposal = {
+        version: 1, identity: { prNumber: 42, baseSha, headSha }, treeSha, files,
+        validationPlan: { type: 'wta-unit', testFilter: 'fixture::tests' },
+        report: { version: 1, review: 'performance', mode: 'repair',
+            identity: { prNumber: 42, baseSha, headSha }, status: 'pending_validation',
+            validationPlan: { type: 'wta-unit', testFilter: 'fixture::tests' },
+            findings: [{
+                id: 'PERF-ABC12345', severity: 'high', confidence: 'high', dimension: 'application-performance',
+                category: 'wta-runtime', title: 'Repeated quadratic work', affectedScenario: 'Large session refresh',
+                location: `${filename}:1`, observed: 'Repeated quadratic traversal', expected: 'Linear traversal',
+                impact: 'Repeated path doubles work by input size',
+                nativeEnvironment: { architecture: 'windows-x64', details: 'Native focused test fixture' },
+                evidence: [{ type: 'complexity-proof', detail: 'Nested traversal repeats for every input item.' }],
+                proposedFix: 'Restore the linear iteration', validation: 'Native test requested', fixDisposition: 'proposed',
+            }], checks: [{ name: 'Actual native test', command: 'cargo test', exitCode: 0, status: 'pass', detail: 'One test passed' }] },
+    };
+    const proposalPath = path.join(root, 'proposal.json');
+    const write = () => fs.writeFileSync(proposalPath, JSON.stringify(proposal));
+    write();
+    const calls = [];
+    const pr = { number: 42, state: 'open',
+        head: { sha: headSha, ref: 'topic', repo: { id: 1, full_name: 'owner/repo' } },
+        base: { sha: baseSha, ref: 'main', repo: { id: 1, full_name: 'owner/repo' } } };
+    const github = {
+        rest: { pulls: { async get() { return { data: pr }; } } },
+        async graphql(query, args) {
+            calls.push(args.input);
+            return { createCommitOnBranch: { commit: { oid: 'c'.repeat(40),
+                url: 'https://example.invalid/commit', tree: { oid: treeSha } } } };
+        },
+    };
+    const jobs = [{ name: 'validate_performance_repair', conclusion: 'success',
+        steps: [{ name: 'Validate and test the exact candidate tree', conclusion: 'success' }] }];
+    github.rest.actions = { listJobsForWorkflowRun: 'list-jobs' };
+    github.paginate = async () => jobs;
+    return { expected, proposal, proposalPath, workerRunId: 123, write, calls, github, pr, jobs };
+}
+
+test('publisher uses immutable head CAS and exactly the native-tested blobs', async t => {
+    const f = fixture(t);
+    const result = await publishRepair(f);
+    assert.equal(result.published, true);
+    assert.equal(f.calls[0].expectedHeadOid, f.expected.headSha);
+    assert.deepEqual(f.calls[0].fileChanges.additions, f.proposal.files.map(file => ({
+        path: file.path, contents: file.contents,
+    })));
+});
+
+test('publisher rejects an advanced live head without adopting or rebasing it', async t => {
+    const f = fixture(t);
+    f.pr.head.sha = 'd'.repeat(40);
+    await assert.rejects(() => publishRepair(f), /metadata does not match/);
+    assert.equal(f.calls.length, 0);
+});
+
+test('publisher rejects content altered after native validation', async t => {
+    const f = fixture(t);
+    f.proposal.files[0].contents = Buffer.from('pub fn tampered() {}\n').toString('base64');
+    f.write();
+    await assert.rejects(() => publishRepair(f), /exact natively tested tree/);
+    assert.equal(f.calls.length, 0);
+});
+
+test('publisher independently rejects a replacement outside original PR candidates', async t => {
+    const f = fixture(t);
+    f.proposal.files[0].path = 'tools/wta/src/unrelated.rs';
+    f.write();
+    await assert.rejects(() => publishRepair(f), /outside the immutable original candidate/);
+    assert.equal(f.calls.length, 0);
+});
+
+test('publisher requires server-recorded native success, not a mutable receipt claim', async t => {
+    const f = fixture(t);
+    f.jobs[0].conclusion = 'failure';
+    f.proposal.nativeValidation = { testsPassed: 999, exitCode: 0, platform: 'windows' };
+    f.write();
+    await assert.rejects(() => publishRepair(f), /GitHub did not record/);
+    assert.equal(f.calls.length, 0);
+});
+
+test('publisher does not retry a CAS race after the final metadata check', async t => {
+    const f = fixture(t);
+    f.github.graphql = async (query, args) => {
+        f.calls.push(args.input);
+        throw new Error('expectedHeadOid mismatch');
+    };
+    await assert.rejects(() => publishRepair(f), /expectedHeadOid mismatch/);
+    assert.equal(f.calls.length, 1);
+});
+
+test('staged publication validates the tree but never mutates GitHub', async t => {
+    const f = fixture(t);
+    const result = await publishRepair({ ...f, staged: true });
+    assert.equal(result.published, false);
+    assert.equal(f.calls.length, 0);
+});
