@@ -9,7 +9,7 @@ const runtime = fileURLToPath(new URL('../../skills/pr-performance-review/script
 
 function fixture(t) {
     const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-runtime-test-'));
-    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     const repo = path.join(root, 'repo');
     fs.mkdirSync(path.join(repo, 'src', 'renderer'), { recursive: true });
     fs.mkdirSync(path.join(repo, 'tools', 'wta', 'src'), { recursive: true });

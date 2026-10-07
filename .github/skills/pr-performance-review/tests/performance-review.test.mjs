@@ -79,6 +79,101 @@ function proposal() {
 
 const helperPath = fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url));
 
+test('immutable root Cargo configuration changes require manual handoff, not new HEAD trust', () => {
+    for (const name of ['config', 'config.toml']) {
+        for (const change of ['addition', 'deletion', 'modification', 'mode', 'unchanged', 'same-content']) {
+            withRepository(({ git, write, expected }) => {
+                const filename = `.cargo/${name}`;
+                const config = '[target.x86_64-pc-windows-msvc]\nrunner = "fake-runner.cmd"\n';
+                const commitTree = parent => git(['commit-tree', git(['write-tree']), '-p', parent, '-m', 'configuration fixture']);
+                git(['read-tree', expected.baseSha]);
+                if (change !== 'addition') {
+                    write(filename, config);
+                    git(['add', '--', filename]);
+                }
+                const base = commitTree(expected.baseSha);
+                git(['read-tree', expected.headSha]);
+                if (change !== 'deletion') {
+                    write(filename, change === 'modification' ? config + '[build]\nrustc-wrapper = "fake-wrapper.cmd"\n' : config);
+                    git(['add', '--', filename]);
+                    if (change === 'mode') git(['update-index', '--chmod=+x', '--', filename]);
+                }
+                const head = commitTree(base);
+                const files = proposal().files;
+                if (change === 'unchanged' || change === 'same-content') {
+                    if (change === 'same-content') write(filename, '# mutable workspace is not authority\n');
+                    assert.doesNotThrow(() => reconstructTree(files, head, base));
+                } else {
+                    assert.throws(() => reconstructTree(files, head, base), /original PR changes root Cargo configuration.*manual handoff/);
+                }
+            });
+        }
+    }
+});
+
+test('fresh immutable CI sealing and upfront native proposal validation reject tracked fake runner configuration', () => {
+    for (const configPath of ['.cargo\\config.toml', '.cargo\\CONFIG', '.CARGO\\config', '.CaRgO\\CoNfIg.ToMl']) withRepository(({ root, git, write, expected, output }) => {
+        write(configPath, '[target.x86_64-pc-windows-msvc]\nrunner = "fake-runner.cmd"\n');
+        write('fake-runner.cmd', '@echo off\necho test result: ok. 1 passed; 0 failed;\n');
+        git(['add', '--all']);
+        const tree = git(['write-tree']);
+        expected.headSha = git(['commit-tree', tree, '-p', expected.headSha, '-m', 'Tracked PR configuration']);
+        git(['update-ref', 'HEAD', expected.headSha]);
+        const baselinePath = path.join(output, 'baseline.json');
+        prepareScope(expected, output, baselinePath);
+        const scopePath = path.join(output, 'performance-scope.json');
+        const value = proposal();
+        value.identity = value.report.identity = expected;
+        const proposalPath = path.join(output, 'proposal.json');
+        fs.writeFileSync(proposalPath, JSON.stringify(value));
+        const args = ['--pr', '42', '--base', expected.baseSha, '--head', expected.headSha];
+        const validated = spawnSync(process.execPath, [helperPath, 'validate-proposal', '--input', proposalPath, ...args],
+            { encoding: 'utf8' });
+        assert.notEqual(validated.status, 0);
+        assert.match(validated.stderr, /original PR changes root Cargo configuration.*manual handoff/);
+        const trustedRoot = fs.mkdtempSync(path.join(path.dirname(root), 'performance-trusted-unit-'));
+        execFileSync('git', ['clone', '--quiet', '--no-local', root, trustedRoot]);
+        write('tools\\wta\\src\\master\\mod.rs', 'fn repaired() {}\n');
+        const reportPath = path.join(output, 'report.json');
+        const queuePath = path.join(output, 'queue.json');
+        fs.writeFileSync(reportPath, JSON.stringify(value.report));
+        fs.writeFileSync(queuePath, JSON.stringify({ items: [{ type: 'validate_performance_repair', confirm: true }], errors: [] }));
+        let sealed;
+        try {
+            sealed = spawnSync(process.execPath, [helperPath, 'gate', '--mode', 'repair', '--output-dir', output,
+                '--baseline', baselinePath, '--scope', scopePath, '--report', reportPath, '--agent-output', queuePath,
+                '--trusted-repository-root', trustedRoot, '--agent-worktree-root', root, ...args], { encoding: 'utf8' });
+        } finally {
+            fs.rmSync(trustedRoot, { recursive: true, force: true });
+        }
+        assert.notEqual(sealed.status, 0);
+        assert.match(sealed.stderr, /original PR changes root Cargo configuration.*manual handoff/);
+        assert.equal(fs.existsSync(path.join(output, 'performance-proposal.json')), false);
+    });
+});
+
+test('Windows-equivalent root configuration additions block even with an inherited TOML configuration', () => {
+    for (const filename of ['.cargo/CONFIG', '.CARGO/config', '.CaRgO/CoNfIg.ToMl']) {
+        withRepository(({ git, write, expected }) => {
+            const inheritedToml = !filename.toLowerCase().endsWith('.toml');
+            const commitTree = parent => git(['commit-tree', git(['write-tree']), '-p', parent, '-m', 'Case-equivalent configuration fixture']);
+            git(['read-tree', expected.baseSha]);
+            if (inheritedToml) {
+                write('.cargo\\config.toml', '[net]\noffline = true\n');
+                git(['add', '--', '.cargo/config.toml']);
+            }
+            const base = commitTree(expected.baseSha);
+            git(['read-tree', expected.headSha]);
+            if (inheritedToml) git(['add', '--', '.cargo/config.toml']);
+            write(filename, '[target.x86_64-pc-windows-msvc]\nrunner = "fake-runner.cmd"\n');
+            const blob = git(['hash-object', '-w', '--', filename]);
+            git(['update-index', '--add', '--cacheinfo', `100644,${blob},${filename}`]);
+            const head = commitTree(base);
+            assert.throws(() => reconstructTree(proposal().files, head, base), /original PR changes root Cargo configuration.*manual handoff/);
+        });
+    }
+});
+
 function withRepository(action) {
     const previous = process.cwd();
     const root = fs.mkdtempSync(path.join(previous, 'performance-unit-'));

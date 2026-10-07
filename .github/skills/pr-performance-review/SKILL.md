@@ -147,6 +147,10 @@ are rejected. Tests use `--locked`, and every Cargo stage uses a fresh external
 configuration, registry state or artifacts that earlier code could modify.
 Cargo's ancestor `config`/`config.toml` files are captured before execution,
 including absent paths, and must retain presence and bytes between stages.
+If repository-root `.cargo/config` or `.cargo/config.toml` differs between
+comparison base and reviewed head, native repair is unavailable: keep the
+finding manual rather than executing PR-controlled runner/wrapper settings.
+Windows case-equivalent path names are treated identically on every sealing host.
 Cold registry downloads and builds may exhaust the unchanged
 30-minute validation deadline; report that as blocked with a manual handoff,
 not a pass or a reason to weaken the gates.

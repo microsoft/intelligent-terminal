@@ -134,7 +134,8 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
         }
         Remove-Item -LiteralPath (Join-Path $workspace 'tampering-observed'), (Join-Path $workspace 'tamper-mode')
     }
-    if ($Name -match 'config|runner|membership' -and ($messages -join "`n") -match 'full-suite: cargo') {
+    if ($Name -match 'config|runner|membership' -and $Name -notlike 'tracked-root-config-unchanged-*' -and
+        ($messages -join "`n") -match 'full-suite: cargo') {
         throw "Repository-local injection reached the full suite: $messages"
     }
     if ($Name -eq 'force-staged-config-fake-runner-injection') {
@@ -154,6 +155,10 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
     }
     if ($Name -match '^initial-' -and ($messages -join "`n") -match 'original-test-listing: cargo') {
         throw "Initial untracked checkout ran Cargo: $messages"
+    }
+    if ($Name -like 'tracked-root-config-blocked-*' -and
+        (($messages -join "`n") -match ': cargo ' -or (Test-Path (Join-Path $workspace 'tracked-runner-executed')))) {
+        throw "Immutable PR Cargo configuration ran a Cargo command: $messages"
     }
     if ($Name -match '^initial-|^generated-lock-' -and ($messages -join "`n") -match 'native test\(s\) passed') {
         throw "Negative pre-test fixture claimed executed tests: $messages"
@@ -457,6 +462,82 @@ fn main() {
         $null = [IO.Directory]::CreateDirectory((Join-Path $workspace '.cargo'))
         [IO.File]::WriteAllText((Join-Path $workspace '.cargo\config.toml'), "[net]`noffline = true`n", $utf8)
     }
+    $savedBase = $script:base
+    $savedHead = $script:head
+    foreach ($configName in @('config', 'config.toml')) {
+        foreach ($change in @('addition', 'deletion', 'modification', 'mode', 'unchanged')) {
+            $configPath = Join-Path $fixture ('.cargo\' + $configName)
+            $runnerPath = Join-Path $fixture 'fixture-fake-runner.cmd'
+            $null = [IO.Directory]::CreateDirectory((Join-Path $fixture '.cargo'))
+            $runner = "@echo off`r`necho executed > `"$workspace\tracked-runner-executed`"`r`necho test tests::focused ... ok`r`necho test result: ok. 1 passed; 0 failed;`r`nexit /b 0`r`n"
+            [IO.File]::WriteAllText($runnerPath, $runner, $utf8)
+            $config = if ($change -eq 'unchanged') { "[net]`noffline = true`n[build]`nrustflags = []`n" } else {
+                "[target.x86_64-pc-windows-msvc]`nrunner = '$runnerPath'`n"
+            }
+            $null = Git @('read-tree', $savedBase)
+            $null = Git @('add', '-f', 'fixture-fake-runner.cmd')
+            if ($change -ne 'addition') {
+                [IO.File]::WriteAllText($configPath, $config, $utf8)
+                $null = Git @('add', '-f', ".cargo/$configName")
+            }
+            $tree = Git @('write-tree')
+            $script:base = Git @('-c', 'user.name=Native Fixture', '-c', 'user.email=fixture@invalid',
+                'commit-tree', $tree, '-p', $savedBase, '-m', 'Tracked configuration base fixture')
+            $null = Git @('read-tree', $savedHead)
+            $null = Git @('add', '-f', 'fixture-fake-runner.cmd')
+            if ($change -eq 'deletion') { Remove-Item -LiteralPath $configPath } else {
+                $headConfig = if ($change -eq 'modification') { $config + "[build]`nrustc-wrapper = 'fixture-fake-runner.cmd'`n" } else { $config }
+                [IO.File]::WriteAllText($configPath, $headConfig, $utf8)
+                $null = Git @('add', '-f', ".cargo/$configName")
+                if ($change -eq 'mode') { $null = Git @('update-index', '--chmod=+x', ".cargo/$configName") }
+            }
+            $tree = Git @('write-tree')
+            $script:head = Git @('-c', 'user.name=Native Fixture', '-c', 'user.email=fixture@invalid',
+                'commit-tree', $tree, '-p', $script:base, '-m', 'Tracked configuration PR fixture')
+            $null = Git @('update-ref', 'HEAD', $script:head)
+            if ($change -eq 'unchanged') {
+                Test-Case "tracked-root-config-unchanged-$configName" $repair 'tests::focused' '' $true
+            } else {
+                Test-Case "tracked-root-config-blocked-$change-$configName" $repair 'tests::focused' `
+                    'original PR changes root Cargo configuration.*manual handoff' $true
+            }
+        }
+    }
+    $script:base = $savedBase
+    $script:head = $savedHead
+    $null = Git @('update-ref', 'HEAD', $savedHead)
+    foreach ($configName in @('.cargo/CONFIG', '.CARGO/config', '.CaRgO/CoNfIg.ToMl')) {
+        $null = [IO.Directory]::CreateDirectory((Join-Path $fixture '.cargo'))
+        $runnerPath = Join-Path $fixture 'fixture-fake-runner.cmd'
+        [IO.File]::WriteAllText($runnerPath,
+            "@echo off`r`necho executed > `"$workspace\tracked-runner-executed`"`r`necho test tests::focused ... ok`r`necho test result: ok. 1 passed; 0 failed;`r`nexit /b 0`r`n", $utf8)
+        $null = Git @('read-tree', $savedBase)
+        $null = Git @('add', '-f', 'fixture-fake-runner.cmd')
+        $inheritedToml = -not $configName.ToLowerInvariant().EndsWith('.toml')
+        if ($inheritedToml) {
+            [IO.File]::WriteAllText((Join-Path $fixture '.cargo\config.toml'), "[net]`noffline = true`n", $utf8)
+            $null = Git @('add', '-f', '.cargo/config.toml')
+        }
+        $tree = Git @('write-tree')
+        $script:base = Git @('-c', 'user.name=Native Fixture', '-c', 'user.email=fixture@invalid',
+            'commit-tree', $tree, '-p', $savedBase, '-m', 'Inherited root Cargo configuration fixture')
+        $null = Git @('read-tree', $savedHead)
+        $null = Git @('add', '-f', 'fixture-fake-runner.cmd')
+        if ($inheritedToml) { $null = Git @('add', '-f', '.cargo/config.toml') }
+        $configPath = Join-Path $fixture ($configName.Replace('/', '\'))
+        [IO.File]::WriteAllText($configPath, "[target.x86_64-pc-windows-msvc]`nrunner = '$runnerPath'`n", $utf8)
+        $blob = Git @('hash-object', '-w', '--no-filters', '--', $configPath)
+        $null = Git @('update-index', '--add', '--cacheinfo', '100644', $blob, $configName)
+        $tree = Git @('write-tree')
+        $script:head = Git @('-c', 'user.name=Native Fixture', '-c', 'user.email=fixture@invalid',
+            'commit-tree', $tree, '-p', $script:base, '-m', 'Windows-equivalent root configuration addition')
+        $null = Git @('update-ref', 'HEAD', $script:head)
+        Test-Case ('tracked-root-config-blocked-case-' + $configName.Replace('/', '-')) $repair 'tests::focused' `
+            'original PR changes root Cargo configuration.*manual handoff' $true
+    }
+    $script:base = $savedBase
+    $script:head = $savedHead
+    $null = Git @('update-ref', 'HEAD', $savedHead)
     # A committed stale lock must fail Cargo's --locked check, not be regenerated.
     $null = Git @('read-tree', $script:head)
     [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\src\lib.rs'), $baseline, $utf8)

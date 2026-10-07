@@ -143,11 +143,15 @@ Each Cargo stage also uses a fresh external `CARGO_HOME`, isolating user-level
 configuration and registry state from earlier code. Captured ancestor Cargo
 configurations also remain unchanged: both config names, including initially
 absent files, are checked before and after stages.
-Changed or reparsed ancestor inputs block validation. Cold downloads and
+Changed ancestor inputs or reparse points block validation. Cold downloads and
 builds can exceed the unchanged total 30-minute deadline, requiring
 a blocked outcome and manual handoff. This is not a full host sandbox
 for candidate code executed by Cargo, nor proof of behavioral equivalence;
 the sealed publication tree and GitHub-recorded result remain separate authority.
+PR changes to repository-root `.cargo/config` or `.cargo/config.toml` block
+native repair before Cargo runs; unchanged comparison-base configuration
+remains supported.
+The gate uses Windows case-equivalent root path names even when sealing on Linux.
 
 Native input binding happens before any candidate code runs: trusted proposal
 validation confirms the sealed tree, then the parent validator captures decoded

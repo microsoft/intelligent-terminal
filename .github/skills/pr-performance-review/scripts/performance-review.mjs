@@ -440,7 +440,11 @@ export function reconstructTree(files, headSha, baseSha) {
     if (files.reduce((size, file) => size + Buffer.from(file.contents, 'base64').length, 0) > MAX_REPAIR_BLOB_BYTES)
         fail('repair source content exceeds the transport size limit');
     if (baseSha) {
-        const allowed = new Set(changedPaths(baseSha, headSha).filter(filename => classifyFile({ filename }).role === 'candidate'));
+        // The native backend is Windows, including when sealing runs on a case-sensitive host.
+        const originalChanges = changedPaths(baseSha, headSha);
+        if (originalChanges.some(filename => ['.cargo/config', '.cargo/config.toml'].includes(filename.toLowerCase())))
+            fail('immutable original PR changes root Cargo configuration presence, mode, or blob; use manual handoff');
+        const allowed = new Set(originalChanges.filter(filename => classifyFile({ filename }).role === 'candidate'));
         if (files.some(file => !allowed.has(file.path))) fail('publication replacement is outside the immutable original candidate scope');
     }
     return withIndex(headSha, env => {
