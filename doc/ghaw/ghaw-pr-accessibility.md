@@ -27,14 +27,15 @@ The workflow runs on `pull_request_target`, so its compiled definition and
 initial checkout come from the trusted base branch. It fetches the pull request
 head as a Git object and runs the base revision's
 `.github/skills/pr-accessibility/scripts/accessibility_review.py` against those
-head blobs. Only after deterministic preparation does it switch the worktree to
+head blobs.
 Source scope uses the immutable merge base of trusted base and PR head, as in
 the localization workflow. This prevents newer base-only policy or UI additions
 from being misclassified as feature deletions. Prepared evidence preserves
 `trusted_base_sha` separately from `comparison_base_sha`; trust and publication
-identity still use the caller's immutable revisions. Only after deterministic preparation does it switch the worktree to
-the verified immutable head for model inspection. It never imports or executes
-pull-request code.
+identity still use the caller's immutable revisions.
+Only after deterministic preparation does it switch the worktree to
+the verified immutable head for model inspection. Source preparation never
+imports or executes pull-request code.
 The checkout uses the actual PR head branch name after validating its ref
 format. Repair commits therefore have a local branch for the production
 safe-output transport to pin; a detached commit is not sufficient.
@@ -182,14 +183,15 @@ contrast/theme, and scaling checks as `SKIPPED`, never as passing native
 results.
 
 The same workflow also runs an independent `Native Axe.Windows smoke` job on
-an ephemeral GitHub-hosted Windows runner. It checks out the immutable PR head
+an ephemeral GitHub-hosted Windows runner.
 It calls the same-repository `native-accessibility.yml` reusable workflow
 without inherited secrets. GitHub does not propagate caller workflow-level
 environment variables to that workflow, so gh-aw's global OTLP telemetry
 credentials cannot reach PR-controlled build code. The native workflow declares
 only a read-scoped contents token, takes four immutable source-identity inputs,
 and executes the unchanged native steps on `windows-2025-vs2026`.
-This is one workflow execution, not another dispatch or private-budget attempt. It checks out the immutable PR head
+This is one workflow execution, not another dispatch or private-budget attempt.
+It checks out the immutable PR head
 without persisted credentials, builds the existing packaged `TestHostApp`, and
 launches real product surfaces in three visible states:
 
