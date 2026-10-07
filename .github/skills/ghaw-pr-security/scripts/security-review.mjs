@@ -143,7 +143,7 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
-export function buildScope(baseSha, headSha, prNumber, relation, rawNameStatus, observedBaseSha = baseSha, mode = 'guide') {
+export function buildScope(baseSha, headSha, prNumber, relation, rawNameStatus, observedBaseSha = baseSha, mode = 'guide', immutableHunks = []) {
   if (!SHA.test(baseSha) || !SHA.test(headSha) || !SHA.test(observedBaseSha)) {
     fail('base and head must be lowercase 40-character SHAs');
   }
@@ -163,6 +163,7 @@ export function buildScope(baseSha, headSha, prNumber, relation, rawNameStatus, 
     applicable: domains.length > 0,
     domains,
     changedFiles,
+    immutableHunks,
     reviewReferences: [
       'doc/security-model.md',
       'tools/wta/AGENTS.md',
@@ -178,6 +179,73 @@ export function buildScope(baseSha, headSha, prNumber, relation, rawNameStatus, 
     },
   };
   return { ...scope, scopeSha256: createHash('sha256').update(stableJson(scope)).digest('hex') };
+}
+
+export function readImmutableHunks(scope, workspace) {
+  if (!SHA.test(scope?.baseSha ?? '') || !SHA.test(scope?.headSha ?? '') ||
+      !Array.isArray(scope.changedFiles)) fail('immutable hunk inputs are invalid');
+  return scope.changedFiles.map(file => {
+    const path = normalizePath(file.path);
+    const entry = git(['ls-tree', scope.headSha, '--', path], workspace).trim();
+    const blob = /^[0-7]{6} blob [0-9a-f]{40}\t/.test(entry)
+      ? git(['cat-file', 'blob', `${scope.headSha}:${path}`], workspace) : '';
+    const headLineCount = blob.length === 0 ? 0 : blob.split('\n').length - (blob.endsWith('\n') ? 1 : 0);
+    const diff = readSecurityDiff(scope, file.oldPath ? [file.oldPath, path] : [path], workspace);
+    const hunks = [];
+    let baseLine = 0;
+    let headLine = 0;
+    let active = false;
+    let change;
+    const flush = () => {
+      if (change) hunks.push(change);
+      change = undefined;
+    };
+    for (const line of diff.split('\n')) {
+      const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+      if (header) {
+        flush();
+        baseLine = Number(header[1]) + (header[2] === '0' ? 1 : 0);
+        headLine = Number(header[3]) + (header[4] === '0' ? 1 : 0);
+        active = true;
+      } else if (line.startsWith('diff --git ')) {
+        flush();
+        active = false;
+      } else if (active && (line.startsWith('-') || line.startsWith('+'))) {
+        change ??= { baseStart: baseLine, baseCount: 0, headStart: headLine, headCount: 0 };
+        if (line[0] === '-') { change.baseCount++; baseLine++; }
+        else { change.headCount++; headLine++; }
+      } else if (active && line.startsWith(' ')) {
+        flush();
+        baseLine++;
+        headLine++;
+      }
+    }
+    flush();
+    return { path, headLineCount, hunks };
+  });
+}
+
+function validateRepairAnchors(report, metadata) {
+  // Hunk membership limits repair eligibility; it does not prove regression causality or vulnerability semantics.
+  const repairs = report.findings?.filter(finding => ['proposed', 'fixed'].includes(finding.fixDisposition?.state));
+  if (!repairs?.length) fail('repair anchors require proposed or fixed findings');
+  for (const finding of repairs) {
+    const file = metadata?.find(item => item.path === finding.file);
+    if (!file || !Number.isSafeInteger(file.headLineCount) || file.headLineCount < 1 ||
+        !Number.isSafeInteger(finding.startLine) || !Number.isSafeInteger(finding.endLine) ||
+        finding.startLine < 1 || finding.endLine < finding.startLine || finding.endLine > file.headLineCount ||
+        !Array.isArray(file.hunks) || !file.hunks.some(hunk => {
+          if (!['baseStart', 'baseCount', 'headStart', 'headCount'].every(key =>
+            Number.isSafeInteger(hunk[key]) && hunk[key] >= 0) ||
+              hunk.baseCount + hunk.headCount === 0 || hunk.headStart < 1) return false;
+          // A deletion maps to surviving HEAD context, including the preceding line at EOF.
+          const start = hunk.headCount === 0 ? Math.min(hunk.headStart, file.headLineCount) : hunk.headStart;
+          const end = hunk.headCount === 0 ? start : start + hunk.headCount - 1;
+          return end <= file.headLineCount && finding.startLine <= end && finding.endLine >= start;
+        })) {
+      fail('automatic repair finding must overlap an immutable HEAD diff hunk within source EOF');
+    }
+  }
 }
 
 function findingId(finding) {
@@ -374,6 +442,14 @@ export function validateReport(report, scope, phase = 'final') {
     return { path, summary: text(item.summary, `patch item ${index + 1} summary`, 300) };
   });
   const fixed = findings.filter(finding => ['fixed', 'proposed'].includes(finding.fixDisposition.state));
+  if (fixed.length > 0) {
+    validateRepairScope(scope);
+    const { scopeSha256, ...identity } = scope;
+    if (createHash('sha256').update(stableJson(identity)).digest('hex') !== scopeSha256) {
+      fail('immutable hunk scope identity does not match its hash');
+    }
+    validateRepairAnchors({ findings: fixed }, scope.immutableHunks);
+  }
   if (phase === 'candidate' && ((review.status === 'pending') !== (patch.length > 0))) {
     fail('pending independent review requires a patched repair candidate');
   }
@@ -462,7 +538,7 @@ export function readSecurityDiff(scope, paths = [], workspace) {
   if (!SHA.test(scope?.baseSha ?? '') || !SHA.test(scope?.headSha ?? '') ||
       !Array.isArray(paths) || paths.length > 20) fail('immutable diff inputs are invalid');
   const selected = paths.map(path => normalizePath(path));
-  return git(['--no-pager', 'diff', '--no-ext-diff', '--no-textconv', '--unified=20',
+  return git(['--no-pager', 'diff', '--no-ext-diff', '--no-textconv', '--find-renames', '--unified=20',
     scope.baseSha, scope.headSha, '--', ...selected], workspace);
 }
 
@@ -645,6 +721,7 @@ export function stageRepairFiles(report, sourceRoot, targetRoot) {
   const sourceBase = realpathSync(resolve(sourceRoot));
   const targetBase = realpathSync(resolve(targetRoot));
   const seen = new Set();
+  let anchorsValidated = false;
   for (const [index, item] of report.patch.entries()) {
     const path = normalizePath(item?.path, `patch item ${index + 1} path`);
     if (!/^tools\/wta\/src\/.*\.rs$/.test(path) || seen.has(path)) {
@@ -668,9 +745,20 @@ export function stageRepairFiles(report, sourceRoot, targetRoot) {
     if ((sourceStat.mode & 0o777) !== (targetStat.mode & 0o777)) {
       fail(`patch item ${index + 1} changes the tracked file mode`);
     }
-    const treeEntry = git(['ls-tree', 'HEAD', '--', path]).trim().split(/\s+/);
+    const treeEntry = git(['ls-tree', 'HEAD', '--', path], targetBase).trim().split(/\s+/);
     if (treeEntry.length < 3 || treeEntry[0] !== '100644' || treeEntry[1] !== 'blob') {
       fail(`patch item ${index + 1} must target a non-executable regular Git blob`);
+    }
+    if (!anchorsValidated) {
+      const head = git(['rev-parse', 'HEAD'], targetBase).trim();
+      if (head !== report.headSha) fail('repair staging must use the immutable HEAD');
+      const raw = git(['diff', '--no-ext-diff', '--no-textconv', '--name-status', '-z', '--find-renames',
+        report.baseSha, report.headSha], targetBase);
+      const trusted = buildScope(report.baseSha, report.headSha, report.prNumber,
+        report.repositoryRelation, raw, report.baseSha, report.mode);
+      validateRepairScope(trusted);
+      validateRepairAnchors(report, readImmutableHunks(trusted, targetBase));
+      anchorsValidated = true;
     }
     copyFileSync(source, target);
     chmodSync(target, targetStat.mode & 0o777);
@@ -766,7 +854,9 @@ function main() {
     const base = git(['merge-base', observedBase, head]).trim().toLowerCase();
     if (!SHA.test(base)) fail('could not resolve a comparison merge base');
     const raw = git(['diff', '--no-ext-diff', '--no-textconv', '--name-status', '-z', '--find-renames', base, head]);
-    const scope = buildScope(base, head, Number(option('--pr')), option('--relation'), raw, observedBase, option('--mode'));
+    const inputs = buildScope(base, head, Number(option('--pr')), option('--relation'), raw, observedBase, option('--mode'));
+    const scope = buildScope(base, head, inputs.prNumber, inputs.repositoryRelation, raw, observedBase,
+      inputs.mode, readImmutableHunks(inputs));
     writeFileSync(option('--output'), `${JSON.stringify(scope, null, 2)}\n`, { flag: 'wx' });
     return;
   }

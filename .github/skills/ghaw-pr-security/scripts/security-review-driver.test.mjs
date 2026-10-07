@@ -18,7 +18,9 @@ const PATH = 'tools/wta/src/master/mod.rs';
 const PATCH = `diff --git a/${PATH} b/${PATH}\n`;
 const DIGEST = createHash('sha256').update(PATCH).digest('hex');
 const DIFF = `diff --git a/${PATH} b/${PATH}\n@@ -1,2 +1,2 @@\n-Original source.\n+Changed source.\n Context.\n`;
-const scope = buildScope(BASE, HEAD, 17, 'same-repo', `M\0${PATH}\0`, BASE, 'repair');
+const scope = buildScope(BASE, HEAD, 17, 'same-repo', `M\0${PATH}\0`, BASE, 'repair', [{
+  path: PATH, headLineCount: 2, hunks: [{ baseStart: 1, baseCount: 1, headStart: 1, headCount: 1 }],
+}]);
 const inspection = { headSha: HEAD, patchSha256: DIGEST, patch: PATCH, paths: [PATH] };
 
 function sourceForRange(revision, path, start, end) {

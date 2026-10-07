@@ -2,17 +2,17 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   attestChecks, buildScope, classifyPath, createReportTemplate, normalizePath, renderReport, validatePatch,
   validateQueuedOutput, validateReport, validateProposal, validateCandidate, stageRepairFiles, validateRepairScope,
-  submitSecurityReport, readSecurityDiff, readSecuritySource, inspectSecurityRepair, writeSecurityRepair, replaceSecurityRepairText, verifyCredentialFree,
+  submitSecurityReport, readSecurityDiff, readImmutableHunks, readSecuritySource, inspectSecurityRepair, writeSecurityRepair, replaceSecurityRepairText, verifyCredentialFree,
 } from './security-review.mjs';
 
 const BASE = '1'.repeat(40);
+const tmpdir = () => process.cwd();
 const HEAD = '2'.repeat(40);
 const PATCH_TEXT = 'diff --git a/tools/wta/src/master/mod.rs b/tools/wta/src/master/mod.rs\n';
 const PATCH_SHA256 = createHash('sha256').update(PATCH_TEXT).digest('hex');
@@ -36,6 +36,9 @@ function repairScope() {
     'M\0tools/wta/src/master/mod.rs\0M\0tools/wta/src/logging.rs\0',
     BASE,
     'repair',
+    ['tools/wta/src/master/mod.rs', 'tools/wta/src/logging.rs'].map(path => ({
+      path, headLineCount: 120, hunks: [{ baseStart: 20, baseCount: 5, headStart: 20, headCount: 5 }],
+    })),
   );
 }
 
@@ -72,6 +75,201 @@ function report(overrides = {}, relation = 'same-repo') {
     ...overrides,
   };
 }
+
+test('unrelated unchanged line cannot authorize an automatic repair', () => {
+  const current = buildScope(BASE, HEAD, 17, 'same-repo', 'M\0tools/wta/src/master/mod.rs\0',
+    BASE, 'repair', [{
+      path: 'tools/wta/src/master/mod.rs', headLineCount: 120,
+      hunks: [{ baseStart: 10, baseCount: 1, headStart: 10, headCount: 1 }],
+    }]);
+  const candidate = {
+    ...createReportTemplate(current), summary: 'Repair candidate.',
+    review: { status: 'pending', reviewer: 'ghaw-pr-security-reviewer', evidence: 'Awaiting independent review.' },
+    findings: [{
+      rule: 'session-route-target-binding', severity: 'high', confidence: 'high', category: 'session-routing',
+      file: 'tools/wta/src/master/mod.rs', startLine: 100, endLine: 100,
+      observed: 'Unchanged pre-existing route.', expected: 'Owner binding.', impact: 'Wrong session.',
+      evidence: [{ kind: 'source-trace', reference: 'tools/wta/src/master/mod.rs:100', detail: 'Pre-existing route.' }],
+      proposedFix: 'Restore binding.', validation: 'Run focused tests.',
+      fixDisposition: { state: 'proposed', reason: 'Awaiting validation.' },
+    }],
+    patch: [{ path: 'tools/wta/src/master/mod.rs', summary: 'Restore binding.' }],
+  };
+  assert.throws(() => validateCandidate(candidate, current), /immutable HEAD diff hunk/);
+  const proposal = structuredClone(candidate);
+  proposal.review = {
+    status: 'source-pass', reviewer: 'ghaw-pr-security-reviewer', headSha: HEAD,
+    patchSha256: PATCH_SHA256, evidence: 'Independent exact-patch review.',
+  };
+  assert.throws(() => validateProposal(proposal, current), /immutable HEAD diff hunk/);
+  const final = attestChecks(proposal, HEAD, true, PATCH_TEXT);
+  assert.throws(() => validateReport(final, current), /immutable HEAD diff hunk/);
+  for (const [input, validate] of [[candidate, validateCandidate], [proposal, validateProposal], [final, validateReport]]) {
+    input.findings[0].startLine = 10;
+    input.findings[0].endLine = 10;
+    assert.doesNotThrow(() => validate(input, current));
+    input.findings[0].endLine = 121;
+    assert.throws(() => validate(input, current), /source EOF/);
+    input.findings[0].endLine = 10;
+  }
+  const tampered = structuredClone(current);
+  tampered.immutableHunks[0].hunks[0].headStart = 100;
+  assert.throws(() => validateCandidate(candidate, tampered), /scope identity/);
+  const legacy = buildScope(BASE, HEAD, 17, 'same-repo', 'M\0tools/wta/src/master/mod.rs\0', BASE, 'repair');
+  assert.throws(() => validateCandidate({ ...candidate, scopeSha256: legacy.scopeSha256 }, legacy), /immutable HEAD diff hunk/);
+  const blocked = structuredClone(candidate);
+  blocked.findings[0].startLine = blocked.findings[0].endLine = 100;
+  blocked.findings[0].fixDisposition.state = 'blocked';
+  blocked.review = { status: 'not-required', reviewer: 'none', evidence: 'Guidance only.' };
+  blocked.patch = [];
+  assert.doesNotThrow(() => validateCandidate(blocked, current));
+  const root = mkdtempSync(join(process.cwd(), '.hunk-submission-'));
+  try {
+    const path = join(root, 'report.json');
+    writeFileSync(path, 'original');
+    const unrelated = structuredClone(candidate);
+    unrelated.findings[0].startLine = unrelated.findings[0].endLine = 100;
+    assert.throws(() => submitSecurityReport(JSON.stringify(unrelated), current, path), /immutable HEAD diff hunk/);
+    assert.equal(readFileSync(path, 'utf8'), 'original');
+    assert.equal(submitSecurityReport(JSON.stringify(candidate), current, path).accepted, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('trusted Git scope binds exact changes, deletion mapping, renames, modes and empty HEAD', () => {
+  const root = mkdtempSync(join(process.cwd(), '.immutable-hunks-'));
+  const path = 'tools/wta/src/routing.rs';
+  const validator = fileURLToPath(new URL('./security-review.mjs', import.meta.url));
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', timeout: 30_000 }).trim();
+  const source = join(root, path);
+  const lines = Array.from({ length: 120 }, (_, index) => `line ${index + 1}\n`);
+  try {
+    git('init', '--quiet');
+    git('config', 'user.name', 'Local contract fixture');
+    git('config', 'user.email', 'fixture@example.invalid');
+    git('config', 'core.autocrlf', 'false');
+    mkdirSync(join(root, 'tools', 'wta', 'src'), { recursive: true });
+    writeFileSync(source, lines.join(''));
+    git('add', '.');
+    git('commit', '--quiet', '-m', 'Fixture base');
+    const base = git('rev-parse', 'HEAD');
+    const changed = [...lines];
+    changed[9] = 'changed line 10\n';
+    writeFileSync(source, changed.join(''));
+    git('add', '.');
+    git('commit', '--quiet', '-m', 'Fixture head');
+    const head = git('rev-parse', 'HEAD');
+    const scopePath = join(root, 'scope.json');
+    const cli = spawnSync(process.execPath, [validator, 'scope', '--base', base, '--head', head,
+      '--pr', '17', '--relation', 'same-repo', '--mode', 'repair', '--output', scopePath],
+    { cwd: root, encoding: 'utf8', timeout: 30_000 });
+    assert.equal(cli.status, 0, cli.stderr);
+    const current = JSON.parse(readFileSync(scopePath, 'utf8'));
+    assert.deepEqual(current.immutableHunks, [{
+      path, headLineCount: 120, hunks: [{ baseStart: 10, baseCount: 1, headStart: 10, headCount: 1 }],
+    }]);
+    const candidate = {
+      ...createReportTemplate(current), summary: 'A localized repair candidate.',
+      review: { status: 'pending', reviewer: 'ghaw-pr-security-reviewer', evidence: 'Awaiting source review.' },
+      findings: [{
+        rule: 'session-route-target-binding', severity: 'high', confidence: 'high', category: 'session-routing',
+        file: path, startLine: 100, endLine: 100, observed: 'Route.', expected: 'Owner binding.', impact: 'Wrong session.',
+        evidence: [{ kind: 'source-trace', reference: `${path}:100`, detail: 'Route trace.' }],
+        proposedFix: 'Bind owner.', validation: 'Focused tests.',
+        fixDisposition: { state: 'proposed', reason: 'Awaiting trusted validation.' },
+      }], patch: [{ path, summary: 'Bind owner.' }],
+    };
+    assert.throws(() => validateCandidate(candidate, current), /immutable HEAD diff hunk/);
+    const proposal = structuredClone(candidate);
+    proposal.review = {
+      status: 'source-pass', reviewer: 'ghaw-pr-security-reviewer', headSha: head,
+      patchSha256: PATCH_SHA256, evidence: 'Independent exact-patch source review.',
+    };
+    assert.throws(() => validateProposal(proposal, current), /immutable HEAD diff hunk/);
+    assert.throws(() => validateReport(attestChecks(proposal, head, true, PATCH_TEXT), current), /immutable HEAD diff hunk/);
+    const reportPath = join(root, 'report.json');
+    writeFileSync(reportPath, JSON.stringify(proposal));
+    const rejected = spawnSync(process.execPath, [validator, 'check-report', '--scope', scopePath, '--report', reportPath],
+      { cwd: root, encoding: 'utf8', timeout: 30_000 });
+    assert.equal(rejected.status, 1);
+    assert.match(rejected.stderr, /immutable HEAD diff hunk/);
+    unlinkSync(reportPath);
+    const target = join(root, 'target');
+    git('-c', 'core.autocrlf=false', 'clone', '--quiet', '--no-hardlinks', root, target);
+    writeFileSync(source, changed.join('').replace('line 100\n', 'unrelated repaired line\n'));
+    const regeneratedPath = join(root, 'regenerated-scope.json');
+    const regenerated = spawnSync(process.execPath, [validator, 'scope', '--base', base, '--head', head,
+      '--pr', '17', '--relation', 'same-repo', '--mode', 'repair', '--output', regeneratedPath],
+    { cwd: root, encoding: 'utf8', timeout: 30_000 });
+    assert.equal(regenerated.status, 0, regenerated.stderr);
+    assert.deepEqual(JSON.parse(readFileSync(regeneratedPath, 'utf8')), current,
+      'scope identity must remain identical after candidate workspace edits');
+    unlinkSync(regeneratedPath);
+    assert.throws(() => stageRepairFiles(candidate, root, target), /immutable HEAD diff hunk/);
+    assert.equal(readFileSync(join(target, path), 'utf8'), changed.join(''));
+    candidate.findings[0].startLine = candidate.findings[0].endLine = 10;
+    proposal.findings[0].startLine = proposal.findings[0].endLine = 10;
+    assert.doesNotThrow(() => validateCandidate(candidate, current));
+    assert.doesNotThrow(() => validateProposal(proposal, current));
+    assert.doesNotThrow(() => validateReport(attestChecks(proposal, head, true, PATCH_TEXT), current));
+    assert.deepEqual(stageRepairFiles(candidate, root, target), [path]);
+    assert.equal(readFileSync(join(target, path), 'utf8'), readFileSync(source, 'utf8'));
+    rmSync(target, { recursive: true, force: true });
+    unlinkSync(scopePath);
+    writeFileSync(source, `inserted first\ninserted second\n${changed.join('')}`);
+    git('add', '.');
+    const shiftedTree = git('write-tree');
+    assert.deepEqual(readImmutableHunks(buildScope(base, shiftedTree, 17, 'same-repo', `M\0${path}\0`), root)[0].hunks, [
+      { baseStart: 1, baseCount: 0, headStart: 1, headCount: 2 },
+      { baseStart: 10, baseCount: 1, headStart: 12, headCount: 1 },
+    ]);
+    for (const [content, expected] of [
+      [lines.filter((_, index) => index !== 9).join(''), { baseStart: 10, baseCount: 1, headStart: 10, headCount: 0 }],
+      [lines.slice(0, -1).join(''), { baseStart: 120, baseCount: 1, headStart: 120, headCount: 0 }],
+      [lines.slice(1).join(''), { baseStart: 1, baseCount: 1, headStart: 1, headCount: 0 }],
+      ['', { baseStart: 1, baseCount: 120, headStart: 1, headCount: 0 }],
+    ]) {
+      writeFileSync(source, content);
+      git('add', '.');
+      const tree = git('write-tree');
+      const inputs = buildScope(base, tree, 17, 'same-repo', `M\0${path}\0`, base, 'repair');
+      const metadata = readImmutableHunks(inputs, root);
+      assert.deepEqual(metadata[0].hunks, [expected]);
+      const deletion = buildScope(base, tree, 17, 'same-repo', `M\0${path}\0`, base, 'repair', metadata);
+      const anchor = Math.min(expected.headStart, metadata[0].headLineCount) || 1;
+      const report = structuredClone(candidate);
+      Object.assign(report, createReportTemplate(deletion), {
+        summary: candidate.summary, findings: structuredClone(candidate.findings), patch: candidate.patch, review: candidate.review,
+      });
+      report.findings[0].startLine = report.findings[0].endLine = anchor;
+      if (content) assert.doesNotThrow(() => validateCandidate(report, deletion));
+      else assert.throws(() => validateCandidate(report, deletion), /source EOF/);
+    }
+    writeFileSync(source, lines.join(''));
+    git('add', '.');
+    git('update-index', '--chmod=+x', path);
+    const modeTree = git('write-tree');
+    const modeGuide = buildScope(base, modeTree, 17, 'fork', `M\0${path}\0`);
+    assert.deepEqual(readImmutableHunks(modeGuide, root)[0].hunks, []);
+    const modeReport = { ...createReportTemplate(modeGuide), summary: 'Mode-only guidance.',
+      findings: [{ ...candidate.findings[0], startLine: 100, endLine: 100,
+        fixDisposition: { state: 'blocked', reason: 'Mode change needs guidance, not automatic source repair.' } }] };
+    assert.doesNotThrow(() => validateReport(modeReport, modeGuide));
+    git('update-index', '--chmod=-x', path);
+    const renamed = 'tools/wta/src/renamed.rs';
+    git('mv', path, renamed);
+    const renameTree = git('write-tree');
+    const guide = buildScope(base, renameTree, 17, 'fork', `R100\0${path}\0${renamed}\0`);
+    assert.deepEqual(readImmutableHunks(guide, root)[0].hunks, []);
+    const guidance = { ...createReportTemplate(guide), summary: 'Rename guidance.',
+      findings: [{ ...candidate.findings[0], file: path, startLine: 100, endLine: 100,
+        fixDisposition: { state: 'blocked', reason: 'Read-only unchanged context trace.' } }] };
+    assert.doesNotThrow(() => validateReport(guidance, guide));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('classifies project trust boundaries', () => {
   assert.deepEqual(classifyPath('tools/wta/src/master/mod.rs'), ['build-tooling', 'session-routing', 'wta', 'wta-rust']);
@@ -502,6 +700,7 @@ test('automatic repair accepts only modifications to existing WTA Rust source', 
 
 test('trusted repair staging rejects symlinks and mode changes', () => {
   const root = join(tmpdir(), `ghaw-security-${process.pid}-${Date.now()}`);
+  test.after(() => rmSync(root, { recursive: true, force: true }));
   const source = join(root, 'source');
   const target = join(root, 'target');
   const relative = 'tools/wta/src/master/mod.rs';
@@ -523,6 +722,7 @@ test('trusted repair staging rejects symlinks and mode changes', () => {
 
 test('trusted repair staging rejects symlinked source ancestors', () => {
   const root = join(tmpdir(), `ghaw-security-parent-${process.pid}-${Date.now()}`);
+  test.after(() => rmSync(root, { recursive: true, force: true }));
   const source = join(root, 'source');
   const target = join(root, 'target');
   const outside = join(root, 'outside');

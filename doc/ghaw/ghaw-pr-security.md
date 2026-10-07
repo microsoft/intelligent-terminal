@@ -136,7 +136,15 @@ confidence and strong evidence, the patch is minimal and inside existing
 `tools/wta/src/**/*.rs` files, applicable final validation passes, no check
 is failed/blocked, an independent reviewer returns `SOURCE_PASS` for the immutable
 head and exact final patch digest, and the live PR head still equals the
-reviewed SHA. Model reasoning remains defense in depth, not a separate
+reviewed SHA. Trusted scope generation derives immutable head hunk anchors and
+base deletion mappings directly from Git and binds them into the scope hash.
+Common candidate/proposal/final validation requires every proposed or fixed
+repair anchor to overlap those changes; changing a file alone does not authorize
+repairing an unrelated unchanged line. Missing hunk authority fails closed.
+Blocked guidance may still explain unchanged context. This structural gate is
+not a claim that native code proves security causality; independent reasoning
+must still establish a regression introduced by the diff.
+Model reasoning remains defense in depth, not a separate
 credential principal; trusted invocation, native checks and safe-output policy
 provide the mechanical boundaries. The primary reports only pending
 `proposed` candidates. A pending candidate cannot enter proposal validation,
