@@ -15,6 +15,7 @@ permissions:
 
 engine:
   id: copilot
+  agent: ghaw-pr-security
   model: auto
   version: '1.0.90'
 imports:

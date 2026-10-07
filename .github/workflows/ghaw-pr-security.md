@@ -46,7 +46,9 @@ permissions:
   security-events: read
   copilot-requests: write
 
-engine: copilot
+engine:
+  id: copilot
+  agent: ghaw-pr-security
 imports:
   - .github/agents/ghaw-pr-security.agent.md
   - shared/ghaw-pr-security-tools.md

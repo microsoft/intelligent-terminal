@@ -194,10 +194,19 @@ key would otherwise auto-add mutable API reads. `bash: []` and
 preparation/post-validation API checks retain their separate read token; it is
 not exposed as an agent GitHub tool.
 Generic editing is disabled in repair mode too. `write-security-repair` accepts
-bounded source text only for existing modified WTA Rust files from protected
-same-repository scope, verifies an immutable regular Git blob and rejects
-symlink escapes. It cannot alter reports, workflows, Git metadata or unrelated
-files. Proposed code still requires independent source approval and native tests.
+only 1-8 unique exact-text replacements in `edits_json`, totaling at most 8 KiB,
+for existing modified WTA Rust files from protected same-repository scope.
+All replacements are checked before any bytes are written; whole-file source
+payloads are not accepted. The writer verifies an immutable regular Git blob
+and rejects symlink escapes. It cannot alter reports, workflows, Git metadata
+or unrelated files. Report JSON is limited to 10 KiB, matching the actual native
+MCP string limit. The compiler does not preserve custom input maxLength fields,
+so these limits do not depend on a schema override.
+Proposed code still requires independent source approval and native tests.
+The independent reviewer receives the complete native original/candidate diff
+strings and relevant source-read objects, not paraphrased source. Its approval
+must bind the final native digest and immutable head, stored separately in
+`review.patchSha256` and `review.headSha`.
 The agent must not execute PR-controlled Cargo, formatting, build, or test
 commands. The trusted reconstruction fetch is complete rather than blob-filtered
 so later base-worktree materialization cannot require a removed authenticated
