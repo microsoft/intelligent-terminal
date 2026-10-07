@@ -7994,33 +7994,71 @@ namespace TerminalAppLocalTests
     void TabTests::VerticalTabHistoryTemplateInstancesOwnDistinctVisuals()
     {
         UIElement previousContent{ nullptr };
+        Grid first{ nullptr };
+        Grid second{ nullptr };
+        Grid firstParent{ nullptr };
+        Grid secondParent{ nullptr };
+        StackPanel host{ nullptr };
+        winrt::TerminalApp::TabStrip strip{ nullptr };
+        winrt::TerminalApp::TabStripHistoryHeader firstButton{ nullptr };
+        winrt::TerminalApp::TabStripHistoryHeader secondButton{ nullptr };
         const auto cleanup = wil::scope_exit([&]() {
-            TestOnUIThread([&]() { Window::Current().Content(previousContent); });
+            TestOnUIThread([&]() {
+                Window::Current().Content(previousContent);
+                host = nullptr;
+                firstButton = nullptr;
+                secondButton = nullptr;
+                first = nullptr;
+                second = nullptr;
+                firstParent = nullptr;
+                secondParent = nullptr;
+                strip = nullptr;
+            });
         });
         TestOnUIThread([&]() {
-            winrt::TerminalApp::TabStrip strip;
+            strip = winrt::TerminalApp::TabStrip{};
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             const auto rowTemplate = impl->Resources().Lookup(winrt::box_value(L"HistoryHeaderTemplate")).as<DataTemplate>();
-            const auto first = rowTemplate.LoadContent().as<Grid>();
-            const auto second = rowTemplate.LoadContent().as<Grid>();
+            first = rowTemplate.LoadContent().as<Grid>();
+            second = rowTemplate.LoadContent().as<Grid>();
             VERIFY_IS_FALSE(first == second);
-            const auto firstButton = first.FindName(L"HistoryHeaderButton").as<winrt::TerminalApp::TabStripHistoryHeader>();
-            const auto secondButton = second.FindName(L"HistoryHeaderButton").as<winrt::TerminalApp::TabStripHistoryHeader>();
+            firstButton = first.FindName(L"HistoryHeaderButton").as<winrt::TerminalApp::TabStripHistoryHeader>();
+            secondButton = second.FindName(L"HistoryHeaderButton").as<winrt::TerminalApp::TabStripHistoryHeader>();
             VERIFY_IS_FALSE(firstButton == secondButton);
-            ContentControl firstParent;
-            ContentControl secondParent;
-            firstParent.Content(first);
-            secondParent.Content(second);
-            StackPanel host;
+            firstParent = Grid{};
+            secondParent = Grid{};
+            firstParent.Children().Append(first);
+            secondParent.Children().Append(second);
+            host = StackPanel{};
+            host.Width(360);
             host.Children().Append(firstParent);
             host.Children().Append(secondParent);
             previousContent = Window::Current().Content();
             Window::Current().Content(host);
             Window::Current().Activate();
             host.UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            host.UpdateLayout();
+            return first.IsLoaded() && second.IsLoaded() &&
+                   first.Parent() == firstParent && second.Parent() == secondParent &&
+                   first.XamlRoot() && first.XamlRoot() == second.XamlRoot() &&
+                   first.ActualWidth() > 0 && first.ActualHeight() > 0 &&
+                   second.ActualWidth() > 0 && second.ActualHeight() > 0;
+        });
+        TestOnUIThread([&]() {
+            host.UpdateLayout();
             VERIFY_IS_NOT_NULL(first.Parent());
             VERIFY_IS_NOT_NULL(second.Parent());
+            VERIFY_IS_TRUE(first.Parent() == firstParent);
+            VERIFY_IS_TRUE(second.Parent() == secondParent);
             VERIFY_IS_FALSE(first.Parent() == second.Parent());
+            VERIFY_IS_TRUE(Media::VisualTreeHelper::GetParent(first) == firstParent);
+            VERIFY_IS_TRUE(Media::VisualTreeHelper::GetParent(second) == secondParent);
+            VERIFY_IS_NOT_NULL(first.XamlRoot());
+            VERIFY_IS_TRUE(first.XamlRoot() == second.XamlRoot());
+            VERIFY_IS_TRUE(first.ActualWidth() > 0 && first.ActualHeight() > 0);
+            VERIFY_IS_TRUE(second.ActualWidth() > 0 && second.ActualHeight() > 0);
             VERIFY_IS_TRUE(firstButton.Parent() == first);
             VERIFY_IS_TRUE(secondButton.Parent() == second);
             for (const auto& button : { firstButton, secondButton })
@@ -8038,6 +8076,8 @@ namespace TerminalAppLocalTests
             }
             host.UpdateLayout();
             VERIFY_IS_FALSE(first.Parent() == second.Parent());
+            VERIFY_IS_TRUE(first.Parent() == firstParent);
+            VERIFY_IS_TRUE(second.Parent() == secondParent);
         });
     }
 
