@@ -608,6 +608,25 @@ test('an unvalidated proposal card is visibly pending, not a green success', () 
     assert.doesNotMatch(card, /✅|GitHub recorded Windows validation success/);
 });
 
+test('published cards preserve measurement kind, samples and noisy spread without inventing source metadata', () => {
+    const value = proposal();
+    value.report.findings[0].evidence = [
+        { type: 'source', detail: 'Original source proof.' },
+        ...['microbenchmark', 'end-to-end', 'profile'].map(kind => ({
+            type: 'measurement', kind, noisy: true, samples: 3, spread: 'range 9–100 ms', detail: `${kind} observations.`,
+        })),
+    ];
+    const card = renderReport(value.report, { publishedRunId: 123 });
+    assert.match(card, /source: Original source proof\./);
+    for (const kind of ['microbenchmark', 'end-to-end', 'profile'])
+        assert.ok(card.includes(`measurement (kind: ${kind}, samples: 3, spread: range 9–100 ms): ${kind} observations.`));
+    assert.match(card, /\*\*Status:\*\* `fixed`/);
+    value.report.findings[0].evidence = [{ type: 'measurement', kind: 'profile', detail: 'Profile observations.' }];
+    const sparse = renderReport(value.report);
+    assert.match(sparse, /measurement \(kind: profile\): Profile observations\./);
+    assert.doesNotMatch(sparse, /samples:|spread:/);
+});
+
 test('repair proposals require exactly one confirmed validation tool; fake pass cannot permit a push', () => {
     const valid = proposal();
     const expected = { ...identity, mode: 'repair', changedFiles: valid.files.map(file => file.path) };
@@ -825,7 +844,10 @@ test('exact UTF-8 zero-context diff bytes permit 16 KiB and reject the next byte
         const agentPath = path.join(output, 'agent.json');
         fs.writeFileSync(reportPath, JSON.stringify(value.report));
         fs.writeFileSync(agentPath, JSON.stringify({ items: [{ type: 'validate_performance_repair', confirm: true }] }));
+        const trust = path.join(root, '.performance-trusted');
+        execFileSync('git', ['clone', '--quiet', '--no-local', root, trust]);
         const result = spawnSync(process.execPath, [helperPath, 'gate', '--mode', 'repair', '--output-dir', output,
+            '--trusted-repository-root', trust, '--agent-worktree-root', root,
             '--baseline', baselinePath, '--report', reportPath, '--agent-output', agentPath,
             '--pr', String(expected.prNumber), '--base', expected.baseSha, '--head', expected.headSha],
         { cwd: root, encoding: 'utf8' });
@@ -862,7 +884,7 @@ test('Git preparation and sealing separate trusted restoration from model source
         const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
         assert.deepEqual(scope.candidates.map(file => file.filename), ['tools/wta/src/master/mod.rs']);
         assert.match(fs.readFileSync(path.join(output, 'performance-patch.txt'), 'utf8'), /fn head/);
-        assert.notEqual(baseline.treeSha, git(['rev-parse', 'HEAD^{tree}']));
+        assert.ok(baseline.inventory['doc/policy.md'], 'raw baseline records trusted restoration');
         const unchangedTree = git(['write-tree']);
         git(['config', 'core.autocrlf', 'true']);
         const raw = Buffer.from('fn repaired() {}\r\n');
@@ -874,7 +896,7 @@ test('Git preparation and sealing separate trusted restoration from model source
         assert.equal(validateProposal(sealed.proposal, expected), sealed.proposal);
         const rawBlob = execFileSync('git', ['cat-file', 'blob', `${sealed.proposal.treeSha}:tools/wta/src/master/mod.rs`], { cwd: root });
         assert.deepEqual(Buffer.from(sealed.proposal.files[0].contents, 'base64'), rawBlob);
-        assert.deepEqual(rawBlob, Buffer.from('fn repaired() {}\n'));
+        assert.deepEqual(rawBlob, raw);
         assert.equal(git(['show', `${sealed.proposal.treeSha}:doc/policy.md`]), 'Reviewed policy.');
         assert.equal(git(['write-tree']), unchangedTree);
         assert.equal(reconstructTree(sealed.proposal.files, expected.headSha, expected.baseSha), sealed.proposal.treeSha);
@@ -930,7 +952,10 @@ test('CLI re-reads source scope from Git and checks the sealed tree before apply
             ...scope, candidates: [{ filename: 'tools/wta/src/unchanged.rs' }],
         }));
         write('tools\\wta\\src\\unchanged.rs', 'fn model_tried_outside_scope() {}\n');
+        const trust = path.join(root, '.performance-trusted');
+        execFileSync('git', ['clone', '--quiet', '--no-local', root, trust]);
         const rejected = run('gate', [
+            '--trusted-repository-root', trust, '--agent-worktree-root', root,
             '--mode', 'repair', '--output-dir', output, '--baseline', baselinePath,
             '--report', reportPath, '--agent-output', agentPath,
         ]);

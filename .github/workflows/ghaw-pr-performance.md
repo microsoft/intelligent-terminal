@@ -174,6 +174,22 @@ post-steps:
         exit 1
       }
 
+  - name: Require an absent post-agent trusted checkout
+    shell: bash
+    run: |
+      set -euo pipefail
+      test ! -e "$GITHUB_WORKSPACE/.performance-trusted"
+      test ! -L "$GITHUB_WORKSPACE/.performance-trusted"
+
+  - name: Checkout fresh post-agent trust context
+    uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    with:
+      repository: ${{ github.event.inputs.repo }}
+      ref: ${{ github.workflow_sha }}
+      fetch-depth: 0
+      persist-credentials: false
+      path: .performance-trusted
+
   - name: Validate repair report and changed files
     id: repair_gate
     shell: bash
@@ -184,9 +200,11 @@ post-steps:
       TRUSTED_SHA: ${{ github.workflow_sha }}
     run: |
       set -euo pipefail
-      git show "${TRUSTED_SHA}:.github/skills/pr-performance-review/scripts/performance-review.mjs" \
-        > "$RUNNER_TEMP/performance-trusted.mjs"
+      trusted_root="$GITHUB_WORKSPACE/.performance-trusted"
+      cp "$trusted_root/.github/skills/pr-performance-review/scripts/performance-review.mjs" \
+        "$RUNNER_TEMP/performance-trusted.mjs"
       status="$(node "$RUNNER_TEMP/performance-trusted.mjs" gate \
+        --trusted-repository-root "$trusted_root" --agent-worktree-root "$GITHUB_WORKSPACE" \
         --output-dir /tmp/gh-aw/performance-result \
         --baseline "$RUNNER_TEMP/gh-aw/performance-baseline.json" \
         --report /tmp/gh-aw/performance-report.json \

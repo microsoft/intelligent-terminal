@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -190,7 +191,11 @@ export function renderReport(report, { publishedRunId } = {}) {
             `**Expected:** ${finding.expected}`,
             `**Impact:** ${finding.impact}`,
             `**Environment:** ${finding.nativeEnvironment.architecture} — ${finding.nativeEnvironment.details}`,
-            `**Evidence:** ${finding.evidence.map(evidence => `${evidence.type}: ${evidence.detail}`).join('; ')}`,
+            `**Evidence:** ${finding.evidence.map(evidence => {
+                const metadata = ['kind', 'samples', 'spread'].filter(key => evidence[key] !== undefined)
+                    .map(key => `${key}: ${evidence[key]}`);
+                return `${evidence.type}${metadata.length ? ` (${metadata.join(', ')})` : ''}: ${evidence.detail}`;
+            }).join('; ')}`,
             `**Disposition:** ${published && finding.fixDisposition === 'proposed' ? 'fixed' : finding.fixDisposition} — ${finding.proposedFix}`,
             `**Validation:** ${finding.validation}`, ''
         );
@@ -251,9 +256,14 @@ export function validateVerdict(verdict, expected) {
     if (['action_required', 'blocked'].includes(verdict.status)) fail(`performance review requires action: ${verdict.status}`);
 }
 
+let repositoryRoot;
+
 function git(args, env = {}, options = {}) {
+    const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
     return execFileSync('git', ['--no-pager', ...args], {
-        timeout: 30000, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8', env: { ...process.env, ...env }, ...options,
+        timeout: 30000, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8', cwd: repositoryRoot,
+        env: { ...inherited, GIT_CONFIG_NOSYSTEM: '1',
+            GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null', GIT_NO_REPLACE_OBJECTS: '1', ...env }, ...options,
     });
 }
 
@@ -272,11 +282,34 @@ function withIndex(revision, action) {
     }
 }
 
-function workspaceTree() {
-    return withIndex('HEAD', env => {
-        git(['add', '--all', '--', '.'], env);
-        return git(['write-tree'], env).trim();
-    });
+function sourceInventory(root, excludedRoot) {
+    const inventory = Object.create(null);
+    const walk = (directory, prefix = '') => {
+        for (const name of fs.readdirSync(directory).sort()) {
+            if (!prefix && name === '.git') continue;
+            const filename = path.join(directory, name);
+            if (excludedRoot && filename === excludedRoot) continue;
+            const relative = prefix ? `${prefix}/${name}` : name;
+            classifyFile({ filename: relative });
+            const stat = fs.lstatSync(filename);
+            if (stat.isSymbolicLink()) {
+                inventory[relative] = { mode: '120000', hash: createHash('sha256').update(fs.readlinkSync(filename)).digest('hex') };
+            } else if (stat.isDirectory()) walk(filename, relative);
+            else if (stat.isFile()) {
+                inventory[relative] = { mode: process.platform !== 'win32' && (stat.mode & 0o111) ? '100755' : '100644',
+                    hash: createHash('sha256').update(fs.readFileSync(filename)).digest('hex') };
+            } else fail('source inventory requires regular files, directories, or symlinks');
+        }
+    };
+    if (fs.lstatSync(root).isSymbolicLink()) fail('agent worktree root must not be a symlink');
+    walk(root);
+    return inventory;
+}
+
+function inventoryChanges(baseline, current) {
+    if (!baseline || typeof baseline !== 'object' || Array.isArray(baseline)) fail('trusted source inventory is missing');
+    return [...new Set([...Object.keys(baseline), ...Object.keys(current)])].sort()
+        .filter(filename => JSON.stringify(baseline[filename]) !== JSON.stringify(current[filename]));
 }
 
 export function prepareScope(expected, outputDirectory, baselinePath) {
@@ -298,7 +331,11 @@ export function prepareScope(expected, outputDirectory, baselinePath) {
     const candidates = scope.candidates.map(file => `:(literal)${file.filename}`);
     fs.writeFileSync(path.join(outputDirectory, 'performance-patch.txt'), candidates.length ?
         git(['diff', '--no-ext-diff', '--no-textconv', '--unified=5', expected.baseSha, expected.headSha, '--', ...candidates]) : '', 'utf8');
-    if (baselinePath) writeJson(baselinePath, { identity: scope.identity, treeSha: workspaceTree() });
+    if (baselinePath) {
+        const root = git(['rev-parse', '--show-toplevel']).trim();
+        const inventory = sourceInventory(root);
+        writeJson(baselinePath, { identity: scope.identity, treeSha: git(['rev-parse', `${expected.headSha}^{tree}`]).trim(), inventory });
+    }
     return scope;
 }
 
@@ -417,15 +454,19 @@ export function reconstructTree(files, headSha, baseSha) {
 export function sealProposal(scope, report, baseline, expected) {
     validateIdentity(baseline?.identity, expected);
     if (!SHA_PATTERN.test(baseline?.treeSha ?? '')) fail('trusted preparation baseline is missing');
-    const tree = workspaceTree();
-    const changedFiles = changedPaths(baseline.treeSha, tree);
+    const root = expected.agentWorktreeRoot ?? git(['rev-parse', '--show-toplevel']).trim();
+    const inventory = sourceInventory(root, repositoryRoot);
+    const changedFiles = inventoryChanges(baseline.inventory, inventory);
     validateRepairFileCount(changedFiles);
     const files = changedFiles.map(filename => {
         if (!scope.candidates.some(file => file.filename === filename)) fail('repair changes must be confined to original candidate files');
-        const entry = git(['ls-tree', tree, '--', `:(literal)${filename}`]).trim().match(/^(100644) blob ([0-9a-f]{40})\t/);
-        if (!entry) fail('repair deletes or changes the mode of a source file');
-        const content = git(['cat-file', 'blob', entry[2]], {}, { encoding: null, maxBuffer: MAX_REPAIR_BLOB_BYTES });
-        return { path: filename, mode: entry[1], contents: content.toString('base64') };
+        const entry = inventory[filename];
+        if (entry?.mode !== '100644' || baseline.inventory[filename]?.mode !== entry.mode)
+            fail('repair deletes or changes the mode of a source file');
+        const content = fs.readFileSync(path.join(root, ...filename.split('/')));
+        if (content.length > MAX_REPAIR_BLOB_BYTES || createHash('sha256').update(content).digest('hex') !== entry.hash)
+            fail('repair source changed during collection or exceeds the transport size limit');
+        return { path: filename, mode: entry.mode, contents: content.toString('base64') };
     });
     const proposal = {
         version: 1, identity: scope.identity, treeSha: reconstructTree(files, expected.headSha, expected.baseSha),
@@ -492,6 +533,13 @@ function main() {
         }
         case 'gate': {
             const directory = option(args, '--output-dir');
+            if (expected.mode === 'repair') {
+                repositoryRoot = fs.realpathSync(option(args, '--trusted-repository-root'));
+                expected.agentWorktreeRoot = fs.realpathSync(option(args, '--agent-worktree-root'));
+                if (repositoryRoot === expected.agentWorktreeRoot ||
+                    repositoryRoot.startsWith(`${expected.agentWorktreeRoot}${path.sep}.git${path.sep}`))
+                    fail('post-agent Git requires a separate fresh trusted repository');
+            }
             // Agent-writable scope and source inventories cannot override immutable Git objects.
             const scope = prepareScope(expected, directory);
             const reportPath = option(args, '--report');
@@ -501,11 +549,11 @@ function main() {
                 const baseline = readJson(option(args, '--baseline'));
                 validateIdentity(baseline.identity, expected);
                 if (!SHA_PATTERN.test(baseline.treeSha ?? '')) fail('trusted preparation baseline is missing');
-                expected.changedFiles = changedPaths(baseline.treeSha, workspaceTree());
                 if (report?.findings?.some(finding => finding.fixDisposition === 'proposed')) {
                     sealed = sealProposal(scope, report, baseline, expected);
                     expected.changedFiles = sealed.changedFiles;
-                }
+                } else expected.changedFiles = inventoryChanges(baseline.inventory,
+                    sourceInventory(expected.agentWorktreeRoot, repositoryRoot));
             }
             gatePublication(scope, report, readJson(option(args, '--agent-output')), expected);
             if (sealed) writeJson(path.join(directory, 'performance-proposal.json'), sealed.proposal);

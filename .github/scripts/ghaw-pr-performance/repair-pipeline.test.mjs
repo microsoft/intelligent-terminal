@@ -62,6 +62,8 @@ fn main() {
     fs.writeFileSync(sourcePath, headSource);
     formatFixture();
     const headSha = commit();
+    const sealingTrust = path.join(workspace, 'sealing-trust');
+    execFileSync('git', ['clone', '--quiet', '--no-local', root, sealingTrust]);
     const artifactRoot = fs.mkdtempSync(path.join(previous, '.performance-pipeline-artifacts-'));
     t.after(() => fs.rmSync(artifactRoot, { recursive: true, force: true }));
     const baseline = path.join(artifactRoot, 'baseline.json');
@@ -95,7 +97,8 @@ fn main() {
         items: [{ type: 'validate_performance_repair', confirm: true }], errors: [],
     }));
     const sealed = run(['gate', '--output-dir', out, '--baseline', baseline,
-        '--report', reportPath, '--agent-output', queuePath, '--mode', 'repair', ...identity]);
+        '--report', reportPath, '--agent-output', queuePath, '--mode', 'repair',
+        '--trusted-repository-root', sealingTrust, '--agent-worktree-root', root, ...identity]);
     assert.equal(sealed.status, 0, sealed.stderr);
     const proposalPath = path.join(out, 'performance-proposal.json');
     const immutableArtifact = fs.readFileSync(proposalPath);

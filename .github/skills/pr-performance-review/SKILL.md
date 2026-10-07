@@ -165,6 +165,20 @@ Only the publisher can render a proposal as `fixed`.
 These are publication and validation gates, not a full sandbox for candidate
 code executed by Cargo; passing tests alone do not prove behavioral equivalence.
 
+Post-agent sealing must use a fresh caller-owned checkout created after the
+agent has stopped. Pass `--trusted-repository-root` and `--agent-worktree-root`
+separately to the repair gate. Load the helper from that fresh immutable
+workflow checkout, never via `git show` in the agent's repository. Its Git
+metadata/objects define scope, original tests, and reconstruction. Raw physical
+source inventories compare against the protected pre-agent snapshot, including
+trusted instruction restoration, ignored/untracked files, deletions and
+filesystem modes. Do not use the agent's index, config, attributes, hooks,
+replace refs, remote URLs or `core.worktree` for those operations. Candidate
+bytes are read directly and inserted with `hash-object --stdin`/`update-index`
+in the fresh Git context; clean filters and line-ending conversion do not run.
+The caller must keep the baseline outside the agent's writable sandbox and
+create the fresh checkout from canonical caller repository/revision inputs.
+
 Native C++ repairs currently lack a supported backend; keep them unresolved and
 unedited with the relevant MSBuild/TAEF handoff. This limitation does not block
 eligible WTA fixes and must not be hidden by substituting a Linux timing or

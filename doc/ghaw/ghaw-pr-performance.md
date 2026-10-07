@@ -57,6 +57,34 @@ content is never executed to produce the report.
 HIGH requires high confidence plus measurement or source proof of complexity,
 blocking, or resource lifetime. MEDIUM/LOW are advice-only. A microbenchmark
 is not end-to-end proof; noisy measurements need samples and spread.
+Published evidence entries retain measurement kind, sample count and spread
+when supplied; source-only evidence retains its existing format.
+
+After the agent stops, the repair worker requires an absent
+`.performance-trusted` directory and creates a fresh pinned checkout of the
+immutable workflow revision, using the canonical caller repository input.
+Both the runtime helper and all sealing Git operations use this fresh context,
+not the agent's repository metadata or objects. The gate receives separate
+trusted-repository and physical agent-worktree roots. It compares a protected
+pre-agent raw source inventory (including trusted instruction restoration)
+with the final physical files, including ignored/untracked files, deletions,
+symlinks and filesystem modes. The freshly created trusted checkout is the
+only additional excluded source directory; the original root `.git` is never
+consulted. Candidate bytes are hashed directly through stdin and reconstructed
+with a private index in the trusted checkout, without staging the agent tree,
+clean filters, attribute conversion, or trusting its remote/replace refs.
+Original scope, inline-test protection and all diff ceilings use immutable
+objects from the fresh checkout. Git helper calls also ignore inherited
+Git overrides and global/system configuration.
+
+This boundary assumes the agent has stopped and cannot mutate the protected
+baseline or fresh checkout; it is not a concurrent-writer or host sandbox.
+Windows physical inventories cannot infer Git executable-bit changes from
+filesystem permissions; replacements must still match immutable `100644`
+head entries. Framework credential setup remains compiler-owned and precedes
+these post-steps; this change neither replaces nor claims to sandbox it.
+Local malicious-filter, worktree-redirect, replace-ref and compiled-post-step
+fixtures cover this boundary. No additional hosted performance trials ran.
 
 Use existing WPR/ConsoleBench, pane-context and hook-overhead facilities when
 relevant. Missing measurement is unavailable, not a passing benchmark.
