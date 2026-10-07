@@ -45,7 +45,16 @@ agent-edited bytes.
 Both workers import the same mode-aware
 `.github/agents/ghaw-pr-security.agent.md` and install the same
 `.github/skills/ghaw-pr-security/SKILL.md`; the skill's bundled script owns
-mechanical scope/report validation. The workflow selects `guide` or `repair`
+mechanical scope/report validation. Both also select that native primary with
+`engine.agent: ghaw-pr-security`; importing its text alone does not replace
+the CLI's default primary or its generic security-review delegation. Both pin
+CLI 1.0.90, matching the actual restricted-model validation rather than relying
+on the compiler fallback or a changing compatibility-map selection.
+The primary profile explicitly lists only trusted-input reads, skill/agent
+invocation, the five native capabilities and `safeoutputs/noop`. Selecting a
+custom profile without a tool list would otherwise expose the CLI's default
+shell/edit tools, even when the workflow supplies only native MCP approvals.
+The workflow selects `guide` or `repair`
 mode and supplies the corresponding tools, so review-only and repair behavior
 do not require duplicate primary agents. The repair workflow embeds only its
 independent read-only repair gate as an inline subagent. Installing the agent
@@ -176,6 +185,12 @@ preparation and inline restoration. It does not rely on the generated
 PR-checkout step's conditional restoration, since that step is deliberately
 ineligible in this dispatch context. Runtime prompts and shared tool imports
 therefore cannot come from PR-edited files.
+Generated skill installation stamps `metadata.local-path` into the tracked
+skill header. After inline skills are restored, a native pre-agent step restores
+that file byte-for-byte from the trusted workflow revision, before the guide
+baseline or inference. Runtime metadata must not contaminate the candidate
+diff or invalidate an otherwise authorized Rust repair; the inspector still
+checks the entire diff rather than silently ignoring instruction changes.
 
 ## Hosted-trial readiness
 
@@ -187,17 +202,28 @@ wildcard, it accepts only bounded report data, validates immutable identity,
 and writes one preselected regular file. Immutable Git inspection also uses
 fixed native read tools, with external diff/textconv, pagers, Git replacement
 refs, and filesystem-monitor hooks disabled. No model shell execution is
-granted. The inline reviewer has read/search context only.
+granted. The inline reviewer has file read and three specific read-only native
+MCP capabilities, but no shell, writer, report-submission, or agent tools.
 The default GitHub MCP server is explicitly disabled; an omitted `tools.github`
 key would otherwise auto-add mutable API reads. `bash: []` and
 `cli-proxy: false` select native MCP transport without a model shell. Native
 preparation/post-validation API checks retain their separate read token; it is
 not exposed as an agent GitHub tool.
 Generic editing is disabled in repair mode too. `write-security-repair` accepts
-bounded source text only for existing modified WTA Rust files from protected
-same-repository scope, verifies an immutable regular Git blob and rejects
-symlink escapes. It cannot alter reports, workflows, Git metadata or unrelated
-files. Proposed code still requires independent source approval and native tests.
+only 1-8 unique exact-text replacements in `edits_json`, totaling at most 8 KiB,
+for existing modified WTA Rust files from protected same-repository scope.
+All replacements are checked before any bytes are written; whole-file source
+payloads are not accepted. The writer verifies an immutable regular Git blob
+and rejects symlink escapes. It cannot alter reports, workflows, Git metadata
+or unrelated files. Report JSON is limited to 10 KiB, matching the actual native
+MCP string limit. The compiler does not preserve custom input maxLength fields,
+so these limits do not depend on a schema override.
+Proposed code still requires independent source approval and native tests.
+The independent reviewer fetches the complete native original/candidate diff
+and relevant immutable source itself through read-only native tools. Parent
+copies or paraphrased source do not substitute for those reads. Its approval
+must bind the final native digest and immutable head, stored separately in
+`review.patchSha256` and `review.headSha`.
 The agent must not execute PR-controlled Cargo, formatting, build, or test
 commands. The trusted reconstruction fetch is complete rather than blob-filtered
 so later base-worktree materialization cannot require a removed authenticated
@@ -229,6 +255,10 @@ checksum-pinned rustup installer.
 Host dependency preparation likewise uses the checksum-pinned public rustup
 1.29.1 installer, isolated Cargo/Rustup directories, and explicit installed
 executables rather than the mutable preinstalled runner toolchain.
+The verified host bootstrapper keeps its required `rustup-init.exe` basename:
+rustup uses executable-name dispatch, and a prefixed filename enters proxy mode
+and exits before installation. Host installer stdout/stderr are retained with
+native proof so setup failures are diagnosable.
 The executor uses its immutable local image ID, not a mutable tag. Do not
 substitute the Linux image, guess a Windows Rust tag, copy arbitrary
 host toolchain directories, or enable nested Hyper-V as a workaround.

@@ -99,13 +99,15 @@ review reasoning and the structured report.
    - the patch is small, localized, preserves intended behavior, and does not
      weaken authorization/detection, add an allowlist, touch CI/security policy,
      or change unrelated dependencies;
-   - an independent read-only reviewer receives the FULL immutable original
-     diff from `read-security-diff`, base/head source traces and invariants from
-     `read-security-source`, and FULL final candidate patch, native
-     `patchSha256`, and immutable `headSha` from `inspect-security-repair`;
-     it re-derives the finding, checks the exact patch and required validation
-     plan, and returns `SOURCE_PASS` bound to that immutable head and digest.
-     Parent summaries are not source proof. Missing or incomplete source/patch
+   - an independent read-only reviewer fetches the FULL immutable original
+     diff itself through `read-security-diff`, reads base/head source traces
+     and invariants through `read-security-source`, and inspects the FULL final
+     candidate through `inspect-security-repair`. Pass the expected immutable
+     head and native patch digest, finding hypothesis, and validation plan.
+     The reviewer must independently check those bindings against its own
+     native reads, re-derive the finding, and return `SOURCE_PASS` only for that
+     head and digest. Parent copies, summaries, pseudocode, and reformatted
+     excerpts are not source proof. Missing or incomplete native source/patch
      evidence requires `FAIL`. Any later edit requires fresh inspection/review.
    Report the candidate as `proposed`, with `review.status: source-pass`. Do
    not claim tests have passed or mark a finding `fixed`. The trusted native
@@ -115,7 +117,10 @@ review reasoning and the structured report.
    runtime proof cannot earn source approval. Medium/low findings are never edited.
    Apply candidate source text only through `write-security-repair`; generic
    edit and shell tools are disabled. It accepts only existing modified WTA Rust
-   paths in the protected same-repository repair scope. If source review rejects
+   paths in the protected same-repository repair scope. Supply `edits_json`
+   with 1 to 8 exact `oldText`/`newText` replacements, at most 8 KiB total.
+   Each old fragment must occur once; all edits are checked before any bytes
+   are written. Do not re-emit a whole source file. If source review rejects
    a candidate, restore the original immutable source using that same bounded
    writer and leave `patch` empty; do not leave unapproved modified
    files behind or mark the rejected candidate `proposed`.
@@ -143,6 +148,7 @@ The native setup initializes the report from the immutable scope. Preserve
 `repositoryRelation`, and `mode`; do not reconstruct or guess them. Complete
 `summary` and review content, and submit complete JSON as the `report_json`
 string to `submit-security-report`.
+The complete JSON string must fit 10 KiB, matching the native MCP input limit.
 An unchanged template with an empty summary is rejected.
 
 The shared data-only MCP tools load trusted validator code and immutable scope
@@ -202,6 +208,23 @@ The completed JSON has this shape:
   "patch": []
 }
 ```
+
+For a source-approved repair, replace the example's `review` object with:
+
+```json
+{
+  "status": "source-pass",
+  "reviewer": "ghaw-pr-security-reviewer",
+  "headSha": "<native immutable head, 40 hex>",
+  "patchSha256": "<native inspect-security-repair digest, 64 hex>",
+  "evidence": "Independent reviewer returned SOURCE_PASS for the complete original diff and exact candidate. Native tests have not run."
+}
+```
+
+The bindings are separate fields, not hashes embedded only in `evidence`.
+Copy them from the native inspection and require the actual reviewer response
+to attest those same values. Correcting report formatting for an unchanged,
+already approved patch does not require another review.
 
 ### Required report limits and final self-check
 

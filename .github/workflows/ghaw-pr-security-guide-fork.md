@@ -46,7 +46,10 @@ permissions:
   security-events: read
   copilot-requests: write
 
-engine: copilot
+engine:
+  id: copilot
+  agent: ghaw-pr-security
+  version: '1.0.90'
 imports:
   - .github/agents/ghaw-pr-security.agent.md
   - shared/ghaw-pr-security-tools.md
@@ -164,6 +167,17 @@ steps:
         --output /tmp/gh-aw/agent/security-findings.json
 
 pre-agent-steps:
+  - name: Restore immutable skill bytes after generated skill installation
+    shell: bash
+    env:
+      TRUSTED_SHA: ${{ github.workflow_sha }}
+    run: |
+      set -euo pipefail
+      skill=.github/skills/ghaw-pr-security/SKILL.md
+      original="$RUNNER_TEMP/gh-aw/security-skill.original.md"
+      git -c core.fsmonitor=false show "$TRUSTED_SHA:$skill" > "$original"
+      cp "$original" "$GITHUB_WORKSPACE/$skill"
+      cmp "$original" "$GITHUB_WORKSPACE/$skill"
   - name: Record trusted fork workspace baseline
     shell: bash
     run: |

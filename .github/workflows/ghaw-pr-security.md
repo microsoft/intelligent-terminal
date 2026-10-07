@@ -46,7 +46,10 @@ permissions:
   security-events: read
   copilot-requests: write
 
-engine: copilot
+engine:
+  id: copilot
+  agent: ghaw-pr-security
+  version: '1.0.90'
 imports:
   - .github/agents/ghaw-pr-security.agent.md
   - shared/ghaw-pr-security-tools.md
@@ -256,6 +259,17 @@ steps:
         --output /tmp/gh-aw/agent/security-findings.json
 
 pre-agent-steps:
+  - name: Restore immutable skill bytes after generated skill installation
+    shell: bash
+    env:
+      TRUSTED_SHA: ${{ github.workflow_sha }}
+    run: |
+      set -euo pipefail
+      skill=.github/skills/ghaw-pr-security/SKILL.md
+      original="$RUNNER_TEMP/gh-aw/security-skill.original.md"
+      git -c core.fsmonitor=false show "$TRUSTED_SHA:$skill" > "$original"
+      cp "$original" "$GITHUB_WORKSPACE/$skill"
+      cmp "$original" "$GITHUB_WORKSPACE/$skill"
   - name: Enforce credential-free agent checkout
     shell: bash
     run: |
@@ -385,14 +399,14 @@ editing is disabled. Native scope/path checks reject report, workflow, Git
 metadata, new-file and unrelated destinations.
 
 For a proposed repair, invoke the registered `ghaw-pr-security-reviewer` after the
-final edit. Use `read-security-diff` to obtain the FULL immutable original diff,
-`read-security-source` for the original base/head source traces and applicable
-invariants, and `inspect-security-repair` for the FULL final candidate patch,
-native `patchSha256`, and immutable `headSha`. Pass these tool-returned bytes and
-identities, the comparison base, exact finding, and required validation plan to
-the reviewer, not a parent summary or selected hunks. If any output is incomplete,
-obtain bounded path/range reads until the full context is available; if it cannot
-be provided, leave the repair blocked. Record `review.status: source-pass` only
+final edit. Pass the expected immutable `headSha`, native `patchSha256` from
+`inspect-security-repair`, comparison base, finding hypothesis, and required
+validation plan. The reviewer has only read-only native inspection capabilities;
+it must independently fetch the full original diff, base/head source traces
+and invariants, and full final candidate through those tools, then compare its
+own native head/digest with the expected bindings. Parent-copied source and
+patch text is not independent proof. Missing or incomplete native evidence
+leaves the repair blocked. Record `review.status: source-pass` only
 for explicit `SOURCE_PASS` bound to that exact native digest and immutable head.
 Any later edit invalidates approval and requires fresh inspection and review.
 Source approval does not claim that later native tests already passed.
@@ -416,19 +430,22 @@ blocking with a concrete reason.
 ## agent: `ghaw-pr-security-reviewer`
 ---
 description: Independently verifies a proposed security finding and repair
-tools: ['read', 'search']
+tools: ['read', 'mcpscripts/read_security_diff', 'mcpscripts/read_security_source', 'mcpscripts/inspect_security_repair']
 ---
 
 Re-derive the original finding from the immutable comparison-base/head patch,
 then inspect the proposed final patch and required validation plan. Do not trust
-the repair agent's severity, confidence, selected lines, or summary. Require the
-FULL original diff from `read-security-diff`, base/head source and invariant
-context from `read-security-source`, and FULL candidate patch with native digest
-and immutable head from `inspect-security-repair`, all provided by the parent.
-This is an independent reasoning pass over native-read evidence, not independent
-execution or permission to use a report writer. Return `FAIL` if source proof,
-full patch context, or native identity/digest is missing or incomplete; do not
-claim independence based on the parent's conclusions. Return
+the repair agent's severity, confidence, selected lines, summary, or copied code.
+Use your own read-only native tools to fetch the FULL original diff with
+`read-security-diff`, base/head source and invariant context with
+`read-security-source`, and FULL candidate patch with native digest and immutable
+head with `inspect-security-repair`. Compare that native head/digest to the
+expected values supplied by the parent. Do not replace these calls with parent
+excerpts or summaries. Use bounded reads when output is incomplete.
+This is independent source reasoning, not permission to execute code or write.
+Return `FAIL` if native source proof, full patch context, or matching
+identity/digest is missing; do not claim independence based on the parent's
+conclusions. Return
 `SOURCE_PASS` only when every proposed finding is HIGH/high-confidence, the
 original regression is proven, the patch is minimal and preserves intended
 behavior, the validation plan addresses the regression, no lower-severity issue

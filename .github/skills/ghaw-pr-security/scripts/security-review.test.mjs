@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   attestChecks, buildScope, classifyPath, createReportTemplate, normalizePath, renderReport, validatePatch,
   validateQueuedOutput, validateReport, validateProposal, stageRepairFiles, validateRepairScope,
-  submitSecurityReport, readSecurityDiff, readSecuritySource, inspectSecurityRepair, writeSecurityRepair, verifyCredentialFree,
+  submitSecurityReport, readSecurityDiff, readSecuritySource, inspectSecurityRepair, writeSecurityRepair, replaceSecurityRepairText, verifyCredentialFree,
 } from './security-review.mjs';
 
 const BASE = '1'.repeat(40);
@@ -605,6 +605,15 @@ test('native CLI and bounded data-only report submission work end to end', () =>
     const repairResult = writeSecurityRepair(writerScope, workspace, 'tools/wta/src/routing.rs', candidateText);
     assert.match(repairResult.patch, /bounded repair candidate/);
     assert.equal(readFileSync(source, 'utf8'), candidateText);
+    assert.throws(() => replaceSecurityRepairText(writerScope, workspace, 'tools/wta/src/routing.rs',
+      JSON.stringify([{ oldText: 'not present', newText: 'x' }])), /exactly once/);
+    assert.equal(readFileSync(source, 'utf8'), candidateText);
+    const edits = [{ oldText: 'bounded repair candidate', newText: 'exact-text repaired candidate' }];
+    const edited = replaceSecurityRepairText(writerScope, workspace, 'tools/wta/src/routing.rs', JSON.stringify(edits));
+    assert.match(edited.patch, /exact-text repaired candidate/);
+    assert.throws(() => replaceSecurityRepairText(writerScope, workspace, 'tools/wta/src/routing.rs',
+      JSON.stringify([{ oldText: 'exact-text', newText: 'partial' }, { oldText: 'missing', newText: '' }])), /exactly once/);
+    assert(readFileSync(source, 'utf8').includes('exact-text'));
     writeSecurityRepair(writerScope, workspace, 'tools/wta/src/routing.rs',
       readSecuritySource(writerScope, 'head', 'tools/wta/src/routing.rs', 1, 1, workspace).replace(/^1: /, '') + '\n');
     git('replace', head, base);
@@ -662,7 +671,7 @@ test('bounded report submission validates data before writing and rejects symlin
   try {
     assert.throws(() => submitSecurityReport(JSON.stringify({ ...valid, summary: 's'.repeat(801) }), current, path), /at most 800/);
     assert.equal(readFileSync(path, 'utf8'), 'original');
-    assert.throws(() => submitSecurityReport('x'.repeat(256 * 1024 + 1), current, path), /256 KiB/);
+    assert.throws(() => submitSecurityReport('x'.repeat(10 * 1024 + 1), current, path), /10 KiB/);
     const result = submitSecurityReport(JSON.stringify(valid), current, path);
     assert.equal(result.accepted, true);
     assert.equal(JSON.parse(readFileSync(path, 'utf8')).headSha, HEAD);

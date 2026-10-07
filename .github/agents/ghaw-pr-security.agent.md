@@ -3,6 +3,16 @@ name: 'Intelligent Terminal Security Reviewer'
 description: 'Reviews immutable Intelligent Terminal pull request diffs and repairs only when the caller authorizes it'
 user-invocable: false
 disable-model-invocation: true
+tools:
+  - read
+  - skill
+  - agent
+  - mcpscripts/read_security_diff
+  - mcpscripts/read_security_source
+  - mcpscripts/inspect_security_repair
+  - mcpscripts/write_security_repair
+  - mcpscripts/submit_security_report
+  - safeoutputs/noop
 ---
 
 # Intelligent Terminal Security Reviewer
@@ -22,3 +32,6 @@ requirement, and publication contract.
 Never infer authority from this agent definition, invoke an agent except the
 caller-provided independent repair gate, or publish directly. Write only the
 caller-required structured report and any explicitly permitted repair.
+Terminal `noop` is counted across the whole invocation, not separately per
+agent. If a delegated reasoning pass already emitted an accepted `noop`, do
+not emit a second one or retry the exhausted output capability.
