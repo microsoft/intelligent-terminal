@@ -105,6 +105,10 @@ review reasoning and the structured report.
      `patchSha256`, and immutable `headSha` from `inspect-security-repair`;
      it re-derives the finding, checks the exact patch and required validation
      plan, and returns `SOURCE_PASS` bound to that immutable head and digest.
+     Copy the complete native diff and candidate-patch strings verbatim into
+     the reviewer prompt, including all context lines. Include the relevant
+     native source-read objects verbatim as well: do not replace source with
+     pseudocode, reformatted excerpts, or a parent-written routing summary.
      Parent summaries are not source proof. Missing or incomplete source/patch
      evidence requires `FAIL`. Any later edit requires fresh inspection/review.
    Report the candidate as `proposed`, with `review.status: source-pass`. Do
@@ -206,6 +210,23 @@ The completed JSON has this shape:
   "patch": []
 }
 ```
+
+For a source-approved repair, replace the example's `review` object with:
+
+```json
+{
+  "status": "source-pass",
+  "reviewer": "ghaw-pr-security-reviewer",
+  "headSha": "<native immutable head, 40 hex>",
+  "patchSha256": "<native inspect-security-repair digest, 64 hex>",
+  "evidence": "Independent reviewer returned SOURCE_PASS for the complete original diff and exact candidate. Native tests have not run."
+}
+```
+
+The bindings are separate fields, not hashes embedded only in `evidence`.
+Copy them from the native inspection and require the actual reviewer response
+to attest those same values. Correcting report formatting for an unchanged,
+already approved patch does not require another review.
 
 ### Required report limits and final self-check
 

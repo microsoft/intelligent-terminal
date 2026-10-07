@@ -390,7 +390,10 @@ final edit. Use `read-security-diff` to obtain the FULL immutable original diff,
 invariants, and `inspect-security-repair` for the FULL final candidate patch,
 native `patchSha256`, and immutable `headSha`. Pass these tool-returned bytes and
 identities, the comparison base, exact finding, and required validation plan to
-the reviewer, not a parent summary or selected hunks. If any output is incomplete,
+the reviewer. Copy the complete native diff and candidate strings verbatim,
+including all context lines, and include relevant native source-read objects
+verbatim. Do not substitute a parent summary, pseudocode, reformatted excerpts,
+or selected hunks. If any output is incomplete,
 obtain bounded path/range reads until the full context is available; if it cannot
 be provided, leave the repair blocked. Record `review.status: source-pass` only
 for explicit `SOURCE_PASS` bound to that exact native digest and immutable head.
