@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { appendFileSync, chmodSync, closeSync, constants, copyFileSync, lstatSync, openSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, closeSync, constants, lstatSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -105,13 +105,13 @@ export function classifyPath(path) {
   return [...domains].sort();
 }
 
-function git(args, cwd) {
+function git(args, cwd, environment = {}) {
   return execFileSync('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '--no-pager', ...args], {
     encoding: 'utf8',
     maxBuffer: 16 * 1024 * 1024,
     timeout: 30_000,
     ...(cwd ? { cwd } : {}),
-    env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1', GIT_PAGER: 'cat' },
+    env: { ...process.env, ...environment, GIT_NO_REPLACE_OBJECTS: '1', GIT_PAGER: 'cat' },
   });
 }
 
@@ -559,7 +559,98 @@ export function readSecuritySource(scope, revision, path, startLine = 1, endLine
 export function inspectSecurityRepair(scope, workspace) {
   if (scope?.mode !== 'repair' || !SHA.test(scope.headSha ?? '')) fail('repair inspection is not available in guide mode');
   const patch = git(['--no-pager', 'diff', '--no-ext-diff', '--no-textconv', '--binary', scope.headSha, '--'], workspace);
+  validateRepairChanges(scope, patch);
   return { patch, patchSha256: createHash('sha256').update(patch).digest('hex'), headSha: scope.headSha };
+}
+
+export function validateRepairChanges(scope, patch) {
+  const { scopeSha256, ...identity } = scope;
+  if (scopeSha256 !== createHash('sha256').update(stableJson(identity)).digest('hex')) {
+    fail('immutable hunk scope identity does not match its hash');
+  }
+  validateRepairScope(scope);
+  let file;
+  let oldLine = 0;
+  let oldRemaining = 0;
+  let newRemaining = 0;
+  let segment;
+  let changedSegments = 0;
+  const flush = () => {
+    if (!segment) return;
+    const ranges = file?.hunks?.map(hunk => ({
+      start: hunk.headCount ? hunk.headStart : Math.min(hunk.headStart, file.headLineCount),
+      end: hunk.headCount ? hunk.headStart + hunk.headCount - 1 : Math.min(hunk.headStart, file.headLineCount),
+    })) ?? [];
+    const authorized = line => ranges.some(range => range.start >= 1 && line >= range.start && line <= range.end);
+    const permitted = file && (segment.removed
+      ? Array.from({ length: segment.removed }, (_, i) => segment.start + i).every(authorized)
+      : ranges.some(range => range.start >= 1 && segment.start - 1 >= range.start - 1 && segment.start - 1 <= range.end));
+    if (!permitted) {
+      fail('actual repair changes extend outside authorized immutable HEAD hunks; manual repair required');
+    }
+    changedSegments++;
+    segment = undefined;
+  };
+  const complete = () => {
+    flush();
+    if (oldRemaining || newRemaining) fail('repair patch hunk counts are invalid');
+  };
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      complete();
+      file = undefined;
+    } else if (line.startsWith('+++ b/') && !oldRemaining && !newRemaining) {
+      const path = normalizePath(line.slice(6));
+      file = scope.immutableHunks?.find(item => item.path === path);
+      if (!file || !scope.changedFiles.some(item => item.path === path && item.status === 'M')) {
+        fail('repair patch path is outside immutable scope');
+      }
+    } else if (line.startsWith('@@ ')) {
+      complete();
+      const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+      if (!header || !file) fail('repair patch hunk is invalid');
+      oldRemaining = Number(header[2] ?? 1);
+      newRemaining = Number(header[4] ?? 1);
+      oldLine = Number(header[1]) + (oldRemaining === 0 ? 1 : 0);
+      if (oldLine < 1 || oldLine + oldRemaining - 1 > file.headLineCount) fail('repair patch exceeds immutable HEAD EOF');
+    } else if (oldRemaining || newRemaining) {
+      if (line.startsWith('\\ No newline')) continue;
+      if (line[0] === ' ') { flush(); oldLine++; oldRemaining--; newRemaining--; }
+      else if (line[0] === '-') {
+        segment ??= { start: oldLine, removed: 0 };
+        segment.removed++; oldLine++; oldRemaining--;
+      } else if (line[0] === '+') {
+        segment ??= { start: oldLine, removed: 0 };
+        newRemaining--;
+      } else fail('repair patch contains an invalid hunk line');
+      if (oldRemaining < 0 || newRemaining < 0) fail('repair patch hunk counts are invalid');
+    } else if (/^(GIT binary patch|Binary files|new file mode|deleted file mode|old mode|new mode|rename |copy )/.test(line)) {
+      fail('repair patch changes file type, mode, or status');
+    }
+  }
+  complete();
+  if (patch !== '' && changedSegments === 0) fail('nonempty repair patch requires actual change hunks');
+}
+
+function prospectiveRepairPatch(scope, root, entries) {
+  const directory = mkdtempSync(resolve(root, '.security-repair-index-'));
+  const env = { ...process.env, GIT_NO_REPLACE_OBJECTS: '1', GIT_PAGER: 'cat', GIT_INDEX_FILE: resolve(directory, 'index') };
+  const run = (args, input) => execFileSync('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '--no-pager', ...args], {
+    cwd: root, env, input, encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024,
+  });
+  try {
+    run(['read-tree', scope.headSha]);
+    for (const [path, content] of entries) {
+      const blob = run(['hash-object', '-w', '--stdin'], content).trim();
+      run(['update-index', '--add', '--cacheinfo', `100644,${blob},${path}`]);
+    }
+    const patch = run(['diff', '--cached', '--no-ext-diff', '--no-textconv', '--unified=0',
+      '--inter-hunk-context=0', scope.headSha, '--']);
+    validateRepairChanges(scope, patch);
+    return patch;
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 function securityRepairTarget(scope, workspace, path) {
@@ -585,6 +676,8 @@ export function writeSecurityRepair(scope, workspace, path, content) {
   const { root, target } = securityRepairTarget(scope, workspace, path);
   if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 512 * 1024 ||
       content.includes('\0')) fail('repair source must be text of at most 512 KiB without NUL');
+  inspectSecurityRepair(scope, root);
+  prospectiveRepairPatch(scope, root, [[normalizePath(path), content]]);
   const platformFlags = process.platform === 'win32' ? constants.O_CREAT : constants.O_NOFOLLOW;
   const fd = openSync(target, constants.O_WRONLY | constants.O_TRUNC | platformFlags);
   try {
@@ -635,7 +728,22 @@ export function verifyCredentialFree(workspace) {
   return true;
 }
 
-export function validatePatch(report, actualPaths, patchText = '') {
+export function validatePatch(report, actualPaths, patchText = '', scope) {
+  if (!Array.isArray(report?.patch) || !Array.isArray(actualPaths) || typeof patchText !== 'string') {
+    fail('repair patch inputs are invalid');
+  }
+  if (report.patch.length > 0 || actualPaths.length > 0 || patchText !== '') {
+    if (!scope || typeof scope !== 'object' || Array.isArray(scope) ||
+        !Array.isArray(scope.immutableHunks) || !Array.isArray(scope.changedFiles) ||
+        !/^[0-9a-f]{64}$/.test(scope.scopeSha256 ?? '')) {
+      fail('nonempty repair patch requires authoritative immutable scope');
+    }
+    validateRepairChanges(scope, patchText);
+    for (const key of ['prNumber', 'baseSha', 'headSha', 'scopeSha256', 'repositoryRelation', 'mode']) {
+      if (report[key] !== scope[key]) fail('repair patch report identity does not match authoritative immutable scope');
+    }
+    if (patchText === '') fail('reported repair requires a nonempty actual patch');
+  }
   const expected = [...new Set(report.patch.map(item => item.path))].sort();
   const actual = [...new Set(actualPaths.map(path => normalizePath(path, 'working tree path')))].sort();
   if (JSON.stringify(expected) !== JSON.stringify(actual)) {
@@ -721,7 +829,8 @@ export function stageRepairFiles(report, sourceRoot, targetRoot) {
   const sourceBase = realpathSync(resolve(sourceRoot));
   const targetBase = realpathSync(resolve(targetRoot));
   const seen = new Set();
-  let anchorsValidated = false;
+  let trusted;
+  const copies = [];
   for (const [index, item] of report.patch.entries()) {
     const path = normalizePath(item?.path, `patch item ${index + 1} path`);
     if (!/^tools\/wta\/src\/.*\.rs$/.test(path) || seen.has(path)) {
@@ -749,19 +858,24 @@ export function stageRepairFiles(report, sourceRoot, targetRoot) {
     if (treeEntry.length < 3 || treeEntry[0] !== '100644' || treeEntry[1] !== 'blob') {
       fail(`patch item ${index + 1} must target a non-executable regular Git blob`);
     }
-    if (!anchorsValidated) {
+    if (!trusted) {
       const head = git(['rev-parse', 'HEAD'], targetBase).trim();
       if (head !== report.headSha) fail('repair staging must use the immutable HEAD');
       const raw = git(['diff', '--no-ext-diff', '--no-textconv', '--name-status', '-z', '--find-renames',
         report.baseSha, report.headSha], targetBase);
-      const trusted = buildScope(report.baseSha, report.headSha, report.prNumber,
+      const inputs = buildScope(report.baseSha, report.headSha, report.prNumber,
         report.repositoryRelation, raw, report.baseSha, report.mode);
+      trusted = buildScope(report.baseSha, report.headSha, report.prNumber,
+        report.repositoryRelation, raw, report.baseSha, report.mode, readImmutableHunks(inputs, targetBase));
       validateRepairScope(trusted);
-      validateRepairAnchors(report, readImmutableHunks(trusted, targetBase));
-      anchorsValidated = true;
+      validateRepairAnchors(report, trusted.immutableHunks);
     }
-    copyFileSync(source, target);
-    chmodSync(target, targetStat.mode & 0o777);
+    copies.push({ path, target, mode: targetStat.mode & 0o777, bytes: readFileSync(source) });
+  }
+  prospectiveRepairPatch(trusted, targetBase, copies.map(item => [item.path, item.bytes]));
+  for (const item of copies) {
+    writeFileSync(item.target, item.bytes);
+    chmodSync(item.target, item.mode);
   }
   return [...seen].sort();
 }
@@ -918,16 +1032,28 @@ export function preparePublication({ environment = process.env, request, paths =
     if (proof.filter(item => item.name === proofName && !item.expired).length !== 1) fail('native proof artifact is missing');
     const result = JSON.parse(readFileSync(paths('--proof'), 'utf8').replace(/^\uFEFF/, ''));
     validateNativePublicationProof(result, report, scope, repository, base, patch);
-    git(['read-tree', head], workspace);
-    git(['apply', '--cached', '--binary', patchPath], workspace);
-    const raw = git(['diff', '--cached', '--name-status', '-z', head], workspace);
-    const files = parseNameStatus(raw);
-    if (files.some(file => file.status !== 'M')) fail('publication patch changes file status');
-    for (const file of files) {
-      if (!/^100644 blob /.test(git(['ls-tree', head, '--', file.path], workspace)) ||
-          !/^100644 /.test(git(['ls-files', '--stage', '--', file.path], workspace))) fail('publication patch changes file type or mode');
+    validateRepairChanges(scope, patch);
+    const directory = mkdtempSync(resolve(workspace ?? process.cwd(), '.security-publication-index-'));
+    const environment = { GIT_INDEX_FILE: resolve(directory, 'index') };
+    let authorizedTree;
+    try {
+      git(['read-tree', head], workspace, environment);
+      git(['apply', '--cached', '--binary', patchPath], workspace, environment);
+      const raw = git(['diff', '--cached', '--name-status', '-z', head], workspace, environment);
+      const files = parseNameStatus(raw);
+      if (files.some(file => file.status !== 'M')) fail('publication patch changes file status');
+      for (const file of files) {
+        if (!/^100644 blob /.test(git(['ls-tree', head, '--', file.path], workspace)) ||
+            !/^100644 /.test(git(['ls-files', '--stage', '--', file.path], workspace, environment))) fail('publication patch changes file type or mode');
+      }
+      validateRepairChanges(scope, git(['diff', '--cached', '--no-ext-diff', '--no-textconv', '--unified=0',
+        '--inter-hunk-context=0', head, '--'], workspace, environment));
+      validatePatch(report, files.map(file => file.path), patch, scope);
+      authorizedTree = git(['write-tree'], workspace, environment).trim();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
-    validatePatch(report, files.map(file => file.path), patch);
+    git(['read-tree', authorizedTree], workspace);
   } else if (patch !== '') fail('unreported publication patch');
   const decision = publicationDecision(report);
   writeFileSync(resolve(output, 'security-summary.md'), renderReport(report), { flag: 'wx' });
@@ -966,13 +1092,13 @@ function main() {
     const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
     const report = validateReport(JSON.parse(readFileSync(option('--report'), 'utf8')), scope);
     if (scope.mode === 'repair') {
-      const modified = git(['diff', '--name-only', '-z', 'HEAD']).split('\0').filter(Boolean);
+      const modified = git(['diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', scope.headSha]).split('\0').filter(Boolean);
       const untracked = git(['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
       if (untracked.length > 0) {
         fail(`automatic repair cannot include untracked files: ${untracked.join(', ')}`);
       }
-      const patchText = git(['diff', '--binary', 'HEAD']);
-      validatePatch(report, modified, patchText);
+      const patchText = git(['diff', '--no-ext-diff', '--no-textconv', '--binary', scope.headSha]);
+      validatePatch(report, modified, patchText, scope);
     }
     writeFileSync(option('--validated'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
     writeFileSync(option('--summary'), renderReport(report), { flag: 'wx' });
@@ -1013,10 +1139,10 @@ function main() {
   if (command === 'validate-proposal') {
     const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
     const report = validateProposal(JSON.parse(readFileSync(option('--report'), 'utf8')), scope);
-    const modified = git(['diff', '--name-only', '-z', 'HEAD']).split('\0').filter(Boolean);
+    const modified = git(['diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', scope.headSha]).split('\0').filter(Boolean);
     const untracked = git(['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
     if (untracked.length > 0) fail('repair proposal cannot include untracked files');
-    validatePatch(report, modified, git(['diff', '--binary', 'HEAD']));
+    validatePatch(report, modified, git(['diff', '--no-ext-diff', '--no-textconv', '--binary', scope.headSha]), scope);
     writeFileSync(option('--output'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
     return;
   }

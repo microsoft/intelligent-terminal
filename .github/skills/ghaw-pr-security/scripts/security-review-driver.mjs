@@ -378,7 +378,7 @@ export function runSecurityReviewDriver({
   }
   const before = inspect(scope, root);
   const patchReport = { ...candidate, review: { ...candidate.review, patchSha256: before.patchSha256 } };
-  validatePatch(patchReport, before.paths, before.patch);
+  validatePatch(patchReport, before.paths, before.patch, scope);
   if (createHash('sha256').update(before.patch).digest('hex') !== before.patchSha256 || before.headSha !== scope.headSha) {
     fail('native candidate identity is inconsistent');
   }
@@ -405,7 +405,7 @@ export function runSecurityReviewDriver({
   const proposal = validateProposal({
     ...candidate, review: { ...response, status: 'source-pass', reviewer: REVIEWER },
   }, scope);
-  validatePatch(proposal, after.paths, after.patch);
+  validatePatch(proposal, after.paths, after.patch, scope);
   try {
     writeReport(reportPath, proposal);
     validateProposal(readReport(reportPath), scope);

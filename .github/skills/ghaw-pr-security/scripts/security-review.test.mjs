@@ -9,13 +9,13 @@ import {
   attestChecks, buildScope, classifyPath, createReportTemplate, normalizePath, renderReport, validatePatch,
   validateQueuedOutput, validateReport, validateProposal, validateCandidate, stageRepairFiles, validateRepairScope,
   submitSecurityReport, readSecurityDiff, readImmutableHunks, readSecuritySource, inspectSecurityRepair, writeSecurityRepair, replaceSecurityRepairText, verifyCredentialFree,
-  publicationDecision, validatePublicationRun, validateNativePublicationProof, preparePublication,
+  publicationDecision, validatePublicationRun, validateNativePublicationProof, preparePublication, validateRepairChanges,
 } from './security-review.mjs';
 
 const BASE = '1'.repeat(40);
 const tmpdir = () => process.cwd();
 const HEAD = '2'.repeat(40);
-const PATCH_TEXT = 'diff --git a/tools/wta/src/master/mod.rs b/tools/wta/src/master/mod.rs\n';
+const PATCH_TEXT = 'diff --git a/tools/wta/src/master/mod.rs b/tools/wta/src/master/mod.rs\n--- a/tools/wta/src/master/mod.rs\n+++ b/tools/wta/src/master/mod.rs\n@@ -20 +20 @@\n-Changed source.\n+Bound owner.\n';
 const PATCH_SHA256 = createHash('sha256').update(PATCH_TEXT).digest('hex');
 
 test('controller separates analysis from mutually exclusive narrow publication jobs', () => {
@@ -201,6 +201,7 @@ test('canonical repair applies only a digest-bound native-attested patch to an i
   mkdirSync(output);
   const path = 'tools/wta/src/routing.rs';
   const source = join(workspace, path);
+  const tail = Array.from({ length: 99 }, (_, i) => `// stable line ${i + 2}\n`).join('');
   const git = (...args) => execFileSync('git', args, { cwd: workspace, encoding: 'utf8', timeout: 30_000 }).trim();
   try {
     git('init', '--quiet');
@@ -208,17 +209,17 @@ test('canonical repair applies only a digest-bound native-attested patch to an i
     git('config', 'user.email', 'fixture@example.invalid');
     git('config', 'core.autocrlf', 'false');
     mkdirSync(join(workspace, 'tools', 'wta', 'src'), { recursive: true });
-    writeFileSync(source, 'fn route() { /* bound */ }\n');
+    writeFileSync(source, 'fn route() { /* bound */ }\n' + tail);
     git('add', '.');
     git('commit', '--quiet', '-m', 'Base');
     const base = git('rev-parse', 'HEAD');
-    writeFileSync(source, 'fn route() { /* bypass */ }\n');
+    writeFileSync(source, 'fn route() { /* bypass */ }\n' + tail);
     git('add', '.');
     git('commit', '--quiet', '-m', 'Reviewed head');
     const head = git('rev-parse', 'HEAD');
     const inputs = buildScope(base, head, 17, 'same-repo', `M\0${path}\0`, base, 'repair');
     const current = buildScope(base, head, 17, 'same-repo', `M\0${path}\0`, base, 'repair', readImmutableHunks(inputs, workspace));
-    writeFileSync(source, 'fn route() { /* bound repair */ }\n');
+    writeFileSync(source, 'fn route() { /* bound repair */ }\n' + tail);
     const patch = execFileSync('git', ['diff', '--binary', 'HEAD'], { cwd: workspace, encoding: 'utf8' });
     const digest = createHash('sha256').update(patch).digest('hex');
     git('restore', '--', path);
@@ -268,10 +269,24 @@ test('canonical repair applies only a digest-bound native-attested patch to an i
     preparePublication({ environment, request, workspace, paths: name => ({
       '--scope': scopePath, '--artifacts': artifacts, '--output': output, '--proof': proofPath,
     })[name] });
-    assert.equal(readFileSync(source, 'utf8'), 'fn route() { /* bypass */ }\n');
-    assert.equal(git('show', `:${path}`), 'fn route() { /* bound repair */ }');
+    assert.equal(readFileSync(source, 'utf8'), 'fn route() { /* bypass */ }\n' + tail);
+    assert.equal(git('show', `:${path}`), ('fn route() { /* bound repair */ }\n' + tail).trim());
     assert.equal(readFileSync(join(output, 'security-repair.patch'), 'utf8'), patch);
     assert.match(readFileSync(environment.GITHUB_OUTPUT, 'utf8'), /^publication=push\n/);
+    const authorizedIndex = git('write-tree');
+    writeFileSync(source, 'fn route() { /* bound repair */ }\n' + tail.replace('stable line 100', 'unrelated rewrite'));
+    const extraPatch = execFileSync('git', ['diff', '--binary', head], { cwd: workspace, encoding: 'utf8' });
+    writeFileSync(source, 'fn route() { /* bypass */ }\n' + tail);
+    const extraDigest = createHash('sha256').update(extraPatch).digest('hex');
+    const extraReport = { ...candidate, review: { ...candidate.review, patchSha256: extraDigest } };
+    writeFileSync(join(artifacts, 'security-findings.validated.json'), JSON.stringify(extraReport));
+    writeFileSync(join(artifacts, 'security-repair.patch'), extraPatch);
+    const proof = JSON.parse(readFileSync(proofPath, 'utf8'));
+    writeFileSync(proofPath, JSON.stringify({ ...proof, patchSha256: extraDigest, review: extraReport.review }));
+    assert.throws(() => preparePublication({ environment, request, workspace, paths: name => ({
+      '--scope': scopePath, '--artifacts': artifacts, '--output': output, '--proof': proofPath,
+    })[name] }), /actual repair changes/);
+    assert.equal(git('write-tree'), authorizedIndex, 'digest-bound extra edits cannot enter the publication index');
   } finally {
     if (previousIndex === undefined) delete process.env.GIT_INDEX_FILE;
     else process.env.GIT_INDEX_FILE = previousIndex;
@@ -399,6 +414,147 @@ test('unrelated unchanged line cannot authorize an automatic repair', () => {
   }
 });
 
+test('actual segments use immutable HEAD coordinates rather than hunk overlap or candidate offsets', () => {
+  const path = 'tools/wta/src/master/mod.rs';
+  const current = buildScope(BASE, HEAD, 17, 'same-repo', `M\0${path}\0`, BASE, 'repair', [{
+    path, headLineCount: 120, hunks: [
+      { baseStart: 10, baseCount: 1, headStart: 10, headCount: 1 },
+      { baseStart: 20, baseCount: 2, headStart: 20, headCount: 0 },
+      { baseStart: 32, baseCount: 3, headStart: 30, headCount: 3 },
+      { baseStart: 122, baseCount: 1, headStart: 120, headCount: 1 },
+    ],
+  }]);
+  const patch = text => `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${text}`;
+  for (const text of [
+    '@@ -10 +10 @@\n-old\n+fixed\n',
+    '@@ -9,0 +10,2 @@\n+insert\n+insert2\n',
+    '@@ -10,0 +11 @@\n+insert\n',
+    '@@ -10 +9,0 @@\n-removed\n',
+    '@@ -20 +20 @@\n-surviving deletion context\n+restore\n',
+    '@@ -19,0 +20 @@\n+restore removed original line\n',
+    '@@ -10,0 +11,3 @@\n+a\n+b\n+c\n@@ -30 +33 @@\n-old\n+fixed\n',
+    '@@ -30,3 +30,0 @@\n-a\n-b\n-c\n@@ -120 +117 @@\n-last\n+fixed last\n',
+    '@@ -120,0 +121 @@\n+new EOF\n',
+  ]) assert.doesNotThrow(() => validateRepairChanges(current, patch(text)), text);
+  for (const text of [
+    '@@ -10 +10 @@\n-old\n+fixed\n@@ -100 +100 @@\n-unrelated\n+changed\n',
+    '@@ -9,2 +9,2 @@\n-unchanged context\n-changed line\n+rewritten context\n+fixed\n',
+    '@@ -10,91 +10 @@\n' + Array.from({ length: 91 }, () => '-old\n').join('') + '+replacement\n',
+    '@@ -8,0 +9 @@\n+before unrelated line\n',
+    '@@ -11,0 +12 @@\n+after unrelated line\n',
+    '@@ -10,0 +11,3 @@\n+a\n+b\n+c\n@@ -33 +36 @@\n-outside despite candidate offsets\n+fixed\n',
+    '@@ -119 +119 @@\n-unchanged before EOF\n+fixed\n',
+    '@@ -121,0 +122 @@\n+past EOF\n',
+  ]) assert.throws(() => validateRepairChanges(current, patch(text)), /actual repair changes|EOF/, text);
+  const contextPatch = patch('@@ -9,3 +9,3 @@\n unchanged\n-old\n+fixed\n unchanged\n');
+  assert.doesNotThrow(() => validateRepairChanges(current, contextPatch));
+  assert.throws(() => validateRepairChanges(current, contextPatch.replace(' unchanged\n', '-unchanged\n+rewritten\n')),
+    /actual repair changes/);
+  const tampered = structuredClone(current);
+  tampered.immutableHunks[0].hunks[0].headCount = 100;
+  assert.throws(() => validateRepairChanges(tampered, contextPatch), /scope identity/);
+});
+
+test('nonempty patch API requires explicit immutable authority even with a matching digest', () => {
+  const path = 'tools/wta/src/master/mod.rs';
+  const current = buildScope(BASE, HEAD, 17, 'same-repo', `M\0${path}\0`, BASE, 'repair', [{
+    path, headLineCount: 1000, hunks: [{ baseStart: 10, baseCount: 1, headStart: 10, headCount: 1 }],
+  }]);
+  const valid = `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -10 +10 @@\n-old\n+fixed\n`;
+  const extra = valid + '@@ -1000 +1000 @@\n-unchanged\n+unrelated\n';
+  const report = {
+    ...createReportTemplate(current), patch: [{ path }],
+    review: { patchSha256: createHash('sha256').update(extra).digest('hex') },
+  };
+  assert.throws(() => validatePatch(report, [path], extra), /authoritative immutable scope/);
+  assert.throws(() => validatePatch(report, [path], extra, current), /actual repair changes/);
+  for (const invalid of [null, {}, [], { ...current, immutableHunks: undefined }]) {
+    assert.throws(() => validatePatch(report, [path], extra, invalid), /scope|identity/);
+  }
+  const bounded = { ...report, review: { patchSha256: createHash('sha256').update(valid).digest('hex') } };
+  assert.doesNotThrow(() => validatePatch(bounded, [path], valid, current));
+  assert.throws(() => validatePatch(bounded, [path], valid), /authoritative immutable scope/);
+  assert.throws(() => validatePatch({ ...bounded, headSha: BASE }, [path], valid, current), /report identity/);
+  assert.throws(() => validatePatch(bounded, [path], '', current), /nonempty actual patch/);
+  const headerOnly = `diff --git a/${path} b/${path}\n`;
+  assert.throws(() => validatePatch(bounded, [path], headerOnly, current), /actual change hunks/);
+  assert.throws(() => validatePatch({ patch: [] }, [], valid), /authoritative immutable scope/);
+  assert.doesNotThrow(() => validatePatch({ patch: [] }, [], ''));
+});
+
+test('native writer rejects same-file extra edits and formatter rewrites before touching bytes or index', () => {
+  const root = mkdtempSync(join(process.cwd(), '.actual-repair-bounds-'));
+  const path = 'tools/wta/src/master/mod.rs';
+  const other = 'tools/wta/src/logging.rs';
+  const source = join(root, path);
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', timeout: 30_000 }).trim();
+  try {
+    git('init', '--quiet');
+    git('config', 'core.autocrlf', 'false');
+    git('config', 'user.name', 'Fixture');
+    git('config', 'user.email', 'fixture@example.invalid');
+    mkdirSync(join(root, 'tools', 'wta', 'src', 'master'), { recursive: true });
+    const lines = Array.from({ length: 1000 }, (_, i) => `original line ${i + 1}\n`);
+    lines[440] = 'let owner = owners.get(&secret);\n';
+    writeFileSync(source, lines.join(''));
+    writeFileSync(join(root, other), 'original\n');
+    git('add', '.');
+    git('commit', '--quiet', '-m', 'Base');
+    const base = git('rev-parse', 'HEAD');
+    lines[440] = 'let owner = owners.values().next();\n';
+    writeFileSync(source, lines.join(''));
+    writeFileSync(join(root, other), 'changed\n');
+    git('add', '.');
+    git('commit', '--quiet', '-m', 'Head');
+    const head = git('rev-parse', 'HEAD');
+    const raw = `M\0${path}\0M\0${other}\0`;
+    const inputs = buildScope(base, head, 17, 'same-repo', raw, base, 'repair');
+    const current = buildScope(base, head, 17, 'same-repo', raw, base, 'repair', readImmutableHunks(inputs, root));
+    const original = readFileSync(source);
+    const index = git('write-tree');
+    const valid = original.toString().replace('.values().next()', '.get(&secret)');
+    for (const content of [
+      valid.replace('original line 1000', 'unrelated edited line 1000'),
+      valid.replaceAll('original line', 'formatter rewrote original line'),
+    ]) {
+      assert.throws(() => writeSecurityRepair(current, root, path, content), /actual repair changes/);
+      assert.deepEqual(readFileSync(source), original);
+      assert.equal(git('write-tree'), index);
+    }
+    assert.throws(() => replaceSecurityRepairText(current, root, path, JSON.stringify([
+      { oldText: '.values().next()', newText: '.get(&secret)' },
+      { oldText: 'original line 1000', newText: 'extra change' },
+    ])), /actual repair changes/);
+    assert.deepEqual(readFileSync(source), original);
+    const validInspection = writeSecurityRepair(current, root, path, valid);
+    assert.match(validInspection.patch, /\.get\(&secret\)/);
+    assert.equal(git('write-tree'), index);
+    writeFileSync(join(root, other), 'bounded second file repair\n');
+    assert.doesNotThrow(() => inspectSecurityRepair(current, root));
+    writeFileSync(source, valid.replace('original line 1000', 'unrelated extra'));
+    assert.throws(() => inspectSecurityRepair(current, root), /actual repair changes/);
+    const report = { patch: [{ path }, { path: other }], review: { patchSha256: createHash('sha256').update(
+      execFileSync('git', ['diff', '--binary', head], { cwd: root, encoding: 'utf8' })).digest('hex') } };
+    assert.throws(() => validatePatch(report, [path, other],
+      execFileSync('git', ['diff', '--binary', head], { cwd: root, encoding: 'utf8' }), current), /actual repair changes/);
+    const target = join(root, 'staging-target');
+    git('-c', 'core.autocrlf=false', 'clone', '--quiet', '--no-hardlinks', root, target);
+    const stageReport = {
+      ...createReportTemplate(current), patch: [{ path: other }, { path }],
+      findings: [
+        { file: other, startLine: 1, endLine: 1, fixDisposition: { state: 'proposed' } },
+        { file: path, startLine: 441, endLine: 441, fixDisposition: { state: 'proposed' } },
+      ],
+    };
+    assert.throws(() => stageRepairFiles(stageReport, root, target), /actual repair changes/);
+    assert.equal(readFileSync(join(target, other), 'utf8'), 'changed\n',
+      'no earlier valid path may be copied before every candidate path passes');
+    assert.deepEqual(readFileSync(join(target, path)), original);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('trusted Git scope binds exact changes, deletion mapping, renames, modes and empty HEAD', () => {
   const root = mkdtempSync(join(process.cwd(), '.immutable-hunks-'));
   const path = 'tools/wta/src/routing.rs';
@@ -475,6 +631,9 @@ test('trusted Git scope binds exact changes, deletion mapping, renames, modes an
     assert.doesNotThrow(() => validateCandidate(candidate, current));
     assert.doesNotThrow(() => validateProposal(proposal, current));
     assert.doesNotThrow(() => validateReport(attestChecks(proposal, head, true, PATCH_TEXT), current));
+    assert.throws(() => stageRepairFiles(candidate, root, target), /actual repair changes/);
+    assert.equal(readFileSync(join(target, path), 'utf8'), changed.join(''));
+    writeFileSync(source, changed.join('').replace('changed line 10\n', 'bounded repaired change\n'));
     assert.deepEqual(stageRepairFiles(candidate, root, target), [path]);
     assert.equal(readFileSync(join(target, path), 'utf8'), readFileSync(source, 'utf8'));
     rmSync(target, { recursive: true, force: true });
@@ -786,7 +945,7 @@ test('only native validation promotes independently source-reviewed repair propo
   }
   assert.deepEqual(validateReport(nestedExtras, current), validated);
   assert.throws(() => validateReport({ ...candidate, extra: {} }, current), /unsupported fields/);
-  validatePatch(validated, ['tools/wta/src/master/mod.rs'], PATCH_TEXT);
+  validatePatch(validated, ['tools/wta/src/master/mod.rs'], PATCH_TEXT, current);
   validateQueuedOutput(validated, { items: [{ type: 'noop' }], errors: [] });
   assert.throws(() => validateQueuedOutput(validated, { items: [{ type: 'push_to_pull_request_branch' }] }), /noop/);
 
@@ -846,7 +1005,7 @@ test('only native validation promotes independently source-reviewed repair propo
   const attested = attestChecks(proposal, HEAD, true, PATCH_TEXT);
   assert.equal(attested.findings[0].fixDisposition.state, 'fixed');
   const finalReport = validateReport(attested, current);
-  validatePatch(finalReport, ['tools/wta/src/master/mod.rs'], PATCH_TEXT);
+  validatePatch(finalReport, ['tools/wta/src/master/mod.rs'], PATCH_TEXT, current);
   assert.equal(proposal.findings[0].fixDisposition.state, 'proposed');
 });
 
@@ -1253,8 +1412,10 @@ test('native CLI and bounded data-only report submission work end to end', () =>
     // Keep report artifacts outside the checkout, as on the hosted runner.
     const artifacts = join(root, 'artifacts');
     mkdirSync(artifacts);
-    const writerScope = buildScope(base, head, 17, 'same-repo',
+    const writerInputs = buildScope(base, head, 17, 'same-repo',
       'M\0tools/wta/src/routing.rs\0', base, 'repair');
+    const writerScope = buildScope(base, head, 17, 'same-repo',
+      'M\0tools/wta/src/routing.rs\0', base, 'repair', readImmutableHunks(writerInputs, workspace));
     assert.throws(() => writeSecurityRepair(readScope, workspace, 'tools/wta/src/routing.rs', 'x'), /same-repository/);
     assert.throws(() => writeSecurityRepair(writerScope, workspace, '.github/workflows/review.yml', 'x'), /only existing/);
     assert.throws(() => writeSecurityRepair(writerScope, workspace, '../outside', 'x'), /normalized/);

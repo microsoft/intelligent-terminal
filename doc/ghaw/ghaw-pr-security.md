@@ -133,6 +133,12 @@ every possible unknown secret variable. Local direct-inference proofs use an
 explicit caller-supplied inference credential and are not evidence of the
 hosted proxy's token-free model environment.
 
+Fork object fetch authentication is supplied through process-scoped
+`GIT_CONFIG_*` environment, not token-bearing Git arguments. The trusted fetch
+step disables command tracing and clears its temporary header/config variables
+on success and failure before model launch. This prevents this fetch's argv
+disclosure without claiming universal environment secrecy.
+
 Native Windows validation pins the Windows Docker pipe and clears inherited
 Docker context selection. Before dependency/image work, the trusted
 `build/scripts/Wait-WindowsDocker.ps1` helper verifies the installed Windows
@@ -172,6 +178,13 @@ base deletion mappings directly from Git and binds them into the scope hash.
 Common candidate/proposal/final validation requires every proposed or fixed
 repair anchor to overlap those changes; changing a file alone does not authorize
 repairing an unrelated unchanged line. Missing hunk authority fails closed.
+Actual repair additions/deletions are separately constrained to authorized
+immutable HEAD ranges, including permitted insertion/deletion boundaries.
+Every change segment must satisfy the range guard; a large hunk merely touching
+an authorized line cannot carry unrelated same-file edits. Prospective writer
+output is checked before any source byte changes, and staging/canonical
+publication enforce the same rule. Nonempty patch validation requires trusted
+scope explicitly; no unscoped exported-API fallback is accepted.
 Blocked guidance may still explain unchanged context. This structural gate is
 not a claim that native code proves security causality; independent reasoning
 must still establish a regression introduced by the diff.

@@ -139,9 +139,14 @@ steps:
       EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
     run: |
       set -euo pipefail
-      header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-      git -c "http.extraheader=Authorization: Basic ${header}" fetch --quiet --no-tags origin \
+      set +x
+      trap 'unset GH_TOKEN GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0' EXIT
+      export GIT_CONFIG_COUNT=1
+      export GIT_CONFIG_KEY_0=http.extraheader
+      export GIT_CONFIG_VALUE_0="Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+      git fetch --quiet --no-tags origin \
         "+refs/pull/${PR_NUMBER}/head:refs/gh-aw/security-target"
+      unset GH_TOKEN GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
       [ "$(git rev-parse refs/gh-aw/security-target)" = "$EXPECTED_HEAD_SHA" ]
 
   - name: Prepare immutable fork review scope
