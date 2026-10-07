@@ -21,8 +21,9 @@ end-to-end proof, not a claim that every native performance scenario is covered.
 3. Eligible same-repo HIGH changes are proposals, not model-authored claims of
    passing tests. Trusted post-processing seals their exact Git blobs and
    confines them to the original candidate files.
-4. A read-only Windows Actions job applies that proposal, checks formatting,
-   runs the focused WTA test and then the required full explicit-target suite.
+4. A read-only Windows Actions job resolves the exact test in the immutable
+   original head before applying the proposal. It then checks formatting,
+   runs that test with exact matching, and runs the full explicit-target suite.
    It rejects failed/zero tests and tracked-source mutation.
    Actions owns process cleanup; there is no custom Windows process manager
    or native receipt file.

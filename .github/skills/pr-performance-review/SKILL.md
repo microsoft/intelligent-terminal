@@ -92,11 +92,16 @@ repository directories or the crate name; do not prefix `tools`, `wta`, or
 `src`. Request `validate_performance_repair` with
 `confirm: true` once, then stop editing.
 
+Dedicated `tests.rs`, `*_tests.rs`, and WTA's `test_support.rs` are supporting evidence, not
+automatic repair targets. Do not alter them to make a repair pass.
+
 Format the proposed Rust change before sealing it. Use the standard
 `cargo fmt --manifest-path tools/wta/Cargo.toml`, inspect its diff, and keep only
 the permitted repair changes. Native validation checks formatting without
 changing the sealed proposal, then runs the focused test and the required full
-explicit-target WTA suite. Failure in any stage blocks publication.
+explicit-target WTA suite. Native validation must resolve the exact qualified test in the original
+immutable head and execute it with exact matching; passing an unrelated
+substring-selected group is not proof. Failure in any stage blocks publication.
 
 Do not claim that Linux has run Windows tests. Do not commit, call a branch-push
 tool, or mark a proposal `fixed`. Trusted post-processing captures the exact

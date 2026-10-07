@@ -32,10 +32,10 @@ function fixture(t) {
     const treeSha = reconstructTree(files, headSha);
     const proposal = {
         version: 1, identity: { prNumber: 42, baseSha, headSha }, treeSha, files,
-        validationPlan: { type: 'wta-unit', testFilter: 'fixture::tests' },
+        validationPlan: { type: 'wta-unit', testFilter: 'tests::fixture_preserves_behavior' },
         report: { version: 1, review: 'performance', mode: 'repair',
             identity: { prNumber: 42, baseSha, headSha }, status: 'pending_validation',
-            validationPlan: { type: 'wta-unit', testFilter: 'fixture::tests' },
+            validationPlan: { type: 'wta-unit', testFilter: 'tests::fixture_preserves_behavior' },
             findings: [{
                 id: 'PERF-ABC12345', severity: 'high', confidence: 'high', dimension: 'application-performance',
                 category: 'wta-runtime', title: 'Repeated quadratic work', affectedScenario: 'Large session refresh',

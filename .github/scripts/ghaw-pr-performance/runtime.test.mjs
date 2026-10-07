@@ -130,7 +130,7 @@ test('native seal captures exact final candidate blobs, not an earlier push tran
         version: 1, review: 'performance', mode: 'repair',
         identity: { prNumber: 42, baseSha: f.baseSha, headSha: f.headSha },
         status: 'pending_validation',
-        validationPlan: { type: 'wta-unit', testFilter: 'fixture::tests' },
+        validationPlan: { type: 'wta-unit', testFilter: 'tests::fixture_preserves_behavior' },
         findings: [{
             id: 'PERF-ABC12345', severity: 'high', confidence: 'high', dimension: 'application-performance',
             category: 'wta-runtime', title: 'Repeated quadratic work', affectedScenario: 'Large session refresh',

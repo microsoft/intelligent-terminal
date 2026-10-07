@@ -78,15 +78,22 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     const sealed = run(['gate', '--output-dir', out, '--baseline', baseline,
         '--report', reportPath, '--agent-output', queuePath, '--mode', 'repair', ...identity]);
     assert.equal(sealed.status, 0, sealed.stderr);
+    // Native jobs start from a fresh immutable checkout, not the worker's staged candidate.
+    git(['read-tree', headSha]);
     fs.writeFileSync(sourcePath, headSource);
     const nativeOut = path.join(artifactRoot, 'native');
     const native = spawnSync('pwsh', ['-NoProfile', '-File', validator,
         '-ProposalPath', path.join(out, 'performance-proposal.json'),
         '-RepositoryRoot', root, '-TrustedRuntimePath', runtime], {
-        encoding: 'utf8', timeout: 120000,
+        encoding: 'utf8', timeout: 180000,
     });
     assert.equal(native.status, 0, `${native.stdout}\n${native.stderr}`);
+    assert.match(native.stdout, /original-test-listing: cargo test --target x86_64-pc-windows-msvc --manifest-path tools\\wta\\Cargo.toml -- --list/);
+    assert.match(native.stdout, /original HEAD contains tests::work_is_linear: test \(listing only, not a passing test claim\)/);
+    assert.ok(native.stdout.indexOf('original-test-listing: cargo') < native.stdout.indexOf('format-check: cargo'));
     assert.match(native.stdout, /format-check: cargo fmt .* -- --check/);
+    assert.match(native.stdout, /focused-tests: cargo test .* tests::work_is_linear -- --exact\r?$/m);
+    assert.match(native.stdout, /^test tests::work_is_linear \.\.\. ok\r?$/m);
     assert.match(native.stdout, /focused-tests: 1 native test\(s\) passed/);
     assert.match(native.stdout, /full-suite: 1 native test\(s\) passed/);
     assert.equal(fs.existsSync(nativeOut), false, 'native test step must not produce publication authority');

@@ -221,6 +221,7 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         with:
+          github-token: ${{ github.token }}
           script: |
             const path = require("path");
             const { pathToFileURL } = require("url");

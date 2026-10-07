@@ -15,18 +15,27 @@ $root = [IO.Path]::GetFullPath($RepositoryRoot)
 $proposalPath = [IO.Path]::GetFullPath($ProposalPath)
 $runtimePath = [IO.Path]::GetFullPath($TrustedRuntimePath)
 $proposal = Get-Content -LiteralPath $proposalPath -Raw | ConvertFrom-Json
-$tracked = & git.exe -C $root ls-files -z
-if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate original tracked paths.' }
-$paths = (($tracked -join "`n").Split([char]0) | Where-Object { $_ })
-
 Push-Location $root
 try {
-    & node.exe $runtimePath apply-proposal --input $proposalPath --pr $proposal.identity.prNumber `
+    & node.exe $runtimePath validate-proposal --input $proposalPath --pr $proposal.identity.prNumber `
         --base $proposal.identity.baseSha --head $proposal.identity.headSha
-    if ($LASTEXITCODE -ne 0) { throw 'Trusted proposal validation/application failed.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Trusted proposal validation failed.' }
 } finally {
     Pop-Location
 }
+$head = & git.exe -C $root rev-parse HEAD
+if ($LASTEXITCODE -ne 0 -or $head -cne $proposal.identity.headSha) {
+    throw 'Native checkout must equal the immutable reviewed head.'
+}
+$flags = & git.exe -C $root ls-files -v
+if ($LASTEXITCODE -ne 0 -or @($flags | Where-Object { $_ -cmatch '^[a-zS] ' }).Count -gt 0) {
+    throw 'Native checkout must have clean tracked HEAD files without hidden index flags.'
+}
+& git.exe -C $root diff --quiet HEAD --
+if ($LASTEXITCODE -ne 0) { throw 'Native checkout must have clean tracked HEAD files before original test listing.' }
+$tracked = & git.exe -C $root ls-files -z
+if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate original tracked paths.' }
+$paths = (($tracked -join "`n").Split([char]0) | Where-Object { $_ })
 
 function Get-TrackedHashes {
     $hashes = @{}
@@ -39,7 +48,7 @@ function Get-TrackedHashes {
 $before = Get-TrackedHashes
 $filter = $proposal.validationPlan.testFilter
 # Actions must impose a 32-minute step deadline and owns cleanup of descendants.
-function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireTests = $false) {
+function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireTests = $false, [string]$NameCheck = '') {
     Write-Output "${Stage}: cargo $($Arguments -join ' ')"
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = (Get-Command cargo -CommandType Application -ErrorAction Stop).Source
@@ -72,12 +81,21 @@ function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireT
         Write-Output $output
         Write-Output $stderr.GetAwaiter().GetResult()
         if ($process.ExitCode -ne 0) { throw "${Stage}: native validation failed with exit code $($process.ExitCode)." }
+        if ($NameCheck -eq 'listing') {
+            $named = [regex]::Matches($output, '(?m)^' + [regex]::Escape($filter) + ': test\r?$')
+            if ($named.Count -ne 1) { throw "${Stage}: selector must name exactly one existing test in compiled original HEAD." }
+            Write-Output "${Stage}: original HEAD contains ${filter}: test (listing only, not a passing test claim)."
+        }
         if ($RequireTests) {
             $passed = 0L
             foreach ($match in [regex]::Matches($output, '(?m)^test result: ok\. ([0-9]+) passed; 0 failed;')) {
                 $passed += [long]$match.Groups[1].Value
             }
             if ($passed -le 0) { throw "${Stage}: native validation did not execute any passing tests." }
+            if ($NameCheck -eq 'passing' -and
+                [regex]::Matches($output, '(?m)^test ' + [regex]::Escape($filter) + '(?: - should panic)? \.\.\. ok\r?$').Count -ne 1) {
+                throw "${Stage}: native validation did not report the selected test passing."
+            }
             Write-Output "${Stage}: $passed native test(s) passed."
         }
     } finally {
@@ -92,9 +110,20 @@ function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireT
         }
     }
 }
+Invoke-CargoStage 'original-test-listing' @('test', '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
+    'tools\wta\Cargo.toml', '--', '--list') $false 'listing'
+Push-Location $root
+try {
+    & node.exe $runtimePath apply-proposal --input $proposalPath --pr $proposal.identity.prNumber `
+        --base $proposal.identity.baseSha --head $proposal.identity.headSha
+    if ($LASTEXITCODE -ne 0) { throw 'Trusted proposal application failed.' }
+} finally {
+    Pop-Location
+}
+$before = Get-TrackedHashes
 Invoke-CargoStage 'format-check' @('fmt', '--manifest-path', 'tools\wta\Cargo.toml', '--', '--check')
 Invoke-CargoStage 'focused-tests' @('test', '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
-    'tools\wta\Cargo.toml', $filter, '--', '--nocapture') $true
+    'tools\wta\Cargo.toml', $filter, '--', '--exact') $true 'passing'
 Invoke-CargoStage 'full-suite' @('test', '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
     'tools\wta\Cargo.toml') $true
 Write-Output 'Unit-test success is not an end-to-end performance measurement.'

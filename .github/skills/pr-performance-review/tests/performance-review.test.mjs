@@ -68,7 +68,7 @@ function proposal() {
     })]);
     value.mode = 'repair';
     value.status = 'pending_validation';
-    value.validationPlan = { type: 'wta-unit', testFilter: 'master::tests' };
+    value.validationPlan = { type: 'wta-unit', testFilter: 'master::tests::preserves_state' };
     return {
         version: 1, identity, treeSha: 'c'.repeat(40), report: value,
         validationPlan: { ...value.validationPlan },
@@ -120,6 +120,31 @@ test('selects repository hot-path source and keeps tests as supporting evidence'
     assert.deepEqual(scope.categories, ['rendering', 'wta-runtime']);
     assert.equal(scope.candidates.length, 2);
     assert.equal(scope.supporting.length, 1);
+});
+
+test('Rust test basenames are supporting while runtime files remain candidates', () => {
+    const supporting = [
+        'tools/wta/src/master/tests.rs',
+        'tools/wta/src/master/app_tests.rs',
+        'tools/wta/src/test_support.rs',
+        'tools/wta/src/tests/fix.rs',
+    ];
+    const testOnly = classifyPullRequest(supporting.map(filename => ({ filename })), identity);
+    assert.equal(testOnly.applicable, false);
+    assert.deepEqual(testOnly.supporting.map(file => file.filename), supporting);
+    assert.deepEqual(testOnly.candidates, []);
+    const runtime = 'tools/wta/src/master/app.rs';
+    const scope = classifyPullRequest([...supporting, runtime].map(filename => ({ filename })), identity);
+    assert.equal(scope.applicable, true);
+    assert.deepEqual(scope.candidates.map(file => file.filename), [runtime]);
+    assert.deepEqual(scope.supporting.map(file => file.filename), supporting);
+    // Classification is file-level: inline test blocks do not exclude runtime modules.
+    assert.equal(classifyPullRequest([{ filename: 'tools/wta/src/master/mod.rs' }], identity).applicable, true);
+    for (const filename of supporting) {
+        const value = proposal();
+        value.files[0].path = filename;
+        assert.throws(() => validateProposal(value, { ...identity, mode: 'repair' }), /unique, regular WTA/);
+    }
 });
 
 test('renderer HLSL alone is an applicable rendering candidate', () => {
@@ -471,7 +496,7 @@ test('proposals accept only bounded regular WTA replacements and agreeing fixed 
         [value => { value.report.findings[0].fixDisposition = 'manual_required'; value.report.status = 'action_required'; }, /only repair-eligible/],
         [value => { value.validationPlan.type = 'arbitrary-command'; }, /supported focused native/],
         [value => { value.validationPlan.testFilter = 'tests; cmd.exe'; }, /supported focused native/],
-        [value => { value.validationPlan.testFilter = 'other::tests'; }, /must agree/],
+        [value => { value.validationPlan.testFilter = 'other::tests::preserves_state'; }, /must agree/],
         [value => { delete value.report.validationPlan; }, /supported focused native/],
         [value => { value.files = []; }, /between one and five/],
         [value => { value.files = Array(6).fill(value.files[0]); }, /between one and five/],
@@ -502,6 +527,29 @@ test('the model validator rejects the observed copied selector before native dis
     value.validationPlan.testFilter = 'module::tests';
     assert.throws(() => validateReport(value.report, { ...identity, mode: 'repair' }), /not a placeholder/);
     assert.throws(() => validateProposal(value, identity), /not a placeholder/);
+});
+
+test('focused selectors require qualified Rust identifiers, not module substring filters', () => {
+    for (const selector of [
+        'tests', 'master::tests', 'fixture::tests', 'preserves_state',
+        'master:tests:preserves_state', 'master::::preserves_state', '::master::preserves_state',
+        'master::preserves_state::', '1master::preserves_state', 'master::1test',
+        'master::preserves-state', 'master::préserves_state', 'master::' + 'a'.repeat(200),
+    ]) {
+        const value = proposal();
+        value.validationPlan.testFilter = selector;
+        value.report.validationPlan.testFilter = selector;
+        assert.throws(() => validateReport(value.report, { ...identity, mode: 'repair' }), /supported focused native/);
+        assert.throws(() => validateProposal(value, identity), /supported focused native/);
+    }
+    // Syntax alone is not source proof; native listing on the original head is decisive.
+    for (const selector of ['master::tests::preserves_state', 'fixture::tests::preserves_state', 'other_module::_test2']) {
+        const value = proposal();
+        value.validationPlan.testFilter = selector;
+        value.report.validationPlan.testFilter = selector;
+        assert.doesNotThrow(() => validateReport(value.report, { ...identity, mode: 'repair' }));
+        assert.equal(validateProposal(value, identity), value);
+    }
 });
 
 test('stable finding IDs are bounded identifiers, not an arbitrary eight-character protocol', () => {

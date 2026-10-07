@@ -8,7 +8,7 @@ $validator = Join-Path $PSScriptRoot 'validate-native.ps1'
 $runtime = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\skills\pr-performance-review\scripts\performance-review.mjs'))
 $fixture = Join-Path (Get-Location).Path ('.native-validation-fixture-' + [guid]::NewGuid().ToString('N'))
 $utf8 = [Text.UTF8Encoding]::new($false)
-$baseline = "#[cfg(test)] mod tests { #[test] fn focused() { assert_eq!(2 + 2, 4); } }`n"
+$baseline = "#[cfg(test)] mod tests { #[test] fn focused() { assert_eq!(2 + 2, 4); } #[test] #[should_panic] fn panics() { panic!(`"expected`"); } }`n"
 $manifest = "[package]`nname = `"native-validation-fixture`"`nversion = `"0.0.0`"`nedition = `"2021`"`n"
 $count = 0
 function Git([string[]]$Arguments) {
@@ -20,7 +20,7 @@ function Format-Fixture {
     $messages = & cargo fmt --manifest-path (Join-Path $fixture 'tools\wta\Cargo.toml') 2>&1
     if ($LASTEXITCODE -ne 0) { throw "Fixture formatting failed: $messages" }
 }
-function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$ErrorPattern = '', [bool]$Unformatted = $false) {
+function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$ErrorPattern = '', [bool]$Unformatted = $false, [bool]$DirtyStart = $false) {
     $null = Git @('read-tree', '--empty')
     $null = Git @('read-tree', $script:head)
     $sourcePath = Join-Path $fixture 'tools\wta\src\lib.rs'
@@ -57,6 +57,7 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
     }
     $proposalPath = Join-Path $fixture "$Name.json"
     [IO.File]::WriteAllText($proposalPath, ($proposal | ConvertTo-Json -Depth 20), $utf8)
+    if ($DirtyStart) { [IO.File]::WriteAllText($sourcePath, $Source, $utf8) }
     $messages = & pwsh -NoProfile -File $validator -ProposalPath $proposalPath -RepositoryRoot $fixture -TrustedRuntimePath $runtime 2>&1
     $exit = $LASTEXITCODE
     if ($ErrorPattern) {
@@ -64,8 +65,15 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
             throw "$Name did not fail as expected (exit ${exit}): $messages"
         }
     } elseif ($exit -ne 0 -or ($messages -join "`n") -notmatch 'focused-tests: 1 native test\(s\) passed' -or
-        ($messages -join "`n") -notmatch 'full-suite: 1 native test\(s\) passed') {
+        ($messages -join "`n") -notmatch 'full-suite: [1-9][0-9]* native test\(s\) passed' -or
+        ($messages -join "`n") -notmatch ('original HEAD contains ' + [regex]::Escape($Filter) + ': test') -or
+        ($messages -join "`n") -notmatch ('(?m)^test ' + [regex]::Escape($Filter) + '(?: - should panic)? \.\.\. ok\r?$') -or
+        ($messages -join "`n") -notmatch ([regex]::Escape($Filter) + ' -- --exact(?:\r?\n|$)')) {
         throw "$Name did not run focused and full native tests (exit ${exit}): $messages"
+    }
+    if ($Name -in @('exact-unknown-function', 'proposal-added-test') -and
+        ($messages -join "`n") -match 'format-check: cargo') {
+        throw "Original HEAD selector rejection ran candidate commands: $messages"
     }
     if ($Name -eq 'full-suite-failure' -and ($messages -join "`n") -notmatch 'focused-tests: 1 native test\(s\) passed') {
         throw "Full-suite regression did not first pass the focused test: $messages"
@@ -96,7 +104,12 @@ try {
     Test-Case 'valid-windows-run' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'tests::focused'
     Test-Case 'format-failure' "#[cfg(test)] mod tests { #[test] fn focused() { assert_eq!(2 + 2, 4); } }`n" 'tests::focused' 'format-check: native validation failed with exit code' $true
     Test-Case 'failed-test' ($baseline.Replace('2 + 2, 4', '2 + 2, 5')) 'tests::focused' 'focused-tests: native validation failed with exit code'
-    Test-Case 'zero-matches' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'nonexistent_test_filter' 'focused-tests: native validation did not execute any passing tests'
+    Test-Case 'exact-unknown-function' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'tests::unknown_function' 'selector must name exactly one existing test in compiled original HEAD'
+    Test-Case 'broad-module-filter' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'tests' 'focused native WTA validation|selector must name exactly one existing test'
+    Test-Case 'proposal-added-test' ($baseline + "#[cfg(test)] mod added { #[test] fn new_test() {} }`n") 'added::new_test' 'selector must name exactly one existing test in compiled original HEAD'
+    Test-Case 'exact-no-substring-matches' ($baseline.Replace('fn focused()', 'fn focused_extra() {} #[test] fn focused()')) 'tests::focused'
+    Test-Case 'named-should-panic' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'tests::panics'
+    Test-Case 'dirty-original-head' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'tests::focused' 'clean tracked HEAD files before original test listing' $false $true
     Test-Case 'full-suite-failure' ($baseline + "#[test] fn outside_focus_fails() { assert_eq!(2 + 2, 5); }`n") 'tests::focused' 'full-suite: native validation failed with exit code'
     $mutation = @'
 #[cfg(test)] mod tests {

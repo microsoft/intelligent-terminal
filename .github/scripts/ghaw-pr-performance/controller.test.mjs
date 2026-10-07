@@ -15,6 +15,10 @@ test('the controller run name preserves the PR identity instead of starting a YA
     assert.match(workflow, /^run-name: 'Performance Review for PR #\$\{\{ github\.event\.pull_request\.number \}\}'$/m);
 });
 
+test('repair publication uses the repository Actions token, not a recursion-triggering override', () => {
+    assert.match(workflow, /name: Publish only the tested tree with immutable-head CAS[\s\S]*?with:\s+github-token: \$\{\{ github\.token \}\}/);
+});
+
 async function simulate({ fork = false, conclusion = 'success', agent = true, timeout = false } = {}) {
     const calls = [];
     const outputs = {};

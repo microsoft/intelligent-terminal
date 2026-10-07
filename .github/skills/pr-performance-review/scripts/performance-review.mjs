@@ -64,6 +64,8 @@ function classifyFile(file) {
         fail('pull request filename must be a safe repository-relative path');
     const categories = CATEGORY_RULES.filter(([, pattern]) => pattern.test(filename)).map(([name]) => name);
     const supporting = /(^|\/)(test|tests|ut_[^/]*|ft_[^/]*|WindowsTerminal_UIATests|doc|docs|specs)(\/|$)/i.test(filename) ||
+        filename === 'tools/wta/src/test_support.rs' ||
+        /(^|\/)(tests|[^/]+_tests)\.rs$/i.test(filename) ||
         /\.(md|txt|png|jpg|svg)$/i.test(filename);
     const source = SOURCE_EXTENSIONS.has(path.posix.extname(filename).toLowerCase()) ||
         ['tools/wta/Cargo.toml', 'tools/wta/Cargo.lock'].includes(filename);
@@ -292,8 +294,10 @@ export function prepareScope(expected, outputDirectory, baselinePath) {
 
 function validatePlan(plan) {
     if (plan?.type !== 'wta-unit' || typeof plan.testFilter !== 'string' ||
-        !/^[A-Za-z0-9_:]{1,200}$/.test(plan.testFilter) || plan.testFilter === 'module::tests')
-        fail('supported focused native WTA validation requires a real test selector read from source, not a placeholder');
+        plan.testFilter.length > 200 ||
+        !/^[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)+$/.test(plan.testFilter) ||
+        plan.testFilter.endsWith('::tests') || plan.testFilter === 'module::tests')
+        fail('supported focused native WTA validation requires a qualified test function selector, not a placeholder; native validation must verify it exists');
 }
 
 export function validateProposal(proposal, expected) {
