@@ -408,6 +408,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryRefreshPreservesCollection);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
         TEST_METHOD(VerticalTabHistorySearchProjection);
+        TEST_METHOD(VerticalTabHistoryDeduplicatedEmptyState);
         TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
         TEST_METHOD(VerticalTabSearchToggleClearsHistoryProjection);
         TEST_METHOD(VerticalTabProgrammaticSearchQueryFiltersHistory);
@@ -7621,6 +7622,52 @@ namespace TerminalAppLocalTests
             stripImpl->SearchTextBox().Text(L"debian");
             VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
             VERIFY_ARE_EQUAL(debianMetadata, strip.HistoryItems().GetAt(0).Subtitle());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryDeduplicatedEmptyState()
+    {
+        HistoryTestView view;
+        const auto strip = view.strip;
+        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+        TestOnUIThread([&]() {
+            const auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            item.SessionId(L"represented-idle-session");
+            item.AgentId(L"copilot");
+            item.AgentSource(L"host");
+            item.SessionUniverse(L"empty-state-test");
+            item.PaneSessionId(L"qualified-pane");
+            item.Title(L"Open idle session");
+            item.Status(L"Idle");
+            item.IsLive(true);
+            impl->CommitHistorySnapshot({ item }, true);
+            impl->SetRepresentedHistorySessions({ { item.SessionId(), item.AgentId(), item.PaneSessionId() } });
+            strip.UpdateLayout();
+            VERIFY_IS_TRUE(impl->HasHistoryItems());
+            VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
+            VERIFY_IS_TRUE(strip.SearchQuery().empty());
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap().GetSubtree(L"TerminalApp/Resources");
+            const auto empty = resources.GetValue(L"VerticalTabsHistoryEmpty").ValueAsString();
+            const auto noMatches = resources.GetValue(L"VerticalTabsHistoryNoMatches").ValueAsString();
+            VERIFY_ARE_NOT_EQUAL(empty, noMatches);
+            VERIFY_IS_NOT_NULL(impl->HistoryMessage());
+            VERIFY_ARE_EQUAL(Visibility::Visible, impl->HistoryMessage().Visibility());
+            VERIFY_ARE_EQUAL(empty, impl->HistoryMessage().Text());
+
+            strip.SearchQuery(L"missing-result");
+            VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(noMatches, impl->HistoryMessage().Text());
+            strip.SearchQuery(L" \t ");
+            VERIFY_ARE_EQUAL(empty, impl->HistoryMessage().Text());
+            strip.SearchQuery(L"");
+            VERIFY_ARE_EQUAL(0u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(empty, impl->HistoryMessage().Text());
+
+            impl->SetRepresentedHistorySessions({});
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_IS_TRUE(strip.HistoryItems().GetAt(0) == item);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, impl->HistoryMessage().Visibility());
         });
     }
 

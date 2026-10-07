@@ -2567,7 +2567,9 @@ namespace winrt::TerminalApp::implementation
             }
             else if (_historyItems.Size() == 0)
             {
-                HistoryMessage().Text(_historySnapshot.empty() ?
+                const std::wstring_view query{ _searchQuery.c_str(), _searchQuery.size() };
+                const auto hasSearchQuery = query.find_first_not_of(L" \t\r\n") != std::wstring_view::npos;
+                HistoryMessage().Text(_historySnapshot.empty() || !hasSearchQuery ?
                                           RS_(L"VerticalTabsHistoryEmpty") :
                                           RS_(L"VerticalTabsHistoryNoMatches"));
                 HistoryMessage().Visibility(Visibility::Visible);
