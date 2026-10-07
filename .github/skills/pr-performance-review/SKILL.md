@@ -89,8 +89,9 @@ module declarations, then set `validationPlan.type` to `wta-unit` and
 name in the immutable source with Git before writing the report. Never copy a
 sample selector or invent a module name. Cargo test names do not include
 repository directories or the crate name; do not prefix `tools`, `wta`, or
-`src`. Request `validate_performance_repair` with
-`confirm: true` once, then stop editing.
+`src`. Request exactly one each of `validate_performance_original_tests`,
+`validate_performance_focused_tests`, and `validate_performance_repair`, all
+with `confirm: true`, then stop editing.
 
 Dedicated `tests.rs`, `*_tests.rs`, and WTA's `test_support.rs` are supporting evidence, not
 automatic repair targets. Do not alter them to make a repair pass.
@@ -133,40 +134,48 @@ A runtime-only prefix repair with unchanged trailing inline tests is supported.
 Format the proposed Rust change before sealing it. Use the standard
 `cargo fmt --manifest-path tools/wta/Cargo.toml`, inspect its diff, and keep only
 the permitted repair changes. Native validation checks formatting without
-changing the sealed proposal, then runs the focused test and the required full
-explicit-target WTA suite. Native validation must resolve the exact qualified test in the original
+changing the sealed proposal in the focused phase. Three parallel read-only
+`windows-latest` jobs separately list the original test, check formatting and
+run the exact focused candidate test, and run the full explicit-target candidate
+suite. Each job checks out immutable HEAD, loads trusted validation code and
+downloads the original sealed artifact independently on a fresh hosted VM
+and installed toolchain. Never import toolchains, caches, native artifacts or
+process state from another phase. Job-end platform cleanup removes descendants;
+directory changes alone are not isolation. Native validation must resolve the exact qualified test in the original
 immutable head and execute it with exact matching; passing an unrelated
 substring-selected group is not proof. Failure in any stage blocks publication.
 
 Native Cargo stages require a source-only checkout: untracked paths, including
 ignored files, and changes to original index path membership are rejected
-initially and between stages. Physical file inspection uses the actual
+initially and before/after each phase's commands. Physical file inspection uses the actual
 checkout root independently of mutable Git metadata; source reparse points
 are rejected. Tests use `--locked`, and every Cargo stage uses a fresh external
-`CARGO_HOME` as well as a separate target directory. Later stages do not reuse
-configuration, registry state or artifacts that earlier code could modify.
+`CARGO_HOME` as well as a separate target directory. The next native phase
+never runs on that VM, including after failure.
 Cargo's ancestor `config`/`config.toml` files are captured before execution,
 including absent paths, and must retain presence and bytes between stages.
 If repository-root `.cargo/config` or `.cargo/config.toml` differs between
 comparison base and reviewed head, native repair is unavailable: keep the
 finding manual rather than executing PR-controlled runner/wrapper settings.
 Windows case-equivalent path names are treated identically on every sealing host.
-Cold registry downloads and builds may exhaust the unchanged
-30-minute validation deadline; report that as blocked with a manual handoff,
+Cold registry downloads and builds may exhaust the per-phase
+30-minute validator / 32-minute step deadline; report that as blocked with a manual handoff,
 not a pass or a reason to weaken the gates.
 
-The trusted validator validates and decodes the sealed proposal before Cargo
-executes any candidate build scripts. After original-head listing, it applies
-only that private in-memory snapshot: it never reloads the downloaded proposal
+Each trusted validator validates and decodes the original sealed proposal before Cargo
+executes any candidate build scripts. OriginalListing leaves HEAD unchanged.
+Focused and FullSuite apply only that private in-memory snapshot upfront,
+before any candidate code: neither reloads the downloaded proposal
 or executes the runtime helper again. Expected source hashes derive from the
 original inventory plus those sealed bytes, not a newly observed worktree.
 Mutable sibling files cannot authorize a different patch.
 
 Do not claim that Linux has run Windows tests. Do not commit, call a branch-push
 tool, or mark a proposal `fixed`. Trusted post-processing captures the exact
-candidate blobs; a read-only Windows job runs the fixed validation commands
-and requires executed passing tests. GitHub records the job result. The trusted publisher
-checks that result and the original sealed blobs before committing with
+candidate blobs; separate read-only Windows jobs run their fixed phase commands
+and require executed passing tests in focused/full phases. GitHub records each job result. The trusted publisher
+requires all three exact job and step names to have server-recorded success
+in the same correlated worker run and checks the original sealed blobs before committing with
 immutable-head CAS. It never consumes a receipt or files written by test code.
 Only the publisher can render a proposal as `fixed`.
 These are publication and validation gates, not a full sandbox for candidate

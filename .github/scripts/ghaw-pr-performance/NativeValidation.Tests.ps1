@@ -23,6 +23,9 @@ function Format-Fixture {
     if ($LASTEXITCODE -ne 0) { throw "Fixture formatting failed: $messages" }
 }
 function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$ErrorPattern = '', [bool]$Unformatted = $false, [bool]$DirtyStart = $false, [scriptblock]$BeforeValidation = {}, [string]$Tampering = '') {
+    $phase = if ($Name -eq 'full-suite-failure') { 'FullSuite' }
+        elseif ($Name -match '^original-listing-|^ancestor-config-|^exact-unknown-function$|^generated-lock-') { 'OriginalListing' }
+        else { 'Focused' }
     $null = Git @('read-tree', '--empty')
     $null = Git @('read-tree', $script:head)
     $sourcePath = Join-Path $fixture 'tools\wta\src\lib.rs'
@@ -95,7 +98,7 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
         # The validator must override a caller's in-checkout target path, child-only.
         $env:CARGO_TARGET_DIR = Join-Path $fixture 'tools\wta\target'
         $env:CARGO_HOME = Join-Path $fixture 'caller-cargo-home'
-        $messages = & pwsh -NoProfile -File $validator -ProposalPath $proposalPath -RepositoryRoot $fixture -TrustedRuntimePath $caseRuntime 2>&1
+        $messages = & pwsh -NoProfile -File $validator -Phase $phase -ProposalPath $proposalPath -RepositoryRoot $fixture -TrustedRuntimePath $caseRuntime 2>&1
         $exit = $LASTEXITCODE
         if ($env:CARGO_TARGET_DIR -cne (Join-Path $fixture 'tools\wta\target')) { throw 'Native step changed parent target directory.' }
         if ($env:CARGO_HOME -cne (Join-Path $fixture 'caller-cargo-home')) { throw 'Native step changed parent Cargo home.' }
@@ -108,23 +111,25 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
         if ($exit -eq 0 -or ($messages -join "`n") -notmatch $ErrorPattern) {
             throw "$Name did not fail as expected (exit ${exit}): $messages"
         }
+    } elseif ($phase -eq 'OriginalListing') {
+        if ($exit -ne 0 -or ($messages -join "`n") -notmatch ('original HEAD contains ' + [regex]::Escape($Filter) + ': test')) {
+            throw "$Name did not list the original test (exit ${exit}): $messages"
+        }
     } elseif ($exit -ne 0 -or ($messages -join "`n") -notmatch 'focused-tests: 1 native test\(s\) passed' -or
-        ($messages -join "`n") -notmatch 'full-suite: [1-9][0-9]* native test\(s\) passed' -or
-        ($messages -join "`n") -notmatch ('original HEAD contains ' + [regex]::Escape($Filter) + ': test') -or
         ($messages -join "`n") -notmatch ('(?m)^test ' + [regex]::Escape($Filter) + '(?: - should panic)? \.\.\. ok\r?$') -or
         ($messages -join "`n") -notmatch ([regex]::Escape($Filter) + ' -- --exact(?:\r?\n|$)')) {
-        throw "$Name did not run focused and full native tests (exit ${exit}): $messages"
+        throw "$Name did not run the exact focused native test (exit ${exit}): $messages"
     }
     if ($Name -in @('exact-unknown-function', 'proposal-added-test') -and
         ($messages -join "`n") -match 'format-check: cargo') {
         throw "Original HEAD selector rejection ran candidate commands: $messages"
     }
-    if ($Name -eq 'full-suite-failure' -and ($messages -join "`n") -notmatch 'focused-tests: 1 native test\(s\) passed') {
-        throw "Full-suite regression did not first pass the focused test: $messages"
+    if ($Name -eq 'full-suite-failure' -and ($messages -join "`n") -match 'focused-tests: cargo') {
+        throw "Full-suite phase reused a focused stage: $messages"
     }
     if ($Tampering) {
         if (-not (Test-Path -LiteralPath (Join-Path $workspace 'tampering-observed'))) { throw 'Compiled build.rs did not run the attack.' }
-        if ([IO.File]::ReadAllText($sourcePath) -cne $Source) { throw 'Native validation applied alternative B instead of the original snapshot A.' }
+        if ([IO.File]::ReadAllText($sourcePath) -cne $baseline) { throw 'Original listing applied candidate bytes.' }
         if (($messages -join "`n") -notmatch 'original HEAD contains tests::focused: test') { throw 'Attack did not reach original compiled listing.' }
         if ($Tampering -match 'proposal' -and [IO.File]::ReadAllText($proposalPath) -cne [IO.File]::ReadAllText($alternativePath)) {
             throw 'Build script did not overwrite the downloaded proposal with valid B.'
@@ -176,16 +181,16 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
         if (Test-Path -LiteralPath (Join-Path $fixture 'tools\wta\target')) { throw 'Cargo used an in-checkout target directory.' }
         $targets = @(Get-ChildItem -LiteralPath $targetParent -Directory -Filter 'performance-native-target-*')
         $homes = @(Get-ChildItem -LiteralPath $targetParent -Directory -Filter 'performance-native-cargo-home-*')
-        if ($targets.Count -ne 3 -or $homes.Count -ne 4 -or @($targets | Where-Object { -not (Test-Path (Join-Path $_.FullName 'x86_64-pc-windows-msvc\debug')) }).Count -gt 0) {
-            throw 'Compiled listing, focused test and full suite did not use distinct external target directories.'
+        if ($targets.Count -ne 1 -or $homes.Count -ne 2 -or @($targets | Where-Object { -not (Test-Path (Join-Path $_.FullName 'x86_64-pc-windows-msvc\debug')) }).Count -gt 0) {
+            throw 'Focused phase must execute only formatting and one native test stage.'
         }
     }
     if ($Name -eq 'stage-cargo-home-poisoning') {
         $homes = @(Get-ChildItem -LiteralPath $targetParent -Directory -Filter 'performance-native-cargo-home-*')
         $poisoned = @($homes | Where-Object { Test-Path (Join-Path $_.FullName 'registry\data\poison-sentinel') })
         $executed = @($homes | Where-Object { Test-Path (Join-Path $_.FullName 'actual-execution-observed') })
-        if ($homes.Count -ne 4 -or $poisoned.Count -ne 3 -or $executed.Count -ne 2) {
-            throw 'Original listing, format, focused and full stages did not isolate Cargo homes and execute real tests.'
+        if ($homes.Count -ne 2 -or $poisoned.Count -ne 1 -or $executed.Count -ne 1) {
+            throw 'Focused phase must isolate formatter Cargo home and execute one real compiled test.'
         }
         foreach ($stageHome in $poisoned) {
             if (-not (Test-Path (Join-Path $stageHome.FullName 'config.toml')) -or
@@ -363,7 +368,7 @@ fn work() -> usize {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
     assert!(!home.canonicalize().unwrap().starts_with(root));
     assert!(home.file_name().unwrap().to_str().unwrap().starts_with("performance-native-cargo-home-"));
-    assert!(std::path::Path::new(&std::env::var_os("RUSTUP_HOME").unwrap()).is_dir());
+    assert!(std::env::var_os("USERPROFILE").is_some());
     4
 }
 '@
@@ -438,7 +443,7 @@ fn main() {
     Test-Case 'stage-cargo-home-poisoning' ($repair.Replace("    2 + 2`n", $executionMarker + "`n")) 'tests::focused'
     foreach ($attack in @('proposal', 'runtime', 'proposal-runtime')) {
         Test-Case "original-listing-$attack-tampering" ($baseline.Replace("    4`n", "    5`n")) 'tests::focused' `
-            'focused-tests: native validation failed with exit code' $false $false {} $attack
+            '' $false $false {} $attack
     }
     foreach ($configName in @('config', 'config.toml')) {
         Test-Case "ancestor-config-created-$configName" $repair 'tests::focused' `

@@ -239,9 +239,12 @@ export function gatePublication(scope, report, agentOutput, expected) {
     }
     const proposed = report.findings.some(finding => finding.fixDisposition === 'proposed');
     if (proposed && report.status !== 'pending_validation') fail('native proposals require pending_validation status');
-    const type = proposed ? 'validate_performance_repair' : 'noop';
-    if (agentOutput.items.length !== 1 || item?.type !== type) fail(`applicable repair scope requires exactly one ${type}`);
-    if (proposed && ![true, 'true'].includes(item.confirm)) fail('native validation requires explicit proposal confirmation');
+    const types = proposed ? ['validate_performance_original_tests', 'validate_performance_focused_tests', 'validate_performance_repair'] : ['noop'];
+    if (agentOutput.items.length !== types.length ||
+        types.some(type => agentOutput.items.filter(output => output.type === type).length !== 1))
+        fail(`applicable repair scope requires exactly one each of ${types.join(', ')}`);
+    if (proposed && agentOutput.items.some(output => ![true, 'true'].includes(output.confirm)))
+        fail('native validation requires explicit proposal confirmation');
     if (!Array.isArray(expected.changedFiles)) fail('repair publication requires a final changed-file inventory');
     if (!proposed && expected.changedFiles.length) fail('repair noop cannot discard unreported changes');
     const candidates = new Set(scope.candidates.map(file => file.filename));

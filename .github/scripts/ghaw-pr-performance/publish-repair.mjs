@@ -2,8 +2,17 @@ import fs from 'node:fs';
 import { reconstructTree, renderReport, validateProposal, verifyPullRequest } from '../../skills/pr-performance-review/scripts/performance-review.mjs';
 
 export function nativeValidationSucceeded(jobs) {
-    return jobs.some(job => job.name === 'validate_performance_repair' && job.conclusion === 'success' &&
-        job.steps?.some(step => step.name === 'Validate and test the exact candidate tree' && step.conclusion === 'success'));
+    const phases = [
+        ['validate_performance_original_tests', 'List the exact test on original HEAD'],
+        ['validate_performance_focused_tests', 'Format and test the exact focused candidate'],
+        ['validate_performance_repair', 'Test the exact candidate full suite'],
+    ];
+    return phases.every(([name, stepName]) => {
+        const matches = jobs.filter(job => job.name === name);
+        const steps = matches[0]?.steps?.filter(step => step.name === stepName) ?? [];
+        return matches.length === 1 && matches[0].conclusion === 'success' &&
+            steps.length === 1 && steps[0].conclusion === 'success';
+    });
 }
 
 export async function publishRepair({ github, expected, proposalPath, workerRunId, staged = false }) {

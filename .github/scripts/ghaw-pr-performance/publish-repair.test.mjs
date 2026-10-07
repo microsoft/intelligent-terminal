@@ -60,10 +60,17 @@ function fixture(t) {
                 url: 'https://example.invalid/commit', tree: { oid: treeSha } } } };
         },
     };
-    const jobs = [{ name: 'validate_performance_repair', conclusion: 'success',
-        steps: [{ name: 'Validate and test the exact candidate tree', conclusion: 'success' }] }];
+    const jobs = [
+        ['validate_performance_original_tests', 'List the exact test on original HEAD'],
+        ['validate_performance_focused_tests', 'Format and test the exact focused candidate'],
+        ['validate_performance_repair', 'Test the exact candidate full suite'],
+    ].map(([name, stepName]) => ({ name, conclusion: 'success',
+        steps: [{ name: stepName, conclusion: 'success' }] }));
     github.rest.actions = { listJobsForWorkflowRun: 'list-jobs' };
-    github.paginate = async () => jobs;
+    github.paginate = async (route, options) => {
+        assert.equal(options.run_id, 123, 'proof must come from the correlated worker run');
+        return jobs;
+    };
     return { expected, proposal, proposalPath, workerRunId: 123, write, calls, github, pr, jobs };
 }
 
@@ -134,4 +141,24 @@ test('staged publication validates the tree but never mutates GitHub', async t =
     const result = await publishRepair({ ...f, staged: true });
     assert.equal(result.published, false);
     assert.equal(f.calls.length, 0);
+});
+
+test('publisher requires every exact phase job and step, rejecting partial or ambiguous proof', async t => {
+    const f = fixture(t);
+    const original = structuredClone(f.jobs);
+    for (let phase = 0; phase < 3; phase++) {
+        for (const defect of ['missing', 'skipped', 'failure', 'step-missing', 'step-skipped', 'step-failed', 'step-duplicate', 'wrong-job', 'wrong-step', 'duplicate']) {
+            f.jobs.splice(0, f.jobs.length, ...structuredClone(original));
+            if (defect === 'missing') f.jobs.splice(phase, 1);
+            else if (defect === 'duplicate') f.jobs.push(structuredClone(f.jobs[phase]));
+            else if (defect === 'wrong-job') f.jobs[phase].name += '_other';
+            else if (defect === 'wrong-step') f.jobs[phase].steps[0].name += ' other';
+            else if (defect === 'step-missing') f.jobs[phase].steps = [];
+            else if (defect === 'step-duplicate') f.jobs[phase].steps.push({ ...f.jobs[phase].steps[0], conclusion: 'failure' });
+            else if (defect.startsWith('step-')) f.jobs[phase].steps[0].conclusion = defect.slice(5);
+            else f.jobs[phase].conclusion = defect;
+            await assert.rejects(() => publishRepair(f), /GitHub did not record/, `${phase}: ${defect}`);
+            assert.equal(f.calls.length, 0);
+        }
+    }
 });

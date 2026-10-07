@@ -4,11 +4,13 @@ This separate gh-aw workflow reviews Intelligent Terminal hot paths and can
 repair small, strongly evidenced HIGH WTA regressions. The agent and reusable
 skill own the actual analysis; mechanical steps enforce scope and publication.
 
-**Hosted full-path status: passed on the controlled private WTA fixture.**
+**Previous architecture hosted status: passed on the controlled private WTA fixture.**
 After three failed worker trials and their contract corrections, the two
 additional authorized performance runs verified the controller, actual Copilot
 agent/skill, Windows test, and immutable-head publication. This is a scoped
 end-to-end proof, not a claim that every native performance scenario is covered.
+The fresh-three-VM architecture below has local compiled-pipeline evidence only;
+it has not received a new hosted trial.
 
 ## Flow
 
@@ -24,13 +26,22 @@ end-to-end proof, not a claim that every native performance scenario is covered.
    Each proposed canonical `path:line` must identify a sealed WTA Rust
    replacement, and every replacement must be covered. Concurrency/session
    categories remain eligible by actual location, not category label.
-4. A read-only Windows Actions job resolves the exact test in the immutable
-   original head before applying the proposal. It then checks formatting,
-   runs that test with exact matching, and runs the full explicit-target suite.
+4. Three parallel read-only `windows-latest` custom safe-output jobs each use
+   a fresh hosted VM, independent trusted-code and immutable-head checkouts,
+   and a separate download of the original sealed artifact:
+   `validate_performance_original_tests` lists the exact test on original HEAD;
+   `validate_performance_focused_tests` applies the private sealed snapshot,
+   checks formatting and runs that test with exact matching;
+   `validate_performance_repair` independently applies the snapshot and runs
+   the full explicit-target suite.
    It rejects failed/zero tests and tracked-source mutation.
-   Actions owns process cleanup; there is no custom Windows process manager
+   No toolchain, cache, native artifacts, mutable downloads or processes are
+   imported from another native phase. Actions owns VM/job-end process cleanup;
+   there is no custom Windows process manager
    or native receipt file.
-5. The trusted controller requires GitHub-recorded native-job success, checks
+5. The trusted controller requires server-recorded success for all three exact
+   job names and their respective exact phase step names in the same correlated
+   worker run. Missing, skipped or failed phases block publication. It checks
    the original sealed proposal, and publishes its exact tree with immutable
    `expectedHeadOid`. It never rebases or retries a stale repair.
 
@@ -41,7 +52,8 @@ head, following localization's completion-check pattern; otherwise it belongs
 to the immutable reviewed head. No manual PR-description update or additional
 agent comment is required.
 
-The Windows test job has no model or branch-write credentials. Its files are
+The Windows test jobs have only `contents: read`, no model or branch-write
+credentials and no cache exports. Their files are
 not publication authority: the publisher consumes the immutable Linux-sealed
 proposal and GitHub's job result. Same-repo and fork workers cannot both
 comment and commit.
@@ -130,21 +142,21 @@ modules or test-only helpers can conservatively block otherwise safe repairs.
 This is not a Rust parser: custom macros without recognized test words and
 changes to runtime helpers are not semantic test-preservation guarantees.
 Original compiled test listing and exact native execution remain mandatory.
-The native job checks original test identity, formatting, exact focused and
-full-suite execution, and tracked-source mutation. It also rejects all
+The native phases separately check original test identity, formatting, exact
+focused and full-suite execution, and tracked-source mutation. Each rejects all
 untracked repository-local paths, including ignored files, before and after
 each stage, and rejects changes to the immutable original index path
 membership so staging injected files cannot hide them. Physical source
 inspection is anchored to the actual checkout, not candidate-mutable
 `core.worktree`; source reparse points are rejected. Cargo tests use
 tracked locks with `--locked` and separate fresh
-external target directories to prevent mutable artifact reuse between stages.
-Each Cargo stage also uses a fresh external `CARGO_HOME`, isolating user-level
-configuration and registry state from earlier code. Captured ancestor Cargo
+external target directories. Fresh hosted VMs prevent state reuse between
+native phases, including toolchain mutations and background descendants.
+Each Cargo command also uses a fresh external `CARGO_HOME`. Captured ancestor Cargo
 configurations also remain unchanged: both config names, including initially
 absent files, are checked before and after stages.
 Changed ancestor inputs or reparse points block validation. Cold downloads and
-builds can exceed the unchanged total 30-minute deadline, requiring
+builds can exceed each phase's 30-minute validator / 32-minute step deadline, requiring
 a blocked outcome and manual handoff. This is not a full host sandbox
 for candidate code executed by Cargo, nor proof of behavioral equivalence;
 the sealed publication tree and GitHub-recorded result remain separate authority.
@@ -153,15 +165,42 @@ native repair before Cargo runs; unchanged comparison-base configuration
 remains supported.
 The gate uses Windows case-equivalent root path names even when sealing on Linux.
 
-Native input binding happens before any candidate code runs: trusted proposal
-validation confirms the sealed tree, then the parent validator captures decoded
-replacement bytes in memory. Following original-head listing, it applies only
-that snapshot without rereading the proposal or rerunning the mutable helper.
+Native input binding happens independently in every job before any code runs:
+trusted proposal validation confirms the sealed tree, then that validator
+captures decoded replacement bytes in memory. OriginalListing leaves original
+HEAD unchanged. Focused and FullSuite apply only that snapshot upfront, before
+any candidate code, without rereading the proposal or rerunning the mutable helper.
 Expected source hashes are computed from original bytes plus sealed replacements,
 never reset from post-execution observations. Compiled build-script fixtures
 overwrite sibling proposal/helper files and verify that alternative bytes
-cannot become the tested or published artifact. This is not an OS memory-injection
+cannot become the tested or published artifact. Local pipeline phases use three
+independent checkouts and validator subprocesses with separate original-artifact
+downloads. Phase-local toolchain/config markers and an explicitly cleaned-up
+background subprocess simulate state/lifecycle isolation; they are not local
+fresh VMs or proof of hosted cleanup. This is not an OS memory-injection
 or full host-sandbox guarantee.
+
+Repair proposals require exactly one confirmed request for each of the three
+native tools; noop still requires exactly one noop.
+
+| Tool/job ID | Mandatory validator phase | Server-recorded phase step |
+| --- | --- | --- |
+| `validate_performance_original_tests` | `OriginalListing` | `List the exact test on original HEAD` |
+| `validate_performance_focused_tests` | `Focused` | `Format and test the exact focused candidate` |
+| `validate_performance_repair` | `FullSuite` | `Test the exact candidate full suite` |
+
+All three requests use `confirm: true`. They authorize validation only, not
+publication; model requests, native-written files and native receipts never
+substitute for the server-recorded proof.
+
+Pinned gh-aw v0.87.10 validates the three custom jobs and emits parallel
+agent/detection dependencies with matching output-type conditions. Its actual
+schema rejects `timeout-minutes` inside custom safe jobs despite the pinned
+reference documenting it; root job timeout overrides are not emitted for these
+jobs. No generated lock edits or unsupported overrides are used. Native steps
+retain 32-minute limits, and the controller cancels workers after 68 minutes
+inside its 90-minute budget. A 35-minute per-native-job timeout requires a
+compiler fix/upgrade; it is not claimed as enforced here.
 
 Pending reports reject all model-authored `pass` checks, not just native claims.
 Not-run checks are honestly `unavailable`; the publisher appends native success
@@ -187,7 +226,11 @@ no custom model router or mid-run switching mechanism is introduced.
 node --test .github\skills\pr-performance-review\tests\performance-review.test.mjs .github\scripts\ghaw-pr-performance\controller.test.mjs .github\scripts\ghaw-pr-performance\runtime.test.mjs .github\scripts\ghaw-pr-performance\publish-repair.test.mjs .github\scripts\ghaw-pr-performance\repair-pipeline.test.mjs .github\scripts\ghaw-pr-performance\guide-report.test.mjs
 pwsh -NoProfile -File .github\scripts\ghaw-pr-performance\NativeValidation.Tests.ps1
 gh aw compile ghaw-pr-performance ghaw-pr-performance-guide-forkedrepo --validate
+actionlint -shellcheck= -pyflakes= -ignore 'unknown permission scope "copilot-requests"' -ignore 'unexpected key "queue" for "concurrency" section' .github\workflows\ghaw-pr-performance.lock.yml .github\workflows\ghaw-pr-performance-guide-forkedrepo.lock.yml .github\workflows\ghaw-pr-performance-controller.yml
 ```
+
+Use pinned actionlint 1.7.12. Only its two known field-schema gaps are ignored;
+other workflow errors must still fail.
 
 Fixtures check the boundaries; they do not establish native product speedup
 or a numerical production-reliability rate. The actual model repair evaluation

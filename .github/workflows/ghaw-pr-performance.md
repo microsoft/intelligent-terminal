@@ -108,8 +108,106 @@ pre-agent-steps:
 
 safe-outputs:
   jobs:
+    validate-performance-original-tests:
+      description: 'List the exact existing test on original HEAD in a fresh Windows VM; never execute candidate replacements.'
+      runs-on: windows-latest
+      if: needs.agent.result == 'success' && needs.detection.result == 'success'
+      permissions:
+        contents: read
+      inputs:
+        confirm:
+          description: 'Confirm the sealed HIGH proposal and existing exact test selector.'
+          required: true
+          type: boolean
+      steps:
+        - name: Checkout trusted validation code
+          uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          with:
+            ref: ${{ github.workflow_sha }}
+            fetch-depth: 0
+            persist-credentials: false
+            path: trust
+        - name: Checkout immutable candidate head
+          uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          with:
+            ref: ${{ github.event.inputs.expected_head_sha }}
+            fetch-depth: 0
+            persist-credentials: false
+            path: candidate
+        - name: Download natively sealed proposal
+          uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+          with:
+            name: performance-result
+            path: '${{ runner.temp }}\performance-proposal'
+        - name: List the exact test on original HEAD
+          timeout-minutes: 32
+          working-directory: candidate
+          shell: pwsh
+          env:
+            PR_NUMBER: ${{ github.event.inputs.pr_number }}
+            BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+            HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          run: |
+            $ErrorActionPreference = 'Stop'
+            $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\pr-performance-review\scripts\performance-review.mjs'
+            $proposal = Join-Path $env:RUNNER_TEMP 'performance-proposal\performance-proposal.json'
+            & node $runtime validate-proposal --input $proposal `
+              --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
+            if ($LASTEXITCODE -ne 0) { throw 'Invalid sealed native proposal.' }
+            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\scripts\ghaw-pr-performance\validate-native.ps1') `
+              -Phase OriginalListing -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
+              -TrustedRuntimePath $runtime
+    validate-performance-focused-tests:
+      description: 'Check formatting and execute the exact focused candidate test in a fresh Windows VM.'
+      runs-on: windows-latest
+      if: needs.agent.result == 'success' && needs.detection.result == 'success'
+      permissions:
+        contents: read
+      inputs:
+        confirm:
+          description: 'Confirm the sealed HIGH proposal and existing exact test selector.'
+          required: true
+          type: boolean
+      steps:
+        - name: Checkout trusted validation code
+          uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          with:
+            ref: ${{ github.workflow_sha }}
+            fetch-depth: 0
+            persist-credentials: false
+            path: trust
+        - name: Checkout immutable candidate head
+          uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          with:
+            ref: ${{ github.event.inputs.expected_head_sha }}
+            fetch-depth: 0
+            persist-credentials: false
+            path: candidate
+        - name: Download natively sealed proposal
+          uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+          with:
+            name: performance-result
+            path: '${{ runner.temp }}\performance-proposal'
+        - name: Format and test the exact focused candidate
+          timeout-minutes: 32
+          working-directory: candidate
+          shell: pwsh
+          env:
+            PR_NUMBER: ${{ github.event.inputs.pr_number }}
+            BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+            HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          run: |
+            $ErrorActionPreference = 'Stop'
+            $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\pr-performance-review\scripts\performance-review.mjs'
+            $proposal = Join-Path $env:RUNNER_TEMP 'performance-proposal\performance-proposal.json'
+            & node $runtime validate-proposal --input $proposal `
+              --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
+            if ($LASTEXITCODE -ne 0) { throw 'Invalid sealed native proposal.' }
+            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\scripts\ghaw-pr-performance\validate-native.ps1') `
+              -Phase Focused -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
+              -TrustedRuntimePath $runtime
     validate-performance-repair:
-      description: 'Run actual focused Windows tests on the exact natively sealed HIGH repair proposal; never publish or rebase.'
+      description: 'Run the full Windows suite on the exact sealed HIGH repair in a fresh VM; never publish or rebase.'
       runs-on: windows-latest
       if: needs.agent.result == 'success' && needs.detection.result == 'success'
       permissions:
@@ -139,7 +237,7 @@ safe-outputs:
           with:
             name: performance-result
             path: '${{ runner.temp }}\performance-proposal'
-        - name: Validate and test the exact candidate tree
+        - name: Test the exact candidate full suite
           timeout-minutes: 32
           working-directory: candidate
           shell: pwsh
@@ -155,7 +253,7 @@ safe-outputs:
               --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
             if ($LASTEXITCODE -ne 0) { throw 'Invalid sealed native proposal.' }
             & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\scripts\ghaw-pr-performance\validate-native.ps1') `
-              -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
+              -Phase FullSuite -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
               -TrustedRuntimePath $runtime
 
 post-steps:
@@ -279,9 +377,13 @@ For an eligible WTA Rust repair, mark each HIGH repair as `proposed`, status
 `pending_validation`. Set `validationPlan.type` to `wta-unit` and select the
 actual qualified test name from its function and enclosing module declarations.
 Confirm it in the immutable source with Git; do not copy an example selector.
-Request exactly one `validate_performance_repair` with
-`confirm: true`. Native post-processing seals the exact replacements, the
-read-only Windows job runs the tests, and only a separate controller publisher
+Request exactly one each of `validate_performance_original_tests`,
+`validate_performance_focused_tests`, and `validate_performance_repair`, all with
+`confirm: true`. Native post-processing seals the exact replacements. Three
+parallel read-only Windows jobs each download the original sealed artifact and
+use a fresh hosted VM, checkout and installed toolchain. No native phase imports
+state from another. Publication requires all three exact jobs and steps to succeed
+in this worker run. Only a separate controller publisher
 may atomically commit those tested blobs against the immutable reviewed head.
 Do not commit, push, or claim `fixed` yourself.
 

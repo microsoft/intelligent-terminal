@@ -168,7 +168,8 @@ test('fresh trust seals raw bytes despite malicious clean filter, worktree redir
     };
     fs.writeFileSync(reportPath, JSON.stringify(report));
     fs.writeFileSync(queuePath, JSON.stringify({
-        items: [{ type: 'validate_performance_repair', confirm: true }], errors: [],
+        items: ['validate_performance_original_tests', 'validate_performance_focused_tests', 'validate_performance_repair']
+            .map(type => ({ type, confirm: true })), errors: [],
     }));
     const args = ['gate', '--output-dir', f.output, '--report', reportPath,
         '--agent-output', queuePath, '--mode', 'repair', ...f.identity, '--baseline', baseline];

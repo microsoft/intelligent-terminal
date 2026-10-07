@@ -1,5 +1,6 @@
 [CmdletBinding()]
 param(
+    [Parameter(Mandatory)][ValidateSet('OriginalListing', 'Focused', 'FullSuite')][string]$Phase,
     [Parameter(Mandatory)][string]$ProposalPath,
     [Parameter(Mandatory)][string]$RepositoryRoot,
     [Parameter(Mandatory)][string]$TrustedRuntimePath
@@ -159,16 +160,14 @@ function Assert-ExpectedSourceHashes([string]$Stage) {
     }
 }
 $filter = $proposal.validationPlan.testFilter
-$rustupHome = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $env:USERPROFILE '.rustup' }
-$rustupHome = [IO.Path]::GetFullPath($rustupHome)
-# Actions must impose a 32-minute step deadline and owns cleanup of descendants.
+# Each phase runs on its own fresh hosted VM. Actions owns job-end descendant cleanup.
 function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireTests = $false, [string]$NameCheck = '') {
     Assert-AncestorConfigHashes $Stage
     Assert-SourceOnlyCheckout $Stage
     Assert-ExpectedSourceHashes $Stage
     # Never reuse artifacts or Cargo configuration/registry state from earlier code.
     # Actions owns hosted cleanup; local callers own their isolated temporary parent.
-    $targetParent = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
+    $targetParent = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { Split-Path $root -Parent }
     $targetDirectory = [IO.Path]::GetFullPath((Join-Path $targetParent ('performance-native-target-' + [guid]::NewGuid().ToString('N'))))
     $cargoHome = [IO.Path]::GetFullPath((Join-Path $targetParent ('performance-native-cargo-home-' + [guid]::NewGuid().ToString('N'))))
     foreach ($directory in @($targetDirectory, $cargoHome)) {
@@ -196,7 +195,6 @@ function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireT
     }
     $start.Environment['CARGO_TARGET_DIR'] = $targetDirectory
     $start.Environment['CARGO_HOME'] = $cargoHome
-    $start.Environment['RUSTUP_HOME'] = $rustupHome
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $start
     $started = $false
@@ -244,8 +242,11 @@ function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireT
         Assert-ExpectedSourceHashes $Stage
     }
 }
-Invoke-CargoStage 'original-test-listing' @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
-    'tools\wta\Cargo.toml', '--', '--list') $false 'listing'
+if ($Phase -eq 'OriginalListing') {
+    Invoke-CargoStage 'original-test-listing' @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
+        'tools\wta\Cargo.toml', '--', '--list') $false 'listing'
+    return
+}
 Assert-SourceOnlyCheckout 'proposal-application'
 Assert-ExpectedSourceHashes 'proposal-application'
 foreach ($replacement in $replacements) {
@@ -258,9 +259,12 @@ foreach ($replacement in $replacements) {
 $expectedHashes = $appliedHashes
 Assert-SourceOnlyCheckout 'proposal-application'
 Assert-ExpectedSourceHashes 'proposal-application'
-Invoke-CargoStage 'format-check' @('fmt', '--manifest-path', 'tools\wta\Cargo.toml', '--', '--check')
-Invoke-CargoStage 'focused-tests' @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
-    'tools\wta\Cargo.toml', $filter, '--', '--exact') $true 'passing'
-Invoke-CargoStage 'full-suite' @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
-    'tools\wta\Cargo.toml') $true
+if ($Phase -eq 'Focused') {
+    Invoke-CargoStage 'format-check' @('fmt', '--manifest-path', 'tools\wta\Cargo.toml', '--', '--check')
+    Invoke-CargoStage 'focused-tests' @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
+        'tools\wta\Cargo.toml', $filter, '--', '--exact') $true 'passing'
+} else {
+    Invoke-CargoStage 'full-suite' @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
+        'tools\wta\Cargo.toml') $true
+}
 Write-Output 'Unit-test success is not an end-to-end performance measurement.'

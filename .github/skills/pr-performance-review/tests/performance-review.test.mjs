@@ -137,7 +137,7 @@ test('fresh immutable CI sealing and upfront native proposal validation reject t
         const reportPath = path.join(output, 'report.json');
         const queuePath = path.join(output, 'queue.json');
         fs.writeFileSync(reportPath, JSON.stringify(value.report));
-        fs.writeFileSync(queuePath, JSON.stringify({ items: [{ type: 'validate_performance_repair', confirm: true }], errors: [] }));
+        fs.writeFileSync(queuePath, JSON.stringify({ items: nativeRequests(), errors: [] }));
         let sealed;
         try {
             sealed = spawnSync(process.execPath, [helperPath, 'gate', '--mode', 'repair', '--output-dir', output,
@@ -480,13 +480,13 @@ test('repair mode accepts HIGH proposals but never authorizes model-authored fix
     proposed.validationPlan = { type: 'wta-unit', testFilter: 'tests::actual_test' };
     assert.doesNotThrow(() => gatePublication(
         scope, proposed,
-        { items: [{ type: 'validate_performance_repair', confirm: true }], errors: [] },
+        { items: nativeRequests(), errors: [] },
         { ...repairIdentity, changedFiles: ['src/buffer/out/TextBuffer.cpp'] }
     ));
     assert.throws(() => gatePublication(
         scope,
         proposed,
-        { items: [{ type: 'validate_performance_repair', confirm: true }], errors: [] },
+        { items: nativeRequests(), errors: [] },
         { ...repairIdentity, changedFiles: ['tools/unrelated.ps1'] }
     ), /limited to original candidate files/);
 });
@@ -515,7 +515,7 @@ test('repair mode cannot edit for medium findings or failed validation', () => {
     assert.equal(validateReport(failed, repairIdentity).status, 'blocked');
     const scope = classifyPullRequest([{ filename: 'tools/wta/src/master/mod.rs' }], identity);
     assert.throws(() => gatePublication(scope, failed, {
-        items: [{ type: 'validate_performance_repair', confirm: true }],
+        items: nativeRequests(),
     }, { ...repairIdentity, changedFiles: ['tools/wta/src/master/mod.rs'] }), /require pending_validation/);
 });
 
@@ -746,14 +746,20 @@ test('published cards preserve measurement kind, samples and noisy spread withou
     assert.doesNotMatch(sparse, /samples:|spread:/);
 });
 
-test('repair proposals require exactly one confirmed validation tool; fake pass cannot permit a push', () => {
+function nativeRequests(confirm) {
+    if (arguments.length === 0) confirm = true;
+    return ['validate_performance_original_tests', 'validate_performance_focused_tests', 'validate_performance_repair']
+        .map(type => ({ type, confirm }));
+}
+
+test('repair proposals require exactly three confirmed validation tools; fake pass cannot permit a push', () => {
     const valid = proposal();
     const expected = { ...identity, mode: 'repair', changedFiles: valid.files.map(file => file.path) };
     const scope = classifyPullRequest(valid.files.map(file => ({ filename: file.path })), identity);
     valid.report.checks.push({ name: 'Fake native pass', status: 'pass', command: 'invented', exitCode: 0, detail: 'Model claimed native success.' });
     assert.throws(() => validateReport(valid.report, expected), /cannot contain model-authored pass checks/);
     assert.throws(() => gatePublication(scope, valid.report, {
-        items: [{ type: 'validate_performance_repair', confirm: true }],
+        items: nativeRequests(),
     }, expected), /cannot contain model-authored pass checks/);
     valid.report.checks[0] = { name: 'Native validation', status: 'unavailable', command: 'not run', exitCode: null, detail: 'Awaiting trusted Windows validation.' };
     for (const items of [
@@ -762,17 +768,28 @@ test('repair proposals require exactly one confirmed validation tool; fake pass 
         [{ type: 'validate_performance_repair', confirm: true }, { type: 'noop' }],
         [],
     ]) {
-        assert.throws(() => gatePublication(scope, valid.report, { items }, expected), /exactly one validate_performance_repair/);
+        assert.throws(() => gatePublication(scope, valid.report, { items }, expected), /exactly one each of/);
     }
     for (const confirm of [undefined, false, 'false', 1]) {
         assert.throws(() => gatePublication(scope, valid.report, {
-            items: [{ type: 'validate_performance_repair', confirm }],
+            items: nativeRequests(confirm),
         }, expected), /explicit proposal confirmation/);
     }
     for (const confirm of [true, 'true']) {
         assert.doesNotThrow(() => gatePublication(scope, valid.report, {
-            items: [{ type: 'validate_performance_repair', confirm }],
+            items: nativeRequests(confirm),
         }, expected));
+    }
+    for (let phase = 0; phase < 3; phase++) {
+        const missing = nativeRequests();
+        missing.splice(phase, 1);
+        assert.throws(() => gatePublication(scope, valid.report, { items: missing }, expected), /exactly one each of/);
+        const duplicate = nativeRequests();
+        duplicate[(phase + 1) % 3] = { ...duplicate[phase] };
+        assert.throws(() => gatePublication(scope, valid.report, { items: duplicate }, expected), /exactly one each of/);
+        const unconfirmed = nativeRequests();
+        unconfirmed[phase].confirm = false;
+        assert.throws(() => gatePublication(scope, valid.report, { items: unconfirmed }, expected), /explicit proposal confirmation/);
     }
 });
 
@@ -962,7 +979,7 @@ test('exact UTF-8 zero-context diff bytes permit 16 KiB and reject the next byte
         const reportPath = path.join(output, 'report.json');
         const agentPath = path.join(output, 'agent.json');
         fs.writeFileSync(reportPath, JSON.stringify(value.report));
-        fs.writeFileSync(agentPath, JSON.stringify({ items: [{ type: 'validate_performance_repair', confirm: true }] }));
+        fs.writeFileSync(agentPath, JSON.stringify({ items: nativeRequests() }));
         const trust = path.join(root, '.performance-trusted');
         execFileSync('git', ['clone', '--quiet', '--no-local', root, trust]);
         const result = spawnSync(process.execPath, [helperPath, 'gate', '--mode', 'repair', '--output-dir', output,
@@ -1066,7 +1083,7 @@ test('CLI re-reads source scope from Git and checks the sealed tree before apply
         const reportPath = path.join(output, 'report.json');
         const agentPath = path.join(output, 'agent.json');
         fs.writeFileSync(reportPath, JSON.stringify(sealed.report));
-        fs.writeFileSync(agentPath, JSON.stringify({ items: [{ type: 'validate_performance_repair', confirm: true }] }));
+        fs.writeFileSync(agentPath, JSON.stringify({ items: nativeRequests() }));
         fs.writeFileSync(path.join(output, 'performance-scope.json'), JSON.stringify({
             ...scope, candidates: [{ filename: 'tools/wta/src/unchanged.rs' }],
         }));

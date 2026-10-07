@@ -1,5 +1,5 @@
-# gh-aw-metadata: {"schema_version":"v4","frontmatter_hash":"2bc3f0e1555f88e2182ab90efacef64d1b4840d125604346dd7600c5b40c967e","body_hash":"edcd306432cf5879e03c925e7e4a55a86379bc166f622ee47678fc939f8617ee","compiler_version":"v0.87.10","strict":true,"agent_id":"copilot","agent_model":"auto","engine_versions":{"copilot":"1.0.80"}}
-# gh-aw-manifest: {"version":1,"secrets":["GH_AW_DEFAULT_OTLP_HEADERS","GH_AW_GITHUB_MCP_SERVER_TOKEN","GH_AW_GITHUB_TOKEN","GITHUB_TOKEN"],"actions":[{"repo":"actions/cache/restore","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/cache/save","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/checkout","sha":"3d3c42e5aac5ba805825da76410c181273ba90b1","version":"v7.0.1"},{"repo":"actions/download-artifact","sha":"3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c","version":"v8.0.1"},{"repo":"actions/github-script","sha":"3a2844b7e9c422d3c10d287c895573f7108da1b3","version":"v9.0.0"},{"repo":"actions/upload-artifact","sha":"043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","version":"v7.0.1"},{"repo":"github/gh-aw-actions/setup","sha":"bc8c008a419c5b7a29df6f5641edd35fd1c6ea85","version":"v0.87.10"}],"containers":[{"image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10","digest":"sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e","pinned_image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10@sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e"},{"image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10","digest":"sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64","pinned_image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10@sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64"},{"image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10","digest":"sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6","pinned_image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10@sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6"},{"image":"ghcr.io/github/gh-aw-mcpg:v0.4.14","digest":"sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5","pinned_image":"ghcr.io/github/gh-aw-mcpg:v0.4.14@sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5"},{"image":"ghcr.io/github/gh-aw-node","digest":"sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e","pinned_image":"ghcr.io/github/gh-aw-node@sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e"},{"image":"ghcr.io/github/github-mcp-server:v1.11.0","digest":"sha256:fbec75de11c255213fa08d80fb166abe73d851fff631c51c0079872967720699","pinned_image":"ghcr.io/github/github-mcp-server:v1.11.0@sha256:fbec75de11c255213fa08d80fb166abe73d851fff631c51c0079872967720699"}],"mcp_servers":[{"name":"github","tools":["get_commit","get_file_contents","get_latest_release","get_me","get_pull_request","get_pull_request_comments","get_pull_request_diff","get_pull_request_files","get_pull_request_review_comments","get_pull_request_reviews","get_pull_request_status","get_release_by_tag","get_tag","issue_read","list_branches","list_commits","list_issue_types","list_issues","list_pull_requests","list_releases","list_starred_repositories","list_tags","pull_request_read","search_code","search_issues","search_pull_requests","search_repositories"]},{"name":"safeoutputs","tools":["missing_data","missing_tool","noop","validate_performance_repair"]}]}
+# gh-aw-metadata: {"schema_version":"v4","frontmatter_hash":"7a5e06374c30a5bcdbc37f7106bce6a421a11724514f00cb9a7006be673520bd","body_hash":"f7376d2dc02a9c0675d516d7522a2504eb7a6ca29823b46a5542d65dc3ca1f83","compiler_version":"v0.87.10","strict":true,"agent_id":"copilot","agent_model":"auto","engine_versions":{"copilot":"1.0.80"}}
+# gh-aw-manifest: {"version":1,"secrets":["GH_AW_DEFAULT_OTLP_HEADERS","GH_AW_GITHUB_MCP_SERVER_TOKEN","GH_AW_GITHUB_TOKEN","GITHUB_TOKEN"],"actions":[{"repo":"actions/cache/restore","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/cache/save","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/checkout","sha":"3d3c42e5aac5ba805825da76410c181273ba90b1","version":"v7.0.1"},{"repo":"actions/download-artifact","sha":"3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c","version":"v8.0.1"},{"repo":"actions/github-script","sha":"3a2844b7e9c422d3c10d287c895573f7108da1b3","version":"v9.0.0"},{"repo":"actions/upload-artifact","sha":"043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","version":"v7.0.1"},{"repo":"github/gh-aw-actions/setup","sha":"bc8c008a419c5b7a29df6f5641edd35fd1c6ea85","version":"v0.87.10"}],"containers":[{"image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10","digest":"sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e","pinned_image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10@sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e"},{"image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10","digest":"sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64","pinned_image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10@sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64"},{"image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10","digest":"sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6","pinned_image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10@sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6"},{"image":"ghcr.io/github/gh-aw-mcpg:v0.4.14","digest":"sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5","pinned_image":"ghcr.io/github/gh-aw-mcpg:v0.4.14@sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5"},{"image":"ghcr.io/github/gh-aw-node","digest":"sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e","pinned_image":"ghcr.io/github/gh-aw-node@sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e"},{"image":"ghcr.io/github/github-mcp-server:v1.11.0","digest":"sha256:fbec75de11c255213fa08d80fb166abe73d851fff631c51c0079872967720699","pinned_image":"ghcr.io/github/github-mcp-server:v1.11.0@sha256:fbec75de11c255213fa08d80fb166abe73d851fff631c51c0079872967720699"}],"mcp_servers":[{"name":"github","tools":["get_commit","get_file_contents","get_latest_release","get_me","get_pull_request","get_pull_request_comments","get_pull_request_diff","get_pull_request_files","get_pull_request_review_comments","get_pull_request_reviews","get_pull_request_status","get_release_by_tag","get_tag","issue_read","list_branches","list_commits","list_issue_types","list_issues","list_pull_requests","list_releases","list_starred_repositories","list_tags","pull_request_read","search_code","search_issues","search_pull_requests","search_repositories"]},{"name":"safeoutputs","tools":["missing_data","missing_tool","noop","validate_performance_focused_tests","validate_performance_original_tests","validate_performance_repair"]}]}
 # This file was automatically generated by gh-aw (v0.87.10). DO NOT EDIT. To debug this workflow, load the skill at https://github.com/github/gh-aw/blob/main/debug.md
 #
 #    ___                   _   _
@@ -313,7 +313,7 @@ jobs:
           GH_AW_GITHUB_WORKSPACE: ${{ github.workspace }}
           GH_AW_NEEDS_PREPARE_OUTPUTS_CHANGE_SUMMARY: ${{ needs.prepare.outputs.change_summary }}
           GH_AW_PROMPT_CONTENT_0000: "<system>\n"
-          GH_AW_PROMPT_CONTENT_0001: "<safe-output-tools>\nTools: missing_tool, missing_data, noop, validate_performance_repair\n"
+          GH_AW_PROMPT_CONTENT_0001: "<safe-output-tools>\nTools: missing_tool, missing_data, noop, validate_performance_focused_tests, validate_performance_original_tests, validate_performance_repair\n"
           GH_AW_PROMPT_CONTENT_0002: "</safe-output-tools>\n"
           GH_AW_PROMPT_CONTENT_0003: "<github-context>\nThe following GitHub context information is available for this workflow:\n{{#if github.actor}}\n- **actor**: __GH_AW_GITHUB_ACTOR__\n{{/if}}\n{{#if github.repository}}\n- **repository**: __GH_AW_GITHUB_REPOSITORY__\n{{/if}}\n{{#if github.workspace}}\n- **workspace**: __GH_AW_GITHUB_WORKSPACE__\n{{/if}}\n{{#if github.event.issue.number || (github.aw.context.item_type == 'issue' && github.aw.context.item_number)}}\n- **issue-number**: #__GH_AW_EXPR_802A9F6A__\n{{/if}}\n{{#if github.event.discussion.number || (github.aw.context.item_type == 'discussion' && github.aw.context.item_number)}}\n- **discussion-number**: #__GH_AW_EXPR_1A3A194A__\n{{/if}}\n{{#if github.event.pull_request.number || (github.aw.context.item_type == 'pull_request' && github.aw.context.item_number)}}\n- **pull-request-number**: #__GH_AW_EXPR_463A214A__\n{{/if}}\n{{#if github.event.comment.id || github.aw.context.comment_id}}\n- **comment-id**: __GH_AW_EXPR_FF1D34CE__\n{{/if}}\n{{#if github.run_id}}\n- **workflow-run-id**: __GH_AW_GITHUB_RUN_ID__\n{{/if}}\n- **checkouts**: The following repositories have been checked out and are available in the workspace:\n  - repo `__GH_AW_GITHUB_REPOSITORY__` → `$GITHUB_WORKSPACE` (cwd) [full history, all branches available as remote-tracking refs]\n  - **Note**: If a branch you need is not in the list above and is not listed as an additional fetched ref, it has NOT been checked out. For private repositories you cannot fetch it. If the branch is required and not available, exit with an error and ask the user to add it to the `fetch:` option of the `checkout:` configuration (e.g., `fetch: [\"refs/pulls/open/*\"]` for all open PR refs, or `fetch: [\"main\", \"feature/my-branch\"]` for specific branches).\n  - **Warning: No git credentials are available to the agent.** Credentials are\n    intentionally removed after the checkout step for security. This means any git\n    operation that needs to authenticate to the remote will fail. In private repositories, that includes:\n    - `git fetch`, `git pull`, `git clone`, and `git push` (direct push, not via safe-output tools)\n    - Checking out or switching to a remote branch that is not already fetched\n    - Deepening a shallow clone (`git fetch --unshallow`)\n    - On-demand blob fetches in partial/blobless clones (operations on files not in the initial checkout)\n    Do NOT attempt to configure credentials, run `git credential fill`, or modify `.gitconfig` —\n    authentication will not succeed. If you encounter credential prompts or authentication errors,\n    stop immediately and report the limitation rather than spending turns trying to work around it.\n</github-context>\n\n"
           GH_AW_PROMPT_CONTENT_0004: "</system>\n"
@@ -609,7 +609,7 @@ jobs:
         env:
           GH_AW_FILE_ROOT: "${{ runner.temp }}/gh-aw"
           GH_AW_FILE_CONFIG: "{\"files\":[{\"path\":\"safeoutputs/config.json\",\"content_env\":\"GH_AW_SAFE_OUTPUTS_CONFIG\"}]}"
-          GH_AW_SAFE_OUTPUTS_CONFIG: "{\"create_report_incomplete_issue\":{},\"missing_data\":{},\"missing_tool\":{},\"noop\":{\"max\":1,\"report-as-issue\":\"false\"},\"report_incomplete\":{},\"validate-performance-repair\":{\"description\":\"Run actual focused Windows tests on the exact natively sealed HIGH repair proposal; never publish or rebase.\",\"inputs\":{\"confirm\":{\"default\":null,\"description\":\"Confirm that the final workspace contains only eligible HIGH proposals and the report names a supported native validation plan.\",\"required\":true,\"type\":\"boolean\"}}}}"
+          GH_AW_SAFE_OUTPUTS_CONFIG: "{\"create_report_incomplete_issue\":{},\"missing_data\":{},\"missing_tool\":{},\"noop\":{\"max\":1,\"report-as-issue\":\"false\"},\"report_incomplete\":{},\"validate-performance-focused-tests\":{\"description\":\"Check formatting and execute the exact focused candidate test in a fresh Windows VM.\",\"inputs\":{\"confirm\":{\"default\":null,\"description\":\"Confirm the sealed HIGH proposal and existing exact test selector.\",\"required\":true,\"type\":\"boolean\"}}},\"validate-performance-original-tests\":{\"description\":\"List the exact existing test on original HEAD in a fresh Windows VM; never execute candidate replacements.\",\"inputs\":{\"confirm\":{\"default\":null,\"description\":\"Confirm the sealed HIGH proposal and existing exact test selector.\",\"required\":true,\"type\":\"boolean\"}}},\"validate-performance-repair\":{\"description\":\"Run the full Windows suite on the exact sealed HIGH repair in a fresh VM; never publish or rebase.\",\"inputs\":{\"confirm\":{\"default\":null,\"description\":\"Confirm that the final workspace contains only eligible HIGH proposals and the report names a supported native validation plan.\",\"required\":true,\"type\":\"boolean\"}}}}"
         with:
           script: |
             const path = require('path');
@@ -626,7 +626,41 @@ jobs:
               "repo_params": {},
               "dynamic_tools": [
                 {
-                  "description": "Run actual focused Windows tests on the exact natively sealed HIGH repair proposal; never publish or rebase.",
+                  "description": "Check formatting and execute the exact focused candidate test in a fresh Windows VM.",
+                  "inputSchema": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "confirm": {
+                        "description": "Confirm the sealed HIGH proposal and existing exact test selector.",
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "confirm"
+                    ],
+                    "type": "object"
+                  },
+                  "name": "validate_performance_focused_tests"
+                },
+                {
+                  "description": "List the exact existing test on original HEAD in a fresh Windows VM; never execute candidate replacements.",
+                  "inputSchema": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "confirm": {
+                        "description": "Confirm the sealed HIGH proposal and existing exact test selector.",
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "confirm"
+                    ],
+                    "type": "object"
+                  },
+                  "name": "validate_performance_original_tests"
+                },
+                {
+                  "description": "Run the full Windows suite on the exact sealed HIGH repair in a fresh VM; never publish or rebase.",
                   "inputSchema": {
                     "additionalProperties": false,
                     "properties": {
@@ -1238,6 +1272,8 @@ jobs:
       - detection
       - prepare
       - safe_outputs
+      - validate_performance_focused_tests
+      - validate_performance_original_tests
       - validate_performance_repair
     if: >
       always() && (needs.agent.result != 'skipped' || needs.activation.outputs.lockdown_check_failed == 'true' ||
@@ -1911,7 +1947,7 @@ jobs:
           GH_AW_ALLOWED_DOMAINS: "api.snapcraft.io,archive.ubuntu.com,azure.archive.ubuntu.com,crl.geotrust.com,crl.globalsign.com,crl.identrust.com,crl.sectigo.com,crl.thawte.com,crl.usertrust.com,crl.verisign.com,crl3.digicert.com,crl4.digicert.com,crls.ssl.com,json-schema.org,json.schemastore.org,keyserver.ubuntu.com,ocsp.digicert.com,ocsp.geotrust.com,ocsp.globalsign.com,ocsp.identrust.com,ocsp.sectigo.com,ocsp.ssl.com,ocsp.thawte.com,ocsp.usertrust.com,ocsp.verisign.com,packagecloud.io,packages.cloud.google.com,packages.microsoft.com,ppa.launchpad.net,s.symcb.com,s.symcd.com,security.ubuntu.com,ts-crl.ws.symantec.com,ts-ocsp.ws.symantec.com,www.googleapis.com"
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_API_URL: ${{ github.api_url }}
-          GH_AW_SAFE_OUTPUT_JOBS: "{\"validate_performance_repair\":\"\"}"
+          GH_AW_SAFE_OUTPUT_JOBS: "{\"validate_performance_focused_tests\":\"\",\"validate_performance_original_tests\":\"\",\"validate_performance_repair\":\"\"}"
           GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG: "{\"create_report_incomplete_issue\":{},\"missing_data\":{},\"missing_tool\":{},\"noop\":{\"max\":1,\"report-as-issue\":\"false\"},\"report_incomplete\":{}}"
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
@@ -1932,6 +1968,132 @@ jobs:
             /tmp/gh-aw/temporary-id-map.json
             /tmp/gh-aw/safe-output-errors.json
           if-no-files-found: ignore
+
+  validate_performance_focused_tests:
+    needs:
+      - agent
+      - detection
+    if: >
+      (!cancelled()) && needs.agent.result != 'skipped' && contains(needs.agent.outputs.output_types, 'validate_performance_focused_tests') &&
+      (needs.agent.result == 'success' && needs.detection.result == 'success')
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download agent output artifact
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: "{agent,agent-output-fallback}"
+          merge-multiple: true
+          path: ${{ runner.temp }}/gh-aw/safe-jobs/
+      - name: Checkout trusted validation code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GH_AW_AGENT_OUTPUT: ${{ runner.temp }}/gh-aw/safe-jobs/agent_output.json
+        with:
+          fetch-depth: 0
+          path: trust
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+      - name: Checkout immutable candidate head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GH_AW_AGENT_OUTPUT: ${{ runner.temp }}/gh-aw/safe-jobs/agent_output.json
+        with:
+          fetch-depth: 0
+          path: candidate
+          persist-credentials: false
+          ref: ${{ github.event.inputs.expected_head_sha }}
+      - name: Download natively sealed proposal
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          GH_AW_AGENT_OUTPUT: ${{ runner.temp }}/gh-aw/safe-jobs/agent_output.json
+        with:
+          name: performance-result
+          path: "${{ runner.temp }}\\performance-proposal"
+      - name: Format and test the exact focused candidate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\pr-performance-review\scripts\performance-review.mjs'
+          $proposal = Join-Path $env:RUNNER_TEMP 'performance-proposal\performance-proposal.json'
+          & node $runtime validate-proposal --input $proposal `
+            --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid sealed native proposal.' }
+          & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\scripts\ghaw-pr-performance\validate-native.ps1') `
+            -Phase Focused -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
+            -TrustedRuntimePath $runtime
+        env:
+          BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+          GH_AW_AGENT_OUTPUT: ${{ runner.temp }}/gh-aw/safe-jobs/agent_output.json
+          HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+        shell: pwsh
+        timeout-minutes: 32
+        working-directory: candidate
+
+  validate_performance_original_tests:
+    needs:
+      - agent
+      - detection
+    if: >
+      (!cancelled()) && needs.agent.result != 'skipped' && contains(needs.agent.outputs.output_types, 'validate_performance_original_tests') &&
+      (needs.agent.result == 'success' && needs.detection.result == 'success')
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download agent output artifact
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: "{agent,agent-output-fallback}"
+          merge-multiple: true
+          path: ${{ runner.temp }}/gh-aw/safe-jobs/
+      - name: Checkout trusted validation code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GH_AW_AGENT_OUTPUT: ${{ runner.temp }}/gh-aw/safe-jobs/agent_output.json
+        with:
+          fetch-depth: 0
+          path: trust
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+      - name: Checkout immutable candidate head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GH_AW_AGENT_OUTPUT: ${{ runner.temp }}/gh-aw/safe-jobs/agent_output.json
+        with:
+          fetch-depth: 0
+          path: candidate
+          persist-credentials: false
+          ref: ${{ github.event.inputs.expected_head_sha }}
+      - name: Download natively sealed proposal
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          GH_AW_AGENT_OUTPUT: ${{ runner.temp }}/gh-aw/safe-jobs/agent_output.json
+        with:
+          name: performance-result
+          path: "${{ runner.temp }}\\performance-proposal"
+      - name: List the exact test on original HEAD
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\pr-performance-review\scripts\performance-review.mjs'
+          $proposal = Join-Path $env:RUNNER_TEMP 'performance-proposal\performance-proposal.json'
+          & node $runtime validate-proposal --input $proposal `
+            --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid sealed native proposal.' }
+          & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\scripts\ghaw-pr-performance\validate-native.ps1') `
+            -Phase OriginalListing -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
+            -TrustedRuntimePath $runtime
+        env:
+          BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+          GH_AW_AGENT_OUTPUT: ${{ runner.temp }}/gh-aw/safe-jobs/agent_output.json
+          HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+        shell: pwsh
+        timeout-minutes: 32
+        working-directory: candidate
 
   validate_performance_repair:
     needs:
@@ -1976,7 +2138,7 @@ jobs:
         with:
           name: performance-result
           path: "${{ runner.temp }}\\performance-proposal"
-      - name: Validate and test the exact candidate tree
+      - name: Test the exact candidate full suite
         run: |
           $ErrorActionPreference = 'Stop'
           $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\pr-performance-review\scripts\performance-review.mjs'
@@ -1985,7 +2147,7 @@ jobs:
             --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
           if ($LASTEXITCODE -ne 0) { throw 'Invalid sealed native proposal.' }
           & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\scripts\ghaw-pr-performance\validate-native.ps1') `
-            -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
+            -Phase FullSuite -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
             -TrustedRuntimePath $runtime
         env:
           BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}

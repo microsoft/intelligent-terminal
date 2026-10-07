@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -24,6 +24,12 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     fs.writeFileSync(path.join(root, '.gitignore'), '/tools/wta/target/\n');
     fs.writeFileSync(path.join(root, 'tools', 'wta', 'build.rs'), `
 fn main() {
+    if let Ok(phase_root) = std::env::var("PERFORMANCE_PHASE_ROOT") {
+        let phase_root = std::path::Path::new(&phase_root);
+        let marker = phase_root.join("toolchain-config-marker");
+        assert!(!marker.exists(), "phase-local toolchain/config state was imported");
+        std::fs::write(marker, b"simulated modified toolchain/config state").unwrap();
+    }
     let home = std::path::PathBuf::from(std::env::var_os("CARGO_HOME").unwrap());
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
     assert!(!home.canonicalize().unwrap().starts_with(root));
@@ -114,7 +120,8 @@ exit /b 0
     const queuePath = path.join(artifactRoot, 'queue.json');
     fs.writeFileSync(reportPath, JSON.stringify(report));
     fs.writeFileSync(queuePath, JSON.stringify({
-        items: [{ type: 'validate_performance_repair', confirm: true }], errors: [],
+        items: ['validate_performance_original_tests', 'validate_performance_focused_tests', 'validate_performance_repair']
+            .map(type => ({ type, confirm: true })), errors: [],
     }));
     const sealed = run(['gate', '--output-dir', out, '--baseline', baseline,
         '--report', reportPath, '--agent-output', queuePath, '--mode', 'repair',
@@ -125,8 +132,6 @@ exit /b 0
     const proposal = JSON.parse(immutableArtifact);
     const nativeArtifacts = path.join(workspace, 'downloads');
     fs.mkdirSync(path.join(nativeArtifacts, 'performance-proposal'), { recursive: true });
-    const downloadedProposal = path.join(nativeArtifacts, 'performance-proposal', 'performance-proposal.json');
-    fs.writeFileSync(downloadedProposal, immutableArtifact);
     const alternativeSource = baselineSource.replace('    n\n', '    n + 1\n');
     fs.writeFileSync(sourcePath, alternativeSource);
     git(['add', 'tools/wta/src/lib.rs']);
@@ -143,13 +148,7 @@ exit /b 0
     git(['read-tree', headSha]);
     fs.writeFileSync(sourcePath, headSource);
     const nativeOut = path.join(artifactRoot, 'native');
-    const trustedRuntime = path.join(workspace, 'trust', '.github', 'skills', 'pr-performance-review', 'scripts', 'performance-review.mjs');
-    const trustedValidator = path.join(workspace, 'trust', '.github', 'scripts', 'ghaw-pr-performance', 'validate-native.ps1');
-    for (const [source, destination] of [[runtime, trustedRuntime], [validator, trustedValidator]]) {
-        fs.mkdirSync(path.dirname(destination), { recursive: true });
-        fs.copyFileSync(source, destination);
-    }
-    const wrongDirectory = spawnSync(process.execPath, [trustedRuntime, 'validate-proposal',
+    const wrongDirectory = spawnSync(process.execPath, [runtime, 'validate-proposal',
         '--input', path.join(out, 'performance-proposal.json'), ...identity], {
         cwd: workspace, env: { ...process.env, GIT_CEILING_DIRECTORIES: previous }, encoding: 'utf8', timeout: 30000,
     });
@@ -158,22 +157,85 @@ exit /b 0
         cwd: workspace, env: { ...process.env, GIT_CEILING_DIRECTORIES: previous }, timeout: 15000,
     }).status, 0);
     assert.match(wrongDirectory.stderr, /performance-review: Command failed: git/);
-    const step = fs.readFileSync(compiledWorkflow, 'utf8')
-        .match(/      - name: Validate and test the exact candidate tree\r?\n([\s\S]*?)(?=\r?\n      - name:|$)/)?.[1];
-    assert.ok(step, 'execute the actual compiled Windows validation step');
-    const workingDirectory = step.match(/^        working-directory: (.+)$/m)?.[1].trim();
-    assert.equal(workingDirectory, 'candidate');
-    const runBlock = step.match(/        run: \|\r?\n((?: {10}[^\n]*(?:\n|$))+)/)?.[1];
-    assert.ok(runBlock);
-    const command = runBlock.split(/\r?\n/).map(line => line.slice(10)).join('\n');
-    const native = spawnSync('pwsh', ['-NoProfile', '-Command', command], {
-        cwd: path.join(workspace, workingDirectory),
-        env: { ...process.env, GITHUB_WORKSPACE: workspace, RUNNER_TEMP: nativeArtifacts,
-            CARGO_HOME: path.join(root, 'caller-cargo-home'),
-            PR_NUMBER: '42', BASE_SHA: baseSha, HEAD_SHA: headSha },
-        encoding: 'utf8', timeout: 180000,
-    });
-    assert.equal(native.status, 0, `${native.stdout}\n${native.stderr}`);
+    const phases = [
+        ['OriginalListing', 'validate_performance_original_tests', 'List the exact test on original HEAD'],
+        ['Focused', 'validate_performance_focused_tests', 'Format and test the exact focused candidate'],
+        ['FullSuite', 'validate_performance_repair', 'Test the exact candidate full suite'],
+    ];
+    const nativeOutputs = [];
+    const nativeRoots = [];
+    for (const [phase, jobName, stepName] of phases) {
+        const job = fs.readFileSync(compiledWorkflow, 'utf8')
+            .match(new RegExp(`^  ${jobName}:\\r?\\n([\\s\\S]*?)(?=^  [a-z_]+:|(?![\\s\\S]))`, 'm'))?.[1];
+        assert.ok(job);
+        assert.match(job, /runs-on: windows-latest/);
+        assert.match(job, /needs:\r?\n      - agent\r?\n      - detection/);
+        assert.match(job, new RegExp(`contains\\(needs.agent.outputs.output_types, '${jobName}'\\)`));
+        assert.match(job, /permissions:\r?\n      contents: read/);
+        assert.match(job, /name: performance-result/);
+        assert.match(job, /timeout-minutes: 32/);
+        assert.doesNotMatch(job, /secrets\.|actions\/cache|upload-artifact|contents: write|copilot-requests:/);
+        assert.match(job, new RegExp(`-Phase ${phase} `));
+        const freshRoot = path.join(workspace, phase);
+        nativeRoots.push(freshRoot);
+        fs.mkdirSync(freshRoot);
+        for (const marker of ['toolchain-config-marker', 'descendant-marker', 'descendant-pid']) {
+            assert.equal(fs.existsSync(path.join(freshRoot, marker)), false, 'phase-local state is never imported');
+        }
+        execFileSync('git', ['-c', 'core.autocrlf=false', 'clone', '--quiet', '--no-local', sealingTrust, path.join(freshRoot, 'candidate')]);
+        const freshDownloads = path.join(freshRoot, 'downloads');
+        fs.mkdirSync(path.join(freshDownloads, 'performance-proposal'), { recursive: true });
+        fs.writeFileSync(path.join(freshDownloads, 'performance-proposal', 'performance-proposal.json'), immutableArtifact);
+        fs.copyFileSync(alternativePath, path.join(freshDownloads, 'alternative.json'));
+        fs.copyFileSync(path.join(nativeArtifacts, 'fake-helper.mjs'), path.join(freshDownloads, 'fake-helper.mjs'));
+        for (const [source, destination] of [
+            [runtime, path.join(freshRoot, 'trust', '.github', 'skills', 'pr-performance-review', 'scripts', 'performance-review.mjs')],
+            [validator, path.join(freshRoot, 'trust', '.github', 'scripts', 'ghaw-pr-performance', 'validate-native.ps1')],
+        ]) {
+            fs.mkdirSync(path.dirname(destination), { recursive: true });
+            fs.copyFileSync(source, destination);
+        }
+        const step = fs.readFileSync(compiledWorkflow, 'utf8')
+            .match(new RegExp(`      - name: ${stepName}\\r?\\n([\\s\\S]*?)(?=\\r?\\n      - name:|\\n  [a-z_]+:|$)`))?.[1];
+        assert.ok(step, 'execute the actual compiled Windows validation step');
+        const workingDirectory = step.match(/^        working-directory: (.+)$/m)?.[1].trim();
+        assert.equal(workingDirectory, 'candidate');
+        const runBlock = step.match(/        run: \|\r?\n((?: {10}[^\n]*(?:\n|$))+)/)?.[1];
+        assert.ok(runBlock);
+        const command = runBlock.split(/\r?\n/).map(line => line.slice(10)).join('\n');
+        // Local lifecycle simulation, not a fresh-VM or within-phase sandbox claim.
+        const descendant = spawn('pwsh', ['-NoProfile', '-Command',
+            `while ($true) { [IO.File]::WriteAllText('${path.join(freshRoot, 'descendant-marker')}', 'background descendant'); Start-Sleep -Milliseconds 100 }`],
+            { cwd: freshRoot, stdio: 'ignore' });
+        t.after(() => { if (descendant.exitCode === null) descendant.kill(); });
+        const native = spawnSync('pwsh', ['-NoProfile', '-Command', command], {
+            cwd: path.join(freshRoot, workingDirectory),
+            env: { ...process.env, GITHUB_WORKSPACE: freshRoot, RUNNER_TEMP: freshDownloads,
+                PERFORMANCE_PHASE_ROOT: freshRoot,
+                CARGO_HOME: path.join(root, 'caller-cargo-home'),
+                PR_NUMBER: '42', BASE_SHA: baseSha, HEAD_SHA: headSha },
+            encoding: 'utf8', timeout: 180000,
+        });
+        assert.ok(Number.isSafeInteger(descendant.pid) && descendant.pid > 0);
+        const cleanup = spawnSync('pwsh', ['-NoProfile', '-Command',
+            `Start-Sleep -Milliseconds 500; if (!(Test-Path -LiteralPath '${path.join(freshRoot, 'descendant-marker')}')) { throw 'descendant not responsive' }; Stop-Process -Id ${descendant.pid} -Force -ErrorAction Stop; Start-Sleep -Milliseconds 100; if (Get-Process -Id ${descendant.pid} -ErrorAction SilentlyContinue) { throw 'descendant still running' }`],
+            { encoding: 'utf8', timeout: 15000 });
+        assert.equal(cleanup.status, 0, cleanup.stderr);
+        assert.equal(native.status, 0, `${native.stdout}\n${native.stderr}`);
+        assert.ok(fs.existsSync(path.join(freshRoot, 'toolchain-config-marker')));
+        nativeOutputs.push(native.stdout);
+        const nativeSource = path.join(freshRoot, 'candidate', 'tools', 'wta', 'src', 'lib.rs');
+        assert.equal(fs.readFileSync(nativeSource, 'utf8'), phase === 'OriginalListing' ? headSource : baselineSource);
+        assert.equal(fs.existsSync(path.join(freshDownloads, 'tampering-observed')), true);
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(freshDownloads, 'performance-proposal', 'performance-proposal.json'))), alternative);
+        assert.equal(fs.readFileSync(path.join(freshRoot, 'trust', '.github', 'skills', 'pr-performance-review', 'scripts', 'performance-review.mjs'), 'utf8'),
+            fs.readFileSync(path.join(freshDownloads, 'fake-helper.mjs'), 'utf8'), 'native code overwrote only this phase runtime helper');
+        assert.equal(fs.existsSync(path.join(nativeArtifacts, 'fake-helper-executed')), false);
+        const stages = [...native.stdout.matchAll(/^([\w-]+): cargo /gm)].map(match => match[1]);
+        assert.deepEqual(stages, phase === 'OriginalListing' ? ['original-test-listing'] :
+            phase === 'Focused' ? ['format-check', 'focused-tests'] : ['full-suite']);
+    }
+    const native = { stdout: nativeOutputs.join('\n') };
     assert.match(native.stdout, /original-test-listing: cargo test --locked --target x86_64-pc-windows-msvc --manifest-path tools\\wta\\Cargo.toml -- --list/);
     assert.match(native.stdout, /original HEAD contains tests::work_is_linear: test \(listing only, not a passing test claim\)/);
     assert.ok(native.stdout.indexOf('original-test-listing: cargo') < native.stdout.indexOf('format-check: cargo'));
@@ -183,9 +245,12 @@ exit /b 0
     assert.match(native.stdout, /focused-tests: 1 native test\(s\) passed/);
     assert.match(native.stdout, /full-suite: 1 native test\(s\) passed/);
     assert.equal(fs.existsSync(path.join(root, 'tools', 'wta', 'target')), false);
-    assert.equal(fs.readdirSync(nativeArtifacts).filter(name => name.startsWith('performance-native-target-')).length, 3);
-    const homes = fs.readdirSync(nativeArtifacts).filter(name => name.startsWith('performance-native-cargo-home-'))
-        .map(name => path.join(nativeArtifacts, name));
+    const homes = nativeRoots.flatMap(freshRoot => {
+        const downloads = path.join(freshRoot, 'downloads');
+        assert.equal(fs.readdirSync(downloads).filter(name => name.startsWith('performance-native-target-')).length, 1);
+        return fs.readdirSync(downloads).filter(name => name.startsWith('performance-native-cargo-home-'))
+            .map(name => path.join(downloads, name));
+    });
     assert.equal(homes.length, 4, 'listing, formatting, focused and full stages each have a fresh Cargo home');
     const poisonedHomes = homes.filter(home => fs.existsSync(path.join(home, 'registry', 'data', 'poison-sentinel')));
     assert.equal(poisonedHomes.length, 3, 'all three real compiled build scripts poison only their own Cargo home');
@@ -198,11 +263,7 @@ exit /b 0
     assert.equal(fs.existsSync(path.join(root, 'caller-cargo-home')), false, 'caller Cargo home override is ignored');
     assert.equal(git(['ls-files', '--others']), '', 'all build artifacts stay outside the checkout');
     assert.equal(fs.existsSync(nativeOut), false, 'native test step must not produce publication authority');
-    assert.ok(fs.existsSync(path.join(nativeArtifacts, 'tampering-observed')), 'real compiled build.rs must perform the attack');
-    assert.deepEqual(JSON.parse(fs.readFileSync(downloadedProposal)), alternative, 'downloaded proposal was replaced with valid B');
-    assert.equal(fs.readFileSync(trustedRuntime, 'utf8'), fs.readFileSync(path.join(nativeArtifacts, 'fake-helper.mjs'), 'utf8'));
     assert.equal(fs.existsSync(path.join(nativeArtifacts, 'fake-helper-executed')), false, 'no mutable helper executes after --list');
-    assert.equal(fs.readFileSync(sourcePath, 'utf8'), baselineSource, 'focused and full tests ran sealed A, never alternative B');
     assert.deepEqual(fs.readFileSync(proposalPath), immutableArtifact, 'publisher still consumes original immutable A');
     const expected = { prNumber: 42, baseSha, headSha, expectedBaseSha: baseSha,
         repository: 'owner/repo', headRepository: 'owner/repo', headRef: 'topic', baseRef: 'main' };
@@ -211,10 +272,23 @@ exit /b 0
         head: { sha: headSha, ref: 'topic', repo: { id: 1, full_name: 'owner/repo' } },
         base: { sha: baseSha, ref: 'main', repo: { id: 1, full_name: 'owner/repo' } },
     } }; } } },
-    async paginate() { return [{ name: 'validate_performance_repair', conclusion: 'success',
-        steps: [{ name: 'Validate and test the exact candidate tree', conclusion: 'success' }] }]; },
+    async paginate(route, options) {
+        assert.equal(options.run_id, 123);
+        return phases.map(([, name, stepName]) => ({ name, conclusion: 'success',
+            steps: [{ name: stepName, conclusion: 'success' }] }));
+    },
     async graphql() { throw new Error('staged integration must not publish'); } };
     const result = await publishRepair({ github, expected, proposalPath, workerRunId: 123, staged: true });
     assert.equal(result.treeSha, proposal.treeSha);
     assert.equal(result.published, false);
+    for (let missing = 0; missing < phases.length; missing++) {
+        for (const failure of [false, true]) {
+            github.paginate = async () => phases.flatMap(([, name, stepName], index) =>
+                index === missing && !failure ? [] : [{ name,
+                    conclusion: index === missing ? 'failure' : 'success',
+                    steps: [{ name: stepName, conclusion: 'success' }] }]);
+            await assert.rejects(() => publishRepair({ github, expected, proposalPath, workerRunId: 123, staged: true }),
+                /GitHub did not record/);
+        }
+    }
 });
