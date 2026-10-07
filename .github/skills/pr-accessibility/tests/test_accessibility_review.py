@@ -429,12 +429,16 @@ class ValidationTests(unittest.TestCase):
         )
         return report
 
-    def publication(self):
+    def publication(self, candidate_file_mode=None):
         subprocess.run(["git", "checkout", "-qb", "fixture/head"], cwd=self.root, check=True)
         path = self.root / "src/cascadia/TerminalApp/Test.xaml"
         original = path.read_bytes().decode("utf-8")
         path.write_bytes(MODULE._remove_raw_view_at_line(original, 1).encode("utf-8"))
         subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        if candidate_file_mode is not None:
+            blob = MODULE._git(self.root, "hash-object", str(path)).strip()
+            MODULE._git(self.root, "update-index", "--cacheinfo",
+                        f"{candidate_file_mode},{blob},src/cascadia/TerminalApp/Test.xaml")
         subprocess.run(["git", "commit", "-qm", "Restore UIA view [native-accessibility]"], cwd=self.root, check=True)
         transport = self.workspace / "transport"
         transport.mkdir()
@@ -457,6 +461,63 @@ class ValidationTests(unittest.TestCase):
             self.root, self.head, self.head, True, self.prepared,
             self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
         )
+
+    def test_publication_rejects_symlink_tree_with_regular_worktree_file(self):
+        MODULE._git(self.root, "config", "core.symlinks", "false")
+        queue, transport = self.publication(candidate_file_mode="120000")
+        path = self.root / "src/cascadia/TerminalApp/Test.xaml"
+        self.assertFalse(path.is_symlink())
+        self.assertTrue(MODULE._git(self.root, "ls-tree", "HEAD", "--",
+                                   "src/cascadia/TerminalApp/Test.xaml").startswith("120000"))
+        with self.assertRaisesRegex(ValueError, "preserve the reviewed regular-file Git mode"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
+            )
+
+    def test_publication_rejects_executable_mode_change(self):
+        MODULE._git(self.root, "config", "core.filemode", "false")
+        queue, transport = self.publication(candidate_file_mode="100755")
+        with self.assertRaisesRegex(ValueError, "preserve the reviewed regular-file Git mode"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
+            )
+
+    def test_recipe_rejects_reviewed_symlink_tree(self):
+        MODULE._git(self.root, "config", "core.symlinks", "false")
+        path = self.root / "src/cascadia/TerminalApp/Test.xaml"
+        blob = MODULE._git(self.root, "hash-object", str(path)).strip()
+        MODULE._git(self.root, "update-index", "--cacheinfo",
+                    f"120000,{blob},src/cascadia/TerminalApp/Test.xaml")
+        MODULE._git(self.root, "commit", "-qm", "Reviewed symlink fixture")
+        self.head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        prepared = json.loads(self.prepared.read_text())
+        prepared["source_sha"] = self.head
+        self.prepared.write_text(json.dumps(prepared))
+        path.write_bytes(MODULE._remove_raw_view_at_line(path.read_bytes().decode("utf-8"), 1).encode("utf-8"))
+        with self.assertRaisesRegex(ValueError, "reviewed source must be a regular Git blob"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]),
+            )
+
+    def test_recipe_rejects_physical_symlink_to_exact_repaired_text(self):
+        path = self.root / "src/cascadia/TerminalApp/Test.xaml"
+        target = self.workspace / "repaired.xaml"
+        target.write_bytes(MODULE._remove_raw_view_at_line(path.read_bytes().decode("utf-8"), 1).encode("utf-8"))
+        path.unlink()
+        try:
+            path.symlink_to(target)
+        except OSError as error:
+            if os.name == "nt" and getattr(error, "winerror", None) == 1314:
+                self.skipTest("Windows symlink creation privilege is unavailable")
+            raise
+        errors = MODULE._verify_static_repairs(
+            self.root, self.head, [self.finding()], json.loads(self.prepared.read_text()),
+            ["src/cascadia/TerminalApp/Test.xaml"],
+        )
+        self.assertTrue(any("candidate must be a regular file, not a symlink" in error for error in errors), errors)
 
     def test_publication_rejects_changes_after_capture(self):
         queue, transport = self.publication()

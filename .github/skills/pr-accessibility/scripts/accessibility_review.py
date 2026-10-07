@@ -534,10 +534,24 @@ def _verify_static_repairs(
 
     for path, items in recipes_by_file.items():
         try:
+            source_metadata = _git(root, "ls-tree", "-z", expected_head, "--", path).partition("\t")[0].split()
+            if (len(source_metadata) != 3 or source_metadata[0] not in {"100644", "100755"}
+                    or source_metadata[1] != "blob"):
+                raise ValueError("reviewed source must be a regular Git blob")
+            candidate_path = root / path
+            if candidate_path.is_symlink() or not candidate_path.is_file():
+                raise ValueError("candidate must be a regular file, not a symlink")
+            index_entries = [
+                entry for entry in _git(root, "ls-files", "--stage", "-z", "--", path).split("\0") if entry
+            ]
+            index_metadata = index_entries[0].partition("\t")[0].split() if len(index_entries) == 1 else []
+            if (len(index_metadata) != 3 or index_metadata[0] != source_metadata[0]
+                    or index_metadata[2] != "0"):
+                raise ValueError("candidate must preserve the reviewed regular-file Git mode")
             expected = _git(root, "show", f"{expected_head}:{path}")
             for item in sorted(items, key=lambda value: value["line"], reverse=True):
                 expected = _remove_raw_view_at_line(expected, item["line"])
-            candidate = (root / path).read_bytes().decode("utf-8", errors="strict")
+            candidate = candidate_path.read_bytes().decode("utf-8", errors="strict")
             if candidate != expected:
                 errors.append(
                     f"{path}: candidate contains changes beyond the trusted raw-view removal recipe"

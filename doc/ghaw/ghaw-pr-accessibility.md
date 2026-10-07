@@ -69,6 +69,9 @@ high-confidence repair policy, exact trusted-recipe candidate, patch
 attribution, absence of untracked files, and absence of new literal accessible
 strings. It rejects all model-authored validation claims and adds its own
 attestation only after the candidate matches.
+Both the reviewed Git blob and candidate must remain regular source files,
+with unchanged tracked file mode. This also rejects symlink Git entries when
+`core.symlinks=false` represents them as ordinary worktree files.
 Every prepared static signal is also accounted for by stable ID: an actual
 finding or a separately explained false positive in `dismissed_signals`.
 Coverage is deterministic; dismissal reasoning remains model/domain judgment,
