@@ -599,6 +599,7 @@ FONTWIDTH
 FONTWINDOW
 FORCEOFFFEEDBACK
 FORCEONFEEDBACK
+forkedrepo
 FRAMECHANGED
 fre
 Free'd
@@ -1003,6 +1004,7 @@ MENUSELECT
 metaproj
 Mgrs
 microsoftpublicsymbols
+microbenchmark
 midl
 mii
 MIIM
@@ -1561,6 +1563,7 @@ SHGFI
 SHIFTJIS
 shlwapi
 SHORTPATH
+shortstat
 SHOWCURSOR
 SHOWDEFAULT
 SHOWMAXIMIZED

@@ -221,14 +221,22 @@ for (const worker of [
         // Replay only the actual failing expression, without the full step's hosted filesystem writes.
     });
 
-    test(`${worker}: actual compiled tool arguments retain the permitted PowerShell checker route`, () => {
-        assert.match(markdown, /^ {4}- 'pwsh:\*'$/m);
+    test(`${worker}: actual compiled tool arguments enforce the caller-specific checker route`, () => {
         const inference = steps.find(step => step.includes('name: Execute GitHub Copilot CLI\n'));
         assert.ok(inference, 'extract the actual inference step, not its tool documentation');
         const command = inference.split('\n').find(line => line.includes('copilot_harness.cjs') && line.includes('--allow-tool'));
         assert.ok(command, 'actual compiled Copilot invocation must be extractable');
         const allowTools = command.match(/--allow-tool \S+/g);
-        assert.ok(allowTools.some(tool => tool.includes('shell(pwsh:*)')), 'actual CLI arguments must permit pwsh');
+        if (worker === 'ghaw-pr-performance') {
+            assert.match(markdown, /^ {4}- 'pwsh:\*'$/m);
+            assert.ok(allowTools.some(tool => tool.includes('shell(pwsh:*)')), 'repair CLI arguments must permit pwsh');
+        } else {
+            assert.match(markdown, /^  bash: false$/m);
+            assert.match(markdown, /^  cli-proxy: false$/m);
+            assert.ok(allowTools.every(tool => !tool.includes('shell(')), 'fork CLI must not expose any shell route');
+            assert.ok(allowTools.some(tool => tool === '--allow-tool mcpscripts'), 'fork CLI must expose the read-only checker');
+            assert.ok(allowTools.every(tool => tool !== '--allow-tool write'), 'fork CLI must not expose edits');
+        }
         assert.ok(allowTools.every(tool => !tool.includes('shell(node')), 'direct Node is not the permitted model route');
     });
 }

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +11,7 @@ const validator = fileURLToPath(new URL('./validate-native.ps1', import.meta.url
 
 test('sealed HIGH proposal runs real Windows tests and reaches staged CAS publication', async t => {
     assert.equal(process.platform, 'win32', 'this integration check needs the supported Windows environment');
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'performance-native-pipeline-'));
+    const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-native-pipeline-'));
     const previous = process.cwd();
     process.chdir(root);
     t.after(() => { process.chdir(previous); fs.rmSync(root, { recursive: true, force: true }); });
@@ -21,9 +20,14 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
         '[package]\nname="performance-pipeline-fixture"\nversion="0.1.0"\nedition="2021"\n');
     fs.writeFileSync(path.join(root, '.gitignore'), '/tools/wta/target/\n/tools/wta/Cargo.lock\n');
     const sourcePath = path.join(root, 'tools', 'wta', 'src', 'lib.rs');
-    const baselineSource = 'pub fn work(n: usize) -> usize { n }\n' +
+    let baselineSource = 'pub fn work(n: usize) -> usize { n }\n' +
         '#[cfg(test)] mod tests { #[test] fn work_is_linear() { assert_eq!(super::work(1000), 1000); } }\n';
     fs.writeFileSync(sourcePath, baselineSource);
+    const formatFixture = () => execFileSync('cargo', ['fmt', '--manifest-path', path.join(root, 'tools', 'wta', 'Cargo.toml')], {
+        encoding: 'utf8', timeout: 15000,
+    });
+    formatFixture();
+    baselineSource = fs.readFileSync(sourcePath, 'utf8');
     const git = args => execFileSync('git', args, { encoding: 'utf8', timeout: 15000 }).trim();
     git(['init', '--quiet', '--initial-branch=main']);
     git(['config', 'core.autocrlf', 'false']);
@@ -34,9 +38,12 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
         return git(['rev-parse', 'HEAD']);
     };
     const baseSha = commit();
-    fs.writeFileSync(sourcePath, baselineSource.replace('{ n }', '{ (1..=n).sum() }'));
+    const headSource = baselineSource.replace('    n\n', '    (1..=n).sum()\n');
+    assert.notEqual(headSource, baselineSource);
+    fs.writeFileSync(sourcePath, headSource);
+    formatFixture();
     const headSha = commit();
-    const artifactRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'performance-pipeline-artifacts-'));
+    const artifactRoot = fs.mkdtempSync(path.join(previous, '.performance-pipeline-artifacts-'));
     t.after(() => fs.rmSync(artifactRoot, { recursive: true, force: true }));
     const baseline = path.join(artifactRoot, 'baseline.json');
     const out = path.join(artifactRoot, 'proposal');
@@ -46,6 +53,7 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     const identity = ['--pr', '42', '--base', baseSha, '--head', headSha];
     assert.equal(run(['prepare', '--output-dir', out, '--baseline', baseline, ...identity]).status, 0);
     fs.writeFileSync(sourcePath, baselineSource);
+    formatFixture();
     const report = {
         version: 1, review: 'performance', mode: 'repair',
         identity: { prNumber: 42, baseSha, headSha }, status: 'pending_validation',
@@ -70,7 +78,7 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     const sealed = run(['gate', '--output-dir', out, '--baseline', baseline,
         '--report', reportPath, '--agent-output', queuePath, '--mode', 'repair', ...identity]);
     assert.equal(sealed.status, 0, sealed.stderr);
-    fs.writeFileSync(sourcePath, baselineSource.replace('{ n }', '{ (1..=n).sum() }'));
+    fs.writeFileSync(sourcePath, headSource);
     const nativeOut = path.join(artifactRoot, 'native');
     const native = spawnSync('pwsh', ['-NoProfile', '-File', validator,
         '-ProposalPath', path.join(out, 'performance-proposal.json'),
@@ -78,7 +86,9 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
         encoding: 'utf8', timeout: 120000,
     });
     assert.equal(native.status, 0, `${native.stdout}\n${native.stderr}`);
-    assert.match(native.stdout, /1 test/);
+    assert.match(native.stdout, /format-check: cargo fmt .* -- --check/);
+    assert.match(native.stdout, /focused-tests: 1 native test\(s\) passed/);
+    assert.match(native.stdout, /full-suite: 1 native test\(s\) passed/);
     assert.equal(fs.existsSync(nativeOut), false, 'native test step must not produce publication authority');
     const proposalPath = path.join(out, 'performance-proposal.json');
     const proposal = JSON.parse(fs.readFileSync(proposalPath));

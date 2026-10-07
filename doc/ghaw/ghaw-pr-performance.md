@@ -21,8 +21,9 @@ end-to-end proof, not a claim that every native performance scenario is covered.
 3. Eligible same-repo HIGH changes are proposals, not model-authored claims of
    passing tests. Trusted post-processing seals their exact Git blobs and
    confines them to the original candidate files.
-4. A read-only Windows Actions job applies that proposal and runs an existing
-   focused WTA test. It rejects failed/zero tests and tracked-source mutation.
+4. A read-only Windows Actions job applies that proposal, checks formatting,
+   runs the focused WTA test and then the required full explicit-target suite.
+   It rejects failed/zero tests and tracked-source mutation.
    Actions owns process cleanup; there is no custom Windows process manager
    or native receipt file.
 5. The trusted controller requires GitHub-recorded native-job success, checks
@@ -40,6 +41,12 @@ The Windows test job has no model or branch-write credentials. Its files are
 not publication authority: the publisher consumes the immutable Linux-sealed
 proposal and GitHub's job result. Same-repo and fork workers cannot both
 comment and commit.
+
+The fork agent has no shell or edit permission. It reads the prepared patch
+and immutable source through read-only tools, validates structured report data
+through the declared checker, and queues that JSON as its safe-output body.
+Trusted post-processing validates the data and renders the comment; fork
+content is never executed to produce the report.
 
 ## Evidence and limitations
 
@@ -68,7 +75,7 @@ no custom model router or mid-run switching mechanism is introduced.
 ## Local checks
 
 ```powershell
-node --test .github\skills\pr-performance-review\tests\performance-review.test.mjs .github\scripts\ghaw-pr-performance\controller.test.mjs .github\scripts\ghaw-pr-performance\runtime.test.mjs .github\scripts\ghaw-pr-performance\publish-repair.test.mjs
+node --test .github\skills\pr-performance-review\tests\performance-review.test.mjs .github\scripts\ghaw-pr-performance\controller.test.mjs .github\scripts\ghaw-pr-performance\runtime.test.mjs .github\scripts\ghaw-pr-performance\publish-repair.test.mjs .github\scripts\ghaw-pr-performance\guide-report.test.mjs
 pwsh -NoProfile -File .github\scripts\ghaw-pr-performance\NativeValidation.Tests.ps1
 node --test .github\scripts\ghaw-pr-performance\repair-pipeline.test.mjs
 gh aw compile ghaw-pr-performance ghaw-pr-performance-guide-forkedrepo --validate
@@ -105,6 +112,11 @@ credit caps (100 per worker, 300 daily); it deliberately prevents repair
 publication from starting another worker. Both performance workflows are now
 disabled. GitHub's separate automatic Copilot PR review also ran on the ready
 event; its cost is not included above.
+
+Official PR review subsequently tightened fork confinement to the structured,
+shell-disabled route and required format checking plus the complete WTA test
+suite before repair publication. Those changes have local execution/compiled
+contract coverage, but are not represented as another hosted replay.
 
 ## Primary references
 

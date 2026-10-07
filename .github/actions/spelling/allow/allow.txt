@@ -79,6 +79,7 @@ FTCS
 gantt
 gfm
 GHAW
+ghaw
 ghe
 Ghostty
 github

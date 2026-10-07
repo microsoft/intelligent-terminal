@@ -16,13 +16,19 @@ function Git([string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "Fixture Git failure: $result" }
     return ($result -join "`n")
 }
-function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$ErrorPattern = '') {
+function Format-Fixture {
+    $messages = & cargo fmt --manifest-path (Join-Path $fixture 'tools\wta\Cargo.toml') 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Fixture formatting failed: $messages" }
+}
+function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$ErrorPattern = '', [bool]$Unformatted = $false) {
     $null = Git @('read-tree', '--empty')
     $null = Git @('read-tree', $script:head)
     $sourcePath = Join-Path $fixture 'tools\wta\src\lib.rs'
     [IO.File]::WriteAllText($sourcePath, $baseline, $utf8)
     [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\Cargo.toml'), $manifest, $utf8)
     [IO.File]::WriteAllText($sourcePath, $Source, $utf8)
+    if (-not $Unformatted) { Format-Fixture }
+    $Source = [IO.File]::ReadAllText($sourcePath)
     $blob = Git @('hash-object', '-w', '--no-filters', '--', $sourcePath)
     $null = Git @('update-index', '--cacheinfo', '100644', $blob, 'tools/wta/src/lib.rs')
     $tree = Git @('write-tree')
@@ -57,8 +63,12 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
         if ($exit -eq 0 -or ($messages -join "`n") -notmatch $ErrorPattern) {
             throw "$Name did not fail as expected (exit ${exit}): $messages"
         }
-    } elseif ($exit -ne 0 -or ($messages -join "`n") -notmatch '1 native test\(s\) passed') {
-        throw "$Name did not run one passing native test (exit ${exit}): $messages"
+    } elseif ($exit -ne 0 -or ($messages -join "`n") -notmatch 'focused-tests: 1 native test\(s\) passed' -or
+        ($messages -join "`n") -notmatch 'full-suite: 1 native test\(s\) passed') {
+        throw "$Name did not run focused and full native tests (exit ${exit}): $messages"
+    }
+    if ($Name -eq 'full-suite-failure' -and ($messages -join "`n") -notmatch 'focused-tests: 1 native test\(s\) passed') {
+        throw "Full-suite regression did not first pass the focused test: $messages"
     }
     $script:count++
     Write-Output "PASS $Name"
@@ -69,6 +79,8 @@ try {
     [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\Cargo.toml'), $manifest, $utf8)
     [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\src\lib.rs'), $baseline, $utf8)
     [IO.File]::WriteAllText((Join-Path $fixture '.gitignore'), "/tools/wta/target/`n/tools/wta/Cargo.lock`n", $utf8)
+    Format-Fixture
+    $baseline = [IO.File]::ReadAllText((Join-Path $fixture 'tools\wta\src\lib.rs'))
     $null = Git @('init', '--quiet')
     $null = Git @('config', 'core.autocrlf', 'false')
     $null = Git @('add', '.')
@@ -82,8 +94,10 @@ try {
         'commit', '--quiet', '-m', "Immutable fixture PR head`n`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>")
     $script:head = Git @('rev-parse', 'HEAD')
     Test-Case 'valid-windows-run' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'tests::focused'
-    Test-Case 'failed-test' ($baseline.Replace('2 + 2, 4', '2 + 2, 5')) 'tests::focused' 'failed with exit code'
-    Test-Case 'zero-matches' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'nonexistent_test_filter' 'did not execute any passing tests'
+    Test-Case 'format-failure' "#[cfg(test)] mod tests { #[test] fn focused() { assert_eq!(2 + 2, 4); } }`n" 'tests::focused' 'format-check: native validation failed with exit code' $true
+    Test-Case 'failed-test' ($baseline.Replace('2 + 2, 4', '2 + 2, 5')) 'tests::focused' 'focused-tests: native validation failed with exit code'
+    Test-Case 'zero-matches' ($baseline.Replace('2 + 2, 4', '3 + 3, 6')) 'nonexistent_test_filter' 'focused-tests: native validation did not execute any passing tests'
+    Test-Case 'full-suite-failure' ($baseline + "#[test] fn outside_focus_fails() { assert_eq!(2 + 2, 5); }`n") 'tests::focused' 'full-suite: native validation failed with exit code'
     $mutation = @'
 #[cfg(test)] mod tests {
     #[test] fn focused() {

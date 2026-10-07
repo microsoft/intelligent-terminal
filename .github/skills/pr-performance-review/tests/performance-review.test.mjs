@@ -122,6 +122,30 @@ test('selects repository hot-path source and keeps tests as supporting evidence'
     assert.equal(scope.supporting.length, 1);
 });
 
+test('renderer HLSL alone is an applicable rendering candidate', () => {
+    const filename = 'src/renderer/atlas/shader_ps.hlsl';
+    const scope = classifyPullRequest([{ filename }], identity);
+    assert.equal(scope.applicable, true);
+    assert.deepEqual(scope.categories, ['rendering']);
+    assert.deepEqual(scope.candidates.map(file => file.filename), [filename]);
+});
+
+test('only the exact WTA Cargo manifest and lockfile are review candidates', () => {
+    for (const filename of ['tools/wta/Cargo.toml', 'tools/wta/Cargo.lock']) {
+        const scope = classifyPullRequest([{ filename }], identity);
+        assert.equal(scope.applicable, true);
+        assert.deepEqual(scope.categories, ['wta-runtime']);
+        assert.deepEqual(scope.candidates.map(file => file.filename), [filename]);
+    }
+    const scope = classifyPullRequest([
+        'tools/other/Cargo.toml', 'tools/other/Cargo.lock',
+        'tools/wta/src/Cargo.toml', 'tools/wta/src/Cargo.lock',
+        'tools/wta/other.toml', 'tools/wta/other.lock',
+    ].map(filename => ({ filename })), identity);
+    assert.equal(scope.applicable, false);
+    assert.equal(scope.excluded.length, 6);
+});
+
 test('prepared input includes exact immutable Git file and line counts', () => {
     withRepository(({ expected, output }) => {
         const scope = prepareScope(expected, output);
@@ -214,6 +238,25 @@ test('only evidenced high findings produce action_required status', () => {
     const bad = report([finding()]);
     bad.status = 'action_required';
     assert.throws(() => validateReport(bad, identity), /must be advisory/);
+});
+
+test('regression checks require findings without overriding their severity-derived status', () => {
+    const checks = [{
+        name: 'Repeated path', status: 'regression', command: 'Inspect immutable source',
+        exitCode: null, detail: 'Repeated work increased at the reviewed head.',
+    }];
+    assert.throws(() => validateReport(report([], checks), identity), /regression checks require at least one finding/);
+    for (const severity of ['medium', 'low']) {
+        const value = report([finding({ severity })], checks);
+        assert.equal(validateReport(value, identity).status, 'advisory');
+        value.status = 'action_required';
+        assert.throws(() => validateReport(value, identity), /must be advisory/);
+    }
+    const high = report([finding({
+        severity: 'high', confidence: 'high', fixDisposition: 'manual_required',
+        evidence: [{ type: 'complexity-proof', detail: 'Nested callers increase repeated work from O(n) to O(n squared).' }],
+    })], checks);
+    assert.equal(validateReport(high, identity).status, 'action_required');
 });
 
 test('HIGH confidence, proof types, stable IDs, and guidance remain explicit schema boundaries', () => {
@@ -436,6 +479,9 @@ test('proposals accept only bounded regular WTA replacements and agreeing fixed 
         [value => { value.files[0].mode = '100755'; }, /unique, regular WTA/],
         [value => { value.files[0].mode = '120000'; }, /unique, regular WTA/],
         [value => { value.files[0].path = 'src/renderer/base/renderer.cpp'; }, /unique, regular WTA/],
+        [value => { value.files[0].path = 'src/renderer/atlas/shader_ps.hlsl'; }, /unique, regular WTA/],
+        [value => { value.files[0].path = 'tools/wta/Cargo.toml'; }, /unique, regular WTA/],
+        [value => { value.files[0].path = 'tools/wta/Cargo.lock'; }, /unique, regular WTA/],
         [value => { value.files[0].path = 'tools/wta/src/../policy.rs'; }, /safe repository-relative/],
         [value => { value.files[0].path = 'tools/wta/src/tests/fix.rs'; }, /unique, regular WTA/],
         [value => { value.files[0].contents = 'not base64'; }, /unique, regular WTA/],

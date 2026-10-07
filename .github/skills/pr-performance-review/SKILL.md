@@ -41,8 +41,10 @@ classification, report validation, card rendering, and publication gating.
    telemetry.
 5. Separate application performance, responsiveness, memory growth, and CI
    runtime/cost. Separate microbenchmark, end-to-end, and profile evidence.
-6. Write and validate the caller's version-1 report. Render its card
-   deterministically. Request exactly the output allowed by the caller.
+6. Prepare and validate the caller's version-1 report through its permitted
+   interface. Repair uses the fixed report file; fork guidance uses structured
+   report data without a shell or file-writing tool. Request exactly the output
+   allowed by the caller.
 
 ## Evidence and severity
 
@@ -56,6 +58,8 @@ classification, report validation, card rendering, and publication gating.
 - Noisy measurements require at least three samples and reported spread.
 - Unavailable Windows x64/ARM64 measurement is `unavailable`, never a pass.
 - Failed validation is `error`/`blocked`; never report an unvalidated fix.
+- A recorded regression must have a finding with evidence and severity. It
+  cannot coexist with an empty-findings passing report.
 
 ## Repair eligibility
 
@@ -88,10 +92,16 @@ repository directories or the crate name; do not prefix `tools`, `wta`, or
 `src`. Request `validate_performance_repair` with
 `confirm: true` once, then stop editing.
 
+Format the proposed Rust change before sealing it. Use the standard
+`cargo fmt --manifest-path tools/wta/Cargo.toml`, inspect its diff, and keep only
+the permitted repair changes. Native validation checks formatting without
+changing the sealed proposal, then runs the focused test and the required full
+explicit-target WTA suite. Failure in any stage blocks publication.
+
 Do not claim that Linux has run Windows tests. Do not commit, call a branch-push
 tool, or mark a proposal `fixed`. Trusted post-processing captures the exact
-candidate blobs; a read-only Windows job runs the fixed command and requires at
-least one passing test. GitHub records the job result. The trusted publisher
+candidate blobs; a read-only Windows job runs the fixed validation commands
+and requires executed passing tests. GitHub records the job result. The trusted publisher
 checks that result and the original sealed blobs before committing with
 immutable-head CAS. It never consumes a receipt or files written by test code.
 Only the publisher can render a proposal as `fixed`.
@@ -103,7 +113,10 @@ schema check.
 
 ## Report contract
 
-Write the caller-provided report path with:
+Produce the following report. Use the caller-provided file path in repair
+mode; in shell-disabled fork guidance, validate the JSON through the declared
+read-only checker and submit its unchanged JSON string as the safe-output
+body. Native post-processing owns file writes and final card rendering.
 
 ```json
 {
@@ -172,9 +185,11 @@ pwsh -NoProfile -Command "node '.github/skills/pr-performance-review/scripts/per
 pwsh -NoProfile -Command "node '.github/skills/pr-performance-review/scripts/performance-review.mjs' render --report '<report>' --mode '<repair-or-guide>' --pr '<number>' --base '<sha>' --head '<sha>'"
 ```
 
-Use the permitted PowerShell route for report writes and checker execution.
-If direct Node is denied, switch to that route immediately; do not try alternate
-Node executable names or bypass validation.
+The PowerShell examples above apply only to the repair caller. A shell-disabled
+fork caller must use its read-only MCP checker and GitHub read tools; it never
+executes a shell or materializes fork source as executable code. If an
+operation is denied, use the declared interface instead of trying alternate
+executables or bypassing validation.
 
 ## Gotchas
 

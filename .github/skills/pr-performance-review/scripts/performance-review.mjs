@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
-const SOURCE_EXTENSIONS = new Set(['.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.idl', '.ixx', '.rs', '.xaml']);
+const SOURCE_EXTENSIONS = new Set(['.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hlsl', '.idl', '.ixx', '.rs', '.xaml']);
 const LEVELS = ['high', 'medium', 'low'];
 const DIMENSIONS = ['application-performance', 'responsiveness', 'memory-growth', 'ci-runtime-cost'];
 const PROOF_TYPES = ['measurement', 'complexity-proof', 'blocking-proof', 'resource-proof'];
@@ -65,7 +65,9 @@ function classifyFile(file) {
     const categories = CATEGORY_RULES.filter(([, pattern]) => pattern.test(filename)).map(([name]) => name);
     const supporting = /(^|\/)(test|tests|ut_[^/]*|ft_[^/]*|WindowsTerminal_UIATests|doc|docs|specs)(\/|$)/i.test(filename) ||
         /\.(md|txt|png|jpg|svg)$/i.test(filename);
-    const candidate = categories.length > 0 && SOURCE_EXTENSIONS.has(path.posix.extname(filename).toLowerCase()) && !supporting;
+    const source = SOURCE_EXTENSIONS.has(path.posix.extname(filename).toLowerCase()) ||
+        ['tools/wta/Cargo.toml', 'tools/wta/Cargo.lock'].includes(filename);
+    const candidate = categories.length > 0 && source && !supporting;
     return {
         filename, status: file.status ?? 'modified',
         additions: file.additions === null ? null : Number.isInteger(file.additions) ? file.additions : 0,
@@ -146,6 +148,7 @@ export function validateReport(report, expected) {
         if (!['pass', 'regression', 'noisy', 'unavailable', 'error'].includes(check.status) ||
             !(check.exitCode === null || Number.isInteger(check.exitCode))) fail(`${prefix} has an invalid status or exitCode`);
         if (check.status === 'pass' && check.exitCode !== 0) fail(`${prefix} passing checks must exit 0`);
+        if (check.status === 'regression' && !report.findings.length) fail(`${prefix} regression checks require at least one finding`);
     }
     const expectedStatus = report.checks.some(check => check.status === 'error') ? 'blocked' :
         report.findings.some(finding => finding.fixDisposition === 'proposed') ? 'pending_validation' :

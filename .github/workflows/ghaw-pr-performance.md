@@ -248,6 +248,10 @@ or unsafe HIGH findings are not edited. Edit only one or more original
 candidate files when the skill's HIGH repair eligibility is fully met, run the
 supported existing focused WTA test selector, and record a validation plan.
 Do not execute product tests on Linux or invent native test results.
+Format the source proposal using standard `cargo fmt`, inspect the resulting
+diff, and keep only permitted repair changes. Windows validation will check
+formatting, run that focused selector, and run the required full WTA suite;
+all stages must pass on the sealed proposal.
 Use the skill's permitted PowerShell route for report writes and checker
 execution. Direct Node command variants are not permitted; a denied call is
 not permission to skip validation or try alternate executable names.
