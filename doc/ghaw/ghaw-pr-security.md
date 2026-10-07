@@ -107,7 +107,7 @@ the repair rather than accepting a prompt-only reviewer restriction.
 
 The driver's code and validator are rematerialized from the trusted workflow
 revision into the sandbox's read-only native mount. `engine.command` disables
-the compiler's ordinary CLI installation, so the repair workflow explicitly
+the compiler's ordinary CLI installation, so both workers explicitly
 reuses the same pinned official installer and stages its executable before
 inference. The compiler's detector remains on its ordinary CLI execution path,
 not the security driver. Installing the agents and skill through gh-aw keeps
@@ -118,6 +118,54 @@ its activity timer before each child launch, so the primary's accepted terminal
 `noop` cannot prematurely end an independent review within its bound.
 Harness retries are disabled to avoid replaying a completed primary and
 exhausting its one-output capability.
+
+Guide mode uses the same driver without invoking a repair reviewer. Complete
+native transcripts are checked in memory, not forwarded or retained in public
+driver logs. Public output contains a validated report-derived summary and
+bounded status/usage metadata, rather than raw tool results or model analysis.
+Native Git subprocess diagnostics are captured; failures expose static messages.
+
+Before native services or inference, both workers verify the exact hashes and
+replacement counts of two installed scripts from the pinned gh-aw-actions
+revision. The preparation disables raw CLI session copying and routes native
+MCP server diagnostics outside summary/artifact collection roots. Hash, path,
+or preparation failures stop the ordinary inference steps. MCP gateway logs
+use a literal private-directory override through supported `sandbox.mcp.env`.
+The generated `safeoutputs` stdio service is a separate third logging service.
+Its `GH_AW_MCP_LOG_DIR` is overridden through the same supported gateway
+transport to `${RUNNER_TEMP}/gh-aw/safeoutputs/private-security-logs`. Preparation
+validates and creates that owner-only directory before startup. This path is in
+the service's existing read-write mount, outside every configured log collector
+root; routing only the gateway or moving an existing public `mcp-logs` directory
+does not stop the service from recreating public logs.
+Generated directory preparation and pinned gateway startup still recreate empty
+public log directory trees. The acceptance test must distinguish those regular
+empty directories from payloads: require exactly zero public files recursively,
+rejecting even zero-byte files, symlinks/reparse escapes, and irregular nodes.
+Do not infer failure from directory existence alone or remove evidence after
+inference. This is a test-threshold correction, not a new production quarantine
+or a benign-log-file exception.
+Each driver phase has a private configuration home and debug-log directory;
+compiler-provided configuration/log overrides cannot redirect those logs back
+into collected roots. Original session stores and historical evidence are not
+deleted. Updating the runtime pin requires re-verifying these asset hashes and
+collector paths.
+
+This ordering assumes the supported fresh GitHub-hosted `ubuntu-latest` model
+jobs, without retained HOME/session restoration before preparation. The pinned
+collector still runs after a failed preparation; a retained-image deployment
+could therefore expose pre-existing sessions. Changing runner or restore inputs
+requires a separate fail-closed collection review.
+
+The native report, repair patch and noop outputs remain available to trusted
+validation and publication. Conversational diagnostics are intentionally
+reduced; this is not a claim of unchanged detector visibility, universal secret
+detection, or a separate confidentiality boundary against the same process.
+Native `noop.message` is still free-form public output, retained by canonical
+JSONL and downstream staged summaries. Logger routing does not sanitize it:
+source/secret-bearing noop prose would be a separate output-validation gap.
+Completion messages must not include raw source or secrets. Canonical noop,
+report, patch, collector, and controller semantics remain unchanged.
 
 Both workers clear the configured telemetry credential/composite variables
 `OTEL_EXPORTER_OTLP_HEADERS`, `GH_AW_OTLP_ENDPOINTS`, and
@@ -138,6 +186,11 @@ Fork object fetch authentication is supplied through process-scoped
 step disables command tracing and clears its temporary header/config variables
 on success and failure before model launch. This prevents this fetch's argv
 disclosure without claiming universal environment secrecy.
+
+The same-repository trusted fetch installs EXIT cleanup before using its
+askpass helper. Both explicit success cleanup and failure cleanup clear the
+credential environment and remove the exact helper, preserving the original
+failure exit status.
 
 Native Windows validation pins the Windows Docker pipe and clears inherited
 Docker context selection. Before dependency/image work, the trusted

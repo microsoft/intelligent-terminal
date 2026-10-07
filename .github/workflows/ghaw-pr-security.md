@@ -76,6 +76,12 @@ tools:
   cli-proxy: false
   edit: false
 
+sandbox:
+  mcp:
+    env:
+      MCP_GATEWAY_LOG_DIR: /tmp/gh-aw-security-private/mcp-gateway
+      GH_AW_MCP_LOG_DIR: ${{ runner.temp }}/gh-aw/safeoutputs/private-security-logs
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -271,6 +277,7 @@ steps:
       mkdir -p "$driver_dir"
       cp "$trusted_validator" "$driver_dir/security-review.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review-driver.mjs" > "$driver_dir/security-review-driver.mjs"
+      git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/prepare-security-review-private-logs.mjs" > "$driver_dir/prepare-security-review-private-logs.mjs"
       node "$trusted_validator" scope \
         --base "$EXPECTED_BASE_SHA" \
         --head "$EXPECTED_HEAD_SHA" \
@@ -285,6 +292,16 @@ steps:
         --output /tmp/gh-aw/agent/security-findings.json
 
 pre-agent-steps:
+  - name: Prepare private security review log sinks before native services
+    shell: bash
+    run: |
+      set -euo pipefail
+      node "$RUNNER_TEMP/gh-aw/security-review-native/prepare-security-review-private-logs.mjs" \
+        --actions-dir "$RUNNER_TEMP/gh-aw/actions" \
+        --private-root /tmp/gh-aw-security-private \
+        --collected-root /tmp/gh-aw \
+        --safe-outputs-root "$RUNNER_TEMP/gh-aw/safeoutputs" \
+        --workspace "$GITHUB_WORKSPACE"
   - name: Restore immutable skill bytes after generated skill installation
     shell: bash
     env:
@@ -316,6 +333,20 @@ post-steps:
       TRUSTED_SHA: ${{ github.workflow_sha }}
     run: |
       set -euo pipefail
+      set +x
+      cleanup_fetch_credentials() {
+        local status=$?
+        trap - EXIT
+        unset GIT_ASKPASS GH_TOKEN
+        if [ -n "${askpass:-}" ] && ! rm -f "$askpass"; then
+          echo "::error::Failed to remove trusted fetch credential helper." >&2
+          if [ "$status" -eq 0 ]; then
+            status=1
+          fi
+        fi
+        exit "$status"
+      }
+      trap cleanup_fetch_credentials EXIT
       current_head="$(gh api "/repos/$REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)"
       [ "$current_head" = "$EXPECTED_HEAD_SHA" ] || {
         echo "::error::Stale security repair rejected: expected $EXPECTED_HEAD_SHA, found $current_head."
