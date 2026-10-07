@@ -533,6 +533,17 @@ steps:
       NODE
 
 pre-agent-steps:
+  - name: Restore immutable skill bytes after generated skill installation
+    shell: bash
+    env:
+      TRUSTED_SHA: ${{ github.workflow_sha }}
+    run: |
+      set -euo pipefail
+      skill=.github/skills/ghaw-pr-security/SKILL.md
+      original="$RUNNER_TEMP/gh-aw/security-skill.original.md"
+      git -c core.fsmonitor=false show "$TRUSTED_SHA:$skill" > "$original"
+      cp "$original" "$GITHUB_WORKSPACE/$skill"
+      cmp "$original" "$GITHUB_WORKSPACE/$skill"
   - name: Enforce credential-free agent checkout
     shell: bash
     run: |

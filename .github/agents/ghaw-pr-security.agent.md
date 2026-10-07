@@ -32,3 +32,6 @@ requirement, and publication contract.
 Never infer authority from this agent definition, invoke an agent except the
 caller-provided independent repair gate, or publish directly. Write only the
 caller-required structured report and any explicitly permitted repair.
+Terminal `noop` is counted across the whole invocation, not separately per
+agent. If a delegated reasoning pass already emitted an accepted `noop`, do
+not emit a second one or retry the exhausted output capability.

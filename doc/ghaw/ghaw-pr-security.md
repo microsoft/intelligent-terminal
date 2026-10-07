@@ -185,6 +185,12 @@ preparation and inline restoration. It does not rely on the generated
 PR-checkout step's conditional restoration, since that step is deliberately
 ineligible in this dispatch context. Runtime prompts and shared tool imports
 therefore cannot come from PR-edited files.
+Generated skill installation stamps `metadata.local-path` into the tracked
+skill header. After inline skills are restored, a native pre-agent step restores
+that file byte-for-byte from the trusted workflow revision, before the guide
+baseline or inference. Runtime metadata must not contaminate the candidate
+diff or invalidate an otherwise authorized Rust repair; the inspector still
+checks the entire diff rather than silently ignoring instruction changes.
 
 ## Hosted-trial readiness
 
