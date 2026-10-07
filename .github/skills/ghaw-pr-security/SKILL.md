@@ -99,17 +99,15 @@ review reasoning and the structured report.
    - the patch is small, localized, preserves intended behavior, and does not
      weaken authorization/detection, add an allowlist, touch CI/security policy,
      or change unrelated dependencies;
-   - an independent read-only reviewer receives the FULL immutable original
-     diff from `read-security-diff`, base/head source traces and invariants from
-     `read-security-source`, and FULL final candidate patch, native
-     `patchSha256`, and immutable `headSha` from `inspect-security-repair`;
-     it re-derives the finding, checks the exact patch and required validation
-     plan, and returns `SOURCE_PASS` bound to that immutable head and digest.
-     Copy the complete native diff and candidate-patch strings verbatim into
-     the reviewer prompt, including all context lines. Include the relevant
-     native source-read objects verbatim as well: do not replace source with
-     pseudocode, reformatted excerpts, or a parent-written routing summary.
-     Parent summaries are not source proof. Missing or incomplete source/patch
+   - an independent read-only reviewer fetches the FULL immutable original
+     diff itself through `read-security-diff`, reads base/head source traces
+     and invariants through `read-security-source`, and inspects the FULL final
+     candidate through `inspect-security-repair`. Pass the expected immutable
+     head and native patch digest, finding hypothesis, and validation plan.
+     The reviewer must independently check those bindings against its own
+     native reads, re-derive the finding, and return `SOURCE_PASS` only for that
+     head and digest. Parent copies, summaries, pseudocode, and reformatted
+     excerpts are not source proof. Missing or incomplete native source/patch
      evidence requires `FAIL`. Any later edit requires fresh inspection/review.
    Report the candidate as `proposed`, with `review.status: source-pass`. Do
    not claim tests have passed or mark a finding `fixed`. The trusted native

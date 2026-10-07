@@ -45,7 +45,10 @@ agent-edited bytes.
 Both workers import the same mode-aware
 `.github/agents/ghaw-pr-security.agent.md` and install the same
 `.github/skills/ghaw-pr-security/SKILL.md`; the skill's bundled script owns
-mechanical scope/report validation. The workflow selects `guide` or `repair`
+mechanical scope/report validation. Both also select that native primary with
+`engine.agent: ghaw-pr-security`; importing its text alone does not replace
+the CLI's default primary or its generic security-review delegation.
+The workflow selects `guide` or `repair`
 mode and supplies the corresponding tools, so review-only and repair behavior
 do not require duplicate primary agents. The repair workflow embeds only its
 independent read-only repair gate as an inline subagent. Installing the agent
@@ -187,7 +190,8 @@ wildcard, it accepts only bounded report data, validates immutable identity,
 and writes one preselected regular file. Immutable Git inspection also uses
 fixed native read tools, with external diff/textconv, pagers, Git replacement
 refs, and filesystem-monitor hooks disabled. No model shell execution is
-granted. The inline reviewer has read/search context only.
+granted. The inline reviewer has file read and three specific read-only native
+MCP capabilities, but no shell, writer, report-submission, or agent tools.
 The default GitHub MCP server is explicitly disabled; an omitted `tools.github`
 key would otherwise auto-add mutable API reads. `bash: []` and
 `cli-proxy: false` select native MCP transport without a model shell. Native
@@ -203,8 +207,9 @@ or unrelated files. Report JSON is limited to 10 KiB, matching the actual native
 MCP string limit. The compiler does not preserve custom input maxLength fields,
 so these limits do not depend on a schema override.
 Proposed code still requires independent source approval and native tests.
-The independent reviewer receives the complete native original/candidate diff
-strings and relevant source-read objects, not paraphrased source. Its approval
+The independent reviewer fetches the complete native original/candidate diff
+and relevant immutable source itself through read-only native tools. Parent
+copies or paraphrased source do not substitute for those reads. Its approval
 must bind the final native digest and immutable head, stored separately in
 `review.patchSha256` and `review.headSha`.
 The agent must not execute PR-controlled Cargo, formatting, build, or test

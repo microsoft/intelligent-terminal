@@ -651,12 +651,12 @@ according to the trusted production caller procedure.
 ## agent: `ghaw-pr-security-reviewer`
 ---
 description: Independently verifies a proposed security finding and repair
-tools: ['read', 'search']
+tools: ['read', 'mcpscripts/read-security-diff', 'mcpscripts/read-security-source', 'mcpscripts/inspect-security-repair']
 ---
 
 Read `/tmp/gh-aw/production-security-reviewer.md` and follow its exact trusted
-production reviewer instructions. Re-derive the finding independently from the
-complete native immutable evidence and inspect the final native digest-bound
-candidate. Do not treat the parent conclusion or this caller's purpose as proof.
+production reviewer instructions. Fetch immutable evidence and the final
+digest-bound candidate yourself through the read-only native tools. Do not treat
+the parent conclusion, copied source, or this caller's purpose as proof.
 
 ## end agent: `ghaw-pr-security-reviewer`
