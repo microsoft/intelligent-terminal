@@ -101,6 +101,43 @@ test('Cargo configuration triggers review but cannot enter automatic repair', ()
   assert.throws(() => validateRepairScope(mixed), /non-WTA-source paths/);
 });
 
+test('loaded instruction roots have coherent triggers and classification without Rust repair eligibility', () => {
+  const workflow = name => readFileSync(new URL(`../../../workflows/${name}`, import.meta.url), 'utf8');
+  const controller = workflow('ghaw-pr-security-controller.yml');
+  const pathsBlock = controller.match(/    paths:\r?\n((?:      - '[^']+'\r?\n)+)/)?.[1];
+  assert(pathsBlock, 'controller must declare review path triggers');
+  const triggers = [...pathsBlock.matchAll(/      - '([^']+)'/g)].map(match => match[1]);
+  assert.deepEqual(triggers, [
+    'AGENTS.md', '.agents/**', '.cargo/**', '.github/**', 'build/**',
+    'src/**', 'tools/**', 'test/**', 'doc/security-model.md',
+  ]);
+  const triggered = path => triggers.some(pattern =>
+    pattern.endsWith('/**') ? path.startsWith(pattern.slice(0, -2)) : path === pattern);
+  for (const name of ['ghaw-pr-security.lock.yml', 'ghaw-pr-security-guide-fork.lock.yml']) {
+    const worker = workflow(name);
+    assert(worker.includes('GH_AW_AGENT_FILES: "AGENTS.md"'));
+    assert(worker.includes('GH_AW_AGENT_FOLDERS: ".agents .github"'));
+  }
+  for (const path of [
+    'AGENTS.md', '.agents/skills/reviewer/SKILL.md',
+    '.github/instructions/security.instructions.md',
+  ]) {
+    assert.equal(triggered(path), true);
+    assert.deepEqual(classifyPath(path), ['workflow-credentials']);
+    const instructionOnly = buildScope(BASE, HEAD, 17, 'same-repo', `M\0${path}\0`, BASE, 'repair');
+    assert.equal(instructionOnly.applicable, true);
+    assert.throws(() => validateRepairScope(instructionOnly), /non-WTA-source paths/);
+    const mixed = buildScope(BASE, HEAD, 17, 'same-repo',
+      `M\0${path}\0M\0tools/wta/src/master/mod.rs\0`, BASE, 'repair');
+    assert.equal(mixed.applicable, true);
+    assert.throws(() => validateRepairScope(mixed), /non-WTA-source paths/);
+  }
+  for (const path of ['AGENTS.md.bak', 'docs/AGENTS.md', '.agents-backup/skills/reviewer/SKILL.md']) {
+    assert.equal(triggered(path), false);
+    assert.deepEqual(classifyPath(path), []);
+  }
+});
+
 test('guide cannot delegate and repair uses trusted fixed reviewer orchestration', () => {
   const workflow = name => readFileSync(new URL(`../../../workflows/${name}`, import.meta.url), 'utf8');
   const guide = workflow('ghaw-pr-security-guide-fork.md');

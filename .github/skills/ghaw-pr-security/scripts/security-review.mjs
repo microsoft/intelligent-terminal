@@ -86,7 +86,7 @@ export function classifyPath(path) {
   if (/(?:hook|agent_event|osc)/i.test(path)) {
     domains.add('hooks-untrusted-input');
   }
-  if (/^\.github\//.test(path)) {
+  if (path === 'AGENTS.md' || /^(?:\.agents|\.github)\//.test(path)) {
     domains.add('workflow-credentials');
   }
   if (/^(?:src\/cascadia\/CascadiaPackage\/|build\/|tools\/wta\/.*(?:runtime_paths|logging))/.test(path)) {
@@ -454,7 +454,10 @@ export function readSecuritySource(scope, revision, path, startLine = 1, endLine
     fail('source read needs immutable base/head and a range of at most 800 lines');
   }
   const content = git(['cat-file', 'blob', `${sha}:${normalizePath(path)}`], workspace);
-  return content.split('\n').slice(startLine - 1, endLine)
+  const lines = content.length === 0 ? [] : content.split('\n');
+  if (content.endsWith('\n')) lines.pop();
+  if (startLine > lines.length) fail('source read starts beyond immutable blob EOF');
+  return lines.slice(startLine - 1, endLine)
     .map((line, index) => `${startLine + index}: ${line}`).join('\n');
 }
 

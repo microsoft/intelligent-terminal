@@ -38,6 +38,12 @@ a sensitive file into an unrelated directory does not suppress review. All
 `.github/**` automation, including policies and instructions, is included in
 both triggering and classification. The `tools/**` surface also covers build
 entrypoints such as `tools/razzle.cmd`, not only WTA.
+Root `AGENTS.md` and `.agents/**`, a configured trusted restore root, are also
+triggered and classified as `workflow-credentials`.
+Instruction-only changes and instruction/WTA mixed scopes cannot enter automatic
+Rust repair. These roots match the workers' `GH_AW_AGENT_FILES: AGENTS.md` and
+`GH_AW_AGENT_FOLDERS: ".agents .github"`; other possible CLI roots are not
+implicitly added to this coverage.
 Root `.cargo/**` configuration is included in both the controller trigger and
 build-tooling classification; `.cargo`-only and mixed scopes are guidance-only,
 never eligible for automatic Rust repair. Report validation rejects common bearer
@@ -71,6 +77,11 @@ edit, dispatch another agent, submit reports, or emit safe outputs. The driver
 requires successful native diff/source/candidate reads and a structured
 `SOURCE_PASS` matching the immutable head and final patch digest before stamping
 source approval. Model-authored approval is rejected by report submission.
+For every proposed finding, successful bounded native head reads must cover its
+reported line interval. Native base reads must cover the corresponding original
+hunk/context, accounting for insertion and deletion offsets. Read fragments may
+form a complete interval union; gaps, wrong revisions, mismatched immutable
+source bytes, and `view`-only substitutes do not satisfy this gate.
 Missing evidence, failed review, malformed output, or subprocess failure stops
 the repair rather than accepting a prompt-only reviewer restriction.
 
