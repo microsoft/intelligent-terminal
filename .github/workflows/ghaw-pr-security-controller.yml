@@ -10,6 +10,7 @@ on:
       - '.cargo/**'
       - '.github/**'
       - 'build/**'
+      - 'installer/**'
       - 'src/**'
       - 'tools/**'
       - 'test/**'

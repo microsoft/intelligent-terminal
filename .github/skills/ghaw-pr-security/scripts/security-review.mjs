@@ -73,7 +73,7 @@ export function classifyPath(path) {
   if (/^tools\/wta\//.test(path)) {
     domains.add('wta');
   }
-  if (/^(?:tools|\.cargo)\//.test(path)) domains.add('build-tooling');
+  if (/^(?:tools|installer|\.cargo)\//.test(path)) domains.add('build-tooling');
   if (/^src\/.*\.(?:cpp|c|h|hpp|idl)$/.test(path)) {
     domains.add('cpp-memory');
   }
@@ -93,10 +93,10 @@ export function classifyPath(path) {
   if (path === 'AGENTS.md' || /^(?:\.agents|\.github)\//.test(path)) {
     domains.add('workflow-credentials');
   }
-  if (/^(?:src\/cascadia\/CascadiaPackage\/|build\/|tools\/wta\/.*(?:runtime_paths|logging))/.test(path)) {
+  if (/^(?:src\/cascadia\/CascadiaPackage\/|build\/|installer\/|tools\/wta\/.*(?:runtime_paths|logging))/.test(path)) {
     domains.add('packaging-paths-diagnostics');
   }
-  if (/^(?:tools\/wta\/Cargo\.(?:toml|lock)|NOTICE\.md|tools\/wta\/cgmanifest\.json)$/.test(path)) {
+  if (/^(?:tools\/wta\/Cargo\.(?:toml|lock)|installer\/bootstrap\/Cargo\.(?:toml|lock)|NOTICE\.md|tools\/wta\/cgmanifest\.json)$/.test(path)) {
     domains.add('dependency-supply-chain');
   }
   if (path === 'doc/security-model.md') {

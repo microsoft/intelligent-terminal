@@ -48,6 +48,10 @@ Root `.cargo/**` configuration is included in both the controller trigger and
 build-tooling classification; `.cargo`-only and mixed scopes are guidance-only,
 never eligible for automatic Rust repair. Report validation rejects common bearer
 and labeled session-capability forms without claiming universal secret detection.
+The `installer/**` tree is likewise included in triggering and build/package
+classification, covering packaged/unpackaged installation scripts and bootstrap
+source; bootstrap Cargo manifests/locks also receive supply-chain classification.
+Installer-only and mixed installer/WTA scopes remain outside automatic repair.
 Each worker rematerializes the validator from `github.workflow_sha`, not from
 agent-edited bytes.
 
