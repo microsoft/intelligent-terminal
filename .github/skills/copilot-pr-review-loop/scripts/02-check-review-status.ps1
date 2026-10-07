@@ -20,7 +20,11 @@
                             review", not "never reviewed")
       - ReviewAtHead       : true iff latest Copilot review's commit.oid == HeadOid
       - NoNewComments      : true iff the latest review body matches
-                             "generated no new comments" / "generated 0 comments"
+                             "generated no new comments" / "generated 0 comments",
+                             or a summary line "Findings: None" /
+                             "Comments generated: 0 new" (optionally bold labels),
+                             or "**0 open findings**" with only known resolved
+                             sections and no remaining actionable finding
       - OpenThreadCount    : number of unresolved review threads (from all
                              reviewers); informational — convergence does
                              NOT require this to be zero
@@ -40,7 +44,7 @@
       - Converged          : true iff the agent has done its job.
                              - When a Copilot review is at HEAD:
                                ReviewAtHead && NoNewComments &&
-                               OpenThreadsAwaitingReply == 0.
+                               OpenThreadsAwaitingReply == 0 && !CopilotPending.
                              - When no Copilot review has been observed
                                on this PR (LatestCopilotReview is null
                                AND CopilotPending is false): just
@@ -225,7 +229,30 @@ if ($latest) {
         $reviewAtHead = ($latestCommitOid -eq $pr.headRefOid)
     }
     $bodyText = if ($latest.body) { $latest.body } else { '' }
-    $noNewComments = ($bodyText -match '(?i)generated no new comments|generated\s+0\s+comments|reviewed\s+\d+\s+out\s+of\s+\d+\s+changed\s+files\s+in\s+this\s+pull\s+request\s+and\s+generated\s+no\s+new\s+comments')
+    # Only the observed, non-nested resolved section is non-actionable.
+    # Unknown/nested sections must not hide a body-only finding.
+    $findingPattern = '(?i)\b[1-9]\d*\s+(?:open|new|unresolved)\s+findings\b|Previously missed\s*\([1-9]\d*\)|\b(?:critical|high|medium|low)(?: severity)?(?:\s+|:\s*)(?:unresolved|open)\b|\b(?:unresolved|open)(?:\s+|:\s*)(?:critical|high|medium|low)\b'
+    $withoutResolved = $bodyText
+    $resolvedSections = [regex]::Matches($bodyText,
+        '(?is)<details\b[^>]*>\s*<summary>\s*<strong>\d+ resolved since last review</strong>\s*</summary>(?:(?!</?details\b).)*</details\s*>')
+    foreach ($section in $resolvedSections) {
+        $sectionText = [regex]::Replace($section.Value, '<[^>]+>', ' ')
+        $sectionText = [regex]::Replace($sectionText, '\*\*|__', '')
+        if ($sectionText -notmatch $findingPattern) {
+            $withoutResolved = $withoutResolved.Replace($section.Value, '')
+        }
+    }
+    $summaryText = [regex]::Replace($withoutResolved, '<[^>]+>', ' ')
+    $summaryText = [regex]::Replace($summaryText, '\*\*|__', '')
+    $hasActionableFinding = ($withoutResolved -match '(?i)alt=["''](?:critical|high|medium|low) severity["'']|#discussion_r\d+') -or
+                            ($summaryText -match $findingPattern)
+    $zeroOpenSummary = ($withoutResolved -match '(?im)^[ \t]*\*\*0 open findings\*\*[ \t]*\r?$') -and
+                       ($withoutResolved -notmatch '(?i)<(?:details|summary)\b')
+    $noNewComments = -not $hasActionableFinding -and (
+        ($bodyText -match '(?i)generated no new comments|generated\s+0\s+comments|reviewed\s+\d+\s+out\s+of\s+\d+\s+changed\s+files\s+in\s+this\s+pull\s+request\s+and\s+generated\s+no\s+new\s+comments') -or
+        ($bodyText -match '(?im)^[ \t]*(?:\*\*)?Findings:(?:\*\*)?[ \t]+None[ \t]*\r?$') -or
+        ($bodyText -match '(?im)^[ \t]*(?:\*\*)?Comments generated:(?:\*\*)?[ \t]+0 new[ \t]*\r?$') -or
+        $zeroOpenSummary)
     $bodyHead = if ($bodyText.Length -gt 300) { $bodyText.Substring(0, 300) } else { $bodyText }
 }
 
@@ -302,13 +329,16 @@ $result = [ordered]@{
     #   trigger intentionally skipped): just OpenThreadsAwaitingReply
     #   == 0. Ignores ReviewAtHead / NoNewComments because those will
     #   never advance without a new Copilot review.
-    # - Copilot review exists or pending: ReviewAtHead &&
+    # - Pending review: never converge on the prior review.
+    # - Copilot review exists: ReviewAtHead &&
     #   NoNewComments && OpenThreadsAwaitingReply == 0.
     # - No Copilot review has ever been observed: just
     #   OpenThreadsAwaitingReply == 0 (also fires for brand-new PRs
     #   with zero findings; agent should still trigger via
     #   01-request-review.ps1 if Copilot is enabled).
-    Converged = if ($SingleIteration) {
+    Converged = if ($copilotPending) {
+        $false
+    } elseif ($SingleIteration) {
         $awaitingCount -eq 0
     } elseif ($latest -or $copilotPending) {
         $reviewAtHead -and $noNewComments -and $awaitingCount -eq 0
