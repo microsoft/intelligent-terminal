@@ -231,7 +231,7 @@ if ($latest) {
     $bodyText = if ($latest.body) { $latest.body } else { '' }
     # Only the observed, non-nested resolved section is non-actionable.
     # Unknown/nested sections must not hide a body-only finding.
-    $findingPattern = '(?i)\b[1-9]\d*\s+(?:open|new|unresolved)\s+findings\b|Previously missed\s*\([1-9]\d*\)|\b(?:critical|high|medium|low)(?: severity)?(?:\s+|:\s*)(?:unresolved|open)\b|\b(?:unresolved|open)(?:\s+|:\s*)(?:critical|high|medium|low)\b'
+    $findingPattern = '(?i)\b[1-9]\d*\s+(?:open|new|unresolved)\s+findings?\b|Previously missed\s*\([1-9]\d*\)|\b(?:critical|high|medium|low)(?: severity)?(?:\s+|:\s*)(?:unresolved|open)\b|\b(?:unresolved|open)(?:\s+|:\s*)(?:critical|high|medium|low)\b'
     $withoutResolved = $bodyText
     $resolvedSections = [regex]::Matches($bodyText,
         '(?is)<details\b[^>]*>\s*<summary>\s*<strong>\d+ resolved since last review</strong>\s*</summary>(?:(?!</?details\b).)*</details\s*>')
@@ -251,7 +251,7 @@ if ($latest) {
     $noNewComments = -not $hasActionableFinding -and (
         ($bodyText -match '(?i)generated no new comments|generated\s+0\s+comments|reviewed\s+\d+\s+out\s+of\s+\d+\s+changed\s+files\s+in\s+this\s+pull\s+request\s+and\s+generated\s+no\s+new\s+comments') -or
         ($bodyText -match '(?im)^[ \t]*(?:\*\*)?Findings:(?:\*\*)?[ \t]+None[ \t]*\r?$') -or
-        ($bodyText -match '(?im)^[ \t]*(?:\*\*)?Comments generated:(?:\*\*)?[ \t]+0 new[ \t]*\r?$') -or
+        ($bodyText -match '(?im)^[ \t]*(?:[-+*][ \t]+)?(?:\*\*)?Comments generated:(?:\*\*)?[ \t]+0 new[ \t]*\r?$') -or
         $zeroOpenSummary)
     $bodyHead = if ($bodyText.Length -gt 300) { $bodyText.Substring(0, 300) } else { $bodyText }
 }

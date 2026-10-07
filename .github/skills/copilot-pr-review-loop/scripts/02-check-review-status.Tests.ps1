@@ -78,6 +78,9 @@ Review effort: Balanced
         @{ Body = "<!-- ccr-overview-v2 -->`r`n**Review effort:** Balanced  `r`n**Findings:** None"; Expected = $true }
         @{ Body = '**Comments generated:** 0 new'; Expected = $true }
         @{ Body = 'Comments generated: 0 new'; Expected = $true }
+        @{ Body = "- **Comments generated:** 0 new"; Expected = $true }
+        @{ Body = "- **Comments generated:** 1 new"; Expected = $false }
+        @{ Body = "- **Comments generated:** 10 new"; Expected = $false }
         @{ Body = 'generated 1 comments'; Expected = $false }
         @{ Body = '**Findings:** 1'; Expected = $false }
         @{ Body = '**Findings:** None pending; 1 new'; Expected = $false }
@@ -121,7 +124,7 @@ Review effort: Balanced
         @{ Name = 'zero open only'; Body = '**0 open findings**'; Expected = $true }
         @{ Name = 'zero open and resolved zero'; Body = "**0 open findings**`n<details><summary><strong>0 resolved since last review</strong></summary></details>"; Expected = $true }
         @{ Name = 'zero open and resolved three'; Body = "**0 open findings**`n<details><summary><strong>3 resolved since last review</strong></summary><img alt='Low severity' />#discussion_r1</details>"; Expected = $true }
-        @{ Name = 'nonzero open'; Body = '**1 open findings**'; Expected = $false }
+        @{ Name = 'nonzero open'; Body = '**1 open finding**'; Expected = $false }
         @{ Name = 'ten open'; Body = '**10 open findings**'; Expected = $false }
         @{ Name = 'resolved without open zero'; Body = '<details><summary><strong>2 resolved since last review</strong></summary></details>'; Expected = $false }
         @{ Name = 'previously missed medium'; Body = "**0 open findings**`n<details><summary><strong>Previously missed (1)</strong></summary><img alt='Medium severity' />bug</details>"; Expected = $false }
@@ -132,7 +135,7 @@ Review effort: Balanced
         @{ Name = 'nested finding in resolved section'; Body = "**0 open findings**`n<details><summary><strong>2 resolved since last review</strong></summary><details><summary>Medium unresolved</summary>bug</details></details>"; Expected = $false }
         @{ Name = 'unresolved text contradicts resolved section'; Body = "**0 open findings**`n<details><summary><strong>2 resolved since last review</strong></summary>**Medium:** unresolved finding: bug</details>"; Expected = $false }
         @{ Name = 'unknown section'; Body = "**0 open findings**`n<details><summary>Other findings</summary>bug</details>"; Expected = $false }
-        @{ Name = 'contradictory open count'; Body = "**0 open findings**`n**1 open findings**"; Expected = $false }
+        @{ Name = 'contradictory open count'; Body = "**0 open findings**`n**1 open finding**"; Expected = $false }
         @{ Name = 'dangling finding link'; Body = "**0 open findings**`n[Bug](#discussion_r123)"; Expected = $false }
         @{ Name = 'legacy none with unresolved body'; Body = "**Findings:** None`n<details><summary>Medium unresolved</summary>bug</details>"; Expected = $false }
     ) {
@@ -144,6 +147,25 @@ Review effort: Balanced
 
     It 'Accepts the observed zero-open/resolved-body shape with a runtime warning' -Tag 'Structured' {
         $status = Invoke-StatusFixture -Body $script:resolvedBody
+        $status.NoNewComments | Should -BeTrue
+        $status.Converged | Should -BeTrue
+    }
+
+    It 'Accepts the actual bulleted review-details shape from PR758 review5085519475' {
+        $body = @'
+### Approval recommended
+
+The change is narrowly scoped, reuses the existing cached ACP listing, and is backed by targeted unit tests that cover the reported regression and key safety/authority edge cases.
+
+<details>
+<summary>Review details</summary>
+
+- **Files reviewed:** 5/5 changed files
+- **Comments generated:** 0 new
+- **Review effort level:** Lite
+</details>
+'@
+        $status = Invoke-StatusFixture -Body $body
         $status.NoNewComments | Should -BeTrue
         $status.Converged | Should -BeTrue
     }
