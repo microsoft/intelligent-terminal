@@ -255,6 +255,10 @@ checksum-pinned rustup installer.
 Host dependency preparation likewise uses the checksum-pinned public rustup
 1.29.1 installer, isolated Cargo/Rustup directories, and explicit installed
 executables rather than the mutable preinstalled runner toolchain.
+The verified host bootstrapper keeps its required `rustup-init.exe` basename:
+rustup uses executable-name dispatch, and a prefixed filename enters proxy mode
+and exits before installation. Host installer stdout/stderr are retained with
+native proof so setup failures are diagnosable.
 The executor uses its immutable local image ID, not a mutable tag. Do not
 substitute the Linux image, guess a Windows Rust tag, copy arbitrary
 host toolchain directories, or enable nested Hyper-V as a workaround.

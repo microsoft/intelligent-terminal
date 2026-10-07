@@ -209,19 +209,26 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $env:CARGO_HOME = Join-Path $env:RUNNER_TEMP 'ghaw-windows-cargo'
           $env:RUSTUP_HOME = Join-Path $env:RUNNER_TEMP 'ghaw-windows-rustup'
-          $installer = Join-Path $env:RUNNER_TEMP 'ghaw-public-rustup-init.exe'
+          $setup = Join-Path $env:RUNNER_TEMP 'ghaw-public-rustup'
+          New-Item -ItemType Directory -Path $setup | Out-Null
+          $installer = Join-Path $setup 'rustup-init.exe'
           Invoke-WebRequest -Uri 'https://static.rust-lang.org/rustup/archive/1.29.1/x86_64-pc-windows-msvc/rustup-init.exe' -OutFile $installer -TimeoutSec 60
           if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne '6f4bef66261261fcb43131be8720bab817d403a09edec7455c371974b90bdb7e') {
               throw 'Public host Rust installer checksum mismatch.'
           }
-          $process = Start-Process -FilePath $installer -ArgumentList '-y --no-modify-path --profile minimal --default-host x86_64-pc-windows-msvc --default-toolchain 1.93.0' -PassThru
+          $stdout = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof\host-rustup.stdout.log'
+          $stderr = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof\host-rustup.stderr.log'
+          $process = Start-Process -FilePath $installer -ArgumentList '-y --no-modify-path --profile minimal --default-host x86_64-pc-windows-msvc --default-toolchain 1.93.0' -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
           try {
               if (-not $process.WaitForExit(240000)) {
                   $closed = $process.CloseMainWindow()
                   if (-not $process.WaitForExit(1000)) { & taskkill.exe /PID $process.Id /T /F }
                   throw "Public host Rust setup timed out: PID=$($process.Id), gracefulClose=$closed."
               }
-              if ($process.ExitCode -ne 0) { throw "Public host Rust setup failed: $($process.ExitCode)." }
+              if ($process.ExitCode -ne 0) {
+                Get-Content -LiteralPath $stdout, $stderr -Tail 80
+                throw "Public host Rust setup failed: $($process.ExitCode)."
+              }
           } finally {
               Remove-Item -LiteralPath $installer
           }

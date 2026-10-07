@@ -86,7 +86,7 @@ jobs:
               $env:COMPARISON_SHA -cne $env:BASE_SHA -or $env:HEAD_SHA -ceq $env:BASE_SHA) {
             throw 'Authoring revision and immutable fixture base do not match this workflow.'
           }
-          if ($env:HEAD_REF -cne 'test/yeelam/ghaw-security-repair-fixture-20261007-r3') { throw 'Unexpected fixture branch.' }
+          if ($env:HEAD_REF -cne 'test/yeelam/ghaw-security-repair-fixture-20261007-r4') { throw 'Unexpected fixture branch.' }
           if ($env:PR_NUMBER -notmatch '^[1-9][0-9]{0,8}$' -or $env:PR_NUMBER -cne $env:GITHUB_RUN_NUMBER) {
             throw 'Fixture ordinal must be this run number, not a PR identity.'
           }
@@ -96,10 +96,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot verify official repository.' }
           $repo = $raw | ConvertFrom-Json
           if ($repo.full_name -cne $env:GITHUB_REPOSITORY -or $repo.private -ne $false) { throw 'Exact public official repository required.' }
-          $raw = gh api "/repos/$env:GITHUB_REPOSITORY/git/ref/heads/test/yeelam/ghaw-security-repair-e2e-20261007-r3"
+          $raw = gh api "/repos/$env:GITHUB_REPOSITORY/git/ref/heads/test/yeelam/ghaw-security-repair-e2e-20261007-r4"
           if ($LASTEXITCODE -ne 0) { throw 'Cannot verify live fixture base ref.' }
           $base = $raw | ConvertFrom-Json
-          if ($base.ref -cne 'refs/heads/test/yeelam/ghaw-security-repair-e2e-20261007-r3' -or
+          if ($base.ref -cne 'refs/heads/test/yeelam/ghaw-security-repair-e2e-20261007-r4' -or
               $base.object.type -cne 'commit' -or $base.object.sha -cne $env:BASE_SHA) { throw 'Fixture base ref raced.' }
           $raw = gh api "/repos/$env:GITHUB_REPOSITORY/git/ref/heads/$env:HEAD_REF"
           if ($LASTEXITCODE -ne 0) { throw 'Cannot verify live fixture head ref.' }
@@ -107,7 +107,7 @@ jobs:
           if ($head.ref -cne "refs/heads/$env:HEAD_REF" -or
               $head.object.type -cne 'commit' -or $head.object.sha -cne $env:HEAD_SHA) { throw 'Fixture head ref raced.' }
           # Read-only list, not PR allocation or PR identity. A PR would invalidate this branch-only experiment.
-          $raw = gh api "/repos/$env:GITHUB_REPOSITORY/pulls?state=all&head=microsoft%3Atest%2Fyeelam%2Fghaw-security-repair-fixture-20261007-r3&per_page=100"
+          $raw = gh api "/repos/$env:GITHUB_REPOSITORY/pulls?state=all&head=microsoft%3Atest%2Fyeelam%2Fghaw-security-repair-fixture-20261007-r4&per_page=100"
           if ($LASTEXITCODE -ne 0) { throw 'Cannot verify absence of associated PRs.' }
           if (@($raw | ConvertFrom-Json).Count -ne 0) { throw 'Fixture branch must have no associated PR.' }
           [ordered]@{
@@ -117,7 +117,7 @@ jobs:
             baseSha = $env:BASE_SHA
             headSha = $env:HEAD_SHA
             nativeHead = $head.object.sha
-            baseRef = 'test/yeelam/ghaw-security-repair-e2e-20261007-r3'
+            baseRef = 'test/yeelam/ghaw-security-repair-e2e-20261007-r4'
             headRef = $env:HEAD_REF
             comparisonBaseSha = $env:COMPARISON_SHA
             fixtureNumber = $env:PR_NUMBER
@@ -244,19 +244,26 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $env:CARGO_HOME = Join-Path $env:RUNNER_TEMP 'ghaw-windows-cargo'
           $env:RUSTUP_HOME = Join-Path $env:RUNNER_TEMP 'ghaw-windows-rustup'
-          $installer = Join-Path $env:RUNNER_TEMP 'ghaw-public-rustup-init.exe'
+          $setup = Join-Path $env:RUNNER_TEMP 'ghaw-public-rustup'
+          New-Item -ItemType Directory -Path $setup | Out-Null
+          $installer = Join-Path $setup 'rustup-init.exe'
           Invoke-WebRequest -Uri 'https://static.rust-lang.org/rustup/archive/1.29.1/x86_64-pc-windows-msvc/rustup-init.exe' -OutFile $installer -TimeoutSec 60
           if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne '6f4bef66261261fcb43131be8720bab817d403a09edec7455c371974b90bdb7e') {
               throw 'Public host Rust installer checksum mismatch.'
           }
-          $process = Start-Process -FilePath $installer -ArgumentList '-y --no-modify-path --profile minimal --default-host x86_64-pc-windows-msvc --default-toolchain 1.93.0' -PassThru
+          $stdout = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof\host-rustup.stdout.log'
+          $stderr = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof\host-rustup.stderr.log'
+          $process = Start-Process -FilePath $installer -ArgumentList '-y --no-modify-path --profile minimal --default-host x86_64-pc-windows-msvc --default-toolchain 1.93.0' -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
           try {
               if (-not $process.WaitForExit(240000)) {
                   $closed = $process.CloseMainWindow()
                   if (-not $process.WaitForExit(1000)) { & taskkill.exe /PID $process.Id /T /F }
                   throw "Public host Rust setup timed out: PID=$($process.Id), gracefulClose=$closed."
               }
-              if ($process.ExitCode -ne 0) { throw "Public host Rust setup failed: $($process.ExitCode)." }
+              if ($process.ExitCode -ne 0) {
+                Get-Content -LiteralPath $stdout, $stderr -Tail 80
+                throw "Public host Rust setup failed: $($process.ExitCode)."
+              }
           } finally {
               Remove-Item -LiteralPath $installer
           }
@@ -381,7 +388,7 @@ jobs:
             headSha = $env:HEAD_SHA
             nativeHead = $env:HEAD_SHA
             headRef = $env:HEAD_REF
-            baseRef = 'test/yeelam/ghaw-security-repair-e2e-20261007-r3'
+            baseRef = 'test/yeelam/ghaw-security-repair-e2e-20261007-r4'
             comparisonBaseSha = $env:COMPARISON_SHA
             patchSha256 = $env:PATCH_SHA256
             scopeSha256 = (Get-Content (Join-Path $evidence 'scope.json') -Raw | ConvertFrom-Json).scopeSha256
