@@ -1466,6 +1466,7 @@ rosetta
 RRF
 RRRGGGBB
 rsas
+rstest
 rtcore
 RTEXT
 RTLREADING
