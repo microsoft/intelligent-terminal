@@ -72,6 +72,7 @@ Describe 'Combined History real-oracle non-live controls' -Tag Unit {
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
         Add-Type -AssemblyName WindowsBase
+        . (Join-Path $PSScriptRoot '..\fixtures\SidebarRelativeTimeOracle.ps1')
         $ast = [Management.Automation.Language.Parser]::ParseFile(
             (Join-Path $PSScriptRoot '..\tests\Feature.CombinedAgentsSidebar.Tests.ps1'), [ref]$null, [ref]$null)
         foreach ($name in @('Assert-CombinedHistoryMetadata', 'Assert-CombinedOwnershipButton')) {
@@ -86,6 +87,7 @@ Describe 'Combined History real-oracle non-live controls' -Tag Unit {
         function Get-CombinedRawChildren { param($Element, [switch]$ContentView) }
         function Get-CombinedVisiblePart {}
         function Get-CombinedRowText {}
+        function Get-CombinedSnapshot {}
         function New-MetadataPart([string]$Name, [double]$X, [double]$Y, [double]$Width, [double]$Height, [string]$Id = '') {
             [pscustomobject]@{ Current = [pscustomobject]@{
                 Name = $Name; AutomationId = $Id; IsOffscreen = $false; IsEnabled = $true
@@ -116,6 +118,11 @@ Describe 'Combined History real-oracle non-live controls' -Tag Unit {
         }
         Mock Get-CombinedVisiblePart { $script:icon }
         Mock Get-CombinedRowText { 'session just now Idle Copilot' }
+        $script:metadataSource = [DateTimeOffset]::UtcNow
+        Mock Get-CombinedSnapshot {
+            @{ sessions = @(@{ title = 'session'; provider_id = 'copilot'
+                last_activity_at_ms = $script:metadataSource.ToUnixTimeMilliseconds() }) }
+        }
         Mock Add-Content {}
     }
     It 'accepts leading centered provider identity and ordered live metadata without a PathIcon peer' {
@@ -124,6 +131,42 @@ Describe 'Combined History real-oracle non-live controls' -Tag Unit {
     It 'accepts historical time and provider text without redundant status' {
         $script:parts = @($script:parts[0], $script:parts[1], (New-MetadataPart 'Copilot' 96 28 50 16))
         { Assert-CombinedHistoryMetadata -Title session -Provider Copilot } | Should -Not -Throw
+    }
+    It 'accepts Windows ICU SHORT ages instead of the superseded long English regex' {
+        . (Join-Path $PSScriptRoot '..\fixtures\SidebarRelativeTimeOracle.ps1')
+        $script:metadataSource = [DateTimeOffset]::UtcNow.AddSeconds(-130)
+        $script:parts[1].Current.Name = [ItSidebarAgeOracle]::Format('en-US', 'minute', 2)
+        { Assert-CombinedHistoryMetadata -Title session -Status Idle -Provider Copilot } | Should -Not -Throw
+    }
+    It 'rejects plausible age text that disagrees with the source timestamp' {
+        $script:metadataSource = [DateTimeOffset]::UtcNow.AddSeconds(-130)
+        $script:parts[1].Current.Name = '99 min. ago'
+        { Assert-CombinedHistoryMetadata -Title session -Status Idle -Provider Copilot } | Should -Throw
+    }
+    It 'rejects a duplicate visible semantic age leaf' {
+        $script:parts += New-MetadataPart 'just now' 40 28 48 16
+        { Assert-CombinedHistoryMetadata -Title session -Status Idle -Provider Copilot } | Should -Throw
+    }
+    It 'does not count a Raw-only decorative SymbolIcon text leaf as metadata' {
+        $glyph = New-MetadataPart ([string][char]0xE8F2) 12 20 16 16
+        Mock Get-CombinedRawChildren {
+            if ($Element -eq $script:row) {
+                $script:parts
+                if (-not $ContentView) { $glyph }
+            }
+        }
+        { Assert-CombinedHistoryMetadata -Title session -Status Idle -Provider Copilot } | Should -Not -Throw
+    }
+    It 'still rejects a fourth historical Content-view metadata text leaf' {
+        $script:parts = @($script:parts[0], $script:parts[1], (New-MetadataPart 'Copilot' 96 28 50 16),
+            (New-MetadataPart 'unexpected' 150 28 48 16))
+        { Assert-CombinedHistoryMetadata -Title session -Provider Copilot } | Should -Throw
+    }
+    It 'rejects an offscreen zero-size historical Content-view status semantic' {
+        $hiddenStatus = New-MetadataPart 'Historical' 0 0 0 0
+        $hiddenStatus.Current.IsOffscreen = $true
+        $script:parts = @($script:parts[0], $script:parts[1], (New-MetadataPart 'Copilot' 96 28 50 16), $hiddenStatus)
+        { Assert-CombinedHistoryMetadata -Title session -Provider Copilot } | Should -Throw
     }
     It 'rejects a trailing provider icon' {
         $script:icon.Current.BoundingRectangle = [Windows.Rect]::new(180, 28, 16, 16)

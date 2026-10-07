@@ -209,23 +209,14 @@ function Stop-AppInstances {
         never touches the user's stock Windows Terminal.
     #>
     [CmdletBinding()] param([Parameter(Mandatory)]$App, [int]$GraceSec = 6)
-    $ids = @(Get-WtProcessesForApp -App $App | Select-Object -ExpandProperty Id)
-    if (-not $ids.Count) { return }
-    Write-ItLog -Level INFO -Message "Cold start: closing existing $($App.Package) instance(s) [$($ids -join ',')]"
-    foreach ($id in $ids) {
-        $p = Get-Process -Id $id -ErrorAction SilentlyContinue
-        if ($p) { try { $p.CloseMainWindow() | Out-Null } catch {} }
+    Assert-WtPackageInactive -App $App
+}
+
+function Assert-WtPackageInactive {
+    param([Parameter(Mandatory)]$App)
+    if (@(Get-WtProcessesForApp -App $App -IncludePackageExecutables).Count) {
+        throw 'Refusing cold start: pre-existing or unknown package processes are not test-owned.'
     }
-    Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition {
-        -not @(Get-WtProcessesForApp -App $App).Count
-    } | Out-Null
-    # Force-kill any window-less / multi-window monarch that ignored CloseMainWindow.
-    foreach ($id in @(Get-WtProcessesForApp -App $App | Select-Object -ExpandProperty Id)) {
-        Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
-        Write-ItLog -Level WARN -Message "Cold start: force-killed straggler pid=$id"
-    }
-    # Let the OS tear down the COM monarch registration before the next launch.
-    Start-Sleep -Milliseconds 500
 }
 
 function Stop-StaleItInstances {
@@ -248,42 +239,174 @@ function Stop-StaleItInstances {
         [Parameter(Mandatory)]$App,
         [int]$GraceSec = 6
     )
-    $ancestorIds = [System.Collections.Generic.HashSet[int]]::new()
-    $ancestorId = $PID
-    while ($ancestorId -gt 0 -and $ancestorIds.Add($ancestorId)) {
-        $ancestor = Get-CimInstance Win32_Process -Filter "ProcessId=$ancestorId" -ErrorAction SilentlyContinue
-        if (-not $ancestor -or $ancestor.ParentProcessId -eq $ancestorId) { break }
-        $ancestorId = [int]$ancestor.ParentProcessId
+    Assert-WtPackageInactive -App $App
+}
+
+function Invoke-ItTerminalActivation {
+    param([Parameter(Mandatory)][string]$AppUserModelId)
+    if (-not ('ItE2EActivation.Native' -as [type])) {
+        Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+namespace ItE2EActivation {
+ [ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+ interface IActivation {
+  [PreserveSig] int ActivateApplication([MarshalAs(UnmanagedType.LPWStr)] string id,
+   [MarshalAs(UnmanagedType.LPWStr)] string args, uint options, out uint pid);
+ }
+ public static class Native {
+  public static uint Activate(string id) {
+   var instance = Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("45ba127d-10a8-46ea-8ab7-56ea9078943c"), true));
+   try { uint pid; Marshal.ThrowExceptionForHR(((IActivation)instance).ActivateApplication(id, "", 0, out pid)); return pid; }
+   finally { Marshal.FinalReleaseComObject(instance); }
+  }
+ }
+}
+'@
     }
-    $find = {
-        Get-WtProcessesForApp -App $App
+    [ItE2EActivation.Native]::Activate($AppUserModelId)
+}
+
+function Get-ItCreatedProcessPackage {
+    param([Parameter(Mandatory)]$Process)
+    if (-not ('ItE2ECreatedPackage.Native' -as [type])) {
+        Add-Type @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+namespace ItE2ECreatedPackage {
+ public static class Native {
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode)]
+  static extern int GetPackageFullName(IntPtr process, ref uint length, StringBuilder name);
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder name, ref uint length);
+  public static string ImageName(IntPtr process) {
+   uint length = 32768; var name = new StringBuilder((int)length);
+   if(!QueryFullProcessImageName(process, 0, name, ref length))
+    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+   return name.ToString();
+  }
+  public static string FullName(IntPtr process) {
+   uint length = 0;
+   int error = GetPackageFullName(process, ref length, null);
+   if(error != 122) throw new System.ComponentModel.Win32Exception(error);
+   var name = new StringBuilder((int)length);
+   error = GetPackageFullName(process, ref length, name);
+   if(error != 0) throw new System.ComponentModel.Win32Exception(error);
+   return name.ToString();
+  }
+ }
+}
+'@
     }
-    $procs = @(& $find)
-    if (-not $procs.Count) { return }
-    $hostingAncestors = @($procs | Where-Object { $ancestorIds.Contains([int]$_.Id) })
-    if ($hostingAncestors.Count) {
-        $ids = ($hostingAncestors | ForEach-Object Id) -join ','
-        if ($env:ITE2E_PRESERVE_ANCESTOR_PID -ne $ids) {
-            throw "Refusing to run ItE2E from an Intelligent Terminal process tree because cold start would terminate the test runner (ancestor pid(s): $ids). Launch the suite from an independent conhost or stock Windows Terminal."
+    [ItE2ECreatedPackage.Native]::FullName($Process.Handle)
+}
+
+function Start-ItCreatedDevTerminal {
+    param([Parameter(Mandatory)]$App, [int]$TimeoutSec = 60)
+    if ($App.Package -cne 'IntelligentTerminal_rd9vj3e6a2mbr') {
+        throw 'This creation path is restricted to the explicitly registered Dev PFN.'
+    }
+    $alias = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\$($App.Package)\wtai.exe"
+    if (-not (Test-Path -LiteralPath $alias -PathType Leaf)) {
+        throw "Registered per-PFN Dev alias is unavailable; recover registration first: $alias"
+    }
+    Assert-WtPackageInactive -App $App
+    $start = [Diagnostics.ProcessStartInfo]::new($alias)
+    $start.UseShellExecute = $false
+    # This retained object comes from CreateProcess, not an activation-observed PID.
+    $launcher = [Diagnostics.Process]::Start($start)
+    $App | Add-Member OwnedLauncherProcess $launcher -Force
+    $ledgerRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Split-Path $script:ItE2ELogFile -Parent }
+    $ledger = Join-Path $ledgerRoot ("created-launch-$($launcher.Id)-$([guid]::NewGuid().ToString('N')).jsonl")
+    $App | Add-Member CreationObservationPath $ledger -Force
+    $observe = {
+        param([string]$Phase, [hashtable]$Details)
+        @{ utc = [datetimeoffset]::UtcNow.ToString('o'); phase = $Phase; created_pid = $launcher.Id
+            source = 'Retained Process.Start creation; phase observations are not an ownership lease'
+            alias = $alias; expected_package = $App.PackageFullName; details = $Details } |
+            ConvertTo-Json -Depth 6 -Compress | Add-Content -LiteralPath $ledger -ErrorAction Stop
+    }
+    & $observe 'created-api-return' @{}
+    $launcherHandle = $launcher.Handle
+    $launcherStartUtc = $launcher.StartTime.ToUniversalTime()
+    & $observe 'retained-creator-before-package-query' @{
+        native_handle = $launcherHandle.ToInt64(); start_utc = $launcherStartUtc.ToString('o')
+        has_exited = $launcher.HasExited
+    }
+    $launcherPackage = Get-ItCreatedProcessPackage -Process $launcher
+    & $observe 'creator-package-query-result' @{
+        start_utc = $launcherStartUtc.ToString('o'); actual_package = $launcherPackage
+        exact_package_match = ($launcherPackage -ceq $App.PackageFullName); has_exited = $launcher.HasExited
+    }
+    if ($launcherPackage -cne $App.PackageFullName) {
+        throw 'The actually created alias process has the wrong package identity.'
+    }
+    $terminalPath = Join-Path $App.InstallLocation 'WindowsTerminal.exe'
+    $launcherImage = $null
+    $exitedCreator = $launcher.HasExited
+    & $observe 'creator-before-image-query' @{
+        start_utc = $launcherStartUtc.ToString('o'); native_handle = $launcherHandle.ToInt64()
+        actual_package = $launcherPackage; has_exited = $exitedCreator
+    }
+    if (-not $exitedCreator) {
+        try { $launcherImage = [ItE2ECreatedPackage.Native]::ImageName($launcherHandle) }
+        catch {
+            $failure = $_
+            $native = $failure.Exception
+            while ($native.InnerException) { $native = $native.InnerException }
+            $exitedCreator = $launcher.HasExited
+            & $observe 'creator-image-query-failure' @{
+                start_utc = $launcherStartUtc.ToString('o'); actual_package = $launcherPackage
+                exception_type = $native.GetType().FullName; hresult = $native.HResult
+                native_code = $(if ($native -is [ComponentModel.Win32Exception]) { $native.NativeErrorCode } else { $null })
+                freshly_has_exited = $exitedCreator
+            }
+            if ($native -isnot [ComponentModel.Win32Exception] -or
+                $native.NativeErrorCode -ne 31 -or -not $exitedCreator) { throw $failure }
         }
-        Write-ItLog -Level WARN -Message "Preserving explicitly protected Intelligent Terminal ancestor pid(s) [$ids]; shared COM registration may make the run fail safely."
-        $procs = @($procs | Where-Object { -not $ancestorIds.Contains([int]$_.Id) })
     }
-    if (-not $procs.Count) { return }
-    $staleIds = @($procs | ForEach-Object { [int]$_.Id })
-    Write-ItLog -Level INFO -Message "Cleaning $($procs.Count) stale $($App.Package) instance(s) before launch: [$(($procs | ForEach-Object Id) -join ',')]"
-    foreach ($p in $procs) { try { $p.CloseMainWindow() | Out-Null } catch {} }
-    Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition {
-        -not @(Get-Process -Id $staleIds -ErrorAction SilentlyContinue).Count
-    } | Out-Null
-    foreach ($staleId in $staleIds) {
-        $stale = @(& $find) | Where-Object Id -eq $staleId | Select-Object -First 1
-        if ($stale) {
-            Stop-Process -InputObject $stale -Force -ErrorAction SilentlyContinue
-            Write-ItLog -Level WARN -Message "Force-killed stale IT straggler pid=$staleId"
+    if ($launcherImage -ceq $terminalPath) { return $launcher }
+    if (-not $exitedCreator -and $launcherImage -cne (Join-Path $App.InstallLocation 'wtai.exe')) {
+        throw 'Created alias resolved to an undocumented executable; no resident adoption.'
+    }
+    & $observe 'creator-child-discovery' @{
+        start_utc = $launcherStartUtc.ToString('o'); actual_package = $launcherPackage
+        image = $launcherImage; has_exited = $exitedCreator
+        exit_utc = $(if ($exitedCreator) { $launcher.ExitTime.ToUniversalTime().ToString('o') } else { $null })
+    }
+    # wt/shim.cpp creates exactly one adjacent WindowsTerminal.exe child and exits.
+    # Holding the creator handle prevents its PID from being recycled during discovery.
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    while ($clock.Elapsed.TotalSeconds -lt $TimeoutSec) {
+        $snapshots = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($launcher.Id)" `
+            -OperationTimeoutSec 2 -ErrorAction Stop | Where-Object {
+            $_.ExecutablePath -ceq $terminalPath -and
+                $_.CreationDate.ToUniversalTime() -ge $launcher.StartTime.ToUniversalTime()
+        })
+        foreach ($snapshot in $snapshots) {
+            if ($launcher.HasExited -and $snapshot.CreationDate.ToUniversalTime() -gt $launcher.ExitTime.ToUniversalTime()) { continue }
+            $child = Get-Process -Id $snapshot.ProcessId -ErrorAction Stop
+            $null = $child.Handle
+            $ticks = $child.StartTime.ToUniversalTime().Ticks
+            if ($child.HasExited -or $child.Path -cne $terminalPath -or
+                ($ticks - $ticks % 10) -ne $snapshot.CreationDate.ToUniversalTime().Ticks -or
+                (Get-ItCreatedProcessPackage -Process $child) -cne $App.PackageFullName) {
+                throw 'Creator-child identity changed or lost package identity; no adoption.'
+            }
+            if ($snapshots.Count -ne 1) { throw 'Created launcher has an ambiguous Terminal child set.' }
+            & $observe 'validated-terminal-creator-chain' @{
+                child_pid = $child.Id; parent_pid = $snapshot.ParentProcessId
+                child_start_utc = $child.StartTime.ToUniversalTime().ToString('o')
+                child_native_handle = $child.Handle.ToInt64(); child_path = $child.Path
+                child_package = $App.PackageFullName
+            }
+            $App | Add-Member CreatedTerminalParentPid $launcher.Id -Force
+            return $child
         }
+        Start-Sleep -Milliseconds 100
     }
-    Start-Sleep -Milliseconds 500   # let the OS tear down this package's COM registration
+    throw 'No live Terminal child of the retained created launcher; handoff/resident adoption is refused.'
 }
 
 function Get-ItTestPackage {
@@ -309,6 +432,8 @@ function Start-Terminal {
         Terminal. Returns the app context object used by every primitive.
     .PARAMETER Package   Store|Dev|<PackageFamilyName>. Auto is rejected for live tests.
     .PARAMETER Settings  Hashtable of top-level settings.json keys to apply.
+    .PARAMETER State     Opt-in state fixture applied and verified after owned backup.
+                         Defaults remain unchanged, including fresh FRE behavior.
     .PARAMETER PassFre   Mark the agent FRE complete before launch (default $true).
     .PARAMETER Backup    Back up settings/state for restore on Stop-Terminal (default $true).
     .PARAMETER CleanSettings  Strip agent/AI keys from settings.json after backup so the user's
@@ -324,6 +449,7 @@ function Start-Terminal {
     param(
         [string]$Package = (Get-ItTestPackage),
         [hashtable]$Settings,
+        [hashtable]$State,
         [bool]$PassFre = $true,
         [bool]$Backup = $true,
         [bool]$CleanSettings = $true,
@@ -333,6 +459,7 @@ function Start-Terminal {
     if ($Package -eq 'Auto') {
         throw "Choose the live integration-test package explicitly: use -Package Dev, -Package Store, or an explicit PackageFamilyName. 'Auto' is not allowed."
     }
+    if ($State -and -not $Backup) { throw 'Explicit startup state requires an owned configuration backup.' }
     $app = Resolve-ItApp -Package $Package
     Write-ItLog -Level INFO -Message "Resolved package $($app.Package) v$($app.Version); wtcli=$($app.WtcliPath)"
 
@@ -352,8 +479,18 @@ function Start-Terminal {
     $preLaunchLogStartOffset = if ($app.LogStartOffset) { $app.LogStartOffset.Clone() } else { @{} }
     $app | Add-Member -NotePropertyName PreLaunchLogStartOffset -NotePropertyValue $preLaunchLogStartOffset -Force
 
+    try {
     if ($Backup) { Backup-WtConfig -App $app }
     $app | Add-Member -NotePropertyName ConfigBackupOwned -NotePropertyValue $Backup -Force
+    if ($State) {
+        foreach ($key in $State.Keys) {
+            Set-WtState -App $app -Key $key -Value $State[$key] | Out-Null
+            $actual = Get-WtStateObject -App $app
+            if ($actual.PSObject.Properties.Name -notcontains $key -or $actual.$key -cne $State[$key]) {
+                throw "Startup state did not persist: $key"
+            }
+        }
+    }
     # Strip agent/AI keys from settings.json so the user's real config (e.g. a Foundry
     # acpModel/acpBaseUrl set for acpAgent=native) cannot leak into a test that only patches a
     # subset of keys. Requires a backup so Stop-Terminal can restore the real settings.
@@ -381,45 +518,28 @@ function Start-Terminal {
     $app | Add-Member -NotePropertyName PreExistingAgentPaneIds -NotePropertyValue $preIds -Force
     Write-ItLog -Level INFO -Message "Snapshotted $($preIds.Count) pre-existing agent-pane id(s) before launch."
 
-    $existing = @(Get-WtProcessesForApp -App $app | Select-Object -ExpandProperty Id)
-    # Launch via AUMID shell activation — this is package-specific by construction
-    # (shell:AppsFolder\<PackageFamilyName>!App) and therefore launches EXACTLY the
-    # target package. The global `wtai` AppExecutionAlias is owned by only one package,
-    # so when both the store and a dev/sideloaded IT build are installed it is ambiguous
-    # and would launch the wrong one (silently timing out the dev-targeted tests). The
-    # earlier crash-on-AUMID-activation was the state.json corruption bug (now fixed via
-    # the unary-comma ConvertFrom-ItJsonElement change), not the activation method.
-    if ($app.AppUserModelId) {
-        Write-ItLog -Level INFO -Message "Launching via AUMID: $($app.AppUserModelId)"
-        Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$($app.AppUserModelId)" | Out-Null
-    }
-    elseif ($app.LaunchAlias -and (Test-Path $app.LaunchAlias)) {
-        Write-ItLog -Level WARN -Message "No AUMID; falling back to wtai alias ($($app.LaunchAlias)) — may be ambiguous across packages."
-        Start-Process -FilePath $app.LaunchAlias | Out-Null
-    }
-
-    # Find our WindowsTerminal.exe process (prefer a newly-spawned pid).
-    $proc = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 1 -Because "WindowsTerminal process for $($app.Package)" -Condition {
-        $ps = Get-WtProcessesForApp -App $app
-        $new = $ps | Where-Object { $_.Id -notin $existing } | Select-Object -First 1
-        if ($new) { $new } elseif ($ps) { $ps | Select-Object -First 1 } else { $null }
-    }
+    Assert-WtPackageInactive -App $app
+    $proc = Start-ItCreatedDevTerminal -App $app -TimeoutSec $TimeoutSec
     $app.Pid = $proc.Id
     $null = $proc.Handle
-    $app | Add-Member -NotePropertyName OwnedProcess -NotePropertyValue $proc -Force
-    # Track whether WE launched this process or merely attached to a pre-existing one
-    # (WT is single-instance — a launch can join an already-running window). Stop-Terminal
-    # only kills processes we launched, so it never terminates a user's existing terminal.
-    $app | Add-Member -NotePropertyName Launched -NotePropertyValue ($app.Pid -notin $existing) -Force
-    if (-not $app.Launched) {
-        Write-ItLog -Level WARN -Message "Attached to a pre-existing WindowsTerminal (pid=$($app.Pid)); Stop-Terminal will NOT kill it."
+    if ($proc.HasExited -or $proc.Path -cne (Join-Path $app.InstallLocation 'WindowsTerminal.exe')) {
+        throw 'Created Terminal exited or changed identity; handoff is refused.'
     }
-    if ($app.Launched -and $env:ITE2E_OWNED_PROCESS_RECEIPT) {
-        @{
-            pid = $proc.Id; start_utc = $proc.StartTime.ToUniversalTime().ToString('o')
-            path = $proc.Path; run_token = $env:ITE2E_RUN_TOKEN
-        } | ConvertTo-Json -Compress | Add-Content -LiteralPath $env:ITE2E_OWNED_PROCESS_RECEIPT
-    }
+    $app | Add-Member OwnedProcess $proc -Force
+    $app | Add-Member Launched $true -Force
+    @{ utc = [datetimeoffset]::UtcNow.ToString('o'); phase = 'owned-root-after-creation-chain-validation'
+        source = 'Observation of established native creation proof, not a generated lease'
+        root_pid = $proc.Id; root_start_utc = $proc.StartTime.ToUniversalTime().ToString('o')
+        root_native_handle = $proc.Handle.ToInt64(); creator_pid = $app.OwnedLauncherProcess.Id } |
+        ConvertTo-Json -Compress | Add-Content -LiteralPath $app.CreationObservationPath -ErrorAction Stop
+    $app | Add-Member InputRunToken $(if ($env:ITE2E_RUN_TOKEN) { $env:ITE2E_RUN_TOKEN } else { [guid]::NewGuid().ToString('N') }) -Force
+    $app | Add-Member InputReceiptPath $(if ($env:ITE2E_OWNED_PROCESS_RECEIPT) { $env:ITE2E_OWNED_PROCESS_RECEIPT } else {
+        Join-Path $logRoot ("owned-$($app.InputRunToken).jsonl")
+    }) -Force
+    # The receipt records already-established native creation/parent proof.
+    @{ pid = $proc.Id; path = $proc.Path; start_utc = $proc.StartTime.ToUniversalTime().ToString('o')
+        run_token = $app.InputRunToken; creator_pid = $app.OwnedLauncherProcess.Id } |
+        ConvertTo-Json -Compress | Add-Content -LiteralPath $app.InputReceiptPath
     Write-ItLog -Level INFO -Message "WindowsTerminal pid=$($app.Pid) launched=$($app.Launched)"
 
     # Wait until shell activation has created the first real window before probing COM.
@@ -430,7 +550,7 @@ function Start-Terminal {
         if ($w) { $w.hwnd } else { $null }
     }
     if ($hwnd) { $app.Hwnd = $hwnd; Write-ItLog -Level INFO -Message "WT window hwnd=$hwnd" }
-    else { Write-ItLog -Level WARN -Message "Could not resolve WT HWND; UI primitives will fall back to -a pid." }
+    else { throw 'The created process owns no native window; resident handoff/target fallback is refused.' }
 
     # Bring COM online and resolve the brand CLSID. Best-effort while the FRE overlay is up
     # (the overlay replaces the window content, so the COM tab/pane surface may not be ready).
@@ -456,6 +576,24 @@ function Start-Terminal {
 
     Initialize-LogOffsets -App $app | Out-Null
     $app
+    }
+    catch {
+        $original = $_
+        try {
+            if ($app.PSObject.Properties['OwnedLauncherProcess'] -and $app.OwnedLauncherProcess -and
+                -not $app.OwnedLauncherProcess.HasExited -and
+                (-not $app.PSObject.Properties['OwnedProcess'] -or $app.OwnedProcess -ne $app.OwnedLauncherProcess)) {
+                Stop-Process -InputObject $app.OwnedLauncherProcess -Force -ErrorAction Stop
+            }
+            if ($app.PSObject.Properties['OwnedProcess'] -and $app.OwnedProcess -and $app.Launched) { Stop-Terminal -App $app -RestoreSettings $Backup }
+            elseif ($app.PSObject.Properties['ConfigBackupOwned'] -and $app.ConfigBackupOwned) {
+                Assert-WtPackageInactive -App $app
+                Restore-WtConfig -App $app
+            }
+        }
+        catch { Write-ItLog -Level ERROR -Message "Launch recovery refused or failed; backups retained: $_" }
+        throw $original
+    }
 }
 
 Set-Alias -Name Start-TerminalClean -Value Start-Terminal
@@ -491,6 +629,22 @@ function Stop-Terminal {
             # Collect OUR wta descendants before WT exits (parent links vanish afterwards).
             $proc = $App.OwnedProcess
             if ($App.Pid -and -not $proc) { throw 'Terminal cleanup requires a captured owned process identity.' }
+            if ($proc -and -not $proc.HasExited -and
+                ($App.Launched -ne $true -or $proc.Id -ne $App.Pid -or
+                 $proc.Path -ne (Join-Path $App.InstallLocation 'WindowsTerminal.exe'))) {
+                throw 'Terminal cleanup refuses an unowned or mismatched captured process.'
+            }
+            if ($proc -and -not $proc.HasExited) {
+                if (-not $App.InputRunToken -or -not $App.InputReceiptPath) {
+                    throw 'Terminal cleanup requires its captured run/PID/path/start receipt.'
+                }
+                $records = @(Get-Content -LiteralPath $App.InputReceiptPath -ErrorAction Stop | ForEach-Object { $_ | ConvertFrom-Json })
+                if (@($records | Where-Object { $_.pid -eq $App.Pid -and $_.path -eq $proc.Path -and
+                    $_.run_token -ceq $App.InputRunToken -and ([datetimeoffset]$_.start_utc).UtcDateTime.Ticks -eq
+                        $proc.StartTime.ToUniversalTime().Ticks }).Count -ne 1) {
+                    throw 'Terminal cleanup receipt is missing, ambiguous or stale.'
+                }
+            }
             $wta = if ($proc -and -not $proc.HasExited) {
                 @(Get-DescendantWtaIds -RootPid ([int]$App.Pid) -AsProcess -RootStartTime $proc.StartTime -RootProcess $proc)
             } else { @() }

@@ -216,10 +216,12 @@
     <value>Rechercher des onglets</value>
   </data>
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Filtrer les onglets</value>
+    <value>Options d’affichage de la barre latérale</value>
+    <comment>Accessible name of the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Filtrer les onglets</value>
+    <value>Options d’affichage de la barre latérale</value>
+    <comment>Tooltip for the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
     <value>Filtre</value>
@@ -282,8 +284,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Historique et autres sessions</value>
-    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
+    <value>Sessions récentes</value>
+    <comment>Collapsible noun heading below open agent tabs in the Agents sidebar. Includes prior agent sessions, kept-running background tabs, sessions in other tracked windows, and external sessions not represented by the current window's open agent panes. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agents</value>
@@ -1658,16 +1660,8 @@ Pour toutes les options disponibles, exécutez « wt new-tab --help ».</value
     <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
-    <value>Rechercher dans les agents et l’historique</value>
-    <comment>Shared sidebar search field and button label in the Agents view. Filters both open AI-agent tabs and historical agent sessions. Agents means AI agents; history means prior agent sessions. Keep the separate Tabs view search labels unchanged.</comment>
-  </data>
-  <data name="VerticalTabsHistorySplitter.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Redimensionner les onglets d’agent et l’historique</value>
-    <comment>Accessible name for the adjustable horizontal divider between open AI-agent tabs and session History in the Agents sidebar.</comment>
-  </data>
-  <data name="VerticalTabsHistorySplitter.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
-    <value>Utilisez les touches de direction Haut et Bas pour redimensionner les sections.</value>
-    <comment>Keyboard instructions for the divider between open AI-agent tabs and session History. Up reduces the upper section height; Down increases it. The lower section height adjusts oppositely.</comment>
+    <value>Rechercher des sessions d’agents actives et récentes</value>
+    <comment>Shared search placeholder, tooltip, and accessible name in the Agents sidebar. Searches both open AI-agent tabs, including idle open sessions, and the Recent Sessions section. Active does not mean only currently working. Keep the separate Tabs view search labels unchanged.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · autre fenêtre</value>
@@ -1680,5 +1674,29 @@ Pour toutes les options disponibles, exécutez « wt new-tab --help ».</value
   <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
     <value>Basculer vers une autre fenêtre</value>
     <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
+  </data>
+  <data name="VerticalTabsSwitchToAgents" xml:space="preserve">
+    <value>Passer aux Agents</value>
+    <comment>Tooltip and accessible action name of the sidebar header button while Tabs is selected. One click switches to the Agents view; it does not open a menu. Agents means AI agents, not people.</comment>
+  </data>
+  <data name="VerticalTabsSwitchToTabs" xml:space="preserve">
+    <value>Passer aux Onglets</value>
+    <comment>Tooltip and accessible action name of the sidebar header button while Agents is selected. One click switches to the Tabs view; it does not change between sidebar and horizontal tab layouts.</comment>
+  </data>
+  <data name="VerticalTabsExpandRecentSessions" xml:space="preserve">
+    <value>Développer les sessions récentes</value>
+    <comment>Tooltip for expanding the Recent Sessions section inside the Agents sidebar. Expansion shows its session rows without leaving Agents or resuming a session.</comment>
+  </data>
+  <data name="VerticalTabsCollapseRecentSessions" xml:space="preserve">
+    <value>Réduire les sessions récentes</value>
+    <comment>Tooltip for collapsing the Recent Sessions section inside the Agents sidebar. Collapse hides its rows without closing agents or deleting sessions.</comment>
+  </data>
+  <data name="SidebarIntroductionTitle" xml:space="preserve">
+    <value>Une façon plus intelligente de gérer les onglets</value>
+    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+  </data>
+  <data name="SidebarIntroductionDescription" xml:space="preserve">
+    <value>Vos onglets et sessions d’agents se trouvent maintenant dans la barre latérale. Utilisez Options d’affichage de la barre latérale pour choisir les détails des onglets. Cliquez avec le bouton droit sur un onglet pour revenir aux onglets horizontaux.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
   </data>
 </root>

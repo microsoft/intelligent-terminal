@@ -19,7 +19,9 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             throw "The selected $($target.Package) package is already running; close it before the Sidebar keyboard test."
         }
         try {
-            $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{
+                sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+            } -Settings @{
                 language = 'en-US'
                 tabLayout = 'vertical'
                 startupActions = ''

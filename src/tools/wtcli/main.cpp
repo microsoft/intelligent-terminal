@@ -1052,11 +1052,14 @@ int wmain(int argc, wchar_t** argv)
     // Low-level "pass this JSON through to SendEvent verbatim" escape hatch.
     std::string publishJson;
     bool publishFromStdin = false;
+    bool publishExistingOnly = false;
     auto* publishCmd = app.add_subcommand("publish", "Forward raw JSON to SendEvent");
     auto* publishJsonOption = publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})");
     auto* publishStdinOption = publishCmd->add_flag("--stdin", publishFromStdin, "Read the full UTF-8 event JSON from stdin");
+    publishCmd->add_flag("--existing-only", publishExistingOnly, "Connect only to a running Terminal; never activate a new server");
     publishJsonOption->excludes(publishStdinOption);
-    publishCmd->require_option(1, 1);
+    // The connection flag can accompany either mutually exclusive input form.
+    publishCmd->require_option(1, 2);
     publishCmd->callback([&]() {
         if (publishFromStdin)
         {
@@ -1086,7 +1089,7 @@ int wmain(int argc, wchar_t** argv)
             exitCode = 1;
             return;
         }
-        auto server = connect();
+        auto server = connect(publishExistingOnly ? TerminalConnectionMode::ExistingOnly : TerminalConnectionMode::Activate);
         if (!server) return;
         wil::unique_bstr evt{ Bstr(publishJson) };
         auto hr = server->SendEvent(evt.get());
@@ -1221,12 +1224,14 @@ int wmain(int argc, wchar_t** argv)
     std::string listenTarget;
     std::string listenEventFilter;
     std::string listenReadyToken;
+    bool listenExistingOnly = false;
     DWORD listenParentPid = 0;
     auto* listenCmd = app.add_subcommand("listen", "Stream real-time events from Windows Terminal");
     listenCmd->add_option("-t,--target", listenTarget, "Filter by session ID (GUID)");
     listenCmd->add_option("--event", listenEventFilter, "Filter by event type (supports trailing wildcard, e.g. agent.*)");
     listenCmd->add_option("--parent-pid", listenParentPid, "Exit when the specified parent process exits");
     listenCmd->add_option("--ready-token", listenReadyToken, "Emit an internal JSON readiness marker after Subscribe succeeds");
+    listenCmd->add_flag("--existing-only", listenExistingOnly, "Connect only to a running Terminal; never activate a new server");
     listenCmd->callback([&]() {
         wil::unique_handle parentProcess;
         if (listenParentPid != 0)
@@ -1240,7 +1245,7 @@ int wmain(int argc, wchar_t** argv)
             }
         }
 
-        auto server = connect();
+        auto server = connect(listenExistingOnly ? TerminalConnectionMode::ExistingOnly : TerminalConnectionMode::Activate);
         if (!server)
         {
             exitCode = 1;

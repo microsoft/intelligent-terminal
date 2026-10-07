@@ -440,6 +440,18 @@ namespace winrt::TerminalApp::implementation
 
         winrt::Windows::UI::Xaml::Controls::Grid::LayoutUpdated_revoker _layoutUpdatedRevoker;
         StartupState _startupState{ StartupState::NotInitialized };
+        Windows::UI::Xaml::DispatcherTimer _sidebarIntroductionTimer{ nullptr };
+        uint64_t _sidebarIntroductionClaim{ 0 };
+        uint32_t _sidebarIntroductionPresentationAttempts{ 0 };
+        Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _sidebarIntroductionLayoutRevoker;
+        void _TryShowSidebarIntroduction();
+        void _OnSidebarIntroductionPresented();
+        void _OnSidebarIntroductionClosed(const Microsoft::UI::Xaml::Controls::TeachingTip& sender, const Windows::Foundation::IInspectable& args);
+        bool _ReleaseSidebarIntroduction(bool shown);
+        void _NotifySidebarPersistenceFailure();
+        bool _sidebarIntroductionPresented{ false };
+        bool _sidebarIntroductionWarningShown{ false };
+        bool _sidebarIntroductionShuttingDown{ false };
         uint64_t _startupTransferId{ 0 };
         bool _transferReceiverReady{ false };
         void _TryCompleteStartupTransfer();

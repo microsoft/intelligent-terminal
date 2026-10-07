@@ -217,6 +217,18 @@ fn is_listener_ready_marker(value: &serde_json::Value, token: &str) -> bool {
         && value.get("token").and_then(|value| value.as_str()) == Some(token)
 }
 
+fn managed_listener_args<'a>(parent_pid: &'a str, ready_token: &'a str) -> [&'a str; 7] {
+    [
+        "--json",
+        "listen",
+        "--existing-only",
+        "--parent-pid",
+        parent_pid,
+        "--ready-token",
+        ready_token,
+    ]
+}
+
 struct ListenerRetryState {
     failures: u32,
     delay: Duration,
@@ -642,11 +654,12 @@ impl CliChannel {
         rx
     }
 
-    /// Start background event listener (wraps `wtcli listen --json`).
+    /// Start background event listener (wraps `wtcli --json listen --existing-only`).
     /// wtcli inherits WT_COM_CLSID from this process's env.
     ///
-    /// The protocol server can be temporarily unavailable while Terminal is
-    /// still starting. `wtcli listen` exits immediately in that window (for
+    /// The listener must never activate a replacement Terminal during shutdown.
+    /// The running factory can be temporarily unavailable while Terminal is
+    /// still starting. `wtcli listen --existing-only` exits in that window (for
     /// example with `E_NOINTERFACE`); a one-shot reader then leaves master
     /// permanently blind to hooks and pane lifecycle events. Retry transient
     /// failures, but stop after eight consecutive unstable attempts so a
@@ -673,14 +686,7 @@ impl CliChannel {
 
                 let mut command = tokio::process::Command::new(&wtcli);
                 command
-                    .args([
-                        "--json",
-                        "listen",
-                        "--parent-pid",
-                        &parent_pid_arg,
-                        "--ready-token",
-                        &ready_token,
-                    ])
+                    .args(managed_listener_args(&parent_pid_arg, &ready_token))
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .kill_on_drop(true);
@@ -1299,6 +1305,36 @@ mod tests {
             };
             assert_eq!(error.to_string(), expected, "source: {session_id}");
         }
+    }
+
+    #[test]
+    fn managed_listener_startup_and_retries_never_request_activation() {
+        let mut retry = ListenerRetryState::new();
+        for attempt in 0..WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES {
+            assert_eq!(
+                managed_listener_args("42", "wta-42").as_slice(),
+                [
+                    "--json",
+                    "listen",
+                    "--existing-only",
+                    "--parent-pid",
+                    "42",
+                    "--ready-token",
+                    "wta-42",
+                ]
+            );
+            assert_eq!(
+                retry.after_failure(None).is_some(),
+                attempt + 1 < WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES,
+            );
+        }
+        // Recovery after a stable subscription retains the same non-activating
+        // invocation, even when the next restart is immediate.
+        assert_eq!(
+            retry.after_failure(Some(WTCLI_LISTENER_STABLE_UPTIME)),
+            Some(Duration::ZERO),
+        );
+        assert!(managed_listener_args("42", "wta-42").contains(&"--existing-only"));
     }
 
     #[test]

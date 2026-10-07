@@ -9774,18 +9774,22 @@ async fn hookless_listener_recovery_delivers_shell_error_to_autofix() {
             let _ = std::fs::remove_dir(&self.0);
         }
     }
-    let fixture =
-        Fixture(std::env::temp_dir().join(format!("wta-listener-{}", uuid::Uuid::new_v4())));
-    std::fs::create_dir(&fixture.0).unwrap();
+    let fixture = Fixture(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("wta-listener-{}", uuid::Uuid::new_v4())),
+    );
+    std::fs::create_dir_all(&fixture.0).unwrap();
     let executable = fixture.0.join("listener.cmd");
     // First process exits before subscribing. The next emits a readiness
     // marker and an ordinary WT shell error, but never any agent hook.
     std::fs::write(&executable, r#"@echo off
+if not "%~3"=="--existing-only" exit /b 2
 if exist "%~dp0attempted" goto ready
 echo attempted>"%~dp0attempted"
 exit /b 1
 :ready
-echo {"_wtcli":"listener_ready","token":"%~6"}
+echo {"_wtcli":"listener_ready","token":"%~7"}
 echo {"method":"vt_sequence","params":{"pane_id":"shell-after-recovery","tab_id":"test-tab","sequence":"osc:133;D;1"}}
 exit /b 0
 "#.replace('\n', "\r\n")).unwrap();

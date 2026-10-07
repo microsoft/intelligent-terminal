@@ -1,7 +1,7 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 
 BeforeDiscovery {
-    Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+    if (-not (Get-Module ItE2E)) { Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force }
 }
 
 Describe 'Owned terminal cleanup' -Tag 'Unit' {
@@ -11,6 +11,7 @@ Describe 'Owned terminal cleanup' -Tag 'Unit' {
             $script:child = [pscustomobject]@{ Id = 41001; HasExited = $false }
             $script:hostProcess = [pscustomobject]@{
                 Id = 41000; HasExited = $false; MainWindowHandle = 1; StartTime = [datetime]'2026-10-01'
+                Path = 'C:\owned\WindowsTerminal.exe'
             }
             $script:hostProcess | Add-Member ScriptMethod CloseMainWindow {
                 $script:order.Add('window')
@@ -22,7 +23,11 @@ Describe 'Owned terminal cleanup' -Tag 'Unit' {
                 OwnedProcess = $script:hostProcess; InstallLocation = 'C:\owned'
                 SettingsPath = (Join-Path $TestDrive 'settings.json')
                 StatePath = (Join-Path $TestDrive 'state.json')
+                InputRunToken = 'unit-owned-run'; InputReceiptPath = (Join-Path $TestDrive 'owned.jsonl')
             }
+            @{ pid = $script:hostProcess.Id; path = $script:hostProcess.Path
+                start_utc = $script:hostProcess.StartTime.ToUniversalTime().ToString('o'); run_token = $script:app.InputRunToken } |
+                ConvertTo-Json -Compress | Set-Content -LiteralPath $script:app.InputReceiptPath
             foreach ($path in @($script:app.SettingsPath, $script:app.StatePath)) {
                 [IO.File]::WriteAllBytes($path, [byte[]]@(0, 255, 1, 13, 10))
             }
@@ -115,6 +120,17 @@ Describe 'Owned terminal cleanup' -Tag 'Unit' {
             { Stop-Terminal -App $script:app } | Should -Throw '*invalid kill argument*'
             $script:order.Count | Should -Be 0
         }
+        It 'rejects an exact PID with a different recorded start before closing or killing anything' {
+                @{ pid = $script:hostProcess.Id; path = $script:hostProcess.Path
+                    start_utc = $script:hostProcess.StartTime.AddSeconds(1).ToUniversalTime().ToString('o')
+                    run_token = $script:app.InputRunToken } |
+                    ConvertTo-Json -Compress | Set-Content -LiteralPath $script:app.InputReceiptPath
+                Mock Get-WtProcessesForApp { $script:hostProcess }
+                { Stop-Terminal -App $script:app } | Should -Throw '*stale*'
+                Should -Invoke Get-DescendantWtaIds -Times 0
+                Should -Invoke Stop-Process -Times 0
+                $script:order.Count | Should -Be 0
+            }
     }
 }
 

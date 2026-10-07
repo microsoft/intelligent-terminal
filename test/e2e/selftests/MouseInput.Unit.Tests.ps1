@@ -274,6 +274,8 @@ Describe 'Representative mouse helper regressions' -Tag 'Unit' {
 
     It 'finds package helpers without matching a neighboring installation' -Tag 'PackageRefusal' {
         $script:packageRoot = Join-Path $TestDrive 'selected-package'
+        New-Item -ItemType Directory -Path $script:packageRoot | Out-Null
+        [IO.File]::WriteAllBytes((Join-Path $script:packageRoot 'wta.exe'), [byte[]]::new(0))
         Mock -ModuleName ItE2E Get-Process {
             @(
                 [pscustomobject]@{ Id = 41; Path = (Join-Path $script:packageRoot 'wta.exe') },

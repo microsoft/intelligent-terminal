@@ -2,16 +2,39 @@
 
 ## Status and scope
 
-This specification defines the agreed behavior implemented by the sidebar keyboard
-actions. It is not an acceptance report: build-specific results and remaining
-validation belong in the release checklist and validation evidence.
+This specification defines the agreed target behavior, including the October 7,
+2026 PM/UX revision. The single-scroll layout and one-time Sidebar introduction
+supersede the earlier split-scroll/divider design and are being implemented.
+This is not an acceptance report: build-specific results and remaining validation
+belong in the release checklist and validation evidence.
 
 The scenarios below cover the left sidebar in the **vertical** tab layout. The
 sidebar and the independent **Agent Pane** are different surfaces. The **Agents**
-surface combines open agent tabs above the session history; **History** below
+surface combines open agent tabs above **Recent Sessions**; **History** below
 refers to the existing view lifecycle, search, and focus state, not a page that
-replaces the tab list. This contract does not change `tabLayout`, horizontal
-agent-session behavior, or other agent/delegation shortcuts.
+replaces the tab list. The one-time upgrade described below changes the initial
+`tabLayout`; subsequent user choices, horizontal agent-session behavior, and
+other agent/delegation shortcuts remain supported.
+
+## One-time Sidebar upgrade and introduction
+
+- Sidebar becomes the default tab layout for new users. On the first eligible
+  upgrade, existing non-Sidebar users also move to Sidebar once.
+- Persist a hidden migration-completed state separately from the hidden
+  introduction-shown state. Neither appears as an editable Settings UI option.
+  Migration completion is recorded only after its required layout change has
+  succeeded through the existing settings persistence path.
+- Later choosing horizontal tabs must not reset either state. Restarting,
+  reloading settings, opening another window, or another ordinary upgrade must
+  not force Sidebar again or repeat an already-shown introduction.
+- Present a succinct, dismissible Windows TeachingTip anchored to the visible
+  Sidebar only when its UI is ready. Explain the new tab organization, where to
+  adjust the view, and how to return to horizontal tabs.
+- Record introduction-shown state when the tip is actually presented, not
+  merely when migration starts. If no usable anchor is available, defer the
+  introduction without repeating the completed layout migration.
+- Multiple windows must not independently repeat the same migration or bubble.
+  Preserve existing onboarding, focus, and modal behavior.
 
 | Default shortcut | Responsibility |
 |---|---|
@@ -49,7 +72,12 @@ and focuses ordinary tab search on entry.
 - The toolbar header toggles **Tabs** and **Agents** (reversible via header button
   or shortcut). A persistent swap icon and button border make the switch
   discoverable; normal button hover, pressed, and keyboard-focus feedback remain.
-  There is no separate redundant Agents icon in the toolbar.
+  Its tooltip and accessible action name say **Switch to Agents** in Tabs and
+  **Switch to Tabs** in Agents. It performs one immediate switch, not dropdown
+  navigation. There is no separate redundant Agents icon in the toolbar.
+- The display-options button uses **Sidebar display options** for its tooltip
+  and accessible name in both modes. Its menu configures visible tab details and
+  any available tab filters; opening it does not itself filter tabs.
 - History rows use a leading 16px provider icon, vertically centered across the
   title and metadata rows, with both text rows aligned to its right. Metadata is
   ordered as timestamp, meaningful status, and provider display name.
@@ -82,35 +110,38 @@ and focuses ordinary tab search on entry.
   leap-year adjustment, rather than fixed 30-day/365-day approximations.
   Missing or unsupported timestamps, or timestamps that cannot be formatted, retain localized “unknown.”
   ICU's normal locale fallback applies, including for unsupported pseudo-locales.
-- The Agents view consists of two distinct upper and lower sections separated
-  by a horizontal divider:
-  - **Upper section (`AgentTabsHost`)**: contains live/open agent tabs hosting
-    `ItemsList` with its own independent vertical scrollbar
-    (`ScrollBarVisibility::Auto`).
-  - **Horizontal divider (`HistorySplitter`)**: an 8px draggable separator
-    that resizes the upper section height. Defaults to ~50/50 split with
-    an 80px minimum on both sections, adaptively reduced when a small window
-    cannot fit both minima and the divider. Supports mouse/pointer dragging
-    with `CoreCursorType::SizeNorthSouth` and keyboard resizing via `Up` and
-    `Down` arrow keys (16px per step).
-  - **Lower section (`HistoryList`)**: displays the **History & Other Sessions** heading
-    and resumable session rows, excluding represented sessions, with its own
-    independent vertical scrollbar.
+- The Agents view has exactly one vertical scrolling viewport containing the
+  live/open agent tabs followed immediately by **Recent Sessions**.
+  The live section grows or shrinks with its tab, group, and pane rows; this does
+  not mean stretching individual row heights. Recent Sessions follows the last
+  live row rather than being pinned to the bottom edge of the window.
+- There is no draggable divider, section-height setting, keyboard section
+  resizing, fixed split ratio, or independent section scrollbar. Window resizing
+  changes the shared viewport while both sections remain reachable.
+- Recent Sessions has a keyboard-accessible expand/collapse heading exposing its
+  expanded state to UI Automation. It is initially expanded, preserving the
+  existing visible-session behavior. Expanded session rows have no additional
+  indentation beyond their existing provider-icon and metadata alignment.
+  Collapsing this section does not leave Agents, clear shared search, delete
+  sessions, or close agent tabs. Its action tooltip says **Expand recent sessions**
+  or **Collapse recent sessions**, matching the current expanded state.
+- Preserve virtualized row realization, keyboard navigation, focused-row
+  visibility, and existing live-tab/group/pane interactions with the shared
+  scroll surface; do not obtain one scrollbar by introducing unbounded nested
+  lists.
 - **Unified Search**: There is no separate history search box. The single
   `SearchTextBox` in the sidebar filters both the upper live agent tabs and the
   lower history rows concurrently. Entering or leaving Agents does not discard
   an active search query or activate a search that was closed. The shared search
   action opens the box explicitly; selecting Agents does not imply searching.
 - In Agents, the search placeholder, automation names, and button tooltip read
-  **Search agents and history**; Tabs retains **Search tabs**. The header toggle
+  **Search active and recent agent sessions**; Tabs retains **Search tabs**.
+  Active includes idle open agent sessions, not only currently working agents.
+  The header toggle
   is disabled while projection controls are blocked, in either direction.
-- The focusable splitter has a localized automation name and keyboard-resizing
-  help text. Runtime Narrator/UIA behavior remains a separate validation step.
-- History errors and empty-state messages sit outside the scrolling rows so
-  retained sessions cannot scroll the status out of view. At small section
-  heights, the heading compacts or hides and status text truncates to leave a
-  list viewport; the tooltip retains the full message. This does not alter the
-  outer split ratio or introduce another scroll viewer.
+- Recent Sessions retains its loading, error, and empty-state messages without
+  replacing usable retained rows or introducing another scrolling viewport.
+  Runtime Narrator/UIA and RTL behavior remain separate validation steps.
 - Exclude only the represented history identity: provider, session ID, source
   location (host or WSL distro), and session universe. The open-pane binding
   supplies session ID, provider (when known), and pane ID; the matching history

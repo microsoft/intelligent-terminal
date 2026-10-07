@@ -97,7 +97,9 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $acpCommand = 'pwsh -NoProfile -EncodedCommand ' +
             [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation))
         $script:ownsConfig = $true
-        $script:app = Start-Terminal -Package Dev -PassFre $true -Settings @{
+        $script:app = Start-Terminal -Package Dev -PassFre $true -State @{
+            sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+        } -Settings @{
             language = 'en-US'; tabLayout = 'vertical'; startupActions = ''
             firstWindowPreference = 'defaultProfile'; windowingBehavior = 'useNew'
             acpAgent = 'custom:agents-actions-acp'; acpCustomCommand = $acpCommand; acpModel = ''
@@ -143,8 +145,17 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                 if (Test-Path -LiteralPath $path) { throw "Refusing to replace any existing canonical executable: $path" }
             }
             $script:resolverShimHash = (Get-FileHash -LiteralPath $script:shim).Hash
+            foreach ($name in @('copilot.exe', 'copilot.cmd', 'copilot.ps1', 'copilot.bat', 'copilot.com', 'copilot')) {
+                $path = Join-Path $approved $name
+                if (Test-Path -LiteralPath $path) { throw "Canonical fixture collision: $path" }
+            }
             [IO.File]::Copy($script:shim, $script:resolverShim, $false)
             $script:resolverShimOwned = $true
+            $script:resolverShimCreatedUtc = (Get-Item -LiteralPath $script:resolverShim).CreationTimeUtc
+            @{
+                path = $script:resolverShim; source = $script:shim; sha256 = $script:resolverShimHash
+                created_utc = $script:resolverShimCreatedUtc.ToString('o'); existed_before_create = $false
+            } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence 'canonical-resolver-file-lease.json')
         }
         function Save-ActionHeldRowIconEvidence {
             param($Receipt, [string]$ProviderId, [string]$Phase)
@@ -311,6 +322,10 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         if ($script:ownsConfig -and -not @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
             if ($script:resolverShimOwned) {
                 (Get-FileHash -LiteralPath $script:resolverShim).Hash | Should -Be $script:resolverShimHash
+                (Get-Item -LiteralPath $script:resolverShim).CreationTimeUtc | Should -Be $script:resolverShimCreatedUtc
+                if (@(Get-Process -ErrorAction Stop | Where-Object Path -eq $script:resolverShim).Count) {
+                    throw 'Canonical fixture remains active outside the closed package; retain executable.'
+                }
                 Remove-Item -LiteralPath $script:resolverShim
                 $script:resolverShimOwned = $false
             }

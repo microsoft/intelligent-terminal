@@ -526,10 +526,34 @@ failure-time observations, not a history of how pane/source state changed.
 ## Architecture Notes
 
 - **ShellManager** owns local terminals and the active `WtChannel`
-- **CliChannel** shells out to `wtcli.exe` per call; `wtcli` does `CoCreateInstance` to reach WT's COM server. All methods, including `send_input` (via `wtcli send-keys`), go through this path.
+- **CliChannel** shells out to `wtcli.exe` per call; ordinary requests use `CoCreateInstance` to reach WT's COM server. All methods, including `send_input` (via `wtcli send-keys`), go through this path. Managed event listeners instead use `wtcli --json listen --existing-only`, obtaining the already-running class factory through the ROT without activating Terminal.
 - **Protocol discovery**: `WT_COM_CLSID` env var, inherited from the WT-spawned conpty
 - **CLI subcommands** call `CliChannel::connect()` directly; no ShellManager needed
 - **Pane identity** is discovered at startup via PID matching (list all panes, find ours)
+
+### Event listener startup and retry
+
+Managed listeners never create a Terminal server, on initial startup or retry.
+If the running factory is not yet published or has been revoked during shutdown,
+the listener reports a connection failure without falling back to COM activation.
+WTA retains its bounded backoff: eight consecutive unstable attempts stop retries;
+a subscription healthy for 30 seconds resets the count. A first post-subscription
+failure retries immediately, still with `--existing-only`. Readiness is reported
+only after `Subscribe` succeeds, and late recovery notifies the owning channel.
+Missing listener readiness does not block chat, Autofix, listing, or resume.
+Servers without a published running factory cannot support managed listeners;
+public `wtcli listen` without this flag retains activating/headless compatibility.
+
+### Managed notifications
+
+WTA's event publisher always invokes `wtcli publish --stdin --existing-only`.
+Passive notifications, including shutdown-time session-registry changes, reuse
+the already-running COM factory and never start a replacement Terminal.
+Missing or closing/incompatible factories produce the existing publication
+warning; there is no activation fallback or change to chat/session startup.
+Public `wtcli publish` without the flag retains normal activation. Ordinary
+managed read requests and explicit interactive creation remain unchanged.
+
 # Native interactive CLI creation
 
 Delegation and native session resumes pass the resolved provider ID through

@@ -269,6 +269,12 @@ namespace winrt::TerminalApp::implementation
 
     TerminalPage::~TerminalPage()
     {
+        _sidebarIntroductionShuttingDown = true;
+        _ReleaseSidebarIntroduction(false);
+        if (_sidebarIntroductionTimer)
+        {
+            _sidebarIntroductionTimer.Stop();
+        }
         if (_historyRefreshCancellation)
         {
             _historyRefreshCancellation->store(true, std::memory_order_relaxed);
@@ -7149,7 +7155,7 @@ namespace winrt::TerminalApp::implementation
         {
             _agentPaneLog(
                 "sidebar history unavailable completed=" + std::to_string(result.completed) +
-                " exit=" + std::to_string(result.exitCode) + " output=" + result.output);
+                " exit=" + std::to_string(result.exitCode));
         }
 
         co_await wil::resume_foreground(dispatcher);
@@ -7845,6 +7851,18 @@ namespace winrt::TerminalApp::implementation
     safe_void_coroutine TerminalPage::_CompleteInitialization()
     {
         _startupState = StartupState::Initialized;
+        if (!_sidebarIntroductionTimer && !ApplicationState::SharedInstance().SidebarIntroductionShown())
+        {
+            _sidebarIntroductionTimer = Windows::UI::Xaml::DispatcherTimer{};
+            _sidebarIntroductionTimer.Interval(std::chrono::seconds{ 1 });
+            _sidebarIntroductionTimer.Tick([weak = get_weak()](auto&&, auto&&) {
+                if (const auto page = weak.get())
+                {
+                    page->_TryShowSidebarIntroduction();
+                }
+            });
+            _sidebarIntroductionTimer.Start();
+        }
 
         // No auto-create-on-first-tab pre-warm under the per-tab model.
         // Each tab independently spawns an agent pane on user request.
@@ -7915,6 +7933,214 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_ShowAboutDialog()
     {
         _ShowDialogHelper(L"AboutDialog");
+    }
+
+    bool TerminalPage::_ReleaseSidebarIntroduction(const bool shown)
+    {
+        _sidebarIntroductionLayoutRevoker.revoke();
+        _sidebarIntroductionPresented |= shown;
+        if (_sidebarIntroductionClaim)
+        {
+            try
+            {
+                ApplicationState::SharedInstance().EndSidebarIntroduction(_sidebarIntroductionClaim, _sidebarIntroductionPresented);
+                _sidebarIntroductionClaim = 0;
+                _sidebarIntroductionPresented = false;
+                return true;
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+                _NotifySidebarPersistenceFailure();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void TerminalPage::_NotifySidebarPersistenceFailure()
+    {
+        if (_sidebarIntroductionShuttingDown || _windowPanesShutdown || _sidebarIntroductionWarningShown)
+        {
+            return;
+        }
+        _sidebarIntroductionWarningShown = true;
+        auto warnings = winrt::single_threaded_vector<SettingsLoadWarnings>();
+        warnings.Append(SettingsLoadWarnings::FailedToWriteToSettings);
+        ShowLoadWarningsDialog.raise(*this, warnings.GetView());
+    }
+
+    void TerminalPage::_TryShowSidebarIntroduction()
+    try
+    {
+        if (_sidebarIntroductionClaim && _sidebarIntroductionPresented)
+        {
+            if (_ReleaseSidebarIntroduction(true))
+            {
+                _sidebarIntroductionTimer.Stop();
+            }
+            return;
+        }
+        if (_windowPanesShutdown || ApplicationState::SharedInstance().SidebarIntroductionShown())
+        {
+            _sidebarIntroductionTimer.Stop();
+            _ReleaseSidebarIntroduction(false);
+            return;
+        }
+        if (_sidebarIntroductionClaim)
+        {
+            // A popup that could not find a placement must leave this eligible
+            // for another window (or a later usable layout).
+            if (!SidebarIntroductionTip().IsOpen())
+            {
+                _ReleaseSidebarIntroduction(false);
+            }
+            else
+            {
+                _OnSidebarIntroductionPresented();
+                if (_sidebarIntroductionClaim && ++_sidebarIntroductionPresentationAttempts >= 3)
+                {
+                    SidebarIntroductionTip().IsOpen(false);
+                    _ReleaseSidebarIntroduction(false);
+                }
+            }
+            return;
+        }
+        if (!_visible || !_activated || _startupState != StartupState::Initialized ||
+            !_isVerticalLayout || _changingTabLayout || _tabs.Size() == 0 ||
+            _IsFreRequired() || !_tabStrip || _tabStrip.Visibility() != Visibility::Visible ||
+            _tabStrip.ActualWidth() <= 0 || _tabStrip.ActualHeight() <= 0)
+        {
+            return;
+        }
+        if (const auto overlay = FreOverlayElement();
+            overlay && overlay.Visibility() == Visibility::Visible)
+        {
+            return;
+        }
+        if ((CommandPaletteElement() && CommandPaletteElement().Visibility() == Visibility::Visible) ||
+            (SuggestionsElement() && SuggestionsElement().Visibility() == Visibility::Visible))
+        {
+            return;
+        }
+        const auto root = XamlRoot();
+        if (!root || Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(root).Size() != 0)
+        {
+            return;
+        }
+        const auto bounds = _tabStrip.TransformToVisual(Root()).TransformBounds(
+            Windows::Foundation::Rect{ 0, 0, static_cast<float>(_tabStrip.ActualWidth()), static_cast<float>(_tabStrip.ActualHeight()) });
+        if (bounds.X < 0 || bounds.Y < 0 || bounds.X + bounds.Width > Root().ActualWidth() ||
+            bounds.Y + bounds.Height > Root().ActualHeight())
+        {
+            return;
+        }
+        // Resource integration is owned separately. Never display blank or
+        // untranslated placeholder copy while those resources are absent.
+        if (!HasLibraryResourceWithName(L"SidebarIntroductionTitle") ||
+            !HasLibraryResourceWithName(L"SidebarIntroductionDescription") ||
+            RS_(L"SidebarIntroductionTitle").empty() || RS_(L"SidebarIntroductionDescription").empty())
+        {
+            return;
+        }
+        const auto tip = FindName(L"SidebarIntroductionTip").as<MUX::Controls::TeachingTip>();
+        try
+        {
+            _sidebarIntroductionClaim = ApplicationState::SharedInstance().TryBeginSidebarIntroduction();
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            _NotifySidebarPersistenceFailure();
+            return;
+        }
+        if (!_sidebarIntroductionClaim)
+        {
+            return;
+        }
+        _sidebarIntroductionWarningShown = false;
+        _sidebarIntroductionPresentationAttempts = 0;
+        tip.Title(RS_(L"SidebarIntroductionTitle"));
+        tip.Subtitle(RS_(L"SidebarIntroductionDescription"));
+        tip.Target(_tabStrip);
+        _UpdateTeachingTipTheme(tip);
+        tip.IsOpen(true);
+        for (const auto& popup : Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(root))
+        {
+            if (const auto content = popup.Child().try_as<FrameworkElement>())
+            {
+                _sidebarIntroductionLayoutRevoker = content.LayoutUpdated(winrt::auto_revoke, [weak = get_weak()](auto&&, auto&&) {
+                    if (const auto page = weak.get())
+                    {
+                        page->_OnSidebarIntroductionPresented();
+                    }
+                });
+                break;
+            }
+        }
+        _OnSidebarIntroductionPresented();
+    }
+    catch (...)
+    {
+        LOG_CAUGHT_EXCEPTION();
+        _ReleaseSidebarIntroduction(false);
+    }
+
+    void TerminalPage::_OnSidebarIntroductionPresented()
+    try
+    {
+        if (!_sidebarIntroductionClaim || _sidebarIntroductionPresented || !_visible || !_activated || !SidebarIntroductionTip().IsOpen())
+        {
+            return;
+        }
+        // WinUI 2 TeachingTip has no Opened event. Observe its popup's layout,
+        // and verify the rendered title/subtitle without private template names.
+        const auto popups = Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(XamlRoot());
+        for (const auto& popup : popups)
+        {
+            const auto content = popup.Child().try_as<FrameworkElement>();
+            if (!popup.IsOpen() || !content || content.ActualWidth() <= 0 || content.ActualHeight() <= 0)
+            {
+                continue;
+            }
+            bool titleVisible = false;
+            bool subtitleVisible = false;
+            std::vector<DependencyObject> pending{ content };
+            for (auto visited = 0; !pending.empty() && visited < 512; ++visited)
+            {
+                const auto element = pending.back();
+                pending.pop_back();
+                if (const auto text = element.try_as<TextBlock>();
+                    text && text.Visibility() == Visibility::Visible && text.ActualWidth() > 0 && text.ActualHeight() > 0)
+                {
+                    titleVisible |= text.Text() == SidebarIntroductionTip().Title();
+                    subtitleVisible |= text.Text() == SidebarIntroductionTip().Subtitle();
+                }
+                const auto children = Media::VisualTreeHelper::GetChildrenCount(element);
+                for (auto child = 0; child < children; ++child)
+                {
+                    pending.emplace_back(Media::VisualTreeHelper::GetChild(element, child));
+                }
+            }
+            if (titleVisible && subtitleVisible)
+            {
+                if (_ReleaseSidebarIntroduction(true))
+                {
+                    _sidebarIntroductionTimer.Stop();
+                }
+                return;
+            }
+        }
+    }
+    catch (...)
+    {
+        LOG_CAUGHT_EXCEPTION();
+        _ReleaseSidebarIntroduction(false);
+    }
+
+    void TerminalPage::_OnSidebarIntroductionClosed(const MUX::Controls::TeachingTip&, const IInspectable&)
+    {
+        _ReleaseSidebarIntroduction(false);
     }
 
     winrt::hstring TerminalPage::ApplicationDisplayName()

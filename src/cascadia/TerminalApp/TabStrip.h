@@ -18,6 +18,9 @@
 #include "TabStripPaneItem.g.h"
 #include "TabStripDisplayItem.g.h"
 #include "TabStripPaneEventArgs.g.h"
+#include "TabStripItemTemplateSelector.g.h"
+#include "TabStripHistoryHeader.g.h"
+#include "TabStripHistoryHeaderAutomationPeer.g.h"
 
 namespace TerminalAppLocalTests
 {
@@ -26,6 +29,32 @@ namespace TerminalAppLocalTests
 
 namespace winrt::TerminalApp::implementation
 {
+    struct TabStripItemTemplateSelector : TabStripItemTemplateSelectorT<TabStripItemTemplateSelector>
+    {
+        winrt::Windows::UI::Xaml::DataTemplate LiveTemplate{ nullptr };
+        winrt::Windows::UI::Xaml::DataTemplate HistoryTemplate{ nullptr };
+        winrt::Windows::UI::Xaml::DataTemplate HeaderTemplate{ nullptr };
+        winrt::Windows::UI::Xaml::DataTemplate SelectTemplateCore(winrt::Windows::Foundation::IInspectable const& item);
+        winrt::Windows::UI::Xaml::DataTemplate SelectTemplateCore(winrt::Windows::Foundation::IInspectable const& item,
+                                                               winrt::Windows::UI::Xaml::DependencyObject const&);
+    };
+
+    struct TabStripHistoryHeader : TabStripHistoryHeaderT<TabStripHistoryHeader>
+    {
+        TabStripHistoryHeader();
+        winrt::Windows::UI::Xaml::Automation::Peers::AutomationPeer OnCreateAutomationPeer();
+    };
+    struct TabStripHistoryHeaderAutomationPeer : TabStripHistoryHeaderAutomationPeerT<TabStripHistoryHeaderAutomationPeer>
+    {
+        explicit TabStripHistoryHeaderAutomationPeer(TerminalApp::TabStripHistoryHeader const& owner);
+        winrt::Windows::Foundation::IInspectable GetPatternCore(winrt::Windows::UI::Xaml::Automation::Peers::PatternInterface const& pattern);
+        winrt::Windows::UI::Xaml::Automation::Peers::AutomationControlType GetAutomationControlTypeCore() const;
+        winrt::hstring GetClassNameCore() const;
+        winrt::Windows::UI::Xaml::Automation::ExpandCollapseState ExpandCollapseState() const;
+        void Expand();
+        void Collapse();
+    };
+
     struct TabStripHistoryItem : TabStripHistoryItemT<TabStripHistoryItem>
     {
         TabStripHistoryItem() = default;
@@ -388,32 +417,14 @@ namespace winrt::TerminalApp::implementation
                                  winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const& e);
         void OnSearchBoxKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
-        void OnSplitterPointerEntered(winrt::Windows::Foundation::IInspectable const& sender,
-                                      winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
-        void OnSplitterPointerExited(winrt::Windows::Foundation::IInspectable const& sender,
-                                     winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
-        void OnSplitterPointerPressed(winrt::Windows::Foundation::IInspectable const& sender,
-                                      winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
-        void OnSplitterPointerMoved(winrt::Windows::Foundation::IInspectable const& sender,
-                                    winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
-        void OnSplitterPointerReleased(winrt::Windows::Foundation::IInspectable const& sender,
-                                       winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
-        void OnSplitterPointerCaptureLost(winrt::Windows::Foundation::IInspectable const& sender,
-                                          winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
-        void OnSplitterKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
-                               winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
-        void OnHistoryPanelSizeChanged(winrt::Windows::Foundation::IInspectable const& sender,
-                                       winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e);
-        void OnHistorySectionSizeChanged(winrt::Windows::Foundation::IInspectable const& sender,
-                                         winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e);
+        void OnHistoryExpandedChanged(winrt::Windows::Foundation::IInspectable const& sender,
+                                      winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnHistoryItemClick(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Controls::ItemClickEventArgs const& e);
         void OnHistoryOwnershipClick(winrt::Windows::Foundation::IInspectable const& sender,
                                      winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnHistoryRowLoaded(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
-        void OnHistoryContainerContentChanging(winrt::Windows::UI::Xaml::Controls::ListViewBase const& sender,
-                                               winrt::Windows::UI::Xaml::Controls::ContainerContentChangingEventArgs const& e);
         void OnContainerContentChanging(winrt::Windows::UI::Xaml::Controls::ListViewBase const& sender,
                                         winrt::Windows::UI::Xaml::Controls::ContainerContentChangingEventArgs const& e);
         void OnTabHeaderLoaded(winrt::Windows::Foundation::IInspectable const& sender,
@@ -494,21 +505,14 @@ namespace winrt::TerminalApp::implementation
         bool _projectionControlsEnabled{ true };
         winrt::hstring _searchQuery;
         bool _historyActive{ false };
-        bool _agentTabsInHistory{ false };
         std::vector<RepresentedHistorySession> _representedHistorySessions;
         bool _agentFilterTelemetryPending{ false };
         friend class ::TerminalAppLocalTests::TabTests;
-        void _resizeHistorySplit(double upperHeight);
-        void _updateHistorySectionLayout(double height);
         bool _historyLoading{ false };
         bool _historyActivating{ false };
         bool _syncingHistorySearchState{ false };
         winrt::hstring _historySearchQuery;
-        bool _splitterDragging{ false };
-        bool _splitterCursorSaved{ false };
-        winrt::Windows::Foundation::Point _splitterDragStartPointer{};
-        double _splitterDragStartHeight{ 0.0 };
-        winrt::Windows::UI::Core::CoreCursor _splitterPriorCursor{ nullptr };
+        bool _syncingViewportSelection{ false };
         winrt::hstring _historyError;
         winrt::hstring _historyRefreshError;
         TerminalApp::TabStripFilterMode _filterMode{ TerminalApp::TabStripFilterMode::AllTabs };
@@ -521,6 +525,8 @@ namespace winrt::TerminalApp::implementation
         bool _richTabMetadataControlsVisible{ true };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> _tabItems{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripDisplayItem> _displayItems{ nullptr };
+        winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> _viewportItems{ nullptr };
+        winrt::Windows::Foundation::IInspectable _historySectionItem{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> _historyItems{ nullptr };
         std::vector<TerminalApp::TabStripHistoryItem> _historySnapshot;
         std::vector<std::vector<winrt::hstring>> _historySearchTerms;
@@ -538,6 +544,13 @@ namespace winrt::TerminalApp::implementation
             winrt::event_token ClickToken;
         };
         std::unordered_map<void*, CloseRequestedSubscription> _closeRequestedSubscriptions;
+        struct RowAutomationSubscriptions
+        {
+            winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::ListViewItem> Container;
+            winrt::Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker PresentationChanged;
+            winrt::Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker DisplayChanged;
+        };
+        std::unordered_map<void*, RowAutomationSubscriptions> _rowAutomationSubscriptions;
         struct TabItemVisibilityState
         {
             winrt::weak_ref<winrt::Microsoft::UI::Xaml::Controls::TabViewItem> Item;
@@ -591,6 +604,7 @@ namespace winrt::TerminalApp::implementation
         bool _matchesHistorySearch(size_t index) const;
         void _applyHistoryProjection(bool preserveScroll = false);
         void _updateHistoryVisualState();
+        void _syncViewportItems();
         uint32_t _richTabMetadataSelectionCount() const noexcept;
         void _updateRichTabMetadataSelectionState();
         void _setHighContrastMode(bool enabled);
@@ -607,8 +621,6 @@ namespace winrt::TerminalApp::implementation
                                    TerminalApp::TabStripPaneItem const& pane,
                                    bool highContrastActive);
         void _toggleGroup(TerminalApp::TabStripDisplayItem const& display);
-        void _setSplitterCursor();
-        void _restoreSplitterCursor();
 
         // Axis-parameterized per B→C rules. Returns -1 to mean "append at end."
         // Non-const because it reaches into the XAML-generated ItemsList().
@@ -618,5 +630,8 @@ namespace winrt::TerminalApp::implementation
 
 namespace winrt::TerminalApp::factory_implementation
 {
+    BASIC_FACTORY(TabStripItemTemplateSelector);
+    BASIC_FACTORY(TabStripHistoryHeader);
+    BASIC_FACTORY(TabStripHistoryHeaderAutomationPeer);
     BASIC_FACTORY(TabStrip);
 }

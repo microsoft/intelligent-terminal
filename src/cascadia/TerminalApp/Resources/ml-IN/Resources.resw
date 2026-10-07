@@ -481,10 +481,12 @@
     <value>ടാബുകൾ തിരയുക</value>
   </data>
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ടാബുകൾ ഫിൽട്ടർ ചെയ്യുക</value>
+    <value>സൈഡ്ബാർ പ്രദർശന ഓപ്ഷനുകൾ</value>
+    <comment>Accessible name of the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ടാബുകൾ ഫിൽട്ടർ ചെയ്യുക</value>
+    <value>സൈഡ്ബാർ പ്രദർശന ഓപ്ഷനുകൾ</value>
+    <comment>Tooltip for the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
     <value>ഫിൽട്ടർ ചെയ്യുക</value>
@@ -547,8 +549,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>ചരിത്രവും മറ്റ് സെഷനുകളും</value>
-    <comment>Noun heading for the mixed session list in the lower section of the combined Agents sidebar: ended session history, kept-running background tabs, sessions in other tracked windows, and active external sessions not represented in the current window. This is not an archive-only list.</comment>
+    <value>സമീപകാല സെഷനുകൾ</value>
+    <comment>Collapsible noun heading below open agent tabs in the Agents sidebar. Includes prior agent sessions, kept-running background tabs, sessions in other tracked windows, and external sessions not represented by the current window's open agent panes. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>ഏജന്റുകൾ</value>
@@ -741,16 +743,8 @@
     <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
-    <value>ഏജന്റുകളും ചരിത്രവും തിരയുക</value>
-    <comment>Shared sidebar search field and button label in the Agents view. Filters both open AI-agent tabs and historical agent sessions. Agents means AI agents; history means prior agent sessions. Keep the separate Tabs view search labels unchanged.</comment>
-  </data>
-  <data name="VerticalTabsHistorySplitter.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ഏജന്റ് ടാബുകളുടെയും ചരിത്രത്തിന്റെയും വലുപ്പം മാറ്റുക</value>
-    <comment>Accessible name for the adjustable horizontal divider between open AI-agent tabs and session History in the Agents sidebar.</comment>
-  </data>
-  <data name="VerticalTabsHistorySplitter.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
-    <value>വിഭാഗങ്ങളുടെ വലുപ്പം മാറ്റാൻ മുകളിലേക്കും താഴേക്കുമുള്ള അമ്പടയാള കീകൾ ഉപയോഗിക്കുക.</value>
-    <comment>Keyboard instructions for the divider between open AI-agent tabs and session History. Up reduces the upper section height; Down increases it. The lower section height adjusts oppositely.</comment>
+    <value>സജീവവും സമീപകാലത്തേതുമായ ഏജന്റ് സെഷനുകൾ തിരയുക</value>
+    <comment>Shared search placeholder, tooltip, and accessible name in the Agents sidebar. Searches both open AI-agent tabs, including idle open sessions, and the Recent Sessions section. Active does not mean only currently working. Keep the separate Tabs view search labels unchanged.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · മറ്റൊരു വിൻഡോ</value>
@@ -782,4 +776,28 @@
   <data name="TabCloseAfter"><value>വലതുവശത്തുള്ള ടാബുകൾ അടയ്ക്കുക</value></data>
   <data name="TabCloseOther"><value>മറ്റ് ടാബുകൾ അടയ്ക്കുക</value></data>
   <data name="ClosePaneText"><value>പേന്‍ അടയ്ക്കുക</value></data>
+  <data name="VerticalTabsSwitchToAgents" xml:space="preserve">
+    <value>ഏജന്റുകളിലേക്ക് മാറുക</value>
+    <comment>Tooltip and accessible action name of the sidebar header button while Tabs is selected. One click switches to the Agents view; it does not open a menu. Agents means AI agents, not people.</comment>
+  </data>
+  <data name="VerticalTabsSwitchToTabs" xml:space="preserve">
+    <value>ടാബുകളിലേക്ക് മാറുക</value>
+    <comment>Tooltip and accessible action name of the sidebar header button while Agents is selected. One click switches to the Tabs view; it does not change between sidebar and horizontal tab layouts.</comment>
+  </data>
+  <data name="VerticalTabsExpandRecentSessions" xml:space="preserve">
+    <value>സമീപകാല സെഷനുകൾ വികസിപ്പിക്കുക</value>
+    <comment>Tooltip for expanding the Recent Sessions section inside the Agents sidebar. Expansion shows its session rows without leaving Agents or resuming a session.</comment>
+  </data>
+  <data name="VerticalTabsCollapseRecentSessions" xml:space="preserve">
+    <value>സമീപകാല സെഷനുകൾ ചുരുക്കുക</value>
+    <comment>Tooltip for collapsing the Recent Sessions section inside the Agents sidebar. Collapse hides its rows without closing agents or deleting sessions.</comment>
+  </data>
+  <data name="SidebarIntroductionTitle" xml:space="preserve">
+    <value>ടാബുകൾ നിയന്ത്രിക്കാൻ കൂടുതൽ ബുദ്ധിപരമായ മാർഗം</value>
+    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+  </data>
+  <data name="SidebarIntroductionDescription" xml:space="preserve">
+    <value>നിങ്ങളുടെ ടാബുകളും ഏജന്റ് സെഷനുകളും ഇപ്പോൾ സൈഡ്ബാറിലാണ്. ടാബിന്റെ വിശദാംശങ്ങൾ തിരഞ്ഞെടുക്കാൻ സൈഡ്ബാർ പ്രദർശന ഓപ്ഷനുകൾ ഉപയോഗിക്കുക. തിരശ്ചീന ടാബുകളിലേക്ക് മടങ്ങാൻ ഒരു ടാബിൽ വലത്-ക്ലിക്ക് ചെയ്യുക.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+  </data>
 </root>
