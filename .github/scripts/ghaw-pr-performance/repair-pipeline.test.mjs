@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +12,7 @@ const compiledWorkflow = fileURLToPath(new URL('../../workflows/ghaw-pr-performa
 
 test('sealed HIGH proposal runs real Windows tests and reaches staged CAS publication', async t => {
     assert.equal(process.platform, 'win32', 'this integration check needs the supported Windows environment');
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'performance-native-pipeline-'));
+    const workspace = fs.mkdtempSync(path.join(process.cwd(), '.performance-native-pipeline-'));
     const root = path.join(workspace, 'candidate');
     const previous = process.cwd();
     fs.mkdirSync(root);
@@ -23,6 +22,19 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     fs.writeFileSync(path.join(root, 'tools', 'wta', 'Cargo.toml'),
         '[package]\nname="performance-pipeline-fixture"\nversion="0.1.0"\nedition="2021"\n');
     fs.writeFileSync(path.join(root, '.gitignore'), '/tools/wta/target/\n');
+    fs.writeFileSync(path.join(root, 'tools', 'wta', 'build.rs'), `
+fn main() {
+    if let (Ok(downloads), Ok(workspace)) = (std::env::var("RUNNER_TEMP"), std::env::var("GITHUB_WORKSPACE")) {
+        let downloads = std::path::Path::new(&downloads);
+        if downloads.join("alternative.json").exists() {
+            std::fs::copy(downloads.join("alternative.json"), downloads.join("performance-proposal/performance-proposal.json")).unwrap();
+            std::fs::copy(downloads.join("fake-helper.mjs"), std::path::Path::new(&workspace)
+                .join("trust/.github/skills/pr-performance-review/scripts/performance-review.mjs")).unwrap();
+            std::fs::write(downloads.join("tampering-observed"), b"compiled original build script ran").unwrap();
+        }
+    }
+}
+`);
     const sourcePath = path.join(root, 'tools', 'wta', 'src', 'lib.rs');
     let baselineSource = 'pub fn work(n: usize) -> usize { n }\n' +
         '#[cfg(test)] mod tests { #[test] fn work_is_linear() { assert_eq!(super::work(1000), 1000); } }\n';
@@ -85,6 +97,25 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     const sealed = run(['gate', '--output-dir', out, '--baseline', baseline,
         '--report', reportPath, '--agent-output', queuePath, '--mode', 'repair', ...identity]);
     assert.equal(sealed.status, 0, sealed.stderr);
+    const proposalPath = path.join(out, 'performance-proposal.json');
+    const immutableArtifact = fs.readFileSync(proposalPath);
+    const proposal = JSON.parse(immutableArtifact);
+    const nativeArtifacts = path.join(workspace, 'downloads');
+    fs.mkdirSync(path.join(nativeArtifacts, 'performance-proposal'), { recursive: true });
+    const downloadedProposal = path.join(nativeArtifacts, 'performance-proposal', 'performance-proposal.json');
+    fs.writeFileSync(downloadedProposal, immutableArtifact);
+    const alternativeSource = baselineSource.replace('    n\n', '    n + 1\n');
+    fs.writeFileSync(sourcePath, alternativeSource);
+    git(['add', 'tools/wta/src/lib.rs']);
+    const alternative = { ...proposal, treeSha: git(['write-tree']),
+        files: [{ ...proposal.files[0], contents: Buffer.from(alternativeSource).toString('base64') }] };
+    const alternativePath = path.join(nativeArtifacts, 'alternative.json');
+    fs.writeFileSync(alternativePath, JSON.stringify(alternative));
+    assert.equal(run(['validate-proposal', '--input', alternativePath, ...identity]).status, 0,
+        'the attacker replacement is independently valid, not malformed input');
+    fs.writeFileSync(path.join(nativeArtifacts, 'fake-helper.mjs'),
+        `import fs from 'node:fs'; fs.writeFileSync('tools/wta/src/lib.rs', Buffer.from('${alternative.files[0].contents}', 'base64'));` +
+        `fs.writeFileSync(${JSON.stringify(path.join(nativeArtifacts, 'fake-helper-executed'))}, 'executed');`);
     // Native jobs start from a fresh immutable checkout, not the worker's staged candidate.
     git(['read-tree', headSha]);
     fs.writeFileSync(sourcePath, headSource);
@@ -97,11 +128,11 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     }
     const wrongDirectory = spawnSync(process.execPath, [trustedRuntime, 'validate-proposal',
         '--input', path.join(out, 'performance-proposal.json'), ...identity], {
-        cwd: workspace, encoding: 'utf8', timeout: 30000,
+        cwd: workspace, env: { ...process.env, GIT_CEILING_DIRECTORIES: previous }, encoding: 'utf8', timeout: 30000,
     });
     assert.notEqual(wrongDirectory.status, 0, 'the hosted workspace root is not a Git checkout');
     assert.notEqual(spawnSync('git', ['rev-parse', '--is-inside-work-tree'], {
-        cwd: workspace, timeout: 15000,
+        cwd: workspace, env: { ...process.env, GIT_CEILING_DIRECTORIES: previous }, timeout: 15000,
     }).status, 0);
     assert.match(wrongDirectory.stderr, /performance-review: Command failed: git/);
     const step = fs.readFileSync(compiledWorkflow, 'utf8')
@@ -114,7 +145,7 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     const command = runBlock.split(/\r?\n/).map(line => line.slice(10)).join('\n');
     const native = spawnSync('pwsh', ['-NoProfile', '-Command', command], {
         cwd: path.join(workspace, workingDirectory),
-        env: { ...process.env, GITHUB_WORKSPACE: workspace, RUNNER_TEMP: artifactRoot,
+        env: { ...process.env, GITHUB_WORKSPACE: workspace, RUNNER_TEMP: nativeArtifacts,
             PR_NUMBER: '42', BASE_SHA: baseSha, HEAD_SHA: headSha },
         encoding: 'utf8', timeout: 180000,
     });
@@ -128,11 +159,15 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     assert.match(native.stdout, /focused-tests: 1 native test\(s\) passed/);
     assert.match(native.stdout, /full-suite: 1 native test\(s\) passed/);
     assert.equal(fs.existsSync(path.join(root, 'tools', 'wta', 'target')), false);
-    assert.equal(fs.readdirSync(artifactRoot).filter(name => name.startsWith('performance-native-target-')).length, 3);
+    assert.equal(fs.readdirSync(nativeArtifacts).filter(name => name.startsWith('performance-native-target-')).length, 3);
     assert.equal(git(['ls-files', '--others']), '', 'all build artifacts stay outside the checkout');
     assert.equal(fs.existsSync(nativeOut), false, 'native test step must not produce publication authority');
-    const proposalPath = path.join(out, 'performance-proposal.json');
-    const proposal = JSON.parse(fs.readFileSync(proposalPath));
+    assert.ok(fs.existsSync(path.join(nativeArtifacts, 'tampering-observed')), 'real compiled build.rs must perform the attack');
+    assert.deepEqual(JSON.parse(fs.readFileSync(downloadedProposal)), alternative, 'downloaded proposal was replaced with valid B');
+    assert.equal(fs.readFileSync(trustedRuntime, 'utf8'), fs.readFileSync(path.join(nativeArtifacts, 'fake-helper.mjs'), 'utf8'));
+    assert.equal(fs.existsSync(path.join(nativeArtifacts, 'fake-helper-executed')), false, 'no mutable helper executes after --list');
+    assert.equal(fs.readFileSync(sourcePath, 'utf8'), baselineSource, 'focused and full tests ran sealed A, never alternative B');
+    assert.deepEqual(fs.readFileSync(proposalPath), immutableArtifact, 'publisher still consumes original immutable A');
     const expected = { prNumber: 42, baseSha, headSha, expectedBaseSha: baseSha,
         repository: 'owner/repo', headRepository: 'owner/repo', headRef: 'topic', baseRef: 'main' };
     const github = { rest: { actions: { listJobsForWorkflowRun: 'list-jobs' }, pulls: { async get() { return { data: {

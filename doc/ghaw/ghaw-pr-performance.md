@@ -108,6 +108,16 @@ a blocked outcome and manual handoff. This is not a full host sandbox
 for candidate code executed by Cargo, nor proof of behavioral equivalence;
 the sealed publication tree and GitHub-recorded result remain separate authority.
 
+Native input binding happens before any candidate code runs: trusted proposal
+validation confirms the sealed tree, then the parent validator captures decoded
+replacement bytes in memory. Following original-head listing, it applies only
+that snapshot without rereading the proposal or rerunning the mutable helper.
+Expected source hashes are computed from original bytes plus sealed replacements,
+never reset from post-execution observations. Compiled build-script fixtures
+overwrite sibling proposal/helper files and verify that alternative bytes
+cannot become the tested or published artifact. This is not an OS memory-injection
+or full host-sandbox guarantee.
+
 Pending reports reject all model-authored `pass` checks, not just native claims.
 Not-run checks are honestly `unavailable`; the publisher appends native success
 independently from GitHub's recorded result. Guide-source checks and other

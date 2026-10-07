@@ -84,11 +84,40 @@ function Get-TrackedHashes {
     }
     return $hashes
 }
-$before = Get-TrackedHashes
+$originalHashes = Get-TrackedHashes
+# Decode the validated artifact before Cargo can execute candidate build scripts.
+# Only this private snapshot authorizes application; no later helper/file reload.
+$replacements = @(
+    foreach ($file in $proposal.files) {
+        if ($paths -cnotcontains $file.path) { throw 'Proposal replacement is not in the original tracked inventory.' }
+        [pscustomobject]@{
+            Path = $file.path
+            LocalPath = Join-Path $root $file.path.Replace('/', '\')
+            Bytes = [Convert]::FromBase64String($file.contents)
+        }
+    }
+)
+$appliedHashes = $originalHashes.Clone()
+foreach ($replacement in $replacements) {
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $appliedHashes[$replacement.Path] = [BitConverter]::ToString($sha256.ComputeHash($replacement.Bytes)).Replace('-', '')
+    } finally {
+        $sha256.Dispose()
+    }
+}
+$expectedHashes = $originalHashes
+function Assert-ExpectedSourceHashes([string]$Stage) {
+    $observed = Get-TrackedHashes
+    foreach ($path in $paths) {
+        if ($expectedHashes[$path] -cne $observed[$path]) { throw "${Stage}: changed tracked workspace bytes: $path" }
+    }
+}
 $filter = $proposal.validationPlan.testFilter
 # Actions must impose a 32-minute step deadline and owns cleanup of descendants.
 function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireTests = $false, [string]$NameCheck = '') {
     Assert-SourceOnlyCheckout $Stage
+    Assert-ExpectedSourceHashes $Stage
     # Never reuse artifacts that an earlier test process could have modified.
     # Actions owns hosted cleanup; local callers own their isolated temporary parent.
     $targetParent = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
@@ -155,24 +184,23 @@ function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireT
         }
         $process.Dispose()
         Assert-SourceOnlyCheckout $Stage
-        $after = Get-TrackedHashes
-        foreach ($path in $paths) {
-            if ($before[$path] -cne $after[$path]) { throw "${Stage}: changed tracked workspace bytes: $path" }
-        }
+        Assert-ExpectedSourceHashes $Stage
     }
 }
 Invoke-CargoStage 'original-test-listing' @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
     'tools\wta\Cargo.toml', '--', '--list') $false 'listing'
-Push-Location $root
-try {
-    & node.exe $runtimePath apply-proposal --input $proposalPath --pr $proposal.identity.prNumber `
-        --base $proposal.identity.baseSha --head $proposal.identity.headSha
-    if ($LASTEXITCODE -ne 0) { throw 'Trusted proposal application failed.' }
-} finally {
-    Pop-Location
-}
 Assert-SourceOnlyCheckout 'proposal-application'
-$before = Get-TrackedHashes
+Assert-ExpectedSourceHashes 'proposal-application'
+foreach ($replacement in $replacements) {
+    $attributes = [IO.File]::GetAttributes($replacement.LocalPath)
+    if (($attributes -band ([IO.FileAttributes]::Directory -bor [IO.FileAttributes]::ReparsePoint)) -ne 0) {
+        throw 'Proposal application requires an existing regular source file.'
+    }
+    [IO.File]::WriteAllBytes($replacement.LocalPath, $replacement.Bytes)
+}
+$expectedHashes = $appliedHashes
+Assert-SourceOnlyCheckout 'proposal-application'
+Assert-ExpectedSourceHashes 'proposal-application'
 Invoke-CargoStage 'format-check' @('fmt', '--manifest-path', 'tools\wta\Cargo.toml', '--', '--check')
 Invoke-CargoStage 'focused-tests' @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '--manifest-path',
     'tools\wta\Cargo.toml', $filter, '--', '--exact') $true 'passing'

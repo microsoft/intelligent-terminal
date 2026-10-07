@@ -146,6 +146,13 @@ that an earlier test could modify. Cold builds may exhaust the unchanged
 30-minute validation deadline; report that as blocked with a manual handoff,
 not a pass or a reason to weaken the gates.
 
+The trusted validator validates and decodes the sealed proposal before Cargo
+executes any candidate build scripts. After original-head listing, it applies
+only that private in-memory snapshot: it never reloads the downloaded proposal
+or executes the runtime helper again. Expected source hashes derive from the
+original inventory plus those sealed bytes, not a newly observed worktree.
+Mutable sibling files cannot authorize a different patch.
+
 Do not claim that Linux has run Windows tests. Do not commit, call a branch-push
 tool, or mark a proposal `fixed`. Trusted post-processing captures the exact
 candidate blobs; a read-only Windows job runs the fixed validation commands

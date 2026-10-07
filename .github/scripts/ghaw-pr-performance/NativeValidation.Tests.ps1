@@ -22,7 +22,7 @@ function Format-Fixture {
     $messages = & cargo fmt --manifest-path (Join-Path $fixture 'tools\wta\Cargo.toml') 2>&1
     if ($LASTEXITCODE -ne 0) { throw "Fixture formatting failed: $messages" }
 }
-function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$ErrorPattern = '', [bool]$Unformatted = $false, [bool]$DirtyStart = $false, [scriptblock]$BeforeValidation = {}) {
+function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$ErrorPattern = '', [bool]$Unformatted = $false, [bool]$DirtyStart = $false, [scriptblock]$BeforeValidation = {}, [string]$Tampering = '') {
     $null = Git @('read-tree', '--empty')
     $null = Git @('read-tree', $script:head)
     $sourcePath = Join-Path $fixture 'tools\wta\src\lib.rs'
@@ -59,6 +59,32 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
     }
     $proposalPath = Join-Path $workspace "$Name.json"
     [IO.File]::WriteAllText($proposalPath, ($proposal | ConvertTo-Json -Depth 20), $utf8)
+    $caseRuntime = $runtime
+    if ($Tampering) {
+        $proposalPath = Join-Path $workspace 'downloaded-proposal.json'
+        [IO.File]::WriteAllText($proposalPath, ($proposal | ConvertTo-Json -Depth 20), $utf8)
+        $alternative = $proposal | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $alternativeSource = $repair.Replace("    2 + 2`n", "    1 + 3`n")
+        [IO.File]::WriteAllText($sourcePath, $alternativeSource, $utf8)
+        $alternativeBlob = Git @('hash-object', '-w', '--no-filters', '--', $sourcePath)
+        $null = Git @('update-index', '--cacheinfo', '100644', $alternativeBlob, 'tools/wta/src/lib.rs')
+        $alternative.treeSha = Git @('write-tree')
+        $alternative.files[0].contents = [Convert]::ToBase64String($utf8.GetBytes($alternativeSource))
+        $alternativePath = Join-Path $workspace 'alternative.json'
+        [IO.File]::WriteAllText($alternativePath, ($alternative | ConvertTo-Json -Depth 20), $utf8)
+        $null = Git @('read-tree', $script:head)
+        [IO.File]::WriteAllText($sourcePath, $baseline, $utf8)
+        Push-Location $fixture
+        try {
+            & node.exe $runtime validate-proposal --input $alternativePath --pr 1 --base $script:base --head $script:head
+            if ($LASTEXITCODE -ne 0) { throw 'Tampering fixture B must be a valid sealed alternative.' }
+        } finally { Pop-Location }
+        $caseRuntime = Join-Path $workspace 'downloaded-runtime.mjs'
+        Copy-Item -LiteralPath $runtime -Destination $caseRuntime
+        $fakeHelper = "import fs from 'node:fs'; fs.writeFileSync('tools/wta/src/lib.rs', Buffer.from('$($alternative.files[0].contents)', 'base64'));"
+        [IO.File]::WriteAllText((Join-Path $workspace 'fake-helper.mjs'), $fakeHelper, $utf8)
+        [IO.File]::WriteAllText((Join-Path $workspace 'tamper-mode'), $Tampering, $utf8)
+    }
     if ($DirtyStart) { [IO.File]::WriteAllText($sourcePath, $Source, $utf8) }
     & $BeforeValidation
     $previousTemp = $env:RUNNER_TEMP
@@ -67,7 +93,7 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
         $env:RUNNER_TEMP = $targetParent
         # The validator must override a caller's in-checkout target path, child-only.
         $env:CARGO_TARGET_DIR = Join-Path $fixture 'tools\wta\target'
-        $messages = & pwsh -NoProfile -File $validator -ProposalPath $proposalPath -RepositoryRoot $fixture -TrustedRuntimePath $runtime 2>&1
+        $messages = & pwsh -NoProfile -File $validator -ProposalPath $proposalPath -RepositoryRoot $fixture -TrustedRuntimePath $caseRuntime 2>&1
         $exit = $LASTEXITCODE
         if ($env:CARGO_TARGET_DIR -cne (Join-Path $fixture 'tools\wta\target')) { throw 'Native step changed parent target directory.' }
     } finally {
@@ -91,6 +117,18 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
     }
     if ($Name -eq 'full-suite-failure' -and ($messages -join "`n") -notmatch 'focused-tests: 1 native test\(s\) passed') {
         throw "Full-suite regression did not first pass the focused test: $messages"
+    }
+    if ($Tampering) {
+        if (-not (Test-Path -LiteralPath (Join-Path $workspace 'tampering-observed'))) { throw 'Compiled build.rs did not run the attack.' }
+        if ([IO.File]::ReadAllText($sourcePath) -cne $Source) { throw 'Native validation applied alternative B instead of the original snapshot A.' }
+        if (($messages -join "`n") -notmatch 'original HEAD contains tests::focused: test') { throw 'Attack did not reach original compiled listing.' }
+        if ($Tampering -match 'proposal' -and [IO.File]::ReadAllText($proposalPath) -cne [IO.File]::ReadAllText($alternativePath)) {
+            throw 'Build script did not overwrite the downloaded proposal with valid B.'
+        }
+        if ($Tampering -match 'runtime' -and [IO.File]::ReadAllText($caseRuntime) -cne $fakeHelper) {
+            throw 'Build script did not overwrite the runtime helper.'
+        }
+        Remove-Item -LiteralPath (Join-Path $workspace 'tampering-observed'), (Join-Path $workspace 'tamper-mode')
     }
     if ($Name -match 'config|runner|membership' -and ($messages -join "`n") -match 'full-suite: cargo') {
         throw "Repository-local injection reached the full suite: $messages"
@@ -285,6 +323,34 @@ fn work() -> usize {
         foreach ($key in $originalEnvironment.Keys) {
             [Environment]::SetEnvironmentVariable($key, $originalEnvironment[$key], 'Process')
         }
+    }
+    # Original HEAD build scripts run during --list, before application.
+    $buildScript = @'
+fn main() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+    let external = root.parent().unwrap();
+    if let Ok(mode) = std::fs::read_to_string(external.join("tamper-mode")) {
+        if mode.contains("proposal") {
+            std::fs::copy(external.join("alternative.json"), external.join("downloaded-proposal.json")).unwrap();
+        }
+        if mode.contains("runtime") {
+            std::fs::copy(external.join("fake-helper.mjs"), external.join("downloaded-runtime.mjs")).unwrap();
+        }
+        std::fs::write(external.join("tampering-observed"), b"compiled build.rs ran").unwrap();
+    }
+}
+'@
+    $null = Git @('read-tree', $script:head)
+    [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\src\lib.rs'), $baseline, $utf8)
+    [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\build.rs'), $buildScript, $utf8)
+    Format-Fixture
+    $null = Git @('add', 'tools/wta/build.rs')
+    $null = Git @('-c', 'user.name=Native Fixture', '-c', 'user.email=fixture@invalid', '-c', 'core.hooksPath=NUL',
+        'commit', '--quiet', '-m', "Immutable external-input attack fixture`n`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>")
+    $script:head = Git @('rev-parse', 'HEAD')
+    foreach ($attack in @('proposal', 'runtime', 'proposal-runtime')) {
+        Test-Case "original-listing-$attack-tampering" ($baseline.Replace("    4`n", "    5`n")) 'tests::focused' `
+            'focused-tests: native validation failed with exit code' $false $false {} $attack
     }
     # A committed stale lock must fail Cargo's --locked check, not be regenerated.
     $null = Git @('read-tree', $script:head)
