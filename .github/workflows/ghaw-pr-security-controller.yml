@@ -16,11 +16,7 @@ on:
       - 'test/**'
       - 'doc/security-model.md'
 
-permissions:
-  actions: write
-  contents: write
-  issues: write
-  pull-requests: read
+permissions: {}
 
 concurrency:
   group: ghaw-pr-security-${{ github.event.pull_request.number }}
@@ -31,6 +27,13 @@ jobs:
     name: Intelligent Terminal security review
     runs-on: ubuntu-latest
     timeout-minutes: 210
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    outputs:
+      publication: ${{ steps.canonical.outputs.publication }}
+      patch_sha256: ${{ steps.canonical.outputs.patch_sha256 }}
     steps:
       - name: Checkout trusted base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -107,6 +110,7 @@ jobs:
             const pr = context.payload.pull_request;
             const dispatchId =
               `ghaw-pr-security-${pr.number}-${process.env.EXPECTED_HEAD_SHA}-${context.runId}-${context.runAttempt}`;
+            core.setOutput("dispatch_id", dispatchId);
             const inputs = {
               dispatch_id: dispatchId,
               pr_number: String(pr.number),
@@ -163,7 +167,8 @@ jobs:
             await github.rest.actions.cancelWorkflowRun({ ...context.repo, run_id: runId });
             throw new Error(`Security worker ${runId} exceeded 200 minutes and cancellation was requested.`);
 
-      - name: Publish worker check card
+      - name: Canonicalize worker output without publication credentials
+        id: canonical
         if: always() && steps.worker.outputs.run_id != ''
         shell: bash
         env:
@@ -175,6 +180,8 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DISPATCH_ID: ${{ steps.worker.outputs.dispatch_id }}
         run: |
           set -euo pipefail
           [ "$WORKER_CONCLUSION" = success ] || {
@@ -192,75 +199,36 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --name "ghaw-pr-security-$PR_NUMBER-$EXPECTED_HEAD_SHA" \
             --dir "$report_dir"
-          cat "$report_dir/security-summary.md" >> "$GITHUB_STEP_SUMMARY"
-          {
-            echo
-            echo "- Internal GHAW run: [$RUN_ID]($RUN_URL)"
-          } >> "$GITHUB_STEP_SUMMARY"
-          status="$(tr -d '\r\n' < "$report_dir/security-status.txt")"
-          mode="$(node -p "JSON.parse(require('fs').readFileSync('$report_dir/security-findings.validated.json','utf8')).mode")"
-          finding_count="$(node -p "JSON.parse(require('fs').readFileSync('$report_dir/security-findings.validated.json','utf8')).findings.length")"
-          patch_count="$(node -p "JSON.parse(require('fs').readFileSync('$report_dir/security-findings.validated.json','utf8')).patch.length")"
-          if [ "$status" = pass ] && [ "$SAME_REPO" = true ] && [ "$mode" = repair ] && [ "$patch_count" -gt 0 ]; then
-            [ -s "$report_dir/security-repair.patch" ] || {
-              echo "::error::Validated repair report has no binary patch artifact."
-              exit 1
-            }
-            current_head="$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)"
-            [ "$current_head" = "$EXPECTED_HEAD_SHA" ] || {
-              echo "::error::PR head changed before atomic repair publication."
-              exit 1
-            }
-            export GIT_INDEX_FILE="$RUNNER_TEMP/security-repair.index"
-            rm -f "$GIT_INDEX_FILE"
-            git read-tree "$EXPECTED_HEAD_SHA"
-            git apply --cached --binary "$report_dir/security-repair.patch"
-            tree="$(git write-tree)"
-            commit="$(
-              printf '%s\n\n%s\n' \
-                'Apply validated security repair [security-expert]' \
-                'Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>' |
-                git -c user.name='github-actions[bot]' \
-                    -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-                    commit-tree "$tree" -p "$EXPECTED_HEAD_SHA"
-            )"
-            git merge-base --is-ancestor "$EXPECTED_HEAD_SHA" "$commit"
-            git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
-              push --force-with-lease="refs/heads/$HEAD_REF:$EXPECTED_HEAD_SHA" \
-                origin "$commit:refs/heads/$HEAD_REF"
-          elif [ "$SAME_REPO" != true ] && [ "$mode" = guide ] && [ "$finding_count" -gt 0 ]; then
-            marker='<!-- ghaw-pr-security -->'
-            body_file="$RUNNER_TEMP/security-guidance.md"
-            {
-              echo "$marker"
-              cat "$report_dir/security-summary.md"
-            } > "$body_file"
-            existing="$(
-              gh api --paginate "/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
-                --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" |
-                tail -n 1
-            )"
-            current_head="$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)"
-            [ "$current_head" = "$EXPECTED_HEAD_SHA" ] || {
-              echo "::error::PR head changed before fork guidance publication; existing comment left unchanged."
-              exit 1
-            }
-            if [ -n "$existing" ]; then
-              jq -n --rawfile body "$body_file" '{body:$body}' |
-                gh api --method PATCH "/repos/$GITHUB_REPOSITORY/issues/comments/$existing" --input -
-            else
-              jq -n --rawfile body "$body_file" '{body:$body}' |
-                gh api --method POST "/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --input -
-            fi
+          proof_dir="$RUNNER_TEMP/security-proof"
+          if [ "$SAME_REPO" = true ]; then
+            attempt="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .run_attempt)"
+            [[ "$attempt" =~ ^[1-9][0-9]*$ ]]
+            gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --name "ghaw-pr-security-windows-proof-$RUN_ID-$attempt-$PR_NUMBER" --dir "$proof_dir"
           fi
-          if [ "$status" = blocking ]; then
-            echo "::error::One or more HIGH security findings remain blocking."
-            exit 2
-          fi
-          [ "$status" = pass ] || {
-            echo "::error::Invalid security worker status '$status'."
-            exit 1
-          }
+          canonical="$RUNNER_TEMP/security-canonical"
+          mkdir "$canonical"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/security-canonical.index"
+          node .github/skills/ghaw-pr-security/scripts/security-review.mjs prepare-publication \
+            --scope "$RUNNER_TEMP/security-scope.json" --artifacts "$report_dir" \
+            --proof "$proof_dir/result.json" --output "$canonical"
+          cat "$canonical/security-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          printf '\n- Internal GHAW run: [%s](%s/%s/actions/runs/%s)\n' \
+            "$RUN_ID" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload canonical publication handoff
+        if: steps.canonical.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: security-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/security-canonical
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Enforce canonical report
+        if: steps.canonical.outcome == 'success'
+        shell: bash
+        run: node .github/skills/ghaw-pr-security/scripts/security-review.mjs enforce --status "$RUNNER_TEMP/security-canonical/security-status.txt"
 
       - name: Enforce worker success
         if: always() && steps.scope.outputs.applicable == 'true'
@@ -272,3 +240,102 @@ jobs:
             echo "::error::The internal security worker did not succeed."
             exit 1
           fi
+
+  publish-repair:
+    needs: security-review
+    if: needs.security-review.result == 'success' && needs.security-review.outputs.publication == 'push' && github.event.pull_request.head.repo.id == github.repository_id
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Checkout trusted base only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Download canonical handoff from this controller run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: security-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/security-canonical
+      - name: Publish only the canonical index-only repair
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PATCH_SHA256: ${{ needs.security-review.outputs.patch_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PATCH_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          git check-ref-format "refs/heads/$HEAD_REF"
+          patch="$RUNNER_TEMP/security-canonical/security-repair.patch"
+          [ "$(sha256sum "$patch" | cut -d ' ' -f 1)" = "$PATCH_SHA256" ]
+          metadata="$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          [ "$(printf '%s' "$metadata" | jq -r .head.sha)" = "$EXPECTED_HEAD_SHA" ]
+          [ "$(printf '%s' "$metadata" | jq -r .head.repo.full_name)" = "$GITHUB_REPOSITORY" ]
+          [ "$(printf '%s' "$metadata" | jq -r .head.ref)" = "$HEAD_REF" ]
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            fetch --no-tags origin "$EXPECTED_HEAD_SHA"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/security-repair.index"
+          git read-tree "$EXPECTED_HEAD_SHA"
+          git apply --cached --binary "$patch"
+          tree="$(git write-tree)"
+          commit="$(
+            printf '%s\n\n%s\n' 'Apply validated security repair [security-expert]' \
+              'Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>' |
+              git -c user.name='github-actions[bot]' \
+                  -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+                  commit-tree "$tree" -p "$EXPECTED_HEAD_SHA"
+          )"
+          git merge-base --is-ancestor "$EXPECTED_HEAD_SHA" "$commit"
+          [ "$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)" = "$EXPECTED_HEAD_SHA" ]
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            push --force-with-lease="refs/heads/$HEAD_REF:$EXPECTED_HEAD_SHA" \
+              origin "$commit:refs/heads/$HEAD_REF"
+
+  publish-guidance:
+    needs: security-review
+    if: always() && !cancelled() && needs.security-review.outputs.publication == 'comment' && github.event.pull_request.head.repo.id != github.repository_id
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Download canonical handoff from this controller run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: security-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/security-canonical
+      - name: Publish idempotent SHA-labelled fork guidance
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const head = process.env.EXPECTED_HEAD_SHA;
+            const number = process.env.PR_NUMBER;
+            if (!/^[0-9a-f]{40}$/.test(head) || !/^[1-9][0-9]*$/.test(number)) throw new Error('Invalid publication identity.');
+            const pull_number = Number(number);
+            const current = (await github.rest.pulls.get({ ...context.repo, pull_number })).data;
+            if (current.head.sha !== head || current.head.repo.id === Number(context.payload.repository.id)) throw new Error('Stale or non-fork guidance.');
+            const marker = '<!-- ghaw-pr-security -->';
+            const summary = fs.readFileSync(`${process.env.RUNNER_TEMP}/security-canonical/security-summary.md`, 'utf8');
+            const body = `${marker}\n<!-- reviewed-head: ${head} -->\n${summary}`;
+            const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number: pull_number, per_page: 100 });
+            const existing = comments.filter(comment => comment.user.login === 'github-actions[bot]' && comment.body.startsWith(marker)).at(-1);
+            if ((await github.rest.pulls.get({ ...context.repo, pull_number })).data.head.sha !== head) throw new Error('Head changed before guidance publication.');
+            if (existing) {
+              if (existing.body !== body) await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: pull_number, body });
+            }

@@ -9,6 +9,7 @@ import {
   attestChecks, buildScope, classifyPath, createReportTemplate, normalizePath, renderReport, validatePatch,
   validateQueuedOutput, validateReport, validateProposal, validateCandidate, stageRepairFiles, validateRepairScope,
   submitSecurityReport, readSecurityDiff, readImmutableHunks, readSecuritySource, inspectSecurityRepair, writeSecurityRepair, replaceSecurityRepairText, verifyCredentialFree,
+  publicationDecision, validatePublicationRun, validateNativePublicationProof, preparePublication,
 } from './security-review.mjs';
 
 const BASE = '1'.repeat(40);
@@ -16,6 +17,267 @@ const tmpdir = () => process.cwd();
 const HEAD = '2'.repeat(40);
 const PATCH_TEXT = 'diff --git a/tools/wta/src/master/mod.rs b/tools/wta/src/master/mod.rs\n';
 const PATCH_SHA256 = createHash('sha256').update(PATCH_TEXT).digest('hex');
+
+test('controller separates analysis from mutually exclusive narrow publication jobs', () => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  assert(controller.includes('permissions: {}'));
+  const analysis = controller.split('  security-review:')[1].split('  publish-repair:')[0];
+  assert(analysis.includes('contents: read'));
+  assert(analysis.includes('actions: write'));
+  assert(!analysis.includes('contents: write'));
+  assert(!analysis.includes('issues: write'));
+  assert(!analysis.includes('git push'));
+  assert(analysis.includes('prepare-publication'));
+  assert(analysis.indexOf('Canonicalize worker') < analysis.indexOf('Upload canonical publication handoff'));
+  const repair = controller.split('  publish-repair:')[1].split('  publish-guidance:')[0];
+  assert(repair.includes("outputs.publication == 'push'"));
+  assert(repair.includes('contents: write'));
+  assert(!repair.includes('issues: write'));
+  assert(!repair.includes('actions: write'));
+  assert(repair.includes('ref: ${{ github.event.pull_request.base.sha }}'));
+  assert(repair.includes('git apply --cached --binary'));
+  assert(repair.includes('--force-with-lease="refs/heads/$HEAD_REF:$EXPECTED_HEAD_SHA"'));
+  assert(repair.includes('git merge-base --is-ancestor'));
+  const guidance = controller.split('  publish-guidance:')[1];
+  assert(guidance.includes("outputs.publication == 'comment'"));
+  assert(guidance.includes('issues: write'));
+  assert(!guidance.includes('contents: write'));
+  assert(!guidance.includes('actions: write'));
+  assert(guidance.includes('reviewed-head: ${head}'));
+  assert(guidance.includes('existing.body !== body'));
+  assert(!/\$\{\{\s*github\.event\.pull_request\.(?:title|body|head\.ref)/.test(
+    [...controller.matchAll(/        run: \|\r?\n([\s\S]*?)(?=\r?\n      -|\r?\n  [a-z-]+:|$)/g)].map(m => m[1]).join('\n')));
+});
+
+test('publication branches preserve fork guidance, same-repo repairs and no-patch no-op', () => {
+  const input = { repositoryRelation: 'same-repo', mode: 'repair', findings: [], patch: [] };
+  assert.equal(publicationDecision(input), 'none');
+  input.findings = [{ severity: 'high', fixDisposition: { state: 'fixed' } }];
+  input.patch = [{ path: 'tools/wta/src/routing.rs' }];
+  assert.equal(publicationDecision(input), 'push');
+  input.findings[0].fixDisposition.state = 'blocked';
+  assert.equal(publicationDecision(input), 'none');
+  input.repositoryRelation = 'fork';
+  input.mode = 'guide';
+  input.patch = [];
+  assert.equal(publicationDecision(input), 'comment');
+  input.findings[0].severity = 'medium';
+  assert.equal(publicationDecision(input), 'comment');
+  input.findings = [];
+  assert.equal(publicationDecision(input), 'none');
+});
+
+test('publication rejects wrong run, revision, source job, attempt, detector and native proof', () => {
+  for (const sameRepo of [true, false]) {
+    const identity = { repository: 'owner/repo', runId: '123', baseSha: BASE, sameRepo, dispatchId: 'fixed-dispatch' };
+    const run = {
+      id: 123, repository: { full_name: 'owner/repo' }, head_sha: BASE, run_attempt: 1,
+      path: `.github/workflows/${sameRepo ? 'ghaw-pr-security.lock.yml' : 'ghaw-pr-security-guide-fork.lock.yml'}`,
+      event: 'workflow_dispatch', display_title: `${sameRepo ? 'Security Repair' : 'Security Guide'} fixed-dispatch`,
+      status: 'completed', conclusion: 'success',
+    };
+    const jobs = ['agent', 'detection', 'safe_outputs', ...(sameRepo ? ['finalize', 'validate_windows / validate'] : [])]
+      .map(name => ({ name, run_id: 123, run_attempt: 1, status: 'completed', conclusion: 'success' }));
+    assert.doesNotThrow(() => validatePublicationRun(run, jobs, identity));
+    for (const [key, value] of Object.entries({
+      id: 124, head_sha: HEAD, path: '.github/workflows/other.yml', event: 'push',
+      display_title: 'forged fixed-dispatch', conclusion: 'failure', status: 'in_progress',
+    })) assert.throws(() => validatePublicationRun({ ...run, [key]: value }, jobs, identity));
+    for (const job of jobs) {
+      for (const extra of [{ run_id: 124 }, { run_attempt: 2 }, { conclusion: 'skipped' }, { conclusion: 'failure' }]) {
+        assert.throws(() => validatePublicationRun(run, jobs.map(item => item === job ? { ...item, ...extra } : item), identity));
+      }
+    }
+    assert.throws(() => validatePublicationRun(run, jobs.slice(1), identity));
+    assert.throws(() => validatePublicationRun(run, [...jobs, jobs[0]], identity));
+  }
+  const current = repairScope();
+  const input = { review: { headSha: HEAD, patchSha256: PATCH_SHA256, status: 'source-pass' } };
+  const proof = {
+    repository: 'owner/repo', trustedWorkflowSha: BASE, baseSha: BASE,
+    headSha: HEAD, comparisonBaseSha: BASE, scopeSha256: current.scopeSha256,
+    testsPassed: true, exitCode: 0, patchSha256: PATCH_SHA256, review: input.review,
+  };
+  assert.doesNotThrow(() => validateNativePublicationProof(proof, input, current, 'owner/repo', BASE, PATCH_TEXT));
+  for (const [key, value] of Object.entries({
+    repository: 'wrong/repo', trustedWorkflowSha: HEAD, baseSha: HEAD, headSha: BASE,
+    comparisonBaseSha: HEAD, scopeSha256: '0'.repeat(64), testsPassed: false, exitCode: 1,
+    patchSha256: '0'.repeat(64), review: { status: 'pending' },
+  })) assert.throws(() => validateNativePublicationProof({ ...proof, [key]: value }, input, current, 'owner/repo', BASE, PATCH_TEXT));
+  assert.throws(() => validateNativePublicationProof(proof, input, current, 'owner/repo', BASE, `${PATCH_TEXT}tampered`));
+});
+
+test('canonical handoff rematerializes fork and no-patch reports and fails closed before outputs', () => {
+  const root = mkdtempSync(join(process.cwd(), '.canonical-publication-'));
+  try {
+    for (const sameRepo of [true, false]) {
+      const directory = join(root, String(sameRepo));
+      const artifacts = join(directory, 'artifacts');
+      mkdirSync(artifacts, { recursive: true });
+      const current = buildScope(BASE, HEAD, 17, sameRepo ? 'same-repo' : 'fork',
+        'M\0tools/wta/src/master/mod.rs\0', BASE, sameRepo ? 'repair' : 'guide');
+      const candidate = { ...createReportTemplate(current), summary: 'Trustedly rendered report.' };
+      if (!sameRepo) candidate.findings = [{
+        rule: 'session-route-target-binding', severity: 'high', confidence: 'high', category: 'session-routing',
+        file: 'tools/wta/src/master/mod.rs', startLine: 20, endLine: 24,
+        observed: 'Changed routing bypasses owner binding.', expected: 'Bind the owner.', impact: 'Wrong-pane mutation.',
+        evidence: [{ kind: 'source-trace', reference: 'routing:20', detail: 'Owner bypass.' }],
+        proposedFix: 'Restore lookup.', validation: 'Focused tests.',
+        fixDisposition: { state: 'blocked', reason: 'Read-only fork guidance.' },
+      }];
+      const scopePath = join(directory, 'scope.json');
+      writeFileSync(scopePath, JSON.stringify(current));
+      writeFileSync(join(artifacts, 'security-findings.validated.json'), JSON.stringify(candidate));
+      writeFileSync(join(artifacts, 'security-summary.md'), 'forged raw worker summary');
+      writeFileSync(join(artifacts, 'security-status.txt'), 'forged status');
+      writeFileSync(join(artifacts, 'security-repair.patch'), '');
+      const environment = {
+        GITHUB_REPOSITORY: 'owner/repo', PR_NUMBER: '17', RUN_ID: '123',
+        EXPECTED_HEAD_SHA: HEAD, EXPECTED_BASE_SHA: BASE, SAME_REPO: String(sameRepo),
+        HEAD_REF: 'branch-with-$-safe-data', DISPATCH_ID: 'fixed-dispatch', GITHUB_OUTPUT: join(directory, 'outputs'),
+      };
+      const run = {
+        id: 123, repository: { full_name: 'owner/repo' }, head_sha: BASE, run_attempt: 1,
+        path: `.github/workflows/${sameRepo ? 'ghaw-pr-security.lock.yml' : 'ghaw-pr-security-guide-fork.lock.yml'}`,
+        event: 'workflow_dispatch', display_title: `${sameRepo ? 'Security Repair' : 'Security Guide'} fixed-dispatch`,
+        status: 'completed', conclusion: 'success',
+      };
+      const jobs = ['agent', 'detection', 'safe_outputs', ...(sameRepo ? ['finalize', 'validate_windows / validate'] : [])]
+        .map(name => ({ name, run_id: 123, run_attempt: 1, status: 'completed', conclusion: 'success' }));
+      const pull = { head: { sha: HEAD, ref: environment.HEAD_REF, repo: { full_name: sameRepo ? 'owner/repo' : 'fork/repo' } } };
+      const request = endpoint => {
+        if (endpoint === 'pulls/17') return pull;
+        if (endpoint === 'actions/runs/123') return run;
+        if (endpoint === 'actions/runs/123/attempts/1/jobs?per_page=100&page=1') return { jobs };
+        throw new Error(`Unexpected endpoint: ${endpoint}`);
+      };
+      let output = join(directory, 'rejected');
+      mkdirSync(output);
+      const paths = name => ({
+        '--scope': scopePath, '--artifacts': artifacts, '--output': output,
+      })[name];
+      pull.head.sha = BASE;
+      assert.throws(() => preparePublication({ environment, request, paths }), /stale/);
+      assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
+      pull.head.sha = HEAD;
+      jobs[1].conclusion = 'skipped';
+      assert.throws(() => preparePublication({ environment, request, paths }), /source jobs/);
+      assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
+      jobs[1].conclusion = 'success';
+      writeFileSync(scopePath, JSON.stringify({ ...current, headSha: BASE }));
+      assert.throws(() => preparePublication({ environment, request, paths }), /controller identity/);
+      writeFileSync(scopePath, JSON.stringify(current));
+      writeFileSync(join(artifacts, 'security-findings.validated.json'), JSON.stringify({ ...candidate, headSha: BASE }));
+      assert.throws(() => preparePublication({ environment, request, paths }), /immutable scope/);
+      assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
+      writeFileSync(join(artifacts, 'security-findings.validated.json'), JSON.stringify(candidate));
+      output = join(directory, 'accepted');
+      mkdirSync(output);
+      preparePublication({ environment, request, paths });
+      assert.equal(readFileSync(join(output, 'security-summary.md'), 'utf8'), renderReport(validateReport(candidate, current)));
+      assert.equal(readFileSync(join(output, 'security-status.txt'), 'utf8'), sameRepo ? 'pass\n' : 'blocking\n');
+      assert.match(readFileSync(environment.GITHUB_OUTPUT, 'utf8'), new RegExp(`^publication=${sameRepo ? 'none' : 'comment'}\\npatch_sha256=[0-9a-f]{64}\\n$`));
+      if (sameRepo) {
+        output = join(directory, 'unreported-patch');
+        mkdirSync(output);
+        writeFileSync(join(artifacts, 'security-repair.patch'), PATCH_TEXT);
+        assert.throws(() => preparePublication({ environment, request, paths }), /unreported/);
+        assert.throws(() => readFileSync(join(output, 'security-summary.md')));
+      }
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('canonical repair applies only a digest-bound native-attested patch to an isolated index', () => {
+  const root = mkdtempSync(join(process.cwd(), '.canonical-repair-'));
+  const workspace = join(root, 'checkout');
+  const artifacts = join(root, 'artifacts');
+  const output = join(root, 'canonical');
+  const previousIndex = process.env.GIT_INDEX_FILE;
+  mkdirSync(workspace);
+  mkdirSync(artifacts);
+  mkdirSync(output);
+  const path = 'tools/wta/src/routing.rs';
+  const source = join(workspace, path);
+  const git = (...args) => execFileSync('git', args, { cwd: workspace, encoding: 'utf8', timeout: 30_000 }).trim();
+  try {
+    git('init', '--quiet');
+    git('config', 'user.name', 'Local canonical fixture');
+    git('config', 'user.email', 'fixture@example.invalid');
+    git('config', 'core.autocrlf', 'false');
+    mkdirSync(join(workspace, 'tools', 'wta', 'src'), { recursive: true });
+    writeFileSync(source, 'fn route() { /* bound */ }\n');
+    git('add', '.');
+    git('commit', '--quiet', '-m', 'Base');
+    const base = git('rev-parse', 'HEAD');
+    writeFileSync(source, 'fn route() { /* bypass */ }\n');
+    git('add', '.');
+    git('commit', '--quiet', '-m', 'Reviewed head');
+    const head = git('rev-parse', 'HEAD');
+    const inputs = buildScope(base, head, 17, 'same-repo', `M\0${path}\0`, base, 'repair');
+    const current = buildScope(base, head, 17, 'same-repo', `M\0${path}\0`, base, 'repair', readImmutableHunks(inputs, workspace));
+    writeFileSync(source, 'fn route() { /* bound repair */ }\n');
+    const patch = execFileSync('git', ['diff', '--binary', 'HEAD'], { cwd: workspace, encoding: 'utf8' });
+    const digest = createHash('sha256').update(patch).digest('hex');
+    git('restore', '--', path);
+    const candidate = {
+      ...createReportTemplate(current), summary: 'Validated owner binding repair.',
+      checks: [
+        { name: 'deterministic-scope', status: 'pass', headSha: head, evidence: 'Immutable scope.' },
+        { name: 'wta-tests', status: 'pass', headSha: head, evidence: 'local command: trusted isolated Windows tests (exit 0)' },
+      ],
+      review: { status: 'source-pass', reviewer: 'ghaw-pr-security-reviewer', headSha: head, patchSha256: digest, evidence: 'Independent exact-patch review.' },
+      findings: [{
+        rule: 'session-route-target-binding', severity: 'high', confidence: 'high', category: 'session-routing',
+        file: path, startLine: 1, endLine: 1, observed: 'Bypassed binding.', expected: 'Bound owner.', impact: 'Wrong-pane mutation.',
+        evidence: [{ kind: 'source-trace', reference: `${path}:1`, detail: 'New bypass.' }],
+        proposedFix: 'Restore binding.', validation: 'Native focused tests.',
+        fixDisposition: { state: 'fixed', reason: 'Independently reviewed and tested.' },
+      }], patch: [{ path, summary: 'Restore binding.' }],
+    };
+    const scopePath = join(artifacts, 'scope.json');
+    const proofPath = join(artifacts, 'result.json');
+    writeFileSync(scopePath, JSON.stringify(current));
+    writeFileSync(join(artifacts, 'security-findings.validated.json'), JSON.stringify(validateReport(candidate, current)));
+    writeFileSync(join(artifacts, 'security-repair.patch'), patch);
+    writeFileSync(proofPath, JSON.stringify({
+      repository: 'owner/repo', trustedWorkflowSha: base, baseSha: base, headSha: head,
+      comparisonBaseSha: base, scopeSha256: current.scopeSha256, testsPassed: true, exitCode: 0,
+      patchSha256: digest, review: candidate.review,
+    }));
+    const environment = {
+      GITHUB_REPOSITORY: 'owner/repo', PR_NUMBER: '17', RUN_ID: '123', EXPECTED_HEAD_SHA: head,
+      EXPECTED_BASE_SHA: base, SAME_REPO: 'true', HEAD_REF: 'reviewed', DISPATCH_ID: 'fixed',
+      GITHUB_OUTPUT: join(root, 'outputs'),
+    };
+    const run = { id: 123, repository: { full_name: 'owner/repo' }, head_sha: base, run_attempt: 1,
+      path: '.github/workflows/ghaw-pr-security.lock.yml', event: 'workflow_dispatch',
+      display_title: 'Security Repair fixed', status: 'completed', conclusion: 'success' };
+    const jobs = ['agent', 'detection', 'safe_outputs', 'finalize', 'validate_windows / validate']
+      .map(name => ({ name, run_id: 123, run_attempt: 1, status: 'completed', conclusion: 'success' }));
+    const request = endpoint => {
+      if (endpoint === 'pulls/17') return { head: { sha: head, ref: 'reviewed', repo: { full_name: 'owner/repo' } } };
+      if (endpoint === 'actions/runs/123') return run;
+      if (endpoint === 'actions/runs/123/attempts/1/jobs?per_page=100&page=1') return { jobs };
+      if (endpoint === 'actions/runs/123/artifacts?per_page=100') return { artifacts: [{ name: 'ghaw-pr-security-windows-proof-123-1-17', expired: false }] };
+      throw new Error('Unexpected endpoint');
+    };
+    process.env.GIT_INDEX_FILE = join(root, 'isolated.index');
+    preparePublication({ environment, request, workspace, paths: name => ({
+      '--scope': scopePath, '--artifacts': artifacts, '--output': output, '--proof': proofPath,
+    })[name] });
+    assert.equal(readFileSync(source, 'utf8'), 'fn route() { /* bypass */ }\n');
+    assert.equal(git('show', `:${path}`), 'fn route() { /* bound repair */ }');
+    assert.equal(readFileSync(join(output, 'security-repair.patch'), 'utf8'), patch);
+    assert.match(readFileSync(environment.GITHUB_OUTPUT, 'utf8'), /^publication=push\n/);
+  } finally {
+    if (previousIndex === undefined) delete process.env.GIT_INDEX_FILE;
+    else process.env.GIT_INDEX_FILE = previousIndex;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function scope(relation = 'same-repo') {
   return buildScope(

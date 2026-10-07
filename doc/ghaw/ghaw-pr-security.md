@@ -17,6 +17,16 @@ detached worker:
   inspects immutable fork objects read-only, and may produce one validated
   guidance artifact.
 
+Workflow-root permissions are empty. The analysis/dispatch job has only
+`actions: write`, `contents: read`, and `pull-requests: read`; it processes
+untrusted Git objects without repository/issue write authority. After trusted
+validation, a canonical same-run handoff selects mutually exclusive publisher
+jobs. Repair publication has only `contents: write` plus PR read; guidance
+publication has only `issues: write` plus PR read. Publisher code is
+rematerialized from the trusted base, not supplied by the handoff artifact.
+Matching run/attempt/revision/source jobs, detector outcome, scope and patch
+identity, applicable native attestation and live-head checks remain mandatory.
+
 Both workers accept only a non-mutating `noop` result because generated gh-aw
 publication jobs are not ordered after native post-validation. gh-aw always
 exposes its system outputs and auto-injects `create-issue` when only system
@@ -28,6 +38,12 @@ it. After a successful worker, the trusted controller performs the mutually
 exclusive operation: an index-only, expected-head-leased fast-forward repair push for
 same-repository PRs, or an idempotent trusted-renderer guidance comment for fork
 PRs.
+
+Same-repository reports without a repair remain visible in the blocking/advice
+check card and retained artifacts; they do not add routine PR comments. Fork
+findings use SHA-labelled idempotent guidance comments. A published repair never
+also produces a guidance comment. This preserves the existing non-noisy
+publication behavior while separating token authority.
 
 Before inference, the trusted script validates the immutable observed-base/head
 commits, resolves their merge base, normalizes changed paths, classifies

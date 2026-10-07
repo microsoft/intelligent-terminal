@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, closeSync, constants, copyFileSync, lstatSync, openSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, closeSync, constants, copyFileSync, lstatSync, openSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -838,6 +838,104 @@ export function renderReport(report) {
   return `${lines.join('\n')}\n`;
 }
 
+export function publicationDecision(report) {
+  const blocking = report.findings.some(finding => finding.severity === 'high' && finding.fixDisposition.state !== 'fixed');
+  if (!blocking && report.repositoryRelation === 'same-repo' && report.mode === 'repair' && report.patch.length > 0) return 'push';
+  if (report.repositoryRelation === 'fork' && report.mode === 'guide' && report.findings.length > 0) return 'comment';
+  return 'none';
+}
+
+export function validatePublicationRun(run, jobs, identity) {
+  const worker = identity.sameRepo ? 'ghaw-pr-security.lock.yml' : 'ghaw-pr-security-guide-fork.lock.yml';
+  const title = `${identity.sameRepo ? 'Security Repair' : 'Security Guide'} ${identity.dispatchId}`;
+  if (String(run.id) !== identity.runId || run.repository?.full_name !== identity.repository ||
+      run.head_sha !== identity.baseSha || run.path !== `.github/workflows/${worker}` ||
+      run.event !== 'workflow_dispatch' || run.display_title !== title ||
+      run.status !== 'completed' || run.conclusion !== 'success' ||
+      !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) {
+    fail('publication worker identity or conclusion is invalid');
+  }
+  const required = ['agent', 'detection', 'safe_outputs', ...(identity.sameRepo ? ['finalize', 'validate_windows / validate'] : [])];
+  for (const name of required) {
+    const matches = jobs.filter(job => job.name === name);
+    if (matches.length !== 1 || matches[0].run_id !== run.id ||
+        matches[0].run_attempt !== run.run_attempt || matches[0].status !== 'completed' ||
+        matches[0].conclusion !== 'success') fail('publication requires successful matching source jobs');
+  }
+}
+
+export function validateNativePublicationProof(result, report, scope, repository, base, patch) {
+  if (result.repository !== repository || result.trustedWorkflowSha !== base || result.baseSha !== base ||
+      result.headSha !== scope.headSha || result.comparisonBaseSha !== scope.baseSha ||
+      result.scopeSha256 !== scope.scopeSha256 || result.testsPassed !== true || result.exitCode !== 0 ||
+      result.patchSha256 !== createHash('sha256').update(patch).digest('hex') ||
+      stableJson(result.review) !== stableJson(report.review)) fail('native Windows attestation is invalid');
+}
+
+export function preparePublication({ environment = process.env, request, paths = option, workspace } = {}) {
+  const repository = environment.GITHUB_REPOSITORY;
+  const pr = environment.PR_NUMBER;
+  const runId = environment.RUN_ID;
+  const head = environment.EXPECTED_HEAD_SHA;
+  const base = environment.EXPECTED_BASE_SHA;
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '') ||
+      !/^[1-9][0-9]*$/.test(pr ?? '') || !/^[1-9][0-9]*$/.test(runId ?? '') ||
+      !SHA.test(head ?? '') || !SHA.test(base ?? '') ||
+      !['true', 'false'].includes(environment.SAME_REPO)) fail('publication inputs are invalid');
+  const api = request ?? (endpoint => JSON.parse(execFileSync('gh', ['api', `/repos/${repository}/${endpoint}`], {
+    encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024,
+  })));
+  const sameRepo = environment.SAME_REPO === 'true';
+  const pull = api(`pulls/${pr}`);
+  if (pull.head?.sha !== head || (pull.head?.repo?.full_name === repository) !== sameRepo ||
+      pull.head?.ref !== environment.HEAD_REF) fail('stale publication identity');
+  const run = api(`actions/runs/${runId}`);
+  const jobs = [];
+  for (let page = 1; ; page++) {
+    const batch = api(`actions/runs/${runId}/attempts/${run.run_attempt}/jobs?per_page=100&page=${page}`).jobs;
+    if (!Array.isArray(batch) || page > 20) fail('publication jobs are invalid');
+    jobs.push(...batch);
+    if (batch.length < 100) break;
+  }
+  validatePublicationRun(run, jobs, {
+    repository, runId, baseSha: base, sameRepo, dispatchId: environment.DISPATCH_ID,
+  });
+  const scope = JSON.parse(readFileSync(paths('--scope'), 'utf8'));
+  if (scope.prNumber !== Number(pr) || scope.headSha !== head || scope.observedBaseSha !== base ||
+      scope.repositoryRelation !== (sameRepo ? 'same-repo' : 'fork') ||
+      scope.mode !== (sameRepo ? 'repair' : 'guide')) fail('publication scope does not match controller identity');
+  const directory = paths('--artifacts');
+  const output = paths('--output');
+  const input = JSON.parse(readFileSync(resolve(directory, 'security-findings.validated.json'), 'utf8'));
+  const report = validateReport(input, scope);
+  const patchPath = resolve(directory, 'security-repair.patch');
+  let patch = '';
+  if (sameRepo) patch = readFileSync(patchPath, 'utf8');
+  if (report.patch.length > 0) {
+    validateRepairScope(scope);
+    const proof = api(`actions/runs/${runId}/artifacts?per_page=100`).artifacts;
+    const proofName = `ghaw-pr-security-windows-proof-${runId}-${run.run_attempt}-${pr}`;
+    if (proof.filter(item => item.name === proofName && !item.expired).length !== 1) fail('native proof artifact is missing');
+    const result = JSON.parse(readFileSync(paths('--proof'), 'utf8').replace(/^\uFEFF/, ''));
+    validateNativePublicationProof(result, report, scope, repository, base, patch);
+    git(['read-tree', head], workspace);
+    git(['apply', '--cached', '--binary', patchPath], workspace);
+    const raw = git(['diff', '--cached', '--name-status', '-z', head], workspace);
+    const files = parseNameStatus(raw);
+    if (files.some(file => file.status !== 'M')) fail('publication patch changes file status');
+    for (const file of files) {
+      if (!/^100644 blob /.test(git(['ls-tree', head, '--', file.path], workspace)) ||
+          !/^100644 /.test(git(['ls-files', '--stage', '--', file.path], workspace))) fail('publication patch changes file type or mode');
+    }
+    validatePatch(report, files.map(file => file.path), patch);
+  } else if (patch !== '') fail('unreported publication patch');
+  const decision = publicationDecision(report);
+  writeFileSync(resolve(output, 'security-summary.md'), renderReport(report), { flag: 'wx' });
+  writeFileSync(resolve(output, 'security-repair.patch'), patch, { flag: 'wx' });
+  writeFileSync(resolve(output, 'security-status.txt'), report.findings.some(f => f.severity === 'high' && f.fixDisposition.state !== 'fixed') ? 'blocking\n' : 'pass\n', { flag: 'wx' });
+  appendFileSync(environment.GITHUB_OUTPUT, `publication=${decision}\npatch_sha256=${createHash('sha256').update(patch).digest('hex')}\n`);
+}
+
 function option(name) {
   const index = process.argv.indexOf(name);
   if (index < 0 || index + 1 >= process.argv.length) fail(`missing ${name}`);
@@ -846,6 +944,10 @@ function option(name) {
 
 function main() {
   const command = process.argv[2];
+  if (command === 'prepare-publication') {
+    preparePublication();
+    return;
+  }
   if (command === 'scope') {
     const observedBase = option('--base').toLowerCase();
     const head = option('--head').toLowerCase();
