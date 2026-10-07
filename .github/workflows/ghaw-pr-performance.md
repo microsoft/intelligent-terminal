@@ -246,7 +246,7 @@ and callers.
 Write `/tmp/gh-aw/performance-report.json`, validate it with `--mode repair`,
 and render it for inspection. Medium/low findings are advice only. Unresolved
 or unsafe HIGH findings are not edited. Edit only one or more original
-candidate files when the skill's HIGH repair eligibility is fully met, run the
+candidate files when the skill's HIGH repair eligibility is fully met, identify the
 supported existing focused WTA test selector, and record a validation plan.
 Do not execute product tests on Linux or invent native test results.
 Format the source proposal using standard `cargo fmt`, inspect the resulting
