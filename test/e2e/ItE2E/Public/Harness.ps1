@@ -198,15 +198,13 @@ function Get-WtProcessesForApp {
 function Stop-AppInstances {
     <#
     .SYNOPSIS
-        Force a COLD start by terminating every running WindowsTerminal of THIS package.
+        Require an inactive package without closing or terminating any process.
     .DESCRIPTION
-        WT is single-instance: a launch hands off to an existing monarch instead of starting
-        fresh, and the monarch keeps `agentFreCompleted` (and the rest of ApplicationState)
-        cached in memory — it never re-reads state.json. So driving the FRE overlay, or any
-        test that depends on cold-start behaviour, requires no monarch to be alive first.
-        Closes gracefully (CloseMainWindow), then force-kills only the specific stragglers by
-        pid. ONLY ever targets this IT package's processes (filtered by install location) — it
-        never touches the user's stock Windows Terminal.
+        This legacy entry point only calls Assert-WtPackageInactive. Any existing or
+        unknown package process causes refusal; package/path membership is not ownership.
+        Use Stop-Terminal only with a captured creation-proven app for owned cleanup.
+    .PARAMETER GraceSec
+        Retained for caller compatibility; unused because this function performs no shutdown.
     #>
     [CmdletBinding()] param([Parameter(Mandatory)]$App, [int]$GraceSec = 6)
     Assert-WtPackageInactive -App $App
@@ -222,17 +220,10 @@ function Assert-WtPackageInactive {
 function Stop-StaleItInstances {
     <#
     .SYNOPSIS
-        Close leftover Intelligent Terminal windows for the selected package before launch.
+        Refuse startup while any selected-package process already exists.
     .DESCRIPTION
-        The harness owns windows for the package selected by ITE2E_PACKAGE for the duration of
-        a run. It closes stale windows from that package so the next activation is a cold start,
-        while preserving other Intelligent Terminal products and stock Windows Terminal.
-
-        Any IT window already running at launch is treated as a leftover from a previous test
-        whose AfterAll/Stop-Terminal didn't run (e.g. a BeforeAll that threw). Such a leftover
-        causes the package-specific AUMID launch to hand off to the stale (often
-        half-initialised) window instead of starting fresh, so the harness can attach to a
-        broken instance and `new-tab` returns CreateTab E_FAIL (0x80004005).
+        Despite its legacy name, this function never adopts or closes a "stale" process.
+        It only verifies inactivity. GraceSec remains an unused compatibility parameter.
     #>
     [CmdletBinding()]
     param(

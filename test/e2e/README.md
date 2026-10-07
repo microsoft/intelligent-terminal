@@ -6,6 +6,18 @@ Design rationale is captured in the inline notes below and in each suite's heade
 
 ## Release-checklist coverage
 
+### Startup and failure ownership
+
+`Stop-AppInstances` and `Stop-StaleItInstances` are legacy **refusal-only**
+entry points: existing or unknown selected-package processes block startup.
+They never close or kill package members; `GraceSec` is compatibility-only.
+Use `Stop-Terminal` only for the captured creation-proven app and its proven
+descendants. `Start-Terminal` owns recovery of its completed configuration backup
+and rethrows the original startup error. Callers must not add package-wide
+shutdown or unconditional restoration in outer catches. If inactivity cannot
+be proven, keep the raw backups and fail explicitly; a resolve-only descriptor
+is never backup ownership.
+
 The `tests/` folder implements the `[E2E]` items from
 `doc/release-check-list.md` that are automatable on one machine. Copilot drives
 the baseline suites, while the agent matrix covers other installed and
