@@ -57,6 +57,8 @@ jobs:
       RUSTUP_TOOLCHAIN: 1.93.0
       CARGO_TERM_COLOR: never
       GIT_CONFIG_NOSYSTEM: '1'
+      DOCKER_HOST: npipe:////./pipe/docker_engine
+      DOCKER_CONTEXT: ''
 
     steps:
       - name: Guard authoring revision and live same-repository identity
@@ -202,6 +204,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Applied paths or exact final-patch digest failed shared validation.' }
           "source_head_sha=$env:HEAD_SHA" | Add-Content $env:GITHUB_OUTPUT
 
+      - name: Start and await the installed Windows Docker service
+        if: steps.candidate.outputs.has_patch == 'true'
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof'
+          . (Join-Path $env:GITHUB_WORKSPACE 'trusted-code\build\scripts\Wait-WindowsDocker.ps1')
+          Wait-WindowsDocker -EvidenceDirectory $evidence -DiagnosticPrefix docker-startup |
+            ConvertTo-Json -Depth 6 | Set-Content (Join-Path $evidence 'docker-ready.json')
+
       - name: Fetch public dependencies only from trusted base
         if: steps.candidate.outputs.has_patch == 'true'
         timeout-minutes: 8
@@ -252,10 +264,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $evidence = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof'
-          $dockerInfo = docker info --format '{{json .}}'
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect actual Docker storage location.' }
-          $docker = $dockerInfo | ConvertFrom-Json
-          if ($docker.OSType -ne 'windows' -or -not [IO.Path]::IsPathFullyQualified($docker.DockerRootDir)) { throw 'Windows Docker data root is unavailable.' }
+          . (Join-Path $env:GITHUB_WORKSPACE 'trusted-code\build\scripts\Wait-WindowsDocker.ps1')
+          $docker = Wait-WindowsDocker -EvidenceDirectory $evidence -DiagnosticPrefix docker-build
           # Runner-images Install-Docker.ps1 delegates to Windows-Containers installation:
           # 8ea2a92d8dfa7815abcf5cc44a756a0ac3d0f513 defaults DockerDataPath to ProgramData\docker.
           # That prior art does not prove D: storage; daemon-reported DockerRootDir is authoritative here.
@@ -313,6 +323,7 @@ jobs:
           $name = "ghaw-security-windows-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-$env:PR_NUMBER"
           $source = Join-Path $env:GITHUB_WORKSPACE 'reconstruction'
           $cache = Join-Path $env:RUNNER_TEMP 'ghaw-windows-cargo'
+          'Container creation attempted; cleanup must independently verify ownership.' | Set-Content (Join-Path $evidence 'container-create-attempted.txt')
           docker create --name $name --label "ghaw.security.run=$env:GITHUB_RUN_ID" --label "ghaw.security.attempt=$env:GITHUB_RUN_ATTEMPT" --label "ghaw.security.pr=$env:PR_NUMBER" --isolation=process --network none --mount "type=bind,source=$source,target=C:\workspace,readonly" --mount "type=bind,source=$cache\registry,target=C:\cargo-cache\registry,readonly" --mount "type=bind,source=$cache\git,target=C:\cargo-cache\git,readonly" --env CARGO_NET_OFFLINE=true --env RUSTUP_TOOLCHAIN=1.93.0 $image
           if ($LASTEXITCODE -ne 0) { throw 'Cannot create validation container.' }
           $raw = docker inspect $name
@@ -365,6 +376,11 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:PR_NUMBER -notmatch '^[1-9][0-9]{0,8}$') { return }
+          $evidence = Join-Path $env:RUNNER_TEMP 'ghaw-windows-proof'
+          if (-not (Test-Path -LiteralPath (Join-Path $evidence 'container-create-attempted.txt'))) {
+            Write-Warning 'Validation container creation was never attempted; no owned container to clean. Native validation remains unproven.'
+            return
+          }
           $name = "ghaw-security-windows-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-$env:PR_NUMBER"
           $names = @(docker container ls --all --filter "name=^$name$" --format '{{.Names}}')
           if ($LASTEXITCODE -ne 0) { throw 'Cannot query cleanup ownership.' }

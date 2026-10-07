@@ -113,6 +113,17 @@ every possible unknown secret variable. Local direct-inference proofs use an
 explicit caller-supplied inference credential and are not evidence of the
 hosted proxy's token-free model environment.
 
+Native Windows validation pins the Windows Docker pipe and clears inherited
+Docker context selection. Before dependency/image work, the trusted
+`build/scripts/Wait-WindowsDocker.ps1` helper verifies the installed Windows
+container feature, client and registered service, starts only a stopped Docker
+service, and waits for a Windows-engine response. Process operations and
+readiness have explicit bounds and retain raw diagnostic output. A terminated
+Docker-info probe timeout is retryable only within the same readiness deadline;
+service-start and child-termination failures remain fatal. Cleanup queries
+Docker only when this run recorded a container-creation attempt and still
+checks exact name/labels before removal.
+
 The report contract limits findings to changed files and assigns stable
 `ITSEC-<hash>` IDs from rule/category/path/line. It independently enforces:
 
