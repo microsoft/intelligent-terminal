@@ -172,6 +172,28 @@ test('only the exact WTA Cargo manifest and lockfile are review candidates', () 
     assert.equal(scope.excluded.length, 6);
 });
 
+test('the exact WTA build script is applicable for CI review but not automatic repair', () => {
+    const filename = 'tools/wta/build.rs';
+    const scope = classifyPullRequest([{ filename }], identity);
+    assert.equal(scope.applicable, true);
+    assert.deepEqual(scope.candidates.map(file => file.filename), [filename]);
+    assert.ok(scope.dimensions.includes('ci-runtime-cost'));
+    assert.equal(classifyPullRequest([{ filename: 'tools/other/build.rs' }], identity).applicable, false);
+    const value = proposal();
+    value.files[0].path = filename;
+    value.report.findings[0].location = `${filename}:1`;
+    assert.throws(() => validateProposal(value, { ...identity, mode: 'repair' }), /unique, regular WTA/);
+    withRepository(({ git, write, expected, output }) => {
+        write('tools\\wta\\build.rs', 'fn main() {}\n');
+        git(['add', '--all']);
+        git(['commit', '--quiet', '-m', 'build script fixture']);
+        const prepared = prepareScope({ ...expected, baseSha: expected.headSha, headSha: git(['rev-parse', 'HEAD']) }, output);
+        assert.equal(prepared.applicable, true);
+        assert.deepEqual(prepared.candidates.map(file => file.filename), [filename]);
+        assert.ok(prepared.dimensions.includes('ci-runtime-cost'));
+    });
+});
+
 test('prepared input includes exact immutable Git file and line counts', () => {
     withRepository(({ expected, output }) => {
         const scope = prepareScope(expected, output);
@@ -451,6 +473,20 @@ test('passing checks cannot hide nonzero or missing exit codes', () => {
             name: 'Fake pass', command: 'test', detail: 'Claimed pass', status: 'pass', exitCode,
         }]);
         assert.throws(() => validateReport(value, identity), /passing checks must exit 0/);
+    }
+});
+
+test('unavailable checks require null exit codes and render as not run', () => {
+    const check = { name: 'Native measurement', command: 'not run', detail: 'Windows unavailable.',
+        status: 'unavailable', exitCode: null };
+    const value = report([], [check]);
+    assert.doesNotThrow(() => validateReport(value, identity));
+    const card = renderReport(value);
+    assert.match(card, /not run/);
+    assert.doesNotMatch(card, /exit 0/);
+    for (const exitCode of [-1, 0, 1]) {
+        assert.throws(() => validateReport(report([], [{ ...check, exitCode }]), identity),
+            /unavailable checks must have null exitCode/);
     }
 });
 

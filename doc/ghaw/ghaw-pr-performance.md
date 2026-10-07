@@ -63,6 +63,9 @@ relevant. Missing measurement is unavailable, not a passing benchmark.
 The current automatic native backend supports focused Windows WTA Rust tests;
 C++ findings require an applicable MSBuild/TAEF handoff and remain manual.
 Fork guidance names the reviewed head and uses best-effort freshness checking.
+The exact WTA build script, manifest and lockfile receive CI-runtime review,
+while automatic Rust replacements remain confined to eligible `src` files.
+Unavailable checks always use a null exit code and render as not run.
 
 Native autofix uses fixed conservative limits, not model-routing settings:
 at most **three replacement files**, **100 total added plus deleted lines**,

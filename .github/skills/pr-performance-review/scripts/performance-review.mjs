@@ -24,7 +24,7 @@ const CATEGORY_RULES = [
     ['vt-parsing', /^src\/terminal\/(parser|adapter)\//i],
     ['ui-thread', /^src\/cascadia\/(TerminalApp|WindowsTerminal|TerminalSettingsEditor)\//i],
     ['tab-pane-lifecycle', /^src\/cascadia\/TerminalApp\/(Tab|Pane|TerminalPage|TabManagement|AgentPaneContent|SharedWta)/i],
-    ['wta-runtime', /^tools\/wta\/(src\/|Cargo\.toml$|Cargo\.lock$)/i],
+    ['wta-runtime', /^tools\/wta\/(src\/|Cargo\.toml$|Cargo\.lock$|build\.rs$)/i],
     ['session-log-enumeration', /^(tools\/wta\/src\/.*(session|log)|src\/cascadia\/TerminalApp\/.*(Session|Log))/i],
 ];
 
@@ -94,6 +94,8 @@ export function classifyPullRequest(filesInput, identity) {
         dimensions.push('application-performance', 'memory-growth');
     if (categories.some(category => ['rendering', 'ui-thread', 'tab-pane-lifecycle', 'wta-runtime'].includes(category)))
         dimensions.push('responsiveness');
+    if (candidates.some(file => ['tools/wta/build.rs', 'tools/wta/Cargo.toml', 'tools/wta/Cargo.lock'].includes(file.filename)))
+        dimensions.push('ci-runtime-cost');
     return {
         version: 1, identity, applicable: candidates.length > 0, categories, dimensions: dimensions.sort(), candidates,
         supporting: files.filter(file => file.role === 'supporting'),
@@ -154,6 +156,8 @@ export function validateReport(report, expected) {
         if (!['pass', 'regression', 'noisy', 'unavailable', 'error'].includes(check.status) ||
             !(check.exitCode === null || Number.isInteger(check.exitCode))) fail(`${prefix} has an invalid status or exitCode`);
         if (check.status === 'pass' && check.exitCode !== 0) fail(`${prefix} passing checks must exit 0`);
+        if (check.status === 'unavailable' && check.exitCode !== null)
+            fail(`${prefix} unavailable checks must have null exitCode`);
         if (report.status === 'pending_validation' && check.status === 'pass')
             fail(`${prefix} pending_validation reports cannot contain model-authored pass checks`);
         if (check.status === 'regression' && !report.findings.length) fail(`${prefix} regression checks require at least one finding`);

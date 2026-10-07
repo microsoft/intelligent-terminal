@@ -94,6 +94,8 @@ repository directories or the crate name; do not prefix `tools`, `wta`, or
 
 Dedicated `tests.rs`, `*_tests.rs`, and WTA's `test_support.rs` are supporting evidence, not
 automatic repair targets. Do not alter them to make a repair pass.
+The exact WTA `build.rs` and Cargo manifest/lockfile receive CI-runtime review,
+but automatic replacements remain confined to eligible `tools/wta/src/*.rs`.
 
 Bind each proposed finding's canonical repository `path:line` location to a
 sealed WTA Rust replacement, and cover every replacement with a proposed
@@ -227,7 +229,8 @@ body. Native post-processing owns file writes and final card rendering.
 
 Stable IDs start with `PERF-` and use a bounded source/defect identifier,
 not array order or an arbitrary fixed character count. `exitCode` is `null`
-when not run. `validationPlan` is required only for proposals.
+when not run; every `unavailable` check requires `exitCode: null`.
+`validationPlan` is required only for proposals.
 The schema example deliberately omits `testFilter`: add that required field
 using the actual test name you read, not a sample value.
 Status `fixed` is reserved for the published card after native validation.
