@@ -8,7 +8,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   attestChecks, buildScope, classifyPath, createReportTemplate, normalizePath, renderReport, validatePatch,
-  validateQueuedOutput, validateReport, validateProposal, stageRepairFiles, validateRepairScope,
+  validateQueuedOutput, validateReport, validateProposal, validateCandidate, stageRepairFiles, validateRepairScope,
   submitSecurityReport, readSecurityDiff, readSecuritySource, inspectSecurityRepair, writeSecurityRepair, replaceSecurityRepairText, verifyCredentialFree,
 } from './security-review.mjs';
 
@@ -85,6 +85,39 @@ test('classifies project trust boundaries', () => {
   assert(classifyPath('.github/policies/resourceManagement.yml').includes('workflow-credentials'));
   assert(classifyPath('.github/instructions/security.instructions.md').includes('workflow-credentials'));
   assert(classifyPath('tools/razzle.cmd').includes('build-tooling'));
+  assert(classifyPath('.cargo/config.toml').includes('build-tooling'));
+});
+
+test('Cargo configuration triggers review but cannot enter automatic repair', () => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  assert(controller.includes("- '.cargo/**'"));
+  const cargoOnly = buildScope(BASE, HEAD, 17, 'same-repo', 'M\0.cargo/config.toml\0', BASE, 'repair');
+  assert.equal(cargoOnly.applicable, true);
+  assert(cargoOnly.domains.includes('build-tooling'));
+  assert.throws(() => validateRepairScope(cargoOnly), /non-WTA-source paths/);
+  const mixed = buildScope(BASE, HEAD, 17, 'same-repo',
+    'M\0.cargo/config.toml\0M\0tools/wta/src/master/session_mcp.rs\0', BASE, 'repair');
+  assert.equal(mixed.applicable, true);
+  assert.throws(() => validateRepairScope(mixed), /non-WTA-source paths/);
+});
+
+test('guide cannot delegate and repair uses trusted fixed reviewer orchestration', () => {
+  const workflow = name => readFileSync(new URL(`../../../workflows/${name}`, import.meta.url), 'utf8');
+  const guide = workflow('ghaw-pr-security-guide-fork.md');
+  assert(guide.includes("args: ['--excluded-tools', 'task', 'read_agent', 'write_agent', 'list_agents']"));
+  const repair = workflow('ghaw-pr-security.md');
+  assert(repair.includes('security-review-native/security-review-driver.mjs'));
+  assert(repair.includes('watchdog-timeout: 600'));
+  assert(repair.includes('max-retries: 0'));
+  assert(repair.includes('install_copilot_cli.sh" 1.0.90'));
+  assert(repair.includes('git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review-driver.mjs"'));
+  assert(!repair.includes('## agent:'));
+  for (const name of ['ghaw-pr-security', 'ghaw-pr-security-reviewer']) {
+    const profile = readFileSync(new URL(`../../../agents/${name}.agent.md`, import.meta.url), 'utf8');
+    const header = profile.split('---')[1];
+    assert(header.includes('tools:'));
+    assert(!/^\s*-\s*['"]?(?:agent|custom-agent|Task|execute|shell|bash|powershell|edit|\*)['"]?\s*$/im.test(header));
+  }
 });
 
 test('credential postcondition rejects retained helpers and headers rather than trusting cleanup exit', () => {
@@ -232,6 +265,29 @@ test('only native validation promotes independently source-reviewed repair propo
   proposal.findings[0].fixDisposition = { state: 'proposed', reason: 'Source-reviewed candidate awaits trusted validation.' };
   assert.throws(() => validateReport(proposal, current), /fix disposition/);
   assert.equal(validateProposal(proposal, current).findings[0].fixDisposition.state, 'proposed');
+  const pending = structuredClone(proposal);
+  pending.review = {
+    status: 'pending', reviewer: 'ghaw-pr-security-reviewer',
+    evidence: 'Trusted driver must launch the independent reviewer.',
+  };
+  assert.equal(validateCandidate(pending, current).review.status, 'pending');
+  assert.throws(() => validateCandidate(proposal, current), /review|pending|source-pass/i);
+  assert.throws(() => validateCandidate(candidate, current), /passing|pending/i);
+  assert.throws(() => validateCandidate(pending, scope('fork')), /same-repository|repair/i);
+  assert.throws(() => validateProposal(pending, current), /review/i);
+  assert.throws(() => validateReport(pending, current), /review|disposition/i);
+  assert.throws(() => attestChecks(pending, HEAD, true, PATCH_TEXT), /pending independent review/);
+  const pendingReportRoot = mkdtempSync(join(tmpdir(), 'ghaw-pending-review-'));
+  try {
+    const pendingReportPath = join(pendingReportRoot, 'report.json');
+    writeFileSync(pendingReportPath, 'original');
+    assert.throws(() => submitSecurityReport(JSON.stringify(proposal), current, pendingReportPath), /model submission cannot claim trusted independent SOURCE_PASS/);
+    assert.equal(readFileSync(pendingReportPath, 'utf8'), 'original');
+    assert.equal(submitSecurityReport(JSON.stringify(pending), current, pendingReportPath).accepted, true);
+    assert.equal(JSON.parse(readFileSync(pendingReportPath, 'utf8')).review.status, 'pending');
+  } finally {
+    rmSync(pendingReportRoot, { recursive: true, force: true });
+  }
   assert.throws(() => validateProposal(candidate, current), /cannot claim passing/);
   const prematurePass = structuredClone(proposal);
   prematurePass.checks.push(candidate.checks[1]);

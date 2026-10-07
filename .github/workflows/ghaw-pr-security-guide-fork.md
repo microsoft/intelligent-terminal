@@ -50,6 +50,7 @@ engine:
   id: copilot
   agent: ghaw-pr-security
   version: '1.0.90'
+  args: ['--excluded-tools', 'task', 'read_agent', 'write_agent', 'list_agents']
 imports:
   - .github/agents/ghaw-pr-security.agent.md
   - shared/ghaw-pr-security-tools.md

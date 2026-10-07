@@ -7,6 +7,8 @@ import { resolve, sep } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+export const SECURITY_REPORT_MAX_BYTES = 64 * 1024;
+
 const SHA = /^[0-9a-f]{40}$/;
 const SAFE_RULE = /^[a-z][a-z0-9-]{2,63}$/;
 const CATEGORIES = new Set([
@@ -67,7 +69,7 @@ export function classifyPath(path) {
   if (/^tools\/wta\//.test(path)) {
     domains.add('wta');
   }
-  if (/^tools\//.test(path)) domains.add('build-tooling');
+  if (/^(?:tools|\.cargo)\//.test(path)) domains.add('build-tooling');
   if (/^src\/.*\.(?:cpp|c|h|hpp|idl)$/.test(path)) {
     domains.add('cpp-memory');
   }
@@ -211,7 +213,10 @@ export function createReportTemplate(scope) {
 }
 
 export function validateReport(report, scope, phase = 'final') {
-  if (!['proposal', 'final'].includes(phase)) fail('unknown report validation phase');
+  if (!['candidate', 'proposal', 'final'].includes(phase)) fail('unknown report validation phase');
+  if (phase === 'candidate' && (scope.mode !== 'repair' || scope.repositoryRelation !== 'same-repo')) {
+    fail('candidate validation is available only for same-repository repair submission');
+  }
   if (!report || typeof report !== 'object' || Array.isArray(report) || report.version !== 1) {
     fail('report envelope is invalid');
   }
@@ -248,7 +253,10 @@ export function validateReport(report, scope, phase = 'final') {
   if (!checks.some(check => check.name === 'deterministic-scope' && check.status === 'pass')) {
     fail('deterministic-scope PASS is required');
   }
-  if (!report.review || !['source-pass', 'not-required', 'fail'].includes(report.review.status)) {
+  const reviewStatuses = phase === 'candidate'
+    ? ['pending', 'not-required', 'fail']
+    : ['source-pass', 'not-required', 'fail'];
+  if (!report.review || !reviewStatuses.includes(report.review.status)) {
     fail('independent review result is invalid');
   }
   const review = {
@@ -302,7 +310,7 @@ export function validateReport(report, scope, phase = 'final') {
     const disposition = finding.fixDisposition?.state;
     const allowedDisposition = finding.severity === 'high'
       ? (scope.mode === 'repair'
-        ? ['blocked', phase === 'proposal' ? 'proposed' : 'fixed']
+        ? ['blocked', phase === 'final' ? 'fixed' : 'proposed']
         : ['blocked'])
       : ['advice-only'];
     if (!allowedDisposition.includes(disposition)) {
@@ -318,7 +326,8 @@ export function validateReport(report, scope, phase = 'final') {
       if (checks.some(check => ['fail', 'blocked'].includes(check.status))) {
         fail(`finding ${index + 1} fixed disposition is incompatible with failed or blocked validation`);
       }
-      if (review.status !== 'source-pass' || review.reviewer !== 'ghaw-pr-security-reviewer') {
+      if (review.status !== (phase === 'candidate' ? 'pending' : 'source-pass') ||
+          review.reviewer !== 'ghaw-pr-security-reviewer') {
         fail(`finding ${index + 1} fixed disposition requires the independent security review gate`);
       }
     }
@@ -355,6 +364,9 @@ export function validateReport(report, scope, phase = 'final') {
     return { path, summary: text(item.summary, `patch item ${index + 1} summary`, 300) };
   });
   const fixed = findings.filter(finding => ['fixed', 'proposed'].includes(finding.fixDisposition.state));
+  if (phase === 'candidate' && ((review.status === 'pending') !== (patch.length > 0))) {
+    fail('pending independent review requires a patched repair candidate');
+  }
   if (scope.mode === 'guide' && patch.length !== 0) fail('guide mode cannot contain a patch');
   if ((fixed.length === 0) !== (patch.length === 0)) {
     fail('fixed findings and patch entries must either both be present or both be absent');
@@ -382,12 +394,28 @@ export function validateProposal(report, scope) {
   return validated;
 }
 
+export function validateCandidate(report, scope) {
+  if (scope.mode !== 'repair' || scope.repositoryRelation !== 'same-repo') {
+    fail('repair candidates require same-repository repair scope');
+  }
+  if (report.checks?.some(check => check.name !== 'deterministic-scope' && check.status === 'pass')) {
+    fail('agent candidate cannot claim passing final-patch validation');
+  }
+  const validated = validateReport(report, scope, 'candidate');
+  if (validated.patch.length > 0) validateRepairScope(scope);
+  return validated;
+}
+
 export function submitSecurityReport(json, scope, outputPath) {
   if (typeof json !== 'string' || Buffer.byteLength(json, 'utf8') > 10 * 1024) {
     fail('report input must be JSON text of at most 10 KiB');
   }
   const input = JSON.parse(json);
-  const report = scope.mode === 'repair' ? validateProposal(input, scope) : validateReport(input, scope);
+  if (input?.review?.status === 'source-pass') {
+    fail('model submission cannot claim trusted independent SOURCE_PASS');
+  }
+  const report = scope.mode === 'repair' ? validateCandidate(input, scope) : validateReport(input, scope);
+  const serialized = serializeSecurityReport(report);
   const path = resolve(outputPath);
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink() || realpathSync(path) !== path) {
@@ -396,11 +424,19 @@ export function submitSecurityReport(json, scope, outputPath) {
   const platformFlags = process.platform === 'win32' ? constants.O_CREAT : constants.O_NOFOLLOW;
   const fd = openSync(path, constants.O_WRONLY | constants.O_TRUNC | platformFlags);
   try {
-    writeFileSync(fd, `${JSON.stringify(report, null, 2)}\n`);
+    writeFileSync(fd, serialized);
   } finally {
     closeSync(fd);
   }
   return { accepted: true, mode: report.mode, findings: report.findings.length, patchEntries: report.patch.length };
+}
+
+export function serializeSecurityReport(report) {
+  const serialized = `${JSON.stringify(report, null, 2)}\n`;
+  if (Buffer.byteLength(serialized, 'utf8') > SECURITY_REPORT_MAX_BYTES) {
+    fail('serialized security report exceeds the 64 KiB native output limit');
+  }
+  return serialized;
 }
 
 export function readSecurityDiff(scope, paths = [], workspace) {
@@ -529,6 +565,9 @@ export function validateQueuedOutput(report, queuedOutput) {
 }
 
 export function attestChecks(report, headSha, wtaTestsPassed, patchText = '') {
+  if (report.review?.status === 'pending') {
+    fail('pending independent review cannot enter trusted validation attestation');
+  }
   if (!SHA.test(headSha) || report.headSha !== headSha) {
     fail('trusted validation attestation does not match the immutable head');
   }

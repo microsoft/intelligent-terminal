@@ -50,6 +50,10 @@ engine:
   id: copilot
   agent: ghaw-pr-security
   version: '1.0.90'
+  command: 'exec node "${RUNNER_TEMP}/gh-aw/security-review-native/security-review-driver.mjs" "${RUNNER_TEMP}/gh-aw/bin/copilot"'
+  harness:
+    max-retries: 0
+    watchdog-timeout: 600
 imports:
   - .github/agents/ghaw-pr-security.agent.md
   - shared/ghaw-pr-security-tools.md
@@ -220,6 +224,19 @@ safe-outputs:
     create-issue: false
 
 steps:
+  - name: Install pinned CLI for the trusted security driver
+    shell: bash
+    env:
+      GH_HOST: github.com
+    run: |
+      set -euo pipefail
+      bash "${RUNNER_TEMP}/gh-aw/actions/install_copilot_cli.sh" 1.0.90
+      binary="$(command -v copilot)"
+      [ -x "$binary" ]
+      mkdir -p "$RUNNER_TEMP/gh-aw/bin"
+      cp "$binary" "$RUNNER_TEMP/gh-aw/bin/copilot"
+      chmod 755 "$RUNNER_TEMP/gh-aw/bin/copilot"
+
   - name: Restore trusted runtime imports after immutable head checkout
     shell: bash
     env:
@@ -245,6 +262,10 @@ steps:
       trusted_validator="$RUNNER_TEMP/security-review.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review.mjs" > "$trusted_validator"
       cp "$trusted_validator" "$RUNNER_TEMP/gh-aw/security-review-check.mjs"
+      driver_dir="$RUNNER_TEMP/gh-aw/security-review-native"
+      mkdir -p "$driver_dir"
+      cp "$trusted_validator" "$driver_dir/security-review.mjs"
+      git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review-driver.mjs" > "$driver_dir/security-review-driver.mjs"
       node "$trusted_validator" scope \
         --base "$EXPECTED_BASE_SHA" \
         --head "$EXPECTED_HEAD_SHA" \
@@ -389,27 +410,27 @@ base `${{ github.event.inputs.comparison_base_sha }}` and immutable head
 
 Review every applicable changed trust boundary. Only a HIGH/high-confidence
 finding with strong repository evidence, a minimal patch to an existing
-`tools/wta/src/**/*.rs` file, and independent source review `SOURCE_PASS` may be
-marked `proposed`. Never mark an agent-authored result `fixed`. The trusted
-post-step alone can promote a proposal after final-patch validation passes and
-the reviewed patch digest still matches. All other repairs remain blocked with
-guidance.
+`tools/wta/src/**/*.rs` file may be submitted as a candidate marked `proposed`,
+with `review.status: pending`. Never claim `SOURCE_PASS` or mark an
+agent-authored result `fixed`. The trusted driver must obtain independent source
+approval before native post-validation can accept a proposal, and the trusted
+post-step alone can promote it after final-patch validation passes and the
+reviewed patch digest still matches. All other repairs remain blocked with guidance.
 Write proposed source changes only with `write-security-repair`; generic file
 editing is disabled. Native scope/path checks reject report, workflow, Git
 metadata, new-file and unrelated destinations.
 
-For a proposed repair, invoke the registered `ghaw-pr-security-reviewer` after the
-final edit. Pass the expected immutable `headSha`, native `patchSha256` from
-`inspect-security-repair`, comparison base, finding hypothesis, and required
-validation plan. The reviewer has only read-only native inspection capabilities;
-it must independently fetch the full original diff, base/head source traces
-and invariants, and full final candidate through those tools, then compare its
-own native head/digest with the expected bindings. Parent-copied source and
-patch text is not independent proof. Missing or incomplete native evidence
-leaves the repair blocked. Record `review.status: source-pass` only
-for explicit `SOURCE_PASS` bound to that exact native digest and immutable head.
-Any later edit invalidates approval and requires fresh inspection and review.
-Source approval does not claim that later native tests already passed.
+Do not invoke another agent. After your invocation finishes, the trusted driver
+alone launches the fixed `ghaw-pr-security-reviewer` profile for a candidate.
+It supplies the immutable head, native final patch digest, comparison base,
+finding hypotheses, and required validation plans from the validated candidate.
+The reviewer has only read-only native inspection capabilities and must fetch
+the full original diff, base/head source traces and invariants, and full final
+candidate itself. Parent-copied source and patch text is not independent proof.
+Only the trusted driver can record `review.status: source-pass` after checking
+the reviewer's successful native reads and explicit matching `SOURCE_PASS`.
+Missing or incomplete native evidence fails closed. Source approval does not
+claim that later native tests already passed.
 
 Complete the prepared `/tmp/gh-aw/agent/security-findings.json` exactly as the
 skill specifies, preserve its native identity fields, and list every modified
@@ -426,33 +447,3 @@ validated patch exists. Never publish code or add a PR comment: the trusted
 controller consumes the validated artifact and performs the mutually exclusive
 fast-forward repair or guidance-comment operation. Remaining HIGH findings stay
 blocking with a concrete reason.
-
-## agent: `ghaw-pr-security-reviewer`
----
-description: Independently verifies a proposed security finding and repair
-tools: ['read', 'mcpscripts/read_security_diff', 'mcpscripts/read_security_source', 'mcpscripts/inspect_security_repair']
----
-
-Re-derive the original finding from the immutable comparison-base/head patch,
-then inspect the proposed final patch and required validation plan. Do not trust
-the repair agent's severity, confidence, selected lines, summary, or copied code.
-Use your own read-only native tools to fetch the FULL original diff with
-`read-security-diff`, base/head source and invariant context with
-`read-security-source`, and FULL candidate patch with native digest and immutable
-head with `inspect-security-repair`. Compare that native head/digest to the
-expected values supplied by the parent. Do not replace these calls with parent
-excerpts or summaries. Use bounded reads when output is incomplete.
-This is independent source reasoning, not permission to execute code or write.
-Return `FAIL` if native source proof, full patch context, or matching
-identity/digest is missing; do not claim independence based on the parent's
-conclusions. Return
-`SOURCE_PASS` only when every proposed finding is HIGH/high-confidence, the
-original regression is proven, the patch is minimal and preserves intended
-behavior, the validation plan addresses the regression, no lower-severity issue
-was edited, and no new source-level security regression was introduced. Bind
-the result to the immutable head and exact patch digest. Do not claim later
-native tests passed. If a security claim requires unavailable runtime proof,
-return `FAIL` with the missing evidence; ordinary test success cannot substitute
-for that proof. Otherwise return `FAIL` with concise, non-secret findings.
-Do not execute PR code, edit, or publish.
-## end agent: `ghaw-pr-security-reviewer`

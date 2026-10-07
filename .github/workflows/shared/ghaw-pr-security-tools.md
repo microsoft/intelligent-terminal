@@ -1,12 +1,12 @@
 ---
 mcp-scripts:
   submit-security-report:
-    description: 'Validate and write one security report to its fixed native destination; accepts data, never commands.'
+    description: 'Validate and write one guidance report or pending repair candidate to its fixed native destination; accepts data, never commands.'
     inputs:
       report_json:
         type: string
         required: true
-        description: 'Complete report JSON preserving the native immutable identity and report contract.'
+        description: 'Complete report JSON preserving immutable identity; repair candidates await trusted independent review and cannot submit source approval.'
     env:
       SECURITY_NATIVE_DIR: ${{ runner.temp }}/gh-aw
     script: |

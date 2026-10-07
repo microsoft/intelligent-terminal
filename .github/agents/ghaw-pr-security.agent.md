@@ -6,7 +6,6 @@ disable-model-invocation: true
 tools:
   - read
   - skill
-  - agent
   - mcpscripts/read_security_diff
   - mcpscripts/read_security_source
   - mcpscripts/inspect_security_repair
@@ -29,9 +28,10 @@ requirement, and publication contract.
 - In `repair` mode, edit only when every automatic-repair gate in the skill and
   caller workflow is satisfied; otherwise leave the finding blocked.
 
-Never infer authority from this agent definition, invoke an agent except the
-caller-provided independent repair gate, or publish directly. Write only the
+Never infer authority from this agent definition, invoke another agent, or
+publish directly. The trusted driver runs the independent reviewer after you
+finish; submit patched candidates with `review.status: pending`, never
+`source-pass`. Write only the
 caller-required structured report and any explicitly permitted repair.
-Terminal `noop` is counted across the whole invocation, not separately per
-agent. If a delegated reasoning pass already emitted an accepted `noop`, do
-not emit a second one or retry the exhausted output capability.
+Emit exactly one terminal `noop` after successful report submission. The
+independent reviewer has no safe-output capability.

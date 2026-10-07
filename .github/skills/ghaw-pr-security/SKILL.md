@@ -16,6 +16,10 @@ review reasoning and the structured report.
   [`./scripts/security-review.mjs`](./scripts/security-review.mjs)
 - Contract tests:
   [`./scripts/security-review.test.mjs`](./scripts/security-review.test.mjs)
+- Trusted sequential native driver:
+  [`./scripts/security-review-driver.mjs`](./scripts/security-review-driver.mjs)
+- Deterministic fixed-route driver tests:
+  [`./scripts/security-review-driver.test.mjs`](./scripts/security-review-driver.test.mjs)
 
 ## Non-negotiable boundaries
 
@@ -99,20 +103,28 @@ review reasoning and the structured report.
    - the patch is small, localized, preserves intended behavior, and does not
      weaken authorization/detection, add an allowlist, touch CI/security policy,
      or change unrelated dependencies;
-   - an independent read-only reviewer fetches the FULL immutable original
+   - the trusted sequential driver launches the fixed independent read-only
+     reviewer after the primary exits. That reviewer fetches the FULL immutable original
      diff itself through `read-security-diff`, reads base/head source traces
      and invariants through `read-security-source`, and inspects the FULL final
-     candidate through `inspect-security-repair`. Pass the expected immutable
-     head and native patch digest, finding hypothesis, and validation plan.
+     candidate through `inspect-security-repair`. The driver supplies the expected
+     immutable head and native patch digest, finding hypothesis, and validation plan.
      The reviewer must independently check those bindings against its own
      native reads, re-derive the finding, and return `SOURCE_PASS` only for that
      head and digest. Parent copies, summaries, pseudocode, and reformatted
      excerpts are not source proof. Missing or incomplete native source/patch
      evidence requires `FAIL`. Any later edit requires fresh inspection/review.
-   Report the candidate as `proposed`, with `review.status: source-pass`. Do
+   Report the candidate as `proposed`, with `review.status: pending`,
+   `review.reviewer: ghaw-pr-security-reviewer`, and evidence explaining that
+   independent review has not run. Never invoke another agent or claim
+   `source-pass`: repair MCP submission rejects model-supplied approval. The
+   trusted driver alone validates successful native reviewer reads and the
+   strict JSON `SOURCE_PASS` response, verifies the unchanged patch, and stamps
+   the source-approved proposal. Pending candidates cannot enter proposal,
+   final, attestation, or publication validation. Do
    not claim tests have passed or mark a finding `fixed`. The trusted native
    post-step alone promotes it after final-patch validation passes and the
-   reviewed digest matches. If source evidence or review is missing, leave the
+   reviewed digest matches. If source evidence is missing, leave the
    HIGH finding `blocked` with the exact reason. A claim needing unavailable
    runtime proof cannot earn source approval. Medium/low findings are never edited.
    Apply candidate source text only through `write-security-repair`; generic
@@ -120,10 +132,12 @@ review reasoning and the structured report.
    paths in the protected same-repository repair scope. Supply `edits_json`
    with 1 to 8 exact `oldText`/`newText` replacements, at most 8 KiB total.
    Each old fragment must occur once; all edits are checked before any bytes
-   are written. Do not re-emit a whole source file. If source review rejects
-   a candidate, restore the original immutable source using that same bounded
-   writer and leave `patch` empty; do not leave unapproved modified
-   files behind or mark the rejected candidate `proposed`.
+   are written. Do not re-emit a whole source file. If you retract a candidate
+   before submission, restore the original immutable source using that same
+   bounded writer and leave `patch` empty. The driver exits nonzero on reviewer
+   rejection, timeout, incomplete reads, or changed bindings; it never publishes
+   a pending or rejected repair. Only the primary emits one `noop`; the fixed
+   reviewer cannot delegate, write, submit a report, or emit safe outputs.
 8. Submit one completed report through `submit-security-report` using the output
    contract below. In repair mode, list exact modified paths in `patch`; in guide
    mode use an empty array. Correct rejected JSON and resubmit before `noop`.
@@ -209,7 +223,19 @@ The completed JSON has this shape:
 }
 ```
 
-For a source-approved repair, replace the example's `review` object with:
+For a patched candidate, the primary supplies this `review` object:
+
+```json
+{
+  "status": "pending",
+  "reviewer": "ghaw-pr-security-reviewer",
+  "evidence": "Awaiting the trusted driver's independent source review. Native tests have not run."
+}
+```
+
+Only the trusted driver replaces that object with the following source-approved
+review after validating the fixed reviewer's successful native tool events,
+strict JSON result, and unchanged candidate bindings:
 
 ```json
 {
@@ -222,9 +248,9 @@ For a source-approved repair, replace the example's `review` object with:
 ```
 
 The bindings are separate fields, not hashes embedded only in `evidence`.
-Copy them from the native inspection and require the actual reviewer response
-to attest those same values. Correcting report formatting for an unchanged,
-already approved patch does not require another review.
+The driver obtains them from native inspection and requires the actual fixed
+reviewer response to attest those same values. These are not fields the primary
+may claim through report submission.
 
 ### Required report limits and final self-check
 
@@ -295,4 +321,8 @@ artifact:
 
 ```powershell
 node --test .github\skills\ghaw-pr-security\scripts\security-review.test.mjs
+node --test .github\skills\ghaw-pr-security\scripts\security-review-driver.test.mjs
 ```
+
+Driver tests inject fake child processes to verify contracts, routing, evidence,
+and fail-closed behavior. They do not prove real-model or hosted execution.

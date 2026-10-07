@@ -37,7 +37,10 @@ Rename/copy classification includes both source and destination paths, so moving
 a sensitive file into an unrelated directory does not suppress review. All
 `.github/**` automation, including policies and instructions, is included in
 both triggering and classification. The `tools/**` surface also covers build
-entrypoints such as `tools/razzle.cmd`, not only WTA. Report validation rejects common bearer
+entrypoints such as `tools/razzle.cmd`, not only WTA.
+Root `.cargo/**` configuration is included in both the controller trigger and
+build-tooling classification; `.cargo`-only and mixed scopes are guidance-only,
+never eligible for automatic Rust repair. Report validation rejects common bearer
 and labeled session-capability forms without claiming universal secret detection.
 Each worker rematerializes the validator from `github.workflow_sha`, not from
 agent-edited bytes.
@@ -50,16 +53,40 @@ mechanical scope/report validation. Both also select that native primary with
 the CLI's default primary or its generic security-review delegation. Both pin
 CLI 1.0.90, matching the actual restricted-model validation rather than relying
 on the compiler fallback or a changing compatibility-map selection.
-The primary profile explicitly lists only trusted-input reads, skill/agent
+The primary profile explicitly lists only trusted-input reads, skill
 invocation, the five native capabilities and `safeoutputs/noop`. Selecting a
 custom profile without a tool list would otherwise expose the CLI's default
 shell/edit tools, even when the workflow supplies only native MCP approvals.
 The workflow selects `guide` or `repair`
 mode and supplies the corresponding tools, so review-only and repair behavior
-do not require duplicate primary agents. The repair workflow embeds only its
-independent read-only repair gate as an inline subagent. Installing the agent
-and skill through gh-aw keeps them tied to the trusted workflow revision,
-rather than trusting PR-edited copies.
+do not require duplicate primary agents. Neither primary nor reviewer exposes
+generic delegation. The guide also excludes `task`, `read_agent`, `write_agent`,
+and `list_agents` in the native CLI invocation.
+
+Repair uses a trusted sequential driver inside the existing agent sandbox.
+After the primary exits, the driver validates its pending candidate and alone
+launches the fixed `ghaw-pr-security-reviewer` profile. The reviewer has only
+trusted reads and the three read-only native inspection capabilities; it cannot
+edit, dispatch another agent, submit reports, or emit safe outputs. The driver
+requires successful native diff/source/candidate reads and a structured
+`SOURCE_PASS` matching the immutable head and final patch digest before stamping
+source approval. Model-authored approval is rejected by report submission.
+Missing evidence, failed review, malformed output, or subprocess failure stops
+the repair rather than accepting a prompt-only reviewer restriction.
+
+The driver's code and validator are rematerialized from the trusted workflow
+revision into the sandbox's read-only native mount. `engine.command` disables
+the compiler's ordinary CLI installation, so the repair workflow explicitly
+reuses the same pinned official installer and stages its executable before
+inference. The compiler's detector remains on its ordinary CLI execution path,
+not the security driver. Installing the agents and skill through gh-aw keeps
+them tied to the trusted workflow revision rather than PR-edited copies.
+Each driver subprocess has a nine-minute bound. The outer harness inactivity
+watchdog is ten minutes. A fixed, non-secret phase-transition diagnostic resets
+its activity timer before each child launch, so the primary's accepted terminal
+`noop` cannot prematurely end an independent review within its bound.
+Harness retries are disabled to avoid replaying a completed primary and
+exhausting its one-output capability.
 
 The report contract limits findings to changed files and assigns stable
 `ITSEC-<hash>` IDs from rule/category/path/line. It independently enforces:
@@ -81,11 +108,13 @@ confidence and strong evidence, the patch is minimal and inside existing
 `tools/wta/src/**/*.rs` files, applicable final validation passes, no check
 is failed/blocked, an independent reviewer returns `SOURCE_PASS` for the immutable
 head and exact final patch digest, and the live PR head still equals the
-reviewed SHA. This model review is defense in depth, not a separate credential
-or authorization principal; native checks and safe-output policy remain the
-mechanical boundary. The agent reports only `proposed` repairs. Independent
-source approval occurs before trusted test execution and does not claim test
-success. Native attestation alone promotes an exact, source-approved proposal
+reviewed SHA. Model reasoning remains defense in depth, not a separate
+credential principal; trusted invocation, native checks and safe-output policy
+provide the mechanical boundaries. The primary reports only pending
+`proposed` candidates. A pending candidate cannot enter proposal validation,
+native test attestation, or publication until the trusted driver records
+independent source approval. That approval occurs before trusted test execution
+and does not claim test success. Native attestation alone promotes an exact, source-approved proposal
 to `fixed` after final-patch validation passes. After inference, the trusted post-step creates a fresh
 checkout of the immutable head, recomputes scope from the dispatch SHAs, copies
 only reported regular non-executable WTA source files without mode changes,
