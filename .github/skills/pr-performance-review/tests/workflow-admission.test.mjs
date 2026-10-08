@@ -8,6 +8,20 @@ import { captureReviewSummary, readReviewSummary } from '../scripts/performance-
 
 const runtime = fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url));
 
+test('repair report validation belongs to trusted post-processing, not a model-side shell', () => {
+    const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
+    const agent = fs.readFileSync(new URL('../../../agents/ghaw-pr-performance.agent.md', import.meta.url), 'utf8');
+    const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
+    assert.match(workflow, /Do not run an\s+agent-side validator or renderer/);
+    assert.match(workflow, /Write the fixed report and summary through the permitted file-editing tool/);
+    assert.match(agent, /repair caller validates the fixed JSON report in trusted post-processing before\s+native tests/);
+    assert.match(compiled, /performance-trusted\.mjs\\" gate/);
+    assert.match(compiled, /--report \/tmp\/gh-aw\/performance-report\.json/);
+    assert.match(compiled, /--analysis-input/);
+    assert.match(compiled, /Invalid sealed native proposal/);
+    assert.doesNotMatch(workflow, /validate it with `--mode repair`/);
+});
+
 test('compiled repair runs two read-only Windows analyses before inference but failed analysis cannot skip the reviewer', () => {
     const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
     const analysis = compiled.match(/^  performance_analysis:\r?\n([\s\S]*?)(?=^  [a-z_]+:)/m)?.[1];

@@ -65,9 +65,10 @@ classification, report validation, card rendering, and publication gating.
 6. Produce the human-readable summary below before preparing the mechanical
    version-1 report. Repair writes the caller's fixed summary and report files;
    fork guidance submits its summary and structured report through the declared
-   tool without general shell or file-writing access. Validate the mechanical
-   report through the permitted interface. Request exactly the output allowed
-   by the caller.
+   tool without general shell or file-writing access. Follow the caller's
+   mechanical validation contract: gh-aw repair uses trusted post-processing,
+   while fork guidance uses its scoped report tool. Request exactly the output
+   allowed by the caller.
 
 ## Scoped performance rules
 
@@ -414,18 +415,26 @@ Use `pending_validation` for eligible HIGH proposals, `action_required` when unr
 `advisory` for only MEDIUM/LOW, `pass` for no findings, and `blocked` when a
 check errors.
 
-Run the validator and renderer before any safe output:
+The gh-aw repair caller validates the fixed mechanical report in trusted
+post-processing before sealing, native validation, or publication. Write that
+report and the explicit Markdown summary through permitted file-editing tools,
+then request only the caller-allowed native jobs or noop. Do not require a
+duplicate agent-side shell validator or renderer, and never treat a shell error
+as proof that native source analysis is incomplete. The native report, source,
+test-selector, and publication gates remain mandatory.
+
+A shell-disabled fork caller must use its scoped MCP report tool and GitHub
+read tools; it never executes a shell or materializes fork source as executable
+code. If an operation is denied, use the declared interface instead of trying
+alternate executables or bypassing trusted validation.
+
+For standalone callers that explicitly permit local report inspection, these
+commands remain available; they are not required model steps in gh-aw repair:
 
 ```powershell
 pwsh -NoProfile -Command "node '.github/skills/pr-performance-review/scripts/performance-review.mjs' validate --report '<report>' --mode '<repair-or-guide>' --pr '<number>' --base '<sha>' --head '<sha>'"
 pwsh -NoProfile -Command "node '.github/skills/pr-performance-review/scripts/performance-review.mjs' render --report '<report>' --mode '<repair-or-guide>' --pr '<number>' --base '<sha>' --head '<sha>'"
 ```
-
-The PowerShell examples above apply only to the repair caller. A shell-disabled
-fork caller must use its scoped MCP report tool and GitHub read tools; it never
-executes a shell or materializes fork source as executable code. If an
-operation is denied, use the declared interface instead of trying alternate
-executables or bypassing validation.
 
 ## Gotchas
 

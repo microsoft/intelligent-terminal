@@ -599,19 +599,26 @@ separate checks table; state "No actionable findings" without invented rows.
 These are review-time proposals: never claim `Fixed` before trusted publication.
 The Markdown summary is diagnostic only and cannot authorize repair or native success.
 
-Write `/tmp/gh-aw/performance-report.json`, validate it with `--mode repair`,
-and render it for inspection. Medium/low findings are advice only. Unresolved
+Write `/tmp/gh-aw/performance-report.json` using the skill's mechanical contract.
+Trusted post-processing validates it with repair mode before sealing or
+allowing native validation; it rejects invalid reports. Do not run an
+agent-side validator or renderer: the human summary is already your explicit
+Markdown artifact, not reconstructed renderer output.
+Medium/low findings are advice only. Unresolved
 or unsafe HIGH findings are not edited. Edit only one or more original
 candidate files when the skill's HIGH repair eligibility is fully met, identify the
 supported existing focused WTA test selector, and record a validation plan.
 Do not execute product tests on Linux or invent native test results.
-Format the source proposal using standard `cargo fmt`, inspect the resulting
-diff, and keep only permitted repair changes. Windows validation will check
+Keep the source proposal formatted, inspect the resulting diff, and keep only
+permitted repair changes. Use standard `cargo fmt` if the caller's permitted
+formatter is available; otherwise follow the existing Rust formatting without
+claiming that a formatter ran. Windows validation will check
 formatting, run that focused selector, and run the required full WTA suite;
 all stages must pass on the sealed proposal.
-Use the skill's permitted PowerShell route for report writes and checker
-execution. Direct Node command variants are not permitted; a denied call is
-not permission to skip validation or try alternate executable names.
+Write the fixed report and summary through the permitted file-editing tool.
+Direct Node command variants are not permitted; a denied operation is not
+permission to try alternate executable names or bypass trusted validation.
+Agent-side shell availability is not native validation authority.
 
 For an eligible WTA Rust repair, mark each HIGH repair as `proposed`, status
 `pending_validation`. Set `validationPlan.type` to `wta-unit` and select the
