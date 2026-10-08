@@ -22,15 +22,21 @@ update, and built-in native CLI panes retain provider rebinding.
 
 For reports attributed to the same pane, a built-in provider takes precedence
 over a custom provider. Among built-in reports, the newest activity timestamp
-wins, including when providers or session IDs differ. Equal or missing timestamps
-use the latest received report. Live updates and refreshed session snapshots use
-the same rule, and tab/pane icons follow the selected reported provider rather
+wins, including when providers or session IDs differ. Live updates with equal or
+missing timestamps use the latest received report. Refreshed session snapshots
+share the provider/recency rule and preserve that known winner on ties as described
+below. Tab/pane icons follow the selected reported provider rather
 than remaining fixed to the agent originally launched. No nested-agent stack is
 inferred.
 Once the selected session has ended, a newer session can replace it, including
 a custom-provider session. A completed built-in session must not permanently
-mask a new session using the same pane; custom reports about that same completed
-session still cannot override its built-in report.
+mask a new session using the same pane or displace it when an older ended report
+arrives later; custom reports about that same completed session still cannot
+override its built-in report.
+Live reports with equal or missing timestamps use receive order. Snapshot rows
+have no receive order, so a tied refresh preserves the known pane winner. With
+no known winner, provider/session ordering provides a stable fallback instead
+of letting unordered snapshot rows repeatedly change the icon.
 
 ## One-time Sidebar upgrade and introduction
 

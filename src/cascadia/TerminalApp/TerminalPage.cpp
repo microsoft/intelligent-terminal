@@ -1455,19 +1455,45 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_ShouldReplaceReportedAgentState(const _RichTabAgentInfo& existing, const _RichTabAgentInfo& incoming)
     {
-        const auto newSessionAfterExit = existing.sessionId != incoming.sessionId &&
-                                         (existing.status == "Ended" || existing.status == "Historical");
-        if (!newSessionAfterExit && !_ShouldUseIncomingAgentProvider(existing.providerId, incoming.providerId))
+        const auto differentSessionsWithCompletedSession = existing.sessionId != incoming.sessionId &&
+                                                           (existing.status == "Ended" || existing.status == "Historical" ||
+                                                            incoming.status == "Ended" || incoming.status == "Historical");
+        if (!differentSessionsWithCompletedSession && !_ShouldUseIncomingAgentProvider(existing.providerId, incoming.providerId))
         {
             return false;
         }
-        if (!newSessionAfterExit && _IsBuiltinAgentProviderId(incoming.providerId) && !_IsBuiltinAgentProviderId(existing.providerId))
+        if (!differentSessionsWithCompletedSession && _IsBuiltinAgentProviderId(incoming.providerId) && !_IsBuiltinAgentProviderId(existing.providerId))
         {
             return true;
         }
         return !existing.lastActivityAtMs ||
                !incoming.lastActivityAtMs ||
                incoming.lastActivityAtMs >= existing.lastActivityAtMs;
+    }
+
+    bool TerminalPage::_ShouldReplaceSnapshotAgentState(const _RichTabAgentInfo& existing, const _RichTabAgentInfo& incoming, const _RichTabAgentInfo* lastReceived)
+    {
+        if (!_ShouldReplaceReportedAgentState(existing, incoming))
+        {
+            return false;
+        }
+        if (!_ShouldReplaceReportedAgentState(incoming, existing))
+        {
+            return true;
+        }
+        if (lastReceived)
+        {
+            const auto matches = [&](const auto& info) {
+                return info.sessionId == lastReceived->sessionId &&
+                       info.providerId == lastReceived->providerId &&
+                       info.paneSessionId == lastReceived->paneSessionId;
+            };
+            if (matches(incoming) != matches(existing))
+            {
+                return matches(incoming);
+            }
+        }
+        return std::tie(existing.providerId, existing.sessionId) < std::tie(incoming.providerId, incoming.sessionId);
     }
 
     using SelectedCustomModel = std::pair<
@@ -11527,6 +11553,7 @@ namespace winrt::TerminalApp::implementation
     {
         const auto weakThis = get_weak();
         const auto dispatcher = Dispatcher();
+        const auto lastReceivedByPane = _richTabAgentStatusByPaneId;
 
         co_await winrt::resume_background();
 
@@ -11578,13 +11605,15 @@ namespace winrt::TerminalApp::implementation
                                                   std::optional<uint64_t>{ row["last_activity_at_ms"].asUInt64() } :
                                                   std::nullopt;
                 const auto paneId = _TryParsePaneSessionId(row.get("pane_session_id", "").asString());
+                const auto lastReceived = paneId ? lastReceivedByPane.find(*paneId) : lastReceivedByPane.end();
+                const auto preferred = lastReceived != lastReceivedByPane.end() ? &lastReceived->second : nullptr;
                 if (const auto sessionId = row.get("session_id", "").asString(); !sessionId.empty())
                 {
                     auto incoming = _RichTabAgentInfo{ sessionId, status, providerId, lastActivityAtMs, paneId };
                     const auto existing = statusesBySessionId.find(sessionId);
                     if (existing == statusesBySessionId.end() ||
                         existing->second.paneSessionId != paneId ||
-                        _ShouldReplaceReportedAgentState(existing->second, incoming))
+                        _ShouldReplaceSnapshotAgentState(existing->second, incoming, preferred))
                     {
                         if (providerId.empty() && existing != statusesBySessionId.end() &&
                             existing->second.paneSessionId == paneId)
@@ -11602,7 +11631,7 @@ namespace winrt::TerminalApp::implementation
                     const auto sameSession = existing != statusesByPaneId.end() &&
                                              existing->second.sessionId == rowSessionId;
                     if (existing == statusesByPaneId.end() ||
-                        _ShouldReplaceReportedAgentState(existing->second, incoming))
+                        _ShouldReplaceSnapshotAgentState(existing->second, incoming, preferred))
                     {
                         if (providerId.empty() && sameSession)
                         {

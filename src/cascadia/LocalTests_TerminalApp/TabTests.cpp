@@ -374,6 +374,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabProgressPercentUsesLocaleFormatting);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
         TEST_METHOD(LatestBuiltinAgentReportWinsForPane);
+        TEST_METHOD(AgentSnapshotTiesPreserveLastReceivedPaneReport);
         TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
         TEST_METHOD(BottomBarSessionsButtonDispatchesExistingAction);
         TEST_METHOD(BottomBarSessionsButtonTracksVisibleView);
@@ -5771,6 +5772,7 @@ namespace TerminalAppLocalTests
                 ended.status = "Ended";
                 candidate.sessionId = "new-custom-session";
                 VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(ended, candidate));
+                VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(candidate, ended));
                 candidate.lastActivityAtMs = 1000;
                 VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(ended, candidate));
                 candidate.lastActivityAtMs = 9999;
@@ -5786,6 +5788,41 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(pane->GetContent().Icon(), tab->Icon());
             }
         });
+    }
+
+    void TabTests::AgentSnapshotTiesPreserveLastReceivedPaneReport()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        const winrt::guid paneId{ L"{1ab11111-2222-3333-4444-555555555555}" };
+        Page::_RichTabAgentInfo copilot{ "copilot-session", "Working", "copilot", 1000, paneId };
+        Page::_RichTabAgentInfo claude{ "claude-session", "Attention", "claude", 1000, paneId };
+        VERIFY_IS_TRUE(Page::_ShouldReplaceReportedAgentState(copilot, claude));
+        VERIFY_IS_TRUE(Page::_ShouldReplaceSnapshotAgentState(copilot, claude, &claude));
+        VERIFY_IS_FALSE(Page::_ShouldReplaceSnapshotAgentState(claude, copilot, &claude));
+        VERIFY_IS_FALSE(Page::_ShouldReplaceSnapshotAgentState(copilot, claude, &copilot));
+        VERIFY_IS_TRUE(Page::_ShouldReplaceSnapshotAgentState(claude, copilot, &copilot));
+        VERIFY_ARE_NOT_EQUAL(
+            Page::_ShouldReplaceSnapshotAgentState(copilot, claude, nullptr),
+            Page::_ShouldReplaceSnapshotAgentState(claude, copilot, nullptr));
+        auto otherPaneWinner = claude;
+        otherPaneWinner.paneSessionId = winrt::guid{ L"{2ab11111-2222-3333-4444-555555555555}" };
+        VERIFY_ARE_EQUAL(
+            Page::_ShouldReplaceSnapshotAgentState(copilot, claude, nullptr),
+            Page::_ShouldReplaceSnapshotAgentState(copilot, claude, &otherPaneWinner));
+        claude.lastActivityAtMs = 2000;
+        VERIFY_IS_TRUE(Page::_ShouldReplaceSnapshotAgentState(copilot, claude, &copilot));
+        VERIFY_IS_FALSE(Page::_ShouldReplaceSnapshotAgentState(claude, copilot, &copilot));
+        copilot.lastActivityAtMs = std::nullopt;
+        claude.lastActivityAtMs = std::nullopt;
+        VERIFY_IS_TRUE(Page::_ShouldReplaceSnapshotAgentState(copilot, claude, &claude));
+        VERIFY_IS_FALSE(Page::_ShouldReplaceSnapshotAgentState(claude, copilot, &claude));
+        VERIFY_ARE_NOT_EQUAL(
+            Page::_ShouldReplaceSnapshotAgentState(copilot, claude, nullptr),
+            Page::_ShouldReplaceSnapshotAgentState(claude, copilot, nullptr));
+        copilot.status = "Ended";
+        Page::_RichTabAgentInfo custom{ "new-custom-session", "Working", "custom:wrapper", std::nullopt, paneId };
+        VERIFY_IS_TRUE(Page::_ShouldReplaceSnapshotAgentState(copilot, custom, &custom));
+        VERIFY_IS_FALSE(Page::_ShouldReplaceSnapshotAgentState(custom, copilot, &custom));
     }
 
     void TabTests::VerticalTabHistoryRelativeAge()
