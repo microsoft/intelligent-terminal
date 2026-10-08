@@ -16,9 +16,10 @@ replaces the tab list. The one-time upgrade described below changes the initial
 `tabLayout`; subsequent user choices, horizontal agent-session behavior, and
 other agent/delegation shortcuts remain supported.
 
-Custom native CLI launch identities remain `custom:<name>` when their underlying
-CLI reports activity as a built-in provider. Activity/session bindings still
-update, and built-in native CLI panes retain provider rebinding.
+Native CLI launch identities remain paired with their original launch commands
+when hooks report activity from another provider, including nested agents.
+Activity/session bindings still rebind without overwriting persisted launch
+metadata for either built-in or custom providers.
 
 ## One-time Sidebar upgrade and introduction
 

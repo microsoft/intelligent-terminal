@@ -11682,6 +11682,10 @@ namespace TerminalAppLocalTests
                 auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
                 NewTerminalArgs args;
                 args.NativeAgentProviderId(provider);
+                if (std::wstring_view{ provider } == L"copilot")
+                {
+                    args.Commandline(L"copilot --resume native-launch-conversation");
+                }
                 const auto createdPane = page->_MakePane(args, nullptr, *connection);
                 VERIFY_IS_NOT_NULL(createdPane);
                 const auto contentId = createdPane->GetTerminalControl().ContentId();
@@ -11717,8 +11721,19 @@ namespace TerminalAppLocalTests
                     page->_manager.OnPaneAgentSessionChanged(started);
                     page->OnPaneAgentSessionChanged(started);
                     VERIFY_ARE_EQUAL(winrt::hstring{ L"real-conversation" }, page->_paneAgentSessions.at(paneId).sessionId);
-                    VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, manager->NativeAgentProviderId(contentId));
-                    VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/claude.svg" }, tab->Icon());
+                    VERIFY_ARE_EQUAL(started, manager->AgentSessionEvent(contentId));
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, manager->NativeAgentProviderId(contentId));
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/copilot.svg" }, tab->Icon());
+                    const auto saved = pane->GetContent().GetNewTerminalArgs(BuildStartupKind::Persist).as<NewTerminalArgs>();
+                    VERIFY_ARE_EQUAL(args.Commandline(), saved.Commandline());
+                    VERIFY_ARE_EQUAL(args.NativeAgentProviderId(), saved.NativeAgentProviderId());
+                    const auto unknownActivity = _keepRunningHook(paneId, "agent.session.start", "unknown-activity", "not-a-provider");
+                    page->_manager.OnPaneAgentSessionChanged(unknownActivity);
+                    VERIFY_ARE_EQUAL(unknownActivity, manager->AgentSessionEvent(contentId));
+                    VERIFY_ARE_EQUAL(args.NativeAgentProviderId(), manager->NativeAgentProviderId(contentId));
+                    const auto savedAfterUnknown = pane->GetContent().GetNewTerminalArgs(BuildStartupKind::Persist).as<NewTerminalArgs>();
+                    VERIFY_ARE_EQUAL(saved.Commandline(), savedAfterUnknown.Commandline());
+                    VERIFY_ARE_EQUAL(saved.NativeAgentProviderId(), savedAfterUnknown.NativeAgentProviderId());
                 }
                 else
                 {
