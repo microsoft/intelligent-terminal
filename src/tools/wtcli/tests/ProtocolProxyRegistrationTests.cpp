@@ -118,7 +118,7 @@ namespace RegistrationFixture
     static constexpr DWORD Cookie = 42;
     static std::vector<IID> mappings;
 
-    static HRESULT WINAPI RegisterClass(REFCLSID clsid, LPUNKNOWN factory, DWORD context, DWORD flags, LPDWORD cookie)
+    static HRESULT WINAPI RegisterClass(REFCLSID clsid, IUnknown* factory, DWORD context, DWORD flags, LPDWORD cookie)
     {
         if (!enabled)
         {
