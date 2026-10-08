@@ -33,6 +33,8 @@ the localization workflow. This prevents newer base-only policy or UI additions
 from being misclassified as feature deletions. Prepared evidence preserves
 `trusted_base_sha` separately from `comparison_base_sha`; trust and publication
 identity still use the caller's immutable revisions.
+Preparation has no worktree-file override: every reviewed blob comes from the
+immutable base/head objects, and every call checks the full instruction boundary.
 Only after deterministic preparation does it switch the worktree to
 the verified immutable head for model inspection. Source preparation never
 imports or executes pull-request code.
@@ -113,6 +115,8 @@ have only one code-publication mode. If a verified static repair was published,
 the check follows that published commit and explicitly states that native smoke
 covered the original source revision. A stale run remains associated with its
 reviewed commit and does not mark a newer unreviewed head as passing.
+If a repair is reported but the PR still points at the original reviewed head,
+the check fails rather than claiming that the repair is confirmed.
 
 This reporting is installed with the workflow in the trusted base. The manually
 linked historical sample PR is not evidence that this newly added reporter has

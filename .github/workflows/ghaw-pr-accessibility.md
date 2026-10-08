@@ -190,6 +190,10 @@ jobs:
               currentSha === publishedSha && process.env.PUBLICATION_RESULT === 'success' &&
               process.env.AGENT_RESULT === 'success' && fixedCount > 0;
             const stale = currentSha !== reviewedSha && !matchesPublishedHead;
+            if (fixedCount > 0 && currentSha === reviewedSha && !matchesPublishedHead) {
+              conclusion = 'failure';
+              reasons.push('The validated repair is not confirmed on the current PR head.');
+            }
             if (stale) {
               if (conclusion === 'success') conclusion = 'neutral';
               reasons.push('The PR head changed; this report covers the earlier reviewed revision only.');

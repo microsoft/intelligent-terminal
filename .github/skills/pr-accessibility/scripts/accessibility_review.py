@@ -305,50 +305,38 @@ def _verify_instruction_boundary(root: Path, base: str, head: str) -> None:
         )
 
 
-def prepare(root: Path, base: str, head: str, output: Path, changed_files: Path | None,
+def prepare(root: Path, base: str, head: str, output: Path,
             publication: dict[str, Any] | None = None) -> None:
     if not re.fullmatch(r"[0-9a-fA-F]{40}", head):
         raise ValueError("head SHA must be an exact 40-character hexadecimal value")
-    if changed_files:
-        paths = sorted({_normalize(line) for line in changed_files.read_text(encoding="utf-8").splitlines() if _is_relevant(line)})
-    else:
-        if not re.fullmatch(r"[0-9a-fA-F]{40}", base):
-            raise ValueError("base SHA must be an exact 40-character hexadecimal value")
-        comparison_base = _git(root, "merge-base", base, head).strip()
-        _verify_instruction_boundary(root, comparison_base, head)
-        paths = _changed_paths(root, comparison_base, head)
-    if changed_files:
-        comparison_base = base
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", base):
+        raise ValueError("base SHA must be an exact 40-character hexadecimal value")
+    comparison_base = _git(root, "merge-base", base, head).strip()
+    _verify_instruction_boundary(root, comparison_base, head)
+    paths = _changed_paths(root, comparison_base, head)
 
     findings: list[dict[str, Any]] = []
     surfaces: dict[str, list[str]] = {}
     source_evidence: dict[str, dict[str, Any]] = {}
     for path in paths:
-        if changed_files:
-            candidate = root / path
-            if not candidate.is_file():
-                continue
-            text = candidate.read_text(encoding="utf-8-sig", errors="replace")
-            changed = None
-        else:
-            base_blob = _source_blob(root, comparison_base, path)
-            head_blob = _source_blob(root, head, path)
-            if base_blob is None and head_blob is None:
-                raise ValueError(f"classified changed source is absent from both revisions: {path}")
-            source_evidence[path] = {
-                "change": "deleted" if head_blob is None else "added" if base_blob is None else "modified",
-                "base": base_blob,
-                "head": head_blob,
-                "diff": _git(root, "diff", "--no-renames", "--no-ext-diff", "--no-color", comparison_base, head, "--", path),
-            }
-            if head_blob is None:
-                # Deleted controls are evidence, never head repair candidates.
-                detected = _review_surfaces(path, base_blob["text"], set())
-                if detected:
-                    surfaces[path] = detected
-                continue
-            text = head_blob["text"]
-            changed = _added_lines(root, comparison_base, head, path)
+        base_blob = _source_blob(root, comparison_base, path)
+        head_blob = _source_blob(root, head, path)
+        if base_blob is None and head_blob is None:
+            raise ValueError(f"classified changed source is absent from both revisions: {path}")
+        source_evidence[path] = {
+            "change": "deleted" if head_blob is None else "added" if base_blob is None else "modified",
+            "base": base_blob,
+            "head": head_blob,
+            "diff": _git(root, "diff", "--no-renames", "--no-ext-diff", "--no-color", comparison_base, head, "--", path),
+        }
+        if head_blob is None:
+            # Deleted controls are evidence, never head repair candidates.
+            detected = _review_surfaces(path, base_blob["text"], set())
+            if detected:
+                surfaces[path] = detected
+            continue
+        text = head_blob["text"]
+        changed = _added_lines(root, comparison_base, head, path)
         if Path(path).suffix.lower() == ".xaml":
             findings.extend(_scan_xaml(path, text, changed))
         detected = _review_surfaces(path, text, changed)
@@ -760,7 +748,6 @@ def main() -> int:
     prepare_parser.add_argument("--base", required=True)
     prepare_parser.add_argument("--head", required=True)
     prepare_parser.add_argument("--output", type=Path, required=True)
-    prepare_parser.add_argument("--changed-files", type=Path)
     prepare_parser.add_argument("--publication-branch")
     prepare_parser.add_argument("--publication-repository")
     prepare_parser.add_argument("--publication-pr-number", type=int)
@@ -781,7 +768,7 @@ def main() -> int:
             if any(value is not None for value in (args.publication_branch, args.publication_repository, args.publication_pr_number)):
                 publication = {"head_ref": args.publication_branch, "repository": args.publication_repository,
                                "pr_number": args.publication_pr_number}
-            prepare(args.root, args.base, args.head, args.output, args.changed_files, publication)
+            prepare(args.root, args.base, args.head, args.output, publication)
         else:
             validate(
                 args.root,

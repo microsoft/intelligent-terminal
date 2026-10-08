@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -138,7 +139,7 @@ class PrepareIntegrationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "operating instructions"):
                 MODULE._verify_instruction_boundary(root, trusted_base, head)
             output = root / "prepared.json"
-            MODULE.prepare(root, trusted_base, head, output, None)
+            MODULE.prepare(root, trusted_base, head, output)
             prepared = json.loads(output.read_text())
             self.assertEqual(trusted_base, prepared["trusted_base_sha"])
             self.assertEqual(ancestor, prepared["comparison_base_sha"])
@@ -165,7 +166,7 @@ class PrepareIntegrationTests(unittest.TestCase):
             subprocess.run(["git", "commit", "-qm", "Delete only text"], cwd=root, check=True)
             head = MODULE._git(root, "rev-parse", "HEAD").strip()
             output = root / "prepared.json"
-            MODULE.prepare(root, base, head, output, None)
+            MODULE.prepare(root, base, head, output)
             prepared = json.loads(output.read_text())
             self.assertTrue(prepared["relevant"])
             self.assertEqual([], prepared["static_findings"])
@@ -189,6 +190,34 @@ class PrepareIntegrationTests(unittest.TestCase):
             MODULE._git(root, "commit", "-qm", "base")
             yield workspace, root, path, MODULE._git(root, "rev-parse", "HEAD").strip()
 
+    def test_prepare_uses_immutable_head_despite_dirty_worktree(self):
+        with self.source_fixture() as (workspace, root, path, base):
+            reviewed = b'<Button AutomationProperties.AccessibilityView="Raw" Content="Reviewed" />\n'
+            path.write_bytes(reviewed)
+            MODULE._git(root, "add", ".")
+            MODULE._git(root, "commit", "-qm", "Reviewed UI change")
+            head = MODULE._git(root, "rev-parse", "HEAD").strip()
+            path.write_bytes(b'<Button Content="Mutable worktree" />\n')
+            output = workspace / "prepared.json"
+            MODULE.prepare(root, base, head, output)
+            report = json.loads(output.read_text())
+            relative = path.relative_to(root).as_posix()
+            self.assertEqual(reviewed.decode("utf-8"), report["source_evidence"][relative]["head"]["text"])
+            self.assertEqual("AXSTATIC001", report["static_findings"][0]["rule"])
+
+    def test_prepare_cli_rejects_changed_files_override(self):
+        with self.source_fixture() as (workspace, root, path, base):
+            override = workspace / "files.txt"
+            override.write_text(path.relative_to(root).as_posix(), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "prepare", "--root", str(root),
+                 "--base", base, "--head", base, "--output", str(workspace / "prepared.json"),
+                 "--changed-files", str(override)],
+                capture_output=True, text=True, timeout=30,
+            )
+            self.assertEqual(2, result.returncode)
+            self.assertIn("--changed-files", result.stderr)
+
     def test_deletion_only_preserves_base_evidence_and_allows_unrepaired_high(self):
         with self.source_fixture() as (workspace, root, path, base):
             original = path.read_bytes().decode("utf-8")
@@ -198,9 +227,9 @@ class PrepareIntegrationTests(unittest.TestCase):
             MODULE._git(root, "commit", "-qm", "delete UI")
             head = MODULE._git(root, "rev-parse", "HEAD").strip()
             prepared_path = workspace / "prepared.json"
-            MODULE.prepare(root, base, head, prepared_path, None)
+            MODULE.prepare(root, base, head, prepared_path)
             first = prepared_path.read_text()
-            MODULE.prepare(root, base, head, prepared_path, None)
+            MODULE.prepare(root, base, head, prepared_path)
             self.assertEqual(first, prepared_path.read_text())
             prepared = json.loads(first)
             self.assertTrue(prepared["relevant"])
@@ -249,10 +278,10 @@ class PrepareIntegrationTests(unittest.TestCase):
                 head = MODULE._git(root, "rev-parse", "HEAD").strip()
                 self.assertIn("R100", MODULE._git(root, "diff", "--name-status", "-M", base, head))
                 prepared_path = workspace / "prepared.json"
-                MODULE.prepare(root, base, head, prepared_path, None)
+                MODULE.prepare(root, base, head, prepared_path)
                 prepared = json.loads(prepared_path.read_text())
                 MODULE._git(root, "config", "diff.renames", "false")
-                MODULE.prepare(root, base, head, prepared_path, None)
+                MODULE.prepare(root, base, head, prepared_path)
                 self.assertEqual(prepared, json.loads(prepared_path.read_text()))
                 expected = sorted([old, destination]) if MODULE._is_relevant(destination) else [old]
                 self.assertTrue(prepared["relevant"])
@@ -281,7 +310,7 @@ class PrepareIntegrationTests(unittest.TestCase):
             MODULE._git(root, "commit", "-qm", "delete UI")
             head = MODULE._git(root, "rev-parse", "HEAD").strip()
             prepared_path = workspace / "prepared.json"
-            MODULE.prepare(root, base, head, prepared_path, None)
+            MODULE.prepare(root, base, head, prepared_path)
             prepared = json.loads(prepared_path.read_text())
             signal = MODULE._scan_xaml(relative, original, None)[0]
             prepared["static_findings"] = [signal]
@@ -316,8 +345,8 @@ class PrepareIntegrationTests(unittest.TestCase):
             head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
             first = root / "first.json"
             second = root / "second.json"
-            MODULE.prepare(root, base, head, first, None)
-            MODULE.prepare(root, base, head, second, None)
+            MODULE.prepare(root, base, head, first)
+            MODULE.prepare(root, base, head, second)
             prepared = json.loads(first.read_text())
             self.assertEqual(first.read_text(), second.read_text())
             self.assertEqual(head, prepared["source_sha"])
@@ -916,7 +945,7 @@ class ValidationTests(unittest.TestCase):
         subprocess.run(["git", "commit", "-qm", "Change ambient configuration"], cwd=self.root, check=True)
         head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
         with self.assertRaisesRegex(ValueError, "blocked before agent startup"):
-            MODULE.prepare(self.root, self.head, head, self.workspace / "blocked.json", None)
+            MODULE.prepare(self.root, self.head, head, self.workspace / "blocked.json")
         self.assertFalse((self.workspace / "blocked.json").exists())
 
     def test_source_only_changes_preserve_instruction_boundary(self):
@@ -925,7 +954,7 @@ class ValidationTests(unittest.TestCase):
         subprocess.run(["git", "add", "."], cwd=self.root, check=True)
         subprocess.run(["git", "commit", "-qm", "Change only source"], cwd=self.root, check=True)
         head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
-        MODULE.prepare(self.root, self.head, head, self.workspace / "source-only.json", None)
+        MODULE.prepare(self.root, self.head, head, self.workspace / "source-only.json")
         self.assertTrue((self.workspace / "source-only.json").exists())
 
     def test_git_replacement_refs_do_not_change_reviewed_blobs(self):
@@ -1183,6 +1212,18 @@ vm.runInNewContext('(async () => {' + data.script + '\n})()', {
     def test_fixed_without_published_commit_is_failure(self):
         result = self.report(findings=[{"severity": "HIGH", "disposition": "fixed"}])
         self.assertEqual("failure", result["calls"][0]["conclusion"])
+
+    def test_fixed_report_requires_published_commit_on_current_head(self):
+        result = self.report(findings=[{"severity": "HIGH", "disposition": "fixed"}],
+                             published_sha=self.published_sha)
+        self.assertEqual("failure", result["calls"][0]["conclusion"])
+        self.assertIn("not confirmed on the current PR head", result["summary"])
+
+    def test_fixed_report_for_genuinely_newer_head_retains_stale_handling(self):
+        result = self.report(findings=[{"severity": "HIGH", "disposition": "fixed"}],
+                             published_sha=self.published_sha, current_sha="c" * 40)
+        self.assertEqual("neutral", result["calls"][0]["conclusion"])
+        self.assertEqual(self.reviewed_sha, result["calls"][0]["head_sha"])
 
     def test_failed_code_push_is_failure_even_if_job_succeeded(self):
         result = self.report(push_failures="1")
