@@ -9,7 +9,7 @@ permissions:
   actions: write
   checks: write
   contents: write
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: ghaw-pr-performance-${{ github.event.pull_request.number }}
@@ -308,14 +308,42 @@ jobs:
               "### Review-time agent summary (not native-validation or publication authority)",
               reviewSummary
             ].filter(Boolean).join("\n\n");
-            await github.rest.checks.create({
+            const { data: check } = await github.rest.checks.create({
               ...context.repo,
               name: "Performance review",
               head_sha: head,
               status: "completed",
-              conclusion,
+              conclusion: conclusion === "success" ? "action_required" : conclusion,
               details_url: process.env.CONTROLLER_RUN_URL,
               external_id: `${context.runId}-${context.runAttempt}`,
-              output: { title: "Performance review run report", summary }
+              output: { title: "Performance review run report", summary: `${summary}\n\nConversation delivery: **pending**` }
             });
             await core.summary.addRaw(summary).write();
+            const marker = "<!-- ghaw-pr-performance-report -->";
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo, issue_number: Number(process.env.PR_NUMBER), per_page: 100
+            });
+            const existing = comments.find(comment =>
+              comment.user?.login === "github-actions[bot]" &&
+              comment.body?.startsWith(marker));
+            const { data: currentPr } = await github.rest.pulls.get({
+              ...context.repo, pull_number: Number(process.env.PR_NUMBER)
+            });
+            if (currentPr.head.sha !== head) {
+              core.warning(`Conversation report skipped: reviewed result ${head} is no longer the PR head.`);
+            } else {
+              const body = `${marker}\n## Performance review\n\n${summary.replaceAll("@", "@\u200b")}`;
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  ...context.repo, comment_id: existing.id, body
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  ...context.repo, issue_number: Number(process.env.PR_NUMBER), body
+                });
+              }
+            }
+            await github.rest.checks.update({
+              ...context.repo, check_run_id: check.id, conclusion,
+              output: { title: "Performance review run report", summary }
+            });

@@ -138,11 +138,51 @@ assert.ok(reportMatch, 'the actual PR report script must be extractable');
 const reportScript = new AsyncFunction('github', 'context', 'core', 'process', 'require',
     reportMatch[1].split(/\r?\n/).map(line => line.slice(12)).join('\n'));
 
-async function reportRun(overrides = {}, markdown) {
+async function reportRun(overrides = {}, markdown, conversation = {}) {
     const reports = [];
     const warnings = [];
+    const commentCalls = [];
+    let initialConclusion;
     let summary;
-    const github = { rest: { checks: { async create(report) { reports.push(report); } } } };
+    const github = {
+        rest: {
+            checks: {
+                async create(report) {
+                    initialConclusion = report.conclusion;
+                    reports.push(report);
+                    return { data: { id: 99 } };
+                },
+                async update(report) {
+                    assert.equal(report.check_run_id, 99);
+                    Object.assign(reports[0], report);
+                },
+            },
+            issues: {
+                listComments: 'comments',
+                async createComment(comment) {
+                    if (conversation.failComment) throw new Error('Conversation comment permission denied');
+                    commentCalls.push({ action: 'create', ...comment });
+                },
+                async updateComment(comment) {
+                    if (conversation.failComment) throw new Error('Conversation comment permission denied');
+                    commentCalls.push({ action: 'update', ...comment });
+                },
+            },
+            pulls: {
+                async get(request) {
+                    assert.equal(request.pull_number, 42);
+                    return { data: { head: { sha: conversation.currentHead ??
+                        (overrides.PUBLISHED_HEAD_SHA || overrides.REVIEWED_HEAD_SHA || 'a'.repeat(40)) } } };
+                },
+            },
+        },
+        async paginate(endpoint, request) {
+            assert.equal(endpoint, 'comments');
+            assert.equal(request.issue_number, 42);
+            assert.equal(request.per_page, 100);
+            return conversation.comments ?? [];
+        },
+    };
     const core = { warning(value) { warnings.push(value); },
         summary: { addRaw(value) { summary = value; return this; }, async write() {} } };
     const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-summary-controller-'));
@@ -160,23 +200,99 @@ async function reportRun(overrides = {}, markdown) {
         },
     } : nativeRequire(name);
     try {
-        await reportScript(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100, runAttempt: 1 }, core, {
-            env: {
-                GITHUB_WORKSPACE: process.cwd(), RUNNER_TEMP: root, PR_NUMBER: '42', WORKER_RUN_ID: '',
-                RUN_OUTCOME: 'success', REVIEW_STATUS: 'pass', REVIEWED_HEAD_SHA: 'a'.repeat(40),
-                PUBLISHED_HEAD_SHA: '', PUBLISHED_COMMIT_URL: '',
-                CONTROLLER_RUN_URL: 'https://github.com/owner/repo/actions/runs/100',
-                WORKER_RUN_URL: 'https://github.com/owner/repo/actions/runs/101',
-                WORKER_CONCLUSION: 'success', ...overrides,
-            },
-        }, require);
+        let error;
+        try {
+            await reportScript(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100, runAttempt: 1 }, core, {
+                env: {
+                    GITHUB_WORKSPACE: process.cwd(), RUNNER_TEMP: root, PR_NUMBER: '42', WORKER_RUN_ID: '',
+                    RUN_OUTCOME: 'success', REVIEW_STATUS: 'pass', REVIEWED_HEAD_SHA: 'a'.repeat(40),
+                    PUBLISHED_HEAD_SHA: '', PUBLISHED_COMMIT_URL: '',
+                    CONTROLLER_RUN_URL: 'https://github.com/owner/repo/actions/runs/100',
+                    WORKER_RUN_URL: 'https://github.com/owner/repo/actions/runs/101',
+                    WORKER_CONCLUSION: 'success', ...overrides,
+                },
+            }, require);
+        } catch (caught) {
+            if (!conversation.captureError) throw caught;
+            error = caught;
+        }
         assert.equal(reports.length, 1);
-        assert.equal(summary, reports[0].output.summary);
-        return { ...reports[0], warnings };
+        if (!error) assert.equal(summary, reports[0].output.summary);
+        return { ...reports[0], warnings, commentCalls, initialConclusion, error };
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
 }
+
+test('controller automatically publishes the full result and links in the PR conversation', async () => {
+    const markdown = 'The findings.\n\n| Severity | Finding |\n| HIGH | Proposed repair |\n';
+    const report = await reportRun({ WORKER_RUN_ID: '101' }, markdown);
+    assert.match(workflow, /^  pull-requests: write$/m);
+    assert.equal(report.initialConclusion, 'action_required', 'green delivery requires the visible comment');
+    assert.equal(report.conclusion, 'success');
+    assert.equal(report.commentCalls.length, 1);
+    const comment = report.commentCalls[0];
+    assert.equal(comment.action, 'create');
+    assert.equal(comment.issue_number, 42);
+    assert.match(comment.body, /^<!-- ghaw-pr-performance-report -->/);
+    assert.ok(comment.body.endsWith(markdown));
+    assert.match(comment.body, /Controller run report/);
+    assert.match(comment.body, /Agentic worker report/);
+});
+
+test('controller updates its existing bot comment instead of duplicating the result', async () => {
+    const report = await reportRun({ WORKER_RUN_ID: '101' }, 'Updated results.\n', {
+        comments: [{ id: 77, user: { login: 'github-actions[bot]' },
+            body: '<!-- ghaw-pr-performance-report -->\nPrevious result.' }],
+    });
+    assert.equal(report.commentCalls.length, 1);
+    assert.equal(report.commentCalls[0].action, 'update');
+    assert.equal(report.commentCalls[0].comment_id, 77);
+    assert.ok(report.commentCalls[0].body.endsWith('Updated results.\n'));
+});
+
+test('controller never overwrites a user, other bot, or quoted marker comment', async () => {
+    const marker = '<!-- ghaw-pr-performance-report -->';
+    const report = await reportRun({}, undefined, {
+        comments: [
+            { id: 1, user: { login: 'someone' }, body: marker },
+            { id: 2, user: { login: 'github-advanced-security' }, body: marker },
+            { id: 3, user: { login: 'github-actions[bot]' }, body: `Quoted: ${marker}` },
+        ],
+    });
+    assert.equal(report.commentCalls.length, 1);
+    assert.equal(report.commentCalls[0].action, 'create');
+});
+
+test('old results do not overwrite the conversation after the PR head moves', async () => {
+    const report = await reportRun({ WORKER_RUN_ID: '101' }, 'Historical report.\n', {
+        currentHead: 'c'.repeat(40),
+        comments: [{ id: 77, user: { login: 'github-actions[bot]' },
+            body: '<!-- ghaw-pr-performance-report -->\nNewer result.' }],
+    });
+    assert.equal(report.commentCalls.length, 0);
+    assert.match(report.warnings[0], /no longer the PR head/);
+    assert.equal(report.conclusion, 'success', 'the historical head retains its actual validation outcome');
+});
+
+test('failed conversation delivery throws and cannot leave a green check', async () => {
+    for (const outcome of ['success', 'failure', 'cancelled']) {
+        const report = await reportRun({ WORKER_RUN_ID: '101', RUN_OUTCOME: outcome }, 'A result.\n', {
+            failComment: true, captureError: true,
+        });
+        assert.match(report.error.message, /permission denied/);
+        assert.equal(report.conclusion, outcome === 'success' ? 'action_required' : outcome);
+        assert.match(report.output.summary, /Conversation delivery: \*\*pending\*\*/);
+    }
+});
+
+test('conversation output prevents model text from triggering mentions while preserving the check artifact', async () => {
+    const markdown = 'Source text mentions @copilot and @someone.\n';
+    const report = await reportRun({ WORKER_RUN_ID: '101' }, markdown);
+    assert.ok(report.commentCalls[0].body.includes('@\u200bcopilot'));
+    assert.doesNotMatch(report.commentCalls[0].body, /@copilot|@someone/);
+    assert.ok(report.output.summary.endsWith(markdown));
+});
 
 test('failed correlated worker directly embeds review-time Markdown without granting model authority', async () => {
     const markdown = 'A review-time proposal.\n\n| Severity | Finding |\n| HIGH | Fixed; all tests pass |\n';
@@ -256,6 +372,9 @@ test('a published repair keeps the run-report link on its new validated head', a
     assert.match(report.output.summary, /review result: \*\*fixed\*\*/);
     assert.match(report.output.summary, /Reviewed head: `a{40}`/);
     assert.match(report.output.summary, /\[Validated repair commit\]/);
+    assert.equal(report.commentCalls.length, 1);
+    assert.match(report.commentCalls[0].body, /review result: \*\*fixed\*\*/);
+    assert.match(report.commentCalls[0].body, /\[Validated repair commit\]/);
     assert.match(workflow, /id: publish_repair/);
     assert.match(workflow, /core\.setOutput\("head_sha", result\.commitSha\)/);
 });
@@ -268,6 +387,7 @@ test('failed or cancelled applicable runs keep report links without success-shap
         assert.equal(report.conclusion, outcome);
         assert.equal(report.head_sha, 'a'.repeat(40));
         assert.match(report.output.summary, /Agentic worker report/);
+        assert.match(report.commentCalls[0].body, /Agentic worker report/);
         assert.doesNotMatch(report.output.summary, /review result: \*\*fixed\*\*/);
     }
 });
@@ -279,6 +399,7 @@ test('a failed worker dispatch still leaves the applicable PR a controller repor
     assert.equal(report.conclusion, 'failure');
     assert.match(report.output.summary, /Controller run report/);
     assert.match(report.output.summary, /not started or could not be correlated/);
+    assert.match(report.commentCalls[0].body, /Controller run report/);
 });
 
 for (const worker of [

@@ -75,12 +75,31 @@ edits or general filesystem access. Summary capture/upload is independent of
 JSON validation, so an invalid mechanical report does not erase the findings.
 
 The controller displays the bounded UTF-8 Markdown directly, after trusted
-job status, reviewed SHA, and run links. It does not extract the review from
+job status, reviewed SHA, and run links, in both the check and an automatically
+maintained PR Conversation comment. The comment starts with a fixed marker;
+only the controller's own `github-actions[bot]` comment is updated, so later
+runs do not duplicate it or overwrite a user's comment. The controller checks
+the live PR head immediately before posting and does not replace current
+conversation results with a stale reviewed head. Mention notifications are
+disabled in the conversation copy without changing the original artifact.
+It does not extract the review from
 agent logs or parse the Markdown to decide whether publication is permitted.
 Missing or unreadable artifacts produce an explicit **Review summary missing**
 message and run link, and must prevent an otherwise-successful PR check from
 remaining green. JSON policy failures and failed native jobs remain
 failures; readable Markdown cannot turn them into passes.
+Conversation posting errors fail the reporting step and leave an otherwise
+successful check non-successful until delivery completes. This trusted
+reporting action is separate from the gh-aw workers: repair still never
+combines a comment with a branch commit, and fork guidance never edits source.
+
+Automatic conversation delivery was verified in a reporting-only
+[GitHub Actions run](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37768180616).
+It executed the actual controller reporting script twice against the already
+validated fixture: first creating, then updating the same
+[`github-actions[bot]` result comment](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/pull/5#issuecomment-6058555491).
+No agent inference, native repair or publication was rerun. The replay workflow
+exists only in the private validation repository, not this implementation.
 
 The model's table uses `Proposed repair`, never a premature `Fixed` claim.
 Actual validated/publication status comes separately from the trusted
