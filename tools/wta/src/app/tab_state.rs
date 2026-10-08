@@ -574,6 +574,7 @@ impl ConfigPickerState {
 pub struct TabSession {
     pub(crate) pending_queue_action: Option<u64>,
     pub(super) prompt_queue: super::prompt_queue::PromptQueue,
+    pub(super) pending_autofix_captures: VecDeque<super::prompt_queue::QueuedRequest>,
     pub(crate) last_telemetry_session_id: Option<String>,
     pub(crate) telemetry_model_pending: Option<(String, uuid::Uuid)>,
     /// Per-tab autofix state machine (see `TabAutofixState`).

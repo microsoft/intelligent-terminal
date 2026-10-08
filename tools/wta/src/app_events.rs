@@ -451,7 +451,7 @@ impl App {
 
     pub(super) async fn handle_event_and_capture(&mut self, event: AppEvent) {
         self.handle_event(event);
-        // Freeze accepted Autofix evidence in this event's admission phase,
+        // Freeze Autofix evidence before queue admission in this event,
         // before processing another helper event.
         self.capture_pending_autofix_snapshots().await;
     }

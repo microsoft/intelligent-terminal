@@ -114,10 +114,9 @@ pub(super) fn test_app() -> App {
 
 pub(super) fn complete_autofix_capture(app: &mut App, tab_id: &str) {
     let entry = app.tab_sessions[tab_id]
-        .prompt_queue
-        .entries
+        .pending_autofix_captures
         .iter()
-        .find(|entry| entry.capturing)
+        .next()
         .expect("a capture is pending");
     let request_id = entry.submission.id;
     let source = entry
@@ -127,7 +126,7 @@ pub(super) fn complete_autofix_capture(app: &mut App, tab_id: &str) {
         .unwrap()
         .source_pane_id
         .as_deref()
-        .unwrap();
+        .unwrap_or("source");
     let snapshot = crate::protocol::acp::client::AutofixSnapshot::for_test(source);
     app.handle_event(AppEvent::AutofixSnapshotReady {
         request_id,
@@ -12046,6 +12045,9 @@ fn render_prompt_queue_includes_automatic_requests_while_connecting() {
     let mut app = test_app();
     app.state = ConnectionState::Connecting("copilot".into());
     app.enqueue_autofix(DEFAULT_TAB_ID, "failed-source", "AUTOMATIC_FAILURE", false);
+    let preparing = render_to_text(&mut app, 100, 20);
+    assert!(!preparing.contains(t!("queue.header_one", count = 1).as_ref()));
+    complete_autofix_capture(&mut app, DEFAULT_TAB_ID);
     let automatic = render_to_text(&mut app, 100, 20);
     assert!(automatic.contains(t!("queue.header_one", count = 1).as_ref()));
     assert!(!automatic.contains("AUTOMATIC_FAILURE"));

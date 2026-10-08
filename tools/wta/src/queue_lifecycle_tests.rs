@@ -52,6 +52,9 @@ fn recall_restores_image_placement_without_copying_payload_and_refuses_busy_draf
             .insert_image(&mut tab.input, &mut tab.cursor_pos, image);
         let draft = tab.input.clone();
         app.enqueue_input(prefix.starts_with("/fix").then(|| "inspect after".into()));
+        if prefix.starts_with("/fix") {
+            complete_autofix_capture(&mut app, "queue-tab");
+        }
         let old = &app.current_tab().prompt_queue.entries[0];
         let old_id = old.submission.id;
         let token = old.submission.cancellation_token();
@@ -76,10 +79,14 @@ fn recall_restores_image_placement_without_copying_payload_and_refuses_busy_draf
         );
         assert!(app.current_tab().prompt_queue.entries.is_empty());
         app.enqueue_input(prefix.starts_with("/fix").then(|| "inspect after".into()));
-        let fresh = &app.current_tab().prompt_queue.entries[0];
+        let fresh = if prefix.starts_with("/fix") {
+            &app.current_tab().pending_autofix_captures[0]
+        } else {
+            &app.current_tab().prompt_queue.entries[0]
+        };
         assert_ne!(fresh.submission.id, old_id);
         assert!(!fresh.submission.cancellation_token().is_cancelled());
-        assert_eq!(fresh.capturing, prefix.starts_with("/fix"));
+        assert!(fresh.submission.autofix_snapshot.is_none());
         assert!(rx.try_recv().is_err());
     }
 }
@@ -96,36 +103,42 @@ fn recall_skips_automatic_work_and_unblocked_preparation() {
     app.enqueue_autofix("queue-tab", "source", "automatic", false);
     app.recall_last_pending_input();
     assert_eq!(app.current_tab().input, "last explicit");
-    assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
+    assert!(app.current_tab().prompt_queue.entries.is_empty());
+    assert_eq!(app.current_tab().pending_autofix_captures.len(), 2);
     assert!(rx.try_recv().is_err());
 }
 
 #[test]
-fn stopping_preserves_captured_evidence_but_expires_unfinished_capture() {
+fn stopping_preserves_captured_evidence_but_discards_unfinished_capture() {
     let _locale = crate::test_support::lock_locale();
     for captured in [false, true] {
         let (mut app, mut rx) = connected_app();
         app.current_tab_mut().config_pending_id = Some("hold".into());
         app.enqueue_autofix("queue-tab", "source", "explicit diagnostic", true);
-        let id = app.current_tab().prompt_queue.entries[0].submission.id;
-        let token = app.current_tab().prompt_queue.entries[0]
+        let id = app.current_tab().pending_autofix_captures[0].submission.id;
+        let token = app.current_tab().pending_autofix_captures[0]
             .submission
             .cancellation_token();
         if captured {
             complete_autofix_capture(&mut app, "queue-tab");
         }
         app.enqueue_autofix("queue-tab", "other-source", "automatic", false);
-        let automatic = app.current_tab().prompt_queue.entries[1]
+        let automatic = app
+            .current_tab()
+            .pending_autofix_captures
+            .back()
+            .unwrap()
             .submission
             .cancellation_token();
         app.current_tab_mut().pause_pending_prompts();
         assert!(automatic.is_cancelled());
         assert_eq!(token.is_cancelled(), !captured);
-        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+        assert!(app.current_tab().pending_autofix_captures.is_empty());
         assert_eq!(
-            app.current_tab().prompt_queue.entries[0].needs_resubmission,
-            !captured
+            app.current_tab().prompt_queue.entries.len(),
+            usize::from(captured)
         );
+        assert_eq!(app.pending_queue_paused(), captured);
         if !captured {
             app.autofix_snapshot_ready(
                 id,
@@ -133,10 +146,7 @@ fn stopping_preserves_captured_evidence_but_expires_unfinished_capture() {
                     "source",
                 )),
             );
-            assert!(app.current_tab().prompt_queue.entries[0]
-                .submission
-                .autofix_snapshot
-                .is_none());
+            assert!(app.current_tab().prompt_queue.entries.is_empty());
         }
         app.current_tab_mut().config_pending_id = None;
         assert_eq!(app.pending_queue_can_resume(), captured);
@@ -147,8 +157,8 @@ fn stopping_preserves_captured_evidence_but_expires_unfinished_capture() {
             assert!(sent.autofix_snapshot.is_some());
         } else {
             assert!(rx.try_recv().is_err());
-            app.recall_last_pending_input();
-            assert_eq!(app.current_tab().input, "/fix explicit diagnostic");
+            enter(&mut app, "fresh request");
+            assert_eq!(rx.try_recv().unwrap().text, "fresh request");
             assert!(!app.pending_queue_paused());
         }
     }
@@ -241,8 +251,8 @@ fn late_prompt_error_after_stop_and_rename_does_not_invalidate_fresh_capture() {
     let active = rx.try_recv().unwrap();
     app.request_turn_cancel_for_tab("queue-tab");
     enter(&mut app, "/fix fresh investigation");
-    let id = app.current_tab().prompt_queue.entries[0].submission.id;
-    let token = app.current_tab().prompt_queue.entries[0]
+    let id = app.current_tab().pending_autofix_captures[0].submission.id;
+    let token = app.current_tab().pending_autofix_captures[0]
         .submission
         .cancellation_token();
     app.rename_tab_session("queue-tab", "renamed", Some("new-window"));
@@ -253,7 +263,10 @@ fn late_prompt_error_after_stop_and_rename_does_not_invalidate_fresh_capture() {
     });
     assert!(app.current_tab().turn.is_idle());
     assert!(!token.is_cancelled());
-    assert!(app.current_tab().prompt_queue.entries[0].capturing);
+    assert!(app.current_tab().pending_autofix_captures[0]
+        .submission
+        .autofix_snapshot
+        .is_none());
     assert!(!app.pending_queue_paused());
     app.handle_event(AppEvent::AutofixSnapshotReady {
         request_id: id,
@@ -272,7 +285,7 @@ fn ordinary_protocol_failure_retains_explicit_input_and_drops_automatic_capture(
     rx.try_recv().unwrap();
     enter(&mut app, "unsent user request");
     app.enqueue_autofix("queue-tab", "source", "automatic", false);
-    let automatic = app.current_tab().prompt_queue.entries[1]
+    let automatic = app.current_tab().pending_autofix_captures[0]
         .submission
         .cancellation_token();
     app.handle_event(AppEvent::AgentError {
@@ -302,6 +315,51 @@ fn stopping_only_automatic_work_does_not_pause_future_explicit_input() {
     assert!(app.current_tab().prompt_queue.entries.is_empty());
     enter(&mut app, "fresh explicit request");
     assert_eq!(rx.try_recv().unwrap().text, "fresh explicit request");
+}
+
+#[test]
+fn closing_tab_cancels_preparation_and_ignores_late_capture_completion() {
+    let _locale = crate::test_support::lock_locale();
+    let (mut app, mut rx) = connected_app();
+    enter(&mut app, "/fix investigate");
+    let preparation = &app.current_tab().pending_autofix_captures[0];
+    let id = preparation.submission.id;
+    let token = preparation.submission.cancellation_token();
+    app.drop_tab_session("queue-tab");
+    assert!(token.is_cancelled());
+    assert!(!app.tab_sessions.contains_key("queue-tab"));
+    app.handle_event(AppEvent::AutofixSnapshotReady {
+        request_id: id,
+        result: Ok(crate::protocol::acp::client::AutofixSnapshot::for_test(
+            "source",
+        )),
+    });
+    assert!(rx.try_recv().is_err());
+    assert_eq!(app.pending_input_count(), 0);
+}
+
+#[test]
+fn renaming_tab_preserves_preparation_over_lazily_created_target_history() {
+    let _locale = crate::test_support::lock_locale();
+    let (mut app, mut rx) = connected_app();
+    enter(&mut app, "/fix investigate");
+    let id = app.current_tab().pending_autofix_captures[0].submission.id;
+    assert!(app.current_tab().messages.is_empty());
+    app.tab_mut("renamed")
+        .messages
+        .push(ChatMessage::info("target history"));
+    app.rename_tab_session("queue-tab", "renamed", Some("new-window"));
+    assert_eq!(
+        app.current_tab().pending_autofix_captures[0].submission.id,
+        id
+    );
+    complete_autofix_capture(&mut app, "renamed");
+    let request = rx.try_recv().unwrap();
+    assert_eq!(request.id, id);
+    assert_eq!(
+        request.pane_context.unwrap().window_id.as_deref(),
+        Some("new-window")
+    );
 }
 
 #[test]
@@ -413,7 +471,7 @@ fn uncancelled_soft_stop_pauses_queued_requests_without_disconnecting() {
 }
 
 #[test]
-fn prompt_redraw_preserves_queued_automatic_and_explicit_captures() {
+fn prompt_redraw_preserves_automatic_and_explicit_preparations() {
     let _locale = crate::test_support::lock_locale();
     for explicit in [false, true] {
         let (mut app, mut rx) = connected_app();
@@ -430,6 +488,7 @@ fn prompt_redraw_preserves_queued_automatic_and_explicit_captures() {
             .prompt_queue
             .entries
             .iter()
+            .chain(&app.current_tab().pending_autofix_captures)
             .map(|item| (item.submission.id, item.submission.cancellation_token()))
             .collect();
         assert_eq!(captures.len(), 2);
@@ -441,6 +500,7 @@ fn prompt_redraw_preserves_queued_automatic_and_explicit_captures() {
                 .prompt_queue
                 .entries
                 .iter()
+                .chain(&app.current_tab().pending_autofix_captures)
                 .map(|item| item.submission.id)
                 .collect::<Vec<_>>(),
             captures.iter().map(|(id, _)| *id).collect::<Vec<_>>()
@@ -464,6 +524,7 @@ fn command_start_still_invalidates_waiting_automatic_evidence() {
     enter(&mut app, "active");
     rx.try_recv().unwrap();
     shell_event(&mut app, "osc:133;D;1");
+    complete_autofix_capture(&mut app, "queue-tab");
     let pending = app.current_tab().prompt_queue.entries[0]
         .submission
         .cancellation_token();
@@ -482,7 +543,7 @@ fn typed_fix_binds_its_discovered_source_and_rejects_activity_during_resolution(
         let (mut app, mut rx) = connected_app();
         app.current_tab_mut().config_pending_id = Some("hold".into());
         enter(&mut app, "/fix explain");
-        let item = &app.current_tab().prompt_queue.entries[0];
+        let item = &app.current_tab().pending_autofix_captures[0];
         let request_id = item.submission.id;
         let token = item.submission.cancellation_token();
         assert!(item
@@ -505,8 +566,9 @@ fn typed_fix_binds_its_discovered_source_and_rejects_activity_during_resolution(
         app.current_tab_mut().config_pending_id = None;
         app.dispatch_prompt_queues();
         if source_changes {
-            assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
-            assert!(app.current_tab().prompt_queue.entries[0].needs_resubmission);
+            assert!(app.current_tab().prompt_queue.entries.is_empty());
+            assert!(app.current_tab().pending_autofix_captures.is_empty());
+            assert!(!app.pending_queue_paused());
             assert!(rx.try_recv().is_err());
         } else {
             let prompt = rx.try_recv().unwrap();

@@ -6588,10 +6588,11 @@ impl App {
             );
             return;
         }
-        if let Some(tab) = self.tab_sessions.get(closed_tab_id) {
+        if let Some(tab) = self.tab_sessions.get_mut(closed_tab_id) {
             if let Some(prompt_id) = tab.turn.prompt_id() {
                 tab.cancel_active_prompt(prompt_id);
             }
+            tab.cancel_autofix_captures();
         }
         let removed = self.tab_sessions.remove(closed_tab_id);
         if self
@@ -6711,18 +6712,29 @@ impl App {
             // in normal flow that shouldn't happen (WT mints the new
             // id atomically with the drag). Defensive only: prefer the
             // entry that already has conversation state.
-            if let Some(existing) = self.tab_sessions.remove(new_tab_id) {
+            if let Some(mut existing) = self.tab_sessions.remove(new_tab_id) {
                 if !existing.messages.is_empty()
                     && entry.messages.is_empty()
                     && entry.prompt_queue.entries.is_empty()
+                    && entry.pending_autofix_captures.is_empty()
                     && entry.input.is_empty()
                     && entry.attachments.is_empty()
                 {
                     entry = existing;
+                } else {
+                    existing.cancel_autofix_captures();
                 }
             }
             entry.invalidate_pending_paste();
             entry.prompt_queue.rename(new_tab_id, new_window_id);
+            for item in &mut entry.pending_autofix_captures {
+                if let Some(context) = item.submission.pane_context.as_mut() {
+                    context.tab_id = Some(new_tab_id.to_owned());
+                    if let Some(window) = new_window_id {
+                        context.window_id = Some(window.to_owned());
+                    }
+                }
+            }
             entry.break_input_undo_group();
             self.tab_sessions.insert(new_tab_id.to_string(), entry);
             true

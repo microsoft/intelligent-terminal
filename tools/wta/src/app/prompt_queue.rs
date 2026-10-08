@@ -19,7 +19,6 @@ pub(super) struct QueuedRequest {
     pub display_text: String,
     pub kind: RequestKind,
     pub queued_at: std::time::Instant,
-    pub capturing: bool,
     pub needs_resubmission: bool,
     detection_id: Option<uuid::Uuid>,
     restore_text: Option<String>,
@@ -87,14 +86,19 @@ impl QueuedRequest {
                 .autofix_snapshot
                 .as_ref()
                 .map(|snapshot| snapshot.payload_bytes())
-                .unwrap_or(if self.capturing {
-                    SNAPSHOT_RESERVATION
-                } else {
-                    0
-                })
+                .unwrap_or(
+                    if matches!(
+                        self.kind,
+                        RequestKind::ManualFix | RequestKind::AutomaticFix
+                    ) {
+                        SNAPSHOT_RESERVATION
+                    } else {
+                        0
+                    },
+                )
     }
 
-    fn source(&self) -> Option<&str> {
+    pub(super) fn source(&self) -> Option<&str> {
         self.submission
             .pane_context
             .as_ref()?
@@ -104,7 +108,6 @@ impl QueuedRequest {
 
     fn require_resubmission(&mut self) {
         self.submission.cancellation_token().cancel();
-        self.capturing = false;
         self.needs_resubmission = true;
     }
 
@@ -158,9 +161,6 @@ impl PromptQueue {
                 entry.submission.cancellation_token().cancel();
                 return false;
             }
-            if entry.capturing {
-                entry.require_resubmission();
-            }
             true
         });
         self.echoes.clear();
@@ -179,15 +179,21 @@ impl PromptQueue {
         self.echoes.remove(pane);
     }
 
-    fn can_fit(&self, item: &QueuedRequest, pending_image_bytes: usize) -> bool {
-        let retained = |entry: &&QueuedRequest| !item.replaces_automatic(entry);
-        let count = self.entries.iter().filter(retained).count();
-        let bytes: usize = self
+    fn can_fit(
+        &self,
+        item: &QueuedRequest,
+        pending_image_bytes: usize,
+        captures: &VecDeque<QueuedRequest>,
+    ) -> bool {
+        // Preparations reserve capacity without becoming visible queued work.
+        let (count, bytes) = self
             .entries
             .iter()
-            .filter(retained)
-            .map(QueuedRequest::bytes)
-            .sum();
+            .chain(captures)
+            .filter(|entry| !item.replaces_automatic(entry))
+            .fold((0, 0usize), |(count, bytes), entry| {
+                (count + 1, bytes.saturating_add(entry.bytes()))
+            });
         count < MAX_REQUESTS
             && bytes
                 .saturating_add(item.bytes())
@@ -228,7 +234,9 @@ impl PromptQueue {
             let index = self
                 .entries
                 .iter()
-                .position(|entry| entry.kind == RequestKind::AutomaticFix)
+                .position(|entry| {
+                    entry.kind == RequestKind::AutomaticFix || entry.queued_at > item.queued_at
+                })
                 .unwrap_or(self.entries.len());
             self.entries.insert(index, item);
         }
@@ -243,6 +251,7 @@ impl Drop for PromptQueue {
 
 impl TabSession {
     pub(super) fn pause_pending_prompts(&mut self) {
+        self.cancel_autofix_captures();
         let was_paused = self.prompt_queue.paused;
         self.prompt_queue.pause();
         if self.prompt_queue.paused && !was_paused {
@@ -264,12 +273,19 @@ impl TabSession {
     /// Discard only pending requests. The active turn, action barrier, and draft
     /// belong to their existing lifecycle owners and remain untouched.
     pub(super) fn cancel_pending_prompts(&mut self) {
+        self.cancel_autofix_captures();
         let discarded = self.prompt_queue.cancel_pending();
         if discarded > 0 {
             self.messages.push(ChatMessage::info(
                 t!("queue.cancelled", count = discarded).into_owned(),
             ));
             self.scroll_to_bottom();
+        }
+    }
+
+    pub(super) fn cancel_autofix_captures(&mut self) {
+        for item in self.pending_autofix_captures.drain(..) {
+            item.submission.cancellation_token().cancel();
         }
     }
 }
@@ -380,18 +396,10 @@ impl App {
     }
 
     fn waiting_requests_for_tab(&self, tab_id: &str) -> impl Iterator<Item = &QueuedRequest> + '_ {
-        let preparing = self.queue_dispatch_ready(tab_id)
-            && self
-                .tab_sessions
-                .get(tab_id)
-                .and_then(|tab| tab.prompt_queue.entries.front())
-                .is_some_and(|item| item.capturing);
-        // An otherwise runnable head is preparing its own context, not waiting
-        // for execution capacity. Later entries still wait behind it.
         self.tab_sessions
             .get(tab_id)
             .into_iter()
-            .flat_map(move |tab| tab.prompt_queue.entries.iter().skip(usize::from(preparing)))
+            .flat_map(|tab| tab.prompt_queue.entries.iter())
     }
 
     pub(super) fn queue_notice(&mut self, message: String) {
@@ -436,6 +444,7 @@ impl App {
             && tab.user_input.is_empty()
             && tab.pending_terminal_action_proposal.is_none()
             && tab.pending_queue_action.is_none()
+            && tab.pending_autofix_captures.is_empty()
     }
 
     pub(super) fn dispatch_prompt_queues(&mut self) {
@@ -448,7 +457,7 @@ impl App {
             if queue
                 .entries
                 .front()
-                .is_none_or(|item| item.capturing || item.needs_resubmission)
+                .is_none_or(|item| item.needs_resubmission)
             {
                 continue;
             }
@@ -606,18 +615,17 @@ impl App {
             display_text,
             kind,
             queued_at: std::time::Instant::now(),
-            capturing: kind == RequestKind::ManualFix,
             needs_resubmission: false,
             detection_id: None,
             restore_text: (kind == RequestKind::ManualFix && !tab.input.is_empty())
                 .then(|| tab.input.clone()),
             image_token_ranges: tab.attachments.token_ranges().collect(),
         };
-        if !self
-            .current_tab()
-            .prompt_queue
-            .can_fit(&item, pending_image_bytes)
-        {
+        if !self.current_tab().prompt_queue.can_fit(
+            &item,
+            pending_image_bytes,
+            &tab.pending_autofix_captures,
+        ) {
             self.queue_notice(t!("queue.full").into_owned());
             return;
         }
@@ -626,18 +634,26 @@ impl App {
         item.submission = item.submission.with_images(tab.attachments.take_images());
         tab.record_input_history(&history_text);
         let request_id = item.submission.id;
-        tab.prompt_queue.insert(item);
+        if kind == RequestKind::ManualFix {
+            tab.pending_autofix_captures.push_back(item);
+        } else {
+            tab.prompt_queue.insert(item);
+        }
         tab.discard_input();
         if self.show_welcome_hint {
             self.show_welcome_hint = false;
             set_welcome_shown_in_state();
         }
         self.dispatch_prompt_queues();
-        let waiting = self
-            .waiting_requests_for_tab(&tab_id)
-            .any(|entry| entry.submission.id == request_id);
-        if waiting {
-            let tab = self.current_tab_mut();
+        self.notify_queued_input(&tab_id, request_id);
+    }
+
+    fn notify_queued_input(&mut self, tab_id: &str, request_id: u64) {
+        if self
+            .waiting_requests_for_tab(tab_id)
+            .any(|entry| entry.submission.id == request_id)
+        {
+            let tab = self.tab_mut(tab_id);
             tab.messages
                 .push(ChatMessage::info(if tab.prompt_queue.paused {
                     t!("queue.stopped").into_owned()
@@ -649,11 +665,11 @@ impl App {
     }
 
     pub(super) fn queue_blocks_session_change(&mut self) -> bool {
-        if self
-            .tab_sessions
-            .values()
-            .any(|tab| !tab.prompt_queue.entries.is_empty() || tab.pending_queue_action.is_some())
-        {
+        if self.tab_sessions.values().any(|tab| {
+            !tab.prompt_queue.entries.is_empty()
+                || !tab.pending_autofix_captures.is_empty()
+                || tab.pending_queue_action.is_some()
+        }) {
             self.queue_notice(t!("queue.session_busy").into_owned());
             true
         } else {
@@ -694,7 +710,6 @@ impl App {
             source_pane_id: Some(pane.to_owned()),
         };
         let submission = PromptSubmission::new_autofix_failure(summary.to_owned(), Some(context));
-        let request_id = submission.id;
         let item = QueuedRequest {
             submission,
             display_text: summary.to_owned(),
@@ -704,7 +719,6 @@ impl App {
                 RequestKind::AutomaticFix
             },
             queued_at: std::time::Instant::now(),
-            capturing: true,
             needs_resubmission: false,
             // A later failure can replace the tab's detection before this runs.
             detection_id: self
@@ -716,31 +730,28 @@ impl App {
             restore_text: None,
             image_token_ranges: Vec::new(),
         };
-        if !self.tab_mut(tab_id).prompt_queue.can_fit(&item, 0) {
+        let tab = self.tab_mut(tab_id);
+        if !tab
+            .prompt_queue
+            .can_fit(&item, 0, &tab.pending_autofix_captures)
+        {
             self.tab_mut(tab_id)
                 .messages
                 .push(ChatMessage::warning(t!("queue.full").into_owned()));
             return;
         }
-        if forced {
-            self.tab_mut(tab_id).autofix.detected_request_id = Some(request_id);
-        }
-        self.tab_mut(tab_id).prompt_queue.insert(item);
-        if forced {
-            self.emit_autofix_state_pending(tab_id, pane, summary);
-        }
-        if forced && self.tab_mut(tab_id).prompt_queue.paused {
-            let tab = self.tab_mut(tab_id);
-            tab.messages
-                .push(ChatMessage::info(t!("queue.stopped").into_owned()));
-            tab.scroll_to_bottom();
-        }
+        let captures = &mut self.tab_mut(tab_id).pending_autofix_captures;
+        captures.retain(|entry| {
+            if item.replaces_automatic(entry) {
+                entry.submission.cancellation_token().cancel();
+                false
+            } else {
+                true
+            }
+        });
+        captures.push_back(item);
         if !forced {
             self.tab_mut(tab_id).autofix.detected_request_id = None;
-            self.tab_mut(tab_id)
-                .prompt_queue
-                .echoes
-                .insert(pane.to_owned());
             self.tab_mut(tab_id).autofix.trigger_echo_pane = Some(pane.to_owned());
             self.emit_autofix_state_detected(tab_id, pane, summary);
         }
@@ -750,8 +761,8 @@ impl App {
         while let Some(item) = self
             .tab_sessions
             .values()
-            .flat_map(|tab| &tab.prompt_queue.entries)
-            .find(|entry| entry.capturing)
+            .flat_map(|tab| &tab.pending_autofix_captures)
+            .next()
         {
             let request_id = item.submission.id;
             let result = match (
@@ -781,69 +792,74 @@ impl App {
         result: Result<crate::protocol::acp::client::AutofixSnapshot, String>,
     ) {
         let Some((tab_id, index)) = self.tab_sessions.iter().find_map(|(tab_id, tab)| {
-            tab.prompt_queue
-                .entries
+            tab.pending_autofix_captures
                 .iter()
-                .position(|entry| entry.submission.id == request_id && entry.capturing)
+                .position(|entry| entry.submission.id == request_id)
                 .map(|index| (tab_id.clone(), index))
         }) else {
             tracing::debug!(target: "prompt_queue", request_id, "ignoring stale context capture");
             return;
         };
+        let Some(mut item) = self.tab_mut(&tab_id).pending_autofix_captures.remove(index) else {
+            return;
+        };
         let result = result.and_then(|snapshot| {
-            let queue = &self.tab_sessions[&tab_id].prompt_queue;
-            let source_binding_bytes = if queue.entries[index].source().is_none() {
-                snapshot.source_pane_id().len()
+            if let Some(context) = item.submission.pane_context.as_mut() {
+                context.source_pane_id = Some(snapshot.source_pane_id().to_owned());
+            }
+            item.submission.autofix_snapshot = Some(snapshot);
+            let tab = &self.tab_sessions[&tab_id];
+            if tab
+                .prompt_queue
+                .can_fit(&item, 0, &tab.pending_autofix_captures)
+            {
+                Ok(())
             } else {
-                0
-            };
-            let bytes = queue
-                .entries
-                .iter()
-                .map(QueuedRequest::bytes)
-                .sum::<usize>()
-                .saturating_sub(SNAPSHOT_RESERVATION)
-                .saturating_add(snapshot.payload_bytes())
-                .saturating_add(source_binding_bytes);
-            if bytes > MAX_PAYLOAD_BYTES {
                 Err(t!("queue.full").into_owned())
-            } else {
-                Ok(snapshot)
             }
         });
         match result {
-            Ok(snapshot) => {
-                let item = &mut self.tab_mut(&tab_id).prompt_queue.entries[index];
-                if let Some(context) = item.submission.pane_context.as_mut() {
-                    context.source_pane_id = Some(snapshot.source_pane_id().to_owned());
-                }
-                item.submission.autofix_snapshot = Some(snapshot);
-                item.capturing = false;
+            Ok(()) => {
                 tracing::info!(
                     target: "prompt_queue",
                     request_id,
                     source_pane_id = item.source().unwrap_or_default(),
                     "autofix snapshot ready"
                 );
+                let diagnostic = item.kind == RequestKind::ManualFix
+                    && item.submission.autofix_text_kind
+                        == Some(crate::protocol::acp::client::AutofixTextKind::FailureSummary);
+                let automatic = item.kind == RequestKind::AutomaticFix;
+                let typed = item.kind == RequestKind::ManualFix
+                    && item.submission.autofix_text_kind
+                        == Some(crate::protocol::acp::client::AutofixTextKind::UserRequest);
+                let source = item.source().map(str::to_owned);
+                let summary = item.display_text.clone();
+                self.tab_mut(&tab_id).prompt_queue.insert(item);
+                if diagnostic {
+                    self.tab_mut(&tab_id).autofix.detected_request_id = Some(request_id);
+                    if let Some(pane) = source.as_deref() {
+                        self.emit_autofix_state_pending(&tab_id, pane, &summary);
+                    }
+                } else if automatic {
+                    if let Some(pane) = source {
+                        self.tab_mut(&tab_id).prompt_queue.echoes.insert(pane);
+                    }
+                }
+                self.dispatch_prompt_queues();
+                if typed {
+                    self.notify_queued_input(&tab_id, request_id);
+                }
             }
             Err(error) => {
+                item.submission.cancellation_token().cancel();
                 tracing::warn!(target: "prompt_queue", request_id, %error, "context capture failed");
+                self.dispatch_prompt_queues();
                 let tab = self.tab_mut(&tab_id);
                 tab.messages.push(ChatMessage::warning(
                     t!("queue.capture_failed", error = error).into_owned(),
                 ));
-                if tab.prompt_queue.entries[index].kind == RequestKind::AutomaticFix {
-                    if let Some(item) = tab.prompt_queue.entries.remove(index) {
-                        item.submission.cancellation_token().cancel();
-                        if let Some(source) = item.source() {
-                            tab.prompt_queue.echoes.remove(source);
-                        }
-                    }
-                    tab.scroll_to_bottom();
-                } else {
-                    tab.pause_pending_prompts();
-                }
-                self.restore_cancelled_queued_autofix(&tab_id);
+                tab.scroll_to_bottom();
             }
         }
     }
@@ -859,10 +875,30 @@ impl App {
         closed: bool,
     ) {
         if let Some(tab) = self.tab_sessions.get_mut(tab_id) {
+            let mut capture_failed = false;
+            tab.pending_autofix_captures.retain(|entry| {
+                if entry.source().is_none_or(|source| source == pane) {
+                    entry.submission.cancellation_token().cancel();
+                    capture_failed |= entry.kind == RequestKind::ManualFix;
+                    false
+                } else {
+                    true
+                }
+            });
+            if capture_failed {
+                tab.messages.push(ChatMessage::warning(
+                    t!(
+                        "queue.capture_failed",
+                        error = t!("queue.snapshot_context_changed", pane = pane)
+                    )
+                    .into_owned(),
+                ));
+                tab.scroll_to_bottom();
+            }
             let explicit_capture_invalidated = tab.prompt_queue.entries.iter().any(|entry| {
                 entry.source().is_none_or(|source| source == pane)
                     && entry.kind == RequestKind::ManualFix
-                    && (closed || entry.capturing)
+                    && closed
             });
             if explicit_capture_invalidated {
                 tab.messages.push(ChatMessage::warning(
@@ -875,7 +911,7 @@ impl App {
                 for entry in &mut tab.prompt_queue.entries {
                     if entry.kind == RequestKind::ManualFix
                         && entry.source().is_none_or(|source| source == pane)
-                        && (closed || entry.capturing)
+                        && closed
                     {
                         entry.require_resubmission();
                     }
@@ -1005,7 +1041,6 @@ mod tests {
                 app.handle_event_and_capture(event).await;
 
                 let entry = &app.current_tab().prompt_queue.entries[0];
-                assert!(!entry.capturing);
                 assert!(entry.submission.autofix_snapshot.is_some());
                 assert!(rx.try_recv().is_err());
                 assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
@@ -1103,25 +1138,21 @@ mod tests {
                 )
             }));
             let entries = &app.current_tab().prompt_queue.entries;
-            assert!(entries.iter().all(|entry| !entry.capturing));
+            assert!(app.current_tab().pending_autofix_captures.is_empty());
             assert!(entries
                 .iter()
                 .any(|entry| entry.submission.text == "unrelated queued input"));
-            if kind == AutofixTrigger::Automatic {
-                assert_eq!(entries.len(), 1);
-                release(&mut app);
-                assert_eq!(rx.try_recv().unwrap().text, "unrelated queued input");
-            } else {
-                assert_eq!(entries.len(), 2);
-                assert!(entries.iter().any(|entry| entry.needs_resubmission));
-                assert!(app.current_tab().prompt_queue.paused);
-                if kind == AutofixTrigger::Detected {
-                    assert!(matches!(
-                        app.current_tab().autofix.bar_snapshot,
-                        AutofixBarSnapshot::Detected { .. }
-                    ));
-                }
+            assert_eq!(entries.len(), 1);
+            assert!(!app.current_tab().prompt_queue.paused);
+            assert!(app.current_tab().autofix.detected_request_id.is_none());
+            if kind == AutofixTrigger::Detected {
+                assert!(matches!(
+                    app.current_tab().autofix.bar_snapshot,
+                    AutofixBarSnapshot::Detected { .. }
+                ));
             }
+            release(&mut app);
+            assert_eq!(rx.try_recv().unwrap().text, "unrelated queued input");
         }
     }
 
@@ -1266,7 +1297,7 @@ mod tests {
     }
 
     #[test]
-    fn autofix_preparation_is_only_visible_when_execution_is_blocked() {
+    fn autofix_preparation_never_counts_as_queued_before_capture_succeeds() {
         let _locale = crate::test_support::lock_locale();
         for gate in ["ready", "connecting", "busy", "configuration", "action"] {
             for kind in [RequestKind::ManualFix, RequestKind::AutomaticFix] {
@@ -1298,13 +1329,17 @@ mod tests {
                         );
                     }
                     let blocked = gate != "ready";
-                    assert_eq!(app.pending_input_previews().count(), usize::from(blocked));
-                    assert_eq!(queued_info_count(&app), usize::from(typed && blocked));
-                    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
-                    assert!(app.current_tab().prompt_queue.entries[0].capturing);
+                    assert_eq!(app.pending_input_previews().count(), 0);
+                    assert_eq!(queued_info_count(&app), 0);
+                    assert!(app.current_tab().prompt_queue.entries.is_empty());
+                    assert!(app.current_tab().pending_autofix_captures[0]
+                        .submission
+                        .autofix_snapshot
+                        .is_none());
                     assert!(rx.try_recv().is_err());
                     super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
                     assert_eq!(app.pending_input_previews().count(), usize::from(blocked));
+                    assert_eq!(queued_info_count(&app), usize::from(typed && blocked));
                     assert_eq!(rx.try_recv().is_ok(), !blocked);
                 }
             }
@@ -1326,7 +1361,7 @@ mod tests {
         );
         assert_eq!(queued_info_count(&app), 1);
         hold(&mut app);
-        assert_eq!(app.pending_input_previews().count(), 2);
+        assert_eq!(app.pending_input_previews().count(), 1);
         release(&mut app);
         assert_eq!(
             app.pending_input_previews().collect::<Vec<_>>(),
@@ -1394,12 +1429,18 @@ mod tests {
                 if matches!(state, ConnectionState::Connecting(_)) {
                     assert!(tab.input.is_empty());
                     assert!(tab.attachments.is_empty());
-                    assert_eq!(tab.prompt_queue.entries.len(), 1);
-                    let entry = &tab.prompt_queue.entries[0];
+                    let entries = if kind == RequestKind::ManualFix {
+                        assert!(tab.prompt_queue.entries.is_empty());
+                        &tab.pending_autofix_captures
+                    } else {
+                        &tab.prompt_queue.entries
+                    };
+                    assert_eq!(entries.len(), 1);
+                    let entry = &entries[0];
                     assert_eq!(entry.kind, kind);
                     assert_eq!(entry.submission.images[0].data_base64.as_ptr(), payload);
-                    assert_eq!(entry.capturing, kind == RequestKind::ManualFix);
-                    if entry.capturing {
+                    assert!(entry.submission.autofix_snapshot.is_none());
+                    if kind == RequestKind::ManualFix {
                         let id = entry.submission.id;
                         app.autofix_snapshot_ready(
                             id,
@@ -1520,7 +1561,8 @@ mod tests {
                 } else {
                     app.handle_autofix_execute_from_detected("failed-source", Some("queue-tab"));
                 }
-                assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+                assert!(app.current_tab().prompt_queue.entries.is_empty());
+                assert_eq!(app.current_tab().pending_autofix_captures.len(), 1);
                 super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
                 assert!(rx.try_recv().is_err());
                 app.state = ConnectionState::Connected;
@@ -1590,7 +1632,7 @@ mod tests {
                         KeyModifiers::NONE,
                     )));
                     assert_eq!(
-                        app.current_tab().prompt_queue.entries[0].kind,
+                        app.current_tab().pending_autofix_captures[0].kind,
                         RequestKind::ManualFix
                     );
                     if completed {
@@ -1599,12 +1641,9 @@ mod tests {
                         end(&mut app);
                     } else {
                         enter(&mut app, "/stop");
-                        let retained = &app.current_tab().prompt_queue.entries[0];
-                        assert!(retained.needs_resubmission);
-                        assert!(!retained.capturing);
-                        assert_eq!(retained.submission.images.len(), usize::from(with_image));
-                        assert!(app.pending_queue_paused());
-                        app.discard_pending_inputs();
+                        assert!(app.current_tab().prompt_queue.entries.is_empty());
+                        assert!(app.current_tab().pending_autofix_captures.is_empty());
+                        assert!(!app.pending_queue_paused());
                     }
                     app.source_session_id = Some("retry-source".into());
                     app.handle_event(AppEvent::Key(KeyEvent::new(
@@ -1617,9 +1656,9 @@ mod tests {
                         KeyCode::Enter,
                         KeyModifiers::NONE,
                     )));
-                    let entry = &app.current_tab().prompt_queue.entries[0];
+                    let entry = &app.current_tab().pending_autofix_captures[0];
                     assert_eq!(entry.kind, RequestKind::ManualFix);
-                    assert!(entry.capturing);
+                    assert!(entry.submission.autofix_snapshot.is_none());
                     assert!(rx.try_recv().is_err());
                     super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
                     let replay = rx.try_recv().unwrap();
@@ -1753,6 +1792,7 @@ mod tests {
             "error\n\u{1b}[31m\u{202e} context",
             false,
         );
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         let ids: Vec<_> = app
             .current_tab()
             .prompt_queue
@@ -1810,6 +1850,7 @@ mod tests {
         let active = rx.try_recv().unwrap();
         enter(&mut app, "pending manual");
         app.enqueue_autofix("queue-tab", "source", "pending error", false);
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         let tokens = pending_tokens(&app);
         let tab = app.current_tab_mut();
         tab.input = "draft ".into();
@@ -1910,9 +1951,10 @@ mod tests {
     fn automatic_requests_coalesce_behind_manual_without_changing_active_generation() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
+        hold(&mut app);
         app.enqueue_autofix("queue-tab", "a", "old error", false);
-        let old_id = app.current_tab().prompt_queue.entries[0].submission.id;
-        let old_token = app.current_tab().prompt_queue.entries[0]
+        let old_id = app.current_tab().pending_autofix_captures[0].submission.id;
+        let old_token = app.current_tab().pending_autofix_captures[0]
             .submission
             .cancellation_token();
         app.enqueue_autofix("queue-tab", "b", "other error", false);
@@ -1920,18 +1962,24 @@ mod tests {
         assert_eq!(queued_info_count(&app), 0);
         assert_eq!(
             app.pending_input_previews().collect::<Vec<_>>(),
-            [format!("1. {} · other error", t!("queue.auto"))]
+            Vec::<String>::new()
         );
         assert!(old_token.is_cancelled());
-        assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
+        assert!(app.current_tab().prompt_queue.entries.is_empty());
+        assert_eq!(app.current_tab().pending_autofix_captures.len(), 2);
         assert_eq!(app.current_tab().autofix.generation, 0);
         assert_eq!(
-            app.current_tab().prompt_queue.entries[0].submission.text,
+            app.current_tab().pending_autofix_captures[1]
+                .submission
+                .text,
             "new error"
         );
         app.autofix_snapshot_ready(old_id, Err("stale failure".into()));
-        assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
+        assert!(app.current_tab().prompt_queue.entries.is_empty());
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         enter(&mut app, "human first");
+        release(&mut app);
         assert_eq!(rx.try_recv().unwrap().text, "human first");
         app.invalidate_pending_autofix("queue-tab", "a");
         assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
@@ -1945,14 +1993,18 @@ mod tests {
         hold(&mut app);
         enter(&mut app, "manual request");
         app.enqueue_autofix("queue-tab", "source", "automatic failure", false);
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         let automatic = app.current_tab().prompt_queue.entries[1]
             .submission
             .cancellation_token();
         app.enqueue_autofix("queue-tab", "source", "explicit failure", true);
+        assert!(!automatic.is_cancelled());
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         assert!(automatic.is_cancelled());
         assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
         let tokens = pending_tokens(&app);
         app.enqueue_autofix("queue-tab", "source", "another explicit request", true);
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         assert_eq!(app.current_tab().prompt_queue.entries.len(), 3);
         assert!(tokens.iter().all(|token| !token.is_cancelled()));
         assert!(!has_cancelled_notice(&app, 2));
@@ -1991,7 +2043,7 @@ mod tests {
 
         assert!(matches!(
             &app.current_tab().autofix.bar_snapshot,
-            AutofixBarSnapshot::Pending { pane_id, summary }
+            AutofixBarSnapshot::Detected { pane_id, summary, .. }
                 if pane_id == "source" && summary == "explicit failure"
         ));
         assert_eq!(app.current_tab().turn.prompt_id(), Some(active_id));
@@ -1999,8 +2051,11 @@ mod tests {
         assert!(app.current_tab().autofix.pane_id.is_none());
         assert!(app.current_tab().autofix.armed_at.is_none());
         assert!(rx.try_recv().is_err());
-        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+        assert!(app.current_tab().prompt_queue.entries.is_empty());
+        assert!(app.current_tab().autofix.detected_request_id.is_none());
         super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+        assert!(app.current_tab().autofix.detected_request_id.is_some());
         assert!(matches!(
             app.current_tab().autofix.bar_snapshot,
             AutofixBarSnapshot::Pending { .. }
@@ -2056,8 +2111,8 @@ mod tests {
             .insert_image(&mut tab.input, &mut tab.cursor_pos, image.clone());
         app.enqueue_input(Some("investigate".into()));
         assert!(rx.try_recv().is_err());
-        let entry = &app.current_tab().prompt_queue.entries[0];
-        assert!(entry.capturing);
+        let entry = &app.current_tab().pending_autofix_captures[0];
+        assert!(entry.submission.autofix_snapshot.is_none());
         let request_id = entry.submission.id;
         let snapshot = crate::protocol::acp::client::AutofixSnapshot::for_test("original-source");
         let frozen = format!("{snapshot:?}");
@@ -2088,8 +2143,7 @@ mod tests {
         enter(&mut app, "/fix investigate");
         let ids: Vec<_> = app
             .current_tab()
-            .prompt_queue
-            .entries
+            .pending_autofix_captures
             .iter()
             .map(|entry| entry.submission.id)
             .collect();
@@ -2159,6 +2213,7 @@ mod tests {
                 enter(&mut app, &format!("manual {n}"));
             }
             app.enqueue_autofix("queue-tab", "source", "failure", false);
+            super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
             let automatic = &app.current_tab().prompt_queue.entries[manual_count];
             let stale_id = automatic.submission.id;
             let cancelled = automatic.submission.cancellation_token();
@@ -2172,9 +2227,11 @@ mod tests {
                     .sum();
                 app.current_tab_mut().prompt_queue.entries[0]
                     .display_text
-                    .push_str(&"x".repeat(MAX_PAYLOAD_BYTES - bytes));
+                    .push_str(&"x".repeat(MAX_PAYLOAD_BYTES - bytes - SNAPSHOT_RESERVATION));
             }
             app.handle_autofix_execute_from_detected("source", Some("queue-tab"));
+            assert!(!cancelled.is_cancelled());
+            super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
             assert!(cancelled.is_cancelled());
             assert_eq!(
                 app.current_tab().prompt_queue.entries.len(),
@@ -2211,6 +2268,7 @@ mod tests {
         hold(&mut app);
         enter(&mut app, "manual");
         app.enqueue_autofix("queue-tab", "source", "failure", false);
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         let automatic = &app.current_tab().prompt_queue.entries[1];
         let automatic_id = automatic.submission.id;
         let token = automatic.submission.cancellation_token();
@@ -2234,6 +2292,8 @@ mod tests {
         assert!(app.current_tab().autofix.detected_request_id.is_none());
         app.current_tab_mut().prompt_queue.entries[0].display_text = "manual".into();
         app.handle_autofix_execute_from_detected("source", Some("queue-tab"));
+        assert!(!token.is_cancelled());
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         assert!(token.is_cancelled());
         assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
         assert_eq!(
@@ -2252,6 +2312,7 @@ mod tests {
         }
         app.source_session_id = Some("source".into());
         app.enqueue_autofix("queue-tab", "source", "failure", false);
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         let token = app.current_tab().prompt_queue.entries[MAX_REQUESTS - 1]
             .submission
             .cancellation_token();
@@ -2272,7 +2333,7 @@ mod tests {
             let (mut app, mut rx) = app();
             app.source_session_id = Some("source".into());
             enter(&mut app, "/fix investigate");
-            let entry = &app.current_tab().prompt_queue.entries[0];
+            let entry = &app.current_tab().pending_autofix_captures[0];
             let id = entry.submission.id;
             let token = entry.submission.cancellation_token();
             match invalidation {
@@ -2293,16 +2354,9 @@ mod tests {
                     result,
                 });
             }
-            if invalidation == "cancel" {
-                assert!(app.current_tab().prompt_queue.entries.is_empty());
-            } else {
-                assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
-                assert!(app.current_tab().prompt_queue.entries[0].needs_resubmission);
-                assert!(app.current_tab().prompt_queue.entries[0]
-                    .submission
-                    .autofix_snapshot
-                    .is_none());
-            }
+            assert!(app.current_tab().prompt_queue.entries.is_empty());
+            assert!(app.current_tab().pending_autofix_captures.is_empty());
+            assert!(!app.pending_queue_paused());
             assert!(app.current_tab().turn.is_idle());
             assert!(rx.try_recv().is_err());
             app.discard_pending_inputs();
@@ -2318,7 +2372,7 @@ mod tests {
         app.owner_tab_id = Some("queue-tab".into());
         app.source_session_id = Some("original-source".into());
         enter(&mut app, "/fix investigate");
-        let id = app.current_tab().prompt_queue.entries[0].submission.id;
+        let id = app.current_tab().pending_autofix_captures[0].submission.id;
         app.rename_tab_session("queue-tab", "renamed", Some("new-window"));
         app.source_session_id = Some("other-source".into());
         app.handle_event(AppEvent::AutofixSnapshotReady {
@@ -2453,6 +2507,7 @@ mod tests {
         hold(&mut app);
         enter(&mut app, "manual");
         app.enqueue_autofix("queue-tab", "source", "error", false);
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         assert!(app.queue_blocks_session_change());
         app.cmd_clear();
         assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
@@ -2511,9 +2566,9 @@ mod tests {
         let (mut app, mut rx) = app();
         app.owner_tab_id = Some("queue-tab".into());
         app.enqueue_autofix("queue-tab", "source", "old", false);
-        let stale_id = app.current_tab().prompt_queue.entries[0].submission.id;
+        let stale_id = app.current_tab().pending_autofix_captures[0].submission.id;
         app.enqueue_autofix("queue-tab", "source", "latest", false);
-        let id = app.current_tab().prompt_queue.entries[0].submission.id;
+        let id = app.current_tab().pending_autofix_captures[0].submission.id;
         app.rename_tab_session("queue-tab", "renamed", Some("window"));
         app.handle_event(AppEvent::AutofixSnapshotReady {
             request_id: stale_id,
@@ -2545,7 +2600,7 @@ mod tests {
         hold(&mut app);
         enter(&mut app, "manual");
         app.enqueue_autofix("queue-tab", "source", "error", false);
-        let id = app.current_tab().prompt_queue.entries[1].submission.id;
+        let id = app.current_tab().pending_autofix_captures[0].submission.id;
         app.handle_event(AppEvent::AutofixSnapshotReady {
             request_id: id,
             result: Err("capture failed".into()),
@@ -2564,64 +2619,233 @@ mod tests {
     }
 
     #[test]
-    fn explicit_capture_failure_retains_work_and_requires_resubmission() {
+    fn failed_replacement_capture_preserves_previously_captured_automatic_work() {
+        let _locale = crate::test_support::lock_locale();
+        for forced in [false, true] {
+            let (mut app, mut rx) = app();
+            hold(&mut app);
+            app.enqueue_autofix("queue-tab", "source", "original failure", false);
+            super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
+            let original = &app.current_tab().prompt_queue.entries[0];
+            let original_id = original.submission.id;
+            let token = original.submission.cancellation_token();
+            app.enqueue_autofix("queue-tab", "source", "replacement failure", forced);
+            let replacement_id = app.current_tab().pending_autofix_captures[0].submission.id;
+            app.autofix_snapshot_ready(replacement_id, Err("capture unavailable".into()));
+            assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+            assert_eq!(
+                app.current_tab().prompt_queue.entries[0].submission.id,
+                original_id
+            );
+            assert!(!token.is_cancelled());
+            assert!(!app.pending_queue_paused());
+            release(&mut app);
+            assert_eq!(rx.try_recv().unwrap().id, original_id);
+        }
+    }
+
+    #[test]
+    fn capture_failure_preserves_active_turn_and_existing_paused_state() {
+        let _locale = crate::test_support::lock_locale();
+        for paused in [false, true] {
+            let (mut app, mut rx) = app();
+            enter(&mut app, "active");
+            let active = rx.try_recv().unwrap();
+            enter(&mut app, "unrelated follower");
+            let follower_token = app.current_tab().prompt_queue.entries[0]
+                .submission
+                .cancellation_token();
+            app.current_tab_mut().prompt_queue.paused = paused;
+            let event = admission_event(&mut app, AutofixTrigger::Detected);
+            app.handle_event(event);
+            let id = app.current_tab().pending_autofix_captures[0].submission.id;
+            app.autofix_snapshot_ready(id, Err("capture unavailable".into()));
+            assert_eq!(app.current_tab().turn.prompt_id(), Some(active.id));
+            assert!(!active.cancellation_token().is_cancelled());
+            assert!(!follower_token.is_cancelled());
+            assert_eq!(app.pending_queue_paused(), paused);
+            assert_eq!(app.pending_input_count(), 1);
+            assert!(app.current_tab().autofix.detected_request_id.is_none());
+            assert!(matches!(
+                app.current_tab().autofix.bar_snapshot,
+                AutofixBarSnapshot::Detected { .. }
+            ));
+            assert!(rx.try_recv().is_err());
+            end(&mut app);
+            assert_eq!(rx.try_recv().is_ok(), !paused);
+        }
+    }
+
+    #[test]
+    fn failed_capture_warning_survives_immediate_follower_dispatch() {
+        let _locale = crate::test_support::lock_locale();
+        let (mut app, mut rx) = app();
+        enter(&mut app, "/fix investigate");
+        let id = app.current_tab().pending_autofix_captures[0].submission.id;
+        enter(&mut app, "unrelated follower");
+        app.handle_event(AppEvent::AutofixSnapshotReady {
+            request_id: id,
+            result: Err("capture unavailable".into()),
+        });
+        assert_eq!(rx.try_recv().unwrap().text, "unrelated follower");
+        assert!(app.current_tab().messages.iter().any(|message| matches!(
+            message, ChatMessage::Notice { kind: NoticeKind::Warning, text }
+                if text == t!("queue.capture_failed", error = "capture unavailable").as_ref()
+        )));
+        assert!(app.current_tab().pending_autofix_captures.is_empty());
+        assert!(!app.pending_queue_paused());
+    }
+
+    #[test]
+    fn preparations_reserve_item_and_byte_capacity_without_counting_as_queued() {
+        let _locale = crate::test_support::lock_locale();
+        let (mut app, mut rx) = app();
+        hold(&mut app);
+        for _ in 0..MAX_REQUESTS {
+            enter(&mut app, "/fix investigate");
+        }
+        assert_eq!(
+            app.current_tab().pending_autofix_captures.len(),
+            MAX_REQUESTS
+        );
+        assert_eq!(app.pending_input_count(), 0);
+        enter(&mut app, "keep this draft");
+        assert_eq!(app.current_tab().input, "keep this draft");
+        assert!(app.current_tab().prompt_queue.entries.is_empty());
+        let tokens: Vec<_> = app
+            .current_tab()
+            .pending_autofix_captures
+            .iter()
+            .map(|entry| entry.submission.cancellation_token())
+            .collect();
+        app.discard_pending_inputs();
+        assert!(tokens.iter().all(|token| token.is_cancelled()));
+
+        enter(&mut app, "/fix investigate");
+        let capture = &mut app.current_tab_mut().pending_autofix_captures[0];
+        let padding = MAX_PAYLOAD_BYTES - capture.bytes();
+        capture.display_text.push_str(&"x".repeat(padding));
+        assert_eq!(capture.bytes(), MAX_PAYLOAD_BYTES);
+        enter(&mut app, "/fix keep this too");
+        assert_eq!(app.current_tab().input, "/fix keep this too");
+        assert_eq!(app.current_tab().pending_autofix_captures.len(), 1);
+        assert_eq!(app.pending_input_count(), 0);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn captured_admission_enforces_exact_payload_limit_before_changing_diagnostic_state() {
+        let _locale = crate::test_support::lock_locale();
+        for overflow in [0, 1] {
+            let (mut app, mut rx) = app();
+            hold(&mut app);
+            enter(&mut app, "existing");
+            let event = admission_event(&mut app, AutofixTrigger::Detected);
+            app.handle_event(event);
+            let preparation = &app.current_tab().pending_autofix_captures[0];
+            let id = preparation.submission.id;
+            let token = preparation.submission.cancellation_token();
+            let snapshot = crate::protocol::acp::client::AutofixSnapshot::for_test("source");
+            let admitted_bytes =
+                preparation.bytes() - SNAPSHOT_RESERVATION + snapshot.payload_bytes();
+            let existing = &mut app.current_tab_mut().prompt_queue.entries[0];
+            let padding = MAX_PAYLOAD_BYTES - admitted_bytes - existing.bytes() + overflow;
+            existing.display_text.push_str(&"x".repeat(padding));
+            app.autofix_snapshot_ready(id, Ok(snapshot));
+            assert!(app.current_tab().pending_autofix_captures.is_empty());
+            assert!(!app.pending_queue_paused());
+            if overflow == 0 {
+                assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
+                assert_eq!(
+                    app.current_tab()
+                        .prompt_queue
+                        .entries
+                        .iter()
+                        .map(QueuedRequest::bytes)
+                        .sum::<usize>(),
+                    MAX_PAYLOAD_BYTES
+                );
+                assert_eq!(app.current_tab().autofix.detected_request_id, Some(id));
+                assert!(matches!(
+                    app.current_tab().autofix.bar_snapshot,
+                    AutofixBarSnapshot::Pending { .. }
+                ));
+                assert!(!token.is_cancelled());
+            } else {
+                assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+                assert!(app.current_tab().autofix.detected_request_id.is_none());
+                assert!(matches!(
+                    app.current_tab().autofix.bar_snapshot,
+                    AutofixBarSnapshot::Detected { .. }
+                ));
+                assert!(token.is_cancelled());
+                assert!(matches!(
+                    app.current_tab().messages.last(),
+                    Some(ChatMessage::Notice {
+                        kind: NoticeKind::Warning,
+                        ..
+                    })
+                ));
+            }
+            assert!(rx.try_recv().is_err());
+        }
+    }
+
+    #[test]
+    fn explicit_capture_failure_drops_only_preparation_without_pausing_followers() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         hold(&mut app);
         app.enqueue_autofix("queue-tab", "source", "explicit error", true);
-        let id = app.current_tab().prompt_queue.entries[0].submission.id;
+        let preparation = &app.current_tab().pending_autofix_captures[0];
+        let id = preparation.submission.id;
+        let capture_token = preparation.submission.cancellation_token();
         enter(&mut app, "queued next");
         let tokens = pending_tokens(&app);
         app.handle_event(AppEvent::AutofixSnapshotReady {
             request_id: id,
             result: Err("capture failed".into()),
         });
-        assert!(tokens[0].is_cancelled());
-        assert!(!tokens[1].is_cancelled());
-        assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
-        assert!(app.current_tab().prompt_queue.entries[0].needs_resubmission);
-        release(&mut app);
-        assert!(rx.try_recv().is_err());
-        assert!(!app.pending_queue_can_resume());
-        app.recall_last_pending_input();
-        assert_eq!(app.current_tab().input, "queued next");
-        app.current_tab_mut().clear_input();
-        app.recall_last_pending_input();
-        assert_eq!(app.current_tab().input, "/fix explicit error");
+        assert!(capture_token.is_cancelled());
+        assert!(!tokens[0].is_cancelled());
+        assert!(app.current_tab().pending_autofix_captures.is_empty());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
         assert!(!app.pending_queue_paused());
+        assert!(app.current_tab().messages.iter().any(|message| matches!(
+            message, ChatMessage::Notice { kind: NoticeKind::Warning, text }
+                if text == t!("queue.capture_failed", error = "capture failed").as_ref()
+        )));
+        release(&mut app);
+        assert_eq!(rx.try_recv().unwrap().text, "queued next");
     }
 
     #[test]
-    fn explicit_capture_context_expiry_retains_pending_and_ignores_late_snapshot() {
+    fn explicit_capture_context_expiry_discards_preparation_and_ignores_late_snapshot() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         hold(&mut app);
         app.enqueue_autofix("queue-tab", "source", "old failure", true);
-        let id = app.current_tab().prompt_queue.entries[0].submission.id;
+        let id = app.current_tab().pending_autofix_captures[0].submission.id;
         enter(&mut app, "queued next");
         app.invalidate_pending_autofix("queue-tab", "source");
-        assert!(app.pending_queue_paused());
+        assert!(!app.pending_queue_paused());
         app.handle_event(AppEvent::AutofixSnapshotReady {
             request_id: id,
             result: Ok(crate::protocol::acp::client::AutofixSnapshot::for_test(
                 "source",
             )),
         });
-        assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
-        assert!(app.current_tab().prompt_queue.entries[0].needs_resubmission);
-        assert!(app.current_tab().prompt_queue.entries[0]
-            .submission
-            .autofix_snapshot
-            .is_none());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+        assert!(app.current_tab().pending_autofix_captures.is_empty());
         let changed = t!("queue.snapshot_context_changed", pane = "source");
         assert!(app.current_tab().messages.iter().any(|message| {
             matches!(message, ChatMessage::Notice { text, .. } if text.contains(changed.as_ref()))
         }));
         release(&mut app);
-        assert!(rx.try_recv().is_err());
+        assert_eq!(rx.try_recv().unwrap().text, "queued next");
         enter(&mut app, "fresh request");
         assert!(rx.try_recv().is_err());
-        assert_eq!(app.current_tab().prompt_queue.entries.len(), 3);
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
     }
 
     #[test]
@@ -2638,7 +2862,9 @@ mod tests {
             params: serde_json::json!({ "session_id": pane, "sequence": sequence }),
         };
         app.handle_event(event("pane-a", "osc:133;D;1"));
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         app.handle_event(event("pane-b", "osc:133;D;2"));
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         app.handle_event(event("pane-a", "osc:133;A"));
         app.handle_event(event("pane-b", "osc:133;A"));
         app.handle_event(event("pane-a", "osc:133;B"));

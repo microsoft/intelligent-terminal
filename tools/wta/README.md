@@ -307,14 +307,16 @@ Autofix warm-up do not produce this notification.
 
 Ordinary Up/Down history navigation does not remove a queued request.
 
-When the agent is ready and idle, capturing context for the first Autofix request
-is preparation, not queueing: it produces neither a pinned entry nor an enqueue
-notification. Later requests still appear as waiting. Connection, active-turn,
-and interaction barriers make the first request appear as waiting too.
+Capturing context for an Autofix request is preparation, not queueing: it
+produces neither a queued count nor an enqueue notification, even while the
+agent is connecting or busy. Only successful capture admits the request to the
+queue. A captured request that must wait then counts as queued; typed `/fix`
+requests also receive the usual enqueue notification.
 
 Error detection and its clickable diagnostics hint do not wait for ACP to
 connect. With automatic suggestion off, detection alone does not enqueue work;
-activating the hint queues the requested fix until the agent is ready.
+activating the hint captures context and then queues the requested fix until the
+agent is ready.
 Once accepted into the queue, the hint immediately switches to the non-interactive
 pending state; it does not wait for the request to start running.
 Repeated activation of the same detected failure does not add another request,
@@ -351,9 +353,12 @@ part of queue admission, before processing the next helper event. Capture does n
 wait for agent readiness or the current turn to finish. A typed `/fix` uses the
 same admission-time capture. Dispatch consumes the frozen evidence without
 reading the pane again. This is a snapshot when WTA handles the trigger, not an
-atomic snapshot at the terminal's command-finished marker. A failed automatic
-capture is removed with a warning; a failed manual capture is retained as needing
-resubmission; that recovery action is also unavailable in the count-only UI.
+atomic snapshot at the terminal's command-finished marker. Any failed capture
+shows a warning in the agent pane without creating a queue entry or stopping
+existing work. The diagnostics hint stays detected and can be activated again
+directly, without recalling or discarding a failed request. Cancelling during
+preparation discards it; successfully captured unsent user requests retain the
+existing stopped-queue behavior.
 Disabling automatic suggestions leaves detected errors available for manual analysis.
 
 Input history preserves the `/fix` command prefix but does not retain image

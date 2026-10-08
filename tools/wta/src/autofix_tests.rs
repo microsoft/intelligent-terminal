@@ -39,7 +39,11 @@ fn cold_start_captures_autofix_without_dispatch_before_connected() {
     app.autofix_enabled = true;
 
     app.maybe_trigger_autofix(&failure_notification("pane-cold", Some("tab-cold")));
-    assert_eq!(app.tab_sessions["tab-cold"].prompt_queue.entries.len(), 1);
+    assert!(app.tab_sessions["tab-cold"].prompt_queue.entries.is_empty());
+    assert_eq!(
+        app.tab_sessions["tab-cold"].pending_autofix_captures.len(),
+        1
+    );
     complete_autofix_capture(&mut app, "tab-cold");
 
     assert!(
@@ -76,7 +80,7 @@ fn detected_autofix_is_actionable_while_connecting_and_queues_until_ready() {
     assert!(app.current_tab().turn.is_idle());
 
     app.handle_autofix_execute_from_detected(pane, Some(tab));
-    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    assert!(app.current_tab().prompt_queue.entries.is_empty());
     complete_autofix_capture(&mut app, tab);
     assert!(app.current_tab().turn.is_idle());
     assert!(app.current_tab().autofix.pane_id.is_none());
@@ -109,16 +113,24 @@ fn detected_activation_is_idempotent_while_capturing_connecting_or_busy() {
         }
         app.maybe_trigger_autofix(&failure_notification("pane", Some("tab")));
         app.handle_autofix_execute_from_detected("pane", Some("tab"));
-        let id = app.current_tab().prompt_queue.entries[0].submission.id;
-        let token = app.current_tab().prompt_queue.entries[0]
+        let id = app.current_tab().pending_autofix_captures[0].submission.id;
+        let token = app.current_tab().pending_autofix_captures[0]
             .submission
             .cancellation_token();
         let generation = app.current_tab().autofix.generation;
         for _ in 0..3 {
             app.handle_autofix_execute_from_detected("pane", Some("tab"));
         }
-        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1, "{gate}");
-        assert_eq!(app.current_tab().prompt_queue.entries[0].submission.id, id);
+        assert!(app.current_tab().prompt_queue.entries.is_empty(), "{gate}");
+        assert_eq!(
+            app.current_tab().pending_autofix_captures.len(),
+            1,
+            "{gate}"
+        );
+        assert_eq!(
+            app.current_tab().pending_autofix_captures[0].submission.id,
+            id
+        );
         assert!(!token.is_cancelled());
         assert_eq!(app.current_tab().autofix.generation, generation);
         complete_autofix_capture(&mut app, "tab");
@@ -157,6 +169,7 @@ fn distinct_identical_diagnostics_can_each_be_activated_once_after_tab_rename() 
     app.maybe_trigger_autofix(&failure_notification("pane", Some("renamed")));
     app.handle_autofix_execute_from_detected("pane", Some("renamed"));
     app.handle_autofix_execute_from_detected("pane", Some("renamed"));
+    complete_autofix_capture(&mut app, "renamed");
     assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
     let entries = &app.current_tab().prompt_queue.entries;
     assert_eq!(entries[0].submission.id, first_id);
@@ -176,17 +189,29 @@ fn cancelled_or_failed_detected_capture_allows_retry_without_accepting_late_comp
         app.state = ConnectionState::Connecting("startup".into());
         app.maybe_trigger_autofix(&failure_notification("pane", Some("tab")));
         app.handle_autofix_execute_from_detected("pane", Some("tab"));
-        let stale_id = app.current_tab().prompt_queue.entries[0].submission.id;
+        let stale_id = app.current_tab().pending_autofix_captures[0].submission.id;
+        let token = app.current_tab().pending_autofix_captures[0]
+            .submission
+            .cancellation_token();
         if failed {
             app.autofix_snapshot_ready(stale_id, Err("capture failed".into()));
-            app.recall_last_pending_input();
-            assert_eq!(app.current_tab().input, "/fix Command failed (exit 1)");
-            app.current_tab_mut().clear_input();
+            assert!(matches!(
+                app.current_tab().autofix.bar_snapshot,
+                AutofixBarSnapshot::Detected { .. }
+            ));
+            assert!(app.current_tab().messages.iter().any(|message| matches!(
+                message, ChatMessage::Notice { kind: NoticeKind::Warning, text }
+                    if text == t!("queue.capture_failed", error = "capture failed").as_ref()
+            )));
         } else {
             app.current_tab_mut().cancel_pending_prompts();
         }
+        assert!(token.is_cancelled());
+        assert!(app.current_tab().prompt_queue.entries.is_empty());
+        assert!(app.current_tab().autofix.detected_request_id.is_none());
+        assert!(!app.pending_queue_paused());
         app.handle_autofix_execute_from_detected("pane", Some("tab"));
-        let id = app.current_tab().prompt_queue.entries[0].submission.id;
+        let id = app.current_tab().pending_autofix_captures[0].submission.id;
         assert_ne!(id, stale_id);
         app.autofix_snapshot_ready(
             stale_id,
@@ -195,9 +220,22 @@ fn cancelled_or_failed_detected_capture_allows_retry_without_accepting_late_comp
             )),
         );
         app.handle_autofix_execute_from_detected("pane", Some("tab"));
-        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+        assert!(app.current_tab().prompt_queue.entries.is_empty());
+        assert_eq!(app.current_tab().pending_autofix_captures.len(), 1);
+        assert_eq!(
+            app.current_tab().pending_autofix_captures[0].submission.id,
+            id
+        );
+        assert!(app.current_tab().pending_autofix_captures[0]
+            .submission
+            .autofix_snapshot
+            .is_none());
+        complete_autofix_capture(&mut app, "tab");
         assert_eq!(app.current_tab().prompt_queue.entries[0].submission.id, id);
-        assert!(app.current_tab().prompt_queue.entries[0].capturing);
+        assert_eq!(app.current_tab().autofix.detected_request_id, Some(id));
+        app.state = ConnectionState::Connected;
+        app.dispatch_prompt_queues();
+        assert_eq!(app.current_tab().turn.prompt_id(), Some(id));
     }
 }
 
@@ -355,7 +393,7 @@ fn detected_action_only_submits_on_the_target_helper() {
         AutofixBarSnapshot::Detected { .. }
     ));
     assert!(a.current_tab().prompt_queue.entries.is_empty());
-    assert_eq!(b.current_tab().prompt_queue.entries.len(), 1);
+    assert_eq!(b.current_tab().pending_autofix_captures.len(), 1);
     complete_autofix_capture(&mut b, "tab-b");
     assert!(!b.current_tab().turn.is_idle());
     assert_eq!(b.current_tab().autofix.pane_id.as_deref(), Some("pane-b"));
@@ -433,6 +471,8 @@ fn busy_same_pane_queues_latest_without_replacing_active_turn() {
 
     // Same pane, still busy: queue without changing the active generation.
     app.maybe_trigger_autofix(&failure_notification(pane, Some(tab)));
+    assert!(app.tab_sessions[tab].prompt_queue.entries.is_empty());
+    complete_autofix_capture(&mut app, tab);
     assert_eq!(app.tab_sessions[tab].prompt_queue.entries.len(), 1);
     assert_eq!(
         app.tab_mut(tab).autofix.generation,
@@ -467,6 +507,8 @@ fn busy_different_pane_is_queued_without_replacing_active_turn() {
 
     // Different pane while A's turn is in flight waits in the queue.
     app.maybe_trigger_autofix(&failure_notification(pane_b, Some(tab)));
+    assert!(app.tab_sessions[tab].prompt_queue.entries.is_empty());
+    complete_autofix_capture(&mut app, tab);
     assert_eq!(app.tab_sessions[tab].prompt_queue.entries.len(), 1);
     assert_eq!(
         app.tab_mut(tab).autofix.pane_id.as_deref(),

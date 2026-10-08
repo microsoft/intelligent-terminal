@@ -381,6 +381,14 @@ impl App {
             }
         };
         let tab = self.current_tab();
+        if tab.pending_autofix_captures.iter().any(|entry| {
+            entry.kind == prompt_queue::RequestKind::ManualFix
+                && entry.source() == Some(requested_pane_id)
+                && entry.submission.autofix_text_kind
+                    == Some(crate::protocol::acp::client::AutofixTextKind::FailureSummary)
+        }) {
+            return;
+        }
         if tab.autofix.detected_request_id.is_some_and(|request_id| {
             tab.turn.prompt_id() == Some(request_id)
                 || tab
