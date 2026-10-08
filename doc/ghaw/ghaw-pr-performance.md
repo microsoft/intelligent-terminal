@@ -31,8 +31,14 @@ controller failed with `action_required`. All three native validation phases
 were skipped; no repair was published. That Rust-only synthetic fixture
 provided no hosted C++ coverage or native repair-and-publication proof.
 
-**The coverage-contract and agent-side shell-dependency corrections pass
-local checks but have not been hosted.** Shared build profiles and base/head
+**The corrected version also failed its hosted trial.**
+[Controller](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37751837734)
+and [worker](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37751853969)
+completed Rust BASE/HEAD analysis and delivered the agent's summary. The agent
+proposed a repair and requested all three native jobs, but its second finding
+omitted the required JSON `location`. Trusted validation rejected the report;
+all native phases were skipped and no repair was published. The private test
+workflows were disabled afterward, without retry. Shared build profiles and base/head
 PR analysis are implemented. C++ developers can select the opt-in `PerformanceAnalysis=Extended`
 MSBuild profile; Rust developers can use `cargo wta-perf` and `cargo wta-perf-extended`
 from the repository root. The ordinary Cargo build does not run Clippy.
