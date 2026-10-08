@@ -172,7 +172,7 @@ test('inline guide tool captures only fixed summary/report outputs with immutabl
             'report_json', 'summaryMarkdown', 'summaryDirectory', 'reportFilename',
             script.replace("runtime.captureReviewSummary('/tmp/gh-aw', summaryMarkdown)",
                 'runtime.captureReviewSummary(summaryDirectory, summaryMarkdown)')
-                .replace("fs.writeFileSync('/tmp/gh-aw/performance-report.json'", 'fs.writeFileSync(reportFilename'));
+                .replace("'/tmp/gh-aw/performance-report.json'", 'reportFilename'));
         const reportFilename = path.join(directory, 'report.json');
         const markdown = 'Read-only findings.\n\n| Severity | Finding |\n| LOW | Advice |\n';
         assert.deepEqual(await preview(JSON.stringify(report()), markdown, directory, reportFilename),
@@ -181,11 +181,24 @@ test('inline guide tool captures only fixed summary/report outputs with immutabl
         assert.deepEqual(JSON.parse(fs.readFileSync(reportFilename, 'utf8')), report());
         const invalid = report();
         invalid.identity.prNumber++;
-        await assert.rejects(preview(JSON.stringify(invalid), markdown, directory, reportFilename), /triggering pull request/);
-        await assert.rejects(preview('{', markdown, directory, reportFilename), SyntaxError);
-        assert.equal(runtime.readReviewSummary(directory), markdown, 'summary survives invalid JSON and identity failures');
-        assert.deepEqual(JSON.parse(fs.readFileSync(reportFilename, 'utf8')), report(), 'rejected data cannot replace accepted JSON');
-        assert.match(script, /fs\.writeFileSync\('\/tmp\/gh-aw\/performance-report\.json'/);
+        const rejectedMarkdown = 'Different latest submission; validation rejected.\n';
+        await assert.rejects(preview(JSON.stringify(invalid), rejectedMarkdown, directory, reportFilename), /triggering pull request/);
+        assert.equal(fs.existsSync(reportFilename), false, 'rejected identity invalidates the prior accepted report');
+        assert.equal(runtime.readReviewSummary(directory), rejectedMarkdown, 'latest diagnostic summary is retained independently');
+        await preview(JSON.stringify(report()), markdown, directory, reportFilename);
+        await assert.rejects(preview('{', rejectedMarkdown, directory, reportFilename), SyntaxError);
+        assert.equal(fs.existsSync(reportFilename), false, 'malformed latest JSON leaves no report for the post-agent gate');
+        assert.throws(() => processSubmission(submission(null)), /version 1 performance review/,
+            'a terminal noop cannot reuse the invalidated prior report');
+        assert.equal(runtime.readReviewSummary(directory), rejectedMarkdown, 'summary survives invalid JSON and identity failures');
+        await preview(JSON.stringify(report()), markdown, directory, reportFilename);
+        await assert.rejects(preview(JSON.stringify(report()), '', directory, reportFilename), /review summary must/);
+        assert.equal(fs.existsSync(reportFilename), false, 'invalid summary also invalidates accepted JSON');
+        assert.match(script, /const reportPath = '\/tmp\/gh-aw\/performance-report\.json'/);
+        assert.match(script, /fs\.writeFileSync\(reportPath/);
+        assert.ok(script.indexOf('fs.unlinkSync(reportPath)') < script.indexOf('runtime.captureReviewSummary'));
+        assert.doesNotMatch(script.slice(script.indexOf('fs.unlinkSync(reportPath)')), /\bawait\b/,
+            'artifact invalidation, capture and acceptance must remain a synchronous handler transaction');
         assert.doesNotMatch(script, /exec|spawn|fetch\(/);
     } finally {
         for (const key of ['TRUSTED_REVIEW_RUNTIME', 'PR_NUMBER', 'BASE_SHA', 'HEAD_SHA']) {

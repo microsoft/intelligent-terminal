@@ -95,6 +95,11 @@ combines a comment with a branch commit, and fork guidance never edits source.
 The controller is the sole Conversation publisher for both modes. Fork
 guidance captures its validated JSON and Markdown, then emits `noop`; it has
 no later `add-comment` job that could post after an earlier freshness check.
+Each entered guide submission handler invalidates any previous accepted JSON before
+capturing the summary or validating the replacement. A rejected latest
+submission therefore retains diagnostic Markdown but cannot reuse an old
+report to obtain a successful verdict. Input rejected before the handler
+does not modify either previously accepted artifact.
 
 Automatic conversation delivery was verified in a reporting-only
 [GitHub Actions run](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37768180616).

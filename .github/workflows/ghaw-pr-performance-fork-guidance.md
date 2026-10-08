@@ -61,15 +61,21 @@ mcp-scripts:
       BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
       HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
     script: |
+      const fs = await import('node:fs');
       const { pathToFileURL } = await import('node:url');
       const runtime = await import(pathToFileURL(process.env.TRUSTED_REVIEW_RUNTIME).href);
+      const reportPath = '/tmp/gh-aw/performance-report.json';
+      try {
+        fs.unlinkSync(reportPath);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
       runtime.captureReviewSummary('/tmp/gh-aw', summaryMarkdown);
       const report = runtime.validateReport(JSON.parse(report_json), {
         mode: 'guide', prNumber: Number(process.env.PR_NUMBER),
         baseSha: process.env.BASE_SHA, headSha: process.env.HEAD_SHA
       });
-      const fs = await import('node:fs');
-      fs.writeFileSync('/tmp/gh-aw/performance-report.json', `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+      fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
       return { renderedCard: runtime.renderReport(report) };
 
 jobs:
