@@ -118,6 +118,7 @@ private:
     NOTIFYICONDATA _notificationIcon{};
     UINT WM_TASKBARCREATED = 0;
     HMENU _currentWindowMenu = nullptr;
+    static constexpr UINT _closeAllKeptTabsMenuId = 1;
     bool _notificationIconShown = false;
     winrt::TerminalApp::ContentManager _keptManager{ nullptr };
     mutable std::mutex _keptPagesMutex;

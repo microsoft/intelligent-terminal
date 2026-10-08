@@ -98,7 +98,13 @@ namespace Microsoft::Terminal::RichTab::Provider
         return instance;
     }
 
-    ProviderBroker::ProviderBroker()
+    ProviderBroker::ProviderBroker() :
+        ProviderBroker{ CommandRunner::ResolveGit() }
+    {
+    }
+
+    ProviderBroker::ProviderBroker(std::optional<std::filesystem::path> gitBinary) :
+        _gitBinary{ std::move(gitBinary) }
     {
         if (BCryptGenRandom(
                 nullptr,
@@ -171,6 +177,11 @@ namespace Microsoft::Terminal::RichTab::Provider
         return _processEpoch;
     }
 
+    bool ProviderBroker::GitAvailable() const noexcept
+    {
+        return _gitBinary.has_value();
+    }
+
     void ProviderBroker::ReloadProviders()
     {
         auto builtIns = BuiltInProviderCatalog::Load(BuiltInProviderCatalog::PackageRoot());
@@ -219,6 +230,7 @@ namespace Microsoft::Terminal::RichTab::Provider
     void ProviderBroker::SetVisibleFields(std::string_view providerId, std::vector<std::string> fields)
     {
         std::vector<std::pair<Callback, BrokerUpdate>> notifications;
+        std::vector<std::string> sessionIdsToRefresh;
         {
             std::lock_guard lock{ _mutex };
             const auto provider = std::find_if(_providers.begin(), _providers.end(), [&](const auto& candidate) {
@@ -251,7 +263,83 @@ namespace Microsoft::Terminal::RichTab::Provider
             {
                 return;
             }
+
+            const auto emptySelection = selectedFields.empty();
             _visibleFields.insert_or_assign(provider->manifest.id, std::move(selectedFields));
+
+            for (auto& [sessionId, session] : _sessions)
+            {
+                if (!session.callbacks.empty())
+                {
+                    sessionIdsToRefresh.push_back(sessionId);
+                }
+                if (emptySelection)
+                {
+                    if (const auto state = session.providers.find(provider->manifest.id); state != session.providers.end())
+                    {
+                        state->second.generation = _nextGeneration++;
+                        state->second.pending.reset();
+                        state->second.snapshot.reset();
+                    }
+                }
+                ++session.updateSequence;
+                const auto update = _UpdateFor(sessionId, session);
+                for (const auto& [_, callback] : session.callbacks)
+                {
+                    notifications.emplace_back(callback, update);
+                }
+            }
+        }
+
+        for (const auto& [callback, update] : notifications)
+        {
+            callback(update);
+        }
+
+        for (const auto& sid : sessionIdsToRefresh)
+        {
+            _Refresh(sid, ActivationEvent::ManualRefresh, false);
+        }
+    }
+
+    void ProviderBroker::SetFieldDisplayNames(
+        std::string_view providerId,
+        std::unordered_map<std::string, std::string> displayNames)
+    {
+        std::vector<std::pair<Callback, BrokerUpdate>> notifications;
+        {
+            std::lock_guard lock{ _mutex };
+            const auto provider = std::find_if(_providers.begin(), _providers.end(), [&](const auto& candidate) {
+                return candidate.manifest.id == providerId;
+            });
+            if (provider == _providers.end())
+            {
+                return;
+            }
+
+            std::unordered_set<std::string> declaredFields;
+            declaredFields.reserve(provider->manifest.fields.size());
+            for (const auto& field : provider->manifest.fields)
+            {
+                declaredFields.emplace(field.id);
+            }
+
+            std::unordered_map<std::string, std::string> localizedDisplayNames;
+            localizedDisplayNames.reserve(displayNames.size());
+            for (auto& [field, displayName] : displayNames)
+            {
+                if (declaredFields.contains(field) && !displayName.empty())
+                {
+                    localizedDisplayNames.emplace(std::move(field), std::move(displayName));
+                }
+            }
+
+            const auto current = _fieldDisplayNames.find(provider->manifest.id);
+            if (current != _fieldDisplayNames.end() && current->second == localizedDisplayNames)
+            {
+                return;
+            }
+            _fieldDisplayNames.insert_or_assign(provider->manifest.id, std::move(localizedDisplayNames));
 
             for (auto& [sessionId, session] : _sessions)
             {
@@ -513,7 +601,31 @@ namespace Microsoft::Terminal::RichTab::Provider
                     activation = ActivationEvent::ManualRefresh;
                 }
 
+                std::vector<std::string> visibleFieldsForProvider;
+                const auto selected = _visibleFields.find(provider.manifest.id);
+                if (selected != _visibleFields.end())
+                {
+                    visibleFieldsForProvider.assign(selected->second.begin(), selected->second.end());
+                }
+                else
+                {
+                    for (const auto& field : provider.manifest.fields)
+                    {
+                        if (field.defaultVisible)
+                        {
+                            visibleFieldsForProvider.emplace_back(field.id);
+                        }
+                    }
+                }
+
                 auto& providerState = session.providers[provider.manifest.id];
+                if (visibleFieldsForProvider.empty())
+                {
+                    providerState.generation = _nextGeneration++;
+                    providerState.pending.reset();
+                    providerState.snapshot.reset();
+                    continue;
+                }
                 const auto generation = _nextGeneration++;
                 providerState.generation = generation;
                 Request request;
@@ -528,6 +640,12 @@ namespace Microsoft::Terminal::RichTab::Provider
                 request.contextRevision = session.contextRevision;
                 request.shellType = session.context.shellType;
                 request.firstPartyFields = session.context.firstPartyFields;
+                if (provider.manifest.id == "com.microsoft.intelligent-terminal.git-status")
+                {
+                    const auto binary = _gitBinary ? _gitBinary->u8string() : std::u8string{};
+                    request.firstPartyFields.insert_or_assign("gitBinary", std::string{ binary.begin(), binary.end() });
+                }
+                request.visibleFields = std::move(visibleFieldsForProvider);
                 if (providerState.running)
                 {
                     providerState.pending = PendingRequest{ std::move(request), generation };
@@ -572,10 +690,6 @@ namespace Microsoft::Terminal::RichTab::Provider
                     "Provider '" + provider.manifest.id + "' failed with status " +
                     std::to_string(static_cast<int>(command.status)) +
                     " and exit code " + std::to_string(command.exitCode));
-                if (!command.standardError.empty())
-                {
-                    diagnostics.emplace_back(command.standardError);
-                }
             }
             else
             {
@@ -589,8 +703,12 @@ namespace Microsoft::Terminal::RichTab::Provider
                 }
                 else
                 {
-                    diagnostics = parsed.errors;
+                    diagnostics.insert(diagnostics.end(), parsed.errors.begin(), parsed.errors.end());
                 }
+            }
+            if (!command.standardError.empty())
+            {
+                diagnostics.emplace_back(command.standardError);
             }
         }
 
@@ -616,10 +734,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             if (state->second.generation == generation &&
                 session->second.contextRevision == request.contextRevision)
             {
-                if (snapshot)
-                {
-                    state->second.snapshot = std::move(snapshot);
-                }
+                state->second.snapshot = std::move(snapshot);
                 ++session->second.updateSequence;
                 update = _UpdateFor(request.sessionId, session->second, std::move(diagnostics));
                 callbacks.reserve(session->second.callbacks.size());
@@ -683,7 +798,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             state.sessionIncarnation,
             state.contextRevision,
             state.updateSequence,
-            ComposePresentation(_providers, snapshots, _visibleFields),
+            ComposePresentation(_providers, snapshots, _visibleFields, _fieldDisplayNames),
             std::move(diagnostics)
         };
     }
@@ -691,7 +806,8 @@ namespace Microsoft::Terminal::RichTab::Provider
     std::optional<Presentation> ProviderBroker::ComposePresentation(
         const std::vector<Registration>& providers,
         const std::unordered_map<std::string, Snapshot>& snapshots,
-        const VisibleFieldMap& visibleFields)
+        const VisibleFieldMap& visibleFields,
+        const FieldDisplayNameMap& fieldDisplayNames)
     {
         Presentation result;
         for (const auto& provider : providers)
@@ -717,7 +833,18 @@ namespace Microsoft::Terminal::RichTab::Provider
                     const auto valueText = _ValueText(value->second);
                     _Append(result.text, valueText, L"\n");
 
-                    auto accessibilityText = _ToWide(field.displayName);
+                    auto displayName = field.displayName;
+                    if (const auto providerNames = fieldDisplayNames.find(provider.manifest.id);
+                        providerNames != fieldDisplayNames.end())
+                    {
+                        if (const auto localizedName = providerNames->second.find(field.id);
+                            localizedName != providerNames->second.end())
+                        {
+                            displayName = localizedName->second;
+                        }
+                    }
+
+                    auto accessibilityText = _ToWide(displayName);
                     accessibilityText.append(L": ");
                     accessibilityText.append(valueText);
                     _Append(result.accessibilityText, accessibilityText, L", ");

@@ -105,6 +105,7 @@ pub enum RecommendedAction {
 /// Wraps a chosen recommendation with execution options (e.g. insert-only mode).
 #[derive(Debug, Clone)]
 pub struct ChoiceExecution {
+    pub run: Option<crate::telemetry::FixRunIdentity>,
     pub choice: RecommendationChoice,
     /// When true, Send actions paste text without a trailing Enter (insert-only).
     pub insert_only: bool,
@@ -135,6 +136,37 @@ pub fn default_delegate_agent_runtimes(
         prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
         model: delegate_model.filter(|m| !m.is_empty()).map(str::to_string),
     }]
+}
+
+/// Resolve a launch command while preserving the host's canonical provider identity.
+pub(crate) fn resolve_delegate_runtime_with_provider(
+    delegate_agent_cmd: Option<&str>,
+    agent_cmd: Option<&str>,
+    delegate_model: Option<&str>,
+    provider_id: Option<&str>,
+) -> Result<DelegateAgentRuntime> {
+    let mut runtimes =
+        default_delegate_agent_runtimes(delegate_agent_cmd, agent_cmd, delegate_model);
+    let mut runtime = runtimes
+        .pop()
+        .ok_or_else(|| anyhow::anyhow!("no delegate agent configured"))?;
+    if let Some(provider) = provider_id {
+        anyhow::ensure!(
+            agent_registry::is_known_id(provider)
+                || (provider.starts_with("custom:")
+                    && provider.len() > 7
+                    && provider.trim() == provider
+                    && !provider.contains(['\r', '\n', '\t'])),
+            "invalid delegate provider identity"
+        );
+        runtime.id = provider.to_owned();
+    } else {
+        anyhow::ensure!(
+            agent_registry::is_known_id(&runtime.id),
+            "custom delegate command requires an explicit provider identity"
+        );
+    }
+    Ok(runtime)
 }
 
 /// Derive a (id, display_name) pair from a delegate agent commandline.
@@ -296,6 +328,12 @@ pub async fn run_recommendation_executor(
 ) {
     while let Some(mut exec) = rx.recv().await {
         let delegate_agents = delegate_agents.lock().unwrap().clone();
+        if let Some(run) = exec.run {
+            // Emit both on the consumer: a successful send can wake this task
+            // before the UI finishes finalizing the confirmation.
+            crate::telemetry::log_error_fix_accepted(run.offer_id, run.source);
+            crate::telemetry::log_error_fix_run_started(run);
+        }
         let result =
             match bind_choice_target(&mut exec.choice, exec.context.target_pane_id.as_deref()) {
                 Ok(()) => {
@@ -310,6 +348,9 @@ pub async fn run_recommendation_executor(
                 }
                 Err(err) => Err(err),
             };
+        if let Some(run) = exec.run {
+            crate::telemetry::log_error_fix_run_result(run.offer_id, run.run_id, result.is_ok());
+        }
         match result {
             Ok(()) => {}
             Err(err) => {
@@ -481,11 +522,13 @@ async fn execute_choice(
                     OpenTarget::Tab => {
                         // Launch the delegate agent directly as the tab process.
                         let result = shell_mgr
-                            .wt_create_tab(
+                            .wt_create_tab_with_background(
                                 commandline.as_deref(),
                                 cwd.as_deref(),
                                 title.as_deref().or(runtime_name),
                                 profile.as_deref(),
+                                false,
+                                runtime.map(|runtime| runtime.id.as_str()),
                             )
                             .await
                             .context("failed to create tab")?;
@@ -505,6 +548,7 @@ async fn execute_choice(
                                 direction.as_deref(),
                                 None,
                                 profile.as_deref(),
+                                runtime.map(|runtime| runtime.id.as_str()),
                             )
                             .await
                             .with_context(|| format!("failed to split pane {}", parent))?;
@@ -620,6 +664,7 @@ async fn execute_choice(
                                 direction.as_deref(),
                                 None,
                                 profile.as_deref(),
+                                None,
                             )
                             .await
                             .with_context(|| format!("failed to split pane {}", parent))?;
@@ -811,6 +856,43 @@ fn ensure_delegate_supported(profile: &agent_registry::AgentProfile) -> Result<(
         );
     }
     Ok(())
+}
+
+pub(crate) fn with_windows_delegate_cwd(commandline: &str, cwd: &str) -> Result<String> {
+    anyhow::ensure!(
+        std::path::Path::new(cwd).is_absolute(),
+        "host split requires an absolute Windows working directory"
+    );
+    let executable = split_windows_commandline(commandline)
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("delegate command has no executable"))?;
+    let quoted = quote_windows_commandline_arg(&executable);
+    let always_quoted = format!("\"{executable}\"");
+    let arguments = commandline
+        .strip_prefix(&always_quoted)
+        .or_else(|| commandline.strip_prefix(&quoted))
+        .ok_or_else(|| anyhow!("delegate executable quoting is unsupported"))?
+        .trim_start();
+    // Keep the existing native argument string intact, including cmd /c shim
+    // quoting. Encoded script data bypasses WT's environment-string expansion.
+    let script = format!(
+        "$ErrorActionPreference='Stop';\
+         $p=New-Object System.Diagnostics.Process;\
+         $p.StartInfo.FileName={};\
+         $p.StartInfo.Arguments={};\
+         $p.StartInfo.WorkingDirectory={};\
+         $p.StartInfo.UseShellExecute=$false;\
+         [void]$p.Start();$p.WaitForExit();exit $p.ExitCode",
+        ps_single_quote(&executable),
+        ps_single_quote(arguments),
+        ps_single_quote(cwd),
+    );
+    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    Ok(format!(
+        "powershell.exe -NoLogo -NoProfile -EncodedCommand {}",
+        crate::osc52::base64_encode(&utf16)
+    ))
 }
 
 fn build_delegate_launch_commandline(
@@ -1097,6 +1179,15 @@ fn pwsh_available() -> bool {
 /// registry's PATH search order.  Returns the commandline with the resolved
 /// executable, or the original commandline unchanged.
 fn resolve_commandline_executable(commandline: &str) -> String {
+    #[cfg(test)]
+    if let Some(resolved) = TEST_EXECUTABLE_RESOLVER.with(|resolver| {
+        resolver
+            .borrow()
+            .as_ref()
+            .map(|resolve| resolve(commandline))
+    }) {
+        return resolved;
+    }
     let tokens = split_windows_commandline(commandline);
     if let Some(first) = tokens.first() {
         let resolved = agent_registry::resolve_bare_agent_name(first);
@@ -1108,6 +1199,71 @@ fn resolve_commandline_executable(commandline: &str) -> String {
         }
     }
     commandline.to_string()
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_EXECUTABLE_RESOLVER: std::cell::RefCell<Option<Box<dyn Fn(&str) -> String>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Only current-thread tests may hold this guard across an await. Mock Terminal
+/// requests do not launch providers, so their command resolution must not depend
+/// on installed CLIs or mutate the process-wide PATH.
+/// Real-provider installation, authentication, and launches belong in E2E tests.
+#[cfg(test)]
+pub(crate) struct TestExecutableResolver(std::marker::PhantomData<std::rc::Rc<()>>);
+
+#[cfg(test)]
+impl Drop for TestExecutableResolver {
+    fn drop(&mut self) {
+        TEST_EXECUTABLE_RESOLVER.with(|resolver| *resolver.borrow_mut() = None);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn override_test_executable_resolver(
+    resolve: impl Fn(&str) -> String + 'static,
+) -> TestExecutableResolver {
+    TEST_EXECUTABLE_RESOLVER.with(|resolver| {
+        assert!(
+            resolver.borrow().is_none(),
+            "test resolver cannot be nested"
+        );
+        *resolver.borrow_mut() = Some(Box::new(resolve));
+    });
+    TestExecutableResolver(std::marker::PhantomData)
+}
+
+#[cfg(test)]
+pub(crate) fn mock_native_delegate_executables() -> TestExecutableResolver {
+    override_test_executable_resolver(|commandline| {
+        let mut tokens = split_windows_commandline(commandline);
+        assert!(
+            matches!(
+                tokens[0].as_str(),
+                "copilot"
+                    | "claude"
+                    | "codex"
+                    | "gemini"
+                    | "opencode"
+                    | "antigravity"
+                    | "agy"
+                    | "npx"
+            ),
+            "mock resolver only accepts known bare launch commands"
+        );
+        // No executable is created or launched: mock Terminal requests only record commands.
+        let profile = agent_registry::lookup_profile(&tokens[0]);
+        let executable = if agent_registry::is_known_id(profile.id) {
+            profile.cli_executable
+        } else {
+            tokens[0].as_str()
+        };
+        tokens[0] = format!("C:\\wta-unit-mock\\{executable}.exe");
+        let args: Vec<&str> = tokens.iter().map(String::as_str).collect();
+        join_windows_commandline(&args)
+    })
 }
 
 fn resolve_delegate_runtime_commandline(
@@ -1393,6 +1549,24 @@ pub(crate) fn build_wsl_delegate_commandline(
     Ok(escape_for_intermediate_shell(&bash_command))
 }
 
+fn normalize_delegate_resume_alias(
+    commandline: &str,
+    profile: &agent_registry::AgentProfile,
+) -> String {
+    if agent_registry::is_known_id(profile.id) && profile.cli_executable != profile.id {
+        let mut tokens = split_windows_commandline(commandline);
+        if tokens
+            .first()
+            .is_some_and(|executable| executable.eq_ignore_ascii_case(profile.id))
+        {
+            tokens[0] = profile.cli_executable.to_string();
+            let args: Vec<&str> = tokens.iter().map(String::as_str).collect();
+            return join_windows_commandline(&args);
+        }
+    }
+    commandline.to_string()
+}
+
 pub(crate) fn build_delegate_resume_commandline(
     runtime: &DelegateAgentRuntime,
     session_id: &str,
@@ -1408,18 +1582,69 @@ pub(crate) fn build_delegate_resume_commandline(
     if profile.resume_flag.is_empty() {
         bail!("delegate agent does not support resume");
     }
-    let resolved = resolve_commandline_executable(commandline);
+    let resolved =
+        resolve_commandline_executable(&normalize_delegate_resume_alias(commandline, profile));
+    if needs_shell_launch(&resolved) {
+        let mut tokens = split_windows_commandline(&resolved);
+        let executable = tokens
+            .first()
+            .ok_or_else(|| anyhow!("delegate agent runtime commandline has no executable"))?;
+        let path = std::path::Path::new(executable);
+        let shim = if path.is_file() {
+            Some(path.to_path_buf())
+        } else if !executable.contains('\\') && !executable.contains('/') {
+            std::env::var_os("PATH").and_then(|path| {
+                std::env::split_paths(&path)
+                    .map(|directory| directory.join(executable))
+                    .find(|candidate| candidate.is_file())
+            })
+        } else {
+            None
+        };
+        let shim =
+            shim.ok_or_else(|| anyhow!("delegate batch resume is unsupported: shim not found"))?;
+        let shim = if shim.is_absolute() {
+            shim
+        } else {
+            std::env::current_dir()
+                .context("resolve delegate batch resume shim")?
+                .join(shim)
+        };
+        let companion = shim.with_extension("ps1");
+        // Never pass a resume id through cmd's parser or fall back to another
+        // PATH-resolved provider. Only the exact shim's companion is supported.
+        if !companion.is_file() {
+            bail!("delegate batch resume is unsupported without an adjacent PowerShell companion");
+        }
+        tokens[0] = shim.to_string_lossy().into_owned();
+        let args: Vec<&str> = tokens.iter().map(String::as_str).collect();
+        let mut invocation =
+            powershell_invocation_tokens(&join_windows_commandline(&args), profile);
+        anyhow::ensure!(
+            invocation.first().map(String::as_str) == companion.to_str(),
+            "delegate batch resume is unsupported: PowerShell companion changed"
+        );
+        invocation.push(profile.resume_flag.to_string());
+        invocation.push(session_id.to_string());
+        let call = invocation
+            .iter()
+            .map(|token| ps_single_quote(token))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let script = format!("$ErrorActionPreference='Stop'; & {call}; exit $LASTEXITCODE");
+        let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        return Ok(format!(
+            "powershell.exe -NoLogo -NoProfile -EncodedCommand {}",
+            crate::osc52::base64_encode(&utf16)
+        ));
+    }
     let resume = format!(
         "{} {} {}",
         resolved,
         profile.resume_flag,
         quote_windows_commandline_arg(session_id)
     );
-    if needs_shell_launch(&resolved) {
-        Ok(format!("cmd /c {resume}"))
-    } else {
-        Ok(resume)
-    }
+    Ok(resume)
 }
 
 pub(crate) fn build_wsl_delegate_resume_commandline(
@@ -1437,7 +1662,8 @@ pub(crate) fn build_wsl_delegate_resume_commandline(
         bail!("delegate agent does not support resume");
     }
 
-    let mut parts: Vec<String> = split_windows_commandline(agent_cmd)
+    let commandline = normalize_delegate_resume_alias(agent_cmd, profile);
+    let mut parts: Vec<String> = split_windows_commandline(&commandline)
         .into_iter()
         .map(|token| sh_quote(&token))
         .collect();
@@ -1793,6 +2019,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingWtChannel {
         requests: Mutex<Vec<(String, serde_json::Value)>>,
+        fail_send: bool,
     }
 
     #[async_trait::async_trait]
@@ -1806,11 +2033,190 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((method.to_string(), params));
-            Ok(json!({}))
+            if self.fail_send && method == "send_input" {
+                anyhow::bail!("test dispatch failure");
+            }
+            Ok(match method {
+                "create_tab" | "split_pane" => json!({"session_id": "created-pane"}),
+                _ => json!({}),
+            })
         }
 
         fn is_available(&self) -> bool {
             true
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recommendation_executor_preserves_configured_native_provider_at_creation() {
+        use crate::agent_tools::action_proposal::schema::{
+            build_recommendation_set, parse_mcp_action_payload, McpActionTool,
+        };
+        use clap::Parser;
+
+        let _resolver = super::override_test_executable_resolver(|command| {
+            let mut tokens = super::split_windows_commandline(command);
+            tokens[0] = format!("C:\\wta-unit-mock\\{}.exe", tokens[0]);
+            super::join_windows_commandline(&tokens.iter().map(String::as_str).collect::<Vec<_>>())
+        });
+        for (provider, command) in [
+            ("copilot", "copilot"),
+            ("claude", "claude"),
+            ("codex", "codex"),
+            ("gemini", "gemini"),
+            ("opencode", "opencode"),
+            ("custom:review", "pwsh -File C:\\agents\\review.ps1"),
+            ("custom:linux", "wsl.exe -d Ubuntu -- /opt/agents/review"),
+        ] {
+            for placement in ["new_tab", "new_split"] {
+                // Exercise the helper's actual CLI/bootstrap configuration,
+                // not a manually assembled runtime with a repaired identity.
+                let cli = crate::cli::args::Cli::try_parse_from([
+                    "wta",
+                    "--agent",
+                    "copilot --acp",
+                    "--delegate-agent",
+                    command,
+                    "--delegate-agent-id",
+                    provider,
+                    "--delegate-model",
+                    "configured-model",
+                ])
+                .unwrap();
+                let runtime = crate::helper_config(cli)
+                    .resolve_delegate_runtime()
+                    .unwrap();
+                assert_eq!(runtime.id, provider);
+                assert_eq!(runtime.model.as_deref(), Some("configured-model"));
+                let payload = json!({
+                    "summary": "Investigate tests",
+                    "task": "Inspect the repository",
+                    "placement": placement,
+                    "working_directory": "C:\\repo"
+                })
+                .to_string();
+                let wire = parse_mcp_action_payload(
+                    McpActionTool::DelegateTaskInNewWorkspace,
+                    payload.as_bytes(),
+                    false,
+                )
+                .unwrap();
+                let set = build_recommendation_set(
+                    &wire,
+                    false,
+                    Some(&runtime.id),
+                    Some("host-pane"),
+                    None,
+                )
+                .unwrap();
+                let channel = Arc::new(RecordingWtChannel::default());
+                let shell_mgr = Arc::new(
+                    ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>),
+                );
+                let (tx, rx) = mpsc::unbounded_channel();
+                let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+                tx.send(super::ChoiceExecution {
+                    run: None,
+                    choice: set.choices[0].clone(),
+                    insert_only: false,
+                    context: crate::turn_context::TurnContext::with_target_pane("host-pane"),
+                })
+                .unwrap();
+                drop(tx);
+                super::run_recommendation_executor(
+                    rx,
+                    event_tx,
+                    shell_mgr,
+                    Arc::new(Mutex::new(vec![runtime])),
+                )
+                .await;
+                while let Ok(event) = event_rx.try_recv() {
+                    assert!(
+                        !matches!(event, crate::app_contracts::AppEvent::SystemMessage(_)),
+                        "executor failed"
+                    );
+                }
+                let requests = channel.requests.lock().unwrap();
+                let (method, params) = requests
+                    .iter()
+                    .find(|(method, _)| method == "create_tab" || method == "split_pane")
+                    .expect("executor must create a target");
+                assert_eq!(
+                    method,
+                    if placement == "new_tab" {
+                        "create_tab"
+                    } else {
+                        "split_pane"
+                    }
+                );
+                assert_eq!(params["native_agent_provider_id"], provider);
+                assert_eq!(params["cwd"], "C:\\repo");
+                if placement == "new_split" {
+                    assert_eq!(params["session_id"], "host-pane");
+                } else {
+                    assert_eq!(params["title"], "Investigate tests");
+                }
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recommendation_executor_keeps_ordinary_workspaces_unclassified() {
+        for target in [OpenTarget::Tab, OpenTarget::Panel] {
+            let channel = Arc::new(RecordingWtChannel::default());
+            let shell_mgr = Arc::new(
+                ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>),
+            );
+            let (tx, rx) = mpsc::unbounded_channel();
+            let (event_tx, _event_rx) = mpsc::unbounded_channel();
+            tx.send(super::ChoiceExecution {
+                run: None,
+                choice: RecommendationChoice {
+                    choice: 1,
+                    title: "Ordinary shell".into(),
+                    rationale: String::new(),
+                    actions: vec![
+                        RecommendedAction::Open {
+                            target: target.clone(),
+                            parent: None,
+                            cwd: None,
+                            title: Some("copilot".into()),
+                            direction: None,
+                            profile: None,
+                        },
+                        RecommendedAction::OpenAndSend {
+                            target,
+                            parent: None,
+                            cwd: None,
+                            title: None,
+                            direction: None,
+                            profile: None,
+                            agent: None,
+                            input: "echo hello".into(),
+                        },
+                    ],
+                },
+                insert_only: false,
+                context: crate::turn_context::TurnContext::with_target_pane("host-pane"),
+            })
+            .unwrap();
+            drop(tx);
+            super::run_recommendation_executor(
+                rx,
+                event_tx,
+                shell_mgr,
+                Arc::new(Mutex::new(Vec::new())),
+            )
+            .await;
+            let requests = channel.requests.lock().unwrap();
+            let creates: Vec<_> = requests
+                .iter()
+                .filter(|(method, _)| method == "create_tab" || method == "split_pane")
+                .collect();
+            assert_eq!(creates.len(), 2);
+            for (_, params) in creates {
+                assert!(params.get("native_agent_provider_id").is_none());
+            }
         }
     }
 
@@ -1946,6 +2352,99 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn run_telemetry_preserves_dispatch_and_never_claims_execution_success() {
+        use super::{run_recommendation_executor, AppEvent, ChoiceExecution, TurnContext};
+        use crate::telemetry::capture::{take, Event};
+
+        for (insert_only, observed, fail_send, source) in [
+            (false, true, false, "Manual"),
+            (false, true, false, "Detection"),
+            (false, true, false, "Unknown"),
+            (false, true, true, "Manual"),
+            (true, false, false, "Manual"),
+            (false, false, false, "Manual"),
+        ] {
+            take();
+            let channel = Arc::new(RecordingWtChannel {
+                fail_send,
+                ..Default::default()
+            });
+            let shell = Arc::new(
+                ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>),
+            );
+            let (tx, rx) = mpsc::unbounded_channel();
+            let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+            let run = crate::telemetry::FixRunIdentity {
+                offer_id: uuid::Uuid::new_v4(),
+                run_id: uuid::Uuid::new_v4(),
+                source,
+            };
+            let input = "cmd /c exit 17; cmd /c exit 0";
+            tx.send(ChoiceExecution {
+                run: observed.then_some(run),
+                choice: RecommendationChoice {
+                    choice: 1,
+                    title: "Run".into(),
+                    rationale: String::new(),
+                    actions: vec![RecommendedAction::Send {
+                        parent: "model-target".into(),
+                        input: input.into(),
+                    }],
+                },
+                insert_only,
+                context: TurnContext::with_target_pane("target-pane"),
+            })
+            .unwrap();
+            drop(tx);
+            // Drain the queued request without any producer-side continuation.
+            // Acceptance must already be carried by the request, not emitted
+            // after send by a separately scheduled UI task.
+            assert!(take().is_empty());
+            run_recommendation_executor(rx, event_tx, shell, Arc::new(Mutex::new(Vec::new())))
+                .await;
+
+            let payload = if insert_only {
+                input.to_string()
+            } else {
+                format!("{input}\r")
+            };
+            let mut expected = vec![(
+                "send_input".to_string(),
+                json!({"session_id": "target-pane", "text": payload}),
+            )];
+            if !fail_send {
+                expected.push(("focus_pane".into(), json!({"session_id": "target-pane"})));
+            }
+            assert_eq!(*channel.requests.lock().unwrap(), expected);
+            let expected_events = if observed {
+                vec![
+                    Event::ErrorFixAccepted(run.offer_id, run.source),
+                    Event::ErrorFixRunStarted(run.offer_id, run.run_id),
+                    Event::ErrorFixRunResult(
+                        run.offer_id,
+                        run.run_id,
+                        if fail_send {
+                            "dispatchFailed"
+                        } else {
+                            "unobservable"
+                        },
+                    ),
+                ]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(take(), expected_events);
+            let mut errors = 0;
+            while let Ok(event) = event_rx.try_recv() {
+                if matches!(event, AppEvent::SystemMessage(_)) {
+                    errors += 1;
+                }
+            }
+            assert_eq!(errors, usize::from(fail_send));
+        }
+    }
+
     #[test]
     fn default_delegate_runtime_uses_cli_default_model() {
         let runtime = default_delegate_agent_runtimes(None, None, None)
@@ -1962,6 +2461,7 @@ mod tests {
 
     #[test]
     fn delegate_launch_commandline_omits_model_when_not_configured() {
+        let _resolver = super::mock_native_delegate_executables();
         let runtime = default_delegate_agent_runtimes(None, None, None)
             .into_iter()
             .find(|runtime| runtime.id == "copilot")
@@ -1975,9 +2475,10 @@ mod tests {
         .unwrap();
 
         assert!(!commandline.contains("--model"));
-        // May be wrapped as "cmd /c copilot ..." if copilot.exe isn't on PATH.
-        assert!(commandline.contains("copilot"));
-        assert!(commandline.contains("-i \"Fix the build and report back\""));
+        assert_eq!(
+            commandline,
+            r#"C:\wta-unit-mock\copilot.exe -i "Fix the build and report back""#
+        );
     }
 
     #[test]
@@ -2037,6 +2538,7 @@ mod tests {
 
     #[test]
     fn delegate_launch_commandline_appends_startup_prompt_and_model() {
+        let _resolver = super::mock_native_delegate_executables();
         let runtime = default_delegate_agent_runtimes(
             Some("copilot --model claude-haiku-4.5"),
             Some("copilot --acp --stdio --model gpt-5.2"),
@@ -2053,14 +2555,15 @@ mod tests {
         )
         .unwrap();
 
-        // May be wrapped as "cmd /c copilot ..." if copilot.exe isn't on PATH.
-        assert!(commandline.contains("copilot"));
-        assert!(commandline.contains("--model claude-haiku-4.5"));
-        assert!(commandline.contains("-i \"Fix the Rust build error and run cargo build\""));
+        assert_eq!(
+            commandline,
+            r#"C:\wta-unit-mock\copilot.exe --model claude-haiku-4.5 -i "Fix the Rust build error and run cargo build""#
+        );
     }
 
     #[test]
     fn delegate_interactive_commandline_omits_startup_prompt() {
+        let _resolver = super::mock_native_delegate_executables();
         let runtime = default_delegate_agent_runtimes(
             Some("copilot --model claude-haiku-4.5"),
             Some("copilot --acp --stdio --model gpt-5.2"),
@@ -2073,34 +2576,41 @@ mod tests {
         let commandline =
             build_delegate_launch_commandline_with_session(&runtime, None, None).unwrap();
 
-        // May be wrapped as "cmd /c copilot ..." if copilot.exe isn't on PATH.
-        assert!(commandline.contains("copilot"));
-        // Model is still applied for the interactive launch.
-        assert!(commandline.contains("--model claude-haiku-4.5"));
-        // No startup-prompt flag is appended when there's no prompt.
-        assert!(!commandline.contains("-i "));
+        assert_eq!(
+            commandline,
+            r"C:\wta-unit-mock\copilot.exe --model claude-haiku-4.5"
+        );
     }
 
     #[test]
     fn delegate_command_launchable_detects_missing_agent() {
-        // A shell is always launchable; a real system exe resolves on PATH; a
-        // bogus bare name does not — this is the up-front check that keeps a
-        // doomed launch out of the fragile prompt-baking path, so it fails
-        // cleanly as a bare `cmd /c <agent>` and stays visible in its tab.
         assert!(super::delegate_command_launchable("cmd"));
         assert!(super::delegate_command_launchable("cmd.exe /c echo hi"));
+        let missing = std::env::current_dir()
+            .expect("working directory")
+            .join(format!("wta-missing-provider-{}", uuid::Uuid::new_v4()))
+            .join("copilot.exe");
+        assert!(!missing.exists());
+        let _resolver = super::override_test_executable_resolver(move |commandline| {
+            let mut tokens = super::split_windows_commandline(commandline);
+            assert_eq!(tokens[0], "copilot");
+            tokens[0] = missing.to_str().unwrap().to_string();
+            let args: Vec<&str> = tokens.iter().map(String::as_str).collect();
+            super::join_windows_commandline(&args)
+        });
         assert!(
-            !super::delegate_command_launchable("wt-nonexistent-delegate-xyz"),
-            "a nonexistent bare command must be reported as not launchable"
+            !super::delegate_command_launchable("copilot"),
+            "a missing resolved provider must be reported as not launchable"
         );
         assert!(
-            !super::delegate_command_launchable("wt-nonexistent-delegate-xyz -i \"hi\""),
+            !super::delegate_command_launchable("copilot -i \"hi\""),
             "extra args must not make a missing agent look launchable"
         );
     }
 
     #[test]
     fn delegate_commandline_appends_pinned_session_id_for_copilot() {
+        let _resolver = super::mock_native_delegate_executables();
         let runtime = DelegateAgentRuntime {
             id: "copilot".to_string(),
             name: "Copilot".to_string(),
@@ -2122,11 +2632,7 @@ mod tests {
 
     #[test]
     fn pinned_session_id_follows_agent_not_cmd_wrapper() {
-        // copilot may or may not be `cmd /c`-wrapped depending on whether
-        // copilot.exe vs copilot.cmd is on PATH. Either way the pinned flag must
-        // be present and positioned *after* the agent name — never lost to a
-        // first-token lookup that sees `cmd` instead of the agent.
-        let runtime = DelegateAgentRuntime {
+        let mut runtime = DelegateAgentRuntime {
             id: "copilot".to_string(),
             name: "Copilot".to_string(),
             description: "Launches copilot as a delegate agent.".to_string(),
@@ -2135,27 +2641,34 @@ mod tests {
             model: None,
         };
 
-        let commandline = build_delegate_launch_commandline_with_session(
-            &runtime,
-            Some("hi"),
-            Some("11111111-2222-3333-4444-555555555555"),
-        )
-        .unwrap();
-
-        assert!(
-            commandline.contains("--session-id 11111111-2222-3333-4444-555555555555"),
-            "pinned flag missing: {commandline}"
-        );
-        let agent_pos = commandline.find("copilot").expect("agent name present");
-        let flag_pos = commandline.find("--session-id").unwrap();
-        assert!(
-            flag_pos > agent_pos,
-            "--session-id must follow the agent, not attach to a cmd wrapper: {commandline}"
-        );
+        for executable in ["copilot.exe", "copilot.cmd", "copilot.bat"] {
+            runtime.commandline = executable.to_string();
+            let commandline = build_delegate_launch_commandline_with_session(
+                &runtime,
+                Some("hi"),
+                Some("11111111-2222-3333-4444-555555555555"),
+            )
+            .unwrap();
+            assert_eq!(
+                commandline.starts_with("cmd /c "),
+                executable != "copilot.exe"
+            );
+            assert!(
+                commandline.contains("--session-id 11111111-2222-3333-4444-555555555555"),
+                "pinned flag missing: {commandline}"
+            );
+            let agent_pos = commandline.find(executable).expect("agent name present");
+            let flag_pos = commandline.find("--session-id").unwrap();
+            assert!(
+                flag_pos > agent_pos,
+                "--session-id must follow the agent, not attach to a cmd wrapper: {commandline}"
+            );
+        }
     }
 
     #[test]
     fn pinned_session_id_appended_for_adapter_launch_command() {
+        let _resolver = super::mock_native_delegate_executables();
         // Regression for the agent-identification bug behind PR review: an
         // adapter-style launch ("npx -y @agentclientprotocol/claude-agent-acp@0.65.0" ->
         // claude) must still be recognized as a pinnable agent. The old
@@ -2186,6 +2699,7 @@ mod tests {
 
     #[test]
     fn delegate_commandline_omits_session_id_when_unset() {
+        let _resolver = super::mock_native_delegate_executables();
         let runtime = DelegateAgentRuntime {
             id: "copilot".to_string(),
             name: "Copilot".to_string(),
@@ -3142,22 +3656,130 @@ mod tests {
             build_delegate_resume_commandline(&codex, "abc").expect("cmd"),
             "codex.exe resume abc"
         );
+
+        let _resolver = super::mock_native_delegate_executables();
+        for commandline in ["antigravity --model cli-model", "agy --model cli-model"] {
+            let runtime = base64_runtime(commandline);
+            assert_eq!(
+                super::resolve_commandline_executable(commandline),
+                r"C:\wta-unit-mock\agy.exe --model cli-model"
+            );
+            assert_eq!(
+                build_delegate_resume_commandline(&runtime, "session id").expect("native resume"),
+                r#"C:\wta-unit-mock\agy.exe --model cli-model --conversation "session id""#
+            );
+            assert_eq!(
+                build_wsl_delegate_resume_commandline(&runtime, "session's id")
+                    .expect("WSL resume"),
+                r"exec 'agy' '--model' 'cli-model' '--conversation' 'session'\\''s id'"
+            );
+        }
     }
 
     #[test]
-    fn delegate_resume_wraps_batch_shims_with_cmd() {
-        let root = std::env::temp_dir().join(format!("wta resume shim {}", uuid::Uuid::new_v4()));
+    fn delegate_resume_rejects_batch_shims_without_companion() {
+        let root = std::env::current_dir()
+            .expect("working directory")
+            .join(format!("wta-resume-probe-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("create temp directory");
         let shim = root.join("claude.cmd");
         std::fs::write(&shim, "@echo off").expect("write shim");
 
         let quoted_shim = super::quote_windows_commandline_arg(&shim.to_string_lossy());
         let runtime = base64_runtime(&quoted_shim);
-        let cmd = build_delegate_resume_commandline(&runtime, "abc").expect("cmd");
-        assert!(cmd.starts_with("cmd /c "), "commandline: {cmd}");
-        assert!(cmd.contains("--resume abc"), "commandline: {cmd}");
+        for sid in ["abc", "session&whoami", "%PATH%"] {
+            let error = build_delegate_resume_commandline(&runtime, sid).expect_err("unsupported");
+            assert!(error.to_string().contains("unsupported"), "{error:#}");
+        }
 
-        let _ = std::fs::remove_dir_all(root);
+        std::fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn delegate_resume_batch_companion_preserves_literal_arguments() {
+        struct Fixture(std::path::PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let fixture = Fixture(
+            std::env::current_dir()
+                .expect("working directory")
+                .join(format!("wta resume probe {}", uuid::Uuid::new_v4())),
+        );
+        std::fs::create_dir_all(&fixture.0).expect("create fixture");
+        let record = fixture.0.join("arguments.json");
+        let sentinel = fixture.0.join("injected.txt");
+        let sid = format!(
+            "session&echo injected>\"{}\" &whoami \"quotes\" %PATH% !bang! (paren) apostrophe's 雪",
+            sentinel.display()
+        );
+        for extension in ["cmd", "bat"] {
+            let shim = fixture.0.join(format!("codex.{extension}"));
+            std::fs::write(&shim, "@exit /b 99\r\n").expect("write batch");
+            std::fs::write(
+                shim.with_extension("ps1"),
+                format!(
+                    "[IO.File]::WriteAllText({}, (ConvertTo-Json -InputObject @($args) -Compress)); exit 7",
+                    super::ps_single_quote(record.to_str().expect("UTF-8 record path"))
+                ),
+            )
+            .expect("write companion");
+            let commandline = format!(
+                "{} --search \"prior & %PATH% ' 雪\"",
+                super::quote_windows_commandline_arg(shim.to_str().expect("UTF-8 shim path"))
+            );
+            let runtime = base64_runtime(&commandline);
+            let launch = build_delegate_resume_commandline(&runtime, &sid).expect("safe launch");
+            assert!(launch.starts_with("powershell.exe -NoLogo -NoProfile -EncodedCommand "));
+            assert!(!launch.contains(&sid));
+            let mut child = std::process::Command::new("powershell.exe")
+                .raw_arg(launch.strip_prefix("powershell.exe ").expect("PowerShell"))
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .expect("launch companion");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            let status = loop {
+                if let Some(status) = child.try_wait().expect("poll companion") {
+                    break status;
+                }
+                if std::time::Instant::now() >= deadline {
+                    let _ = std::process::Command::new("taskkill.exe")
+                        .args(["/PID", &child.id().to_string(), "/T", "/F"])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    panic!("resume companion exceeded 10 seconds");
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            };
+            assert_eq!(status.code(), Some(7), "companion exit code");
+            let recorded: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&record).expect("recorded arguments"))
+                    .expect("JSON arguments");
+            assert_eq!(
+                recorded,
+                json!(["--search", "prior & %PATH% ' 雪", "resume", sid])
+            );
+            assert!(!sentinel.exists(), "session id must not execute a command");
+        }
+    }
+
+    #[test]
+    fn delegate_resume_native_exe_keeps_windows_quoting() {
+        let runtime = base64_runtime("codex.exe --search");
+        let sid = "session&whoami \"quote\" %PATH%";
+        assert_eq!(
+            build_delegate_resume_commandline(&runtime, sid).expect("native launch"),
+            format!(
+                "codex.exe --search resume {}",
+                super::quote_windows_commandline_arg(sid)
+            )
+        );
     }
 
     #[test]
@@ -3325,6 +3947,127 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn delegate_host_split_cwd_wrapper_rejects_missing_or_posix_cwd() {
+        assert!(super::with_windows_delegate_cwd("copilot", "").is_err());
+        assert!(super::with_windows_delegate_cwd("copilot", "/home/project").is_err());
+        assert!(super::with_windows_delegate_cwd("", "C:\\project").is_err());
+    }
+
+    #[test]
+    fn delegate_host_split_cwd_wrapper_launches_in_exact_special_character_directory() {
+        fn poll_exit(
+            child: &mut std::process::Child,
+        ) -> std::io::Result<Option<std::process::ExitStatus>> {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                if let Some(status) = child.try_wait()? {
+                    return Ok(Some(status));
+                }
+                if std::time::Instant::now() >= deadline {
+                    return Ok(None);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        }
+
+        struct Fixture(std::path::PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir(&self.0);
+            }
+        }
+        let root = Fixture(
+            std::env::current_dir()
+                .expect("working directory")
+                .join(format!(
+                    "wta split cwd ' & ; %WTA_TEST_UNUSED% ! [x] {}",
+                    uuid::Uuid::new_v4()
+                )),
+        );
+        std::fs::create_dir(&root.0).expect("create cwd test directory");
+        let cwd = root.0.to_str().expect("test cwd is UTF-8");
+        let system_root =
+            std::path::PathBuf::from(std::env::var_os("SystemRoot").expect("Windows system root"));
+        let powershell = system_root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+        let cmd = system_root.join(r"System32\cmd.exe");
+        // cmd's built-in `cd` reports the native process cwd without PowerShell's
+        // provider/startup-directory behavior or requiring any agent CLI on PATH.
+        let launch = super::with_windows_delegate_cwd(
+            &format!(
+                "{} /d /c \"cd & exit /b 7\"",
+                super::quote_windows_commandline_arg(cmd.to_str().expect("UTF-8 cmd path"))
+            ),
+            cwd,
+        )
+        .expect("build cwd wrapper");
+        assert!(
+            !launch.contains('%'),
+            "cwd must bypass WT environment expansion"
+        );
+        let mut child = std::process::Command::new(powershell)
+            .raw_arg(
+                launch
+                    .strip_prefix("powershell.exe ")
+                    .expect("wrapper prefix"),
+            )
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("execute OS shell cwd fixture");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            if child.try_wait().expect("poll cwd wrapper").is_some() {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                let mut cleanup = Vec::new();
+                match std::process::Command::new(system_root.join(r"System32\taskkill.exe"))
+                    .args(["/PID", &child.id().to_string(), "/T", "/F"])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                {
+                    Ok(mut killer) => match poll_exit(&mut killer) {
+                        Ok(Some(status)) => {
+                            cleanup.push(format!("taskkill PID {} exited {status}", killer.id()));
+                        }
+                        outcome => {
+                            cleanup.push(format!(
+                                "taskkill PID {} did not finish: {outcome:?}",
+                                killer.id()
+                            ));
+                            cleanup.push(format!("kill taskkill: {:?}", killer.kill()));
+                            cleanup.push(format!(
+                                "bounded taskkill reap: {:?}",
+                                poll_exit(&mut killer)
+                            ));
+                        }
+                    },
+                    Err(error) => cleanup.push(format!("spawn taskkill failed: {error}")),
+                }
+                match child.try_wait() {
+                    Ok(Some(status)) => cleanup.push(format!("cwd wrapper exited {status}")),
+                    outcome => {
+                        cleanup.push(format!("cwd wrapper still needs cleanup: {outcome:?}"));
+                        cleanup.push(format!("kill cwd wrapper: {:?}", child.kill()));
+                        cleanup.push(format!("bounded wrapper reap: {:?}", poll_exit(&mut child)));
+                    }
+                }
+                panic!("cwd wrapper exceeded 10 seconds; {}", cleanup.join("; "));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let output = child.wait_with_output().expect("read cwd wrapper output");
+        assert_eq!(
+            output.status.code(),
+            Some(7),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), cwd);
     }
 
     #[test]

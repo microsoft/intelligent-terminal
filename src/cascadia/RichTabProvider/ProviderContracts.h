@@ -103,6 +103,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         uint64_t contextRevision{ 0 };
         std::optional<std::string> shellType;
         std::unordered_map<std::string, std::string> firstPartyFields;
+        std::vector<std::string> visibleFields;
         std::optional<int32_t> exitCode;
         std::optional<uint64_t> commandDurationMilliseconds;
     };

@@ -108,6 +108,10 @@ pub(crate) struct Cli {
     #[arg(long)]
     pub(crate) delegate_agent: Option<String>,
 
+    /// Canonical delegate provider identity, separate from its launch command.
+    #[arg(long)]
+    pub(crate) delegate_agent_id: Option<String>,
+
     /// Model override for the delegate agent
     #[arg(long)]
     pub(crate) delegate_model: Option<String>,
@@ -390,6 +394,9 @@ pub(crate) enum Command {
         /// Delegate agent CLI command (e.g. "codex")
         #[arg(long)]
         delegate_agent: Option<String>,
+        /// Canonical configured provider identity, independent of the CLI command
+        #[arg(long)]
+        delegate_agent_id: Option<String>,
         /// Model override for the delegate agent
         #[arg(long)]
         delegate_model: Option<String>,
@@ -403,6 +410,19 @@ pub(crate) enum Command {
         /// Working directory for the delegate agent tab
         #[arg(long)]
         cwd: Option<String>,
+        /// Keep the current sidebar page when selecting the new delegate tab
+        #[arg(long)]
+        preserve_sidebar_view: bool,
+        /// Launch a fresh delegate in a split of this exact pane
+        #[arg(long, requires = "split_session")]
+        split_pane: Option<String>,
+        /// Current session identity used only to validate the split target
+        #[arg(long, requires = "split_pane")]
+        split_session: Option<String>,
+        #[arg(long, default_value = "auto", value_parser = ["auto", "right", "left", "up", "down"])]
+        split_direction: String,
+        #[arg(long, default_value_t = 0.5)]
+        split_size: f64,
     },
     /// Manage the wt-agent-hooks bridge for supported CLI agents
     /// (Copilot / Claude / Gemini). See `agent_hooks_installer` for
@@ -493,14 +513,16 @@ pub(crate) enum SessionsAction {
         /// WTA spawned for an Intelligent Terminal agent pane.
         #[arg(long, value_enum, default_value_t = SessionsOriginArg::All)]
         origin: SessionsOriginArg,
-        /// Refresh all installed, policy-allowed host agents in the background.
-        /// Connections remain in the master pool; this command returns the current snapshot.
-        #[arg(long)]
-        all_agents: bool,
         /// With --json, return a snapshot object including history loading status
         /// instead of one session per line.
         #[arg(long, requires = "json")]
         include_status: bool,
+    },
+    /// Request background host-agent discovery and return the current session snapshot.
+    Refresh {
+        /// Override the wta-master named pipe path.
+        #[arg(long, value_name = "PIPE_NAME")]
+        master: Option<String>,
     },
     /// Activate one exact session row from the Sidebar History projection.
     #[command(hide = true)]
@@ -519,6 +541,9 @@ pub(crate) enum SessionsAction {
         window_id: u64,
         #[arg(long)]
         activation_id: String,
+        /// Read the existing activation outcome without focusing or restoring again.
+        #[arg(long)]
+        status_only: bool,
     },
 }
 

@@ -17,6 +17,7 @@ Abstract:
 
 #include <inc/cppwinrt_utils.h>
 #include "JsonUtils.h"
+#include <mutex>
 
 namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 {
@@ -45,8 +46,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     X(FileSource::Local, std::unordered_set<hstring>, DismissedBadges, "dismissedBadges")                                                                                 \
     X(FileSource::Local, Windows::Foundation::Collections::IMap<hstring COMMA Model::WindowLayout>, PersistedWorkspaces, "persistedWorkspaces")                           \
     X(FileSource::Shared, bool, SSHFolderGenerated, "sshFolderGenerated", false)                                                                                          \
-    X(FileSource::Shared, bool, AgentFreCompleted, "agentFreCompleted", false)                                                                                           \
-    X(FileSource::Shared, bool, AgentWelcomeShown, "agentWelcomeShown", false)
+    X(FileSource::Shared, bool, AgentFreCompleted, "agentFreCompleted", false)                                                                                            \
+    X(FileSource::Shared, bool, AgentWelcomeShown, "agentWelcomeShown", false)                                                                                            \
+    X(FileSource::Shared, bool, SidebarLayoutMigrationCompleted, "sidebarLayoutMigrationCompleted", false)                                                                \
+    X(FileSource::Shared, bool, SidebarIntroductionShown, "sidebarIntroductionShown", false)
 
     struct WindowLayout : WindowLayoutT<WindowLayout>
     {
@@ -87,6 +90,14 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         Model::WindowLayout TakeWorkspace(const hstring& name);
         Windows::Foundation::Collections::IMapView<hstring, Model::WindowLayout> AllPersistedWorkspaces();
 
+        uint64_t TryBeginSidebarIntroduction();
+        void EndSidebarIntroduction(uint64_t claim, bool shown);
+
+        // Hold this lock across reading settings, migration, and recording completion.
+        wil::unique_handle LockSidebarState(bool wait = true) const;
+        void RefreshSidebarState() const;
+        bool CompleteSidebarLayoutMigration() noexcept;
+
         // State getters/setters
 #define MTSM_APPLICATION_STATE_GEN(source, type, name, key, ...) \
     type name() const noexcept;                                  \
@@ -105,9 +116,16 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         std::filesystem::path _sharedPath;
         std::filesystem::path _elevatedPath;
         til::throttled_func<> _throttler;
+        mutable std::mutex _sidebarIntroductionMutex;
+        wil::unique_handle _sidebarIntroductionLock;
+        uint64_t _sidebarIntroductionClaim{ 0 };
+        bool _sidebarIntroductionPresented{ false };
 
-        void _write() const noexcept;
+        void _write() noexcept;
         void _read() const noexcept;
+        Json::Value _readSharedJson() const;
+        void _persistSidebarFlag(std::string_view key) const;
+        static void _preserveSidebarFlags(Json::Value& root, const Json::Value& previous);
 
         Json::Value _toJsonWithBlob(Json::Value& root, FileSource parseSource) const noexcept;
 

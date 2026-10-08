@@ -492,6 +492,7 @@ namespace wtcli
                 "user_input",
                 "prompt_user",
                 "clarification_request",
+                "question",
             };
             const auto isUserInputTool = std::any_of(
                 std::begin(userInputTools),

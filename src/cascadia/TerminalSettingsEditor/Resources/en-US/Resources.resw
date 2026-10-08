@@ -622,11 +622,11 @@
     <comment>An option to choose from for the "tab width mode" setting. When selected, each tab adjusts its width to the content within the tab.</comment>
   </data>
   <data name="Globals_TabLayout.Header" xml:space="preserve">
-    <value>Tab layout</value>
+    <value>Tab Mode</value>
     <comment>Header for a control to choose whether tabs are laid out horizontally across the top of the window or vertically down the left side.</comment>
   </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
-    <value>Vertical tabs are shown in a resizable column on the left side of the window. Changes apply immediately to all Terminal windows.</value>
+    <value>Toggle between the new sidebar or classic horizontal tabs view</value>
     <comment>A description for what the "tab layout" setting does. Presented near "Globals_TabLayout.Header".</comment>
   </data>
   <data name="Globals_TabLayoutHorizontal.Content" xml:space="preserve">
@@ -634,8 +634,8 @@
     <comment>An option to choose from for the "tab layout" setting. When selected, tabs run across the top of the window.</comment>
   </data>
   <data name="Globals_TabLayoutVertical.Content" xml:space="preserve">
-    <value>Vertical</value>
-    <comment>An option to choose from for the "tab layout" setting. When selected, tabs run down the left side of the window in a resizable column.</comment>
+    <value>Sidebar</value>
+    <comment>An option to choose from for the "tab layout" setting. When selected, tabs run down the left side of the window in a resizable sidebar. Use the same translation as FreOverlay_TabModeSidebar in TerminalApp.</comment>
   </data>
   <data name="Globals_Theme.Header" xml:space="preserve">
     <value>Application Theme</value>

@@ -20,6 +20,7 @@
 #include "VirtualDesktopUtils.h"
 #include "../../types/inc/User32Utils.hpp"
 #include "../../types/inc/utils.hpp"
+#include "../inc/InteractionTelemetry.h"
 
 #include <bcrypt.h>
 #include <fstream>
@@ -711,6 +712,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
     // Main message loop. It pumps all windows.
     bool loggedInteraction = false;
+    ::Microsoft::Terminal::Telemetry::DailyInteraction dailyInteraction;
     MSG msg{};
     while (GetMessageW(&msg, nullptr, 0, 0))
     {
@@ -720,20 +722,20 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
         // FYI: For the key-down/up messages the lowest bit indicates if it's up.
         if ((msg.message & ~1) == WM_KEYDOWN || (msg.message & ~1) == WM_SYSKEYDOWN)
         {
+#if defined(WT_BRANDING_RELEASE)
+            constexpr uint8_t branding = 3;
+#elif defined(WT_BRANDING_PREVIEW)
+            constexpr uint8_t branding = 2;
+#elif defined(WT_BRANDING_CANARY)
+            constexpr uint8_t branding = 1;
+#else
+            constexpr uint8_t branding = 0;
+#endif
+            const uint8_t distribution = IsPackaged()                             ? 2 :
+                                         _app.Logic().Settings().IsPortableMode() ? 1 :
+                                                                                    0;
             if (!loggedInteraction)
             {
-#if defined(WT_BRANDING_RELEASE)
-                constexpr uint8_t branding = 3;
-#elif defined(WT_BRANDING_PREVIEW)
-                constexpr uint8_t branding = 2;
-#elif defined(WT_BRANDING_CANARY)
-                constexpr uint8_t branding = 1;
-#else
-                constexpr uint8_t branding = 0;
-#endif
-                const uint8_t distribution = IsPackaged()                             ? 2 :
-                                             _app.Logic().Settings().IsPortableMode() ? 1 :
-                                                                                        0;
                 TraceLoggingWrite(
                     g_hWindowsTerminalProvider,
                     "SessionBecameInteractive",
@@ -743,6 +745,20 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
                 loggedInteraction = true;
+            }
+
+            FILETIME now;
+            GetSystemTimeAsFileTime(&now);
+            const auto ticks = (static_cast<uint64_t>(now.dwHighDateTime) << 32) | now.dwLowDateTime;
+            if (dailyInteraction.Observe(static_cast<uint32_t>(ticks / 864000000000ULL)))
+            {
+                TraceLoggingWrite(
+                    g_hWindowsTerminalProvider,
+                    "UserInteract",
+                    TraceLoggingValue(branding, "Branding"),
+                    TraceLoggingValue(distribution, "Distribution"),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
             }
 
             const bool keyDown = (msg.message & 1) == 0;
@@ -1714,6 +1730,12 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
         AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), title.c_str());
     }
 
+    if (!_keptSessionMenus.empty())
+    {
+        AppendMenuW(menu, MF_STRING, _closeAllKeptTabsMenuId, RS_(L"NotificationIconCloseAllKeptTabs").c_str());
+        AppendMenuW(menu, MF_SEPARATOR, 0, L"");
+    }
+
     // A submenu to focus a specific window. Lists all windows that we manage.
     if (const auto submenu = CreatePopupMenu())
     {
@@ -1757,7 +1779,6 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
     // User can select menu items with the left and right buttons.
     const auto rightAlign = GetSystemMetrics(SM_MENUDROPALIGNMENT) != 0;
     const UINT uFlags = TPM_RIGHTBUTTON | (rightAlign ? TPM_RIGHTALIGN : TPM_LEFTALIGN);
-    TrackPopupMenuEx(menu, uFlags, GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam), _window.get(), nullptr);
 
     if (_currentWindowMenu)
     {
@@ -1765,6 +1786,7 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
         DestroyMenu(_currentWindowMenu);
     }
     _currentWindowMenu = menu;
+    TrackPopupMenuEx(menu, uFlags, GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam), _window.get(), nullptr);
 }
 
 void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPARAM lParam)
@@ -1772,6 +1794,11 @@ void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPAR
     const auto menu = reinterpret_cast<HMENU>(lParam);
     const auto menuItemIndex = LOWORD(wParam);
     const auto windowId = GetMenuItemID(menu, menuItemIndex);
+    if (menu == _currentWindowMenu && windowId == _closeAllKeptTabsMenuId)
+    {
+        _keptManager.DiscardAllKeptGroups();
+        return;
+    }
     if (const auto it = _keptSessionMenus.find(menu); it != _keptSessionMenus.end())
     {
         const auto groupId = it->second;
@@ -1790,7 +1817,7 @@ void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPAR
         return;
     }
 
-    // _notificationAreaMenuRequested constructs each menu item with an ID
+    // The remaining menu items have an ID
     // that is either 0 for "Focus Terminal" or >0 for a specific window ID.
     // This works well for us because valid window IDs are always >0.
     SummonWindowSelectionArgs args;

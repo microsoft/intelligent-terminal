@@ -44,7 +44,6 @@ impl App {
         let mut event = build_agent_state_changed_event(target_tab, tab, yolo_control_owner);
         event["params"]["session_started"] = serde_json::json!({
             "start_id": uuid::Uuid::new_v4().to_string(),
-            "session_id": session_id,
             "start_kind": if loaded { "Load" } else { "New" },
             "agent_id": self.current_agent_id,
             "agent_source": self.current_agent_source.kind(),
@@ -230,6 +229,7 @@ mod session_telemetry_tests {
             .iter()
             .map(|event| serde_json::from_str::<serde_json::Value>(event).unwrap())
             .filter_map(|event| event.pointer("/params/session_started").cloned())
+            .inspect(|snapshot| assert!(snapshot.get("session_id").is_none()))
             .collect()
     }
 
@@ -333,7 +333,8 @@ mod session_telemetry_tests {
         let snapshots = starts();
         assert_eq!(snapshots.len(), 1);
         assert_eq!(snapshots[0]["start_kind"], "New");
-        assert_eq!(snapshots[0]["session_id"], "created");
+        assert!(snapshots[0].get("session_id").is_none());
+        assert_eq!(app.current_tab().session_id.as_deref(), Some("created"));
         assert!(uuid::Uuid::parse_str(snapshots[0]["start_id"].as_str().unwrap()).is_ok());
         app.project_active_tab_state();
         app.handle_event(connected("created", true));
@@ -356,7 +357,8 @@ mod session_telemetry_tests {
             let snapshots = starts();
             assert_eq!(snapshots.len(), 1);
             assert_eq!(snapshots[0]["start_kind"], "Load");
-            assert_eq!(snapshots[0]["session_id"], "saved");
+            assert!(snapshots[0].get("session_id").is_none());
+            assert_eq!(app.current_tab().session_id.as_deref(), Some("saved"));
             app.handle_event(attached(DEFAULT_TAB_ID, "saved"));
             assert!(starts().is_empty());
         }

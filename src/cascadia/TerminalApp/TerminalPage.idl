@@ -33,6 +33,7 @@ namespace TerminalApp
         void DiscardKeptGroup(Guid groupId);
         event Windows.Foundation.TypedEventHandler<ContentManager, Object> KeptSessionsChanged;
         event Windows.Foundation.TypedEventHandler<ContentManager, String> DetachedSessionEvent;
+        void DiscardAllKeptGroups();
     }
 
     [default_interface] runtimeclass RenameWindowRequestedArgs
@@ -255,5 +256,6 @@ namespace TerminalApp
         void SetTabKeepRunning(Guid tabId, Boolean enabled);
         Boolean RestoreKeptGroup(Guid groupId);
         void ShutdownPanes();
+        Windows.Foundation.IAsyncOperation<Boolean> GetProtocolPaneIsBackground(Guid paneSessionId);
     }
 }

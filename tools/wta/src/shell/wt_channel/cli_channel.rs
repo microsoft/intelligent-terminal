@@ -72,6 +72,13 @@ impl std::error::Error for WtcliOneShotError {
     }
 }
 
+pub(crate) fn request_outcome_unknown(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<WtcliOneShotError>()
+        .is_some_and(|error| !matches!(error, WtcliOneShotError::Spawn(_)))
+        || error.downcast_ref::<serde_json::Error>().is_some()
+}
+
 async fn read_pipe<R>(pipe: Option<R>) -> std::io::Result<Vec<u8>>
 where
     R: tokio::io::AsyncRead + Unpin,
@@ -208,6 +215,18 @@ fn json_id_as_str(v: &serde_json::Value) -> Option<String> {
 fn is_listener_ready_marker(value: &serde_json::Value, token: &str) -> bool {
     value.get("_wtcli").and_then(|value| value.as_str()) == Some("listener_ready")
         && value.get("token").and_then(|value| value.as_str()) == Some(token)
+}
+
+fn managed_listener_args<'a>(parent_pid: &'a str, ready_token: &'a str) -> [&'a str; 7] {
+    [
+        "--json",
+        "listen",
+        "--existing-only",
+        "--parent-pid",
+        parent_pid,
+        "--ready-token",
+        ready_token,
+    ]
 }
 
 struct ListenerRetryState {
@@ -600,15 +619,7 @@ impl Drop for CliChannel {
 fn listener_command(wtcli: &str, parent_pid: &str, ready_token: &str) -> tokio::process::Command {
     let mut command = tokio::process::Command::new(wtcli);
     command
-        .args([
-            "--json",
-            "listen",
-            "--existing-only",
-            "--parent-pid",
-            parent_pid,
-            "--ready-token",
-            ready_token,
-        ])
+        .args(managed_listener_args(parent_pid, ready_token))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
@@ -653,11 +664,12 @@ impl CliChannel {
         rx
     }
 
-    /// Start background event listener (wraps `wtcli listen --json --existing-only`).
+    /// Start background event listener (wraps `wtcli --json listen --existing-only`).
     /// wtcli inherits WT_COM_CLSID from this process's env.
     ///
-    /// The protocol server can be temporarily unavailable while Terminal is
-    /// still starting. `wtcli listen` exits immediately in that window (for
+    /// The listener must never activate a replacement Terminal during shutdown.
+    /// The running factory can be temporarily unavailable while Terminal is
+    /// still starting. `wtcli listen --existing-only` exits in that window (for
     /// example with `E_NOINTERFACE`); a one-shot reader then leaves master
     /// permanently blind to hooks and pane lifecycle events. Retry transient
     /// failures, but stop after eight consecutive unstable attempts so a
@@ -1059,6 +1071,12 @@ impl WtChannel for CliChannel {
             }
             "create_tab" => {
                 let mut args = vec!["new-tab"];
+                if let Some(provider) = params
+                    .get("native_agent_provider_id")
+                    .and_then(|value| value.as_str())
+                {
+                    args.extend(["--agent-provider", provider]);
+                }
                 let window_id = params
                     .get("window_id")
                     .and_then(json_id_as_str)
@@ -1121,7 +1139,18 @@ impl WtChannel for CliChannel {
                 let cmd_owned;
                 let dir_owned;
                 let profile_owned;
+                let size_owned;
                 let mut args = vec!["split-pane"];
+                if let Some(provider) = params
+                    .get("native_agent_provider_id")
+                    .and_then(|value| value.as_str())
+                {
+                    args.extend(["--agent-provider", provider]);
+                }
+                if let Some(size) = params.get("size").and_then(|value| value.as_f64()) {
+                    size_owned = size.to_string();
+                    args.extend(["--size", &size_owned]);
+                }
                 if !pane_id.is_empty() {
                     args.extend(["-t", &pane_id]);
                 }
@@ -1243,6 +1272,30 @@ mod tests {
         );
     }
 
+    #[test]
+    fn sidebar_activation_distinguishes_transport_uncertainty_from_rejection() {
+        for error in [
+            WtcliOneShotError::Wait(std::io::Error::other("wait failed")),
+            WtcliOneShotError::ReadStdout(std::io::Error::other("read failed")),
+            WtcliOneShotError::ReadStderr(std::io::Error::other("read failed")),
+            WtcliOneShotError::TimedOut {
+                timeout: Duration::from_secs(30),
+                kill_error: None,
+                reap_error: None,
+                reap_timeout: None,
+            },
+        ] {
+            assert!(request_outcome_unknown(
+                &anyhow::Error::new(error).context("wtcli")
+            ));
+        }
+        let malformed = serde_json::from_str::<serde_json::Value>("{").unwrap_err();
+        assert!(request_outcome_unknown(&anyhow::Error::new(malformed)));
+        let not_started = WtcliOneShotError::Spawn(std::io::Error::other("not installed"));
+        assert!(!request_outcome_unknown(&anyhow::Error::new(not_started)));
+        assert!(!request_outcome_unknown(&anyhow::anyhow!("pane not found")));
+    }
+
     #[tokio::test]
     async fn get_pane_context_rejects_invalid_session_ids_before_invocation() {
         let channel =
@@ -1280,6 +1333,36 @@ mod tests {
             };
             assert_eq!(error.to_string(), expected, "source: {session_id}");
         }
+    }
+
+    #[test]
+    fn managed_listener_startup_and_retries_never_request_activation() {
+        let mut retry = ListenerRetryState::new();
+        for attempt in 0..WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES {
+            assert_eq!(
+                managed_listener_args("42", "wta-42").as_slice(),
+                [
+                    "--json",
+                    "listen",
+                    "--existing-only",
+                    "--parent-pid",
+                    "42",
+                    "--ready-token",
+                    "wta-42",
+                ]
+            );
+            assert_eq!(
+                retry.after_failure(None).is_some(),
+                attempt + 1 < WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES,
+            );
+        }
+        // Recovery after a stable subscription retains the same non-activating
+        // invocation, even when the next restart is immediate.
+        assert_eq!(
+            retry.after_failure(Some(WTCLI_LISTENER_STABLE_UPTIME)),
+            Some(Duration::ZERO),
+        );
+        assert!(managed_listener_args("42", "wta-42").contains(&"--existing-only"));
     }
 
     #[test]

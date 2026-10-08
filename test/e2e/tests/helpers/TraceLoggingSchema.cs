@@ -49,7 +49,13 @@ namespace ItE2E
 
         public static Schema[] Read(string path)
         {
+            return Read(path, null);
+        }
+
+        public static Schema[] Read(string path, string[] eventNames)
+        {
             if (IntPtr.Size != 8) throw new PlatformNotSupportedException("ETW decoding requires x64 PowerShell.");
+            var selectedNames = eventNames == null ? null : new HashSet<string>(eventNames, StringComparer.Ordinal);
             var result = new List<Schema>();
             var seen = new HashSet<string>();
             Exception failure = null;
@@ -67,12 +73,13 @@ namespace ItE2E
                     if (status != 0) throw new Win32Exception((int)status);
                     if (Marshal.ReadInt32(buffer, 48) != 3) return; // DecodingSourceTlg.
                     string name = Text(buffer, 92);
+                    if (selectedNames != null && !selectedNames.Contains(name)) return;
                     byte[] guid = new byte[16];
                     Marshal.Copy(IntPtr.Add(buffer, 0), guid, 0, 16);
                     string provider = new Guid(guid).ToString();
-                    // Only the inherited interaction event belongs to this funnel;
+                    // Only the interaction events belong to this funnel;
                     // other Win32Host events can contain structured diagnostic data.
-                    if (provider == "56c06166-2e2e-5f4d-7ff3-74f4b78c87d6" && name != "SessionBecameInteractive") return;
+                    if (provider == "56c06166-2e2e-5f4d-7ff3-74f4b78c87d6" && name != "SessionBecameInteractive" && name != "UserInteract") return;
                     int processId = Marshal.ReadInt32(record, 12);
                     int count = Marshal.ReadInt32(buffer, 104);
                     var types = new Dictionary<string, string>();

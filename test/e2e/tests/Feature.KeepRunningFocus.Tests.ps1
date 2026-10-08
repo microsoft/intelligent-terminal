@@ -10,63 +10,28 @@ BeforeDiscovery {
 Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-not $script:Ready) {
     BeforeEach {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\TabHeaderContext.ps1')
+        . (Join-Path $PSScriptRoot 'helpers\PackageProfileActivation.ps1')
+        . (Join-Path $PSScriptRoot 'helpers\KeptTabReattachment.ps1')
         $script:app = $null
-        function script:Open-KeptTabContext {
-            param([string]$Title)
-            $matchesText = Find-UiElement -App $script:app -Selector $Title
-            # The tab title also labels pane rows and TermControl; target its header.
-            $header = [regex]::Match($matchesText, '(?m)^\s*(lbl-textview-\S+)\s+Text\s')
-            if (-not $header.Success) { throw 'No exact tab-group header found.' }
-            Invoke-UiClick -App $script:app -Selector $header.Groups[1].Value -Right | Out-Null
-        }
         function script:Close-KeptTabFromMenu {
-            param([string]$Title)
+            param([string]$PaneSessionId, [string]$Title)
             $visible = Find-UiElement -App $script:app -Selector KeepTabRunningMenuItem
             if ($visible -notmatch 'KeepTabRunningMenuItem\s+MenuItem') {
-                script:Open-KeptTabContext -Title $Title
+                Invoke-TestTabHeaderContextMenu -App $script:app -PaneSessionId $PaneSessionId -Title $Title
             }
             Wait-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
             $menu = [regex]::Match((Get-UiTree -App $script:app -Depth 8), '(?m)^\s*(\S+)\s+MenuItem "Close tab"')
             if (-not $menu.Success) { throw 'No exact Close tab menu item found.' }
             Invoke-UiElement -App $script:app -Selector $menu.Groups[1].Value | Out-Null
         }
-        if (-not ('ItE2E.KeptTabActivation' -as [type])) {
-            Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-namespace ItE2E
-{
-    public static class KeptTabActivation
-    {
-        [ComImport, Guid("2E941141-7F97-4756-BA1D-9DECDE894A3D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        private interface IApplicationActivationManager
-        {
-            [PreserveSig]
-            int ActivateApplication([MarshalAs(UnmanagedType.LPWStr)] string appId,
-                [MarshalAs(UnmanagedType.LPWStr)] string arguments, uint options, out uint processId);
-        }
-        public static uint Launch(string appId, string arguments)
-        {
-            object instance = Activator.CreateInstance(Type.GetTypeFromCLSID(
-                new Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C")));
-            try
-            {
-                uint processId;
-                Marshal.ThrowExceptionForHR(((IApplicationActivationManager)instance)
-                    .ActivateApplication(appId, arguments, 0, out processId));
-                return processId;
-            }
-            finally { Marshal.ReleaseComObject(instance); }
-        }
-    }
-}
-'@
-        }
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
         $requestLog = Join-Path $TestDrive ("keep-running-acp-{0}.log" -f [guid]::NewGuid().ToString('N'))
         $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($requestLog.Replace("'", "''"))'"
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation))
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{
+            sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+        } -Settings @{
             language = 'en-US'
             tabLayout = 'vertical'
             'warning.confirmOnClose' = 'never'
@@ -111,12 +76,13 @@ namespace ItE2E
         $tabCount = & $getTabCount
 
         foreach ($cycle in 1..2) {
-            script:Open-KeptTabContext -Title $title
+            Invoke-TestTabHeaderContextMenu -App $script:app -PaneSessionId $target.session_id -Title $title
             if ($cycle -eq 1) {
                 Invoke-UiElement -App $script:app -Selector 'KeepTabRunningMenuItem' | Out-Null
-                script:Open-KeptTabContext -Title $title
+                Close-TestOwnedTabFlyout -App $script:app -HeaderPoint $script:app.LastCanonicalHeaderPoint
+                Invoke-TestTabHeaderContextMenu -App $script:app -PaneSessionId $target.session_id -Title $title
             }
-            script:Close-KeptTabFromMenu -Title $title
+            script:Close-KeptTabFromMenu -PaneSessionId $target.session_id -Title $title
             Wait-Until -TimeoutSec 10 -Because 'the kept tab to leave the visible tab strip' -Condition {
                 (& $getTabCount) -eq ($tabCount - 1)
             } | Out-Null
@@ -165,10 +131,11 @@ namespace ItE2E
                 $pids[$id] = (Get-WtPaneStatus -App $script:app -SessionId $id).pid
             }
             Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
-            script:Open-KeptTabContext -Title $title
+            Invoke-TestTabHeaderContextMenu -App $script:app -PaneSessionId $tab.session_id -Title $title
             Invoke-UiElement -App $script:app -Selector 'KeepTabRunningMenuItem' | Out-Null
-            script:Open-KeptTabContext -Title $title
-            script:Close-KeptTabFromMenu -Title $title
+            Close-TestOwnedTabFlyout -App $script:app -HeaderPoint $script:app.LastCanonicalHeaderPoint
+            Invoke-TestTabHeaderContextMenu -App $script:app -PaneSessionId $tab.session_id -Title $title
+            script:Close-KeptTabFromMenu -PaneSessionId $tab.session_id -Title $title
             $retained += [pscustomobject]@{ Title = $title; Shell = $tab.session_id; Helper = $helper; Pids = $pids }
         }
 
@@ -183,8 +150,11 @@ namespace ItE2E
         $profile = Get-WtSetting -App $script:app -Key 'defaultProfile'
         $profile | Should -Not -BeNullOrEmpty
         $script:app.AppUserModelId | Should -Not -BeNullOrEmpty
-        $launchedPid = [ItE2E.KeptTabActivation]::Launch($script:app.AppUserModelId, "-p $profile")
-        $launchedPid | Should -BeGreaterThan 0
+        $retainedPaneIds = @($retained | ForEach-Object { $_.Pids.Keys })
+        $receiptRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
+        $launch = Invoke-TestPackagedProfileActivation -App $script:app -Profile ([string]$profile) -ReceiptPath (
+            Join-Path $receiptRoot ('keep-profile-activation-' + [guid]::NewGuid().ToString('N') + '.json'))
+        $launch.HResult | Should -Be 0
         $profileWindow = Wait-Until -TimeoutSec 20 -Because 'the explicit profile launch to open one ordinary tab' -Condition {
             $windows = @(Get-WtWindows -App $script:app)
             if ($windows.Count -eq 1 -and $windows[0].tab_count -eq 1) { $windows[0] }
@@ -193,6 +163,22 @@ namespace ItE2E
             Get-WtWindowHwnds -App $script:app | Where-Object pid -eq $script:app.Pid | Select-Object -First 1 -ExpandProperty hwnd
         }
         $script:app.WindowId = [string]$profileWindow.window_id
+        $profileHwnd = [IntPtr][long]$script:app.Hwnd
+        [ItE2E.ItWtWin32Input]::GetWindowProcessId($profileHwnd) | Should -Be $script:app.Pid
+        [ItE2E.ItWtWin32Input]::GetAncestor($profileHwnd, 2) | Should -Be $profileHwnd
+        [ItE2E.ItWtWin32Input]::IsWindowVisible($profileHwnd) | Should -BeTrue
+        (Get-ActivePane -App $script:app).session_id | Should -Not -BeIn $retainedPaneIds
+        foreach ($tab in $retained) {
+            Test-UiElementExists -App $script:app -Selector $tab.Title |
+                Should -BeFalse -Because 'explicit profile activation must leave each entire kept group detached'
+            foreach ($id in $tab.Pids.Keys) {
+                $status = Get-WtPaneStatus -App $script:app -SessionId $id
+                $status.pid | Should -Be $tab.Pids[$id]
+                $status.state | Should -Be 'running'
+            }
+            (Get-AgentPaneSession -App $script:app -PaneSessionId $tab.Helper.PaneSessionId).AcpSessionId |
+                Should -Be $tab.Helper.AcpSessionId
+        }
         Send-WtWindowKey -App $script:app -Vk 0x73 -Alt -RequireForeground | Out-Null
         Wait-Until -TimeoutSec 15 -Because 'the profile window to close without terminating kept tabs' -Condition {
             @(Get-WtWindows -App $script:app).Count -eq 0
@@ -208,7 +194,7 @@ namespace ItE2E
             Get-WtWindowHwnds -App $script:app | Where-Object pid -eq $script:app.Pid | Select-Object -First 1 -ExpandProperty hwnd
         }
         $script:app.WindowId = [string]$newWindow.window_id
-        (Get-ActivePane -App $script:app).session_id | Should -Not -BeIn @($retained.Shell)
+        (Get-ActivePane -App $script:app).session_id | Should -Not -BeIn $retainedPaneIds
         foreach ($tab in $retained) {
             Test-UiElementExists -App $script:app -Selector $tab.Title | Should -BeFalse -Because 'ordinary launch must leave kept tabs detached'
             foreach ($id in $tab.Pids.Keys) {
@@ -222,6 +208,9 @@ namespace ItE2E
         $expectedTabs = 1
         foreach ($tab in $retained) {
             Set-WtPaneFocus -App $script:app -SessionId $tab.Shell
+            Wait-TestKeptTabReattachment -App $script:app -RequestedPane $tab.Shell -Title $tab.Title `
+                -ExpectedTabs ($expectedTabs + 1) -RetainedPaneIds @($tab.Pids.Keys) `
+                -OriginalPids $tab.Pids -OriginalHelper $tab.Helper
             $expectedTabs++
             Wait-Until -TimeoutSec 10 -Because 'the retained pane to become active in the reattached tab' -Condition {
                 (Get-ActivePane -App $script:app).session_id -eq $tab.Shell -and

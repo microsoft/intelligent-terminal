@@ -13,6 +13,12 @@ pub(crate) async fn run(
     delegate_source: Option<&str>,
     delegate_wsl_distro: Option<&str>,
     cwd: Option<&str>,
+    preserve_sidebar_view: bool,
+    split_pane: Option<&str>,
+    split_session: Option<&str>,
+    split_direction: &str,
+    split_size: f64,
+    delegate_agent_id: Option<&str>,
 ) -> Result<()> {
     // Log the prompt length, not the text — the prompt is user content.
     // Log only the executable (first token) of agent_cmd, not the full
@@ -29,8 +35,42 @@ pub(crate) async fn run(
     );
     tracing::trace!(target: "delegate.content", prompt = ?prompt, "run_delegate prompt");
 
-    let requested_source = parse_delegate_source(delegate_source, delegate_wsl_distro)?;
+    let mut requested_source = parse_delegate_source(delegate_source, delegate_wsl_distro)?;
     require_delegate_agent_for_explicit_source(delegate_source, delegate_agent_cmd)?;
+    let mut split_cwd = None;
+    if let Some(pane) = split_pane {
+        anyhow::ensure!(
+            prompt.is_none(),
+            "an agent split cannot carry a startup prompt"
+        );
+        anyhow::ensure!(split_size > 0.0 && split_size < 1.0, "invalid split size");
+        let provider = delegate_agent_cmd
+            .ok_or_else(|| anyhow::anyhow!("split requires an exact delegate provider"))?;
+        anyhow::ensure!(
+            crate::agent_registry::is_known_id(provider),
+            "unsupported split provider"
+        );
+        let local = tokio::task::LocalSet::new();
+        let snapshot = local
+            .run_until(super::sessions::fetch_from_master(None, false))
+            .await?;
+        let row = resolve_split_session(
+            &snapshot.sessions,
+            pane,
+            split_session.unwrap_or(""),
+            provider,
+        )?;
+        requested_source = match &row.location {
+            crate::agent_sessions::SessionLocation::Host => AgentSource::Host,
+            crate::agent_sessions::SessionLocation::Wsl { distro } if !distro.trim().is_empty() => {
+                AgentSource::Wsl {
+                    distro: distro.clone(),
+                }
+            }
+            _ => anyhow::bail!("split target has no known execution source"),
+        };
+        split_cwd = Some(row.cwd.to_string_lossy().into_owned());
+    }
 
     let (debug_tx, _) = tokio::sync::mpsc::unbounded_channel::<crate::app::DebugMessage>();
     let channel = match CliChannel::connect()
@@ -55,7 +95,12 @@ pub(crate) async fn run(
         delegate_agent_cmd,
         delegate_model,
         &requested_source,
-        cwd,
+        split_cwd.as_deref().or(cwd),
+        preserve_sidebar_view,
+        split_pane,
+        split_direction,
+        split_size,
+        delegate_agent_id,
     )
     .await
     {
@@ -68,6 +113,44 @@ pub(crate) async fn run(
             Err(e)
         }
     }
+}
+
+fn resolve_split_session<'a>(
+    sessions: &'a [crate::session_registry::SessionInfo],
+    pane: &str,
+    session: &str,
+    provider: &str,
+) -> Result<&'a crate::session_registry::SessionInfo> {
+    let mut candidates = sessions.iter().filter(|row| {
+        row.pane_session_id.as_deref().is_some_and(|id| {
+            id.trim_matches(['{', '}'])
+                .eq_ignore_ascii_case(pane.trim_matches(['{', '}']))
+        }) && matches!(
+            row.status,
+            Some(
+                crate::agent_sessions::AgentStatus::Idle
+                    | crate::agent_sessions::AgentStatus::Working
+                    | crate::agent_sessions::AgentStatus::Attention
+                    | crate::agent_sessions::AgentStatus::Error
+            )
+        )
+    });
+    let row = candidates
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("split target has no live agent session"))?;
+    anyhow::ensure!(
+        candidates.next().is_none(),
+        "split target has ambiguous live agent sessions"
+    );
+    anyhow::ensure!(
+        row.session_id.to_string() == session && row.provider_id.as_deref() == Some(provider),
+        "split target agent identity changed"
+    );
+    anyhow::ensure!(
+        row.location.is_actionable(),
+        "split target has no known execution source"
+    );
+    Ok(row)
 }
 
 /// Whether the delegate agent CLI is actually available inside `distro`.
@@ -230,15 +313,19 @@ async fn delegate_with_context(
     delegate_model: Option<&str>,
     requested_source: &AgentSource,
     cwd: Option<&str>,
+    preserve_sidebar_view: bool,
+    split_pane: Option<&str>,
+    split_direction: &str,
+    split_size: f64,
+    delegate_agent_id: Option<&str>,
 ) -> Result<()> {
-    let delegate_agents = crate::coordinator::default_delegate_agent_runtimes(
+    let runtime = crate::coordinator::resolve_delegate_runtime_with_provider(
         delegate_agent_cmd,
         Some(agent_cmd),
         delegate_model,
-    );
-    let runtime = delegate_agents
-        .first()
-        .ok_or_else(|| anyhow::anyhow!("no delegate agent configured"))?;
+        delegate_agent_id,
+    )?;
+    let runtime = &runtime;
 
     // A non-launchable command still gets a tab with the bare command so the
     // real shell error remains visible. It stays out of prompt enrichment,
@@ -249,7 +336,11 @@ async fn delegate_with_context(
     // the WSL cwd lookup further down, not source selection: `requested_source`
     // is the sole input to that decision (see `parse_delegate_source`), never
     // the active pane's shell/distro.
-    let active = shell_mgr.wt_get_active_pane().await.ok();
+    let active = if split_pane.is_some() {
+        None
+    } else {
+        shell_mgr.wt_get_active_pane().await.ok()
+    };
 
     // `requested_source` is always a concrete, caller-chosen source (defaults
     // to `Host` when `--delegate-source` is omitted; see
@@ -283,6 +374,10 @@ async fn delegate_with_context(
 
     let launchable_for_target =
         delegate_launchable_for_source(requested_source, launchable, wsl_agent_available);
+    anyhow::ensure!(
+        split_pane.is_none() || launchable_for_target,
+        "split target provider is unavailable in its execution source"
+    );
 
     if !launchable_for_target {
         // Log only the executable: custom commands can contain credentials.
@@ -389,9 +484,17 @@ async fn delegate_with_context(
             "wsl delegate commandline",
         );
 
-        let create_resp = shell_mgr
-            .wt_create_tab(Some(&wsl_commandline), None, None, None)
-            .await?;
+        let create_resp = create_delegate_target(
+            shell_mgr,
+            &runtime.id,
+            &wsl_commandline,
+            None,
+            preserve_sidebar_view,
+            split_pane,
+            split_direction,
+            split_size,
+        )
+        .await?;
         let pane_guid = create_resp
             .get("session_id")
             .and_then(|v| v.as_str())
@@ -426,10 +529,27 @@ async fn delegate_with_context(
     let windows_home = std::env::var("USERPROFILE").ok();
     let sanitized_cwd =
         crate::coordinator::sanitize_windows_agent_cwd(cwd, windows_home.as_deref());
+    let commandline = if split_pane.is_some() {
+        crate::coordinator::with_windows_delegate_cwd(
+            &commandline,
+            cwd.filter(|cwd| !cwd.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("host split has no working directory"))?,
+        )?
+    } else {
+        commandline
+    };
 
-    let create_resp = shell_mgr
-        .wt_create_tab(Some(&commandline), sanitized_cwd.as_deref(), None, None)
-        .await?;
+    let create_resp = create_delegate_target(
+        shell_mgr,
+        &runtime.id,
+        &commandline,
+        sanitized_cwd.as_deref(),
+        preserve_sidebar_view,
+        split_pane,
+        split_direction,
+        split_size,
+    )
+    .await?;
     let pane_guid = create_resp
         .get("session_id")
         .and_then(|v| v.as_str())
@@ -448,10 +568,320 @@ async fn delegate_with_context(
     Ok(())
 }
 
+async fn create_delegate_target(
+    shell_mgr: &ShellManager,
+    provider_id: &str,
+    commandline: &str,
+    cwd: Option<&str>,
+    preserve_sidebar_view: bool,
+    split_pane: Option<&str>,
+    split_direction: &str,
+    split_size: f64,
+) -> Result<serde_json::Value> {
+    // Background creation leaves the sidebar alone; protocol focus already
+    // preserves its page and query. Ordinary foreground creation is unchanged.
+    let created = if let Some(pane) = split_pane {
+        shell_mgr
+            .wt_split_pane(
+                pane,
+                Some(commandline),
+                cwd,
+                Some(split_direction),
+                Some(split_size),
+                None,
+                Some(provider_id),
+            )
+            .await?
+    } else {
+        shell_mgr
+            .wt_create_tab_with_background(
+                Some(commandline),
+                cwd,
+                None,
+                None,
+                preserve_sidebar_view,
+                Some(provider_id),
+            )
+            .await?
+    };
+    if preserve_sidebar_view || split_pane.is_some() {
+        let pane = created
+            .get("session_id")
+            .and_then(serde_json::Value::as_str)
+            .filter(|pane| !pane.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("delegate tab creation returned no pane identity"))?;
+        shell_mgr.wt_focus_pane(pane).await?;
+    }
+    Ok(created)
+}
+
 #[cfg(test)]
 mod tests {
     use super::cap_delegate_context;
     use crate::agent_source::AgentSource;
+
+    struct RecordingChannel {
+        requests: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
+        response: serde_json::Value,
+        fail_focus: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for RecordingChannel {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.requests.lock().unwrap().push((method.into(), params));
+            match method {
+                "create_tab" | "split_pane" => Ok(self.response.clone()),
+                "focus_pane" if self.fail_focus => anyhow::bail!("focus failed"),
+                "focus_pane" => Ok(serde_json::json!({})),
+                _ => anyhow::bail!("unexpected method {method}"),
+            }
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn delegate_split_targets_original_pane_and_focuses_only_new_pane() {
+        let channel = std::sync::Arc::new(RecordingChannel {
+            requests: Default::default(),
+            response: serde_json::json!({"session_id": "fresh-pane"}),
+            fail_focus: false,
+        });
+        let shell = crate::shell::ShellManager::new().with_wt_channel(channel.clone());
+        super::create_delegate_target(
+            &shell,
+            "copilot",
+            "copilot",
+            None,
+            true,
+            Some("original-pane"),
+            "right",
+            0.4,
+        )
+        .await
+        .unwrap();
+        let requests = channel.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].0, "split_pane");
+        assert_eq!(requests[0].1["session_id"], "original-pane");
+        assert_eq!(requests[0].1["commandline"], "copilot");
+        assert_eq!(requests[0].1["direction"], "right");
+        assert_eq!(requests[0].1["size"], 0.4);
+        assert_eq!(requests[0].1["native_agent_provider_id"], "copilot");
+        assert_eq!(requests[1].0, "focus_pane");
+        assert_eq!(requests[1].1["session_id"], "fresh-pane");
+    }
+
+    #[test]
+    fn delegate_split_requires_unique_live_provider_session_and_exact_location() {
+        use crate::agent_sessions::{AgentStatus, SessionLocation};
+        let mut row = crate::session_registry::SessionInfo::new("sid".into(), "C:\\project".into());
+        row.provider_id = Some("copilot".into());
+        row.pane_session_id = Some("{PANE}".into());
+        row.status = Some(AgentStatus::Idle);
+        row.location = SessionLocation::Host;
+        let resolve = |rows: &[crate::session_registry::SessionInfo], sid: &str, provider: &str| {
+            super::resolve_split_session(rows, "pane", sid, provider)
+                .map(|row| row.location.clone())
+        };
+        assert_eq!(
+            resolve(&[row.clone()], "sid", "copilot").unwrap(),
+            SessionLocation::Host
+        );
+        assert!(resolve(&[row.clone()], "different", "copilot").is_err());
+        assert!(resolve(&[row.clone()], "sid", "claude").is_err());
+        assert!(resolve(&[row.clone(), row.clone()], "sid", "copilot").is_err());
+        row.location = SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        let mut other_source = row.clone();
+        other_source.location = SessionLocation::Host;
+        assert!(resolve(&[row.clone(), other_source], "sid", "copilot").is_err());
+        assert_eq!(
+            resolve(&[row.clone()], "sid", "copilot").unwrap(),
+            row.location
+        );
+        row.location = SessionLocation::Unknown;
+        assert!(resolve(&[row.clone()], "sid", "copilot").is_err());
+        row.location = SessionLocation::Wsl { distro: "".into() };
+        assert!(resolve(&[row.clone()], "sid", "copilot").is_err());
+        row.location = SessionLocation::Host;
+        row.status = Some(AgentStatus::Ended);
+        assert!(resolve(&[row], "sid", "copilot").is_err());
+        assert!(resolve(&[], "sid", "copilot").is_err());
+    }
+
+    #[tokio::test]
+    async fn delegate_split_rejects_custom_prompt_and_invalid_size_before_connecting() {
+        for (provider, prompt, size, expected) in [
+            ("custom:test", None, 0.5, "unsupported split provider"),
+            (
+                "copilot",
+                Some("prompt"),
+                0.5,
+                "cannot carry a startup prompt",
+            ),
+            ("copilot", None, 1.0, "invalid split size"),
+        ] {
+            let error = super::run(
+                prompt,
+                "",
+                Some(provider),
+                None,
+                None,
+                None,
+                None,
+                true,
+                Some("pane"),
+                Some("sid"),
+                "auto",
+                size,
+                None,
+            )
+            .await
+            .unwrap_err();
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn delegate_tab_preserves_sidebar_by_background_creation_then_exact_focus() {
+        for preserve in [false, true] {
+            for command in ["copilot", "wsl -d Ubuntu -- bash -lc codex"] {
+                let channel = std::sync::Arc::new(RecordingChannel {
+                    requests: Default::default(),
+                    response: serde_json::json!({"session_id": "new-pane"}),
+                    fail_focus: false,
+                });
+                let shell = crate::shell::ShellManager::new().with_wt_channel(channel.clone());
+                let created = super::create_delegate_target(
+                    &shell,
+                    "copilot",
+                    command,
+                    Some("C:\\project"),
+                    preserve,
+                    None,
+                    "auto",
+                    0.5,
+                )
+                .await
+                .unwrap();
+                assert_eq!(created["session_id"], "new-pane");
+                let requests = channel.requests.lock().unwrap();
+                assert_eq!(requests.len(), if preserve { 2 } else { 1 });
+                assert_eq!(requests[0].0, "create_tab");
+                assert_eq!(requests[0].1["commandline"], command);
+                assert_eq!(requests[0].1["cwd"], "C:\\project");
+                assert_eq!(
+                    requests[0].1.get("background"),
+                    preserve.then_some(&serde_json::Value::Bool(true))
+                );
+                if preserve {
+                    assert_eq!(requests[1].0, "focus_pane");
+                    assert_eq!(requests[1].1["session_id"], "new-pane");
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn delegate_creation_carries_provider_without_fabricating_session_or_status() {
+        for provider in [
+            "copilot",
+            "claude",
+            "codex",
+            "gemini",
+            "opencode",
+            "custom:fixture",
+        ] {
+            let command = if provider.starts_with("custom:") {
+                "pwsh -NoProfile -File fixture.ps1"
+            } else {
+                provider
+            };
+            let runtime = crate::coordinator::resolve_delegate_runtime_with_provider(
+                Some(command),
+                None,
+                None,
+                Some(provider),
+            )
+            .unwrap();
+            assert_eq!(runtime.id, provider);
+            assert_eq!(runtime.commandline, command);
+            for split in [None, Some("original-pane")] {
+                let channel = std::sync::Arc::new(RecordingChannel {
+                    requests: Default::default(),
+                    response: serde_json::json!({"session_id": "new-pane"}),
+                    fail_focus: false,
+                });
+                let shell = crate::shell::ShellManager::new().with_wt_channel(channel.clone());
+                super::create_delegate_target(
+                    &shell,
+                    &runtime.id,
+                    &runtime.commandline,
+                    None,
+                    true,
+                    split,
+                    "auto",
+                    0.5,
+                )
+                .await
+                .unwrap();
+                let requests = channel.requests.lock().unwrap();
+                assert_eq!(requests.len(), 2);
+                assert_eq!(requests[0].1["native_agent_provider_id"], provider);
+                assert!(requests[0].1.get("agent_session_id").is_none());
+                assert!(requests[0].1.get("status").is_none());
+                assert_eq!(requests[1].0, "focus_pane");
+            }
+            assert!(crate::coordinator::resolve_delegate_runtime_with_provider(
+                Some("pwsh -NoProfile -File fixture.ps1"),
+                None,
+                None,
+                None,
+            )
+            .is_err());
+            assert!(crate::coordinator::resolve_delegate_runtime_with_provider(
+                Some("copilot"),
+                None,
+                None,
+                None,
+            )
+            .is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn delegate_tab_preserve_sidebar_reports_missing_identity_and_focus_failure() {
+        for (response, fail_focus) in [
+            (serde_json::json!({}), false),
+            (serde_json::json!({"session_id": ""}), false),
+            (serde_json::json!({"session_id": "new-pane"}), true),
+        ] {
+            let channel = std::sync::Arc::new(RecordingChannel {
+                requests: Default::default(),
+                response,
+                fail_focus,
+            });
+            let shell = crate::shell::ShellManager::new().with_wt_channel(channel.clone());
+            assert!(super::create_delegate_target(
+                &shell, "copilot", "copilot", None, true, None, "auto", 0.5
+            )
+            .await
+            .is_err());
+            assert_eq!(
+                channel.requests.lock().unwrap().len(),
+                if fail_focus { 2 } else { 1 }
+            );
+        }
+    }
 
     #[test]
     fn cap_returns_short_context_unchanged() {

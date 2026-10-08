@@ -13,6 +13,14 @@ function Stop-TelemetryOwnedTerminal {
     param([Parameter(Mandatory)]$App)
     if (-not $App.Launched) { throw 'Refusing to close a window not launched by this telemetry run.' }
     Save-TelemetryOwnedProcesses -App $App
+    $helpers = if (Get-Process -Id $App.Pid -ErrorAction SilentlyContinue) { @(Get-AgentPaneSessions -App $App) } else { @() }
+    foreach ($helper in $helpers) {
+        [int]$helper.HelperProcessId | Should -BeIn @($script:ownedPids)
+        Close-WtPane -App $App -SessionId $helper.PaneSessionId
+    }
+    Wait-Until -TimeoutSec 20 -Because 'fixture helpers retire while their COM host is still alive' -Condition {
+        @($helpers | Where-Object { Get-Process -Id $_.HelperProcessId -ErrorAction SilentlyContinue }).Count -eq 0
+    } | Out-Null
     # Stop only this window process's WTA descendants while its COM server is
     # still alive, so shutdown callbacks cannot activate a headless replacement.
     foreach ($processId in @(Get-DescendantWtaIds -RootPid ([int]$App.Pid))) {
@@ -22,6 +30,9 @@ function Stop-TelemetryOwnedTerminal {
         }
     }
     Stop-Terminal -App $App -RestoreSettings $false
+    Wait-Until -TimeoutSec 45 -Because 'the owned package finishes asynchronous shutdown before the next launch' -Condition {
+        @(Get-WtProcessesForApp -App $App).Count -eq 0
+    } | Out-Null
 }
 
 function Invoke-TelemetryPhase {

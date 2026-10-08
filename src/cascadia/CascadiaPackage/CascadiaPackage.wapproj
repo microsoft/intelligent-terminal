@@ -66,6 +66,9 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Resources -->
+    <Content Include="AgentIcons\Masks\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- This resw only defines things that are used in this package's AppxManifest,
          so it's not in the common resource items. -->
     <PRIResource Include="Resources\en-US\Resources.resw" />
@@ -164,20 +167,12 @@
        the loose copy is present. Excludes hook-debug/ (dev utility, not
        part of the install bundle) and *.md (developer docs). -->
   <ItemGroup>
-    <Content Include="$(SolutionDir)res\fre\Error-detection-dark.png">
-      <Link>FREAssets\Error-detection-dark.png</Link>
+    <Content Include="$(SolutionDir)res\fre\Error-detection.png">
+      <Link>FREAssets\Error-detection.png</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(SolutionDir)res\fre\Error-detection-light.png">
-      <Link>FREAssets\Error-detection-light.png</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="$(SolutionDir)res\fre\sidebar-dark.png">
-      <Link>FREAssets\sidebar-dark.png</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="$(SolutionDir)res\fre\sidebar-light.png">
-      <Link>FREAssets\sidebar-light.png</Link>
+    <Content Include="$(SolutionDir)res\fre\sidebar.png">
+      <Link>FREAssets\sidebar.png</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

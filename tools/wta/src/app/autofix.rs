@@ -17,8 +17,9 @@ use super::*;
 /// active, and re-emits the active tab's snapshot on tab_changed.
 #[derive(Debug, Clone, Default)]
 pub struct TabAutofixState {
-    /// One concrete recommendation, not the Detected/Pending/Review projection.
+    /// Identity of the current analysis flow, retained when its card is regenerated.
     pub(super) offer: Option<ErrorFixOffer>,
+    pub(super) detected_offer: Option<(String, uuid::Uuid)>,
     /// Failing pane for Pending/Armed. Cleared when the user dismisses
     /// (Esc), the error resolves (exit 0 on the same pane), or the fix
     /// is executed.
@@ -52,6 +53,7 @@ pub struct TabAutofixState {
 #[derive(Debug, Clone)]
 pub(super) struct ErrorFixOffer {
     pub(super) id: uuid::Uuid,
+    pub(super) source: &'static str,
     pub(super) prompt_id: u64,
     pub(super) offered: bool,
     pub(super) accepted: bool,
@@ -129,24 +131,30 @@ impl App {
         };
         if tab.turn.prompt_id() == Some(offer.prompt_id) && !offer.offered {
             offer.offered = true;
-            crate::telemetry::log_error_fix_offered(offer.id);
+            crate::telemetry::log_error_fix_offered(offer.id, offer.source);
         }
     }
 
-    pub(super) fn log_error_fix_accepted(&mut self, session_id: &str) {
-        let tab = self.session_tab_mut(session_id);
+    pub(super) fn error_fix_run_identity(
+        &self,
+        session_id: &str,
+    ) -> Option<crate::telemetry::FixRunIdentity> {
+        let tab = self.session_tab(session_id);
         if !tab.turn.is_autofix()
             || tab.turn.recommendations().is_none()
             || tab.turn.autofix_generation() != Some(tab.autofix.generation)
         {
-            return;
+            return None;
         }
-        let Some(offer) = tab.autofix.offer.as_mut() else {
-            return;
-        };
+        let offer = tab.autofix.offer.as_ref()?;
         if tab.turn.prompt_id() == Some(offer.prompt_id) && offer.offered && !offer.accepted {
-            offer.accepted = true;
-            crate::telemetry::log_error_fix_accepted(offer.id);
+            Some(crate::telemetry::FixRunIdentity {
+                offer_id: offer.id,
+                run_id: uuid::Uuid::new_v4(),
+                source: offer.source,
+            })
+        } else {
+            None
         }
     }
 
@@ -321,10 +329,20 @@ impl App {
             tab.autofix.armed_at = Some(std::time::Instant::now());
         }
 
+        let reattached_session_id = self
+            .tab_sessions
+            .get(&target_tab_id)
+            .and_then(|tab| tab.reattached_session_id().map(str::to_string));
         let prompt =
             PromptSubmission::new_autofix_failure(notification.summary.clone(), Some(pane_context))
                 .with_byok(self.current_model_is_byok())
-                .with_agent_id(self.current_agent_id.clone());
+                .with_agent_id(self.current_agent_id.clone())
+                .with_reattached_session(reattached_session_id)
+                .with_restore_identity(
+                    self.tab_sessions
+                        .get(&target_tab_id)
+                        .and_then(|tab| tab.restore_identity()),
+                );
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),
@@ -343,6 +361,23 @@ impl App {
             submitted,
             prompt.cancellation_token(),
         );
+        let tab = self.tab_mut(&target_tab_id);
+        if let Some((_, id)) = tab
+            .autofix
+            .detected_offer
+            .as_ref()
+            .filter(|(pane, _)| pane == &notification.pane_id)
+        {
+            if let Some(offer) = tab.autofix.offer.as_mut() {
+                offer.id = *id;
+                offer.source = "Detection";
+            }
+        } else {
+            tracing::warn!(target: "telemetry", "autofix analysis has no matching detection identity");
+            if let Some(offer) = tab.autofix.offer.as_mut() {
+                offer.source = "Unknown";
+            }
+        }
         tracing::info!(target: "autofix", pane_id = %notification.pane_id, tab_id = %target_tab_id, generation = new_gen, "sending auto-fix prompt");
         let _ = self.prompt_tx.send(prompt);
 
@@ -571,6 +606,7 @@ impl App {
             let _ = self
                 .recommendation_tx
                 .send(crate::coordinator::ChoiceExecution {
+                    run: None,
                     choice,
                     insert_only: false,
                     context: TurnContext::with_target_pane(armed_pane),
@@ -635,6 +671,9 @@ impl App {
     /// Store a fresh bar snapshot on the target tab and, if that tab is
     /// currently active, forward it to WT so the bottom bar updates.
     pub(super) fn set_bar_snapshot(&mut self, target_tab_id: &str, snapshot: AutofixBarSnapshot) {
+        if matches!(snapshot, AutofixBarSnapshot::Idle) {
+            self.tab_mut(target_tab_id).autofix.detected_offer = None;
+        }
         self.tab_mut(target_tab_id).autofix.bar_snapshot = snapshot.clone();
         if target_tab_id == self.active_tab_key() {
             send_bar_event(&snapshot, Some(target_tab_id));

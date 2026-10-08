@@ -63,6 +63,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         AutofixState,         // Direct to TerminalPage, no broadcast
         AgentStatus,          // Direct to TerminalPage, no broadcast
         AgentAvailability,    // Direct to TerminalPage, no broadcast — post-install hook reconciliation
+        AgentInstallation,    // Notify TerminalPage and COM subscribers after confirmed installation
         AgentSwitch,          // Direct to TerminalPage, no broadcast — `/agent` per-tab switch
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
         DefaultPaste,         // Direct to TerminalPage, no broadcast — WTA-owned right-click copy-or-paste
@@ -112,6 +113,13 @@ namespace Microsoft::Terminal::Protocol::Parsing
             }
             if (method == "agent_availability_changed")
             {
+                const auto& params = outEvt["params"];
+                if (params.isObject() &&
+                    params["installation_completed"].isBool() &&
+                    params["installation_completed"].asBool())
+                {
+                    return SendEventRoute::AgentInstallation;
+                }
                 return SendEventRoute::AgentAvailability;
             }
             if (method == "switch_agent")

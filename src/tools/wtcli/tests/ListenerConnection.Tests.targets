@@ -1,0 +1,9 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(ProjectName)' == 'wtcli'">
+    <TargetName>wtcli-listener-native-tests</TargetName>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(ProjectName)' == 'wtcli'">
+    <ClCompile Remove="main.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)ListenerConnection.Tests.cpp" />
+  </ItemGroup>
+</Project>

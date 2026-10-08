@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include "pch.h"
+#include "TabStrip.h"
 #include "../inc/AgentPaneRestore.h"
 #include "App.h"
 
@@ -289,6 +290,12 @@ namespace winrt::TerminalApp::implementation
             const auto& duplicateFromTab{ realArgs.SplitMode() == SplitType::Duplicate ? _GetFocusedTab() : nullptr };
 
             const auto& activeTab{ _senderOrFocusedTab(sender) };
+            if (_tabStrip.HistoryActive() && realArgs.SplitMode() == SplitType::Duplicate)
+            {
+                _SplitAgentDelegate(activeTab, realArgs.SplitDirection(), realArgs.SplitSize());
+                args.Handled(true);
+                return;
+            }
 
             // A persisted agent pane replays as an ordinary splitPane action,
             // but it cannot be built by `_MakePane`: the helper needs this
@@ -645,6 +652,20 @@ namespace winrt::TerminalApp::implementation
             control.ToggleShaderEffects();
         });
         args.Handled(res);
+    }
+
+    void TerminalPage::_HandleToggleSidebar(const IInspectable& sender,
+                                            const ActionEventArgs& args)
+    {
+        if (sender.try_as<KeyChord>())
+        {
+            _ToggleSidebarHotkey();
+        }
+        else
+        {
+            _OnVerticalRailCollapseRequested(nullptr, nullptr);
+        }
+        args.Handled(true);
     }
 
     void TerminalPage::_HandleToggleFocusMode(const IInspectable& /*sender*/,
@@ -1739,6 +1760,32 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleOpenAgentSessions(const IInspectable& /*sender*/,
                                                 const ActionEventArgs& args)
     {
+        if (_isVerticalLayout)
+        {
+            if (_tabStrip && _isVerticalRailVisible)
+            {
+                if (_tabStrip.HistoryActive())
+                {
+                    _CloseSidebarHistory(true);
+                }
+                else
+                {
+                    _CaptureSidebarHistoryEntry();
+                    if (_isVerticalRailCollapsed)
+                    {
+                        _OnVerticalRailCollapseRequested(nullptr, nullptr);
+                    }
+                    winrt::get_self<implementation::TabStrip>(_tabStrip)->OpenHistory();
+                    if (!_tabStrip.HistoryActive())
+                    {
+                        _historyEntryState.reset();
+                    }
+                }
+            }
+            args.Handled(true);
+            return;
+        }
+
         OutputDebugStringW(L"[AgentPane] _HandleOpenAgentSessions called\n");
         const auto activeTabPre = _GetFocusedTabImpl();
         const auto agentPanePre = activeTabPre ? activeTabPre->FindAgentPane() : nullptr;

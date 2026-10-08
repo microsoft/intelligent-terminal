@@ -35,18 +35,23 @@ namespace winrt::TerminalApp::implementation
         // In vertical mode, this complete chrome row is hosted in the window
         // titlebar when available and falls back to the top of the rail.
         winrt::Windows::UI::Xaml::UIElement VerticalTitleBarContent() const noexcept { return _verticalTitleBarContent; }
+        winrt::Windows::UI::Xaml::Controls::Button VerticalRailToggleButton() const noexcept { return _verticalRailToggleButton; }
         winrt::Microsoft::UI::Xaml::Controls::SplitButton VerticalNewTabButton() const noexcept { return _verticalNewTabButton; }
+        void SidebarToggleKeyChordText(const winrt::hstring& value);
         void SetVerticalRailState(bool visible, bool collapsed, double width);
         til::typed_event<TerminalApp::TabRowControl, winrt::Windows::Foundation::IInspectable> RailCollapseRequested;
 
     private:
         bool _showElevationShield{ false };
         bool _isVerticalLayout{ false };
+        winrt::hstring _sidebarToggleKeyChordText;
         winrt::Windows::UI::Xaml::UIElement _verticalTitleBarContent{ nullptr };
         winrt::Windows::UI::Xaml::UIElement _verticalExpandedChrome{ nullptr };
         winrt::Windows::UI::Xaml::Controls::StackPanel _verticalLeadingChrome{ nullptr };
         winrt::Windows::UI::Xaml::Controls::Grid _verticalNewTabHost{ nullptr };
-        winrt::Windows::UI::Xaml::Controls::PathIcon _verticalRailToggleIcon{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::Button _verticalRailToggleButton{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::TextBlock _verticalRailToggleLabel{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::TextBlock _verticalRailToggleShortcut{ nullptr };
         winrt::Microsoft::UI::Xaml::Controls::SplitButton _verticalNewTabButton{ nullptr };
         void _applyLayoutVisibility();
         void _ensureVerticalChrome();

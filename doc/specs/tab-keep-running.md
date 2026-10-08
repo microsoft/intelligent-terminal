@@ -22,8 +22,18 @@ The RepeatAll icon appears after the title of a tab with keep running enabled,
 including after restore, whole-tab moves, and switching to horizontal layout.
 Disabling keep running removes the title icon. Long titles truncate before the
 indicator so it stays visible.
+When Rich Tab metadata is visible, the indicator is vertically centered across
+the title and metadata rows without changing its horizontal position. Metadata
+also truncates before the indicator column.
 The menu icons and title indicator use Segoe Fluent Icons with Segoe MDL2 Assets as a fallback,
 not a bitmap asset.
+
+**Pin tab** is a separate context-menu action in both tab layouts. It keeps a
+terminal tab before unpinned tabs and can be undone with **Unpin tab**. Pinned
+tabs still close normally, including with bulk close actions; pinning does not
+enable background retention. The order is kept while moving a tab to another
+window or restoring it from Keep running in the same process, but is not saved
+across application restarts. Settings tabs cannot be pinned.
 
 ## UI integration contract
 
@@ -70,6 +80,11 @@ with zero windows. Its menu preserves the original Focus Terminal action and
 Windows submenu for selecting an existing window. Kept tabs add their own
 Restore and Close submenus without removing inherited tray actions. Restore reattaches
 the same live content; Close terminates the entire kept tab, including its helper.
+The kept-tab entries and **Close all keep-running tabs** form one section between
+native menu separators. The bulk-close command appears immediately below the
+last kept tab and closes all currently detached, unclaimed tabs, including their
+panes and helpers. Tabs still in a window or already being restored are not
+closed. The section is absent when no kept tabs are available.
 Tray Restore targets the most recently active terminal window, or creates a
 receiver window when none exists.
 An ordinary Start-menu or command-line launch follows the original startup
@@ -107,6 +122,31 @@ twice and continues keeping the process alive.
 - Preferences are not saved to settings or persisted layouts.
 - A horizontal-tab menu entry is not implemented here.
 - Missing hooks may delay agent status updates but do not gate keeping a tab.
+
+## Telemetry
+
+`App.KeepRunningMarked` records explicit menu/API opt-in together with
+post-enable `TotalTabCount` and `KeepRunningTabCount` for attached terminal
+tabs in the owning window. Search-hidden tabs count; detached tabs, other
+windows, Settings, and other nonterminal tabs do not. The paired counts measure
+the tab share at enable time, not a per-agent-session mark rate. Disabling,
+startup, and repeated enable requests do not emit a snapshot.
+
+`App.KeepRunningDetached` records successful background retention.
+`App.KeepRunningReattachStarted` and `App.KeepRunningReattached` share a random
+`AttemptId` for each restoration, including pre-transfer failures. Results are
+`live` or `failed`; missing results remain unknown. A random `KeepId` correlates
+the opt-in, detach and resolved-target restore without publishing the tab routing ID.
+`HasAgentPane` distinguishes
+tabs containing an agent pane from shell-only tabs, but does not assert an
+active ACP session. `HasAgentSession` records whether the pane has a bound session ID,
+not a guarantee of provider readiness. After reattachment, `WTA.AgentPromptSent.Reattached`
+is true only for prompts on the same ACP session that survived the transfer;
+its `KeepId` and `AttemptId` join it to that restore. Process exit has no `gone` event.
+
+`App.TabPinChanged` separately records successful tab-order pin/unpin actions
+with `Pinned` and post-action `PinnedCount`. The older `SidebarTabPinned` event
+still means the Keep running menu action and is not tab-order pin telemetry.
 
 Focused coverage lives in `TabTests::KeepRunning*` in
 `src/cascadia/LocalTests_TerminalApp/TabTests.cpp`. The shared history/session

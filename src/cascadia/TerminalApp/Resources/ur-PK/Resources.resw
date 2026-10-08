@@ -426,19 +426,24 @@
     <value>نیچے موجود ٹیبز بند کریں</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>ٹیبز پین سکیڑیں</value>
+    <value>سائیڈ بار سکیڑیں</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>ٹیبز پین پھیلائیں</value>
+    <value>سائیڈ بار پھیلائیں</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>ٹیب گروپ پھیلائیں</value>
+    <comment>Accessibility name and tooltip for the button that expands a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsCollapseGroup" xml:space="preserve">
     <value>ٹیب گروپ سکیڑیں</value>
+    <comment>Accessibility name and tooltip for the button that collapses a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
     <value>ٹیب</value>
+    <comment>Fallback title for a terminal tab in the sidebar when no title is available.</comment>
   </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>ٹیبز</value>
@@ -456,13 +461,16 @@
     <value>ٹیبز تلاش کریں</value>
   </data>
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ٹیبز فلٹر کریں</value>
+    <value>سائیڈبار ڈسپلے کے اختیارات</value>
+    <comment>Accessible name of the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ٹیبز فلٹر کریں</value>
+    <value>سائیڈبار ڈسپلے کے اختیارات</value>
+    <comment>Tooltip for the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
     <value>فلٹر</value>
+    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>تمام ٹیبز</value>
@@ -472,21 +480,27 @@
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
     <value>ٹیب میٹا ڈیٹا</value>
+    <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
     <value>ایجنٹ کی حیثیت</value>
+    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>موجودہ ورکنگ ڈائرکٹری</value>
+    <comment>Option that shows the current working directory in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
     <value>Git ذخیرہ</value>
+    <comment>Option that shows the Git repository name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
     <value>Git برانچ</value>
+    <comment>Option that shows the Git branch name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
     <value>Git تبدیلیاں</value>
+    <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>1 ایجنٹ سیشن دکھایا جا رہا ہے</value>
@@ -507,25 +521,38 @@
     <value>تمام ٹیبز دکھائیں</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت</value>
+    <value>ایجنٹس</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت</value>
+    <value>ایجنٹس</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
+  </data>
+  <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
+    <value>حالیہ سیشنز</value>
+    <comment>Collapsible noun heading below open agent tabs in the Agents sidebar. Includes prior agent sessions, kept-running background tabs, sessions in other tracked windows, and external sessions not represented by the current window's open agent panes. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت</value>
+    <value>ایجنٹس</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت بند کریں</value>
+    <value>ایجنٹس کا منظر بند کریں</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت بند کریں</value>
+    <value>ایجنٹس کا منظر بند کریں</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>ایجنٹ سیشن تلاش کریں</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>ایجنٹ سیشن تلاش کریں</value>
+  </data>
+  <data name="VerticalTabsHistoryCurrentSession" xml:space="preserve">
+    <value>موجودہ سیشن</value>
+    <comment>UI Automation status for the live AI-agent session associated with the active terminal pane. This identifies the currently displayed session, not keyboard selection or the most recent session.</comment>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>کوئی ایجنٹ سیشن نہیں ملا۔</value>
@@ -534,10 +561,12 @@
     <value>کوئی مماثل ایجنٹ سیشن نہیں ہے۔</value>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت لوڈ نہیں کی جا سکی۔</value>
+    <value>ایجنٹ سیشنز لوڈ نہیں کیے جا سکے۔</value>
+    <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
   </data>
   <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
-    <value>ایجنٹ کی سرگزشت نے ایک غیر موزوں جواب دیا۔</value>
+    <value>ایجنٹ سیشنز لوڈ نہیں کیے جا سکے: غیر درست جواب۔</value>
+    <comment>Error shown when the Agent sessions sidebar receives an invalid response while loading its list of live and historical AI-agent sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
     <value>منتخب سیشن فعال نہیں کیا جا سکا۔</value>
@@ -565,10 +594,12 @@
     <value>تمام Terminal ونڈوز میں افقی ٹیبز استعمال کریں</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>عمودی ٹیبز پر سوئچ کریں</value>
+    <value>سائیڈ بار پر سوئچ کریں</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>تمام Terminal ونڈوز میں عمودی ٹیبز استعمال کریں</value>
+    <value>تمام Terminal ونڈوز میں سائیڈ بار استعمال کریں</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>اس ٹیب کے نیچے موجود تمام ٹیبز بند کریں</value>
@@ -580,6 +611,28 @@
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>ٹیب چلتا رہنے دیں</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>ٹیب کو پن کریں</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>اس ٹیب کو پن نہ کی گئی ٹیبز سے پہلے منتقل کریں۔</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>ٹیب کا پن ہٹائیں</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>اس ٹیب کو پن کی گئی ٹیبز کے بعد منتقل کریں۔</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>پن شدہ</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>پن شدہ</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>ٹیب یا ونڈو بند کرنے کے بعد بھی اس ٹیب کو پس منظر میں چلتا رہنے دیں۔</value>
@@ -648,5 +701,83 @@
   <data name="VerticalTabsHistoryAgeUnknown" xml:space="preserve">
     <value>نامعلوم</value>
     <comment>Agent History time label when the session&apos;s latest activity timestamp is missing or invalid. Do not imply that the session was recently active.</comment>
+  </data>
+  <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
+    <value>پس منظر میں چلنے والے تمام ٹیب بند کریں</value>
+    <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by Keep tab running and terminates their panes and processes. Does not close tabs still in a window or only turn off keep running.</comment>
+  </data>
+  <data name="PaneProgressStatusNormal" xml:space="preserve">
+    <value>پیش رفت</value>
+    <comment>Accessibility status for normal determinate OSC 9;4 progress. A localized percentage is appended.</comment>
+  </data>
+  <data name="PaneProgressStatusError" xml:space="preserve">
+    <value>خرابی</value>
+    <comment>Accessibility status for error OSC 9;4 progress. A localized percentage is appended.</comment>
+  </data>
+  <data name="PaneProgressStatusIndeterminate" xml:space="preserve">
+    <value>غیر متعین پیش رفت</value>
+    <comment>Accessibility status for OSC 9;4 progress with an unknown percentage. No percentage is appended.</comment>
+  </data>
+  <data name="PaneProgressStatusPaused" xml:space="preserve">
+    <value>موقوف</value>
+    <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
+  </data>
+  <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
+    <value>فعال اور حالیہ ایجنٹ سیشنز تلاش کریں</value>
+    <comment>Shared search placeholder, tooltip, and accessible name in the Agents sidebar. Searches both open AI-agent tabs, including idle open sessions, and the Recent Sessions section. Active does not mean only currently working. Keep the separate Tabs view search labels unchanged.</comment>
+  </data>
+  <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
+    <value>{0} · دوسری ونڈو</value>
+    <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
+  </data>
+  <data name="VerticalTabsHistoryRestoreBackgroundTab" xml:space="preserve">
+    <value>پس منظر کا ٹیب بحال کریں</value>
+    <comment>Action for a live agent session in a kept-running background tab. Restores the entire original tab, with all its panes, to the foreground. This does not resume a new conversation or focus another visible window.</comment>
+  </data>
+  <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
+    <value>دوسری ونڈو پر جائیں</value>
+    <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
+  </data>
+  <data name="TabColorChoose"><value>ٹیب کا رنگ تبدیل کریں</value></data>
+  <data name="RenameTabText"><value>ٹیب کا نام تبدیل کریں</value></data>
+  <data name="DuplicateTabText"><value>ٹیب کی نقل بنائیں</value></data>
+  <data name="SplitTabText"><value>ٹیب تقسیم کریں</value></data>
+  <data name="TabMoveSubMenu"><value>ٹیب منتقل کریں</value></data>
+  <data name="ExportTabText"><value>متن برآمد کریں</value></data>
+  <data name="FindText"><value>تلاش</value></data>
+  <data name="RestartConnectionText"><value>سیشن دوبارہ شروع کریں</value></data>
+  <data name="TabCloseSubMenu"><value>بند کریں</value></data>
+  <data name="TabClose"><value>ٹیب بند کریں</value></data>
+  <data name="MoveTabToNewWindowText"><value>ٹیب نئی ونڈو میں منتقل کریں</value></data>
+  <data name="TabMoveLeft"><value>بائیں منتقل کریں</value></data>
+  <data name="TabMoveRight"><value>دائیں منتقل کریں</value></data>
+  <data name="TabMoveUp"><value>اوپر منتقل کریں</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>نیچے منتقل کریں</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>دائیں جانب کے ٹیبز بند کریں</value></data>
+  <data name="TabCloseOther"><value>دیگر ٹیبز بند کریں</value></data>
+  <data name="ClosePaneText"><value>پین بند کریں</value></data>
+  <data name="VerticalTabsSwitchToAgents" xml:space="preserve">
+    <value>ایجنٹس پر سوئچ کریں</value>
+    <comment>Tooltip and accessible action name of the sidebar header button while Tabs is selected. One click switches to the Agents view; it does not open a menu. Agents means AI agents, not people.</comment>
+  </data>
+  <data name="VerticalTabsSwitchToTabs" xml:space="preserve">
+    <value>ٹیبز پر سوئچ کریں</value>
+    <comment>Tooltip and accessible action name of the sidebar header button while Agents is selected. One click switches to the Tabs view; it does not change between sidebar and horizontal tab layouts.</comment>
+  </data>
+  <data name="VerticalTabsExpandRecentSessions" xml:space="preserve">
+    <value>حالیہ سیشنز پھیلائیں</value>
+    <comment>Tooltip for expanding the Recent Sessions section inside the Agents sidebar. Expansion shows its session rows without leaving Agents or resuming a session.</comment>
+  </data>
+  <data name="VerticalTabsCollapseRecentSessions" xml:space="preserve">
+    <value>حالیہ سیشنز سمیٹیں</value>
+    <comment>Tooltip for collapsing the Recent Sessions section inside the Agents sidebar. Collapse hides its rows without closing agents or deleting sessions.</comment>
+  </data>
+  <data name="SidebarIntroductionTitle" xml:space="preserve">
+    <value>ٹیبز کا نظم کرنے کا زیادہ ذہین طریقہ</value>
+    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+  </data>
+  <data name="SidebarIntroductionDescription" xml:space="preserve">
+    <value>آپ کے ٹیبز اور ایجنٹ سیشنز اب سائیڈبار میں ہیں۔ ٹیب کی تفصیلات منتخب کرنے کے لیے سائیڈبار ڈسپلے کے اختیارات استعمال کریں۔ افقی ٹیبز پر واپس جانے کے لیے کسی ٹیب پر دایاں کلک کریں۔</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
   </data>
 </root>

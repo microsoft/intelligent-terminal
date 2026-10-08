@@ -14,6 +14,14 @@
              MinHeight="16"
              mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-resource:///Files/TerminalApp/IndeterminateProgressResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
     <Grid x:Name="HeaderLayout">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -26,16 +34,39 @@
         </Grid.ColumnDefinitions>
         <StackPanel x:Name="HeaderStackPanel"
                     Orientation="Horizontal">
-            <mux:ProgressRing x:Name="HeaderProgressRing"
-                              Width="15"
-                              Height="15"
-                              MinWidth="0"
-                              MinHeight="0"
-                              Margin="3,0,8,0"
-                              IsActive="{x:Bind TabStatus.IsProgressRingActive, Mode=OneWay}"
-                              IsIndeterminate="{x:Bind TabStatus.IsProgressRingIndeterminate, Mode=OneWay}"
-                              Visibility="{x:Bind TabStatus.IsProgressRingActive, Mode=OneWay}"
-                              Value="{x:Bind TabStatus.ProgressValue, Mode=OneWay}" />
+            <Grid Visibility="{x:Bind ShowPinnedIcon, Mode=OneWay}">
+                <FontIcon x:Name="HeaderPinnedIcon"
+                          Margin="0,0,8,0"
+                          FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                          FontSize="12"
+                          Glyph="&#xE718;"
+                          Visibility="{x:Bind TabStatus.IsPinned, Mode=OneWay}" />
+            </Grid>
+            <Grid x:Name="HeaderProgressRingPresenter"
+                  Visibility="{x:Bind ShowProgressRing, Mode=OneWay}">
+                <Grid Visibility="{x:Bind TabStatus.IsProgressRingActive, Mode=OneWay}">
+                    <mux:ProgressRing x:Name="HeaderProgressRing"
+                                      Width="15"
+                                      Height="15"
+                                      MinWidth="0"
+                                      MinHeight="0"
+                                      Margin="3,0,8,0"
+                                      IsActive="{x:Bind TabStatus.IsProgressRingActive, Mode=OneWay}"
+                                      IsIndeterminate="False"
+                                      Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(TabStatus.IsProgressRingIndeterminate), Mode=OneWay}"
+                                      Value="{x:Bind TabStatus.ProgressValue, Mode=OneWay}" />
+                    <local:IndeterminateProgressRing x:Name="HeaderIndeterminateProgressRing"
+                                  Style="{StaticResource DeclarativeSpinner}"
+                                  Width="15"
+                                  Height="15"
+                                  MinWidth="0"
+                                  MinHeight="0"
+                                  Margin="3,0,8,0"
+                                  Foreground="{Binding Foreground, ElementName=HeaderProgressRing, Mode=OneWay}"
+                                  IsActive="{x:Bind TabStatus.IsProgressRingActive, Mode=OneWay}"
+                                  Visibility="{x:Bind TabStatus.IsProgressRingIndeterminate, Mode=OneWay}" />
+                </Grid>
+            </Grid>
             <FontIcon x:Name="HeaderBellIndicator"
                       Margin="0,0,8,0"
                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
@@ -94,22 +125,30 @@
             </TextBox.ContextFlyout>
         </TextBox>
         <FontIcon x:Name="HeaderKeepRunningIcon"
+                  Grid.RowSpan="2"
                   Grid.Column="2"
                   Margin="8,0,0,0"
+                  VerticalAlignment="Center"
                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                   FontSize="12"
                   Glyph="&#xE8EE;"
                   Visibility="{x:Bind TabStatus.IsKeepRunning, Mode=OneWay}" />
-        <TextBlock x:Name="HeaderMetadataTextBlock"
-                   Grid.Row="1"
-                   Grid.ColumnSpan="3"
-                   Margin="0,1,0,0"
-                   MaxLines="2"
-                   FontSize="10"
-                   Opacity="0.72"
-                   Text="{x:Bind MetadataText, Mode=OneWay}"
-                   TextTrimming="CharacterEllipsis"
-                   Visibility="Collapsed"
-                   AutomationProperties.Name="{x:Bind MetadataAutomationName, Mode=OneWay}" />
+        <local:HighlightedTextControl x:Name="HeaderMetadataTextBlock"
+                                      Grid.Row="1"
+                                      Grid.ColumnSpan="2"
+                                      Margin="0,1,0,0"
+                                      Opacity="0.72"
+                                      SearchText="{x:Bind SearchText, Mode=OneWay}"
+                                      Text="{x:Bind MetadataText, Mode=OneWay}"
+                                      Visibility="Collapsed"
+                                      AutomationProperties.Name="{x:Bind MetadataAutomationName, Mode=OneWay}">
+            <local:HighlightedTextControl.TextBlockStyle>
+                <Style TargetType="TextBlock">
+                    <Setter Property="MaxLines" Value="2" />
+                    <Setter Property="FontSize" Value="10" />
+                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                </Style>
+            </local:HighlightedTextControl.TextBlockStyle>
+        </local:HighlightedTextControl>
     </Grid>
 </UserControl>

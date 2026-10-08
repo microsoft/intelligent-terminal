@@ -986,6 +986,7 @@ impl App {
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     tab.usage = None;
                     tab.usage_staleness = crate::usage::UsageStaleness::default();
+                    tab.reattached_session_id = None;
                 }
                 tab.session_id = Some(session_id.clone());
                 let has_real_content = !tab.completed_turns.is_empty()
@@ -1076,6 +1077,7 @@ impl App {
                     tab.config_picker = ConfigPickerState::Closed;
                     tab.config_pending_id = None;
                     tab.native_yolo_config_pending = false;
+                    tab.reattached_session_id = None;
                 }
                 tab.session_id = Some(session_id.clone());
                 if let Some(prompt_id) = prompt_id {
@@ -2625,6 +2627,11 @@ impl App {
             AppEvent::SessionsChanged => {
                 self.schedule_agents_refetch_for_open_views();
             }
+            AppEvent::SessionsFallbackTick => {
+                if !self.sessions_in_sidebar {
+                    self.schedule_agents_refetch_for_open_views();
+                }
+            }
             AppEvent::DirectTerminalActionProposal {
                 context,
                 payload,
@@ -2960,6 +2967,49 @@ impl App {
                     return;
                 }
 
+                if method == "keep_running_reattached" {
+                    let target_tab = params.get("tab_id").and_then(|value| value.as_str());
+                    let target_window = params.get("window_id").and_then(|value| value.as_str());
+                    if let (Some(target_tab), Some(target_window)) = (target_tab, target_window) {
+                        if self.owner_tab_id.as_deref() == Some(target_tab)
+                            && self.window_id.as_deref() == Some(target_window)
+                        {
+                            let tab = self.tab_mut(target_tab);
+                            tab.reattached_session_id = tab.session_id.clone();
+                            tab.restore_identity = match (
+                                params.get("keep_id").and_then(|v| v.as_str()),
+                                params.get("attempt_id").and_then(|v| v.as_str()),
+                            ) {
+                                (Some(keep), Some(attempt)) => match (
+                                    uuid::Uuid::parse_str(keep),
+                                    uuid::Uuid::parse_str(attempt),
+                                ) {
+                                    (Ok(keep_id), Ok(attempt_id)) => {
+                                        Some(crate::telemetry::RestoreIdentity {
+                                            keep_id,
+                                            attempt_id,
+                                        })
+                                    }
+                                    _ => {
+                                        tracing::warn!(target: "telemetry", "invalid keep-running telemetry identity");
+                                        None
+                                    }
+                                },
+                                _ => {
+                                    tracing::debug!(target: "telemetry", "keep-running event has no correlation fields (older host)");
+                                    None
+                                }
+                            };
+                        }
+                    }
+                    return;
+                }
+
+                if method == "agent_availability_changed" {
+                    // Native UI and master own the installation-completion broadcast.
+                    return;
+                }
+
                 if method == "agent_config_changed" {
                     // C++ pushes this when the user changes a hot-updatable
                     // agent setting (auto-suggest gate, acp-model, delegate
@@ -2993,6 +3043,17 @@ impl App {
                         && !owner_window.is_empty()
                         && target_window == owner_window;
 
+                    if let Some(in_sidebar) = params
+                        .get("sessions_in_sidebar")
+                        .and_then(|value| value.as_bool())
+                    {
+                        let changed = self.sessions_in_sidebar != in_sidebar;
+                        self.sessions_in_sidebar = in_sidebar;
+                        if changed && !in_sidebar {
+                            self.schedule_agents_refetch_for_open_views();
+                        }
+                    }
+
                     if let Some(enabled) = params.get("autofix_enabled").and_then(|v| v.as_bool()) {
                         tracing::info!(
                             target: "autofix",
@@ -3017,7 +3078,7 @@ impl App {
                         params.get("yolo_policy_blocked").and_then(|v| v.as_bool()),
                     );
 
-                    // delegate_agent + delegate_model travel together so the
+                    // Delegate identity, command and model travel together so the
                     // delegate runtime table can be rebuilt in one shot.
                     if params.get("delegate_agent").is_some()
                         || params.get("delegate_model").is_some()
@@ -3030,7 +3091,11 @@ impl App {
                             .get("delegate_model")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
-                        self.apply_delegate_config(delegate_agent, delegate_model);
+                        self.apply_delegate_config(
+                            delegate_agent,
+                            delegate_model,
+                            params.get("delegate_agent_id").and_then(|v| v.as_str()),
+                        );
                     }
 
                     // The host resolves agent and model inheritance separately.
@@ -3783,12 +3848,20 @@ impl App {
                         WtEventSeverity::Informational => None,
                     };
                     if let Some(severity_str) = severity_str {
+                        let offer_id = uuid::Uuid::new_v4();
+                        if method == "vt_sequence" {
+                            if let Some(target_tab) = notification.tab_id.as_deref() {
+                                self.tab_mut(target_tab).autofix.detected_offer =
+                                    Some((pane_id.clone(), offer_id));
+                            }
+                        }
                         crate::telemetry::log_error_detected(
                             severity_str,
                             &method,
                             &pane_id,
                             self.autofix_policy_state,
                             self.autofix_enabled,
+                            offer_id,
                         );
                     }
                 }
@@ -3974,6 +4047,18 @@ impl App {
                 if installed {
                     let status = crate::agent_check::recheck_agent(&agent_id);
                     if status.cli_found {
+                        if matches!(
+                            self.current_agent_source,
+                            crate::agent_source::AgentSource::Host
+                        ) {
+                            crate::wt_protocol_events::send(
+                                crate::wt_protocol_events::agent_availability_changed_event(
+                                    &agent_id,
+                                    self.agent_routing_tab_id(),
+                                    true,
+                                ),
+                            );
+                        }
                         if self.state == ConnectionState::Connected
                             && self.current_agent_id.eq_ignore_ascii_case(&agent_id)
                         {

@@ -27,13 +27,13 @@ fn control_initialize_request(
 pub(crate) async fn run_list(
     master_override: Option<String>,
     origin_filter: crate::agent_sessions::OriginFilter,
-    all_agents: bool,
+    refresh: bool,
     json_mode: bool,
     include_status: bool,
 ) -> Result<()> {
     let local = tokio::task::LocalSet::new();
     let mut snapshot = local
-        .run_until(fetch_from_master(master_override, all_agents))
+        .run_until(fetch_from_master(master_override, refresh))
         .await?;
     filter_snapshot(&mut snapshot, origin_filter);
     if include_status {
@@ -68,9 +68,9 @@ fn filter_snapshot(
         .sort_by(|a, b| b.last_activity_at_ms.cmp(&a.last_activity_at_ms));
 }
 
-async fn fetch_from_master(
+pub(crate) async fn fetch_from_master(
     master_override: Option<String>,
-    all_agents: bool,
+    refresh: bool,
 ) -> Result<crate::session_registry::SessionsListResponse> {
     let pipe_name = resolve_master_pipe(master_override).await?;
     let pipe = open_master_pipe(&pipe_name).await?;
@@ -106,7 +106,7 @@ async fn fetch_from_master(
         );
         init_result.map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
 
-        let req = crate::session_registry::build_sessions_list_request(false, all_agents);
+        let req = crate::session_registry::build_sessions_list_request(refresh);
         let resp = conn
             .ext_method(req)
             .await
@@ -130,6 +130,7 @@ pub(crate) async fn run_activate(
     universe: Option<String>,
     window_id: u64,
     activation_id: String,
+    status_only: bool,
     json_mode: bool,
 ) -> Result<()> {
     let location = match location {
@@ -176,6 +177,7 @@ pub(crate) async fn run_activate(
                     identity,
                     window_id,
                     activation_id,
+                    status_only,
                 );
                 let raw = conn
                     .ext_method(request)
@@ -474,6 +476,7 @@ mod tests {
                     row("newer", SessionOrigin::Unknown, 2),
                 ],
                 history_status: Some(status),
+                history_error_kind: None,
             };
             filter_snapshot(&mut snapshot, OriginFilter::ShellOnly);
             assert_eq!(snapshot.history_status, Some(status));

@@ -493,6 +493,8 @@ pub struct AgentEventFacts {
     pub key: String,
     /// Whether a row already exists for `key`.
     pub session_known: bool,
+    /// An existing live session other than `key` owns the hook's pane.
+    pub pane_owned_by_other: bool,
 }
 
 /// What one `agent_event` implies.
@@ -562,6 +564,13 @@ pub fn plan_agent_event(
             | "agent.session.stopped"
             | "agent.session.end"
     ) && !facts.session_known;
+    if facts.pane_owned_by_other
+        && !matches!(event, "agent.session.started" | "agent.session.start")
+    {
+        // Nested CLI workers inherit the parent's pane. Activity, including
+        // pane-targeted errors, cannot claim or alter another live owner.
+        return plan;
+    }
     if needs_synthetic_start {
         plan.events.push(SessionEvent::SessionStarted {
             key: key.clone(),
@@ -864,7 +873,15 @@ where
 
     let facts = AgentEventFacts {
         key: key.clone(),
-        session_known: reg.has_session(&key),
+        session_known: reg
+            .get(&key)
+            .is_some_and(|row| row.cli_source == cli_source),
+        pane_owned_by_other: reg.key_for_pane(pane_session_id).is_some_and(|owner| {
+            reg.get(&owner).is_some_and(|row| {
+                row.liveness() == crate::agent_sessions::LivenessState::Live
+                    && (owner != key || row.cli_source != cli_source)
+            })
+        }),
     };
     let plan = plan_agent_event(event, &payload, pane_session_id, &cli_source, &facts);
 
@@ -1026,7 +1043,7 @@ pub fn classify_wt_event(
                 age_ticks: 100,
             }
         }
-        "set_agent_state" | "agent_paste_text" => {
+        "set_agent_state" | "agent_paste_text" | "agent_availability_changed" => {
             // handle_event consumes these at the top of WtEvent
             // before classification runs, so classify normally never sees
             // it. Add an explicit arm anyway so a future refactor that
@@ -1284,6 +1301,7 @@ pub struct App {
     // AgentPaneContent / bottom bar window without fan-out.
     pub owner_tab_id: Option<String>,
     pub window_id: Option<String>,
+    pub(crate) sessions_in_sidebar: bool,
     // WT event notifications (global — affects bottom-bar / banner across tabs)
     pub wt_notifications: std::collections::VecDeque<WtNotification>,
     pub show_notification_banner: bool,
@@ -1619,6 +1637,7 @@ impl App {
             tab_id: None,
             owner_tab_id: None,
             window_id: None,
+            sessions_in_sidebar: false,
             wt_notifications: VecDeque::new(),
             show_notification_banner: false,
             autofix_enabled,
@@ -2878,18 +2897,30 @@ impl App {
     /// `delegate_agent` / `delegate_model` are the new effective values
     /// (empty string = unset → fall back to deriving from the base agent
     /// cmd). No-op when no executor is wired (tests / manual runs).
-    fn apply_delegate_config(&self, delegate_agent: &str, delegate_model: &str) {
+    fn apply_delegate_config(
+        &self,
+        delegate_agent: &str,
+        delegate_model: &str,
+        delegate_agent_id: Option<&str>,
+    ) {
         let Some(shared) = &self.delegate_agents else {
             return;
         };
         // Treat whitespace-only values as unset so the fallback-to-derived
         // path kicks in (matches the acp_model handling in handle_event).
-        let runtimes = crate::coordinator::default_delegate_agent_runtimes(
+        let runtime = crate::coordinator::resolve_delegate_runtime_with_provider(
             Some(delegate_agent).filter(|s| !s.trim().is_empty()),
             Some(self.delegate_base_agent_cmd.as_str()),
             Some(delegate_model).filter(|s| !s.trim().is_empty()),
+            delegate_agent_id.filter(|id| !id.is_empty()),
         );
-        *shared.lock().unwrap() = runtimes;
+        *shared.lock().unwrap() = match runtime {
+            Ok(runtime) => vec![runtime],
+            Err(error) => {
+                tracing::error!(target: "coordinator", %error, "invalid delegate configuration");
+                Vec::new()
+            }
+        };
         tracing::info!(
             target: "autofix",
             delegate_agent,
@@ -3304,6 +3335,8 @@ impl App {
         let launch_commandline = format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
         let mut argv = vec![
             "new-tab".to_string(),
+            "--agent-provider".to_string(),
+            cli_id.to_string(),
             "--window-id".to_string(),
             window_id.to_string(),
             "-c".to_string(),
@@ -3900,6 +3933,7 @@ impl App {
                 crate::wt_protocol_events::agent_availability_changed_event(
                     agent_id,
                     self.agent_routing_tab_id(),
+                    false,
                 ),
             );
         }
@@ -4009,6 +4043,7 @@ impl App {
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            tab.reattached_session_id = None;
             // The new agent starts with nothing to resume. Everything else
             // that constitutes a conversation is cleared just above, so this
             // flag has to go with it: `resumable_session_id` gates on it, and
@@ -5004,6 +5039,7 @@ impl App {
             AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
             AppEvent::AliveJoinUpgrade(_) => "alive_join_upgrade",
             AppEvent::SessionsChanged => "sessions_changed",
+            AppEvent::SessionsFallbackTick => "sessions_fallback_tick",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
@@ -6053,6 +6089,7 @@ impl App {
         tab.config_pending_id = None;
         tab.native_yolo_config_pending = false;
         let old_sid = tab.session_id.take();
+        tab.reattached_session_id = None;
         tab.has_meaningful_conversation = false;
         tab.meaningful_conversation_before_load = None;
         tab.loading_session = false;
@@ -6122,9 +6159,19 @@ impl App {
         };
 
         let hint = hint.trim().to_string();
+        let reattached_session_id = self
+            .tab_sessions
+            .get(&target_tab_id)
+            .and_then(|tab| tab.reattached_session_id().map(str::to_string));
         let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context))
             .with_byok(self.current_model_is_byok())
-            .with_agent_id(self.current_agent_id.clone());
+            .with_agent_id(self.current_agent_id.clone())
+            .with_reattached_session(reattached_session_id)
+            .with_restore_identity(
+                self.tab_sessions
+                    .get(&target_tab_id)
+                    .and_then(|tab| tab.restore_identity()),
+            );
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),
@@ -6402,6 +6449,7 @@ impl App {
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            tab.reattached_session_id = None;
             tab.has_meaningful_conversation = false;
             tab.meaningful_conversation_before_load = None;
             tab.loading_session = false;
@@ -6879,6 +6927,7 @@ impl App {
         // `clear_chat_history` deliberately leaves alone.
         if let Some(tab) = self.tab_sessions.get_mut(tab_id) {
             removed_session_id = tab.session_id.take();
+            tab.reattached_session_id = None;
             tab.config_picker = ConfigPickerState::Closed;
             tab.config_pending_id = None;
             tab.native_yolo_config_pending = false;

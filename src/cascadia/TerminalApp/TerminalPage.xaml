@@ -22,14 +22,14 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <!--
-            Spec A §5.1: the first column is the vertical-tabs rail. Width
-            defaults to 0 so horizontal layouts render identically; code-behind
-            (_ApplyVerticalLayoutReshape) sets the width and moves TabRow into
-            column 0 with RowSpan=4 when the layout flips to vertical.
+            Spec A §5.1: code-behind assigns the vertical rail to the leading
+            column for the active flow direction. Its width defaults to 0 so
+            horizontal layouts render identically.
         -->
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="VerticalRailColumn" Width="0" />
-            <ColumnDefinition Width="*" />
+            <ColumnDefinition x:Name="TrailingColumn"
+                              Width="*" />
         </Grid.ColumnDefinitions>
 
         <local:TabStrip x:Name="VerticalTabStrip"
@@ -117,6 +117,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <!-- Button 1: AI toggle (dock/collapse bottom pane) -->
@@ -213,6 +214,41 @@
                         Spacing="12"
                         Margin="12,0"
                         Visibility="Collapsed" />
+
+            <Button x:Name="SessionToggleButton"
+                    Grid.Column="3"
+                    Width="32"
+                    Height="32"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    Visibility="Collapsed"
+                    Click="_SessionToggleButtonOnClick">
+                <ToolTipService.ToolTip>
+                    <ToolTip>
+                        <StackPanel>
+                            <TextBlock x:Name="SessionToggleLabel"
+                                       FontFamily="Segoe UI Variable"
+                                       FontSize="12"
+                                       LineHeight="16" />
+                            <TextBlock Text="Ctrl+Shift+/"
+                                       FontFamily="Segoe UI Variable"
+                                       FontSize="12"
+                                       LineHeight="16"
+                                       Opacity="0.7" />
+                        </StackPanel>
+                    </ToolTip>
+                </ToolTipService.ToolTip>
+                <Image Width="16"
+                       Height="16"
+                       Stretch="Uniform">
+                    <Image.Source>
+                        <SvgImageSource UriSource="ms-appx:///AgentIcons/session.svg"
+                                        RasterizePixelWidth="32"
+                                        RasterizePixelHeight="32" />
+                    </Image.Source>
+                </Image>
+            </Button>
 
         </Grid>
         </Border>
@@ -352,6 +388,13 @@
                          x:Load="False"
                          IsLightDismissEnabled="True"
                          Subtitle="{x:Bind WindowProperties.WindowNameForDisplay, Mode=OneWay}" />
+
+        <mux:TeachingTip x:Name="SidebarIntroductionTip"
+                         AutomationProperties.AutomationId="SidebarIntroductionTip"
+                         x:Load="False"
+                         Closed="_OnSidebarIntroductionClosed"
+                         IsLightDismissEnabled="True"
+                         PreferredPlacement="Right" />
 
         <mux:TeachingTip x:Name="WindowRenamer"
                          x:Uid="WindowRenamer"

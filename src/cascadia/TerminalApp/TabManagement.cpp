@@ -10,6 +10,7 @@
 
 #include "pch.h"
 #include "TerminalPage.h"
+#include "ContentManager.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentPaneRestore.h"
 #include "Utils.h"
@@ -23,6 +24,7 @@
 #include "ShellIntegrationSweep.h"
 #include "SharedWta.h"
 #include "TabRowControl.h"
+#include "AgentIconUtils.h"
 #include "TabStrip.h"
 #include "DebugTapConnection.h"
 #include "DesktopNotification.h"
@@ -59,6 +61,28 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    winrt::hstring TerminalPage::_AgentIconForControl(const TermControl& control, const winrt::hstring& profileIcon)
+    {
+        if (control)
+        {
+            const auto providerId = winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId());
+            if (!providerId.empty())
+            {
+                return ::Microsoft::Terminal::UI::AgentIcons::IconPathForProvider(std::wstring_view{ providerId });
+            }
+            if (const auto agentInfo = _RichTabAgentInfoForControl(control);
+                agentInfo &&
+                (agentInfo->status == "Idle" ||
+                 agentInfo->status == "Working" ||
+                 agentInfo->status == "Attention" ||
+                 agentInfo->status == "Error"))
+            {
+                return ::Microsoft::Terminal::UI::AgentIcons::IconPathForProvider(std::wstring_view{ winrt::to_hstring(agentInfo->providerId) });
+            }
+        }
+        return profileIcon;
+    }
+
     // Method Description:
     // - Open a new tab. This will create the TerminalControl hosting the
     //   terminal, and add a new Tab to our list of tabs. The method can
@@ -141,6 +165,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
+        insertPosition = std::clamp(insertPosition, _PinnedTabCount(), _tabs.Size());
 
         // Add the new tab to the list of our tabs.
         _tabs.InsertAt(insertPosition, *newTabImpl);
@@ -160,6 +185,13 @@ namespace winrt::TerminalApp::implementation
         // Don't capture a strong ref to the tab. If the tab is removed as this
         // is called, we don't really care anymore about handling the event.
         auto weakTab = make_weak(newTabImpl);
+        newTabImpl->SetHeaderResolver([weakTab, weakThis = get_weak()](const bool realize) -> TerminalApp::TabHeaderControl {
+            const auto page = weakThis.get();
+            const auto tab = weakTab.get();
+            return page && tab ?
+                       winrt::get_self<implementation::TabStrip>(page->_tabStrip)->HeaderForTab(tab->TabViewItem(), realize).try_as<TerminalApp::TabHeaderControl>() :
+                       nullptr;
+        });
 
         // When the tab's active pane changes, we'll want to lookup a new icon
         // for it. The Title change will be propagated upwards through the tab's
@@ -179,6 +211,16 @@ namespace winrt::TerminalApp::implementation
             if (page && tab && page->_isVerticalLayout)
             {
                 winrt::get_self<implementation::TabStrip>(page->_tabStrip)->RefreshTabColor(tab->TabViewItem());
+                page->_UpdateSidebarHistoryCurrentSession();
+            }
+        });
+        newTabImpl->PinRequested([weakTab, weakThis{ get_weak() }](bool pinned) {
+            if (const auto page = weakThis.get())
+            {
+                if (const auto tab = weakTab.get())
+                {
+                    page->_RequestPinTab(tab, pinned);
+                }
             }
         });
 
@@ -262,6 +304,23 @@ namespace winrt::TerminalApp::implementation
             if (const auto page{ weakThis.get() })
             {
                 page->_RequestTabLayoutChange(target);
+            }
+        });
+
+        newTabImpl->KeepRunningEnabledByUser([weakTab, weakThis{ get_weak() }]() {
+            const auto page = weakThis.get();
+            const auto tab = weakTab.get();
+            if (page && tab && page->_GetTabIndex(*tab))
+            {
+                const auto pinnedCount = page->_KeepRunningTabCounts().second;
+                TraceLoggingWrite(
+                    g_hTerminalAppProvider,
+                    "SidebarTabPinned",
+                    TraceLoggingDescription("User enabled keep running for a sidebar tab"),
+                    TraceLoggingUInt32(pinnedCount, "pinned_count"),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                page->_LogKeepRunningMarked(tab);
             }
         });
 
@@ -459,14 +518,14 @@ namespace winrt::TerminalApp::implementation
     // - tab: the Tab to update the title for.
     void TerminalPage::_UpdateTabIcon(Tab& tab)
     {
-        // Don't change the icon when an agent pane has focus — same as title.
-        if (const auto activePane = tab.GetActivePane(); activePane && activePane->IsAgentPane())
+        const auto sourcePane = _SourceTerminalPaneForTab(tab.get_strong());
+        if (!sourcePane)
         {
             return;
         }
-        if (const auto content{ tab.GetActiveContent() })
+        if (const auto content{ sourcePane->GetContent() })
         {
-            const auto& icon{ content.Icon() };
+            const auto icon = _AgentIconForControl(sourcePane->GetTerminalControl(), content.Icon());
             const auto theme = _settings.GlobalSettings().CurrentTheme();
             const auto iconStyle = (theme && theme.Tab()) ? theme.Tab().IconStyle() : IconStyle::Default;
 
@@ -856,7 +915,44 @@ namespace winrt::TerminalApp::implementation
         const auto tab = _FindTabByStableId(winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(tabId) });
         THROW_HR_IF(E_INVALIDARG, !tab || !_GetTabIndex(*tab));
         THROW_HR_IF(E_ILLEGAL_METHOD_CALL, enabled && !CanKeepTabRunning(tabId));
+        const auto wasEnabled = tab->KeepRunning();
         tab->KeepRunning(enabled);
+        if (enabled && !wasEnabled)
+        {
+            _LogKeepRunningMarked(tab);
+        }
+    }
+
+    std::pair<uint32_t, uint32_t> TerminalPage::_KeepRunningTabCounts() const
+    {
+        uint32_t totalTabCount = 0;
+        uint32_t keepRunningTabCount = 0;
+        for (const auto& candidate : _tabs)
+        {
+            if (const auto tab = _GetTabImpl(candidate); tab && tab->CanKeepRunning())
+            {
+                ++totalTabCount;
+                if (tab->KeepRunning())
+                {
+                    ++keepRunningTabCount;
+                }
+            }
+        }
+        return { totalTabCount, keepRunningTabCount };
+    }
+
+    void TerminalPage::_LogKeepRunningMarked(const winrt::com_ptr<Tab>& tab)
+    {
+        const auto [totalTabCount, keepRunningTabCount] = _KeepRunningTabCounts();
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "KeepRunningMarked",
+            TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
+            TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
+            TraceLoggingUInt32(totalTabCount, "TotalTabCount"),
+            TraceLoggingUInt32(keepRunningTabCount, "KeepRunningTabCount"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
     bool TerminalPage::_KeepTabRunning(const winrt::com_ptr<Tab>& tab)
@@ -895,12 +991,42 @@ namespace winrt::TerminalApp::implementation
         });
         _RemoveTab(*tab, true, true);
         rollback.release();
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "KeepRunningDetached",
+            TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
+            TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         return true;
     }
 
     bool TerminalPage::RestoreKeptGroup(const winrt::guid& groupId)
     {
         const auto keepAlive = get_strong();
+        const auto attemptId = ::Microsoft::Console::Utils::GuidToString(::Microsoft::Console::Utils::CreateGuid());
+        winrt::hstring keepId;
+        bool hasAgentPane = false;
+        bool hasAgentSession = false;
+        bool restored = false;
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "KeepRunningReattachStarted",
+            TraceLoggingWideString(attemptId.c_str(), "AttemptId"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        const auto logResult = wil::scope_exit([&]() noexcept {
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "KeepRunningReattached",
+                TraceLoggingWideString(attemptId.c_str(), "AttemptId"),
+                TraceLoggingWideString(keepId.c_str(), "KeepId"),
+                TraceLoggingString(restored ? "live" : "failed", "Outcome"),
+                TraceLoggingBool(hasAgentPane, "HasAgentPane"),
+                TraceLoggingBool(hasAgentSession, "HasAgentSession"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        });
         const auto owner = _manager.KeptGroupOwner(groupId);
         THROW_HR_IF(E_INVALIDARG, !owner);
         const auto sourceTab = _GetTabImpl(_manager.BeginReattachKeptGroup(groupId));
@@ -911,10 +1037,43 @@ namespace winrt::TerminalApp::implementation
             }
             CATCH_LOG()
         });
-        auto actions = winrt::single_threaded_vector(sourceTab->BuildStartupActions(BuildStartupKind::Content));
-        THROW_HR_IF(E_ABORT, !_AttachTransferredContent(*winrt::get_self<TerminalPage>(owner), sourceTab, sourceTab->GetRootPane(), actions, -1));
+        keepId = sourceTab->KeepRunningTelemetryId();
+        const auto agentPane = sourceTab->FindAgentPaneContent();
+        hasAgentPane = !!agentPane;
+        hasAgentSession = agentPane && !agentPane.AgentSessionId().empty();
+        bool attached = false;
+        try
+        {
+            auto actions = winrt::single_threaded_vector(sourceTab->BuildStartupActions(BuildStartupKind::Content));
+            attached = _AttachTransferredContent(*winrt::get_self<TerminalPage>(owner), sourceTab, sourceTab->GetRootPane(), actions, -1);
+        }
+        catch (...)
+        {
+            rollback.reset();
+            throw;
+        }
+        if (!attached)
+        {
+            rollback.reset();
+            return false;
+        }
         _manager.CompleteKeptGroupReattach(groupId, true);
         rollback.release();
+        restored = true;
+        const auto restoredTab = _GetFocusedTabImpl();
+        if (hasAgentPane)
+        {
+            try
+            {
+                Json::Value params;
+                params["tab_id"] = winrt::to_string(restoredTab->StableId());
+                params["window_id"] = std::to_string(_WindowProperties.WindowId());
+                params["keep_id"] = winrt::to_string(keepId);
+                params["attempt_id"] = winrt::to_string(winrt::hstring{ attemptId });
+                _RaiseProtocolEvent("keep_running_reattached", params);
+            }
+            CATCH_LOG()
+        }
         _GetFocusedTabImpl()->GetRootPane()->WalkTree([&](const auto& pane) {
             const auto control = pane->GetTerminalControl();
             const auto binding = control ? _manager.AgentSessionEvent(control.ContentId()) : winrt::hstring{};
@@ -1207,7 +1366,11 @@ namespace winrt::TerminalApp::implementation
         {
             return _tabLayoutTransitionSelectedItem;
         }
-        return _isVerticalLayout ? _tabStrip.SelectedItem() : _tabView.SelectedItem();
+        if (_isVerticalLayout)
+        {
+            return _tabStrip.SelectedItem();
+        }
+        return _tabView.SelectedItem().try_as<MUX::Controls::TabViewItem>();
     }
 
     void TerminalPage::_selectedTabItem(const IInspectable& item)
@@ -1921,6 +2084,7 @@ namespace winrt::TerminalApp::implementation
             // `OnAgentStateChanged` callback own that refresh keeps
             // the bar's agent UI authoritative.
             _UpdateBottomBarVisibility();
+            _UpdateSidebarHistoryCurrentSession();
 
             // Bottom-bar refresh is now driven by wta — fire `tab_changed`
             // so wta re-projects this tab's authoritative agent-pane state
@@ -1963,7 +2127,10 @@ namespace winrt::TerminalApp::implementation
         _UpdateTabFilterStatus();
     }
 
-    void TerminalPage::_ApplyTabListProjection(const TerminalApp::Tab& changedTab)
+    void TerminalPage::_ApplyTabListProjection(
+        const TerminalApp::Tab& changedTab,
+        const bool refreshPaneItems,
+        const bool updateBookkeeping)
     {
         if (!_tabStrip)
         {
@@ -1980,53 +2147,94 @@ namespace winrt::TerminalApp::implementation
         _pendingTabProjectionRefresh = false;
         const bool positionOperationsBlocked = _IsTabListPositionOperationBlocked();
         const auto highlightQuery = _IsTabSearchEffective() ? _tabSearchQuery : winrt::hstring{};
+        const auto tabStrip = _isVerticalLayout ?
+                                  winrt::get_self<implementation::TabStrip>(_tabStrip) :
+                                  nullptr;
 
-        const auto apply = [&](const TerminalApp::Tab& tab) {
+        const auto apply = [&](const TerminalApp::Tab& tab, const TerminalApp::TabStripDisplayItem& projectedDisplay) {
             const auto item = tab.TabViewItem();
-            auto header = item.Header().try_as<TerminalApp::TabHeaderControl>();
-            if (!header && _isVerticalLayout)
+            const auto display = projectedDisplay ? projectedDisplay :
+                                                    (tabStrip ? tabStrip->DisplayItemForTab(item) : nullptr);
+            const auto header = item.Header().try_as<TerminalApp::TabHeaderControl>();
+            if (display)
             {
-                header = winrt::get_self<implementation::TabStrip>(_tabStrip)->HeaderForTab(item).try_as<TerminalApp::TabHeaderControl>();
+                display.SearchText(highlightQuery);
+                display.Presentation().SearchText(highlightQuery);
+                for (const auto& pane : display.PaneItems())
+                {
+                    pane.HighlightQuery(highlightQuery);
+                }
             }
             if (header)
             {
                 header.SearchText(highlightQuery);
             }
-            if (_isVerticalLayout)
-            {
-                winrt::get_self<implementation::TabStrip>(_tabStrip)->SetTabSearchText(item, highlightQuery);
-            }
             const auto tabImpl = _GetTabImpl(tab);
-            const auto visible = _IsTabVisibleInProjection(tabImpl);
+            if (tabImpl && _isVerticalLayout && refreshPaneItems)
+            {
+                _RefreshTabStripPaneItems(tabImpl, display);
+            }
+            const auto visible = _IsTabVisibleInProjection(tabImpl, display);
             if (tabImpl)
             {
                 tabImpl->SetTabListPositionOperationsRestricted(positionOperationsBlocked);
                 tabImpl->SetTabPointerInteractionRestricted(_IsCollapsedVerticalRail());
-                if (_isVerticalLayout)
-                {
-                    _RefreshTabStripPaneItems(tabImpl);
-                }
             }
-            _tabStrip.SetTabItemVisibility(item, visible);
+            if (display)
+            {
+                tabStrip->SetTabItemVisibility(display, visible);
+            }
+            else
+            {
+                _tabStrip.SetTabItemVisibility(item, visible);
+            }
         };
         if (!refreshAll)
         {
-            apply(changedTab);
+            apply(changedTab, nullptr);
         }
         else
         {
-            for (const auto& tab : _tabs)
+            for (uint32_t index = 0; index < _tabs.Size(); ++index)
             {
-                apply(tab);
+                apply(_tabs.GetAt(index), tabStrip ? tabStrip->DisplayItemAt(index) : nullptr);
             }
         }
 
-        _UpdateTabFilterStatus();
+        if (tabStrip)
+        {
+            std::vector<implementation::TabStrip::RepresentedHistorySession> representedSessions;
+            for (const auto& tab : _tabs)
+            {
+                if (const auto impl = _GetTabImpl(tab); impl && impl->GetRootPane())
+                {
+                    impl->GetRootPane()->WalkTree([&](const auto& pane) {
+                        if (const auto binding = _paneAgentSessions.find(pane->GetSessionId());
+                            binding != _paneAgentSessions.end() && !binding->second.sessionId.empty())
+                        {
+                            representedSessions.push_back({ binding->second.sessionId,
+                                                            binding->second.agent,
+                                                            winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(pane->GetSessionId()) } });
+                        }
+                    });
+                }
+            }
+            tabStrip->SetRepresentedHistorySessions(std::move(representedSessions));
+        }
+
+        if (updateBookkeeping)
+        {
+            _UpdateTabFilterStatus();
+        }
         const auto canDragDrop = CanDragDrop() &&
                                  !positionOperationsBlocked &&
                                  !_IsCollapsedVerticalRail();
         _tabStrip.CanReorderTabs(canDragDrop);
         _tabStrip.CanDragTabs(canDragDrop);
+        if (updateBookkeeping)
+        {
+            _UpdateSidebarHistoryCurrentSession();
+        }
     }
 
     void TerminalPage::_UpdateTabFilterStatus()
@@ -2060,7 +2268,7 @@ namespace winrt::TerminalApp::implementation
         return tab && (tab->IsAgentTab() || _TabHasCliAgent(tab));
     }
 
-    bool TerminalPage::_MatchesTabSearch(const Tab& tab) const
+    bool TerminalPage::_MatchesTabSearch(const Tab& tab, const TerminalApp::TabStripDisplayItem& projectedDisplay) const
     {
         if (!_IsTabSearchEffective())
         {
@@ -2073,31 +2281,77 @@ namespace winrt::TerminalApp::implementation
             return true;
         }
 
-        const auto titleValue = tab.Title();
-        const std::wstring_view title{ titleValue.c_str(), titleValue.size() };
-        if (query.size() > title.size())
+        const auto matches = [&](const std::wstring_view value) {
+            if (query.size() > value.size())
+            {
+                return false;
+            }
+
+            for (size_t offset = 0; offset + query.size() <= value.size(); ++offset)
+            {
+                if (til::compare_ordinal_insensitive(value.substr(offset, query.size()), query) == 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        const auto title = tab.Title();
+        if (matches(std::wstring_view{ title.c_str(), title.size() }))
+        {
+            return true;
+        }
+
+        const auto tabStrip = _isVerticalLayout && _tabStrip ?
+                                  winrt::get_self<implementation::TabStrip>(_tabStrip) :
+                                  nullptr;
+        const auto display = projectedDisplay ? projectedDisplay :
+                                                (tabStrip ? tabStrip->DisplayItemForTab(tab.TabViewItem()) : nullptr);
+        const auto header = tab.TabViewItem().Header().try_as<TerminalApp::TabHeaderControl>();
+        const auto metadataVisible = display ? display.IsMetadataVisible() : header && header.IsMetadataVisible();
+        if (metadataVisible)
+        {
+            const auto metadata = display ? display.Presentation().MetadataText() : header.MetadataText();
+            if (matches(std::wstring_view{ metadata.c_str(), metadata.size() }))
+            {
+                return true;
+            }
+        }
+
+        if (!display || display.ChildrenVisibility() != Visibility::Visible)
         {
             return false;
         }
 
-        for (size_t offset = 0; offset + query.size() <= title.size(); ++offset)
+        for (const auto& pane : display.PaneItems())
         {
-            if (til::compare_ordinal_insensitive(title.substr(offset, query.size()), query) == 0)
+            const auto title = pane.Title();
+            if (matches(std::wstring_view{ title.c_str(), title.size() }))
             {
                 return true;
+            }
+
+            if (pane.MetadataVisibility() == Visibility::Visible)
+            {
+                const auto metadata = pane.MetadataText();
+                if (matches(std::wstring_view{ metadata.c_str(), metadata.size() }))
+                {
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    bool TerminalPage::_IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab) const
+    bool TerminalPage::_IsTabVisibleInProjection(const winrt::com_ptr<Tab>& tab, const TerminalApp::TabStripDisplayItem& display) const
     {
         if (!tab)
         {
             return !_IsTabSearchEffective() && !_IsAgentScopeEffective();
         }
         return (!_IsAgentScopeEffective() || _MatchesTabScope(tab)) &&
-               _MatchesTabSearch(*tab);
+               _MatchesTabSearch(*tab, display);
     }
 
     bool TerminalPage::_IsKnownAgentCliTitle(const std::wstring_view title) noexcept
@@ -2131,7 +2385,8 @@ namespace winrt::TerminalApp::implementation
         return rootPane && rootPane->WalkTree([&](const auto& pane) {
             const auto sessionId = pane->GetSessionId();
             return sessionId != winrt::guid{} &&
-                   (_activeCliAgentPanes.contains(sessionId) ||
+                   (!winrt::get_self<ContentManager>(_manager)->NativeAgentProviderIdForPane(sessionId).empty() ||
+                    _activeCliAgentPanes.contains(sessionId) ||
                     _paneAgentSessions.contains(sessionId));
         });
     }
@@ -2139,10 +2394,17 @@ namespace winrt::TerminalApp::implementation
     bool TerminalPage::_MatchesPaneAgentScope(const Tab::VisiblePaneSnapshot& pane) const
     {
         return pane.IsAgentPane ||
+               !winrt::get_self<ContentManager>(_manager)->NativeAgentProviderIdForPane(pane.SessionId).empty() ||
                _IsKnownAgentCliTitle(std::wstring_view{ pane.Title }) ||
                (pane.SessionId != winrt::guid{} &&
                 (_activeCliAgentPanes.contains(pane.SessionId) ||
                  _paneAgentSessions.contains(pane.SessionId)));
+    }
+
+    bool TerminalPage::_IsPaneRowProjectionEligible(const Tab::VisiblePaneSnapshot& pane) const
+    {
+        return !pane.IsAgentPane &&
+               (!_IsAgentScopeEffective() || _MatchesPaneAgentScope(pane));
     }
 
     // Spec A §4.2: TabStrip's SelectionChanged uses custom args (TabStripSelectionChangedEventArgs),
@@ -2194,11 +2456,90 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_UpdateTabIndices()
     {
         const auto size = _tabs.Size();
+        const auto pinnedCount = _PinnedTabCount();
         for (uint32_t i = 0; i < size; ++i)
         {
             auto tab{ _tabs.GetAt(i) };
             auto tabImpl{ winrt::get_self<Tab>(tab) };
-            tabImpl->UpdateTabViewIndex(i, size);
+            tabImpl->UpdateTabViewIndex(i, size, pinnedCount);
+        }
+    }
+
+    uint32_t TerminalPage::_PinnedTabCount() const
+    {
+        uint32_t count = 0;
+        for (const auto& tab : _tabs)
+        {
+            if (!_GetTabImpl(tab)->IsPinned())
+            {
+                break;
+            }
+            ++count;
+        }
+        return count;
+    }
+
+    void TerminalPage::_RequestPinTab(const winrt::com_ptr<Tab>& tab, bool pinned)
+    {
+        if (!tab || !_GetTabIndex(*tab) || !tab->CanKeepRunning() || _IsTabListPositionOperationBlocked())
+        {
+            return;
+        }
+        if (_rearranging || _changingTabLayout)
+        {
+            _pendingPinTab = tab->get_weak();
+            _pendingPinValue = pinned;
+            return;
+        }
+        const auto wasPinned = tab->IsPinned();
+        _SetTabPinned(tab, pinned);
+        if (tab->IsPinned() != wasPinned)
+        {
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "TabPinChanged",
+                TraceLoggingBool(tab->IsPinned(), "Pinned"),
+                TraceLoggingUInt32(_PinnedTabCount(), "PinnedCount"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        }
+    }
+
+    void TerminalPage::_ApplyPendingPinRequest()
+    {
+        if (!_rearranging && !_changingTabLayout)
+        {
+            const auto tab = _pendingPinTab.get();
+            _pendingPinTab = {};
+            if (tab)
+            {
+                _RequestPinTab(tab, _pendingPinValue);
+            }
+        }
+    }
+
+    void TerminalPage::_SetTabPinned(const winrt::com_ptr<Tab>& tab, bool pinned)
+    {
+        if (!tab || tab->IsPinned() == pinned || !tab->CanKeepRunning())
+        {
+            return;
+        }
+        const auto index = _GetTabIndex(*tab);
+        if (!index)
+        {
+            return;
+        }
+        const auto boundary = _PinnedTabCount();
+        const auto destination = pinned ? boundary : boundary - 1;
+        tab->IsPinned(pinned);
+        _MoveTabToIndex(*index, destination, false);
+        if (*index == destination)
+        {
+            _UpdateTabIndices();
+        }
+        if (_isVerticalLayout)
+        {
+            winrt::get_self<implementation::TabStrip>(_tabStrip)->SetTabPinned(tab->TabViewItem(), pinned);
         }
     }
 
@@ -2231,9 +2572,25 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_TryMoveTab(const uint32_t currentTabIndex,
                                    const int32_t suggestedNewTabIndex)
     {
-        auto newTabIndex = gsl::narrow_cast<uint32_t>(std::clamp<int32_t>(suggestedNewTabIndex, 0, _tabs.Size() - 1));
+        if (_tabs.Size() == 0 || currentTabIndex >= _tabs.Size())
+        {
+            return;
+        }
+        const auto boundary = _PinnedTabCount();
+        const auto pinned = _GetTabImpl(_tabs.GetAt(currentTabIndex))->IsPinned();
+        const auto first = pinned ? 0 : boundary;
+        const auto last = pinned ? boundary - 1 : _tabs.Size() - 1;
+        const auto newTabIndex = gsl::narrow_cast<uint32_t>(std::clamp<int32_t>(suggestedNewTabIndex,
+                                                                              gsl::narrow_cast<int32_t>(first),
+                                                                              gsl::narrow_cast<int32_t>(last)));
+        _MoveTabToIndex(currentTabIndex, newTabIndex, true);
+    }
+
+    void TerminalPage::_MoveTabToIndex(uint32_t currentTabIndex, uint32_t newTabIndex, bool selectMoved)
+    {
         if (currentTabIndex != newTabIndex)
         {
+            const auto previouslySelected = _selectedTabItem();
             _mutatingTabCollections = true;
             auto endMutation = wil::scope_exit([&]() noexcept {
                 _mutatingTabCollections = false;
@@ -2254,20 +2611,23 @@ namespace winrt::TerminalApp::implementation
                 _tabItems().RemoveAt(currentTabIndex);
                 _tabItems().InsertAt(newTabIndex, tabViewItem);
             }
-            _selectedTabItem(tabViewItem);
+            _selectedTabItem(selectMoved ? tabViewItem : previouslySelected);
 
             _mutatingTabCollections = false;
             endMutation.release();
             _UpdateTabView();
-            _ApplyTabListProjection();
+            _ApplyTabListProjection(tab);
 
-            if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
+            if (selectMoved)
             {
-                const auto tabTitle = tab.Title();
-                autoPeer.RaiseNotificationEvent(Automation::Peers::AutomationNotificationKind::ActionCompleted,
-                                                Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
-                                                RS_fmt(L"TerminalPage_TabMovedAnnouncement_Direction", tabTitle, newTabIndex + 1),
-                                                L"TerminalPageMoveTabWithDirection" /* unique name for this notification category */);
+                if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
+                {
+                    const auto tabTitle = tab.Title();
+                    autoPeer.RaiseNotificationEvent(Automation::Peers::AutomationNotificationKind::ActionCompleted,
+                                                    Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
+                                                    RS_fmt(L"TerminalPage_TabMovedAnnouncement_Direction", tabTitle, newTabIndex + 1),
+                                                    L"TerminalPageMoveTabWithDirection" /* unique name for this notification category */);
+                }
             }
         }
     }
@@ -2311,7 +2671,13 @@ namespace winrt::TerminalApp::implementation
         auto& from{ _rearrangeFrom };
         auto& to{ _rearrangeTo };
 
-        const auto canCommitReorder = _tabDragReorderAuthorized;
+        const auto validIndices = from.has_value() && to.has_value() &&
+                                  *from >= 0 && *to >= 0 &&
+                                  *from < gsl::narrow_cast<int32_t>(_tabs.Size()) &&
+                                  *to < gsl::narrow_cast<int32_t>(_tabs.Size());
+        const auto canCommitReorder = _tabDragReorderAuthorized && validIndices &&
+                                      _GetTabImpl(_tabs.GetAt(*from))->IsPinned() ==
+                                          _GetTabImpl(_tabs.GetAt(*to))->IsPinned();
 
         if (canCommitReorder && from.has_value() && to.has_value() && to != from)
         {
@@ -2331,11 +2697,19 @@ namespace winrt::TerminalApp::implementation
             auto endMutation = wil::scope_exit([&]() noexcept {
                 _mutatingTabCollections = false;
             });
-            const auto items = _tabItems();
-            items.Clear();
+            std::vector<IInspectable> canonicalItems;
+            canonicalItems.reserve(_tabs.Size());
             for (const auto& tab : _tabs)
             {
-                items.Append(tab.TabViewItem());
+                canonicalItems.emplace_back(tab.TabViewItem());
+            }
+            if (_isVerticalLayout)
+            {
+                winrt::get_self<implementation::TabStrip>(_tabStrip)->RestoreTabOrder(canonicalItems);
+            }
+            else
+            {
+                _tabItems().ReplaceAll(canonicalItems);
             }
             if (_tabDragSelectedItem)
             {
@@ -2361,6 +2735,7 @@ namespace winrt::TerminalApp::implementation
         _tabDragSelectedItem = nullptr;
         winrt::get_self<implementation::TabStrip>(_tabStrip)->ProjectionControlsEnabled(true);
         _ApplyTabListProjection();
+        _ApplyPendingPinRequest();
 
         if (_pendingTabLayout)
         {

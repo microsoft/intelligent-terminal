@@ -140,6 +140,14 @@ Describe 'Feature: non-activating hook delivery' -Tag 'Feature', 'HookShutdown' 
         }
 
         function Assert-StoppedHooks {
+            $result = Invoke-Native -FilePath $script:app.WtcliPath `
+                -Arguments @('--json', 'listen', '--existing-only', '--parent-pid', "$PID", '--ready-token', 'stopped-listener') `
+                -Environment @{ WT_COM_CLSID = $script:app.ComClsid } -TimeoutSec 15
+            $result.TimedOut | Should -BeFalse
+            $result.ExitCode | Should -Not -Be 0
+            $result.StdErr | Should -Match 'Connection failed'
+            $result.StdOut | Should -BeNullOrEmpty -Because 'failed subscriptions must not report readiness'
+            Assert-NoTestServer
             foreach ($transport in @('native', 'legacy', 'cached')) {
                 $result = Invoke-TestHook -Transport $transport -SessionId "stopped-$transport-$([guid]::NewGuid())"
                 $result.TimedOut | Should -BeFalse
@@ -201,6 +209,16 @@ Describe 'Feature: non-activating hook delivery' -Tag 'Feature', 'HookShutdown' 
         $process = Start-TestComServer
         $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
+            $result = Invoke-Native -FilePath $script:app.WtcliPath `
+                -Arguments @('--json', 'listen', '--existing-only', '--parent-pid', "$PID", '--ready-token', 'live-listener') `
+                -Environment @{ WT_COM_CLSID = $script:app.ComClsid } -TimeoutSec 2
+            $result.TimedOut | Should -BeTrue -Because 'the subscribed listener remains alive until its owned timeout'
+            $ready = $result.StdOut.Trim() | ConvertFrom-Json
+            $ready._wtcli | Should -Be 'listener_ready'
+            $ready.token | Should -Be 'live-listener'
+            $result.StdErr | Should -BeNullOrEmpty
+            @(Get-TestServers).Count | Should -Be 1
+            @(Get-TestServers)[0].Id | Should -Be $process.Id
             foreach ($transport in @('native', 'legacy', 'cached')) {
                 $sessionId = "live-$transport-$([guid]::NewGuid())"
                 $result = Invoke-TestHook -Transport $transport -SessionId $sessionId -Unattributed:($transport -eq 'legacy')

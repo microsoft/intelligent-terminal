@@ -2993,7 +2993,19 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
-    <value>Ṽéяťĭċªĺ ťªвѕ ªяé ѕħőŵñ ĭñ ª яéѕĭžªвĺé ċőĺūмñ őñ ťħé ĺéƒť ѕĭđé őƒ ťħé ŵĭñđőŵ. Ċħªñğéѕ ªρρĺý ĭммéđĭªťéĺý ťő ªĺĺ Terminal ŵĭñđőŵѕ. !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <value>[Ťôğğļê ƀêţŵêêñ ţĥê ñêŵ šîđêƀåŕ ôŕ çļåššîç ĥôŕîžôñţåļ ţåƀš vîêŵ !!! !!! !!!]</value>
     <comment>A description for what the &quot;tab layout&quot; setting does. Presented near &quot;Globals_TabLayout.Header&quot;.</comment>
+  </data>
+  <data name="Globals_TabLayoutHorizontal.Content" xml:space="preserve">
+    <value>[Ĥôŕîžôñţåļ !!!]</value>
+    <comment>An option to choose from for the &quot;tab layout&quot; setting. When selected, tabs run across the top of the window.</comment>
+  </data>
+  <data name="Globals_TabLayoutVertical.Content" xml:space="preserve">
+    <value>[Šîđêƀåŕ !!!]</value>
+    <comment>An option to choose from for the &quot;tab layout&quot; setting. When selected, tabs run down the left side of the window in a resizable sidebar. Use the same translation as FreOverlay_TabModeSidebar in TerminalApp.</comment>
+  </data>
+  <data name="Globals_TabLayout.Header" xml:space="preserve">
+    <value>[Ťåƀ Môđê !!!]</value>
+    <comment>Header for a control to choose whether tabs are laid out horizontally across the top of the window or vertically down the left side.</comment>
   </data>
 </root>

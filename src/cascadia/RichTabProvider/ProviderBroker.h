@@ -16,6 +16,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
+namespace TerminalAppUnitTests
+{
+    class RichTabProviderTests;
+}
+
 namespace Microsoft::Terminal::RichTab::Provider
 {
     struct Presentation
@@ -52,6 +57,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         using AttachmentId = uint64_t;
         using Callback = std::function<void(const BrokerUpdate&)>;
         using VisibleFieldMap = std::unordered_map<std::string, std::unordered_set<std::string>>;
+        using FieldDisplayNameMap = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
 
         static ProviderBroker& Instance();
 
@@ -68,17 +74,24 @@ namespace Microsoft::Terminal::RichTab::Provider
         void Activate(AttachmentId attachment);
         void Notify(AttachmentId attachment, ActivationEvent reason);
         void ReloadProviders();
+        void SetFieldDisplayNames(
+            std::string_view providerId,
+            std::unordered_map<std::string, std::string> displayNames);
         void SetVisibleFields(std::string_view providerId, std::vector<std::string> fields);
         std::optional<std::vector<std::string>> VisibleFields(std::string_view providerId) const;
 
         uint64_t ProcessEpoch() const noexcept;
+        bool GitAvailable() const noexcept;
 
         static std::optional<Presentation> ComposePresentation(
             const std::vector<Registration>& providers,
             const std::unordered_map<std::string, Snapshot>& snapshots,
-            const VisibleFieldMap& visibleFields = {});
+            const VisibleFieldMap& visibleFields = {},
+            const FieldDisplayNameMap& fieldDisplayNames = {});
 
     private:
+        friend class ::TerminalAppUnitTests::RichTabProviderTests;
+
         struct PendingRequest
         {
             Request request;
@@ -106,6 +119,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         };
 
         ProviderBroker();
+        explicit ProviderBroker(std::optional<std::filesystem::path> gitBinary);
         ~ProviderBroker();
 
         void _Refresh(
@@ -130,8 +144,10 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<std::thread> _executorWorkers;
         bool _executorStopping{ false };
         CommandRunner _runner;
+        const std::optional<std::filesystem::path> _gitBinary;
         std::vector<Registration> _providers;
         VisibleFieldMap _visibleFields;
+        FieldDisplayNameMap _fieldDisplayNames;
         std::unordered_map<std::string, SessionState> _sessions;
         std::unordered_map<AttachmentId, std::string> _attachmentSessions;
         uint64_t _processEpoch{ 0 };

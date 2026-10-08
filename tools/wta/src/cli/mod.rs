@@ -38,10 +38,16 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             prompt,
             agent,
             delegate_agent,
+            delegate_agent_id,
             delegate_model,
             delegate_source,
             delegate_wsl_distro,
             cwd,
+            preserve_sidebar_view,
+            split_pane,
+            split_session,
+            split_direction,
+            split_size,
         } => {
             delegate::run(
                 prompt.as_deref(),
@@ -51,6 +57,12 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 delegate_source.as_deref(),
                 delegate_wsl_distro.as_deref(),
                 cwd.as_deref(),
+                preserve_sidebar_view,
+                split_pane.as_deref(),
+                split_session.as_deref(),
+                &split_direction,
+                split_size,
+                delegate_agent_id.as_deref(),
             )
             .await
         }
@@ -58,15 +70,18 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             SessionsAction::List {
                 master,
                 origin,
-                all_agents,
                 include_status,
             } => {
+                sessions::run_list(master, origin.to_filter(), false, json_mode, include_status)
+                    .await
+            }
+            SessionsAction::Refresh { master } => {
                 sessions::run_list(
                     master,
-                    origin.to_filter(),
-                    all_agents,
+                    crate::agent_sessions::OriginFilter::All,
+                    true,
                     json_mode,
-                    include_status,
+                    json_mode,
                 )
                 .await
             }
@@ -78,6 +93,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 universe,
                 window_id,
                 activation_id,
+                status_only,
             } => {
                 sessions::run_activate(
                     &session_id,
@@ -87,6 +103,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                     universe,
                     window_id,
                     activation_id,
+                    status_only,
                     json_mode,
                 )
                 .await

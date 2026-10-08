@@ -182,6 +182,12 @@ OpenCode uses its V1 plugin API rather than a hook manifest. The plugin maps
 the same WTA topics. Child sessions with `parentID` are ignored so OpenCode's
 internal subagents do not create extra rows.
 
+OpenCode's `question` tool is recognized as a user-input tool by both the native
+hook bridge and WTA. Its `agent.tool.starting` event and the `agent.notification`
+from `question.asked` both leave the session in Attention (Waiting for input),
+regardless of their arrival order. `question.replied` maps to
+`agent.prompt.submit`, returning the session to Working (Active).
+
 References:
 - Claude: <https://docs.claude.com/en/docs/claude-code/hooks>
 - Gemini: <https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md>

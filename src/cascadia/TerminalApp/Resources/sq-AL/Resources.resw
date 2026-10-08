@@ -423,19 +423,24 @@
     <value>Mbyll skedat poshtë</value>
   </data>
   <data name="VerticalTabsCollapsePane" xml:space="preserve">
-    <value>Palos panelin e skedave</value>
+    <value>Palos shiritin anësor</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandPane" xml:space="preserve">
-    <value>Zgjero panelin e skedave</value>
+    <value>Zgjero shiritin anësor</value>
+    <comment>Tooltip and accessible name for the vertical tabs sidebar toggle button. Refers to the left sidebar, not the Agent Pane.</comment>
   </data>
   <data name="VerticalTabsExpandGroup" xml:space="preserve">
     <value>Zgjero grupin e skedave</value>
+    <comment>Accessibility name and tooltip for the button that expands a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsCollapseGroup" xml:space="preserve">
     <value>Palos grupin e skedave</value>
+    <comment>Accessibility name and tooltip for the button that collapses a group of tabs in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFallbackTabTitle" xml:space="preserve">
     <value>Skedë</value>
+    <comment>Fallback title for a terminal tab in the sidebar when no title is available.</comment>
   </data>
   <data name="VerticalTabsHeader.Text" xml:space="preserve">
     <value>Skedat</value>
@@ -453,13 +458,16 @@
     <value>Kërko skedat</value>
   </data>
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Filtro skedat</value>
+    <value>Opsionet e shfaqjes së shiritit anësor</value>
+    <comment>Accessible name of the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Filtro skedat</value>
+    <value>Opsionet e shfaqjes së shiritit anësor</value>
+    <comment>Tooltip for the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
     <value>Filtro</value>
+    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>Të gjitha skedat</value>
@@ -469,21 +477,27 @@
   </data>
   <data name="VerticalTabsMetadataSection.Text" xml:space="preserve">
     <value>Të dhënat meta të skedës</value>
+    <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
     <value>Statusi i agjentit</value>
+    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>Drejtoria aktuale e punës</value>
+    <comment>Option that shows the current working directory in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataRepository.Text" xml:space="preserve">
     <value>Depoja e Git</value>
+    <comment>Option that shows the Git repository name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataBranch.Text" xml:space="preserve">
     <value>Dega Git</value>
+    <comment>Option that shows the Git branch name in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataChanges.Text" xml:space="preserve">
     <value>Git ndryshon</value>
+    <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
     <value>Po shfaqet 1 seancë agjenti</value>
@@ -504,25 +518,38 @@
     <value>Shfaq të gjitha skedat</value>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Historiku i agjentit</value>
+    <value>Agjentë</value>
+    <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Historiku i agjentit</value>
+    <value>Agjentë</value>
+    <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
+  </data>
+  <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
+    <value>Seancat e fundit</value>
+    <comment>Collapsible noun heading below open agent tabs in the Agents sidebar. Includes prior agent sessions, kept-running background tabs, sessions in other tracked windows, and external sessions not represented by the current window's open agent panes. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
-    <value>Historiku i agjentit</value>
+    <value>Agjentë</value>
+    <comment>Header of the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Mbyll historikun e agjentit</value>
+    <value>Mbyll pamjen e agjentëve</value>
+    <comment>Accessible name of the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryCloseButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Mbyll historikun e agjentit</value>
+    <value>Mbyll pamjen e agjentëve</value>
+    <comment>Tooltip for the button that closes the Agents sidebar view. Closing this view hides the sidebar; it does not terminate any agents or sessions.</comment>
   </data>
   <data name="VerticalTabsHistorySearchBox.PlaceholderText" xml:space="preserve">
     <value>Kërko seanca agjentësh</value>
   </data>
   <data name="VerticalTabsHistorySearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Kërko seanca agjentësh</value>
+  </data>
+  <data name="VerticalTabsHistoryCurrentSession" xml:space="preserve">
+    <value>Seanca aktuale</value>
+    <comment>UI Automation status for the live AI-agent session associated with the active terminal pane. This identifies the currently displayed session, not keyboard selection or the most recent session.</comment>
   </data>
   <data name="VerticalTabsHistoryEmpty" xml:space="preserve">
     <value>Nuk u gjetën seanca agjentësh.</value>
@@ -531,10 +558,12 @@
     <value>Nuk ka seanca agjentësh që përputhen.</value>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
-    <value>Nuk mund të ngarkohet historiku i agjentit.</value>
+    <value>Nuk mund të ngarkohen seancat e agjentit.</value>
+    <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
   </data>
   <data name="VerticalTabsHistoryInvalidResponse" xml:space="preserve">
-    <value>Historiku i agjentit ktheu një përgjigje të pavlefshme.</value>
+    <value>Nuk mund të ngarkohen seancat e agjentit: përgjigje e pavlefshme.</value>
+    <comment>Error shown when the Agent sessions sidebar receives an invalid response while loading its list of live and historical AI-agent sessions.</comment>
   </data>
   <data name="VerticalTabsHistoryActivationError" xml:space="preserve">
     <value>Nuk mund të aktivizohet seanca e zgjedhur.</value>
@@ -562,10 +591,12 @@
     <value>Përdor skeda horizontale në të gjitha dritaret e aplikacionit Terminal</value>
   </data>
   <data name="SwitchToVerticalTabsText" xml:space="preserve">
-    <value>Kalo te skedat vertikale</value>
+    <value>Kalo te shiriti anësor</value>
+    <comment>Context-menu command that changes the tab layout from horizontal tabs to the sidebar.</comment>
   </data>
   <data name="SwitchToVerticalTabsToolTip" xml:space="preserve">
-    <value>Përdor skeda vertikale në të gjitha dritaret e aplikacionit Terminal</value>
+    <value>Përdor shiritin anësor në të gjitha dritaret e aplikacionit Terminal</value>
+    <comment>Tooltip for the command that changes the tab layout from horizontal tabs to the sidebar in every Terminal window.</comment>
   </data>
   <data name="TabCloseBelowToolTip" xml:space="preserve">
     <value>Mbyll të gjitha skedat poshtë kësaj skede</value>
@@ -577,6 +608,28 @@
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>Mbaje skedën në ekzekutim</value>
     <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+  </data>
+  <data name="PinTabText" xml:space="preserve">
+    <value>Fikso skedën</value>
+    <comment>Context menu action to keep a terminal tab at the start of the tab list until unpinned. Does not keep its processes running after closing or persist across restarts.</comment>
+  </data>
+  <data name="PinTabToolTip" xml:space="preserve">
+    <value>Zhvendose këtë skedë përpara skedave të pafiksuara.</value>
+  </data>
+  <data name="UnpinTabText" xml:space="preserve">
+    <value>Hiq fiksimin e skedës</value>
+    <comment>Context menu action to move a pinned terminal tab back into the regular tab group.</comment>
+  </data>
+  <data name="UnpinTabToolTip" xml:space="preserve">
+    <value>Zhvendose këtë skedë pas skedave të fiksuara.</value>
+  </data>
+  <data name="PinnedTabName" xml:space="preserve">
+    <value>E fiksuar</value>
+    <comment>Accessibility name and tooltip for a terminal tab pinned at the beginning of the tab list.</comment>
+  </data>
+  <data name="CollapsedPinnedTabIcon.AutomationProperties.Name" xml:space="preserve">
+    <value>E fiksuar</value>
+    <comment>Accessibility name for the pin indicator on a terminal tab in the collapsed sidebar.</comment>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>Mbaje këtë skedë në ekzekutim në sfond pas mbylljes së skedës ose dritares.</value>
@@ -645,5 +698,83 @@
   <data name="VerticalTabsHistoryAgeUnknown" xml:space="preserve">
     <value>E panjohur</value>
     <comment>Agent History time label when the session&apos;s latest activity timestamp is missing or invalid. Do not imply that the session was recently active.</comment>
+  </data>
+  <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
+    <value>Mbyll të gjitha skedat që ekzekutohen në sfond</value>
+    <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by Keep tab running and terminates their panes and processes. Does not close tabs still in a window or only turn off keep running.</comment>
+  </data>
+  <data name="PaneProgressStatusNormal" xml:space="preserve">
+    <value>Progresi</value>
+    <comment>Accessibility status for normal determinate OSC 9;4 progress. A localized percentage is appended.</comment>
+  </data>
+  <data name="PaneProgressStatusError" xml:space="preserve">
+    <value>Gabim</value>
+    <comment>Accessibility status for error OSC 9;4 progress. A localized percentage is appended.</comment>
+  </data>
+  <data name="PaneProgressStatusIndeterminate" xml:space="preserve">
+    <value>Progres i papërcaktuar</value>
+    <comment>Accessibility status for OSC 9;4 progress with an unknown percentage. No percentage is appended.</comment>
+  </data>
+  <data name="PaneProgressStatusPaused" xml:space="preserve">
+    <value>Në pauzë</value>
+    <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
+  </data>
+  <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
+    <value>Kërko seancat aktive dhe të fundit të agjentëve</value>
+    <comment>Shared search placeholder, tooltip, and accessible name in the Agents sidebar. Searches both open AI-agent tabs, including idle open sessions, and the Recent Sessions section. Active does not mean only currently working. Keep the separate Tabs view search labels unchanged.</comment>
+  </data>
+  <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
+    <value>{0} · dritare tjetër</value>
+    <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
+  </data>
+  <data name="VerticalTabsHistoryRestoreBackgroundTab" xml:space="preserve">
+    <value>Rikthe skedën në sfond</value>
+    <comment>Action for a live agent session in a kept-running background tab. Restores the entire original tab, with all its panes, to the foreground. This does not resume a new conversation or focus another visible window.</comment>
+  </data>
+  <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
+    <value>Kalo te dritarja tjetër</value>
+    <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
+  </data>
+  <data name="TabColorChoose"><value>Ndrysho ngjyrën e skedës</value></data>
+  <data name="RenameTabText"><value>Riemërto skedën</value></data>
+  <data name="DuplicateTabText"><value>Dyfisho skedën</value></data>
+  <data name="SplitTabText"><value>Ndaj skedën</value></data>
+  <data name="TabMoveSubMenu"><value>Zhvendos skedën</value></data>
+  <data name="ExportTabText"><value>Eksporto tekstin</value></data>
+  <data name="FindText"><value>Gjej</value></data>
+  <data name="RestartConnectionText"><value>Rinis seancën</value></data>
+  <data name="TabCloseSubMenu"><value>Mbyll</value></data>
+  <data name="TabClose"><value>Mbyll skedën</value></data>
+  <data name="MoveTabToNewWindowText"><value>Zhvendos skedën në një dritare të re</value></data>
+  <data name="TabMoveLeft"><value>Zhvendos majtas</value></data>
+  <data name="TabMoveRight"><value>Zhvendos djathtas</value></data>
+  <data name="TabMoveUp"><value>Zhvendos lart</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Zhvendos poshtë</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Mbyll skedat në të djathtë</value></data>
+  <data name="TabCloseOther"><value>Mbyll skedat e tjera</value></data>
+  <data name="ClosePaneText"><value>Mbyll panelin</value></data>
+  <data name="VerticalTabsSwitchToAgents" xml:space="preserve">
+    <value>Kalo te Agjentët</value>
+    <comment>Tooltip and accessible action name of the sidebar header button while Tabs is selected. One click switches to the Agents view; it does not open a menu. Agents means AI agents, not people.</comment>
+  </data>
+  <data name="VerticalTabsSwitchToTabs" xml:space="preserve">
+    <value>Kalo te Skedat</value>
+    <comment>Tooltip and accessible action name of the sidebar header button while Agents is selected. One click switches to the Tabs view; it does not change between sidebar and horizontal tab layouts.</comment>
+  </data>
+  <data name="VerticalTabsExpandRecentSessions" xml:space="preserve">
+    <value>Zgjero seancat e fundit</value>
+    <comment>Tooltip for expanding the Recent Sessions section inside the Agents sidebar. Expansion shows its session rows without leaving Agents or resuming a session.</comment>
+  </data>
+  <data name="VerticalTabsCollapseRecentSessions" xml:space="preserve">
+    <value>Palos seancat e fundit</value>
+    <comment>Tooltip for collapsing the Recent Sessions section inside the Agents sidebar. Collapse hides its rows without closing agents or deleting sessions.</comment>
+  </data>
+  <data name="SidebarIntroductionTitle" xml:space="preserve">
+    <value>Një mënyrë më e zgjuar për të menaxhuar skedat</value>
+    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+  </data>
+  <data name="SidebarIntroductionDescription" xml:space="preserve">
+    <value>Skedat dhe seancat e agjentëve tuaj tani janë në shiritin anësor. Përdorni Opsionet e shfaqjes së shiritit anësor për të zgjedhur detajet e skedave. Klikoni me të djathtën mbi një skedë për t'u kthyer te skedat horizontale.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
   </data>
 </root>

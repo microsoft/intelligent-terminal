@@ -686,6 +686,8 @@ pub struct TabSession {
     // Filled in Milestone 2 once each tab has its own ACP SessionId.
     #[allow(dead_code)]
     pub session_id: Option<String>,
+    pub(crate) reattached_session_id: Option<String>,
+    pub(crate) restore_identity: Option<crate::telemetry::RestoreIdentity>,
 
     /// Per-pane ACP model override, set by the `/model` picker.
     pub model_override: Option<String>,
@@ -723,6 +725,20 @@ pub struct TabSession {
 
 impl TabSession {
     const MAX_STREAMING_THOUGHT_CHARS: usize = 4000;
+
+    pub(crate) fn is_reattached_session(&self) -> bool {
+        self.reattached_session_id().is_some()
+    }
+
+    pub(crate) fn restore_identity(&self) -> Option<crate::telemetry::RestoreIdentity> {
+        self.reattached_session_id().and(self.restore_identity)
+    }
+
+    pub(crate) fn reattached_session_id(&self) -> Option<&str> {
+        self.reattached_session_id
+            .as_deref()
+            .filter(|id| self.session_id.as_deref() == Some(*id))
+    }
 
     /// Returns the ACP session id only after the conversation is worth restoring.
     pub(crate) fn resumable_session_id(&self) -> Option<&str> {

@@ -91,6 +91,8 @@ pub struct PromptSubmission {
     pub images: Vec<crate::clipboard_image::PastedImage>,
     is_byok: bool,
     agent_id: String,
+    reattached_session_id: Option<String>,
+    restore_identity: Option<crate::telemetry::RestoreIdentity>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -525,6 +527,8 @@ impl PromptSubmission {
             images: Vec::new(),
             is_byok: false,
             agent_id: String::new(),
+            reattached_session_id: None,
+            restore_identity: None,
         }
     }
 
@@ -552,6 +556,23 @@ impl PromptSubmission {
 
     pub fn agent_id(&self) -> &str {
         &self.agent_id
+    }
+
+    pub fn with_reattached_session(mut self, session_id: Option<String>) -> Self {
+        self.reattached_session_id = session_id;
+        self
+    }
+
+    pub fn with_restore_identity(
+        mut self,
+        identity: Option<crate::telemetry::RestoreIdentity>,
+    ) -> Self {
+        self.restore_identity = identity;
+        self
+    }
+
+    fn was_reattached_at_dispatch(&self, session_id: &str) -> bool {
+        self.reattached_session_id.as_deref() == Some(session_id)
     }
 
     pub fn cancellation_token(&self) -> CancellationToken {
@@ -2746,10 +2767,8 @@ fn log_acp_new_session_result(
     started: std::time::Instant,
     result: &acp::Result<acp::schema::v1::NewSessionResponse>,
 ) {
-    let session_id = result.as_ref().ok().map(|resp| resp.session_id.to_string());
     let (failure_kind, acp_error_code) = acp_result_failure_fields(result);
     crate::telemetry::log_acp_new_session_complete(
-        session_id.as_deref(),
         elapsed_ms_since(started),
         result.is_ok(),
         route,
@@ -3823,12 +3842,9 @@ pub async fn run_acp_client_over_pipe(
 
     let conn = Arc::new(conn);
 
-    // Periodic 5s tick that fans out an AppEvent::SessionsChanged to
-    // force a refetch in any open session management view. Belt-and-suspenders against
-    // missed `intellterm.wta/sessions/changed` broadcasts. Cheap:
-    // refetch only fires for tabs whose snapshot.is_some() (i.e. session management view is
-    // currently open).
-    let mut periodic_refetch = tokio::time::interval(std::time::Duration::from_secs(5));
+    // The app applies this fallback only to open helper session views in
+    // nonvertical layouts. Master notifications remain independent of layout.
+    let mut periodic_refetch = tokio::time::interval(std::time::Duration::from_secs(60));
     periodic_refetch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     // Burn the first tick (fires immediately on creation).
     periodic_refetch.tick().await;
@@ -3841,7 +3857,7 @@ pub async fn run_acp_client_over_pipe(
         tokio::select! {
             biased;
             _ = periodic_refetch.tick() => {
-                let _ = event_tx.send(AppEvent::SessionsChanged);
+                let _ = event_tx.send(AppEvent::SessionsFallbackTick);
             }
             Some(event) = session_hook_rx.recv() => {
                 let conn_for_hook = conn.clone();
@@ -4110,42 +4126,13 @@ fn dispatch_master_ext_request_with_yolo_timeout(
     tokio::task::spawn_local(async move {
         match req {
             MasterExtRequest::SessionsList { request_id, rescan } => {
-                let wire = crate::session_registry::build_sessions_list_request(rescan, false);
-                // Bound the wait so a single dropped RPC response can't
-                // permanently strand the tab's `refetch_in_flight=true`.
-                //
-                // Root cause is in agent-client-protocol@0.10's
-                // `RpcConnection::handle_io`: `read_line` is *not*
-                // cancellation-safe, but it's polled in a
-                // `select_biased!` whose outgoing arm has priority. When
-                // a concurrent outgoing message preempts an in-progress
-                // `read_line`, BufReader bytes already pulled off the
-                // pipe vanish; the next read starts mid-message, JSON
-                // parse fails, and the pending response future for the
-                // request whose response was being read never resolves.
-                // From our side `conn.ext_method(...)` then awaits
-                // forever.
-                //
-                // Without this timeout the failure mode is: helper opens
-                // /sessions, fires `sessions/list`, response gets
-                // truncated → `refetch_in_flight` stuck `true` → every
-                // subsequent `sessions/changed` broadcast and 5s tick
-                // hits `if refetch_in_flight { dirty=true; return; }`
-                // and never refetches → the tab's row activity / status
-                // is frozen until the user toggles /sessions off and
-                // on (which calls `close_agents_view_for_tab` and
-                // resets the gate).
-                //
-                // 8s > the 5s periodic tick so a healthy in-flight
-                // request never gets cancelled spuriously; under the
-                // bug the worst-case visible staleness becomes
-                // ~timeout + tick ≈ 13s instead of "until next manual
-                // toggle".
-                //
-                // The proper fix lives upstream — ACP 0.12 rewrote
-                // `handle_io` into separate incoming/outgoing actors,
-                // which is cancellation-safe by construction. Until we
-                // upgrade, this timeout is the guardrail.
+                let wire = crate::session_registry::build_sessions_list_request(rescan);
+                // Bound stalled responses so refetch_in_flight cannot suppress
+                // every later request indefinitely. Eight seconds allows the
+                // bound-agent rescan's five-second timeout plus local IPC overhead.
+                // Without a push, a nonvertical view may need this timeout plus
+                // the next 60-second fallback (up to about 68 seconds) to recover.
+                // Vertical helper views instead rely on pushes or explicit reads.
                 const SESSIONS_LIST_TIMEOUT: std::time::Duration =
                     std::time::Duration::from_secs(8);
                 let result =
@@ -4177,7 +4164,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                             timeout_secs = SESSIONS_LIST_TIMEOUT.as_secs(),
                             "sessions/list timed out — likely ACP-0.10 \
                              cancellation-safety bug; unblocking refetch_in_flight \
-                             so 5s tick can retry"
+                             so the fallback tick can retry"
                         );
                         let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
                     }
@@ -4729,6 +4716,7 @@ fn dispatch_load_session_with_aliases(
                 {
                     crate::protocol::acp::model_select::forget_session(old.0.as_ref());
                     client_state.native_yolo.forget_session(old);
+                    client_state.prompt_timing.forget_session(old.0.as_ref());
                 }
                 client_state
                     .native_yolo
@@ -4944,6 +4932,7 @@ fn dispatch_new_session_with_aliases(
             let old_str = old.to_string();
             crate::protocol::acp::model_select::forget_session(&old_str);
             client_state.native_yolo.forget_session(old);
+            client_state.prompt_timing.forget_session(&old_str);
             template_memo.forget(&old_str).await;
         }
 
@@ -5063,6 +5052,7 @@ async fn dispatch_drop_session_with_aliases(
         let old_str = old.to_string();
         crate::protocol::acp::model_select::forget_session(&old_str);
         client_state.native_yolo.forget_session(&old);
+        client_state.prompt_timing.forget_session(&old_str);
         template_memo.forget(&old_str).await;
     }
 
@@ -5853,6 +5843,7 @@ async fn dispatch_prompt_body(
             &shell_mgr_task,
             wt_connected,
             prompt.pane_context.as_ref(),
+            Some(&conn_task),
         )
         .await;
         let _ = event_tx_task.send(AppEvent::PromptTemplateLoaded { name });
@@ -5956,6 +5947,10 @@ async fn dispatch_prompt_body(
     };
     let telemetry_is_byok = prompt.is_byok();
     let telemetry_agent_id = prompt.agent_id().to_string();
+    let telemetry_reattached = prompt.was_reattached_at_dispatch(&telemetry_session_id);
+    let telemetry_restore = telemetry_reattached
+        .then_some(prompt.restore_identity)
+        .flatten();
     let telemetry_prompt_id = prompt.id;
     let telemetry_is_agent_command = prompt.is_agent_command();
     let prompt_started = Arc::new(AtomicBool::new(false));
@@ -6007,14 +6002,23 @@ async fn dispatch_prompt_body(
                         );
                     }
                     telemetry_timing.mark_prompt_sent(&telemetry_session_id);
-                    crate::telemetry::log_agent_prompt_sent(
-                        &telemetry_session_id,
-                        telemetry_prompt_len,
-                        telemetry_is_autofix,
-                        telemetry_source,
-                        telemetry_is_byok,
-                        &telemetry_agent_id,
-                    );
+                    let user_prompt_ordinal = telemetry_timing
+                        .record_user_prompt_dispatch(&telemetry_session_id, telemetry_is_autofix);
+                    if let Some(identity) = telemetry_timing.telemetry_identity(&telemetry_session_id, telemetry_is_autofix) {
+                        crate::telemetry::log_agent_prompt_sent(
+                            telemetry_prompt_len,
+                            telemetry_is_autofix,
+                            telemetry_source,
+                            telemetry_is_byok,
+                            &telemetry_agent_id,
+                            telemetry_reattached,
+                            user_prompt_ordinal,
+                            identity,
+                            telemetry_restore,
+                        );
+                    } else {
+                        tracing::error!(target: "telemetry", "dispatched prompt has no timing identity");
+                    }
                 }
                 should_send
             }

@@ -28,12 +28,20 @@ namespace winrt::TerminalApp::implementation
                                                     const IControlAppearance& unfocusedAppearance,
                                                     const TerminalConnection::ITerminalConnection& connection)
     {
+        return CreateAgentCliCore(settings, unfocusedAppearance, connection, {});
+    }
+
+    ControlInteractivity ContentManager::CreateAgentCliCore(const Microsoft::Terminal::Control::IControlSettings& settings,
+                                                            const IControlAppearance& unfocusedAppearance,
+                                                            const TerminalConnection::ITerminalConnection& connection,
+                                                            const winrt::hstring& providerId)
+    {
         ControlInteractivity content{ settings, unfocusedAppearance, connection };
         content.Closed({ get_weak(), &ContentManager::_closedHandler });
 
         {
             std::lock_guard lock{ _mutex };
-            _content.emplace(content.Id(), content);
+            _content.emplace(content.Id(), TerminalContent{ content, providerId });
         }
 
         return content;
@@ -43,7 +51,28 @@ namespace winrt::TerminalApp::implementation
     {
         std::lock_guard lock{ _mutex };
         const auto it = _content.find(id);
-        return it != _content.end() ? it->second : ControlInteractivity{ nullptr };
+        return it != _content.end() ? it->second.core : ControlInteractivity{ nullptr };
+    }
+
+    winrt::hstring ContentManager::NativeAgentProviderId(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _content.find(contentId);
+        return it == _content.end() ? winrt::hstring{} : it->second.nativeAgentProviderId;
+    }
+
+    winrt::hstring ContentManager::NativeAgentProviderIdForPane(const winrt::guid& paneId) const
+    {
+        std::lock_guard lock{ _mutex };
+        for (const auto& [id, content] : _content)
+        {
+            const auto connection = content.core.Core().Connection();
+            if (connection && connection.SessionId() == paneId)
+            {
+                return content.nativeAgentProviderId;
+            }
+        }
+        return {};
     }
 
     void ContentManager::Detach(const Microsoft::Terminal::Control::TermControl& control)
@@ -127,7 +156,7 @@ namespace winrt::TerminalApp::implementation
             std::lock_guard lock{ _mutex };
             for (const auto& [id, content] : _content)
             {
-                const auto connection = content.Core().Connection();
+                const auto connection = content.core.Core().Connection();
                 if (connection && connection.SessionId() == sessionId)
                 {
                     contentId = id;
@@ -151,6 +180,13 @@ namespace winrt::TerminalApp::implementation
         {
             policy.agentSessionId = agentSessionId;
             policy.eventJson = eventJson;
+            std::lock_guard lock{ _mutex };
+            if (const auto content = _content.find(contentId);
+                content != _content.end() && !content->second.nativeAgentProviderId.empty() &&
+                !std::wstring_view{ content->second.nativeAgentProviderId }.starts_with(L"custom:"))
+            {
+                content->second.nativeAgentProviderId = agent;
+            }
         }
     }
 
@@ -319,6 +355,25 @@ namespace winrt::TerminalApp::implementation
             _NotifyKeptSessionsChanged();
         });
         group.tab.Shutdown();
+    }
+
+    void ContentManager::DiscardAllKeptGroups()
+    {
+        // Closing a tab can synchronously change other groups. Snapshot the IDs
+        // and recheck ownership so restored or claimed tabs are never closed.
+        for (const auto& group : KeptGroups())
+        {
+            try
+            {
+                const auto id = group.Key();
+                const auto it = _keptGroups.find(id);
+                if (it != _keptGroups.end() && !it->second.restoring)
+                {
+                    DiscardKeptGroup(id);
+                }
+            }
+            CATCH_LOG()
+        }
     }
 
     void ContentManager::_NotifyKeptSessionsChanged() noexcept

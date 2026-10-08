@@ -135,7 +135,6 @@ fn sessions_list_cli_parses_json_and_master_override() {
                 SessionsAction::List {
                     master,
                     origin,
-                    all_agents,
                     include_status,
                 },
         }) => {
@@ -146,7 +145,6 @@ fn sessions_list_cli_parses_json_and_master_override() {
             // intentionally divergent so `wta sessions list` is
             // the "see everything" debug tool.
             assert_eq!(origin, SessionsOriginArg::All);
-            assert!(!all_agents, "plain listing must remain snapshot-only");
             assert!(!include_status, "plain JSON listing must remain JSONL");
         }
         other => panic!("expected sessions list command, got {other:?}"),
@@ -154,14 +152,13 @@ fn sessions_list_cli_parses_json_and_master_override() {
 }
 
 #[test]
-fn sessions_list_cli_opts_into_all_agent_discovery() {
+fn sessions_list_cli_preserves_status_snapshot_without_discovery() {
     let cli = Cli::try_parse_from([
         "wta",
         "sessions",
         "list",
         "--origin",
         "shell",
-        "--all-agents",
         "--json",
         "--include-status",
     ])
@@ -171,18 +168,29 @@ fn sessions_list_cli_opts_into_all_agent_discovery() {
         Some(Command::Sessions {
             action:
                 SessionsAction::List {
-                    all_agents,
                     origin,
                     include_status,
                     ..
                 },
         }) => {
-            assert!(all_agents);
             assert!(include_status);
             assert_eq!(origin, SessionsOriginArg::Shell);
         }
         other => panic!("expected sessions list command, got {other:?}"),
     }
+}
+
+#[test]
+fn sessions_refresh_is_explicit_and_removed_discovery_flag_is_rejected() {
+    assert!(Cli::try_parse_from(["wta", "sessions", "list", "--all-agents"]).is_err());
+    let cli = Cli::try_parse_from(["wta", "sessions", "refresh", "--json"]).unwrap();
+    assert!(cli.json);
+    assert!(matches!(
+        cli.command,
+        Some(Command::Sessions {
+            action: SessionsAction::Refresh { master: None }
+        })
+    ));
 }
 
 #[test]
@@ -260,6 +268,7 @@ fn sessions_activate_cli_parses_qualified_identity_and_target_window() {
                     universe,
                     window_id,
                     activation_id,
+                    status_only,
                 },
         }) => {
             assert_eq!(session_id, "same-raw-id");
@@ -269,9 +278,38 @@ fn sessions_activate_cli_parses_qualified_identity_and_target_window() {
             assert_eq!(universe.as_deref(), Some("tenant-a"));
             assert_eq!(window_id, 42);
             assert_eq!(activation_id, "activation-1");
+            assert!(!status_only);
         }
         other => panic!("expected sessions activate command, got {other:?}"),
     }
+}
+
+#[test]
+fn sessions_activate_status_only_never_selects_a_new_operation() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "activate",
+        "--session-id",
+        "session",
+        "--provider",
+        "copilot",
+        "--location",
+        "host",
+        "--window-id",
+        "42",
+        "--activation-id",
+        "original-activation",
+        "--status-only",
+        "--json",
+    ])
+    .unwrap();
+    assert!(matches!(
+        cli.command,
+        Some(Command::Sessions {
+            action: SessionsAction::Activate { status_only: true, activation_id, .. }
+        }) if activation_id == "original-activation"
+    ));
 }
 
 // ── normalize_locale: OS-locale → bundled-locale affinity matching ──────────
@@ -425,6 +463,57 @@ fn delegate_command_source_and_distro_default_to_none() {
             assert!(delegate_wsl_distro.is_none());
         }
         other => panic!("expected Command::Delegate, got {other:?}"),
+    }
+}
+
+#[test]
+fn delegate_command_preserves_sidebar_only_when_requested() {
+    for preserve in [false, true] {
+        let mut args = vec!["wta", "delegate", "--delegate-agent", "copilot"];
+        if preserve {
+            args.push("--preserve-sidebar-view");
+        }
+        match Cli::try_parse_from(args).expect("flags must parse").command {
+            Some(Command::Delegate {
+                prompt,
+                preserve_sidebar_view,
+                ..
+            }) => {
+                assert!(prompt.is_none());
+                assert_eq!(preserve_sidebar_view, preserve);
+            }
+            other => panic!("expected Command::Delegate, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn delegate_split_requires_paired_target_and_session_flags() {
+    assert!(Cli::try_parse_from(["wta", "delegate", "--split-pane", "pane"]).is_err());
+    assert!(Cli::try_parse_from(["wta", "delegate", "--split-session", "sid"]).is_err());
+    let cli = Cli::try_parse_from([
+        "wta",
+        "delegate",
+        "--delegate-agent",
+        "copilot",
+        "--split-pane",
+        "pane",
+        "--split-session",
+        "sid",
+    ])
+    .unwrap();
+    match cli.command {
+        Some(Command::Delegate {
+            prompt,
+            split_pane,
+            split_session,
+            ..
+        }) => {
+            assert!(prompt.is_none());
+            assert_eq!(split_pane.as_deref(), Some("pane"));
+            assert_eq!(split_session.as_deref(), Some("sid"));
+        }
+        other => panic!("expected delegate, got {other:?}"),
     }
 }
 

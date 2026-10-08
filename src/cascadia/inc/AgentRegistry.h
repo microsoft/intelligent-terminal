@@ -155,6 +155,38 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
         return false;
     }
 
+    inline constexpr std::wstring_view CanonicalNativeAgentProviderId(const std::wstring_view providerId) noexcept
+    {
+        for (const auto& agent : BuiltinDelegateAgents)
+        {
+            if (AgentIdEquals(agent.id, providerId))
+            {
+                return agent.id;
+            }
+        }
+        if (providerId.starts_with(L"custom:") && providerId.size() > 7 &&
+            providerId[7] != L' ' && providerId.back() != L' ' &&
+            providerId.find_first_of(L"\r\n\t") == std::wstring_view::npos)
+        {
+            return providerId;
+        }
+        return {};
+    }
+
+    inline bool IsNativeAgentProviderAllowed(const std::wstring_view providerId, const AgentPolicy::PolicySnapshot& policy)
+    {
+        const auto id = CanonicalNativeAgentProviderId(providerId);
+        if (id.empty())
+        {
+            return false;
+        }
+        if (id.starts_with(L"custom:"))
+        {
+            return policy.customAgents != AgentPolicy::PolicyState::Blocked;
+        }
+        return !policy.allowedAgents || policy.allowedAgents->find(id) != policy.allowedAgents->end();
+    }
+
     inline constexpr YoloSettingsNotice GetYoloSettingsNotice(const std::wstring_view agentId,
                                                               const bool yoloModeEnabled,
                                                               const bool policyLocked,

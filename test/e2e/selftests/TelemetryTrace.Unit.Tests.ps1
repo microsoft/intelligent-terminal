@@ -22,21 +22,40 @@ Describe 'Telemetry typed decoding' -Tag Unit {
     It 'Excludes events from unrelated processes' {
         @(Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(99)) | Should -HaveCount 0
     }
-    It 'Includes the Win32Host interaction source used by retention' {
+    It 'Explicit name filtering retains selected event schemas and rejects missing names' {
+        $path = Join-Path $script:directory 'events.xml'
+        $original = Get-Content -LiteralPath $path -Raw
+        try {
+            { Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42) -IncludeEventName AgentSlashCommandUsed } |
+                Should -Throw '*requires an event task name*'
+            $named = $original.Replace('</Event>', '<RenderingInfo><Task>AgentSlashCommandUsed</Task></RenderingInfo></Event>')
+            Set-Content -LiteralPath $path -Value $named
+            $records = @(Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42) -IncludeEventName AgentSlashCommandUsed)
+            $records | Should -HaveCount 1
+            $records[0].Types.command | Should -Be 'win:AnsiString'
+            $records[0].Fields.command | Should -Be 'config'
+            @(Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42) -IncludeEventName SidebarRowFieldsChanged) | Should -HaveCount 0
+            @(Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42) -IncludeEventName agentslashcommandused) | Should -HaveCount 0
+        }
+        finally { Set-Content -LiteralPath $path -Value $original -NoNewline }
+    }
+    It 'Includes the Win32Host <EventName> interaction source' -ForEach @(
+        @{ EventName = 'SessionBecameInteractive' }, @{ EventName = 'UserInteract' }
+    ) {
         $eventsPath = Join-Path $script:directory 'events.xml'
         $schemaPath = Join-Path $script:directory 'schema.xml'
         $originalEvents = Get-Content -LiteralPath $eventsPath -Raw
         $originalSchema = Get-Content -LiteralPath $schemaPath -Raw
         try {
             @'
-<Events><Event><System><Provider Guid="{56c06166-2e2e-5f4d-7ff3-74f4b78c87d6}" /><EventID>0</EventID><Version>0</Version><Execution ProcessID="42"/><TimeCreated SystemTime="2026-09-23T00:00:00Z"/></System><EventData><Data Name="Branding">0</Data><Data Name="Distribution">2</Data></EventData></Event></Events>
-'@ | Set-Content -LiteralPath $eventsPath
+<Events><Event><System><Provider Guid="{56c06166-2e2e-5f4d-7ff3-74f4b78c87d6}" /><EventID>0</EventID><Version>0</Version><Execution ProcessID="42"/><TimeCreated SystemTime="2026-09-23T00:00:00Z"/></System><EventData><Data Name="Branding">0</Data><Data Name="Distribution">2</Data></EventData><RenderingInfo><Task>INTERACTION</Task></RenderingInfo></Event></Events>
+'@.Replace('INTERACTION', $EventName) | Set-Content -LiteralPath $eventsPath
             @'
 <instrumentationManifest><provider guid="{56c06166-2e2e-5f4d-7ff3-74f4b78c87d6}"><events><event value="0" version="0" symbol="SessionBecameInteractive" template="T1" /></events><templates><template tid="T1"><data name="Branding" inType="win:UInt8" /><data name="Distribution" inType="win:UInt8" /></template></templates></provider></instrumentationManifest>
-'@ | Set-Content -LiteralPath $schemaPath
+'@.Replace('SessionBecameInteractive', $EventName) | Set-Content -LiteralPath $schemaPath
             $records = @(Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42))
             $records | Should -HaveCount 1
-            $records[0].Name | Should -Be 'SessionBecameInteractive'
+            $records[0].Name | Should -Be $EventName
             $records[0].Types.Branding | Should -Be 'win:UInt8'
             $records[0].Fields.Distribution | Should -Be '2'
         }
@@ -50,6 +69,14 @@ Describe 'Telemetry typed decoding' -Tag Unit {
         $schema.instrumentationManifest.provider.templates.template.data.SetAttribute('name', 'other')
         $schema.Save((Join-Path $script:directory 'schema.xml'))
         { Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42) } | Should -Throw '*unambiguous typed event schema*'
+        $path = Join-Path $script:directory 'events.xml'
+        $original = Get-Content -LiteralPath $path -Raw
+        try {
+            Set-Content -LiteralPath $path -Value $original.Replace('</Event>', '<RenderingInfo><Task>AgentSlashCommandUsed</Task></RenderingInfo></Event>')
+            { Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42) -IncludeEventName AgentSlashCommandUsed } |
+                Should -Throw '*unambiguous typed event schema*'
+        }
+        finally { Set-Content -LiteralPath $path -Value $original -NoNewline }
     }
     It 'Does not borrow another process schema for the same provider and event' {
         $schemas = @(
@@ -83,7 +110,7 @@ Describe 'Telemetry typed decoding' -Tag Unit {
             $env:ITE2E_TELEMETRY_POLICY_APPROVED = '1'
             $trace = Start-TestTelemetryTrace -Directory $directory
             $script:telemetryPolicyBroker | Should -Be $trace.Directory
-            Should -Invoke Start-Process -Times 1 -Exactly
+            Should -Invoke Start-Process -Times 1 -Exactly -ParameterFilter { $Verb -eq 'RunAs' -and $WindowStyle -eq 'Hidden' }
         }
         finally {
             $env:ITE2E_TELEMETRY_POLICY_APPROVED = $saved

@@ -269,29 +269,73 @@ starts `Idle`; terminal states are `Historical` (startup history scan) and
 `Ended` (pane/process gone); lock removal, pane close, or a hook lifecycle event
 moves a row out of the live states.
 
-The vertical sidebar's Agents view hosts Agent History; selecting All tabs returns
-to the live tab/pane groups and stops History refreshes. Agent History displays the
-registry activity:
+The vertical sidebar's dedicated Agents button uses the Fluent UI System Icons
+`Agents 16 Regular` vector icon and opens live and historical sessions in a view
+with an **Agents** header, search box, and close button. Closing it
+returns to the live tab/pane groups and stops session refreshes, preserving the tab
+search and foreground selection. The Filter flyout contains only Tab Metadata
+controls; it does not switch between All tabs and Agents only. The Agents
+view displays the registry activity:
 `Idle` (Idle), `Working` (Active), `Attention` (Waiting for input), `Error`
 (Error), and both `Ended` and `Historical` as Historical, with localized labels.
+Automatic Host discovery and prewarming exclude Gemini; opening this sidebar
+does not start a Gemini ACP process. Explicit Gemini chat selection remains
+available, and existing Gemini registry rows are still eligible for display.
 This is presentation-only: the raw status, liveness, and focus/resume routing remain
 unchanged. Each row has its provider's vector icon on the left, shared with the agent
 pane header and tinted using the row foreground; unknown/custom providers use a
 generic session icon rather than another provider's brand.
-The bottom bar no longer has a Show sessions button. The existing
-`Ctrl+Shift+/` binding and `openAgentSessions` action still open the agent pane's
-session manager; the sidebar Agents view remains a separate entry point.
-The second line is left-aligned as `Agent name · relative age · status`, using
-the provider's display name and `last_activity_at_ms`. Like the session manager,
+The bottom-right session-management button is hidden only in the Vertical tab
+layout; other layouts retain it. Its visibility updates on startup and live
+layout changes, independently of whether the vertical sidebar is expanded,
+collapsed, or hidden. The button shares the existing `openAgentSessions` action.
+The final agreed keyboard and focus behavior is specified in
+[Agent History and Sidebar Keyboard Navigation](./agent-history-sidebar-keyboard.md).
+That contract does not change horizontal agent-session behavior.
+In vertical layout, `Ctrl+Shift+/` opens the Agents view
+and focuses its search box. Closing it with the same shortcut or close button
+restores the sidebar's previous expanded/collapsed state and attempts to restore
+the source chat input or terminal split, with a visible-terminal fallback.
+In contrast, `Ctrl+Shift+S` only expands/collapses the sidebar: expansion does not
+move focus or activate search, and collapse uses the no-source focus policy even
+when the Agents view was visible. Neither action deletes session data or stops agent tasks.
+The sidebar hint uses **Expand sidebar** / **Collapse sidebar** and shows the
+effective binding on the same line in dimmed text, with casing such as `Ctrl+Shift+S`.
+
+Session titles use only the text before the first CR or LF. An empty first line
+uses the existing missing-title fallback. The title occupies one non-wrapping
+line with ellipsis; the metadata line below it is unchanged.
+The second line is left-aligned as `Agent name · relative age · status` for Host
+sessions and `Agent name · distro name · relative age · status` for WSL sessions,
+using the provider's display name, the exact WSL distro name, and
+`last_activity_at_ms`. Like the session manager,
 timestamps less than seven days old use localized relative time; timestamps at
 least seven days old use the UTC calendar date formatted with Windows' localized
 long-date format. The display refreshes with each snapshot. Missing,
 zero, or invalid timestamps display Unknown, and future timestamps display just now.
 Active uses a theme-aware green success accent, Waiting for input a yellow caution
 accent, and Error a red critical accent, matching the session management view.
-Only the status text is accented; the provider,
+Only the status text is accented; the provider, distro name,
 age, and separators stay muted, and search matches remain highlighted. Host/WSL
-location remains searchable and available for routing but is not in this line.
+location remains searchable and available for routing; Host has no extra location
+label. Status-only updates preserve the provider, distro name, and age from the
+latest snapshot.
+The live session bound to the current terminal pane has a selected background.
+This follows the active pane and its current agent-session binding, not the last
+clicked row; failed activation and search do not change the displayed session.
+The background reuses the current tab's selected color when one is configured,
+with the same contrasting foreground, or the theme's default list selection
+background otherwise. Switching tabs or panes, changing the tab color, and
+refreshing the snapshot update the marker without resetting the session list.
+No row is highlighted when the active pane has no matching live session.
+Unselected rows keep their original container styling and inherited foreground.
+The theme selection background is a separate visual shown only for the current
+row; custom tab-color foreground overrides are cleared when a row loses the
+marker or its container is recycled.
+The default current-row palette pairs the theme's selected background and
+selected foreground, including theme changes. UI Automation exposes a localized
+Current session item status on the current row's list container and clears it
+on deselection or recycling; keyboard selection remains independent.
 Missing or unrecognized states display Unknown rather than implying a historical
 session. Search matches both the displayed status and the raw registry value;
 the existing `live` and `history` search terms remain available. This presentation
@@ -327,6 +371,58 @@ query stay visible without the full-list loading spinner while focus/resume runs
 Repeated activation clicks are ignored until completion, and background snapshots
 cannot clear the activation guard. Closing History resets that guard.
 
+History list requests are single-flight per window. Notifications received during
+activation are coalesced and serviced after activation completes, without hiding
+the existing rows. Initial load failures (including non-zero CLI exits) show a
+warning rather than an empty-history success state. Background refresh failures
+retain the previous snapshot and display a warning alongside it. Refresh errors
+and activation errors are independent: a successful refresh clears only the
+refresh warning, not a failed focus/resume result. Existing localized error
+messages are reused.
+
+Consecutive list failures impose a 5, 10, 20, 40, then 60-second retry delay,
+measured from completion. Both registry notifications and the five-second timer
+respect it; the timer retries on its first eligible tick. Failed requests discard
+the coalesced pending refresh instead of immediately retrying. A `ready` snapshot
+or leaving/reopening the Agents view resets the retry delay. A `loading` discovery
+snapshot is not a failure and does not increase the retry delay.
+
+Closing the view, destroying its page, or starting activation signals cancellation
+of the in-flight list command. The background capture loop checks cancellation
+before launch, while draining output, and between bounded process waits. It
+terminates only its own short-lived list process, not shared WTA master, provider
+discovery, or agent sessions. The UI thread never waits for process exit.
+Late/canceled responses cannot replace the snapshot, display an error, or add
+retry backoff. Reopening coalesces a fresh request until the old worker completes,
+using a new cancellation flag for the new request.
+
+Activation operations are reserved by activation ID before dispatch and owned by
+master, not by the short-lived CLI connection. Concurrent requests with the same
+ID return its pending or completed receipt rather than focusing or restoring
+again. Reusing an ID for another qualified session identity or window is rejected.
+The bounded receipt cache never evicts pending operations.
+Timeouts or unreadable responses from the master's own `wtcli` mutation also
+remain unknown, rather than being converted into a definitive rejection that
+would permit a duplicate restore. A created tab without a usable pane binding
+is likewise not safe to restore again.
+
+A client timeout does not prove that the backend took no action. After an
+unconfirmed activation response, Terminal makes one bounded, read-only
+`sessions activate --status-only` request with the original activation ID and
+qualified identity. This uses the separate `session/activation_status` extension
+method, so an older master cannot mistake a status lookup for another activation.
+An unavailable, pending, malformed, or mismatched receipt leaves the operation
+unresolved and displays the existing activation error. Clicking that row again
+checks the same operation instead of generating a new ID or restoring again.
+Other rows remain independently activatable.
+
+Unresolved IDs survive History close/reopen and list refreshes for the lifetime
+of the page. A matching completed receipt releases the ID, even if the view closed
+while the request was running, without applying a stale UI callback. A late
+receipt cannot release a newer operation. If master restarts or evicts a completed
+receipt before it is observed, status is `unknown`; Terminal conservatively keeps
+the ID and does not automatically redispatch a potentially completed mutation.
+
 At startup, once its named pipe is ready, master checks policy and local
 native agent CLI and required `npx` prerequisites, then initializes installed
 Windows-host providers through the existing native-provider agent pool. Discovery
@@ -341,8 +437,15 @@ including while History is closed. Discovery is asynchronous and single-flight a
 windows, so slow or failed providers do not block existing rows. History synchronization
 preserves live status and pane bindings. WSL/custom sessions already known to the registry
 are still displayed, but this pass does not start WSL distros or unknown custom commands.
-Sidebar snapshots use `--all-agents` to refresh the same resident pool; opening History
-is not required to establish these connections or load the initial histories.
+Master refreshes initialized, listing-capable pooled connections every five seconds,
+including already-connected WSL and custom agents. Snapshot reads never perform ACP
+queries; push notifications remain immediate. The 60-second open-view fallback runs
+in Sidebar for vertical layout and in the helper for nonvertical layout. The host
+propagates the actual window layout through helper-ready and hot runtime config,
+so layout switches do not require an ACP reconnect.
+Host discovery runs at startup, after confirmed installation, or through the explicit
+`wta sessions refresh` command, not on a timer or ordinary snapshot reads. Opening
+History is not required to establish these connections or load the initial histories.
 
 - **Claude** (`classify_claude.rs`) — **turn-based, keyed on `stop_reason`**.
   Claude re-writes the same assistant message id several times as it streams

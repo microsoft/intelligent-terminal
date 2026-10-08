@@ -79,14 +79,15 @@ namespace ItE2E
             Stop-Terminal -App $script:app -RestoreSettings:$false
         }
         if ($script:restoreApp) {
+            if (-not $script:restoreApp.ConfigBackupOwned) { throw 'Session ownership fixture has no owned configuration backup.' }
+            Assert-WtPackageInactive -App $script:restoreApp
             Restore-WtConfig -App $script:restoreApp
         }
     }
 
     It 'Nested prompt keeps resumable pane owner' {
         $package = Get-ItTestPackage
-        $targetApp = Resolve-ItApp -Package $package
-        $script:restoreApp = $targetApp
+        $script:restoreApp = $null
         try {
             $script:app = Start-Terminal -Package $package -PassFre $true -Settings @{
                 firstWindowPreference = 'persistedLayoutAndContent'
@@ -94,11 +95,12 @@ namespace ItE2E
                 autoErrorDetectionEnabled = $false
                 autoFixEnabled = $false
             }
+            if (-not $script:app.Launched -or -not $script:app.ConfigBackupOwned) {
+                throw 'Session ownership fixture requires a successful owned launch and configuration backup.'
+            }
             $script:restoreApp = $script:app
         }
         catch {
-            Stop-AppInstances -App $targetApp
-            Restore-WtConfig -App $targetApp
             $script:restoreApp = $null
             throw
         }
