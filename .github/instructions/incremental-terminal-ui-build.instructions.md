@@ -7,13 +7,12 @@ applyTo: 'src/cascadia/TerminalApp/**/*.cpp, src/cascadia/TerminalApp/**/*.h, sr
 
 Use the existing MSBuild dependency graph. Optimize the changed project, not
 the solution, and preserve coherent generated code, resources, and runtime
-payloads. Repository build and deployment rules still apply.
+payloads. Follow [AGENTS.md](../../AGENTS.md) and
+[the contributor build guide](../../doc/building.md) for environment setup and
+general build/deployment commands; this file covers UI-specific correctness.
 
 ## Select the smallest correct build
 
-- Enter the active worktree before calling `tools\razzle.cmd`. Keep setup and
-  builds in the same CMD process; PowerShell cannot retain a batch file's
-  environment across tool calls.
 - Pin the configuration, architecture, branding, and active `SolutionDir`.
   Do not reuse another worktree's output or mix branding outputs.
 - Use `/t:Build`, not `/t:Rebuild` or a clean solution build, for ordinary

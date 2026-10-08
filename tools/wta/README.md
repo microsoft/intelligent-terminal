@@ -564,7 +564,7 @@ state, or history row. Older protocol servers reject this capability explicitly.
 Host-configured delegation carries the provider separately from its executable
 through `wta delegate --delegate-agent-id`. Custom commands require that explicit
 identity; their executable basename is not treated as a configured provider.
-Provider masks use the canonical `AgentIconResources.xaml` geometry and the
-existing monochrome bitmap tint pipeline. Regenerate the six transparent masks
-with `pwsh -STA -File build\scripts\Generate-AgentIconMasks.ps1`; add `-Check` to
-verify committed outputs without changing them.
+Tabs, panes, Recent Sessions, and the agent picker share the six committed
+transparent PNG assets in `CascadiaPackage\AgentIcons\Masks` and the existing
+monochrome bitmap tint pipeline. `AgentIconResources.xaml` supplies fresh control
+instances for template consumers; it does not maintain separate vector artwork.

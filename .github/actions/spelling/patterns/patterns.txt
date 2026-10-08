@@ -36,10 +36,6 @@ D2D
 # tools/wta/build.rs: Rust stdlib char predicate
 \bis_ascii_hexdigit\b
 
-# Generate-AgentIconMasks.ps1: exact Windows font file and pixel-format identifier
-\bsegmdl2\.ttf\b
-\bPbgra32\b
-
 # Windows ICU relative-time APIs and constants
 \b(?:URelativeDateTime(?:Formatter|Unit)|UCalendar(?:DateFields)?|UDate)\b
 \b(?:ureldatefmt_(?:open|close|formatNumeric)|ucal_(?:open|close|setMillis|getFieldDifference)|uloc_forLanguageTag|u_errorName)\b

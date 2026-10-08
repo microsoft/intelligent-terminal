@@ -6021,27 +6021,22 @@ namespace TerminalAppLocalTests
                 const auto expected = strip.Resources().Lookup(winrt::box_value(L"AgentIcon." + iconId)).as<DataTemplate>();
                 VERIFY_IS_TRUE(item.IconTemplate() == expected);
                 const auto art = item.IconTemplate().LoadContent().as<Viewbox>();
-                VERIFY_IS_TRUE(static_cast<bool>(art.Child()));
+                const auto bitmap = art.Child().as<BitmapIcon>();
+                VERIFY_IS_TRUE(bitmap.ShowAsMonochrome());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/Masks/" } + iconId + L".png", bitmap.UriSource().AbsoluteUri());
+                for (const auto size : { 14.0f, 16.0f })
+                {
+                    art.Measure({ size, size });
+                    art.Arrange({ 0, 0, size, size });
+                    art.UpdateLayout();
+                    VERIFY_ARE_EQUAL(static_cast<double>(size), art.ActualWidth());
+                    VERIFY_ARE_EQUAL(static_cast<double>(size), art.ActualHeight());
+                }
                 for (const auto color : { winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White() })
                 {
                     Media::SolidColorBrush foreground{ color };
                     art.DataContext(foreground);
-                    if (const auto path = art.Child().try_as<Shapes::Path>())
-                    {
-                        VERIFY_IS_TRUE(path.Fill() == foreground);
-                    }
-                    else if (const auto layers = art.Child().try_as<Grid>())
-                    {
-                        VERIFY_ARE_EQUAL(2u, layers.Children().Size());
-                        for (const auto& layer : layers.Children())
-                        {
-                            VERIFY_IS_TRUE(layer.as<Shapes::Path>().Fill() == foreground);
-                        }
-                    }
-                    else
-                    {
-                        VERIFY_IS_TRUE(art.Child().as<SymbolIcon>().Foreground() == foreground);
-                    }
+                    VERIFY_IS_TRUE(bitmap.Foreground() == foreground);
                 }
             }
         });
