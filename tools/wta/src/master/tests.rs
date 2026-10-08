@@ -740,7 +740,8 @@ fn resolve(
         None,
         None,
         HelperId(1),
-    );
+    )
+    .unwrap();
     (selection.command, selection.agent_id)
 }
 
@@ -764,7 +765,8 @@ fn known_agent_selection_preserves_wsl_source() {
         Some("wsl"),
         Some("Ubuntu"),
         HelperId(1),
-    );
+    )
+    .unwrap();
     assert_eq!(selection.command, "copilot --acp --stdio");
     assert_eq!(selection.agent_id.as_deref(), Some("copilot"));
     assert_eq!(
@@ -803,7 +805,8 @@ fn antigravity_selection_uses_the_native_command_for_each_source() {
             source,
             distro,
             HelperId(1),
-        );
+        )
+        .unwrap();
         assert_eq!(selection.command, expected_command);
         assert_eq!(selection.agent_id.as_deref(), Some("antigravity"));
         assert_eq!(
@@ -812,8 +815,30 @@ fn antigravity_selection_uses_the_native_command_for_each_source() {
         );
         assert_eq!(
             selection.source,
-            crate::agent_source::AgentSource::from_wire(source, distro)
+            crate::agent_source::AgentSource::from_wire(source, distro).unwrap()
         );
+    }
+}
+
+#[test]
+fn invalid_wsl_wire_selection_never_becomes_a_host_fallback() {
+    for agent_id in [Some("antigravity"), Some("copilot"), None] {
+        for distro in [None, Some(""), Some("Ubuntu extra"), Some("Ubuntu&bad")] {
+            let result = resolve_agent_selection(
+                DEFAULT_CMD,
+                Some("copilot"),
+                None,
+                agent_id,
+                None,
+                Some("wsl"),
+                distro,
+                HelperId(1),
+            );
+            let error = result
+                .err()
+                .expect("Invalid WSL metadata must reject selection.");
+            assert_eq!(error.code, acp::Error::invalid_params().code);
+        }
     }
 }
 
@@ -12090,7 +12115,8 @@ async fn assert_rejected_selection_uses_native_provider(
         None,
         None,
         HelperId(1),
-    );
+    )
+    .unwrap();
 
     assert_eq!(selection.command, DEFAULT_CMD);
     assert_eq!(selection.agent_id.as_deref(), Some("copilot"));

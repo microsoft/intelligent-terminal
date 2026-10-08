@@ -35,18 +35,20 @@ impl AgentSource {
 
     /// Parse the source fields carried on the helper command line or `_meta.wta`.
     ///
-    /// Invalid/incomplete values fail closed to `Host`; callers log malformed
-    /// WSL requests before using this compatibility fallback.
-    pub fn from_wire(kind: Option<&str>, distro: Option<&str>) -> Self {
+    /// Absent or legacy source kinds retain the host default. Explicit WSL
+    /// requests must name a valid distro and never fall back to a host agent.
+    pub fn from_wire(kind: Option<&str>, distro: Option<&str>) -> anyhow::Result<Self> {
         match kind.map(str::trim) {
-            Some(kind) if kind.eq_ignore_ascii_case(Self::WSL_KIND) => distro
-                .map(str::trim)
-                .filter(|distro| !distro.is_empty())
-                .map(|distro| Self::Wsl {
+            Some(kind) if kind.eq_ignore_ascii_case(Self::WSL_KIND) => {
+                let distro = distro
+                    .map(str::trim)
+                    .filter(|name| is_safe_wsl_distro_name(name))
+                    .ok_or_else(|| anyhow::anyhow!("Invalid or missing WSL distribution name"))?;
+                Ok(Self::Wsl {
                     distro: distro.to_string(),
                 })
-                .unwrap_or(Self::Host),
-            _ => Self::Host,
+            }
+            _ => Ok(Self::Host),
         }
     }
 
@@ -198,20 +200,51 @@ mod tests {
     use super::*;
 
     #[test]
+    fn wire_source_does_not_accept_unsafe_wsl_metadata() {
+        for distro in [
+            "Ubuntu&echo-marker",
+            "Ubuntu;echo-marker",
+            "Ubuntu extra",
+            "../Ubuntu",
+            "Ubuntu\"",
+            "Ubuntu\nextra",
+        ] {
+            assert!(
+                AgentSource::from_wire(Some("wsl"), Some(distro)).is_err(),
+                "An unsafe wire distro must be rejected, not routed to WSL or a host agent."
+            );
+        }
+        let too_long = "x".repeat(257);
+        assert!(AgentSource::from_wire(Some("wsl"), Some(&too_long)).is_err());
+        assert!(AgentSource::from_wire(Some("wsl"), None).is_err());
+    }
+
+    #[test]
     fn wire_source_requires_a_nonempty_wsl_distro() {
         assert_eq!(
-            AgentSource::from_wire(Some("wsl"), Some("Ubuntu")),
+            AgentSource::from_wire(Some("wsl"), Some("Ubuntu")).unwrap(),
             AgentSource::Wsl {
                 distro: "Ubuntu".to_string()
             }
         );
+        assert!(AgentSource::from_wire(Some("wsl"), Some(" ")).is_err());
         assert_eq!(
-            AgentSource::from_wire(Some("wsl"), Some(" ")),
+            AgentSource::from_wire(Some("unknown"), Some("Ubuntu")).unwrap(),
             AgentSource::Host
         );
         assert_eq!(
-            AgentSource::from_wire(Some("unknown"), Some("Ubuntu")),
+            AgentSource::from_wire(None, None).unwrap(),
             AgentSource::Host
+        );
+        assert_eq!(
+            AgentSource::from_wire(Some("host"), None).unwrap(),
+            AgentSource::Host
+        );
+        assert_eq!(
+            AgentSource::from_wire(Some(" WSL "), Some(" Ubuntu-24.04+dev ")).unwrap(),
+            AgentSource::Wsl {
+                distro: "Ubuntu-24.04+dev".into(),
+            }
         );
     }
 

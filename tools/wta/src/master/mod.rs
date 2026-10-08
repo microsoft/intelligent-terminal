@@ -3397,7 +3397,7 @@ impl HelperHandler {
             wta_meta.agent_source.as_deref(),
             wta_meta.wsl_distro.as_deref(),
             self.helper_id,
-        );
+        )?;
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -5378,6 +5378,7 @@ fn helper_initialize_error(
 /// *unknown* id (not in [`agent_registry::KNOWN_AGENTS`] — e.g. a
 /// `custom:` agent, which the global default already covers), or an id
 /// the host's GPO allowlist excludes.
+/// Malformed explicit WSL source metadata is rejected before any fallback.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ExplicitAgentSelection {
     ImplicitDefault,
@@ -5401,7 +5402,18 @@ fn resolve_agent_selection(
     requested_source: Option<&str>,
     requested_wsl_distro: Option<&str>,
     helper_id: HelperId,
-) -> ResolvedAgentSelection {
+) -> acp::Result<ResolvedAgentSelection> {
+    let source =
+        crate::agent_source::AgentSource::from_wire(requested_source, requested_wsl_distro)
+            .map_err(|error| {
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?helper_id,
+                    %error,
+                    "rejecting invalid helper execution source"
+                );
+                acp::Error::invalid_params().data(error.to_string())
+            })?;
     let requested = requested_id
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -5421,16 +5433,14 @@ fn resolve_agent_selection(
             let model = requested_model.map(str::trim).filter(|s| !s.is_empty());
             let launch_model =
                 model.filter(|_| !crate::agent_registry::supports_live_model_switch(id));
-            let source =
-                crate::agent_source::AgentSource::from_wire(requested_source, requested_wsl_distro);
             let cmd =
                 crate::agent_registry::build_acp_command_for_source(id, launch_model, &source);
-            return ResolvedAgentSelection {
+            return Ok(ResolvedAgentSelection {
                 command: cmd,
                 agent_id: Some(id.to_string()),
                 source,
                 explicit_selection: ExplicitAgentSelection::Accepted,
-            };
+            });
         }
 
         // A real selection we refused — surface why, then fall back.
@@ -5445,7 +5455,7 @@ fn resolve_agent_selection(
         );
     }
 
-    ResolvedAgentSelection {
+    Ok(ResolvedAgentSelection {
         command: default_cmd.to_string(),
         agent_id: default_id.map(str::to_string),
         source: crate::agent_source::AgentSource::Host,
@@ -5454,7 +5464,7 @@ fn resolve_agent_selection(
         } else {
             ExplicitAgentSelection::ImplicitDefault
         },
-    }
+    })
 }
 
 async fn resolve_provider_binding(

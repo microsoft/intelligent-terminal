@@ -118,7 +118,7 @@ pub(super) async fn run_default_tui_over_pipe(
     let agent_source = crate::agent_source::AgentSource::from_wire(
         config.agent_source.as_deref(),
         config.agent_wsl_distro.as_deref(),
-    );
+    )?;
     config.agent_source_cwd =
         crate::agent_source::resolve_source_cwd(&agent_source, config.agent_source_cwd.as_deref())
             .await;
@@ -394,7 +394,7 @@ async fn run_acp_app(
     let agent_source = crate::agent_source::AgentSource::from_wire(
         config.agent_source.as_deref(),
         config.agent_wsl_distro.as_deref(),
-    );
+    )?;
     let agent_source_cwd = config.agent_source_cwd.clone();
     // One helper-owned policy state is shared by the App reducer and every
     // ACP client connection so settings and policy hot reloads take effect

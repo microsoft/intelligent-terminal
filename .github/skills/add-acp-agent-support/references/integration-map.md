@@ -36,6 +36,9 @@ precedence and distinguish native WSL targets from Windows-interoperability link
 Preserve platform-specific arguments without duplicating authentication/session/protocol
 handling for Windows and Linux.
 Use the existing host/WSL source abstraction and never silently fall back to the host.
+Validate explicit WSL metadata at the shared wire boundary as well as at launch
+sinks. Missing or malformed distro names must reject helper/master startup,
+not become a host agent selection. Retain legacy absent/host source behavior.
 
 ## WTA (Rust)
 

@@ -46,6 +46,8 @@ Add or update tests for:
   failure, plus cleared links on cancellation/timeout/source changes;
 - source-correct external login argument vectors, including WSL/default-user and
   preserved host/enterprise behavior;
+- malformed or incomplete explicit WSL metadata at helper/master wire startup,
+  with valid-name parity and explicit rejection before host fallback or launch;
 - resume/new-session metadata when supported;
 - session source parsing, filtering, wire round-trips, labels, and exact resume
   dispatch when session management is supported;
