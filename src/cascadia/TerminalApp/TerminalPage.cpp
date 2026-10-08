@@ -3657,10 +3657,7 @@ namespace winrt::TerminalApp::implementation
             {
                 info.providerId = providerIdString;
             }
-            if (lastActivityAtMs)
-            {
-                info.lastActivityAtMs = lastActivityAtMs;
-            }
+            info.lastActivityAtMs = lastActivityAtMs;
         };
         ++_richTabAgentStatusRequestGeneration;
         if (_richTabAgentStatusRefreshInFlight)

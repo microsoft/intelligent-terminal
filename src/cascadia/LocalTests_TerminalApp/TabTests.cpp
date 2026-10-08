@@ -5778,6 +5778,10 @@ namespace TerminalAppLocalTests
                 candidate.lastActivityAtMs = 9999;
                 candidate.sessionId = ended.sessionId;
                 VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(ended, candidate));
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(latest.sessionId, paneIdString, "copilot", std::nullopt, "Attention"));
+                VERIFY_IS_FALSE(page->_RichTabAgentInfoForControl(control)->lastActivityAtMs.has_value());
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(latest.sessionId, paneIdString, "copilot", 1300, "Working"));
+                VERIFY_ARE_EQUAL(uint64_t{ 1300 }, page->_RichTabAgentInfoForControl(control)->lastActivityAtMs.value());
                 VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(latest.sessionId, paneIdString, "copilot", 1600, "Ended"));
                 VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("new-custom-session", paneIdString, "custom:wrapper", 2000, "Working"));
                 const auto rebound = page->_RichTabAgentInfoForControl(control);
@@ -5786,6 +5790,9 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(std::string{ "custom:wrapper" }, rebound->providerId);
                 VERIFY_ARE_EQUAL(std::string{ "Working" }, rebound->status);
                 VERIFY_ARE_EQUAL(pane->GetContent().Icon(), tab->Icon());
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(latest.sessionId, paneIdString, "copilot", 1600, "Ended"));
+                VERIFY_ARE_EQUAL(std::string{ "new-custom-session" }, page->_RichTabAgentInfoForControl(control)->sessionId);
+                VERIFY_ARE_EQUAL(std::string{ "Working" }, page->_RichTabAgentInfoForControl(control)->status);
             }
         });
     }
