@@ -1455,14 +1455,12 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_ShouldReplaceReportedAgentState(const _RichTabAgentInfo& existing, const _RichTabAgentInfo& incoming)
     {
-        const auto differentSessionsWithCompletedSession = existing.sessionId != incoming.sessionId &&
-                                                           (existing.status == "Ended" || existing.status == "Historical" ||
-                                                            incoming.status == "Ended" || incoming.status == "Historical");
-        if (!differentSessionsWithCompletedSession && !_ShouldUseIncomingAgentProvider(existing.providerId, incoming.providerId))
+        const auto sameSession = existing.sessionId == incoming.sessionId && existing.paneSessionId == incoming.paneSessionId;
+        if (sameSession && !_ShouldUseIncomingAgentProvider(existing.providerId, incoming.providerId))
         {
             return false;
         }
-        if (!differentSessionsWithCompletedSession && _IsBuiltinAgentProviderId(incoming.providerId) && !_IsBuiltinAgentProviderId(existing.providerId))
+        if (sameSession && _IsBuiltinAgentProviderId(incoming.providerId) && !_IsBuiltinAgentProviderId(existing.providerId))
         {
             return true;
         }
@@ -1473,13 +1471,21 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_ShouldReplaceSnapshotAgentState(const _RichTabAgentInfo& existing, const _RichTabAgentInfo& incoming, const _RichTabAgentInfo* lastReceived)
     {
-        if (!_ShouldReplaceReportedAgentState(existing, incoming))
+        if (existing.sessionId == incoming.sessionId && existing.paneSessionId == incoming.paneSessionId)
         {
-            return false;
+            if (!_ShouldUseIncomingAgentProvider(existing.providerId, incoming.providerId))
+            {
+                return false;
+            }
+            if (_IsBuiltinAgentProviderId(incoming.providerId) && !_IsBuiltinAgentProviderId(existing.providerId))
+            {
+                return true;
+            }
         }
-        if (!_ShouldReplaceReportedAgentState(incoming, existing))
+        if (existing.lastActivityAtMs && incoming.lastActivityAtMs &&
+            existing.lastActivityAtMs != incoming.lastActivityAtMs)
         {
-            return true;
+            return incoming.lastActivityAtMs > existing.lastActivityAtMs;
         }
         if (lastReceived)
         {
@@ -1493,7 +1499,48 @@ namespace winrt::TerminalApp::implementation
                 return matches(incoming);
             }
         }
-        return std::tie(existing.providerId, existing.sessionId) < std::tie(incoming.providerId, incoming.sessionId);
+        return std::tie(existing.lastActivityAtMs, existing.providerId, existing.sessionId) <
+               std::tie(incoming.lastActivityAtMs, incoming.providerId, incoming.sessionId);
+    }
+
+    std::unordered_map<winrt::guid, TerminalPage::_RichTabAgentInfo> TerminalPage::_BuildSnapshotPaneAgentStates(const std::vector<_RichTabAgentInfo>& rows, const std::unordered_map<winrt::guid, _RichTabAgentInfo>& lastReceivedByPane)
+    {
+        std::unordered_map<winrt::guid, std::unordered_map<std::string, _RichTabAgentInfo>> sessionsByPane;
+        for (const auto& row : rows)
+        {
+            if (!row.paneSessionId)
+            {
+                continue;
+            }
+            const auto known = lastReceivedByPane.find(*row.paneSessionId);
+            const auto preferred = known != lastReceivedByPane.end() ? &known->second : nullptr;
+            auto& sessions = sessionsByPane[*row.paneSessionId];
+            const auto existing = sessions.find(row.sessionId);
+            if (existing == sessions.end() || _ShouldReplaceSnapshotAgentState(existing->second, row, preferred))
+            {
+                auto incoming = row;
+                if (incoming.providerId.empty() && existing != sessions.end())
+                {
+                    incoming.providerId = existing->second.providerId;
+                }
+                sessions.insert_or_assign(row.sessionId, std::move(incoming));
+            }
+        }
+        std::unordered_map<winrt::guid, _RichTabAgentInfo> selected;
+        for (const auto& [paneId, sessions] : sessionsByPane)
+        {
+            const auto known = lastReceivedByPane.find(paneId);
+            const auto preferred = known != lastReceivedByPane.end() ? &known->second : nullptr;
+            for (const auto& [sessionId, state] : sessions)
+            {
+                const auto existing = selected.find(paneId);
+                if (existing == selected.end() || _ShouldReplaceSnapshotAgentState(existing->second, state, preferred))
+                {
+                    selected.insert_or_assign(paneId, state);
+                }
+            }
+        }
+        return selected;
     }
 
     using SelectedCustomModel = std::pair<
@@ -11564,6 +11611,7 @@ namespace winrt::TerminalApp::implementation
 
         std::unordered_map<std::string, _RichTabAgentInfo> statusesBySessionId;
         std::unordered_map<winrt::guid, _RichTabAgentInfo> statusesByPaneId;
+        std::vector<_RichTabAgentInfo> paneRows;
         bool parsed = result.completed && result.exitCode == 0;
         if (parsed)
         {
@@ -11623,23 +11671,15 @@ namespace winrt::TerminalApp::implementation
                 if (paneId)
                 {
                     const auto rowSessionId = row.get("session_id", "").asString();
-                    auto incoming = _RichTabAgentInfo{ rowSessionId, status, providerId, lastActivityAtMs, paneId };
-                    const auto existing = statusesByPaneId.find(*paneId);
-                    const auto sameSession = existing != statusesByPaneId.end() &&
-                                             existing->second.sessionId == rowSessionId;
-                    if (existing == statusesByPaneId.end() ||
-                        _ShouldReplaceSnapshotAgentState(existing->second, incoming, preferred))
-                    {
-                        if (providerId.empty() && sameSession)
-                        {
-                            incoming.providerId = existing->second.providerId;
-                        }
-                        statusesByPaneId.insert_or_assign(*paneId, incoming);
-                    }
+                    paneRows.push_back(_RichTabAgentInfo{ rowSessionId, status, providerId, lastActivityAtMs, paneId });
                 }
             }
         }
 
+        if (parsed)
+        {
+            statusesByPaneId = _BuildSnapshotPaneAgentStates(paneRows, lastReceivedByPane);
+        }
         co_await wil::resume_foreground(dispatcher);
         const auto page = weakThis.get();
         if (!page)

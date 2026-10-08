@@ -375,6 +375,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
         TEST_METHOD(LatestBuiltinAgentReportWinsForPane);
         TEST_METHOD(AgentSnapshotTiesPreserveLastReceivedPaneReport);
+        TEST_METHOD(AgentSnapshotSelectionIsIndependentOfRowOrder);
         TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
         TEST_METHOD(BottomBarSessionsButtonDispatchesExistingAction);
         TEST_METHOD(BottomBarSessionsButtonTracksVisibleView);
@@ -5742,7 +5743,7 @@ namespace TerminalAppLocalTests
                     activity += 100;
                 }
                 const auto latest = *page->_RichTabAgentInfoForControl(control);
-                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("custom-report", paneIdString, "custom:wrapper", 2000, "Error"));
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(latest.sessionId, paneIdString, "custom:wrapper", 2000, "Error"));
                 VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("claude-1100", paneIdString, "claude", 1200, "Ended"));
                 const auto retained = page->_RichTabAgentInfoForControl(control);
                 VERIFY_IS_TRUE(retained.has_value());
@@ -5765,6 +5766,7 @@ namespace TerminalAppLocalTests
                 candidate.lastActivityAtMs = std::nullopt;
                 VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(latest, candidate));
                 candidate.providerId = "custom:wrapper";
+                candidate.sessionId = latest.sessionId;
                 candidate.lastActivityAtMs = 9999;
                 VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(latest, candidate));
                 VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(candidate, latest));
@@ -5830,6 +5832,46 @@ namespace TerminalAppLocalTests
         Page::_RichTabAgentInfo custom{ "new-custom-session", "Working", "custom:wrapper", std::nullopt, paneId };
         VERIFY_IS_TRUE(Page::_ShouldReplaceSnapshotAgentState(copilot, custom, &custom));
         VERIFY_IS_FALSE(Page::_ShouldReplaceSnapshotAgentState(custom, copilot, &custom));
+    }
+
+    void TabTests::AgentSnapshotSelectionIsIndependentOfRowOrder()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        const winrt::guid paneId{ L"{3ab11111-2222-3333-4444-555555555555}" };
+        std::vector<Page::_RichTabAgentInfo> rows{
+            { "session-a", "Working", "copilot", 1000, paneId },
+            { "session-b", "Ended", "custom:b", 2000, paneId },
+            { "session-c", "Working", "custom:c", 3000, paneId },
+            { "session-a", "Working", "custom:a", 9000, paneId }
+        };
+        std::array<size_t, 4> order{ 0, 1, 2, 3 };
+        do
+        {
+            std::vector<Page::_RichTabAgentInfo> shuffled;
+            for (const auto index : order)
+            {
+                shuffled.push_back(rows[index]);
+            }
+            const auto selected = Page::_BuildSnapshotPaneAgentStates(shuffled, {});
+            VERIFY_ARE_EQUAL(std::string{ "session-c" }, selected.at(paneId).sessionId);
+            VERIFY_ARE_EQUAL(std::string{ "custom:c" }, selected.at(paneId).providerId);
+        } while (std::next_permutation(order.begin(), order.end()));
+
+        rows[2].lastActivityAtMs = std::nullopt;
+        std::unordered_map<winrt::guid, Page::_RichTabAgentInfo> lastReceived{ { paneId, rows[2] } };
+        order = { 0, 1, 2, 3 };
+        do
+        {
+            std::vector<Page::_RichTabAgentInfo> shuffled;
+            for (const auto index : order)
+            {
+                shuffled.push_back(rows[index]);
+            }
+            const auto selected = Page::_BuildSnapshotPaneAgentStates(shuffled, lastReceived);
+            VERIFY_ARE_EQUAL(std::string{ "session-c" }, selected.at(paneId).sessionId);
+            const auto withoutKnownWinner = Page::_BuildSnapshotPaneAgentStates(shuffled, {});
+            VERIFY_ARE_EQUAL(std::string{ "session-b" }, withoutKnownWinner.at(paneId).sessionId);
+        } while (std::next_permutation(order.begin(), order.end()));
     }
 
     void TabTests::VerticalTabHistoryRelativeAge()
