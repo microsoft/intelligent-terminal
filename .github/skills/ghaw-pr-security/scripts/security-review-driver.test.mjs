@@ -544,6 +544,51 @@ test('deterministic fake children prove sequential fixed routing, exact native e
   });
 });
 
+test('fixed reviewer prompt requires native production ownership proof and rejects test-only or ambiguous repairs', () => {
+  withFixture(fixture => {
+    const options = driverOptions(fixture);
+    const runChild = options.runChild;
+    options.runChild = (binary, args, settings) => {
+      if (args[args.lastIndexOf('--agent') + 1] === 'ghaw-pr-security-reviewer') {
+        const prompt = args[args.lastIndexOf('--prompt') + 1];
+        for (const requirement of [
+          'Every proposed replacement must change production runtime code.',
+          'Reject test-only repairs, including inline #[cfg(test)] code.',
+          'native base/head source reads of enclosing cfg/cfg_attr attributes and parent module declarations',
+          'including external #[path] modules',
+          'read beyond requiredNativeRanges as needed',
+          'Missing or ambiguous production ownership requires FAIL.',
+          'Untouched original PR test changes and unrelated inline tests',
+          'Rust conditional ownership is your semantic source-review gate',
+        ]) assert(prompt.includes(requirement), requirement);
+      }
+      return runChild(binary, args, settings);
+    };
+    assert.equal(runSecurityReviewDriver(options).reviewed, true);
+  });
+  const profile = readFileSync(new URL('../../../agents/ghaw-pr-security-reviewer.agent.md', import.meta.url), 'utf8').replace(/\s+/g, ' ');
+  const skill = readFileSync(new URL('../SKILL.md', import.meta.url), 'utf8').replace(/\s+/g, ' ');
+  assert(profile.includes('Missing or ambiguous production ownership requires `FAIL`'));
+  assert(profile.includes('including inline `#[cfg(test)]` code'));
+  assert(skill.includes('Missing or ambiguous production ownership leaves the finding `blocked`'));
+  assert(skill.includes('semantic source-review gate, not deterministic Rust conditional parsing'));
+});
+
+for (const reason of ['Inline cfg(test) replacement is test-only.', 'Production ownership is ambiguous; parent module proof is missing.']) {
+  test(`ownership rejection cannot stamp a proposal: ${reason}`, () => {
+    withFixture(fixture => {
+      const events = reviewerEvents();
+      events.find(event => event.type === 'assistant.message').data.content = JSON.stringify({
+        status: 'FAIL', headSha: HEAD, patchSha256: DIGEST, evidence: reason,
+      });
+      assert.throws(() => runSecurityReviewDriver(driverOptions(fixture, events)), /rejection/);
+      const report = JSON.parse(readFileSync(fixture.reportPath, 'utf8'));
+      assert.equal(report.review.status, 'pending');
+      assert.throws(() => validateProposal(report, scope), /independent review/);
+    });
+  });
+}
+
 test('fixed transition diagnostics precede each bounded child without exposing model content', () => {
   withFixture(fixture => {
     const options = driverOptions(fixture);

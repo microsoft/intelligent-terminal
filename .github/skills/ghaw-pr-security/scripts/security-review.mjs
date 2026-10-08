@@ -63,6 +63,21 @@ export function normalizePath(value, name = 'path') {
   return value;
 }
 
+export function validateRepairTargetPath(value) {
+  const path = normalizePath(value, 'repair target path');
+  if (!/^tools\/wta\/src\/.*\.rs$/.test(path)) {
+    fail('repair target is outside the automatic-fix allowlist');
+  }
+  const parts = path.split('/');
+  const name = parts.pop();
+  // Naming exclusions are conservative; inline cfg/module ownership remains a source-review obligation.
+  if (/^(?:tests?\.rs|.*_tests?\.rs|test_support\.rs)$/i.test(name) ||
+      parts.some(part => /^(?:tests?|test_support)$/i.test(part))) {
+    fail('test-only repair target paths remain blocked for guidance');
+  }
+  return path;
+}
+
 export function classifyPath(path) {
   const domains = new Set();
   if (/^src\//.test(path)) {
@@ -444,10 +459,7 @@ export function validateReport(report, scope, phase = 'final') {
   }
   const patch = report.patch.map((item, index) => {
     if (!item || typeof item !== 'object') fail(`patch item ${index + 1} is invalid`);
-    const path = normalizePath(item.path, `patch item ${index + 1} path`);
-    if (!/^tools\/wta\/src\/.*\.rs$/.test(path)) {
-      fail(`patch item ${index + 1} is outside the automatic-fix allowlist`);
-    }
+    const path = validateRepairTargetPath(item.path);
     return { path, summary: text(item.summary, `patch item ${index + 1} summary`, 300) };
   });
   const fixed = findings.filter(finding => ['fixed', 'proposed'].includes(finding.fixDisposition.state));
@@ -609,7 +621,7 @@ export function validateRepairChanges(scope, patch) {
       complete();
       file = undefined;
     } else if (line.startsWith('+++ b/') && !oldRemaining && !newRemaining) {
-      const path = normalizePath(line.slice(6));
+      const path = validateRepairTargetPath(line.slice(6));
       file = scope.immutableHunks?.find(item => item.path === path);
       if (!file || !scope.changedFiles.some(item => item.path === path && item.status === 'M')) {
         fail('repair patch path is outside immutable scope');
@@ -670,6 +682,7 @@ function securityRepairTarget(scope, workspace, path) {
       !/^tools\/wta\/src\/.*\.rs$/.test(relative)) {
     fail('repair writer accepts only existing modified WTA Rust source in the immutable scope');
   }
+  validateRepairTargetPath(relative);
   const root = realpathSync(resolve(workspace));
   const target = resolve(root, relative);
   if (!target.startsWith(`${root}${sep}`) || realpathSync(target) !== target ||
@@ -753,8 +766,8 @@ export function validatePatch(report, actualPaths, patchText = '', scope) {
     }
     if (patchText === '') fail('reported repair requires a nonempty actual patch');
   }
-  const expected = [...new Set(report.patch.map(item => item.path))].sort();
-  const actual = [...new Set(actualPaths.map(path => normalizePath(path, 'working tree path')))].sort();
+  const expected = [...new Set(report.patch.map(item => validateRepairTargetPath(item.path)))].sort();
+  const actual = [...new Set(actualPaths.map(path => validateRepairTargetPath(path)))].sort();
   if (JSON.stringify(expected) !== JSON.stringify(actual)) {
     fail(`reported patch paths do not match the working tree: expected [${expected}], actual [${actual}]`);
   }
@@ -851,6 +864,7 @@ export function stageRepairFiles(report, sourceRoot, targetRoot) {
     if (!/^tools\/wta\/src\/.*\.rs$/.test(path) || seen.has(path)) {
       fail(`patch item ${index + 1} is not a unique WTA Rust source path`);
     }
+    validateRepairTargetPath(path);
     seen.add(path);
     const source = resolve(sourceBase, path);
     const target = resolve(targetBase, path);

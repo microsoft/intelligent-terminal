@@ -9,7 +9,7 @@ import {
   SECURITY_NOOP_MESSAGE, attestChecks, buildScope, classifyPath, createReportTemplate, normalizePath, renderReport, validatePatch,
   validateQueuedOutput, validateReport, validateProposal, validateCandidate, stageRepairFiles, validateRepairScope,
   submitSecurityReport, readSecurityDiff, readImmutableHunks, readSecuritySource, inspectSecurityRepair, writeSecurityRepair, replaceSecurityRepairText, verifyCredentialFree,
-  publicationDecision, validatePublicationRun, validateNativePublicationProof, preparePublication, validateRepairChanges,
+  publicationDecision, validatePublicationRun, validateNativePublicationProof, preparePublication, validateRepairChanges, validateRepairTargetPath,
   createDetectorPublicationProof, validateDetectorPublicationProof, validateDetectorExecutionJobs,
 } from './security-review.mjs';
 import { PREPARE_SHA256, INSTALL_SHA256, consumedBinding, stageDetectorInputs, verifyDetectorInputs,
@@ -752,6 +752,118 @@ function repairScopeWithStatus(status) {
     'repair',
   );
 }
+
+function repairCandidate(current, path, line = 1) {
+  return {
+    ...createReportTemplate(current), summary: 'Localized production repair candidate.',
+    review: { status: 'pending', reviewer: 'ghaw-pr-security-reviewer', evidence: 'Awaiting independent source review.' },
+    findings: [{
+      rule: 'session-route-target-binding', severity: 'high', confidence: 'high', category: 'session-routing',
+      file: path, startLine: line, endLine: line,
+      observed: 'Changed route bypasses owner binding.', expected: 'Preserve owner binding.', impact: 'Wrong-session mutation.',
+      evidence: [{ kind: 'source-trace', reference: `${path}:${line}`, detail: 'Changed route source trace.' }],
+      proposedFix: 'Restore owner lookup.', validation: 'Run focused wrong-session tests.',
+      fixDisposition: { state: 'proposed', reason: 'Awaiting source review and trusted validation.' },
+    }],
+    patch: [{ path, summary: 'Restore owner lookup.' }],
+  };
+}
+
+const TEST_REPAIR_PATHS = [
+  'tools/wta/src/tests.rs', 'tools/wta/src/test.rs',
+  'tools/wta/src/routing_tests.rs', 'tools/wta/src/routing_test.rs',
+  'tools/wta/src/test_support.rs', 'tools/wta/src/tests/routing.rs',
+  'tools/wta/src/test/routing.rs', 'tools/wta/src/test_support/routing.rs',
+  'tools/wta/src/Tests/routing.rs',
+];
+
+test('test target guard applies to candidate, proposal, final and actual patch, not complete PR scope', () => {
+  for (const path of TEST_REPAIR_PATHS) {
+    const current = buildScope(BASE, HEAD, 17, 'same-repo', `M\0${path}\0`, BASE, 'repair', [{
+      path, headLineCount: 1, hunks: [{ baseStart: 1, baseCount: 1, headStart: 1, headCount: 1 }],
+    }]);
+    assert.doesNotThrow(() => validateRepairScope(current));
+    assert.throws(() => validateRepairTargetPath(path), /test-only repair target/);
+    const patch = `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1 +1 @@\n-old\n+new\n`;
+    const candidate = repairCandidate(current, path);
+    assert.throws(() => validateCandidate(candidate, current), /test-only repair target/);
+    const proposal = { ...candidate, review: {
+      status: 'source-pass', reviewer: 'ghaw-pr-security-reviewer', headSha: HEAD,
+      patchSha256: createHash('sha256').update(patch).digest('hex'), evidence: 'Independent source review fixture.',
+    } };
+    assert.throws(() => validateProposal(proposal, current), /test-only repair target/);
+    assert.throws(() => validateReport(attestChecks(proposal, HEAD, true, patch), current), /test-only repair target/);
+    assert.throws(() => validateRepairChanges(current, patch), /test-only repair target/);
+    assert.throws(() => validatePatch(proposal, [path], patch, current), /test-only repair target/);
+  }
+});
+
+test('native writes and staging reject test targets without changing bytes or index; mixed production repair remains eligible', () => {
+  const root = mkdtempSync(join(process.cwd(), '.test-target-policy-'));
+  const workspace = join(root, 'source');
+  const target = join(root, 'target');
+  mkdirSync(workspace);
+  const git = (...args) => execFileSync('git', args, { cwd: workspace, encoding: 'utf8', timeout: 30_000 }).trim();
+  const production = 'tools/wta/src/master/routing.rs';
+  const paths = [production, ...TEST_REPAIR_PATHS.filter(path => !path.includes('/Tests/'))];
+  const source = 'fn route() { /* base */ }\n#[cfg(test)]\nmod tests { #[test] fn unrelated() {} }\n';
+  try {
+    git('init', '--quiet');
+    git('config', 'user.name', 'Local contract fixture');
+    git('config', 'user.email', 'fixture@example.invalid');
+    git('config', 'core.autocrlf', 'false');
+    for (const path of paths) {
+      const destination = join(workspace, ...path.split('/'));
+      mkdirSync(join(destination, '..'), { recursive: true });
+      writeFileSync(destination, source);
+    }
+    git('add', '.');
+    git('commit', '--quiet', '-m', 'Fixture base');
+    const base = git('rev-parse', 'HEAD');
+    for (const path of paths) writeFileSync(join(workspace, ...path.split('/')), source.replace('base', 'changed'));
+    git('add', '.');
+    git('commit', '--quiet', '-m', 'Fixture head');
+    const head = git('rev-parse', 'HEAD');
+    git('-c', 'core.autocrlf=false', 'clone', '--quiet', '--no-hardlinks', workspace, target);
+    const raw = paths.map(path => `M\0${path}\0`).join('');
+    const inputs = buildScope(base, head, 17, 'same-repo', raw, base, 'repair');
+    const current = buildScope(base, head, 17, 'same-repo', raw, base, 'repair', readImmutableHunks(inputs, workspace));
+    assert.doesNotThrow(() => validateRepairScope(current));
+    const indexBefore = readFileSync(join(workspace, '.git', 'index'));
+    const targetIndexBefore = readFileSync(join(target, '.git', 'index'));
+    for (const path of paths.slice(1)) {
+      const destination = join(workspace, ...path.split('/'));
+      const before = readFileSync(destination);
+      assert.throws(() => writeSecurityRepair(current, workspace, path, 'repaired\n'), /test-only repair target/);
+      assert.throws(() => replaceSecurityRepairText(current, workspace, path,
+        JSON.stringify([{ oldText: 'changed', newText: 'repaired' }])), /test-only repair target/);
+      assert.throws(() => stageRepairFiles(repairCandidate(current, path), workspace, target), /test-only repair target/);
+      assert.deepEqual(readFileSync(destination), before);
+      assert.deepEqual(readFileSync(join(target, ...path.split('/'))), before);
+    }
+    assert.deepEqual(readFileSync(join(workspace, '.git', 'index')), indexBefore);
+    assert.deepEqual(readFileSync(join(target, '.git', 'index')), targetIndexBefore);
+    const candidate = repairCandidate(current, production);
+    assert.doesNotThrow(() => validateCandidate(candidate, current));
+    const repaired = source.replace('base', 'owner bound');
+    const result = writeSecurityRepair(current, workspace, production, repaired);
+    const proposal = { ...candidate, review: {
+      status: 'source-pass', reviewer: 'ghaw-pr-security-reviewer', headSha: head,
+      patchSha256: result.patchSha256, evidence: 'Fixture approval; semantic ownership is not mechanically classified.',
+    } };
+    assert.doesNotThrow(() => validateProposal(proposal, current));
+    assert.doesNotThrow(() => validateReport(attestChecks(proposal, head, true, result.patch), current));
+    validatePatch(proposal, [production], result.patch, current);
+    assert.deepEqual(stageRepairFiles(proposal, workspace, target), [production]);
+    assert.equal(readFileSync(join(target, ...production.split('/')), 'utf8'), repaired);
+    for (const path of paths.slice(1)) {
+      assert.equal(readFileSync(join(workspace, ...path.split('/')), 'utf8'), source.replace('base', 'changed'));
+      assert.equal(readFileSync(join(target, ...path.split('/')), 'utf8'), source.replace('base', 'changed'));
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function report(overrides = {}, relation = 'same-repo') {
   const current = scope(relation);

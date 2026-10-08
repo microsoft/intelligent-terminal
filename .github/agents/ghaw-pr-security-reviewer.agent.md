@@ -26,6 +26,17 @@ Return `FAIL` if native source proof, full patch context, or matching
 identity/digest is missing; do not claim independence based on the parent's
 conclusions.
 
+Every proposed replacement must change production runtime code. Reject test-only
+repairs, including inline `#[cfg(test)]` code, even in an otherwise production
+file. Establish ownership through your own native base/head source reads of
+enclosing `cfg`/`cfg_attr` attributes and parent module declarations, including
+external `#[path]` modules; trace nested ownership as needed. Read beyond the
+finding hunk when ownership is declared elsewhere. Missing or ambiguous
+production ownership requires `FAIL`. Untouched original PR test changes and
+unrelated inline tests in a production file do not disqualify a production repair.
+The native path guard only excludes conventional test names/directories; it
+does not mechanically classify Rust conditionals. You own that semantic gate.
+
 Return `SOURCE_PASS` only when every proposed finding is HIGH/high-confidence,
 the original regression is proven, the patch is minimal and preserves intended
 behavior, the validation plan addresses the regression, no lower-severity issue

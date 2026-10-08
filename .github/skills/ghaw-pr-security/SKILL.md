@@ -39,6 +39,13 @@ review reasoning and the structured report.
   immutable head. Edit only a minimal HIGH/high-confidence fix in an existing
   `tools/wta/src/**/*.rs` file. C++, workflow, dependency, test-only, new-file,
   mode-changing, symlink, and submodule repairs remain blocked for guidance.
+  The complete PR may include modified WTA test files; leave them untouched.
+  Repair targets named `test.rs`, `tests.rs`, `*_test.rs`, `*_tests.rs`, or
+  `test_support.rs`, or beneath `test`, `tests`, or `test_support` directories,
+  are mechanically blocked. This conservative path guard does not classify Rust
+  conditionals. Every proposed replacement must change production runtime code;
+  never edit test-only code, including inline `#[cfg(test)]` code. A production
+  file containing unrelated inline tests is not excluded wholesale.
 - Use only caller-approved bounded read tools for repository inspection. Submit
   report data through the fixed `submit-security-report` capability; filesystem
   edits are limited to explicitly authorized repair source files.
@@ -107,6 +114,11 @@ review reasoning and the structured report.
 7. In `repair` mode only, propose an automatic fix when all are true:
    - severity and confidence are both HIGH;
    - repository-specific source evidence is strong;
+   - establish production ownership with native base/head source reads covering
+     enclosing `cfg`/`cfg_attr` attributes and parent module declarations,
+     including external `#[path]` modules. Trace nested ownership as needed;
+     a nearby diff hunk or filename is not proof. Missing or ambiguous production
+     ownership leaves the finding `blocked`; inline test-only repairs are blocked.
    - the patch is small, localized, preserves intended behavior, and does not
      weaken authorization/detection, add an allowlist, touch CI/security policy,
      or change unrelated dependencies;
@@ -118,7 +130,10 @@ review reasoning and the structured report.
      immutable head and native patch digest, finding hypothesis, and validation plan.
      The reviewer must independently check those bindings against its own
      native reads, re-derive the finding, and return `SOURCE_PASS` only for that
-     head and digest. Parent copies, summaries, pseudocode, and reformatted
+     head and digest, with production ownership established for every proposed
+     replacement. Missing or ambiguous ownership requires `FAIL`. This is a
+     semantic source-review gate, not deterministic Rust conditional parsing.
+     Parent copies, summaries, pseudocode, and reformatted
      excerpts are not source proof. Missing or incomplete native source/patch
      evidence requires `FAIL`. Any later edit requires fresh inspection/review.
    Report the candidate as `proposed`, with `review.status: pending`,
