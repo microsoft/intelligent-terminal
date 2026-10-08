@@ -1408,6 +1408,17 @@ namespace winrt::TerminalApp::implementation
                                            winrt::hstring const& statusText)
     {
         bool updated = false;
+        const auto applyStatus = [&](TerminalApp::TabStripHistoryItem const& item) {
+            item.PaneSessionId(paneSessionId);
+            item.Status(status);
+            item.StatusText(statusText);
+            item.StatusTextStyle(_historyStatusTextStyle(status));
+            item.IsLive(status == L"Idle" ||
+                        status == L"Working" ||
+                        status == L"Attention" ||
+                        status == L"Error");
+            item.IsHistorical(status == L"Ended" || status == L"Historical");
+        };
         for (size_t index = 0; index < _historySnapshot.size(); ++index)
         {
             auto& item = _historySnapshot[index];
@@ -1416,24 +1427,23 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
 
-            item.PaneSessionId(paneSessionId);
-            item.Status(status);
-            item.StatusText(statusText);
-            item.StatusTextStyle(_historyStatusTextStyle(status));
-            const auto isLive = status == L"Idle" ||
-                                status == L"Working" ||
-                                status == L"Attention" ||
-                                status == L"Error";
-            item.IsLive(isLive);
-            item.IsHistorical(status == L"Ended" || status == L"Historical");
-
+            applyStatus(item);
             _historySearchTerms[index] = _buildHistorySearchTerms(item);
             updated = true;
         }
 
         if (updated)
         {
-            _applyHistoryProjection();
+            // Equal snapshot refreshes retain the visible row's older object.
+            // Update that object too rather than replacing its focused container.
+            for (const auto& item : _historyItems)
+            {
+                if (item.SessionId() == sessionId)
+                {
+                    applyStatus(item);
+                }
+            }
+            _applyHistoryProjection(true);
         }
         return updated;
     }

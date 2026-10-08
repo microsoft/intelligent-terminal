@@ -406,6 +406,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryTitlelessUnicodeBasename);
         TEST_METHOD(VerticalTabHistoryIgnoresStaleLoadingResult);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesCollection);
+        TEST_METHOD(VerticalTabHistoryStatusDeltaPreservesCollection);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryDeduplicatedEmptyState);
@@ -7131,6 +7132,115 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalTabHistoryStatusDeltaPreservesCollection()
+    {
+        HistoryTestView view;
+        const auto strip = view.strip;
+        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+        IObservableVector<winrt::TerminalApp::TabStripHistoryItem> items{ nullptr };
+        winrt::TerminalApp::TabStripHistoryItem live{ nullptr };
+        std::vector<CollectionChange> changes;
+        winrt::event_token token{};
+        const auto revoke = wil::scope_exit([&]() {
+            LOG_IF_FAILED(RunOnUIThread([&]() {
+                if (items)
+                {
+                    items.VectorChanged(token);
+                }
+            }));
+        });
+        TestOnUIThread([&]() {
+            live = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            live.SessionId(L"live-session");
+            live.AgentId(L"copilot");
+            live.Title(L"Live session");
+            live.Status(L"Idle");
+            live.StatusText(L"Idle");
+            live.IsLive(true);
+            impl->CommitHistorySnapshot({ live });
+            items = strip.HistoryItems();
+            token = items.VectorChanged([&](auto&&, const IVectorChangedEventArgs& args) {
+                changes.emplace_back(args.CollectionChange());
+            });
+
+            auto refreshed = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            refreshed.SessionId(L"live-session");
+            refreshed.AgentId(L"copilot");
+            refreshed.Title(L"Live session");
+            refreshed.Status(L"Idle");
+            refreshed.StatusText(L"Idle");
+            refreshed.IsLive(true);
+            impl->CommitHistorySnapshot({ refreshed });
+            VERIFY_IS_TRUE(changes.empty());
+            VERIFY_IS_TRUE(items.GetAt(0) == live);
+
+            strip.Width(360);
+            strip.Height(400);
+            strip.UpdateLayout();
+            const auto container = impl->ItemsList().ContainerFromItem(live).as<ListViewItem>();
+            const auto row = container.ContentTemplateRoot().as<Grid>();
+            const auto statusText = row.FindName(L"HistoryStatusText").as<winrt::TerminalApp::HighlightedTextControl>();
+            statusText.ApplyTemplate();
+            strip.UpdateLayout();
+            const auto textBlock = Media::VisualTreeHelper::GetChild(statusText, 0).as<TextBlock>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+            VERIFY_IS_TRUE(textBlock.Style() == live.StatusTextStyle());
+            std::vector<winrt::hstring> propertyChanges;
+            const auto propertyChanged = live.PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                propertyChanges.emplace_back(args.PropertyName());
+            });
+
+            VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"live-session", L"live-pane", L"Working", L"Active"));
+            strip.UpdateLayout();
+            VERIFY_IS_TRUE(changes.empty());
+            VERIFY_IS_TRUE(items.GetAt(0) == live);
+            VERIFY_IS_TRUE(impl->ItemsList().ContainerFromItem(live) == container);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Active" }, live.StatusText());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"live-pane" }, live.PaneSessionId());
+            VERIFY_IS_TRUE(live.IsLive());
+            VERIFY_ARE_EQUAL(2u, propertyChanges.size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"StatusText" }, propertyChanges[0]);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"StatusTextStyle" }, propertyChanges[1]);
+            const auto activeStyle = strip.Resources().Lookup(winrt::box_value(L"HistoryActiveTextStyle")).as<Style>();
+            VERIFY_IS_TRUE(statusText.TextBlockStyle() == activeStyle);
+            VERIFY_IS_TRUE(textBlock.Style() == activeStyle);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Active" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+
+            VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"live-session", L"live-pane", L"Working", L"Active"));
+            VERIFY_IS_TRUE(changes.empty());
+            VERIFY_IS_TRUE(items.GetAt(0) == live);
+            VERIFY_ARE_EQUAL(2u, propertyChanges.size());
+        });
+        view.Search(L"Active");
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(1u, items.Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"live-session" }, items.GetAt(0).SessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Working" }, items.GetAt(0).Status());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Active" }, items.GetAt(0).StatusText());
+            changes.clear();
+            VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"live-session", L"live-pane", L"Idle", L"Idle"));
+            VERIFY_ARE_EQUAL(0u, items.Size());
+            VERIFY_ARE_EQUAL(1u, changes.size());
+            VERIFY_ARE_EQUAL(CollectionChange::ItemRemoved, changes[0]);
+        });
+        view.Search(L"live");
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(1u, items.Size());
+            const auto projected = items.GetAt(0);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"live-session" }, projected.SessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, projected.Status());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, projected.StatusText());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"live-pane" }, projected.PaneSessionId());
+            VERIFY_IS_TRUE(projected.IsLive());
+            VERIFY_IS_TRUE(projected.StatusTextStyle() == strip.Resources().Lookup(winrt::box_value(L"HistorySubtitleTextStyle")).as<Style>());
+            changes.clear();
+            VERIFY_IS_FALSE(impl->ApplyHistoryStatusDelta(L"unknown-session", L"", L"Working", L"Active"));
+            VERIFY_IS_TRUE(changes.empty());
+            VERIFY_IS_TRUE(items.GetAt(0) == projected);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, projected.Status());
+        });
+    }
+
     void TabTests::VerticalTabHistoryRefreshPreservesScroll()
     {
         winrt::TerminalApp::TabStrip strip{ nullptr };
@@ -7251,13 +7361,13 @@ namespace TerminalAppLocalTests
             offset = scroll.VerticalOffset();
             VERIFY_IS_TRUE(offset > 0);
             VERIFY_ARE_EQUAL(offset, tabsScroll.VerticalOffset());
-            VERIFY_IS_TRUE(tabsScroll.ChangeView(nullptr, offset, nullptr, true));
             host.UpdateLayout();
         });
         TestOnUIThread([&]() {
             host.UpdateLayout();
             tabsOffset = tabsScroll.VerticalOffset();
             VERIFY_IS_TRUE(tabsOffset > 0);
+            VERIFY_ARE_EQUAL(offset, tabsOffset);
             VERIFY_IS_TRUE(std::abs(scroll.VerticalOffset() - offset) <= 1.0);
             winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->CommitHistorySnapshot(snapshot(L"2 minutes ago", 81));
             host.UpdateLayout();
@@ -7273,6 +7383,25 @@ namespace TerminalAppLocalTests
             host.UpdateLayout();
             VERIFY_IS_TRUE(std::abs(scroll.VerticalOffset() - offset) <= 1.0);
             VERIFY_IS_TRUE(std::abs(tabsScroll.VerticalOffset() - tabsOffset) <= 1.0);
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"0", L"live-pane", L"Working", L"Active"));
+            host.UpdateLayout();
+        });
+        TestOnUIThread([&]() {
+            host.UpdateLayout();
+            VERIFY_IS_TRUE(std::abs(scroll.VerticalOffset() - offset) <= 1.0);
+            VERIFY_IS_TRUE(std::abs(tabsScroll.VerticalOffset() - tabsOffset) <= 1.0);
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Active" }, strip.HistoryItems().GetAt(0).StatusText());
+            VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"0", L"live-pane", L"Idle", L"Idle"));
+            host.UpdateLayout();
+        });
+        TestOnUIThread([&]() {
+            host.UpdateLayout();
+            VERIFY_IS_TRUE(std::abs(scroll.VerticalOffset() - offset) <= 1.0);
+            VERIFY_IS_TRUE(std::abs(tabsScroll.VerticalOffset() - tabsOffset) <= 1.0);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, strip.HistoryItems().GetAt(0).Status());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, strip.HistoryItems().GetAt(0).StatusText());
             strip.HistoryError(L"Cannot focus session");
             host.UpdateLayout();
         });

@@ -7147,6 +7147,9 @@ namespace winrt::TerminalApp::implementation
             nullptr,
             false,
             cancellation.get());
+
+        // Snapshot initialization now raises XAML property-change notifications.
+        co_await wil::resume_foreground(dispatcher);
         _SidebarHistorySnapshot snapshot;
         if (result.cancelled)
         {
@@ -7167,7 +7170,6 @@ namespace winrt::TerminalApp::implementation
                 " exit=" + std::to_string(result.exitCode));
         }
 
-        co_await wil::resume_foreground(dispatcher);
         if (const auto page = weakThis.get())
         {
             page->_CompleteSidebarHistoryRefresh(generation, std::move(snapshot));

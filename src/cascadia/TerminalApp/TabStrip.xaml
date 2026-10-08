@@ -257,9 +257,9 @@
                                                       Grid.Column="1"
                                                       Margin="4,0,0,0"
                                                       SearchText="{x:Bind SearchQuery}"
-                                                      Text="{x:Bind StatusText}"
+                                                      Text="{x:Bind StatusText, Mode=OneWay}"
                                                       Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(IsHistorical), Mode=OneWay}"
-                                                      TextBlockStyle="{x:Bind StatusTextStyle}" />
+                                                      TextBlockStyle="{x:Bind StatusTextStyle, Mode=OneWay}" />
                         <local:HighlightedTextControl x:Name="HistoryProviderNameText"
                                                       Grid.Column="2"
                                                       Margin="8,0,0,0"
