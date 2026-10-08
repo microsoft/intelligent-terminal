@@ -33,6 +33,9 @@ the newest session for each pane. A newer session can replace an ended one,
 including a custom session, and a delayed older ended report cannot reclaim the
 pane. Custom reports about the same completed session still cannot override its
 built-in report.
+Snapshot rows without a provider ID are aggregated separately, then applied as
+state updates to the resolved session provider. They must not inherit whichever
+provider happened to occur immediately before them in an unordered snapshot.
 Live reports with equal or missing timestamps use receive order. Snapshot rows
 have no receive order, so a tied refresh preserves the known pane winner. With
 no known winner, timestamp/provider/session ordering provides a stable fallback

@@ -5852,9 +5852,9 @@ namespace TerminalAppLocalTests
             {
                 shuffled.push_back(rows[index]);
             }
-            const auto selected = Page::_BuildSnapshotPaneAgentStates(shuffled, {});
-            VERIFY_ARE_EQUAL(std::string{ "session-c" }, selected.at(paneId).sessionId);
-            VERIFY_ARE_EQUAL(std::string{ "custom:c" }, selected.at(paneId).providerId);
+            const auto selected = Page::_BuildAgentStatusSnapshot(shuffled, {});
+            VERIFY_ARE_EQUAL(std::string{ "session-c" }, selected.byPane.at(paneId).sessionId);
+            VERIFY_ARE_EQUAL(std::string{ "custom:c" }, selected.byPane.at(paneId).providerId);
         } while (std::next_permutation(order.begin(), order.end()));
 
         rows[2].lastActivityAtMs = std::nullopt;
@@ -5867,10 +5867,54 @@ namespace TerminalAppLocalTests
             {
                 shuffled.push_back(rows[index]);
             }
-            const auto selected = Page::_BuildSnapshotPaneAgentStates(shuffled, lastReceived);
-            VERIFY_ARE_EQUAL(std::string{ "session-c" }, selected.at(paneId).sessionId);
-            const auto withoutKnownWinner = Page::_BuildSnapshotPaneAgentStates(shuffled, {});
-            VERIFY_ARE_EQUAL(std::string{ "session-b" }, withoutKnownWinner.at(paneId).sessionId);
+            const auto selected = Page::_BuildAgentStatusSnapshot(shuffled, lastReceived);
+            VERIFY_ARE_EQUAL(std::string{ "session-c" }, selected.byPane.at(paneId).sessionId);
+            const auto withoutKnownWinner = Page::_BuildAgentStatusSnapshot(shuffled, {});
+            VERIFY_ARE_EQUAL(std::string{ "session-b" }, withoutKnownWinner.byPane.at(paneId).sessionId);
+        } while (std::next_permutation(order.begin(), order.end()));
+
+        rows = {
+            { "session-a", "Working", "copilot", 1000, paneId },
+            { "session-a", "Error", "custom:a", 3000, paneId },
+            { "session-a", "Attention", "", 2000, paneId },
+            { "session-b", "Working", "claude", 1500, paneId }
+        };
+        order = { 0, 1, 2, 3 };
+        do
+        {
+            std::vector<Page::_RichTabAgentInfo> shuffled;
+            for (const auto index : order)
+            {
+                shuffled.push_back(rows[index]);
+            }
+            const auto selected = Page::_BuildAgentStatusSnapshot(shuffled, {});
+            const auto& pane = selected.byPane.at(paneId);
+            VERIFY_ARE_EQUAL(std::string{ "session-a" }, pane.sessionId);
+            VERIFY_ARE_EQUAL(std::string{ "copilot" }, pane.providerId);
+            VERIFY_ARE_EQUAL(std::string{ "Attention" }, pane.status);
+            VERIFY_ARE_EQUAL(uint64_t{ 2000 }, pane.lastActivityAtMs.value());
+            VERIFY_ARE_EQUAL(pane.providerId, selected.bySession.at("session-a").providerId);
+            VERIFY_ARE_EQUAL(pane.status, selected.bySession.at("session-a").status);
+        } while (std::next_permutation(order.begin(), order.end()));
+
+        rows[2].lastActivityAtMs = std::nullopt;
+        auto providerlessWinner = rows[2];
+        providerlessWinner.providerId = "copilot";
+        lastReceived = { { paneId, providerlessWinner } };
+        order = { 0, 1, 2, 3 };
+        do
+        {
+            std::vector<Page::_RichTabAgentInfo> shuffled;
+            for (const auto index : order)
+            {
+                shuffled.push_back(rows[index]);
+            }
+            const auto selected = Page::_BuildAgentStatusSnapshot(shuffled, lastReceived);
+            const auto& pane = selected.byPane.at(paneId);
+            VERIFY_ARE_EQUAL(std::string{ "session-a" }, pane.sessionId);
+            VERIFY_ARE_EQUAL(std::string{ "copilot" }, pane.providerId);
+            VERIFY_ARE_EQUAL(std::string{ "Attention" }, pane.status);
+            VERIFY_IS_FALSE(pane.lastActivityAtMs.has_value());
         } while (std::next_permutation(order.begin(), order.end()));
     }
 
