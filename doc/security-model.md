@@ -104,6 +104,12 @@ control proxy selection in external Windows processes, authenticate the remote
 COM peer, or unload an already-mapped DLL. Package-mutating coexistence tests must
 run separately in an approved isolated environment.
 
+Initialization failure prevents protocol exposure/use; registration is not
+transactional. A failed IID mapping attempts class-factory revocation, but earlier
+process-local IID mappings may remain. COM provides no documented API to remove
+these mappings. Failed initialization is not cached as success: retry registers
+the factory and all eight mappings again.
+
 Terminal clears inherited `WT_COM_CLSID` before capturing its startup environment
 and publishes its own CLSID only after protocol registration succeeds. Child
 connections apply the host's current value after profile environment overrides,
@@ -133,6 +139,25 @@ Test-only package API fixtures invoke the public loader with matching,
 case-varied, and mismatched package roots and failing API responses, while keeping
 the real executable path and DLL loader. They do not substitute for installed-package
 coexistence validation or verify package signatures.
+
+Deterministic token fixtures retain real owned token handles and override only
+elevation results or known API failures; the actual-token smoke test remains.
+An in-memory COM mutation ledger tests class-registration and first/middle/last
+mapping failures, revocation attempts, and retry, including `ScopedMarshaling`.
+It is disabled for the real native COM tests and does not model mapping rollback.
+`ListenerConnection.Tests.cpp` also injects public loader/registration failures:
+listen and publish (including stdin and existing-only paths) make no activation,
+active-object lookup, or factory calls after either failure.
+
+Build and run the targeted CLI tests from the repository root (no Terminal launch):
+
+```powershell
+cmd /c "tools\razzle.cmd && msbuild src\tools\wtcli\wtcli.vcxproj /t:Build /p:Configuration=Debug /p:Platform=x64 /p:SolutionDir=%CD%\ /p:ForceImportAfterCppTargets=%CD%\src\tools\wtcli\tests\ListenerConnection.Tests.targets /m:2 /nologo /v:minimal"
+.\bin\x64\Debug\wtcli\wtcli-listener-native-tests.exe
+```
+
+Both native test builds use `/W4 /WX`. The four-brand runner bounds each compile
+to 120 seconds and each test process to 30 seconds.
 
 ### 2.3 Typical process tree
 

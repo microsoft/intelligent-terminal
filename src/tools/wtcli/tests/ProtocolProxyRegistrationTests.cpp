@@ -63,13 +63,114 @@ namespace PackageFixture
     }
 }
 
-// Substitute only the package API boundary. Path construction, sibling checks,
+namespace TokenFixture
+{
+    static bool enabled = false;
+    static DWORD elevated = 0;
+    static DWORD openError = ERROR_SUCCESS;
+    static DWORD queryError = ERROR_SUCCESS;
+    static unsigned openCalls = 0;
+    static unsigned queryCalls = 0;
+
+    static BOOL WINAPI Open(HANDLE process, DWORD access, PHANDLE token)
+    {
+        if (enabled)
+        {
+            ++openCalls;
+            if (openError)
+            {
+                SetLastError(openError);
+                return FALSE;
+            }
+        }
+        // WIL owns and closes a real token, even under injection.
+        return OpenProcessToken(process, access, token);
+    }
+
+    static BOOL WINAPI Query(HANDLE token, TOKEN_INFORMATION_CLASS kind, LPVOID value, DWORD size, PDWORD returned)
+    {
+        if (enabled)
+        {
+            ++queryCalls;
+            if (queryError)
+            {
+                SetLastError(queryError);
+                return FALSE;
+            }
+        }
+        const auto result = GetTokenInformation(token, kind, value, size, returned);
+        if (result && enabled && kind == TokenElevation)
+        {
+            static_cast<TOKEN_ELEVATION*>(value)->TokenIsElevated = elevated;
+        }
+        return result;
+    }
+}
+
+namespace RegistrationFixture
+{
+    static bool enabled = false;
+    static bool failClass = false;
+    static size_t failMapping = 0;
+    static unsigned classCalls = 0;
+    static unsigned revokeCalls = 0;
+    static DWORD revokedCookie = 0;
+    static constexpr DWORD Cookie = 42;
+    static std::vector<IID> mappings;
+
+    static HRESULT WINAPI RegisterClass(REFCLSID clsid, LPUNKNOWN factory, DWORD context, DWORD flags, LPDWORD cookie)
+    {
+        if (!enabled)
+        {
+            return CoRegisterClassObject(clsid, factory, context, flags, cookie);
+        }
+        ++classCalls;
+        Microsoft::WRL::ComPtr<IPSFactoryBuffer> buffer;
+        RETURN_IF_FAILED(factory->QueryInterface(IID_PPV_ARGS(buffer.GetAddressOf())));
+        *cookie = failClass ? 0 : Cookie;
+        return failClass ? E_OUTOFMEMORY : S_OK;
+    }
+
+    static HRESULT WINAPI RegisterMapping(REFIID iid, REFCLSID clsid)
+    {
+        if (!enabled)
+        {
+            return CoRegisterPSClsid(iid, clsid);
+        }
+        mappings.push_back(iid);
+        return mappings.size() == failMapping ? E_OUTOFMEMORY : S_OK;
+    }
+
+    static HRESULT WINAPI Revoke(DWORD cookie)
+    {
+        if (!enabled)
+        {
+            return CoRevokeClassObject(cookie);
+        }
+        ++revokeCalls;
+        revokedCookie = cookie;
+        return S_OK;
+    }
+}
+
+// Substitute only API boundaries. Path construction, sibling checks,
 // LoadLibraryEx, and module verification are the actual production code.
 #define GetCurrentPackageFullName PackageFixture::FullName
 #define GetCurrentPackagePath PackageFixture::Path
+#define OpenProcessToken TokenFixture::Open
+#define GetTokenInformation TokenFixture::Query
+#define CoRegisterClassObject RegistrationFixture::RegisterClass
+#define CoRegisterPSClsid RegistrationFixture::RegisterMapping
+#define CoRevokeClassObject RegistrationFixture::Revoke
 #include "../../../cascadia/inc/TerminalProtocolProxyRegistration.h"
+#undef CoRevokeClassObject
+#undef CoRegisterPSClsid
+#undef CoRegisterClassObject
+#undef GetTokenInformation
+#undef OpenProcessToken
 #undef GetCurrentPackagePath
 #undef GetCurrentPackageFullName
+#include "../../../cascadia/TerminalProtocol/ProtocolMarshaling.h"
 
 namespace Protocol = Microsoft::Terminal::Protocol;
 
@@ -193,6 +294,35 @@ try
         verifyLoad(E_UNEXPECTED);
         PackageFixture::invalidLength = false;
         verifyLoad(S_OK);
+
+        TokenFixture::enabled = true;
+        const auto resetToken = wil::scope_exit([]() noexcept {
+            TokenFixture::enabled = false;
+            TokenFixture::openError = TokenFixture::queryError = ERROR_SUCCESS;
+        });
+        auto verifyPolicy = [&](LONG identity, DWORD elevation, DWORD openError, DWORD queryError,
+                                HRESULT expected, unsigned opens, unsigned queries) {
+            PackageFixture::identityError = identity;
+            TokenFixture::elevated = elevation;
+            TokenFixture::openError = openError;
+            TokenFixture::queryError = queryError;
+            TokenFixture::openCalls = TokenFixture::queryCalls = 0;
+            verifyLoad(expected);
+            Check(TokenFixture::openCalls == opens && TokenFixture::queryCalls == queries, "Elevation API call ledger");
+        };
+        const auto calls = dev ? 0u : 1u;
+        verifyPolicy(APPMODEL_ERROR_NO_PACKAGE, 1, 0, 0, S_OK, calls, calls);
+        verifyPolicy(APPMODEL_ERROR_NO_PACKAGE, 0, 0, 0, dev ? S_OK : HRESULT_FROM_WIN32(APPMODEL_ERROR_NO_PACKAGE), calls, calls);
+        verifyPolicy(APPMODEL_ERROR_NO_PACKAGE, 1, ERROR_ACCESS_DENIED, 0, dev ? S_OK : E_ACCESSDENIED, calls, 0);
+        verifyPolicy(APPMODEL_ERROR_NO_PACKAGE, 1, 0, ERROR_INVALID_DATA, dev ? S_OK : HRESULT_FROM_WIN32(ERROR_INVALID_DATA), calls, calls);
+        verifyPolicy(ERROR_SUCCESS, 1, ERROR_ACCESS_DENIED, ERROR_INVALID_DATA, S_OK, 0, 0);
+        verifyPolicy(ERROR_BAD_ENVIRONMENT, 1, ERROR_ACCESS_DENIED, ERROR_INVALID_DATA, HRESULT_FROM_WIN32(ERROR_BAD_ENVIRONMENT), 0, 0);
+        PackageFixture::probeError = ERROR_INVALID_DATA;
+        verifyPolicy(ERROR_SUCCESS, 1, ERROR_ACCESS_DENIED, ERROR_INVALID_DATA, HRESULT_FROM_WIN32(ERROR_INVALID_DATA), 0, 0);
+        PackageFixture::probeError = ERROR_SUCCESS;
+        PackageFixture::readError = ERROR_SHARING_VIOLATION;
+        verifyPolicy(ERROR_SUCCESS, 1, ERROR_ACCESS_DENIED, ERROR_INVALID_DATA, HRESULT_FROM_WIN32(ERROR_SHARING_VIOLATION), 0, 0);
+        PackageFixture::readError = ERROR_SUCCESS;
     }
 
     Protocol::details::ProxyRegistration registration;
@@ -205,6 +335,51 @@ try
     // Exercise the registration mechanism independently of package policy using
     // only our specified build artifact, never a COM-selected installed proxy.
     auto module = Protocol::details::LoadAndVerifyProxyDll(argv[1]);
+    {
+        using namespace RegistrationFixture;
+        enabled = true;
+        const auto resetRegistration = wil::scope_exit([]() noexcept { enabled = false; });
+        Check(Protocol::details::ProxyInterfaces.size() == 8, "Eight protocol and handoff mappings");
+        for (const size_t failure : { size_t{ 0 }, size_t{ 1 }, size_t{ 4 }, size_t{ 8 } })
+        {
+            Protocol::details::ProxyRegistration attempt;
+            classCalls = revokeCalls = 0;
+            mappings.clear();
+            failClass = failure == 0;
+            failMapping = failure;
+            Check(attempt.Register(module.get()) == E_OUTOFMEMORY, "Injected registration failure propagates");
+            Check(classCalls == 1 && mappings.size() == failure, "Registration stops at failing API");
+            Check(revokeCalls == (failClass ? 0u : 1u), "Mapping failure attempts factory revocation");
+            Check(failClass || revokedCookie == Cookie, "Revoke uses returned class cookie");
+            const auto previousRevokes = revokeCalls;
+            THROW_IF_FAILED(attempt.Unregister());
+            Check(revokeCalls == previousRevokes, "Failed registration commits no success cookie");
+            failClass = false;
+            failMapping = 0;
+            mappings.clear();
+            THROW_IF_FAILED(attempt.Register(module.get()));
+            Check(classCalls == 2 && mappings.size() == 8, "Retry registers factory and all eight mappings");
+            Check(std::equal(mappings.begin(), mappings.end(), Protocol::details::ProxyInterfaces.begin()), "Retry maps every production IID");
+            THROW_IF_FAILED(attempt.Register(module.get()));
+            Check(classCalls == 2 && mappings.size() == 8, "Successful registration is idempotent");
+            THROW_IF_FAILED(attempt.Unregister());
+            Check(revokeCalls == previousRevokes + 1, "Successful retry owns its cookie");
+        }
+        classCalls = revokeCalls = 0;
+        mappings.clear();
+        failMapping = 4;
+        {
+            Protocol::ScopedMarshaling scoped;
+            Check(scoped.InitializeFromExecutableDirectory() == E_OUTOFMEMORY, "Scoped initialization propagates failure");
+            failMapping = 0;
+            mappings.clear();
+            THROW_IF_FAILED(scoped.InitializeFromExecutableDirectory());
+            Check(classCalls == 2 && mappings.size() == 8, "Failed scoped initialization remains retryable");
+            THROW_IF_FAILED(scoped.InitializeFromExecutableDirectory());
+            Check(classCalls == 2, "Successful scoped initialization is cached");
+        }
+        Check(revokeCalls == 2, "Scoped failure and successful destruction each revoke");
+    }
     const auto info = reinterpret_cast<Protocol::details::GetProxyDllInfo>(GetProcAddress(module.get(), "GetProxyDllInfo"));
     const auto getFactory = reinterpret_cast<Protocol::details::DllGetClassObject>(GetProcAddress(module.get(), "DllGetClassObject"));
     Check(info && getFactory, "Proxy exports exist");
@@ -319,7 +494,7 @@ try
     Check(sink->tabReceived && sink->splitReceived, "Both native agent calls crossed apartments with intact arguments");
     THROW_IF_FAILED(registration.Unregister());
     THROW_IF_FAILED(registration.Unregister());
-    std::puts("PASS: package policy, failure handling, local factory, exact metadata IID set, sentinel overrides, callback and native agent marshaling");
+    std::puts("PASS: package and injected token policy, registration failure/retry ledger, scoped retry, local factory, exact metadata IID set, sentinel overrides, callback and native agent marshaling");
     return 0;
 }
 catch (...)
