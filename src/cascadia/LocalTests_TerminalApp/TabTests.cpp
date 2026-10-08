@@ -313,6 +313,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(EmptyTabLayoutChangeCompletesBeforeStartup);
         TEST_METHOD(VerticalLayoutMirrorsForRtl);
         TEST_METHOD(VerticalLayoutUsesFirstPreferredResourceLanguage);
+        TEST_METHOD(AgentChromeMirrorsWithoutChangingTerminalFlowDirection);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(SidebarHotkeyFocusesSearchAndReturnsToInput);
@@ -3811,6 +3812,57 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(rtl ? FlowDirection::RightToLeft : FlowDirection::LeftToRight, page->_tabStrip.FlowDirection());
                 VERIFY_ARE_EQUAL(rtl ? 1 : 0, Grid::GetColumn(page->_tabStrip));
             });
+        }
+    }
+
+    void TabTests::AgentChromeMirrorsWithoutChangingTerminalFlowDirection()
+    {
+        for (const auto layout : { TabLayout::Horizontal, TabLayout::Vertical })
+        {
+            for (const auto language : { L"ar-SA", L"qps-plocm", L"en-US" })
+            {
+                CascadiaSettings settings{ LR"({
+                    "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                    "showTabsInTitlebar": false,
+                    "profiles": [{
+                        "name": "profile0",
+                        "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                        "commandline": "cmd.exe"
+                    }]
+                })", {} };
+                settings.GlobalSettings().TabLayout(layout);
+                settings.GlobalSettings().Language(language);
+                winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+                const auto connection = winrt::make_self<TestConnection>(
+                    winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
+                    winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+                _initializeTerminalPage(page, settings, *connection);
+
+                TestOnUIThread([&]() {
+                    const auto expected = std::wstring_view{ language } == L"en-US" ?
+                                              FlowDirection::LeftToRight :
+                                              FlowDirection::RightToLeft;
+                    VERIFY_ARE_EQUAL(expected, page->BottomBarRoot().FlowDirection());
+                    VERIFY_ARE_EQUAL(expected, page->AgentToggleButton().FlowDirection());
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, page->AgentToggleIconBottom().FlowDirection());
+                    VERIFY_ARE_EQUAL(expected, page->UsageGroup().FlowDirection());
+
+                    const auto pane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, *connection));
+                    const auto agent = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(
+                        pane->GetContent().as<winrt::TerminalApp::AgentPaneContent>());
+                    const auto root = agent->GetRoot();
+                    for (const auto name : { L"AgentBarRoot", L"AgentLogo", L"AgentLabelText", L"SessionsHintRoot", L"SessionsDisabledHintText" })
+                    {
+                        VERIFY_ARE_EQUAL(expected, root.FindName(name).as<FrameworkElement>().FlowDirection());
+                    }
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, page->FlowDirection());
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, page->_tabContent.FlowDirection());
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, root.FlowDirection());
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, root.FindName(L"InnerContent").as<ContentPresenter>().FlowDirection());
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, agent->GetTermControl().FlowDirection());
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, page->_GetFocusedTabImpl()->GetActiveTerminalControl().FlowDirection());
+                });
+            }
         }
     }
 

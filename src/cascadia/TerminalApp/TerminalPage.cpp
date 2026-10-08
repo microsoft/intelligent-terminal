@@ -522,6 +522,7 @@ namespace winrt::TerminalApp::implementation
         const auto flowDirection = _isRightToLeft ? FlowDirection::RightToLeft : FlowDirection::LeftToRight;
         _tabRow.FlowDirection(flowDirection);
         _tabStrip.FlowDirection(flowDirection);
+        BottomBarRoot().FlowDirection(flowDirection);
         if (const auto titlebar = tabRowImpl->VerticalTitleBarContent().try_as<FrameworkElement>())
         {
             titlebar.FlowDirection(flowDirection);
@@ -3367,6 +3368,9 @@ namespace winrt::TerminalApp::implementation
         if (const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
         {
             agentImpl->UpdateSettings(_settings);
+            const auto flowDirection = _isRightToLeft ? FlowDirection::RightToLeft : FlowDirection::LeftToRight;
+            agentImpl->AgentBarRoot().FlowDirection(flowDirection);
+            agentImpl->SessionsHintRoot().FlowDirection(flowDirection);
         }
         // Apply the cached fallback immediately when a pane is created
         // mid-session (#348). The next theme refresh replaces it with the
