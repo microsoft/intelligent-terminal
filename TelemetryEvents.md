@@ -495,6 +495,15 @@ Conventions used in the field tables below:
   | `Branding` | Value | `branding` | — |
   | `Distribution` | Value | `distribution` | — |
 
+### `UserInteract`
+- **Description:** First qualifying keyboard interaction per process per UTC day.
+- **Source:** `src\cascadia\WindowsTerminal\WindowEmperor.cpp`
+- **Fields:** `Branding` and `Distribution`, using the same categories as `SessionBecameInteractive`.
+- **Counting:** Deduplicate by backend device and UTC event date for active-device and D7/D28 queries.
+  No idle heartbeat is emitted. Long-lived processes emit again on a later day's interaction.
+  Backwards clock adjustments do not re-count previously observed days.
+  The older event retains its once-per-process semantics; old missing activity cannot be backfilled.
+
 ---
 
 ## Provider: Microsoft.Windows.Console.Host

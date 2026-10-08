@@ -989,7 +989,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& profileIcon);
         std::unordered_map<std::string, std::string> _BuildRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
-        void _LogSidebarRowFieldsTelemetry() const;
+        void _LogSidebarRowFieldsTelemetry(const char* source) const;
         void _RefreshRichTabForTab(Tab& tab, bool activate, bool refreshPaneItems = true);
         void _ApplyRichTabUpdate(
             uintptr_t controlKey,

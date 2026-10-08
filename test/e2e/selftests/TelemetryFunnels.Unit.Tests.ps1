@@ -91,18 +91,32 @@ Describe 'Telemetry funnel scenario helpers' -Tag Unit {
             Should -Be @(100, 101, 102)
     }
 
-    It 'Stops only owned exact-path WTA descendants before the host without post-close COM probes' {
+    It 'Stops only owned exact-path WTA descendants without post-close COM probes (HostAlive=<HostAlive>)' -ForEach @(
+        @{ HostAlive = $true }, @{ HostAlive = $false }
+    ) {
+        $script:hostAlive = $HostAlive
         $script:shutdownOrder = [Collections.Generic.List[string]]::new()
+        $script:ownedPids = [Collections.Generic.HashSet[int]]::new([int[]]@(100, 101, 103))
         Mock Save-TelemetryOwnedProcesses {}
         Mock Get-DescendantWtaIds { @(101, 102) }
         Mock Get-Process {
-            @{ Path = $(if ($Id -eq 101) { 'C:\owned\wta.exe' } else { 'C:\unrelated\wta.exe' }) }
+            if ($Id -eq 100 -and $script:hostAlive) { @{ Path = 'C:\owned\WindowsTerminal.exe' } }
+            elseif ($Id -eq 101) { @{ Path = 'C:\owned\wta.exe' } }
+            elseif ($Id -eq 102) { @{ Path = 'C:\unrelated\wta.exe' } }
         }
+        Mock Get-AgentPaneSessions {
+            $script:shutdownOrder | Should -Not -Contain 'host'
+            @{ HelperProcessId = 103; PaneSessionId = 'owned-helper' }
+        }
+        Mock Close-WtPane { $SessionId | Should -Be 'owned-helper'; $script:shutdownOrder.Add('helper') }
+        Mock Get-WtProcessesForApp { @() }
         Mock Stop-Process { $script:shutdownOrder.Add("wta:$Id") }
         Mock Stop-Terminal { $script:shutdownOrder.Add('host') }
         Mock Get-WtWindows { throw 'post-close COM activation is forbidden' }
         Stop-TelemetryOwnedTerminal -App @{ Launched = $true; Pid = 100; WtaPath = 'C:\owned\wta.exe' }
-        @($script:shutdownOrder) | Should -Be @('wta:101', 'host')
+        $expected = if ($HostAlive) { @('helper', 'wta:101', 'host') } else { @('wta:101', 'host') }
+        @($script:shutdownOrder) | Should -Be $expected
+        Should -Invoke Get-AgentPaneSessions -Times ([int]$HostAlive) -Exactly
         Should -Invoke Get-WtWindows -Times 0 -Exactly
         { Stop-TelemetryOwnedTerminal -App @{ Launched = $false } } | Should -Throw '*not launched*'
     }

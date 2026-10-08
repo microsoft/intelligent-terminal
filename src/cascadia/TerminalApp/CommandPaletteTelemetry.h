@@ -16,6 +16,11 @@ namespace TerminalApp::CommandPaletteTelemetry
             return entered;
         }
 
+        bool Active() const noexcept
+        {
+            return _active;
+        }
+
     private:
         bool _active = false;
     };
