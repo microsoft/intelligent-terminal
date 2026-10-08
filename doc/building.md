@@ -65,9 +65,11 @@ AuditMode is an experimental mode that enables some additional static analysis f
 After initializing the normal MSBuild environment, run from the repository root:
 
 ```cmd
-msbuild src\types\lib\types.vcxproj /p:Configuration=AuditMode /p:Platform=x64 /p:PerformanceAnalysis=PullRequest /t:"Build;ClangTidy" /m
+msbuild src\types\lib\types.vcxproj "/p:SolutionDir=%CD%\\" /p:Configuration=AuditMode /p:Platform=x64 /p:PerformanceAnalysis=PullRequest /t:"Build;ClangTidy" /m
 ```
 
+The explicit `SolutionDir` gives a direct project build its repository-root
+imports and header filter; solution builds normally supply it automatically.
 Substitute the existing project relevant to your change. `PerformanceAnalysis=PullRequest`
 is the only named profile; unknown nonempty values fail the build. Omitting it
 preserves the normal configuration, including AuditMode's CppCoreCheck/PREfast gate.
