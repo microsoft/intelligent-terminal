@@ -3263,6 +3263,8 @@ impl App {
         }
         let resume_invocation =
             format!("{} {} {}", profile.cli_executable, profile.resume_flag, key);
+        let direct_wsl_resume =
+            cli_id == crate::agent_registry::ANTIGRAVITY_AGENT_ID && s.location.is_wsl();
         // WSL rows run the distro's own CLI *inside* the distro. Two
         // WSL/cmd quirks shape this command line:
         //   * The distro name is **not** quoted. `wsl -d "Ubuntu"` fails with
@@ -3288,11 +3290,43 @@ impl App {
                     );
                     return;
                 }
-                match linux_cwd_arg(&s.cwd) {
-                    Some(cwd) => {
-                        format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}")
+                if direct_wsl_resume {
+                    let runtimes = crate::coordinator::default_delegate_agent_runtimes(
+                        Some(cli_id),
+                        None,
+                        None,
+                    );
+                    let command = match crate::coordinator::build_wsl_delegate_resume_commandline(
+                        &runtimes[0],
+                        &key,
+                    ) {
+                        Ok(command) => command,
+                        Err(error) => {
+                            tracing::warn!(target: "agents_view", %error, "could not build WSL CLI resume");
+                            return;
+                        }
+                    };
+                    let cwd = s.cwd.to_string_lossy();
+                    let cwd_arg = if cwd.starts_with('/') {
+                        format!(
+                            " --cd {}",
+                            crate::coordinator::quote_windows_commandline_arg(&cwd)
+                        )
+                    } else {
+                        String::new()
+                    };
+                    format!(
+                        "wsl.exe -d {}{cwd_arg} -- bash -lc {}",
+                        crate::coordinator::quote_windows_commandline_arg(distro),
+                        crate::coordinator::quote_windows_commandline_arg(&command)
+                    )
+                } else {
+                    match linux_cwd_arg(&s.cwd) {
+                        Some(cwd) => {
+                            format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}")
+                        }
+                        None => format!("wsl -d {distro} -- {login_invocation}"),
                     }
-                    None => format!("wsl -d {distro} -- {login_invocation}"),
                 }
             }
             crate::agent_sessions::SessionLocation::Host => resume_invocation,
@@ -3372,7 +3406,12 @@ impl App {
             }
             crate::agent_sessions::SessionLocation::Unknown => return,
         };
-        let launch_commandline = format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
+        // Keep Linux cwd metadata out of cmd.exe expansion for Antigravity.
+        let launch_commandline = if direct_wsl_resume {
+            commandline.clone()
+        } else {
+            format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}")
+        };
         let mut argv = vec![
             "new-tab".to_string(),
             "--agent-provider".to_string(),

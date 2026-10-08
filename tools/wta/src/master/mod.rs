@@ -10058,7 +10058,7 @@ async fn validate_master_hook_source(
     pane_id: &str,
     cli_source: &crate::agent_sessions::CliSource,
 ) -> Result<Option<crate::agent_sessions::SessionLocation>, &'static str> {
-    use crate::agent_sessions::{pane_key, AgentStatus, SessionLocation};
+    use crate::agent_sessions::{pane_key, AgentStatus, CliSource, SessionLocation, SessionOrigin};
 
     let distro = params
         .get("wsl_distro")
@@ -10089,6 +10089,13 @@ async fn validate_master_hook_source(
         // provenance cannot make a cross-provider collision safe to reduce.
         if same_session && !same_provider {
             return Err("agent hook raw session ID conflicts with another provider");
+        }
+        // Antigravity CLI hooks describe a different conversation store from ACP.
+        if same_session
+            && matches!(cli_source, CliSource::Antigravity)
+            && row.origin == Some(SessionOrigin::AgentPane)
+        {
+            return Err("Antigravity CLI hook raw session ID conflicts with an ACP conversation");
         }
         let Some(distro) = distro else {
             continue;

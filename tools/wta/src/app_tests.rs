@@ -24722,12 +24722,72 @@ fn antigravity_resume_keeps_acp_and_cli_sessions_in_their_own_stores() {
         } else {
             assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
             assert!(command.argv.join(" ").contains(
-                "wsl -d Ubuntu --cd \"/home/u/project with spaces\" -- bash -lc \"agy --conversation antigravity-history\""
+                "wsl.exe -d Ubuntu --cd \"/home/u/project with spaces\" -- bash -lc \"exec 'agy' '--conversation' 'antigravity-history'\""
             ));
             assert!(!events
                 .iter()
                 .any(|event| event.contains("resume_in_new_agent_tab")));
         }
+    }
+}
+
+#[test]
+fn antigravity_wsl_cli_resume_preserves_literal_cwd_arguments() {
+    use crate::agent_sessions::{
+        AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin,
+    };
+
+    for (cwd, argument) in [
+        ("/home/u/%CD%", "/home/u/%CD%"),
+        (
+            "/home/u/project with spaces",
+            r#""/home/u/project with spaces""#,
+        ),
+        (r#"/home/u/a"b\"#, r#""/home/u/a\"b\\""#),
+    ] {
+        let row = AgentSession {
+            key: "antigravity-history".into(),
+            cli_source: CliSource::Antigravity,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "Antigravity CLI conversation".into(),
+            cwd: std::path::PathBuf::from(cwd),
+            started_at: std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status: AgentStatus::Historical,
+            last_error: None,
+            current_tool: None,
+            attention_reason: None,
+            log_path: None,
+            origin: SessionOrigin::Unknown,
+            location: SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        };
+        let mut app = test_app();
+        app.window_id = Some("41".into());
+        app.agent_sessions.merge_historical(vec![row.clone()]);
+        app.activate_agent_session_routed(&row);
+        let dispatched = app.last_dispatched_command_for_test().unwrap();
+        assert_eq!(dispatched.kind, DispatchedCommandKind::NewTabResume);
+        let command = dispatched
+            .argv
+            .windows(2)
+            .find(|args| args[0] == "-c")
+            .unwrap();
+        assert_eq!(
+            command[1],
+            format!(
+                "wsl.exe -d Ubuntu --cd {argument} -- bash -lc \"exec 'agy' '--conversation' 'antigravity-history'\""
+            ),
+            "WSL cwd must remain literal without an outer command shell: {cwd:?}"
+        );
+        assert!(!dispatched.argv.iter().any(|arg| arg == "-d"));
+        assert!(dispatched
+            .argv
+            .windows(2)
+            .any(|args| { args[0] == "--title" && args[1] == "Antigravity CLI conversation" }));
     }
 }
 

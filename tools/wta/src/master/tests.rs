@@ -16139,6 +16139,56 @@ async fn master_com_hook_source_rejects_foreign_raw_id_before_reduction() {
 }
 
 #[tokio::test]
+async fn master_antigravity_cli_hook_cannot_mutate_acp_owned_raw_id() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::SessionInfo;
+
+    let state = make_state();
+    let sid = SessionId::new("antigravity-shared-id");
+    let mut row = SessionInfo::new(sid.clone(), PathBuf::from(r"C:\acp-workspace"));
+    row.provider_id = Some("antigravity".into());
+    row.cli_source = Some(CliSource::Antigravity);
+    row.location = SessionLocation::Host;
+    row.origin = Some(SessionOrigin::AgentPane);
+    row.status = Some(AgentStatus::Idle);
+    row.pane_session_id = Some("acp-owner".into());
+    row.title = Some("ACP conversation".into());
+    state.registry.upsert(row).await;
+    state.born_bound.lock().await.insert(sid.clone());
+    let before = state.registry.snapshot().await;
+    let (tx, mut notifications) = mpsc::unbounded_channel();
+    state
+        .helper_ext_subscribers
+        .lock()
+        .await
+        .insert(HelperId(1), tx);
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.prompt.submit",
+                "cli_source": "antigravity",
+                "agent_session_id": "antigravity-shared-id",
+                "pane_id": "cli-owner",
+                "payload": {"cwd": "C:\\cli-workspace", "title": "CLI conversation"}
+            }
+        }),
+    )
+    .await;
+
+    assert_eq!(
+        state.registry.snapshot().await,
+        before,
+        "ordinary CLI hooks must not mutate an ACP-owned conversation with the same raw ID"
+    );
+    assert!(state.hook_owned.lock().await.is_empty());
+    assert!(state.born_bound.lock().await.contains(&sid));
+    assert!(notifications.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn master_com_hook_source_unique_id_preserves_live_pane_corroboration() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
     use crate::session_registry::SessionInfo;
