@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
-  attestChecks, buildScope, classifyPath, createReportTemplate, normalizePath, renderReport, validatePatch,
+  SECURITY_NOOP_MESSAGE, attestChecks, buildScope, classifyPath, createReportTemplate, normalizePath, renderReport, validatePatch,
   validateQueuedOutput, validateReport, validateProposal, validateCandidate, stageRepairFiles, validateRepairScope,
   submitSecurityReport, readSecurityDiff, readImmutableHunks, readSecuritySource, inspectSecurityRepair, writeSecurityRepair, replaceSecurityRepairText, verifyCredentialFree,
   publicationDecision, validatePublicationRun, validateNativePublicationProof, preparePublication, validateRepairChanges,
@@ -17,6 +17,23 @@ const tmpdir = () => process.cwd();
 const HEAD = '2'.repeat(40);
 const PATCH_TEXT = 'diff --git a/tools/wta/src/master/mod.rs b/tools/wta/src/master/mod.rs\n--- a/tools/wta/src/master/mod.rs\n+++ b/tools/wta/src/master/mod.rs\n@@ -20 +20 @@\n-Changed source.\n+Bound owner.\n';
 const PATCH_SHA256 = createHash('sha256').update(PATCH_TEXT).digest('hex');
+
+test('queued noop rejects model content, missing message, unknown and prototype fields', () => {
+  const fixed = { type: 'noop', message: SECURITY_NOOP_MESSAGE };
+  for (const mode of ['guide', 'repair']) {
+    validateQueuedOutput({ mode }, { items: [fixed], errors: [] });
+    for (const item of [
+      { type: 'noop' }, { ...fixed, message: 'DUMMY_DIFF_CODE_SENTINEL' },
+      { ...fixed, message: 'github_pat_DUMMY_CREDENTIAL_SENTINEL_12345678901234567890' },
+      { ...fixed, reason: 'DUMMY_REASON_SENTINEL' },
+      { ...fixed, id: 'DUMMY_MODEL_ID_SENTINEL' },
+      JSON.parse(`{"type":"noop","message":${JSON.stringify(SECURITY_NOOP_MESSAGE)},"__proto__":{"secret":"DUMMY"}}`),
+      Object.assign(Object.create({ secret: 'DUMMY' }), fixed),
+      Object.assign(Object.create(null), fixed),
+      { ...fixed, [Symbol('secret')]: 'DUMMY' },
+    ]) assert.throws(() => validateQueuedOutput({ mode }, { items: [item], errors: [] }), /fixed payload/);
+  }
+});
 
 test('controller separates analysis from mutually exclusive narrow publication jobs', () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
@@ -946,7 +963,7 @@ test('only native validation promotes independently source-reviewed repair propo
   assert.deepEqual(validateReport(nestedExtras, current), validated);
   assert.throws(() => validateReport({ ...candidate, extra: {} }, current), /unsupported fields/);
   validatePatch(validated, ['tools/wta/src/master/mod.rs'], PATCH_TEXT, current);
-  validateQueuedOutput(validated, { items: [{ type: 'noop' }], errors: [] });
+  validateQueuedOutput(validated, { items: [{ type: 'noop', message: SECURITY_NOOP_MESSAGE }], errors: [] });
   assert.throws(() => validateQueuedOutput(validated, { items: [{ type: 'push_to_pull_request_branch' }] }), /noop/);
 
   const proposal = structuredClone(candidate);
@@ -1313,7 +1330,7 @@ test('fork reports remain read-only and malicious content is escaped', () => {
 
 test('analysis workers require noop output', () => {
   const noFindings = validateReport(report({}, 'fork'), scope('fork'));
-  validateQueuedOutput(noFindings, { items: [{ type: 'noop' }], errors: [] });
+  validateQueuedOutput(noFindings, { items: [{ type: 'noop', message: SECURITY_NOOP_MESSAGE }], errors: [] });
   assert.throws(() => validateQueuedOutput(noFindings, { items: [{ type: 'add_comment' }] }), /noop/);
 });
 
@@ -1336,7 +1353,7 @@ test('fork findings remain noop until trusted controller publication', () => {
       fixDisposition: { state: 'advice-only', reason: 'Medium findings are not automatically fixed.' },
     }],
   }, 'fork'), scope('fork'));
-  validateQueuedOutput(candidate, { items: [{ type: 'noop' }], errors: [] });
+  validateQueuedOutput(candidate, { items: [{ type: 'noop', message: SECURITY_NOOP_MESSAGE }], errors: [] });
   assert.throws(() => validateQueuedOutput(candidate, { items: [{ type: 'add_comment' }] }), /noop/);
   const exoticPath = 'tools/wta/src/a`[click](https:evil.example).rs';
   const exoticScope = buildScope(BASE, HEAD, 17, 'fork', `M\0${exoticPath}\0`);
@@ -1467,7 +1484,7 @@ test('native CLI and bounded data-only report submission work end to end', () =>
       assert.equal(result.status, 0, result.stderr);
       assert.equal(readFileSync(status, 'utf8'), 'pass\n');
       const queue = join(artifacts, `${mode}-queue.json`);
-      writeFileSync(queue, JSON.stringify({ items: [{ type: 'noop' }], errors: [] }));
+      writeFileSync(queue, JSON.stringify({ items: [{ type: 'noop', message: SECURITY_NOOP_MESSAGE }], errors: [] }));
       result = invoke('validate-output', '--validated', validated, '--agent-output', queue);
       assert.equal(result.status, 0, result.stderr);
       writeFileSync(queue, JSON.stringify({ items: [{ type: 'add_comment' }], errors: [] }));

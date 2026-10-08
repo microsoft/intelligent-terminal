@@ -22,6 +22,9 @@ review reasoning and the structured report.
   [`./scripts/security-review-driver.test.mjs`](./scripts/security-review-driver.test.mjs)
 - Trusted pre-inference private-log preparation:
   [`./scripts/prepare-security-review-private-logs.mjs`](./scripts/prepare-security-review-private-logs.mjs)
+  This also normalizes the canonical noop handler's payload before persistence,
+  using a pinned hash and exact replacement count. Model reasons never become
+  public noop content; the validated native report remains the public summary.
 - Private-log hash/path/ordering tests:
   [`./scripts/prepare-security-review-private-logs.test.mjs`](./scripts/prepare-security-review-private-logs.test.mjs)
 

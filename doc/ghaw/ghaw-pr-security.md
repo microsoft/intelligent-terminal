@@ -126,10 +126,20 @@ bounded status/usage metadata, rather than raw tool results or model analysis.
 Native Git subprocess diagnostics are captured; failures expose static messages.
 
 Before native services or inference, both workers verify the exact hashes and
-replacement counts of two installed scripts from the pinned gh-aw-actions
+replacement counts of three installed assets from the pinned gh-aw-actions
 revision. The preparation disables raw CLI session copying and routes native
 MCP server diagnostics outside summary/artifact collection roots. Hash, path,
-or preparation failures stop the ordinary inference steps. MCP gateway logs
+or preparation failures stop the ordinary inference steps. All asset checks
+precede any writes. The third asset is `safe_outputs_handlers.cjs`: its canonical
+default handler constructs noop entries using only the trusted fixed message
+before any JSONL persistence, retaining native count/max enforcement and the
+ordinary framework output row. All model-supplied noop arguments, including
+reserved or unknown fields, are discarded at that point. The pinned runtime
+has no supported fixed-message configuration; this worker-local adjustment
+does not fork the upstream service or replace the noop capability. Late queue
+validation asserts the exact fixed payload as a postcondition, not as the
+privacy boundary. Public review content still comes from the validated native
+report. Raw RPC inputs remain in private service diagnostics. MCP gateway logs
 use a literal private-directory override through supported `sandbox.mcp.env`.
 The generated `safeoutputs` stdio service is a separate third logging service.
 Its `GH_AW_MCP_LOG_DIR` is overridden through the same supported gateway

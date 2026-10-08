@@ -4,12 +4,15 @@ import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SECURITY_NOOP_MESSAGE } from './security-review.mjs';
 
 export const PRIVATE_LOG_ASSETS = [
   { name: 'copy_copilot_session_state.sh', sha256: '38c7945c942309546f4c1c26403d14839dc841042f7f8792099caeaa9903810a',
     needle: 'cp -rv "$SESSION_STATE_DIR"/. "$LOGS_DIR/" 2>/dev/null || true', count: 1, sessionCopy: true },
   { name: 'start_mcp_scripts_server.sh', sha256: '6cbbcc463da20cfcbeb85b9a31b67b53adb7002976f73d4febdab24e458b53a3',
     needle: '/tmp/gh-aw/mcp-scripts/logs', count: 6 },
+  { name: 'safe_outputs_handlers.cjs', sha256: '9b59060b83de9f1032f8a47fd028d63b619dbb31ec265a014f8ace08facc0f1c',
+    needle: '  const defaultHandler = type => args => {\n    const entry = { ...(args || {}), type };', count: 1, fixedNoop: true },
 ];
 
 function fail() {
@@ -67,14 +70,16 @@ export function prepareSecurityReviewPrivateLogs({
   }
   const prepared = assets.map(asset => {
     if (basename(asset.name) !== asset.name) fail();
-    const path = resolve(actions, asset.name);
+    const path = resolve(asset.fixedNoop ? safeOutputs : actions, asset.name);
     const stat = regular(path);
     if (stat.size > 1024 * 1024) fail();
     const bytes = readFileSync(path);
     if (createHash('sha256').update(bytes).digest('hex') !== asset.sha256) fail();
     const source = bytes.toString('utf8');
     if (source.split(asset.needle).length - 1 !== asset.count) fail();
-    const replacement = asset.sessionCopy
+    const replacement = asset.fixedNoop
+      ? source.replace(asset.needle, `  const defaultHandler = type => args => {\n    const entry = type === "noop" ? { type, message: ${JSON.stringify(SECURITY_NOOP_MESSAGE)} } : { ...(args || {}), type };`)
+      : asset.sessionCopy
       ? '#!/usr/bin/env bash\nset -euo pipefail\nprintf "%s\\n" "Security review: raw CLI session collection disabled; original evidence retained."\n'
       : source.replaceAll(asset.needle, resolve(privateDirectory, 'mcp-scripts', 'logs').replaceAll('\\', '/'));
     return { path, stat, bytes, replacement };

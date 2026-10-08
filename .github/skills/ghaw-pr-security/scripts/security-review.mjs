@@ -8,6 +8,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 export const SECURITY_REPORT_MAX_BYTES = 64 * 1024;
+export const SECURITY_NOOP_MESSAGE = 'Security review complete. See the validated native report.';
 
 const SHA = /^[0-9a-f]{40}$/;
 const REPORT_KEYS = new Set([
@@ -775,6 +776,12 @@ export function validateQueuedOutput(report, queuedOutput) {
   if (types.some(type => typeof type !== 'string')) fail('queued output type is invalid');
   if (types.length !== 1 || types[0] !== 'noop') {
     fail(`${report.mode} analysis worker requires exactly one noop output`);
+  }
+  const item = queuedOutput.items[0];
+  if (Object.getPrototypeOf(item) !== Object.prototype ||
+      Reflect.ownKeys(item).length !== 2 || !Object.hasOwn(item, 'type') ||
+      !Object.hasOwn(item, 'message') || item.message !== SECURITY_NOOP_MESSAGE) {
+    fail('queued noop must contain only the trusted fixed payload');
   }
 }
 

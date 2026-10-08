@@ -8,6 +8,7 @@ import { createInterface } from 'node:readline';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import { PRIVATE_LOG_ASSETS, prepareSecurityReviewPrivateLogs } from './prepare-security-review-private-logs.mjs';
+import { SECURITY_NOOP_MESSAGE, validateQueuedOutput } from './security-review.mjs';
 
 export function assertNoPublicRawLogPayloads(collectedRoot) {
   const reject = () => { throw new Error('Public raw log payload or irregular node rejected'); };
@@ -69,7 +70,7 @@ function fixture(run) {
     for (const name of ['actionsDir', 'collectedRoot', 'workspace', 'safeOutputsRoot']) mkdirSync(options[name]);
     options.assets = PRIVATE_LOG_ASSETS.map(asset => {
       const source = `#!/usr/bin/env bash\n${Array(asset.count).fill(asset.needle).join('\n')}\n`;
-      writeFileSync(join(options.actionsDir, asset.name), source);
+      writeFileSync(join(asset.fixedNoop ? options.safeOutputsRoot : options.actionsDir, asset.name), source);
       return { ...asset, sha256: createHash('sha256').update(source).digest('hex') };
     });
     return run(options);
@@ -79,18 +80,39 @@ function fixture(run) {
 }
 
 test('all hashes and counts reject before any asset, log, or private-directory modification', () => {
-  for (const mismatch of ['first-hash', 'second-hash', 'first-count', 'second-count']) {
+  for (const mismatch of ['first-hash', 'second-hash', 'third-hash', 'first-count', 'second-count', 'third-count']) {
     fixture(options => {
-      const index = mismatch.startsWith('first') ? 0 : 1;
+      const index = mismatch.startsWith('first') ? 0 : mismatch.startsWith('second') ? 1 : 2;
       if (mismatch.endsWith('hash')) options.assets[index].sha256 = '0'.repeat(64);
       else options.assets[index].count++;
-      const before = options.assets.map(asset => readFileSync(join(options.actionsDir, asset.name), 'utf8'));
+      const oldLog = join(options.collectedRoot, 'agent-stdio.log');
+      writeFileSync(oldLog, 'DUMMY_RETAINED_PRIVATE_EVIDENCE');
+      const before = options.assets.map(asset => readFileSync(join(asset.fixedNoop ? options.safeOutputsRoot : options.actionsDir, asset.name), 'utf8'));
       assert.throws(() => prepareSecurityReviewPrivateLogs(options));
       assert(!existsSync(options.privateRoot));
       assert(!existsSync(join(options.safeOutputsRoot, 'private-security-logs')));
-      assert.deepEqual(options.assets.map(asset => readFileSync(join(options.actionsDir, asset.name), 'utf8')), before);
+      assert.equal(readFileSync(oldLog, 'utf8'), 'DUMMY_RETAINED_PRIVATE_EVIDENCE');
+      assert.deepEqual(options.assets.map(asset => readFileSync(join(asset.fixedNoop ? options.safeOutputsRoot : options.actionsDir, asset.name), 'utf8')), before);
     });
   }
+});
+
+test('canonical noop construction drops all model fields before persistence', () => {
+  const asset = PRIVATE_LOG_ASSETS.find(item => item.fixedNoop);
+  fixture(options => {
+    prepareSecurityReviewPrivateLogs(options);
+    const normalized = readFileSync(join(options.safeOutputsRoot, asset.name), 'utf8');
+    const construction = normalized.slice(normalized.indexOf('    const entry = ')).trim();
+    const inputs = [
+      { message: 'DUMMY_DIFF_CODE_SENTINEL', reason: 'DUMMY_REASON' },
+      JSON.parse('{"message":"github_pat_DUMMY_SENTINEL_12345678901234567890","type":"create_issue","__proto__":{"secret":"DUMMY"},"constructor":"DUMMY","id":"DUMMY"}'),
+      Object.create({ message: 'DUMMY_INHERITED', secret: 'DUMMY' }),
+    ];
+    for (const args of inputs) {
+      const entry = runInNewContext(`${construction}\nentry`, { type: 'noop', args });
+      assert.deepEqual(JSON.parse(JSON.stringify(entry)), { type: 'noop', message: SECURITY_NOOP_MESSAGE });
+    }
+  });
 });
 
 test('native source-bearing sink roots are routed privately and existing evidence is preserved', () => {
@@ -104,7 +126,7 @@ test('native source-bearing sink roots are routed privately and existing evidenc
     const canonical = ['agent_output.json', 'safeoutputs.jsonl', 'security-findings.json', 'security-repair.patch'];
     for (const name of canonical) writeFileSync(join(options.collectedRoot, name), `unchanged ${name}`);
     const result = prepareSecurityReviewPrivateLogs(options);
-    assert.deepEqual(result, { assets: 2, retainedSinks: 1 });
+    assert.deepEqual(result, { assets: 3, retainedSinks: 1 });
     assert(!existsSync(logs));
     assert.equal(readFileSync(join(options.privateRoot, 'existing-evidence', 'sink-0', 'server.log'), 'utf8'), sentinel);
     assert.equal(readFileSync(originalStore, 'utf8'), sentinel);
@@ -139,11 +161,12 @@ test('uploaded, candidate, and symlinked private roots cannot receive native raw
     test('safeoutputs logs reject collected, candidate, or symlinked mounts before any writes', () => {
       for (const root of ['collectedRoot', 'workspace', 'actionsDir', 'privateRoot']) {
         fixture(options => {
+          const paths = options.assets.map(asset => join(asset.fixedNoop ? options.safeOutputsRoot : options.actionsDir, asset.name));
           options.safeOutputsRoot = join(options[root], 'safeoutputs');
           mkdirSync(options.safeOutputsRoot, { recursive: true });
-          const before = options.assets.map(asset => readFileSync(join(options.actionsDir, asset.name), 'utf8'));
+          const before = paths.map(path => readFileSync(path, 'utf8'));
           assert.throws(() => prepareSecurityReviewPrivateLogs(options));
-          assert.deepEqual(options.assets.map(asset => readFileSync(join(options.actionsDir, asset.name), 'utf8')), before);
+          assert.deepEqual(paths.map(path => readFileSync(path, 'utf8')), before);
           assert(!existsSync(join(options.safeOutputsRoot, 'private-security-logs')));
         });
       }
@@ -166,13 +189,13 @@ test('uploaded, candidate, and symlinked private roots cannot receive native raw
           const options = { actionsDir: join(root, 'actions'), privateRoot: join(root, 'private'),
             collectedRoot: join(root, 'collected'), workspace: join(root, 'candidate'), safeOutputsRoot: join(root, 'safeoutputs') };
           for (const name of ['actionsDir', 'collectedRoot', 'workspace', 'safeOutputsRoot']) mkdirSync(options[name]);
-          for (const asset of PRIVATE_LOG_ASSETS) cpSync(join(pinned, 'setup', 'sh', asset.name), join(options.actionsDir, asset.name));
+          for (const asset of PRIVATE_LOG_ASSETS.filter(asset => !asset.fixedNoop)) cpSync(join(pinned, 'setup', 'sh', asset.name), join(options.actionsDir, asset.name));
           cpSync(join(pinned, 'setup', 'js'), options.safeOutputsRoot, { recursive: true });
           const oldSink = join(options.collectedRoot, 'mcp-logs', 'safeoutputs');
           mkdirSync(oldSink, { recursive: true });
           writeFileSync(join(oldSink, 'server.log'), 'DUMMY_PREEXISTING_SOURCE_SENTINEL');
           const result = prepareSecurityReviewPrivateLogs(options);
-          assert.equal(result.assets, 2);
+          assert.equal(result.assets, 3);
           assert.equal(result.retainedSinks, 1);
           assert.equal(readFileSync(join(options.privateRoot, 'existing-evidence', 'sink-0', 'safeoutputs', 'server.log'), 'utf8'),
             'DUMMY_PREEXISTING_SOURCE_SENTINEL');
@@ -193,6 +216,20 @@ test('uploaded, candidate, and symlinked private roots cannot receive native raw
           assert.deepEqual(assertNoPublicRawLogPayloads(options.collectedRoot), { publicRawLogFiles: 0, regularEmptyDirectories: 2 });
           const require = createRequire(import.meta.url);
           const { injectCustomGatewayEnvArgs } = require(join(options.safeOutputsRoot, 'start_mcp_gateway.cjs'));
+          const { createHandlers } = require(join(options.safeOutputsRoot, 'safe_outputs_handlers.cjs'));
+          for (const args of [
+            { message: 'DUMMY_SOURCE', reason: 'DUMMY_REASON', id: 'DUMMY_MODEL_ID' },
+            JSON.parse('{"message":"DUMMY","type":"create_issue","data":{"secret":"DUMMY"},"__proto__":{"secret":"DUMMY"},"constructor":"DUMMY"}'),
+            Object.create({ message: 'DUMMY_INHERITED', secret: 'DUMMY' }),
+          ]) {
+            const rows = [];
+            const handler = createHandlers({ debug() {} }, row => rows.push(row), { noop: { max: 1 } }).defaultHandler('noop');
+            const response = handler(args);
+            assert(!response.isError);
+            assert.deepEqual(rows, [{ type: 'noop', message: SECURITY_NOOP_MESSAGE }]);
+            assert.throws(() => handler(args), error => error.code === -32602 &&
+              error.data?.constraint === 'max' && error.data?.type === 'noop' && error.data?.limit === 1);
+          }
           const serviceLogDir = join(options.safeOutputsRoot, 'private-security-logs');
           const dockerArgs = injectCustomGatewayEnvArgs(['-e', 'GH_AW_MCP_LOG_DIR', '__GH_AW_MCP_GATEWAY_CUSTOM_ENV__'], {
             GH_AW_MCP_GATEWAY_CUSTOM_ENV_NAMES: '["GH_AW_MCP_LOG_DIR","MCP_GATEWAY_LOG_DIR"]',
@@ -202,7 +239,7 @@ test('uploaded, candidate, and symlinked private roots cannot receive native raw
           assert.equal(dockerArgs[3], `GH_AW_MCP_LOG_DIR=${serviceLogDir}`);
           const config = join(options.safeOutputsRoot, 'config.json');
           const output = join(options.collectedRoot, 'safeoutputs.jsonl');
-          writeFileSync(config, JSON.stringify({ noop: { 'report-as-issue': false }, staged: true }));
+          writeFileSync(config, JSON.stringify({ noop: { max: 1, 'report-as-issue': false }, staged: true }));
           const stderr = join(serviceLogDir, 'stdio.log');
           child = spawn(process.execPath, [join(options.safeOutputsRoot, 'safe_outputs_mcp_server.cjs')], {
             cwd: options.workspace,
@@ -232,16 +269,59 @@ test('uploaded, candidate, and symlinked private roots cannot receive native raw
           assert((await request('tools/list', {})).result.tools.some(tool => tool.name === 'noop'));
           const invalid = await request('tools/call', { name: 'noop', arguments: { message: 'Review complete.', sourceFixture: argument } });
           assert(invalid.error || invalid.result?.isError);
-          const valid = await request('tools/call', { name: 'noop', arguments: { message: 'Review complete.' } });
+          const secret = 'github_pat_DUMMY_CREDENTIAL_SENTINEL_12345678901234567890';
+          const source = 'DUMMY_DIFF_CODE_SENTINEL fn route_secret() {}';
+          const valid = await request('tools/call', { name: 'noop', arguments: { message: `${secret}\n${source}` } });
           assert(valid.result && !valid.result.isError);
           const noop = readFileSync(output, 'utf8').trim().split('\n').map(JSON.parse);
           assert.equal(noop.length, 1);
           assert.equal(noop[0].type, 'noop');
-          assert.equal(noop[0].message, 'Review complete.');
+          assert.deepEqual(noop[0], { type: 'noop', message: SECURITY_NOOP_MESSAGE });
+          validateQueuedOutput({ mode: 'repair' }, { items: noop, errors: [] });
+          const duplicate = await request('tools/call', { name: 'noop', arguments: { message: source } });
+          assert(duplicate.error || duplicate.result?.isError);
+          assert.equal(readFileSync(output, 'utf8').trim().split('\n').length, 1);
+          assert(!readFileSync(output, 'utf8').includes(secret));
+          assert(!readFileSync(output, 'utf8').includes(source));
+          const summaryPath = join(options.collectedRoot, 'staged-noop-summary.md');
+          const nativeNoop = readFileSync(join(pinned, 'setup', 'js', 'noop.cjs'), 'utf8');
+          const nativeModule = { exports: {} };
+          runInNewContext(nativeNoop, {
+            module: nativeModule,
+            require: name => {
+              if (name === './load_agent_output.cjs') return { loadAgentOutput: () => ({ success: true, items: noop }) };
+              if (name === './safe_output_helpers.cjs') return { isStagedMode: () => true };
+              throw new Error('unexpected native noop dependency');
+            },
+            core: { info() {}, summary: { addRaw(text) {
+              return { async write() { writeFileSync(summaryPath, text); } };
+            } } },
+          });
+          await nativeModule.exports.main();
+          const summary = readFileSync(summaryPath, 'utf8');
+          assert(summary.includes(SECURITY_NOOP_MESSAGE));
+          assert(!summary.includes(secret));
+          assert(!summary.includes(source));
+          const inspectPublic = directory => {
+            for (const name of readdirSync(directory)) {
+              const path = join(directory, name);
+              const stat = lstatSync(path);
+              assert(!stat.isSymbolicLink());
+              if (stat.isDirectory()) inspectPublic(path);
+              else {
+                assert(stat.isFile());
+                const bytes = readFileSync(path, 'utf8');
+                for (const sentinel of [secret, source, argument, metadata]) assert(!bytes.includes(sentinel));
+              }
+            }
+          };
+          inspectPublic(options.collectedRoot);
           assert(!readFileSync(output, 'utf8').includes(argument));
           const privateLog = readFileSync(join(serviceLogDir, 'server.log'), 'utf8');
           assert(privateLog.includes(metadata));
           assert(privateLog.includes(argument));
+          assert(privateLog.includes(secret));
+          assert(privateLog.includes(source));
           assert(readFileSync(stderr, 'utf8').includes(argument));
           assert.deepEqual(assertNoPublicRawLogPayloads(options.collectedRoot), { publicRawLogFiles: 0, regularEmptyDirectories: 2 });
           const service = 'safe_outputs_mcp_server.cjs';
@@ -251,15 +331,20 @@ test('uploaded, candidate, and symlinked private roots cannot receive native raw
             assert(proof.startsWith(`${resolve('scratch')}\\`) || proof.startsWith(`${resolve('scratch')}/`));
             mkdirSync(proof, { recursive: true });
             cpSync(output, join(proof, 'canonical-noop.jsonl'));
+            cpSync(summaryPath, join(proof, 'native-staged-noop-summary.md'));
             cpSync(join(serviceLogDir, 'server.log'), join(proof, 'private-safeoutputs-server.log'));
             cpSync(stderr, join(proof, 'private-safeoutputs-stdio.log'));
             writeFileSync(join(proof, 'runtime-proof.json'), JSON.stringify({
               version: 1, pin: 'bc8c008a419c5b7a29df6f5641edd35fd1c6ea85',
               unchangedServiceSha256: createHash('sha256').update(readFileSync(join(options.safeOutputsRoot, service))).digest('hex'),
+              pinnedOriginalHandlerSha256: PRIVATE_LOG_ASSETS.find(asset => asset.fixedNoop).sha256,
+              normalizedHandlerSha256: createHash('sha256').update(readFileSync(join(options.safeOutputsRoot, 'safe_outputs_handlers.cjs'))).digest('hex'),
               verifiedAssets: result.assets, noopCount: noop.length, publicMcpRootAbsent: false,
               publicRawLogFiles: 0, regularEmptyDirectories: 2,
               bootstrapDirectoryRecreationReproduced: true,
               privateMetadataSentinel: true, privateArgumentSentinel: true, privateStderrSentinel: true,
+              fixedNoopMessage: SECURITY_NOOP_MESSAGE, credentialAndDiffAbsentFromPublicArtifacts: true,
+              nativeMaxOneEnforced: true, unchangedNativeStagedNoopSummary: true,
               gatewayEnvInjection: true, credentials: 'none', models: 'none',
               gap: 'Local Windows stdio execution; Docker/AWF host-mount persistence requires hosted validation.',
             }, null, 2));
@@ -291,9 +376,9 @@ test('nested private or collected symlink sinks reject before either runtime ass
         mkdirSync(parent, { recursive: true });
         symlinkSync(target, join(parent, 'mcp-scripts'), process.platform === 'win32' ? 'junction' : 'dir');
         if (location === 'collected') mkdirSync(join(target, 'logs'));
-        const before = options.assets.map(asset => readFileSync(join(options.actionsDir, asset.name), 'utf8'));
+        const before = options.assets.map(asset => readFileSync(join(asset.fixedNoop ? options.safeOutputsRoot : options.actionsDir, asset.name), 'utf8'));
         assert.throws(() => prepareSecurityReviewPrivateLogs(options));
-        assert.deepEqual(options.assets.map(asset => readFileSync(join(options.actionsDir, asset.name), 'utf8')), before);
+        assert.deepEqual(options.assets.map(asset => readFileSync(join(asset.fixedNoop ? options.safeOutputsRoot : options.actionsDir, asset.name), 'utf8')), before);
         assert(!existsSync(join(target, 'logs', 'privacy-preparation.json')));
       });
   }
