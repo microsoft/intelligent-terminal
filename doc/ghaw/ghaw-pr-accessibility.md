@@ -328,6 +328,10 @@ current registration must also match the manifest version and resolved install
 location. Same-name registrations from other publishers are never selected for
 activation, cleanup, or restoration. Previous owned versions are compared
 numerically.
+Cleanup is tracked from the registration attempt, not a successful lookup.
+It retries the identity-bound lookup once; if identity still cannot be verified,
+it records cleanup as blocked without removing an unknown package, and still
+attempts to restore the captured previous owned registration.
 
 ## Findings and publication
 

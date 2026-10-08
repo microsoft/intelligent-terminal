@@ -240,6 +240,7 @@ $axeResultPath = Join-Path $surfaceOutput 'axe-results.json'
 $resultPath = Join-Path $surfaceOutput 'result.json'
 $package = $null
 $previousPackage = $null
+$registrationAttempted = $false
 $processId = 0
 $ownedProcess = $null
 $axe = $null
@@ -269,6 +270,7 @@ try
             throw "Required x64 framework is not installed for this user: $($dependency.Name) >= $($dependency.MinVersion)."
         }
     }
+    $registrationAttempted = $true
     Add-AppxPackage -Register $resolvedManifest -ForceApplicationShutdown
     $package = Get-TestHostPackage -Manifest $manifest -InstallLocation (Split-Path -Parent $resolvedManifest)
     if (-not $package)
@@ -412,10 +414,18 @@ finally
             Write-Warning "Failed to clean up the owned test host process: $($_.Exception.Message)" -WarningAction Continue
         }
     }
-    if ($package -and -not $KeepRegistered)
+    if ($registrationAttempted -and -not $KeepRegistered)
     {
         try
         {
+            if (-not $package)
+            {
+                $package = Get-TestHostPackage -Manifest $manifest -InstallLocation (Split-Path -Parent $resolvedManifest)
+            }
+            if (-not $package)
+            {
+                throw 'Registered candidate identity cannot be verified; refusing to remove an unverified package.'
+            }
             Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
         }
         catch

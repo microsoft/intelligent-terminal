@@ -8,7 +8,7 @@ Describe 'Axe test host owned-process cleanup' -Tag Unit {
         $path = Join-Path $PSScriptRoot 'Invoke-AxeWindowsTestHost.ps1'
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)
         if ($errors) { throw 'Test host harness could not be parsed.' }
-        foreach ($name in @('Get-OwnedProcess', 'Stop-OwnedProcess')) {
+        foreach ($name in @('Get-OwnedProcess', 'Stop-OwnedProcess', 'Get-TestHostPackage')) {
             $definition = $ast.Find({
                 param($node)
                 $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
@@ -20,11 +20,13 @@ Describe 'Axe test host owned-process cleanup' -Tag Unit {
             Select-Object -Last 1
         $text = $outerTry.Finally.Extent.Text
         $script:cleanupBlock = [scriptblock]::Create($text.Substring(1, $text.Length - 2))
-        function Remove-AppxPackage {}
-        function Add-AppxPackage {}
+        function Remove-AppxPackage { [CmdletBinding()]param([string]$Package) }
+        function Add-AppxPackage { [CmdletBinding()]param([string]$Register, [switch]$DisableDevelopmentMode) }
+        function Get-AppxPackage {}
     }
 
     BeforeEach {
+        $script:registrationAttempted = $false
         $script:started = [datetime]::new(2026, 10, 6, 1, 0, 0, [DateTimeKind]::Utc)
         $script:fake = [pscustomobject]@{
             Id = 123
@@ -158,6 +160,7 @@ Describe 'Axe test host owned-process cleanup' -Tag Unit {
         $ownedProcess = $null
         $axe = $null
         $package = [pscustomobject]@{ PackageFullName = 'WindowsTerminal.TestHost_test' }
+        $registrationAttempted = $true
         $previousPackage = [pscustomobject]@{ InstallLocation = 'C:\previous-test-host' }
         $KeepRegistered = $false
         $cleanup = [System.Collections.Generic.List[object]]::new()
@@ -179,6 +182,51 @@ Describe 'Axe test host owned-process cleanup' -Tag Unit {
         Should -Invoke Set-Content -Times 1 -Exactly
         Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
             $Message -like 'Failed to restore the previous WindowsTerminal.TestHost registration:*'
+        }
+    }
+
+    It 'restores previous registration after lookup failure with recovery <Recovered>' -ForEach @(
+        @{ Recovered = $true }, @{ Recovered = $false }
+    ) {
+        $status = 'BLOCKED'
+        $reason = 'Registration lookup failed'
+        $ownedProcess = $null
+        $axe = $null
+        $package = $null
+        $registrationAttempted = $true
+        $previousPackage = [pscustomobject]@{ InstallLocation = 'C:\previous-TestHostApp' }
+        $manifest = [xml]'<Package><Identity /></Package>'
+        $resolvedManifest = 'C:\TestHostApp\AppxManifest.xml'
+        $KeepRegistered = $false
+        $cleanup = [System.Collections.Generic.List[object]]::new()
+        $SourceSha = 'a' * 40
+        $Surface = 'fre'
+        $axeExitCode = $null
+        $processId = 0
+        $axeResultPath = 'not-used'
+        $resultPath = 'not-written'
+        $script:recoverPackage = $Recovered
+        Mock Get-TestHostPackage {
+            if ($script:recoverPackage) { [pscustomobject]@{ PackageFullName = 'verified-TestHostApp' } }
+        }
+        Mock Test-Path { $true }
+        Mock Remove-AppxPackage {}
+        Mock Add-AppxPackage {}
+        Mock Set-Content { $script:written = $Value }
+        . $script:cleanupBlock
+        $result = $script:written | ConvertFrom-Json
+        $result.status | Should -Be 'BLOCKED'
+        $result.primary_reason | Should -Be 'Registration lookup failed'
+        Should -Invoke Get-TestHostPackage -Times 1 -Exactly
+        Should -Invoke Add-AppxPackage -Times 1 -Exactly -ParameterFilter {
+            $Register -eq 'C:\previous-TestHostApp\AppxManifest.xml'
+        }
+        if ($Recovered) {
+            Should -Invoke Remove-AppxPackage -Times 1 -Exactly -ParameterFilter { $Package -eq 'verified-TestHostApp' }
+            $result.cleanup.Count | Should -Be 0
+        } else {
+            Should -Invoke Remove-AppxPackage -Times 0 -Exactly
+            $result.cleanup[0].reason | Should -BeLike '*refusing to remove an unverified package*'
         }
     }
 
@@ -233,7 +281,7 @@ Describe 'Axe test host package identity' -Tag Unit {
             Publisher = 'CN=Windows Terminal Team'
             Architecture = 'X64'
             Version = '1.0.0.0'
-            InstallLocation = 'C:\testhost'
+            InstallLocation = 'C:\TestHostApp'
         }
         $script:packages = @($script:matching)
         Mock Get-AppxPackage { $script:packages }
@@ -260,10 +308,10 @@ Describe 'Axe test host package identity' -Tag Unit {
     }
 
     It 'requires the registered manifest version and install location' {
-        Get-TestHostPackage -Manifest $script:manifest -InstallLocation 'C:\testhost' | Should -Not -BeNullOrEmpty
+        Get-TestHostPackage -Manifest $script:manifest -InstallLocation 'C:\TestHostApp' | Should -Not -BeNullOrEmpty
         Get-TestHostPackage -Manifest $script:manifest -InstallLocation 'C:\other' | Should -BeNullOrEmpty
         $script:matching.Version = '2.0.0.0'
-        Get-TestHostPackage -Manifest $script:manifest -InstallLocation 'C:\testhost' | Should -BeNullOrEmpty
+        Get-TestHostPackage -Manifest $script:manifest -InstallLocation 'C:\TestHostApp' | Should -BeNullOrEmpty
     }
 
     It 'sorts previous owned registrations by numeric version' {
@@ -282,6 +330,6 @@ Describe 'Axe test host package identity' -Tag Unit {
 
     It 'rejects ambiguous current registrations instead of selecting one arbitrarily' {
         $script:packages = @($script:matching, $script:matching.PSObject.Copy())
-        { Get-TestHostPackage -Manifest $script:manifest -InstallLocation 'C:\testhost' } | Should -Throw '*ambiguous*'
+        { Get-TestHostPackage -Manifest $script:manifest -InstallLocation 'C:\TestHostApp' } | Should -Throw '*ambiguous*'
     }
 }
