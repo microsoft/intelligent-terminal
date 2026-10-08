@@ -148,7 +148,7 @@ function Test-CopilotReviewHasNoNewFindings {
         $line
     }
     $summary = ($summaryLines -join "`n") -replace '\*\*', ''
-    $fields = [regex]::Matches($summary, '(?im)^[ \t]*(?:[-+*][ \t]+)?(?:Findings:[ \t]*(?<count>None|\d+)\b|Comments generated:[ \t]*(?<count>\d+)[ \t]+new\b)')
+    $fields = [regex]::Matches($summary, '(?im)^[ \t]*(?:[-+*][ \t]+)?(?:Findings:[ \t]*(?<count>None|\d+)\b|Comments generated:[ \t]*(?<count>\d+)[ \t]+new\b|(?<count>\d+)[ \t]+open[ \t]+findings[ \t]*$)')
     # Every explicit summary constrains the result; none can override another.
     foreach ($field in $fields) {
         if ($field.Groups['count'].Value -notmatch '^(?:None|0+)$') { return $false }

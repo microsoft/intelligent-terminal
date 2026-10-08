@@ -25,6 +25,27 @@ Describe 'Copilot review summary compatibility' {
         Test-CopilotReviewHasNoNewFindings "## Copilot review overview`n**Findings:** None" | Should -BeTrue
     }
 
+    It 'accepts the current open-findings summary without deriving a count from the overview' {
+        # PR 985 review 5450276283: exact field, no inline or open threads.
+        $body = "### Needs a closer look`nFour moderate review findings remain unresolved.`n`n**0 open findings**"
+        Test-CopilotReviewHasNoNewFindings $body | Should -BeTrue
+        Test-CopilotReviewHasNoNewFindings '0 open findings' | Should -BeTrue
+    }
+
+    It 'rejects nonzero open-findings fields and contradictory summaries' {
+        Test-CopilotReviewHasNoNewFindings '**1 open findings**' | Should -BeFalse
+        Test-CopilotReviewHasNoNewFindings "**Findings:** None`n**2 open findings**" | Should -BeFalse
+        Test-CopilotReviewHasNoNewFindings "**0 open findings**`nComments generated: 1 new" | Should -BeFalse
+        Test-CopilotReviewHasNoNewFindings "**0 open findings**`n**1 open findings**" | Should -BeFalse
+    }
+
+    It 'does not accept an open-findings count embedded in example text' {
+        Test-CopilotReviewHasNoNewFindings 'Example: 0 open findings' | Should -BeFalse
+        Test-CopilotReviewHasNoNewFindings '0 open findings was an earlier example' | Should -BeFalse
+        Test-CopilotReviewHasNoNewFindings '> **0 open findings**' | Should -BeFalse
+        Test-CopilotReviewHasNoNewFindings ('```' + "`n**0 open findings**`n" + '```') | Should -BeFalse
+    }
+
     It 'accepts zero new comments with markdown or plain labels' {
         Test-CopilotReviewHasNoNewFindings '- **Comments generated:** 0 new' | Should -BeTrue
         Test-CopilotReviewHasNoNewFindings 'Comments generated: 0 new' | Should -BeTrue
