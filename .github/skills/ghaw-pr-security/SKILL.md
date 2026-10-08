@@ -315,8 +315,9 @@ AWF inner CLI private root are separate filesystem namespaces.
 
 This is **not** a source-secret scanner or a universal diagnostic privacy claim.
 Report-derived summary prose remains an explicitly permitted validated output.
-The pinned threat detector receives native `agent_output.json` (one `noop`),
-workflow context, and applicable patch/memory inputs, not CLI session JSONL or
+The pinned threat detector receives the exact finalized report as its native
+`agent_output.json`, workflow context, and the exact applicable
+`aw-security-repair.patch`/memory inputs, not CLI session JSONL or
 the private native source logs. It does not independently inspect the raw source
 transcript. Public raw conversational/tool diagnostics are intentionally replaced
 with metadata; native token-usage telemetry and final repair validation remain
@@ -407,12 +408,38 @@ authorize automatic repair.
 
 ## Publication constraint
 
+The generated detector must consume the exact finalized structured report and
+repair bytes, not the fixed noop. Trusted native hooks stage the report as
+`agent_output.json` and the repair as `aw-security-repair.patch`, the pinned
+v0.5.1 consumer names, and attest unchanged inputs only after successful
+execution. Trusted native detector post-steps require original runner execution
+and host-conclusion outcomes plus an actually evaluated successful native verdict.
+The host invocation enables detection and strict failure handling; a skipped
+exit-zero conclusion cannot produce a checkpoint. They then write the run/attempt/source-bound completion
+outside sandbox mounts and upload its unique host artifact. The publication gate
+verifies that artifact and a clean redacted verdict
+with no structured inspection warnings. Green jobs and generated success
+outputs alone are not detector authority. Detector transcripts stay private.
+
 gh-aw PR safe output cannot combine branch commit/push and PR comment output in
 one worker, and generated safe-output jobs are not ordered after native
 post-validation. Both analysis workers therefore emit exactly one `noop`. The
 trusted controller publishes only after a successful worker and validated
 artifact:
 
+- Both workers run a credential-read-only native `publication_gate` after the
+  generated `detection` job. Exact `needs.detection.outputs` values
+  `detection_success == 'true'` and `detection_conclusion == 'success'` are
+  necessary but insufficient: original execution/host-conclusion outcomes,
+  a protected host input-binding attestation, and no structured inspection warnings also authorize
+  the typed detector proof. A green detector job is insufficient: warning,
+  cancellation, skipped, failed, or absent outcomes never authorize publication.
+  The proof binds repository, worker run/attempt, trusted workflow revision,
+  PR/head/comparison scope, and exact report/patch digests. The controller checks
+  matching API source jobs, successful native attestation/upload steps and the
+  unique same-run artifact before emitting any publication authorization.
+  Fork post-step reports produced before detection are evidence only; report
+  fields and model stdout cannot attest detector success.
 - same-repository repair: index-only commit based on the reviewed head and a
   push with an explicit expected-head lease and independently enforced
   fast-forward candidate; branch rewinds and advances are rejected atomically;

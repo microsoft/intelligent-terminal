@@ -999,13 +999,98 @@ export function validatePublicationRun(run, jobs, identity) {
       !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) {
     fail('publication worker identity or conclusion is invalid');
   }
-  const required = ['agent', 'detection', 'safe_outputs', ...(identity.sameRepo ? ['finalize', 'validate_windows / validate'] : [])];
+  const required = ['agent', 'detection', 'safe_outputs', 'publication_gate', ...(identity.sameRepo ? ['finalize', 'validate_windows / validate'] : [])];
   for (const name of required) {
     const matches = jobs.filter(job => job.name === name);
     if (matches.length !== 1 || matches[0].run_id !== run.id ||
         matches[0].run_attempt !== run.run_attempt || matches[0].status !== 'completed' ||
         matches[0].conclusion !== 'success') fail('publication requires successful matching source jobs');
   }
+  validateDetectorExecutionJobs(jobs, run.id, run.run_attempt);
+  const gate = jobs.find(job => job.name === 'publication_gate');
+  for (const name of ['Attest successful generated detector outcome', 'Upload trusted detector publication proof']) {
+    const steps = gate.steps?.filter(step => step.name === name);
+    if (steps?.length !== 1 || steps[0].status !== 'completed' || steps[0].conclusion !== 'success') {
+      fail('publication requires successful native detector attestation steps');
+    }
+  }
+}
+
+export function validateDetectorExecutionJobs(jobs, runId, attempt) {
+  const matches = jobs.filter(job => job.name === 'detection' && job.run_id === Number(runId) &&
+    job.run_attempt === Number(attempt) && job.status === 'completed' && job.conclusion === 'success');
+  for (const name of ['Conclude detector for publication', 'Attest original detector outcomes on host', 'Upload trusted host detector completion']) {
+    const steps = matches.length === 1 ? matches[0].steps?.filter(step => step.name === name) : [];
+    if (steps?.length !== 1 || steps[0].status !== 'completed' || steps[0].conclusion !== 'success') {
+      fail('publication requires actual successful detector execution and conclusion steps');
+    }
+  }
+}
+
+export function createDetectorPublicationProof(environment, scope, reportBytes, patchBytes = '', evidence) {
+  if (environment.DETECTION_SUCCESS !== 'true' || environment.DETECTION_CONCLUSION !== 'success' ||
+      evidence?.executionOutcome !== 'success' || evidence?.conclusionOutcome !== 'success') {
+    fail('publication requires explicit successful generated detector outputs');
+  }
+  const repository = environment.GITHUB_REPOSITORY;
+  const runId = environment.GITHUB_RUN_ID;
+  const attempt = environment.GITHUB_RUN_ATTEMPT;
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '') ||
+      !/^[1-9][0-9]*$/.test(runId ?? '') || !/^[1-9][0-9]*$/.test(attempt ?? '') ||
+      !Number.isSafeInteger(Number(attempt)) || !SHA.test(environment.TRUSTED_SHA ?? '') ||
+      environment.TRUSTED_SHA !== environment.EXPECTED_BASE_SHA ||
+      !/^[1-9][0-9]*$/.test(environment.PR_NUMBER ?? '') ||
+      scope.prNumber !== Number(environment.PR_NUMBER) || scope.headSha !== environment.EXPECTED_HEAD_SHA ||
+      scope.observedBaseSha !== environment.EXPECTED_BASE_SHA ||
+      scope.baseSha !== environment.COMPARISON_BASE_SHA) fail('detector publication identity is invalid');
+  validateReport(JSON.parse(reportBytes), scope);
+  const binding = {
+    version: 2, repository, runId, runAttempt: Number(attempt), sourceJob: 'publication_gate',
+    trustedWorkflowSha: environment.TRUSTED_SHA, prNumber: scope.prNumber,
+    headSha: scope.headSha, baseSha: scope.observedBaseSha, comparisonBaseSha: scope.baseSha,
+    scopeSha256: scope.scopeSha256, mode: scope.mode, repositoryRelation: scope.repositoryRelation,
+    detectionSuccess: true, detectionConclusion: 'success',
+    reportSha256: createHash('sha256').update(reportBytes).digest('hex'),
+    patchSha256: createHash('sha256').update(patchBytes).digest('hex'),
+  };
+  const consumed = { ...binding, sourceJob: 'detection', detectorVersion: 'v0.5.1',
+    detectorSourceSha: '230b061fde8539a492c6c7d4cb9c96d1b33323d3', executionExitCode: 0 };
+  if (stableJson(evidence.consumed) !== stableJson(consumed)) fail('detector did not consume the exact final publication inputs');
+  validateDetectorResult(evidence.result);
+  return { ...binding, detectorVersion: consumed.detectorVersion,
+    detectorSourceSha: consumed.detectorSourceSha, executionExitCode: 0, inputSourceJob: 'detection',
+    executionOutcome: evidence.executionOutcome, conclusionOutcome: evidence.conclusionOutcome };
+}
+
+export function validateDetectorResult(result) {
+  // v0.5.1 Result / WriteResultFile emits these five fields, including empty arrays.
+  if (!result || typeof result !== 'object' || Array.isArray(result) ||
+      Object.keys(result).sort().join(',') !== 'malicious_patch,prompt_injection,reasons,secret_leak,warnings' ||
+      ['prompt_injection', 'secret_leak', 'malicious_patch'].some(key => result[key] !== false) ||
+      !Array.isArray(result.reasons) || result.reasons.length !== 0 ||
+      !Array.isArray(result.warnings) || result.warnings.length !== 0) {
+    fail('detector result must be the pinned redacted clean verdict with no inspection warnings');
+  }
+}
+
+export function validateDetectorPublicationProof(proof, run, scope, reportBytes, patchBytes, repository) {
+  const binding = {
+    version: 2, repository, runId: String(run.id), runAttempt: run.run_attempt, sourceJob: 'detection',
+    trustedWorkflowSha: run.head_sha, prNumber: scope.prNumber, headSha: scope.headSha,
+    baseSha: scope.observedBaseSha, comparisonBaseSha: scope.baseSha, scopeSha256: scope.scopeSha256,
+    mode: scope.mode, repositoryRelation: scope.repositoryRelation, detectionSuccess: true, detectionConclusion: 'success',
+    reportSha256: createHash('sha256').update(reportBytes).digest('hex'),
+    patchSha256: createHash('sha256').update(patchBytes).digest('hex'), detectorVersion: 'v0.5.1',
+    detectorSourceSha: '230b061fde8539a492c6c7d4cb9c96d1b33323d3', executionExitCode: 0,
+  };
+  const expected = createDetectorPublicationProof({
+    DETECTION_SUCCESS: 'true', DETECTION_CONCLUSION: 'success', GITHUB_REPOSITORY: repository,
+    GITHUB_RUN_ID: String(run.id), GITHUB_RUN_ATTEMPT: String(run.run_attempt),
+    TRUSTED_SHA: run.head_sha, EXPECTED_BASE_SHA: scope.observedBaseSha,
+    EXPECTED_HEAD_SHA: scope.headSha, COMPARISON_BASE_SHA: scope.baseSha, PR_NUMBER: String(scope.prNumber),
+  }, scope, reportBytes, patchBytes, { executionOutcome: 'success', conclusionOutcome: 'success', consumed: binding,
+    result: { prompt_injection: false, secret_leak: false, malicious_patch: false, reasons: [], warnings: [] } });
+  if (stableJson(proof) !== stableJson(expected)) fail('detector publication attestation is invalid');
 }
 
 export function validateNativePublicationProof(result, report, scope, repository, base, patch) {
@@ -1050,16 +1135,29 @@ export function preparePublication({ environment = process.env, request, paths =
       scope.mode !== (sameRepo ? 'repair' : 'guide')) fail('publication scope does not match controller identity');
   const directory = paths('--artifacts');
   const output = paths('--output');
-  const input = JSON.parse(readFileSync(resolve(directory, 'security-findings.validated.json'), 'utf8'));
+  const reportBytes = readFileSync(resolve(directory, 'security-findings.validated.json'), 'utf8');
+  const input = JSON.parse(reportBytes);
   const report = validateReport(input, scope);
   const patchPath = resolve(directory, 'security-repair.patch');
   let patch = '';
   if (sameRepo) patch = readFileSync(patchPath, 'utf8');
+  const artifacts = [];
+  for (let page = 1; ; page++) {
+    const batch = api(`actions/runs/${runId}/artifacts?per_page=100&page=${page}`).artifacts;
+    if (!Array.isArray(batch) || page > 20) fail('publication artifacts are invalid');
+    artifacts.push(...batch);
+    if (batch.length < 100) break;
+  }
+  const detectorName = `ghaw-pr-security-detector-proof-${runId}-${run.run_attempt}-${pr}`;
+  const detectorArtifacts = artifacts.filter(item => item.name === detectorName && !item.expired);
+  if (detectorArtifacts.length !== 1 || detectorArtifacts[0].workflow_run?.id !== run.id ||
+      detectorArtifacts[0].workflow_run?.head_sha !== base) fail('trusted detector proof artifact is missing or mismatched');
+  const detectorProof = JSON.parse(readFileSync(paths('--detector-proof'), 'utf8'));
+  validateDetectorPublicationProof(detectorProof, run, scope, reportBytes, patch, repository);
   if (report.patch.length > 0) {
     validateRepairScope(scope);
-    const proof = api(`actions/runs/${runId}/artifacts?per_page=100`).artifacts;
     const proofName = `ghaw-pr-security-windows-proof-${runId}-${run.run_attempt}-${pr}`;
-    if (proof.filter(item => item.name === proofName && !item.expired).length !== 1) fail('native proof artifact is missing');
+    if (artifacts.filter(item => item.name === proofName && !item.expired).length !== 1) fail('native proof artifact is missing');
     const result = JSON.parse(readFileSync(paths('--proof'), 'utf8').replace(/^\uFEFF/, ''));
     validateNativePublicationProof(result, report, scope, repository, base, patch);
     validateRepairChanges(scope, patch);
@@ -1089,7 +1187,7 @@ export function preparePublication({ environment = process.env, request, paths =
   writeFileSync(resolve(output, 'security-summary.md'), renderReport(report), { flag: 'wx' });
   writeFileSync(resolve(output, 'security-repair.patch'), patch, { flag: 'wx' });
   writeFileSync(resolve(output, 'security-status.txt'), report.findings.some(f => f.severity === 'high' && f.fixDisposition.state !== 'fixed') ? 'blocking\n' : 'pass\n', { flag: 'wx' });
-  appendFileSync(environment.GITHUB_OUTPUT, `publication=${decision}\npatch_sha256=${createHash('sha256').update(patch).digest('hex')}\n`);
+  appendFileSync(environment.GITHUB_OUTPUT, `publication=${decision}\npatch_sha256=${createHash('sha256').update(patch).digest('hex')}\ndetector_attested=true\n`);
 }
 
 function option(name) {
@@ -1100,6 +1198,27 @@ function option(name) {
 
 function main() {
   const command = process.argv[2];
+  if (command === 'attest-detector') {
+    const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
+    const runId = process.env.GITHUB_RUN_ID;
+    const attempt = process.env.GITHUB_RUN_ATTEMPT;
+    if (!/^[1-9][0-9]*$/.test(runId ?? '') || !/^[1-9][0-9]*$/.test(attempt ?? '')) fail('invalid detector run identity');
+    const jobs = JSON.parse(capturedCommand('gh', ['api',
+      `/repos/${process.env.GITHUB_REPOSITORY}/actions/runs/${runId}/attempts/${attempt}/jobs?per_page=100`],
+    { encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024 }));
+    if (jobs.total_count > 100 || !Array.isArray(jobs.jobs)) fail('invalid detector source jobs');
+    validateDetectorExecutionJobs(jobs.jobs, runId, attempt);
+    const completion = JSON.parse(readFileSync(option('--host-completion'), 'utf8'));
+    if (completion.conclusionExitCode !== 0) fail('native host detector conclusion failed');
+    const proof = createDetectorPublicationProof(process.env, scope,
+      readFileSync(option('--report'), 'utf8'),
+      scope.mode === 'repair' ? readFileSync(option('--patch'), 'utf8') : '', {
+        executionOutcome: completion.executionOutcome, conclusionOutcome: completion.conclusionOutcome,
+        consumed: completion.binding, result: completion.result,
+      });
+    writeFileSync(option('--output'), `${JSON.stringify(proof, null, 2)}\n`, { flag: 'wx' });
+    return;
+  }
   if (command === 'prepare-publication') {
     preparePublication();
     return;

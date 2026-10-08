@@ -219,8 +219,114 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  detection:
+    needs: [finalize]
+    pre-steps:
+      - name: Checkout trusted detector binding code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Download finalized detector inputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ghaw-pr-security-${{ github.event.inputs.pr_number }}-${{ github.event.inputs.expected_head_sha }}
+          path: ${{ runner.temp }}/security-payload
+      - name: Install trusted exact-input detector binding
+        shell: bash
+        env:
+          TRUSTED_SHA: ${{ github.workflow_sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.inputs.expected_base_sha }}
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          COMPARISON_BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          SECURITY_SCOPE_FILE: security-scope.validated.json
+        run: |
+          set -euo pipefail
+          node .github/skills/ghaw-pr-security/scripts/security-detector.mjs prepare
+          for key in TRUSTED_SHA EXPECTED_BASE_SHA EXPECTED_HEAD_SHA COMPARISON_BASE_SHA PR_NUMBER SECURITY_SCOPE_FILE; do
+            printf '%s=%s\n' "$key" "${!key}" >> "$GITHUB_ENV"
+          done
+
+  publication_gate:
+    needs: [agent, detection, finalize]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout trusted detector attestation code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Download final security payload
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ghaw-pr-security-${{ github.event.inputs.pr_number }}-${{ github.event.inputs.expected_head_sha }}
+          path: ${{ runner.temp }}/security-payload
+      - name: Download trusted host detector completion
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ghaw-pr-security-detector-host-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.inputs.pr_number }}
+          path: ${{ runner.temp }}/security-detection
+      - name: Attest successful generated detector outcome
+        shell: bash
+        env:
+          DETECTION_SUCCESS: ${{ needs.detection.outputs.detection_success }}
+          DETECTION_CONCLUSION: ${{ needs.detection.outputs.detection_conclusion }}
+          GH_TOKEN: ${{ github.token }}
+          TRUSTED_SHA: ${{ github.workflow_sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.inputs.expected_base_sha }}
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          COMPARISON_BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+        run: |
+          set -euo pipefail
+          node .github/skills/ghaw-pr-security/scripts/security-review.mjs attest-detector \
+            --scope "$RUNNER_TEMP/security-payload/security-scope.validated.json" \
+            --report "$RUNNER_TEMP/security-payload/security-findings.validated.json" \
+            --patch "$RUNNER_TEMP/security-payload/security-repair.patch" \
+            --host-completion "$RUNNER_TEMP/security-detection/security-detector-host.json" \
+            --output "$RUNNER_TEMP/security-detector-proof.json"
+      - name: Upload trusted detector publication proof
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ghaw-pr-security-detector-proof-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.inputs.pr_number }}
+          path: ${{ runner.temp }}/security-detector-proof.json
+          if-no-files-found: error
+          retention-days: 14
+
 safe-outputs:
   staged: true
+  threat-detection:
+    post-steps:
+      - name: Conclude detector for publication
+        id: security_detector_conclusion
+        shell: bash
+        env:
+          DETECTION_EXECUTION_OUTCOME: ${{ steps.detection_agentic_execution.outcome }}
+        run: |
+          set -euo pipefail
+          node "$RUNNER_TEMP/gh-aw/security-detector-native/security-detector.mjs" host-conclude
+      - name: Attest original detector outcomes on host
+        id: security_detector_host_completion
+        shell: bash
+        env:
+          DETECTION_EXECUTION_OUTCOME: ${{ steps.detection_agentic_execution.outcome }}
+          DETECTION_CONCLUSION_OUTCOME: ${{ steps.security_detector_conclusion.outcome }}
+        run: |
+          set -euo pipefail
+          node "$RUNNER_TEMP/gh-aw/security-detector-native/security-detector.mjs" host-complete
+      - name: Upload trusted host detector completion
+        if: steps.security_detector_host_completion.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ghaw-pr-security-detector-host-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.inputs.pr_number }}
+          path: ${{ runner.temp }}/security-detector-host/security-detector-host.json
+          if-no-files-found: error
+          retention-days: 14
   report-failure-as-issue: false
   create-check-run:
     max: 1

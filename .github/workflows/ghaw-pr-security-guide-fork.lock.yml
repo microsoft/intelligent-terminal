@@ -1,5 +1,5 @@
-# gh-aw-metadata: {"schema_version":"v4","frontmatter_hash":"97d7f5d50b65ff3afe39f5a1474911948edaeeb29d9bc92609939e47be5e9129","body_hash":"c48dfd1f5134a276bc113cae38ef515d72fd085bf6eadb4e3c4ee4f0a022677e","compiler_version":"v0.87.10","strict":true,"agent_id":"copilot","engine_versions":{"copilot":"1.0.90"}}
-# gh-aw-manifest: {"version":1,"secrets":["GH_AW_DEFAULT_OTLP_HEADERS","GH_AW_GITHUB_MCP_SERVER_TOKEN","GH_AW_GITHUB_TOKEN","GITHUB_TOKEN"],"actions":[{"repo":"actions/cache/restore","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/cache/save","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/checkout","sha":"3d3c42e5aac5ba805825da76410c181273ba90b1","version":"v7.0.1"},{"repo":"actions/download-artifact","sha":"3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c","version":"v8.0.1"},{"repo":"actions/github-script","sha":"3a2844b7e9c422d3c10d287c895573f7108da1b3","version":"v9.0.0"},{"repo":"actions/setup-node","sha":"820762786026740c76f36085b0efc47a31fe5020","version":"v7.0.0"},{"repo":"actions/upload-artifact","sha":"043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","version":"v7.0.1"},{"repo":"github/gh-aw-actions/setup","sha":"bc8c008a419c5b7a29df6f5641edd35fd1c6ea85","version":"bc8c008a419c5b7a29df6f5641edd35fd1c6ea85"}],"skills":[".github/skills/ghaw-pr-security"],"containers":[{"image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10","digest":"sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e","pinned_image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10@sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e"},{"image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10","digest":"sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64","pinned_image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10@sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64"},{"image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10","digest":"sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6","pinned_image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10@sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6"},{"image":"ghcr.io/github/gh-aw-mcpg:v0.4.14","digest":"sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5","pinned_image":"ghcr.io/github/gh-aw-mcpg:v0.4.14@sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5"},{"image":"ghcr.io/github/gh-aw-node","digest":"sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e","pinned_image":"ghcr.io/github/gh-aw-node@sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e"}],"mcp_servers":[{"name":"mcpscripts","tools":["inspect-security-repair","read-security-diff","read-security-source","submit-security-report","write-security-repair"]},{"name":"safeoutputs","tools":["create_check_run","missing_data","missing_tool","noop"]}]}
+# gh-aw-metadata: {"schema_version":"v4","frontmatter_hash":"f558c4cdbe9dca7cb11fc71113e6f7bd5faa0ae2e7eb9830a50e73969c11d46d","body_hash":"c48dfd1f5134a276bc113cae38ef515d72fd085bf6eadb4e3c4ee4f0a022677e","compiler_version":"v0.87.10","strict":true,"agent_id":"copilot","engine_versions":{"copilot":"1.0.90"}}
+# gh-aw-manifest: {"version":1,"secrets":["GH_AW_DEFAULT_OTLP_HEADERS","GH_AW_GITHUB_MCP_SERVER_TOKEN","GH_AW_GITHUB_TOKEN","GITHUB_TOKEN"],"actions":[{"repo":"actions/cache/restore","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/cache/save","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/checkout","sha":"3d3c42e5aac5ba805825da76410c181273ba90b1","version":"v7.0.1"},{"repo":"actions/download-artifact","sha":"3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c","version":"v8.0.1"},{"repo":"actions/github-script","sha":"3a2844b7e9c422d3c10d287c895573f7108da1b3","version":"v9.0.0"},{"repo":"actions/setup-node","sha":"820762786026740c76f36085b0efc47a31fe5020","version":"v7.0.0"},{"repo":"actions/upload-artifact","sha":"043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","version":"043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"},{"repo":"github/gh-aw-actions/setup","sha":"bc8c008a419c5b7a29df6f5641edd35fd1c6ea85","version":"v0.87.10"}],"skills":[".github/skills/ghaw-pr-security"],"containers":[{"image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10","digest":"sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e","pinned_image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10@sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e"},{"image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10","digest":"sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64","pinned_image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10@sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64"},{"image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10","digest":"sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6","pinned_image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10@sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6"},{"image":"ghcr.io/github/gh-aw-mcpg:v0.4.14","digest":"sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5","pinned_image":"ghcr.io/github/gh-aw-mcpg:v0.4.14@sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5"},{"image":"ghcr.io/github/gh-aw-node","digest":"sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e","pinned_image":"ghcr.io/github/gh-aw-node@sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e"}],"mcp_servers":[{"name":"mcpscripts","tools":["inspect-security-repair","read-security-diff","read-security-source","submit-security-report","write-security-repair"]},{"name":"safeoutputs","tools":["create_check_run","missing_data","missing_tool","noop"]}]}
 # This file was automatically generated by gh-aw (v0.87.10). DO NOT EDIT. To debug this workflow, load the skill at https://github.com/github/gh-aw/blob/main/debug.md
 #
 #    ___                   _   _
@@ -43,8 +43,9 @@
 #   - actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 #   - actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
 #   - actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+#   - actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
 #   - actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-#   - github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
+#   - github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
 #
 # Container images used:
 #   - ghcr.io/github/gh-aw-firewall/agent:0.28.10@sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e
@@ -140,7 +141,7 @@ jobs:
     steps:
       - name: Setup Scripts
         id: setup
-        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
+        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
           job-name: ${{ github.job }}
@@ -464,7 +465,7 @@ jobs:
     steps:
       - name: Setup Scripts
         id: setup
-        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
+        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
           job-name: ${{ github.job }}
@@ -1528,6 +1529,7 @@ jobs:
       - agent
       - detection
       - prepare
+      - publication_gate
       - safe_outputs
     if: >
       always() && (needs.agent.result != 'skipped' || needs.activation.outputs.lockdown_check_failed == 'true' ||
@@ -1551,7 +1553,7 @@ jobs:
     steps:
       - name: Setup Scripts
         id: setup
-        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
+        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
           job-name: ${{ github.job }}
@@ -1832,7 +1834,7 @@ jobs:
     steps:
       - name: Setup Scripts
         id: setup
-        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
+        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
           job-name: ${{ github.job }}
@@ -1844,6 +1846,31 @@ jobs:
           GH_AW_INFO_VERSION: "1.0.90"
           GH_AW_INFO_AWF_VERSION: "v0.28.10"
           GH_AW_INFO_ENGINE_ID: "copilot"
+      - name: Checkout trusted detector binding code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+      - name: Download finalized detector inputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ghaw-pr-security-${{ github.event.inputs.pr_number }}-${{ github.event.inputs.expected_head_sha }}
+          path: ${{ runner.temp }}/security-payload
+      - name: Install trusted exact-input detector binding
+        run: |
+          set -euo pipefail
+          node .github/skills/ghaw-pr-security/scripts/security-detector.mjs prepare
+          for key in TRUSTED_SHA EXPECTED_BASE_SHA EXPECTED_HEAD_SHA COMPARISON_BASE_SHA PR_NUMBER SECURITY_SCOPE_FILE; do
+            printf '%s=%s\n' "$key" "${!key}" >> "$GITHUB_ENV"
+          done
+        env:
+          COMPARISON_BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.inputs.expected_base_sha }}
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          SECURITY_SCOPE_FILE: security-scope.json
+          TRUSTED_SHA: ${{ github.workflow_sha }}
+        shell: bash
       - name: Download activation artifact
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -2035,6 +2062,33 @@ jobs:
           mkdir -p /tmp/gh-aw/threat-detection/sandbox/firewall
           if [ -d /tmp/gh-aw/sandbox/firewall/logs ]; then mkdir -p /tmp/gh-aw/threat-detection/sandbox/firewall/logs && cp -r /tmp/gh-aw/sandbox/firewall/logs/. /tmp/gh-aw/threat-detection/sandbox/firewall/logs/; fi
           if [ -d /tmp/gh-aw/sandbox/firewall/audit ]; then mkdir -p /tmp/gh-aw/threat-detection/sandbox/firewall/audit && cp -r /tmp/gh-aw/sandbox/firewall/audit/. /tmp/gh-aw/threat-detection/sandbox/firewall/audit/; fi
+      - name: Conclude detector for publication
+        id: security_detector_conclusion
+        if: always() && steps.detection_guard.outputs.run_detection == 'true'
+        run: |
+          set -euo pipefail
+          node "$RUNNER_TEMP/gh-aw/security-detector-native/security-detector.mjs" host-conclude
+        env:
+          DETECTION_EXECUTION_OUTCOME: ${{ steps.detection_agentic_execution.outcome }}
+        shell: bash
+      - name: Attest original detector outcomes on host
+        id: security_detector_host_completion
+        if: always() && steps.detection_guard.outputs.run_detection == 'true'
+        run: |
+          set -euo pipefail
+          node "$RUNNER_TEMP/gh-aw/security-detector-native/security-detector.mjs" host-complete
+        env:
+          DETECTION_CONCLUSION_OUTCOME: ${{ steps.security_detector_conclusion.outcome }}
+          DETECTION_EXECUTION_OUTCOME: ${{ steps.detection_agentic_execution.outcome }}
+        shell: bash
+      - name: Upload trusted host detector completion
+        if: steps.security_detector_host_completion.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          if-no-files-found: error
+          name: ghaw-pr-security-detector-host-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.inputs.pr_number }}
+          path: ${{ runner.temp }}/security-detector-host/security-detector-host.json
+          retention-days: 14
       - name: Upload threat detection artifact
         if: always() && steps.detection_guard.outputs.run_detection == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -2118,6 +2172,66 @@ jobs:
           TRUSTED_WORKFLOW_SHA: ${{ github.workflow_sha }}
         shell: bash
 
+  publication_gate:
+    needs:
+      - agent
+      - detection
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - name: Configure GH_HOST for enterprise compatibility
+        id: ghes-host-config
+        shell: bash
+        run: | # zizmor: ignore[github-env] - GITHUB_SERVER_URL is set by GitHub Actions, not user input.
+          # Derive GH_HOST from GITHUB_SERVER_URL so the gh CLI targets the correct
+          # GitHub instance (GHES/GHEC). On github.com this is a harmless no-op.
+          GH_HOST="${GITHUB_SERVER_URL#https://}"
+          GH_HOST="${GH_HOST#http://}"
+          echo "GH_HOST=${GH_HOST}" >> "$GITHUB_ENV"
+      - name: Checkout trusted detector attestation code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+      - name: Download final security payload
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ghaw-pr-security-${{ github.event.inputs.pr_number }}-${{ github.event.inputs.expected_head_sha }}
+          path: ${{ runner.temp }}/security-payload
+      - name: Download trusted host detector completion
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ghaw-pr-security-detector-host-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.inputs.pr_number }}
+          path: ${{ runner.temp }}/security-detection
+      - name: Attest successful generated detector outcome
+        run: |
+          set -euo pipefail
+          node .github/skills/ghaw-pr-security/scripts/security-review.mjs attest-detector \
+            --scope "$RUNNER_TEMP/security-payload/security-scope.json" \
+            --report "$RUNNER_TEMP/security-payload/security-findings.validated.json" \
+            --host-completion "$RUNNER_TEMP/security-detection/security-detector-host.json" \
+            --output "$RUNNER_TEMP/security-detector-proof.json"
+        env:
+          COMPARISON_BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+          DETECTION_CONCLUSION: ${{ needs.detection.outputs.detection_conclusion }}
+          DETECTION_SUCCESS: ${{ needs.detection.outputs.detection_success }}
+          EXPECTED_BASE_SHA: ${{ github.event.inputs.expected_base_sha }}
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          TRUSTED_SHA: ${{ github.workflow_sha }}
+        shell: bash
+      - name: Upload trusted detector publication proof
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: ghaw-pr-security-detector-proof-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.inputs.pr_number }}
+          path: ${{ runner.temp }}/security-detector-proof.json
+          retention-days: 14
+
   safe_outputs:
     needs:
       - activation
@@ -2162,7 +2276,7 @@ jobs:
     steps:
       - name: Setup Scripts
         id: setup
-        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
+        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
           job-name: ${{ github.job }}

@@ -34,6 +34,7 @@ jobs:
     outputs:
       publication: ${{ steps.canonical.outputs.publication }}
       patch_sha256: ${{ steps.canonical.outputs.patch_sha256 }}
+      detector_attested: ${{ steps.canonical.outputs.detector_attested }}
     steps:
       - name: Checkout trusted base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -200,9 +201,12 @@ jobs:
             --name "ghaw-pr-security-$PR_NUMBER-$EXPECTED_HEAD_SHA" \
             --dir "$report_dir"
           proof_dir="$RUNNER_TEMP/security-proof"
+          attempt="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .run_attempt)"
+          [[ "$attempt" =~ ^[1-9][0-9]*$ ]]
+          detector_dir="$RUNNER_TEMP/security-detector"
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "ghaw-pr-security-detector-proof-$RUN_ID-$attempt-$PR_NUMBER" --dir "$detector_dir"
           if [ "$SAME_REPO" = true ]; then
-            attempt="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .run_attempt)"
-            [[ "$attempt" =~ ^[1-9][0-9]*$ ]]
             gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
               --name "ghaw-pr-security-windows-proof-$RUN_ID-$attempt-$PR_NUMBER" --dir "$proof_dir"
           fi
@@ -211,7 +215,7 @@ jobs:
           export GIT_INDEX_FILE="$RUNNER_TEMP/security-canonical.index"
           node .github/skills/ghaw-pr-security/scripts/security-review.mjs prepare-publication \
             --scope "$RUNNER_TEMP/security-scope.json" --artifacts "$report_dir" \
-            --proof "$proof_dir/result.json" --output "$canonical"
+            --proof "$proof_dir/result.json" --detector-proof "$detector_dir/security-detector-proof.json" --output "$canonical"
           cat "$canonical/security-summary.md" >> "$GITHUB_STEP_SUMMARY"
           printf '\n- Internal GHAW run: [%s](%s/%s/actions/runs/%s)\n' \
             "$RUN_ID" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$RUN_ID" >> "$GITHUB_STEP_SUMMARY"
@@ -243,7 +247,7 @@ jobs:
 
   publish-repair:
     needs: security-review
-    if: needs.security-review.result == 'success' && needs.security-review.outputs.publication == 'push' && github.event.pull_request.head.repo.id == github.repository_id
+    if: needs.security-review.result == 'success' && needs.security-review.outputs.detector_attested == 'true' && needs.security-review.outputs.publication == 'push' && github.event.pull_request.head.repo.id == github.repository_id
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -302,7 +306,7 @@ jobs:
 
   publish-guidance:
     needs: security-review
-    if: always() && !cancelled() && needs.security-review.outputs.publication == 'comment' && github.event.pull_request.head.repo.id != github.repository_id
+    if: always() && !cancelled() && needs.security-review.outputs.detector_attested == 'true' && needs.security-review.outputs.publication == 'comment' && github.event.pull_request.head.repo.id != github.repository_id
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

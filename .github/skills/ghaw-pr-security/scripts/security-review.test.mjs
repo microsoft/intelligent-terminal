@@ -10,13 +10,50 @@ import {
   validateQueuedOutput, validateReport, validateProposal, validateCandidate, stageRepairFiles, validateRepairScope,
   submitSecurityReport, readSecurityDiff, readImmutableHunks, readSecuritySource, inspectSecurityRepair, writeSecurityRepair, replaceSecurityRepairText, verifyCredentialFree,
   publicationDecision, validatePublicationRun, validateNativePublicationProof, preparePublication, validateRepairChanges,
+  createDetectorPublicationProof, validateDetectorPublicationProof, validateDetectorExecutionJobs,
 } from './security-review.mjs';
+import { PREPARE_SHA256, INSTALL_SHA256, consumedBinding, stageDetectorInputs, verifyDetectorInputs,
+  completeHostDetector, validateOriginalOutcomes, validateNativeConclusionOutput } from './security-detector.mjs';
 
 const BASE = '1'.repeat(40);
 const tmpdir = () => process.cwd();
 const HEAD = '2'.repeat(40);
 const PATCH_TEXT = 'diff --git a/tools/wta/src/master/mod.rs b/tools/wta/src/master/mod.rs\n--- a/tools/wta/src/master/mod.rs\n+++ b/tools/wta/src/master/mod.rs\n@@ -20 +20 @@\n-Changed source.\n+Bound owner.\n';
 const PATCH_SHA256 = createHash('sha256').update(PATCH_TEXT).digest('hex');
+
+function publicationJobs(sameRepo) {
+  return ['agent', 'detection', 'safe_outputs', 'publication_gate', ...(sameRepo ? ['finalize', 'validate_windows / validate'] : [])]
+    .map(name => ({
+      name, run_id: 123, run_attempt: 1, status: 'completed', conclusion: 'success',
+      ...(name === 'publication_gate' ? { steps: [
+        'Attest successful generated detector outcome', 'Upload trusted detector publication proof',
+      ].map(name => ({ name, status: 'completed', conclusion: 'success' })) } : {}),
+      ...(name === 'detection' ? { steps: [
+        'Conclude detector for publication', 'Attest original detector outcomes on host', 'Upload trusted host detector completion',
+      ].map(name => ({ name, status: 'completed', conclusion: 'success' })) } : {}),
+    }));
+}
+
+function detectorProof(current, candidate, patch = '') {
+  const environment = {
+    DETECTION_SUCCESS: 'true', DETECTION_CONCLUSION: 'success', GITHUB_REPOSITORY: 'owner/repo',
+    GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', TRUSTED_SHA: current.observedBaseSha,
+    EXPECTED_BASE_SHA: current.observedBaseSha, EXPECTED_HEAD_SHA: current.headSha,
+    COMPARISON_BASE_SHA: current.baseSha, PR_NUMBER: String(current.prNumber),
+  };
+  return createDetectorPublicationProof(environment, current, JSON.stringify(candidate), patch,
+    detectorEvidence(environment, current, JSON.stringify(candidate), patch));
+}
+
+function detectorEvidence(environment, scope, bytes, patch = '') {
+  return {
+    executionOutcome: 'success', conclusionOutcome: 'success', consumed: consumedBinding(environment, scope, bytes, patch),
+    result: { prompt_injection: false, secret_leak: false, malicious_patch: false, reasons: [], warnings: [] },
+  };
+}
+function detectorArtifact(base = BASE) {
+  return { name: 'ghaw-pr-security-detector-proof-123-1-17', expired: false, workflow_run: { id: 123, head_sha: base } };
+}
 
 test('queued noop rejects model content, missing message, unknown and prototype fields', () => {
   const fixed = { type: 'noop', message: SECURITY_NOOP_MESSAGE };
@@ -62,9 +99,300 @@ test('controller separates analysis from mutually exclusive narrow publication j
   assert(!guidance.includes('actions: write'));
   assert(guidance.includes('reviewed-head: ${head}'));
   assert(guidance.includes('existing.body !== body'));
+  for (const publisher of [repair, guidance]) assert(publisher.includes("outputs.detector_attested == 'true'"));
+  assert(analysis.includes('--detector-proof'));
   assert(!/\$\{\{\s*github\.event\.pull_request\.(?:title|body|head\.ref)/.test(
     [...controller.matchAll(/        run: \|\r?\n([\s\S]*?)(?=\r?\n      -|\r?\n  [a-z-]+:|$)/g)].map(m => m[1]).join('\n')));
 });
+
+test('both compiled workers attest generated detector outputs only after detection in a native job', () => {
+  for (const name of ['ghaw-pr-security', 'ghaw-pr-security-guide-fork']) {
+    const markdown = readFileSync(new URL(`../../../workflows/${name}.md`, import.meta.url), 'utf8');
+    const lock = readFileSync(new URL(`../../../workflows/${name}.lock.yml`, import.meta.url), 'utf8');
+    for (const source of [markdown, lock]) {
+      const gate = source.split('  publication_gate:')[1].split(/\r?\n(?:safe-outputs:|  [a-z_]+:)/)[0];
+      assert(gate, 'native publication gate exists');
+      assert.match(gate, /needs:[^\n]*(?:agent|\r?\n)/);
+      assert(gate.includes('detection'));
+      assert(source.includes('Install trusted exact-input detector binding'));
+      assert(source.includes('security-detector.mjs prepare'));
+      assert(gate.includes('DETECTION_SUCCESS: ${{ needs.detection.outputs.detection_success }}'));
+      assert(gate.includes('DETECTION_CONCLUSION: ${{ needs.detection.outputs.detection_conclusion }}'));
+      assert(gate.includes('ref: ${{ github.workflow_sha }}'));
+      assert(gate.includes('attest-detector'));
+      assert(gate.includes('ghaw-pr-security-detector-proof-${{ github.run_id }}-${{ github.run_attempt }}'));
+      assert(!gate.includes('continue-on-error'));
+      assert(!gate.includes('always()'));
+      assert(!gate.includes('contents: write'));
+    }
+  }
+});
+
+test('typed detector proof rejects warning, cancelled, missing and self-reported success', () => {
+  for (const relation of ['same-repo', 'fork']) {
+    const current = buildScope(BASE, HEAD, 17, relation, 'M\0tools/wta/src/master/mod.rs\0', BASE,
+      relation === 'same-repo' ? 'repair' : 'guide');
+    const candidate = { ...createReportTemplate(current), summary: 'Detector binding fixture.' };
+    const environment = {
+      DETECTION_SUCCESS: 'true', DETECTION_CONCLUSION: 'success', GITHUB_REPOSITORY: 'owner/repo',
+      GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', TRUSTED_SHA: BASE, EXPECTED_BASE_SHA: BASE,
+      EXPECTED_HEAD_SHA: HEAD, COMPARISON_BASE_SHA: BASE, PR_NUMBER: '17',
+    };
+    const bytes = JSON.stringify(candidate);
+    const evidence = detectorEvidence(environment, current, bytes);
+    for (const extra of [
+      { DETECTION_SUCCESS: undefined }, { DETECTION_SUCCESS: '' }, { DETECTION_SUCCESS: 'false' },
+      { DETECTION_SUCCESS: true }, { DETECTION_SUCCESS: 'TRUE' },
+      ...['warning', 'failure', 'cancelled', 'skipped', '', undefined].map(DETECTION_CONCLUSION => ({ DETECTION_CONCLUSION })),
+    ]) assert.throws(() => createDetectorPublicationProof({ ...environment, ...extra }, current, bytes), /explicit successful/);
+    const proof = createDetectorPublicationProof(environment, current, bytes, '', evidence);
+    for (const executionOutcome of ['failure', 'cancelled', 'skipped', undefined]) {
+      assert.throws(() => createDetectorPublicationProof(environment, current, bytes, '',
+        { ...evidence, executionOutcome }), /explicit successful/);
+    }
+    for (const conclusionOutcome of ['failure', 'cancelled', 'skipped', undefined]) {
+      assert.throws(() => createDetectorPublicationProof(environment, current, bytes, '',
+        { ...evidence, conclusionOutcome }), /explicit successful/);
+    }
+    for (const warnings of [
+      [{ field: 'agent_output', code: 'ERR_VALIDATION', message: 'Missing structured output.' }],
+      [{ field: 'patch', code: 'ERR_VALIDATION', message: 'No readable patch.' }],
+      [{ field: 'prompt', code: 'ERR_VALIDATION', message: 'Missing prompt context.' }],
+      [{ field: 'comment_memory', code: 'ERR_SYSTEM', message: 'Unreadable context.' }],
+      null, 'warning', [{}],
+    ]) assert.throws(() => createDetectorPublicationProof(environment, current, bytes, '',
+      { ...evidence, result: { ...evidence.result, warnings } }), /no inspection warnings/);
+    for (const consumed of [undefined, { ...evidence.consumed, executionExitCode: 1 },
+      { ...evidence.consumed, runId: '124' }, { ...evidence.consumed, runAttempt: 2 },
+      { ...evidence.consumed, sourceJob: 'agent' },
+      { ...evidence.consumed, reportSha256: '0'.repeat(64) },
+      { ...evidence.consumed, patchSha256: '0'.repeat(64) }]) {
+      assert.throws(() => createDetectorPublicationProof(environment, current, bytes, '',
+        { ...evidence, consumed }), /exact final publication inputs/);
+    }
+    const run = { id: 123, run_attempt: 1, head_sha: BASE };
+    assert.doesNotThrow(() => validateDetectorPublicationProof(proof, run, current, bytes, '', 'owner/repo'));
+    for (const [key, value] of Object.entries({
+      version: 1, repository: 'wrong/repo', runId: '124', runAttempt: 2, sourceJob: 'agent',
+      trustedWorkflowSha: HEAD, prNumber: 18, headSha: BASE, baseSha: HEAD, comparisonBaseSha: HEAD,
+      scopeSha256: '0'.repeat(64), mode: 'other', repositoryRelation: 'other',
+      detectionSuccess: 'true', detectionConclusion: 'warning', reportSha256: '0'.repeat(64),
+      patchSha256: '0'.repeat(64), extraClaim: true,
+    })) assert.throws(() => validateDetectorPublicationProof({ ...proof, [key]: value }, run, current, bytes, '', 'owner/repo'), /attestation/);
+    assert.throws(() => validateDetectorPublicationProof(proof, run, current, `${bytes}\n`, '', 'owner/repo'), /attestation/);
+    assert.throws(() => validateDetectorPublicationProof(proof, run, current, bytes, PATCH_TEXT, 'owner/repo'), /attestation/);
+  }
+});
+
+test('native staging consumes exact final bytes and rejects missing or subsequently changed inputs', () => {
+  const root = mkdtempSync(join(process.cwd(), '.detector-cli-'));
+  try {
+    const current = buildScope(BASE, HEAD, 17, 'fork', 'M\0tools/wta/src/master/mod.rs\0', BASE, 'guide');
+    const candidate = { ...createReportTemplate(current), summary: 'Native detector CLI fixture.' };
+    const scopePath = join(root, 'scope.json');
+    const reportPath = join(root, 'report.json');
+    const inputs = join(root, 'inputs');
+    mkdirSync(inputs);
+    writeFileSync(join(root, 'security-scope.json'), JSON.stringify(current));
+    writeFileSync(join(root, 'security-findings.validated.json'), JSON.stringify(candidate));
+    const environment = {
+      ...process.env, DETECTION_SUCCESS: 'true', DETECTION_CONCLUSION: 'success',
+      GITHUB_REPOSITORY: 'owner/repo', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1',
+      TRUSTED_SHA: BASE, EXPECTED_BASE_SHA: BASE, EXPECTED_HEAD_SHA: HEAD,
+      COMPARISON_BASE_SHA: BASE, PR_NUMBER: '17',
+      SECURITY_SCOPE_FILE: 'security-scope.json',
+    };
+    writeFileSync(join(inputs, 'agent_output.json'), '{"items":[{"type":"noop"}]}');
+    const binding = stageDetectorInputs(root, inputs, environment);
+    assert.equal(readFileSync(join(inputs, 'agent_output.json'), 'utf8'), JSON.stringify(candidate));
+    assert.deepEqual(verifyDetectorInputs(root, inputs, environment), binding);
+    writeFileSync(join(inputs, 'agent_output.json'), `${JSON.stringify(candidate)}\n`);
+    assert.throws(() => verifyDetectorInputs(root, inputs, environment), /changed before consumption/);
+    unlinkSync(join(inputs, 'agent_output.json'));
+    assert.throws(() => verifyDetectorInputs(root, inputs, environment));
+    writeFileSync(join(inputs, 'agent_output.json'), JSON.stringify(candidate));
+    writeFileSync(join(inputs, 'aw-unexpected.patch'), PATCH_TEXT);
+    assert.throws(() => verifyDetectorInputs(root, inputs, environment));
+    unlinkSync(join(inputs, 'aw-unexpected.patch'));
+    for (const extra of [{ GITHUB_RUN_ATTEMPT: '2' }, { TRUSTED_SHA: HEAD }, { EXPECTED_HEAD_SHA: BASE }]) {
+      assert.throws(() => verifyDetectorInputs(root, inputs, { ...environment, ...extra }));
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('repair detector stages the actual patch bytes under the pinned aw patch consumer name', () => {
+  const root = mkdtempSync(join(process.cwd(), '.detector-patch-'));
+  try {
+    const current = buildScope(BASE, HEAD, 17, 'same-repo', 'M\0tools/wta/src/master/mod.rs\0', BASE, 'repair');
+    const candidate = { ...createReportTemplate(current), summary: 'Exact finalized patch binding.' };
+    const environment = {
+      GITHUB_REPOSITORY: 'owner/repo', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1',
+      TRUSTED_SHA: BASE, EXPECTED_BASE_SHA: BASE, EXPECTED_HEAD_SHA: HEAD,
+      COMPARISON_BASE_SHA: BASE, PR_NUMBER: '17', SECURITY_SCOPE_FILE: 'security-scope.validated.json',
+    };
+    const inputs = join(root, 'inputs');
+    mkdirSync(inputs);
+    writeFileSync(join(root, environment.SECURITY_SCOPE_FILE), JSON.stringify(current));
+    writeFileSync(join(root, 'security-findings.validated.json'), JSON.stringify(candidate));
+    writeFileSync(join(root, 'security-repair.patch'), PATCH_TEXT);
+    writeFileSync(join(inputs, 'aw-previous.patch'), 'Unrelated transport.');
+    stageDetectorInputs(root, inputs, environment);
+    assert.equal(readFileSync(join(inputs, 'aw-security-repair.patch'), 'utf8'), PATCH_TEXT);
+    assert.throws(() => readFileSync(join(inputs, 'aw-previous.patch')));
+    assert.doesNotThrow(() => verifyDetectorInputs(root, inputs, environment));
+    writeFileSync(join(inputs, 'aw-security-repair.patch'), `${PATCH_TEXT}\n`);
+    assert.throws(() => verifyDetectorInputs(root, inputs, environment), /changed before consumption/);
+    unlinkSync(join(inputs, 'aw-security-repair.patch'));
+    assert.throws(() => verifyDetectorInputs(root, inputs, environment), /changed before consumption/);
+    unlinkSync(join(root, 'security-repair.patch'));
+    assert.throws(() => stageDetectorInputs(root, inputs, environment));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('pinned actual preparation and installer assets match the trusted detector hook contract',
+  { skip: !process.env.SECURITY_PINNED_GHAW_RUNTIME }, () => {
+    const source = process.env.SECURITY_PINNED_GHAW_RUNTIME;
+    for (const [name, expected] of [
+      ['prepare_threat_detection_files.sh', PREPARE_SHA256], ['install_threat_detect_binary.sh', INSTALL_SHA256],
+    ]) assert.equal(createHash('sha256').update(readFileSync(join(source, 'setup', 'sh', name))).digest('hex'), expected);
+    const prepare = readFileSync(join(source, 'setup', 'sh', 'prepare_threat_detection_files.sh'), 'utf8');
+    assert(prepare.includes('copy_optional_file "${SOURCE_DIR}/agent_output.json"'));
+    assert(prepare.includes('for artifact_pattern in aw-*.patch aw-*.bundle'));
+    for (const name of ['ghaw-pr-security', 'ghaw-pr-security-guide-fork']) {
+      const lock = readFileSync(new URL(`../../../workflows/${name}.lock.yml`, import.meta.url), 'utf8');
+      const detection = lock.split('  detection:')[1].split(/\r?\n  [a-z_]+:/)[0];
+      assert(detection.indexOf('id: setup') < detection.indexOf('Install trusted exact-input detector binding'));
+      assert(detection.indexOf('Install trusted exact-input detector binding') < detection.indexOf('Prepare threat detection files'));
+      assert(detection.indexOf('Prepare threat detection files') < detection.indexOf('Install threat-detect binary'));
+      assert(detection.indexOf('Install threat-detect binary') < detection.indexOf('Execute threat detection with AWF'));
+      assert(detection.indexOf('Execute threat detection with AWF') < detection.indexOf('Conclude detector for publication'));
+      assert(detection.indexOf('Conclude detector for publication') < detection.indexOf('Attest original detector outcomes on host'));
+      assert(detection.indexOf('Attest original detector outcomes on host') < detection.indexOf('Upload trusted host detector completion'));
+      assert(detection.includes('DETECTION_EXECUTION_OUTCOME: ${{ steps.detection_agentic_execution.outcome }}'));
+      assert(detection.includes('DETECTION_CONCLUSION_OUTCOME: ${{ steps.security_detector_conclusion.outcome }}'));
+      assert(detection.includes('path: ${{ runner.temp }}/security-detector-host/security-detector-host.json'));
+      assert(!detection.includes('--mount "${RUNNER_TEMP}/security-detector-host'));
+      const hostSteps = detection.split('      - name: Conclude detector for publication')[1]
+        .split('      - name: Upload threat detection artifact')[0];
+      assert(!hostSteps.includes('continue-on-error'), 'host conclusion, attestation and upload failures remain fatal');
+      assert(!detection.includes('--mount "${RUNNER_TEMP}:${RUNNER_TEMP}'), 'detector cannot mount the parent containing host completion');
+      if (name === 'ghaw-pr-security') assert(detection.split('    steps:')[0].includes('- finalize'));
+    }
+  });
+
+test('clean pinned verdict cannot hide failed execution or failed conclusion in a green API job', () => {
+  const jobs = publicationJobs(false);
+  assert.doesNotThrow(() => validateDetectorExecutionJobs(jobs, 123, 1));
+  const detection = jobs.find(job => job.name === 'detection');
+  for (const index of [0, 1, 2]) {
+    for (const conclusion of ['failure', 'cancelled', 'skipped', null]) {
+      const changed = jobs.map(job => job === detection ? {
+        ...job, steps: job.steps.map((step, i) => i === index ? { ...step, conclusion } : step),
+      } : job);
+      assert.throws(() => validateDetectorExecutionJobs(changed, 123, 1), /actual successful detector/);
+    }
+  }
+  for (const steps of [undefined, [], detection.steps.slice(1), [...detection.steps, detection.steps[0]]]) {
+    assert.throws(() => validateDetectorExecutionJobs(jobs.map(job => job === detection ? { ...job, steps } : job),
+      123, 1), /actual successful detector/);
+  }
+});
+
+test('native host conclusion rejects exit-zero skip or warning instead of attesting a successful verdict', () => {
+  assert.doesNotThrow(() => validateNativeConclusionOutput('conclusion=success\nsuccess=true\nreason=\n'));
+  assert.doesNotThrow(() => validateNativeConclusionOutput('conclusion=success\r\nsuccess=true\r\nreason=\r\n'));
+  for (const output of [
+    '',
+    'conclusion=skipped\nsuccess=true\nreason=\n',
+    'conclusion=warning\nsuccess=true\nreason=agent_failure\n',
+    'conclusion=failure\nsuccess=false\nreason=threat_detected\n',
+    'conclusion=success\nsuccess=true\nreason=agent_failure\n',
+    'conclusion=success\nsuccess=true\nreason=\nconclusion=skipped\n',
+  ]) {
+    assert.throws(() => validateNativeConclusionOutput(output), /must evaluate a successful verdict/);
+  }
+  const helper = readFileSync(new URL('./security-detector.mjs', import.meta.url), 'utf8');
+  assert(helper.includes("RUN_DETECTION: 'true'"));
+  assert(helper.includes('DETECTION_AGENTIC_EXECUTION_OUTCOME: process.env.DETECTION_EXECUTION_OUTCOME'));
+  assert(helper.includes("GH_AW_DETECTION_CONTINUE_ON_ERROR: 'false'"));
+  assert(helper.includes('GITHUB_OUTPUT: output'));
+});
+
+test('runner original failure rejects clean verdict despite post-continue-on-error REST success and forged sandbox evidence', () => {
+  const root = mkdtempSync(join(process.cwd(), '.detector-host-outcomes-'));
+  try {
+    const host = join(root, 'host');
+    const sandbox = join(root, 'sandbox');
+    mkdirSync(host);
+    mkdirSync(sandbox);
+    const checkpoint = {
+      binding: { sourceJob: 'detection', executionExitCode: 0 },
+      executionOutcome: 'success', conclusionExitCode: 0,
+      result: { prompt_injection: false, secret_leak: false, malicious_patch: false, reasons: [], warnings: [] },
+    };
+    writeFileSync(join(sandbox, 'security-consumed.json'), JSON.stringify(checkpoint));
+    writeFileSync(join(sandbox, 'detection_result.json'), JSON.stringify(checkpoint.result));
+    const forgedApi = publicationJobs(false);
+    assert.doesNotThrow(() => validateDetectorExecutionJobs(forgedApi, 123, 1),
+      'REST success can be forged and is not the original outcome authority');
+    assert.throws(() => completeHostDetector(host, 'success', 'success'), /ENOENT/,
+      'sandbox evidence cannot substitute for the protected host checkpoint');
+    writeFileSync(join(host, 'conclusion.json'), JSON.stringify(checkpoint));
+    for (const [execution, conclusion] of [
+      ['failure', 'success'], ['success', 'failure'], ['cancelled', 'success'],
+      ['skipped', 'success'], ['success', 'skipped'], ['', 'success'],
+    ]) {
+      assert.throws(() => validateOriginalOutcomes(execution, conclusion), /original detector outcomes/);
+      assert.throws(() => completeHostDetector(host, execution, conclusion), /original detector outcomes/);
+      assert.throws(() => readFileSync(join(host, 'security-detector-host.json')));
+    }
+    const completion = completeHostDetector(host, 'success', 'success');
+    assert.equal(completion.executionOutcome, 'success');
+    assert.equal(completion.conclusionOutcome, 'success');
+    assert.notEqual(join(host, 'security-detector-host.json'), join(sandbox, 'security-consumed.json'));
+    assert.throws(() => completeHostDetector(host, 'success', 'success'), /EEXIST/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('pinned native hooks install before inference and reject changed assets before mutation',
+  { skip: !process.env.SECURITY_PINNED_GHAW_RUNTIME }, () => {
+    const root = mkdtempSync(join(process.cwd(), '.detector-native-'));
+    try {
+      const actions = join(root, 'gh-aw', 'actions');
+      const payload = join(root, 'security-payload');
+      mkdirSync(actions, { recursive: true });
+      mkdirSync(payload);
+      const source = process.env.SECURITY_PINNED_GHAW_RUNTIME;
+      const names = ['prepare_threat_detection_files.sh', 'install_threat_detect_binary.sh'];
+      for (const name of names) writeFileSync(join(actions, name), readFileSync(join(source, 'setup', 'sh', name)));
+      writeFileSync(join(payload, 'security-scope.json'), '{}');
+      writeFileSync(join(payload, 'security-findings.validated.json'), '{}');
+      const invoke = () => spawnSync(process.execPath, [
+        fileURLToPath(new URL('./security-detector.mjs', import.meta.url)), 'prepare',
+      ], { env: { ...process.env, RUNNER_TEMP: root, GITHUB_PATH: join(root, 'github-path'),
+        SECURITY_SCOPE_FILE: 'security-scope.json' }, encoding: 'utf8', timeout: 30_000 });
+      const original = readFileSync(join(actions, names[1]));
+      writeFileSync(join(actions, names[1]), `${original.toString()}\nChanged asset.`);
+      assert.notEqual(invoke().status, 0);
+      assert.equal(createHash('sha256').update(readFileSync(join(actions, names[0]))).digest('hex'), PREPARE_SHA256);
+      assert.throws(() => readFileSync(join(root, 'gh-aw', 'security-detector-native', 'security-detector.mjs')));
+      writeFileSync(join(actions, names[1]), original);
+      const result = invoke();
+      assert.equal(result.status, 0, result.stderr);
+      assert(readFileSync(join(actions, names[0]), 'utf8').includes('security-detector.mjs" stage'));
+      assert(readFileSync(join(actions, names[1]), 'utf8').includes('security-detector.mjs" install-wrapper'));
+      assert(readFileSync(join(root, 'github-path'), 'utf8').includes(join(root, 'gh-aw', 'bin')));
+      assert.equal(readFileSync(join(root, 'gh-aw', 'security-payload', 'security-findings.validated.json'), 'utf8'), '{}');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
 test('publication branches preserve fork guidance, same-repo repairs and no-patch no-op', () => {
   const input = { repositoryRelation: 'same-repo', mode: 'repair', findings: [], patch: [] };
@@ -93,8 +421,7 @@ test('publication rejects wrong run, revision, source job, attempt, detector and
       event: 'workflow_dispatch', display_title: `${sameRepo ? 'Security Repair' : 'Security Guide'} fixed-dispatch`,
       status: 'completed', conclusion: 'success',
     };
-    const jobs = ['agent', 'detection', 'safe_outputs', ...(sameRepo ? ['finalize', 'validate_windows / validate'] : [])]
-      .map(name => ({ name, run_id: 123, run_attempt: 1, status: 'completed', conclusion: 'success' }));
+    const jobs = publicationJobs(sameRepo);
     assert.doesNotThrow(() => validatePublicationRun(run, jobs, identity));
     for (const [key, value] of Object.entries({
       id: 124, head_sha: HEAD, path: '.github/workflows/other.yml', event: 'push',
@@ -107,6 +434,12 @@ test('publication rejects wrong run, revision, source job, attempt, detector and
     }
     assert.throws(() => validatePublicationRun(run, jobs.slice(1), identity));
     assert.throws(() => validatePublicationRun(run, [...jobs, jobs[0]], identity));
+    const gate = jobs.find(job => job.name === 'publication_gate');
+    for (const steps of [undefined, [], gate.steps.slice(1), [...gate.steps, gate.steps[0]],
+      gate.steps.map(step => ({ ...step, conclusion: 'skipped' })),
+      gate.steps.map(step => ({ ...step, conclusion: 'failure' }))]) {
+      assert.throws(() => validatePublicationRun(run, jobs.map(job => job === gate ? { ...job, steps } : job), identity), /native detector/);
+    }
   }
   const current = repairScope();
   const input = { review: { headSha: HEAD, patchSha256: PATCH_SHA256, status: 'source-pass' } };
@@ -148,6 +481,8 @@ test('canonical handoff rematerializes fork and no-patch reports and fails close
       writeFileSync(join(artifacts, 'security-summary.md'), 'forged raw worker summary');
       writeFileSync(join(artifacts, 'security-status.txt'), 'forged status');
       writeFileSync(join(artifacts, 'security-repair.patch'), '');
+      const detectorPath = join(directory, 'detector.json');
+      writeFileSync(detectorPath, JSON.stringify(detectorProof(current, candidate)));
       const environment = {
         GITHUB_REPOSITORY: 'owner/repo', PR_NUMBER: '17', RUN_ID: '123',
         EXPECTED_HEAD_SHA: HEAD, EXPECTED_BASE_SHA: BASE, SAME_REPO: String(sameRepo),
@@ -159,19 +494,20 @@ test('canonical handoff rematerializes fork and no-patch reports and fails close
         event: 'workflow_dispatch', display_title: `${sameRepo ? 'Security Repair' : 'Security Guide'} fixed-dispatch`,
         status: 'completed', conclusion: 'success',
       };
-      const jobs = ['agent', 'detection', 'safe_outputs', ...(sameRepo ? ['finalize', 'validate_windows / validate'] : [])]
-        .map(name => ({ name, run_id: 123, run_attempt: 1, status: 'completed', conclusion: 'success' }));
+      const jobs = publicationJobs(sameRepo);
+      let proofArtifacts = [detectorArtifact()];
       const pull = { head: { sha: HEAD, ref: environment.HEAD_REF, repo: { full_name: sameRepo ? 'owner/repo' : 'fork/repo' } } };
       const request = endpoint => {
         if (endpoint === 'pulls/17') return pull;
         if (endpoint === 'actions/runs/123') return run;
         if (endpoint === 'actions/runs/123/attempts/1/jobs?per_page=100&page=1') return { jobs };
+        if (endpoint === 'actions/runs/123/artifacts?per_page=100&page=1') return { artifacts: proofArtifacts };
         throw new Error(`Unexpected endpoint: ${endpoint}`);
       };
       let output = join(directory, 'rejected');
       mkdirSync(output);
       const paths = name => ({
-        '--scope': scopePath, '--artifacts': artifacts, '--output': output,
+        '--scope': scopePath, '--artifacts': artifacts, '--output': output, '--detector-proof': detectorPath,
       })[name];
       pull.head.sha = BASE;
       assert.throws(() => preparePublication({ environment, request, paths }), /stale/);
@@ -188,6 +524,37 @@ test('canonical handoff rematerializes fork and no-patch reports and fails close
       assert.throws(() => preparePublication({ environment, request, paths }), /immutable scope/);
       assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
       writeFileSync(join(artifacts, 'security-findings.validated.json'), JSON.stringify(candidate));
+      for (const invalid of [
+        [], [detectorArtifact(), detectorArtifact()], [{ ...detectorArtifact(), expired: true }],
+        [{ ...detectorArtifact(), workflow_run: { id: 124, head_sha: BASE } }],
+        [{ ...detectorArtifact(), workflow_run: { id: 123, head_sha: HEAD } }],
+      ]) {
+        proofArtifacts = invalid;
+        assert.throws(() => preparePublication({ environment, request, paths }), /detector proof artifact/);
+        assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
+        assert.throws(() => readFileSync(join(output, 'security-summary.md')));
+      }
+      proofArtifacts = [detectorArtifact()];
+      for (const extra of [
+        { detectionSuccess: false }, { detectionConclusion: 'warning' }, { runAttempt: 2 },
+        { reportSha256: '0'.repeat(64) }, { sourceJob: 'agent' },
+      ]) {
+        writeFileSync(detectorPath, JSON.stringify({ ...detectorProof(current, candidate), ...extra }));
+        assert.throws(() => preparePublication({ environment, request, paths }), /attestation/);
+        assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
+        assert.throws(() => readFileSync(join(output, 'security-summary.md')));
+      }
+      writeFileSync(detectorPath, JSON.stringify(detectorProof(current, candidate)));
+      for (const bytes of ['{malformed', 'null']) {
+        writeFileSync(detectorPath, bytes);
+        assert.throws(() => preparePublication({ environment, request, paths }));
+        assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
+        assert.throws(() => readFileSync(join(output, 'security-summary.md')));
+      }
+      unlinkSync(detectorPath);
+      assert.throws(() => preparePublication({ environment, request, paths }), /ENOENT/);
+      assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
+      writeFileSync(detectorPath, JSON.stringify(detectorProof(current, candidate)));
       output = join(directory, 'accepted');
       mkdirSync(output);
       preparePublication({ environment, request, paths });
@@ -197,11 +564,12 @@ test('canonical handoff rematerializes fork and no-patch reports and fails close
       assert(canonicalSummary.includes('### Validation'));
       assert(!canonicalSummary.includes('forged raw worker summary'));
       assert.equal(readFileSync(join(output, 'security-status.txt'), 'utf8'), sameRepo ? 'pass\n' : 'blocking\n');
-      assert.match(readFileSync(environment.GITHUB_OUTPUT, 'utf8'), new RegExp(`^publication=${sameRepo ? 'none' : 'comment'}\\npatch_sha256=[0-9a-f]{64}\\n$`));
+      assert.match(readFileSync(environment.GITHUB_OUTPUT, 'utf8'), new RegExp(`^publication=${sameRepo ? 'none' : 'comment'}\\npatch_sha256=[0-9a-f]{64}\\ndetector_attested=true\\n$`));
       if (sameRepo) {
         output = join(directory, 'unreported-patch');
         mkdirSync(output);
         writeFileSync(join(artifacts, 'security-repair.patch'), PATCH_TEXT);
+        writeFileSync(detectorPath, JSON.stringify(detectorProof(current, candidate, PATCH_TEXT)));
         assert.throws(() => preparePublication({ environment, request, paths }), /unreported/);
         assert.throws(() => readFileSync(join(output, 'security-summary.md')));
       }
@@ -263,6 +631,8 @@ test('canonical repair applies only a digest-bound native-attested patch to an i
     const proofPath = join(artifacts, 'result.json');
     writeFileSync(scopePath, JSON.stringify(current));
     writeFileSync(join(artifacts, 'security-findings.validated.json'), JSON.stringify(validateReport(candidate, current)));
+    const detectorPath = join(artifacts, 'detector.json');
+    writeFileSync(detectorPath, JSON.stringify(detectorProof(current, validateReport(candidate, current), patch)));
     writeFileSync(join(artifacts, 'security-repair.patch'), patch);
     writeFileSync(proofPath, JSON.stringify({
       repository: 'owner/repo', trustedWorkflowSha: base, baseSha: base, headSha: head,
@@ -277,18 +647,35 @@ test('canonical repair applies only a digest-bound native-attested patch to an i
     const run = { id: 123, repository: { full_name: 'owner/repo' }, head_sha: base, run_attempt: 1,
       path: '.github/workflows/ghaw-pr-security.lock.yml', event: 'workflow_dispatch',
       display_title: 'Security Repair fixed', status: 'completed', conclusion: 'success' };
-    const jobs = ['agent', 'detection', 'safe_outputs', 'finalize', 'validate_windows / validate']
-      .map(name => ({ name, run_id: 123, run_attempt: 1, status: 'completed', conclusion: 'success' }));
+    const jobs = publicationJobs(true);
     const request = endpoint => {
       if (endpoint === 'pulls/17') return { head: { sha: head, ref: 'reviewed', repo: { full_name: 'owner/repo' } } };
       if (endpoint === 'actions/runs/123') return run;
       if (endpoint === 'actions/runs/123/attempts/1/jobs?per_page=100&page=1') return { jobs };
-      if (endpoint === 'actions/runs/123/artifacts?per_page=100') return { artifacts: [{ name: 'ghaw-pr-security-windows-proof-123-1-17', expired: false }] };
+      if (endpoint === 'actions/runs/123/artifacts?per_page=100&page=1') return { artifacts: [
+        detectorArtifact(base), { name: 'ghaw-pr-security-windows-proof-123-1-17', expired: false },
+      ] };
       throw new Error('Unexpected endpoint');
     };
     process.env.GIT_INDEX_FILE = join(root, 'isolated.index');
+    const paths = name => ({
+      '--scope': scopePath, '--artifacts': artifacts, '--output': output, '--proof': proofPath, '--detector-proof': detectorPath,
+    })[name];
+    git('read-tree', head);
+    const initialIndex = git('write-tree');
+    for (const extra of [
+      { detectionSuccess: false }, { detectionConclusion: 'warning' }, { runId: '124' },
+      { runAttempt: 2 }, { patchSha256: '0'.repeat(64) }, { reportSha256: '0'.repeat(64) },
+    ]) {
+      writeFileSync(detectorPath, JSON.stringify({ ...detectorProof(current, validateReport(candidate, current), patch), ...extra }));
+      assert.throws(() => preparePublication({ environment, request, workspace, paths }), /attestation/);
+      assert.equal(git('write-tree'), initialIndex, 'untrusted detector outcome cannot mutate the repair index');
+      assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
+      assert.throws(() => readFileSync(join(output, 'security-repair.patch')));
+    }
+    writeFileSync(detectorPath, JSON.stringify(detectorProof(current, validateReport(candidate, current), patch)));
     preparePublication({ environment, request, workspace, paths: name => ({
-      '--scope': scopePath, '--artifacts': artifacts, '--output': output, '--proof': proofPath,
+      '--scope': scopePath, '--artifacts': artifacts, '--output': output, '--proof': proofPath, '--detector-proof': detectorPath,
     })[name] });
     assert.equal(readFileSync(source, 'utf8'), 'fn route() { /* bypass */ }\n' + tail);
     assert.equal(git('show', `:${path}`), ('fn route() { /* bound repair */ }\n' + tail).trim());
@@ -304,8 +691,9 @@ test('canonical repair applies only a digest-bound native-attested patch to an i
     writeFileSync(join(artifacts, 'security-repair.patch'), extraPatch);
     const proof = JSON.parse(readFileSync(proofPath, 'utf8'));
     writeFileSync(proofPath, JSON.stringify({ ...proof, patchSha256: extraDigest, review: extraReport.review }));
+    writeFileSync(detectorPath, JSON.stringify(detectorProof(current, extraReport, extraPatch)));
     assert.throws(() => preparePublication({ environment, request, workspace, paths: name => ({
-      '--scope': scopePath, '--artifacts': artifacts, '--output': output, '--proof': proofPath,
+      '--scope': scopePath, '--artifacts': artifacts, '--output': output, '--proof': proofPath, '--detector-proof': detectorPath,
     })[name] }), /actual repair changes/);
     assert.equal(git('write-tree'), authorizedIndex, 'digest-bound extra edits cannot enter the publication index');
   } finally {

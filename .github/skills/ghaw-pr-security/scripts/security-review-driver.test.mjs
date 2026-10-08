@@ -260,6 +260,111 @@ test('real multi-hunk absolute coordinates retain all preceding line deltas with
   }
 });
 
+test('real Git pure deletions require deleted base rows at internal, first-line, and EOF anchors', () => {
+  const original = Array.from({ length: 300 }, (_, index) => `Original line ${index + 1}`);
+  for (const [name, removeAt, removeCount, findingStart, findingEnd] of [
+    ['internal', 50, 130, 51, 52],
+    ['before first line', 0, 130, 1, 2],
+    ['EOF', 170, 130, 170, 170],
+  ]) {
+    const changed = [...original];
+    changed.splice(removeAt, removeCount);
+    withSourceFixture(`${original.join('\n')}\n`, `${changed.join('\n')}\n`, (current, workspace) => {
+      for (const context of [0, 20]) {
+        const diff = execFileSync('git', ['--no-pager', 'diff', '--no-ext-diff', '--no-textconv',
+          `--unified=${context}`, current.baseSha, current.headSha, '--', PATH],
+        { cwd: workspace, encoding: 'utf8', timeout: 30_000 });
+        const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/m.exec(diff);
+        assert(match, name);
+        assert.equal(Number(match[4] ?? 1), context === 0 ? 0 : (removeAt === 0 || name === 'EOF' ? 20 : 40));
+        const baseStart = Number(match[1]);
+        const baseEnd = baseStart + Number(match[2] ?? 1) - 1;
+        const contextStart = name === 'EOF' ? findingStart : findingStart + removeCount;
+        const contextEnd = contextStart + findingEnd - findingStart;
+        const findings = [{ ...candidate().findings[0], startLine: findingStart, endLine: findingEnd }];
+        const range = (revision, start, end) => [
+          revision, start, end, readSecuritySource(current, revision, PATH, start, end, workspace),
+        ];
+        const fragments = (start, end) => {
+          const result = [];
+          for (let first = start; first <= end; first += 120) result.push(range('base', first, Math.min(end, first + 119)));
+          return result;
+        };
+        const head = range('head', findingStart, findingEnd);
+        const validate = ranges => validateTranscript(output(sourceFixtureEvents(current, diff, ranges)), current,
+          { ...inspection, headSha: current.headSha }, diff, [PATH], () => diff, findings,
+          (revision, path, start, end) => readSecuritySource(current, revision, path, start, end, workspace));
+        const complete = [head, ...fragments(baseStart, baseEnd), range('base', contextStart, contextEnd)];
+        assert.equal(validate(complete).status, 'SOURCE_PASS', `${name}, context ${context}`);
+        // A claimed SOURCE_PASS and genuine surviving source are insufficient.
+        assert.throws(() => validate([head, range('base', contextStart, contextEnd)]), /source.*coverage/);
+        assert.throws(() => validate([head, ...fragments(baseStart + 1, baseEnd),
+          range('base', contextStart, contextEnd)]), /source.*coverage/);
+        assert.throws(() => validate(complete.filter(item => item[0] !== 'head')), /source.*coverage/);
+        const forged = complete.map(item => [...item]);
+        forged[1][3] = forged[1][3].replace('Original line', 'Forged line');
+        assert.throws(() => validate(forged), /source.*coverage/);
+        if (findingEnd > findingStart) {
+          assert.throws(() => validate([range('head', findingStart, findingStart),
+            ...complete.slice(1)]), /source.*coverage/);
+        }
+      }
+    });
+  }
+});
+
+test('real Git deletion after an insertion retains absolute mapping and deleted base fragment proof', () => {
+  const original = Array.from({ length: 300 }, (_, index) => `Original line ${index + 1}`);
+  const changed = [...original];
+  changed.splice(4, 0, 'Inserted first line', 'Inserted second line');
+  changed.splice(101, 2);
+  withSourceFixture(`${original.join('\n')}\n`, `${changed.join('\n')}\n`, (current, workspace) => {
+    const diff = execFileSync('git', ['--no-pager', 'diff', '--no-ext-diff', '--no-textconv', '--unified=0',
+      current.baseSha, current.headSha, '--', PATH], { cwd: workspace, encoding: 'utf8', timeout: 30_000 });
+    assert.match(diff, /@@ -100,2 \+101,0 @@/);
+    assert.equal([...diff.matchAll(/^@@ /gm)].length, 2);
+    const findings = [{ ...candidate().findings[0], startLine: 102, endLine: 103 }];
+    const ranges = [['head', 102, 102], ['head', 103, 103],
+      ['base', 100, 100], ['base', 101, 101], ['base', 102, 103]]
+      .map(([revision, start, end]) => [revision, start, end,
+        readSecuritySource(current, revision, PATH, start, end, workspace)]);
+    const validate = ranges => validateTranscript(output(sourceFixtureEvents(current, diff, ranges)), current,
+      { ...inspection, headSha: current.headSha }, diff, [PATH], () => diff, findings,
+      (revision, path, start, end) => readSecuritySource(current, revision, path, start, end, workspace));
+    assert.equal(validate(ranges).status, 'SOURCE_PASS');
+    assert.throws(() => validate(ranges.filter(item => item[1] !== 100)), /source.*coverage/);
+    assert.throws(() => validate(ranges.filter(item => item[1] !== 101)), /source.*coverage/);
+  });
+});
+
+test('real Git deletion anchors use only surviving physical rows, never an empty-file placeholder', () => {
+  for (const [baseContent, headContent, deletedStart, deletedEnd] of [
+    ['removed\nsurviving', 'surviving', 1, 1],
+    ['surviving\nremoved\n', 'surviving\n', 2, 2],
+    ['removed\n', '', 1, 1],
+  ]) {
+    withSourceFixture(baseContent, headContent, (current, workspace) => {
+      const diff = execFileSync('git', ['--no-pager', 'diff', '--no-ext-diff', '--no-textconv', '--unified=0',
+        current.baseSha, current.headSha, '--', PATH], { cwd: workspace, encoding: 'utf8', timeout: 30_000 });
+      const findings = [{ ...candidate().findings[0], startLine: 1, endLine: 1 }];
+      const ranges = [['base', 1, 120, readSecuritySource(current, 'base', PATH, 1, 120, workspace)],
+        ['head', 1, 120, headContent ? readSecuritySource(current, 'head', PATH, 1, 120, workspace) : '1: ']];
+      const validate = ranges => validateTranscript(output(sourceFixtureEvents(current, diff, ranges)), current,
+        { ...inspection, headSha: current.headSha }, diff, [PATH], () => diff, findings,
+        (revision, path, start, end) => readSecuritySource(current, revision, path, start, end, workspace));
+      if (headContent) {
+        assert.equal(validate(ranges).status, 'SOURCE_PASS');
+        const survivingBase = deletedStart === 1 ? deletedEnd + 1 : 1;
+        assert.throws(() => validate([['base', survivingBase, survivingBase,
+          readSecuritySource(current, 'base', PATH, survivingBase, survivingBase, workspace)], ranges[1]]),
+        /source.*coverage/);
+      } else {
+        assert.throws(() => validate(ranges), /source.*coverage/);
+      }
+    });
+  }
+});
+
 for (const [name, headContent, findingLine, ranges] of [
   ['newline phantom EOF', 'new\n', 2, [['base', 2, 2, '2: '], ['head', 2, 2, '2: ']]],
   ['deleted empty head', '', 1, [['base', 2, 2, '2: '], ['head', 1, 1, '1: ']]],

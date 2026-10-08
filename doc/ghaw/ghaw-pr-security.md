@@ -4,6 +4,36 @@
 product code, WTA, build/package logic, or GitHub automation. Its public check
 name is **Intelligent Terminal Security Review**.
 
+## What this adds over ordinary Copilot review
+
+**Better security-defect detection is not yet demonstrated: zero paired
+real-PR comparisons and zero newly enabled static-analyzer rules.** This
+workflow's added value is a required repository-specific review checklist,
+stricter finding triage, and a tested repair path. More scripts, longer prompts,
+or more reviewers are not evidence that it finds more vulnerabilities.
+
+| Added capability | Quantified scope or evidence | What the number does not prove |
+| --- | --- | --- |
+| Scoped security handbook | **8 required review areas:** C++/WinRT lifetime; COM identity/ABI; WTA/ACP routing; session-MCP ownership; confirmation/mutation; filesystem/package provenance; sensitive diagnostics; Actions credentials. Apply only relevant areas and trace immutable base/head source. | These are required investigations, not 8 additional analyzer diagnostics. Ordinary Copilot review can find the same bugs; additional real-PR recall is unmeasured. |
+| Additional static analysis | **0 new analyzer rules enabled by this workflow.** Existing matching-head analyzer results are evidence when available, not new coverage. | No claimed advantage from expanded CodeQL, Clippy, or C++ analysis. |
+| Finding and repair triage | **3 severity levels; 1 automatic-repair language (Rust); 2 fixed source-review phases (primary and independent reviewer), plus 1 native threat detector.** Only HIGH/high-confidence, minimal existing WTA-source changes can proceed to native validation. Medium/low remain advice; C++ and other unsupported fixes remain manual. | Agreement between reviewers is not proof, and native tests do not establish complete vulnerability detection. |
+| Demonstrated repair execution | Historical hosted [R6](https://github.com/microsoft/intelligent-terminal/actions/runs/37648989612): **1 seeded HIGH session-capability regression repaired; 2444 Windows tests passed, 0 failed, 1 ignored; 11/11 jobs succeeded**, including isolated validation and leased publication/readback. | A synthetic success is not a real-PR detection benchmark. R6 used source `338f5bfe714663711cbf7ddfb7da98118ea9d762`, not the newest source; current detector/publication corrections still need hosted proof. |
+| Observed inference cost | Historical R6 primary/reviewer plus detector accounting: **3.902574 AI credits**. | No ordinary-review cost baseline exists here; this is overhead evidence, not a cost-saving claim or a future-run estimate. |
+
+Following the performance workflow's approach, the useful distinction is
+**additional applicable checks plus evidence-based prioritization**, not another
+general-purpose review. For example, session-MCP review must trace the bearer
+capability through the exact CLI lifetime and owning helper; a confirmation
+review must distinguish confirmation-gated MCP from direct COM operations.
+The checklist makes those investigations explicit and repeatable. It does not
+make a generic "add authorization" comment a valid finding.
+
+**Use ordinary Copilot review for broad correctness; use this workflow for
+consistent trust-boundary investigation and narrowly controlled repairs.**
+Until identical real PR revisions have been compared with ordinary review,
+we cannot honestly claim a percentage improvement, fewer false positives, or
+that the security workflow is a better defect detector.
+
 ## Trust model
 
 The ordinary `ghaw-pr-security-controller.yml` runs on `pull_request_target`,
@@ -26,6 +56,66 @@ publication has only `issues: write` plus PR read. Publisher code is
 rematerialized from the trusted base, not supplied by the handoff artifact.
 Matching run/attempt/revision/source jobs, detector outcome, scope and patch
 identity, applicable native attestation and live-head checks remain mandatory.
+
+Detector success is not inferred from the workflow/job conclusion or the two
+generated success outputs alone. Pinned threat-detect v0.5.1
+(`230b061fde8539a492c6c7d4cb9c96d1b33323d3`, the source commit behind the
+annotated v0.5.1 tag) `conclude.go` accepts a clean
+verdict despite failed execution; its structured inspection warnings do not
+change the verdict. Both workers reuse the generated detector, with the
+compiler-supported `jobs.detection.pre-steps` and
+`safe-outputs.threat-detection.post-steps` extensions. Repair finalization
+precedes detection, not the other way around.
+
+The trusted helper verifies pinned preparation/installer asset hashes before
+installing bounded hooks. After ordinary staging, it replaces only the
+detector's `agent_output.json` with the exact finalized structured report and
+stages the exact nonempty repair as `aw-security-repair.patch`. These are the
+actual v0.5.1 artifact consumer names (`pkg/artifacts/artifacts.go`), not the
+fixed noop or an undetected `security-repair.patch`. Other patch transports are
+removed from this isolated detector input directory. Before and after the
+existing detector invocation, the wrapper verifies these bytes against the
+trusted final payload. Sandbox-written markers are never publication authority.
+After the sandbox exits, a native post-step requires the runner's original
+`steps.detection_agentic_execution.outcome`, validates the exact inputs and
+warning-free result, and executes pinned `threat-detect conclude` on the host.
+That invocation explicitly enables detection, supplies the original execution
+outcome under the pinned command's environment key, and disables warning-only
+failure handling. Its private native output must say `conclusion=success`,
+`success=true`, and an empty reason before any checkpoint is written; exit zero
+with `conclusion=skipped` is not a completed verdict.
+The following post-step requires both that original execution outcome and
+`steps.security_detector_conclusion.outcome` to equal `success`. Only then does
+it create a completion attestation under `$RUNNER_TEMP/security-detector-host`,
+outside the detector mounts, and upload the unique
+`ghaw-pr-security-detector-host-<run>-<attempt>-<pr>` artifact.
+Native diagnostics and conclusion summaries are captured privately; public
+detector phase output is fixed metadata.
+
+The read-only `publication_gate` requires this trusted host artifact and
+matching native completion/upload steps, the generated outputs to be exactly `'true'`
+and `'success'`, and the pinned redacted result to have all three threat flags
+false, empty reasons, and an empty structured warnings array. All inspection
+warnings block publication, including missing/unreadable prompt, report or
+patch context. The final report and patch must byte-match the host-attested binding.
+REST step `conclusion` can be `success` after `continue-on-error` masked an
+original failure; REST success is therefore only a provenance cross-check,
+never the original outcome authority.
+It emits a typed proof bound to repository, run ID/attempt, trusted workflow SHA,
+PR/head/comparison scope, detector version/source, exit zero and exact payload
+SHA-256 digests. No second inference route or larger budget is introduced.
+The controller verifies successful matching API source jobs and both native
+attestation/upload steps, requires one unexpired matching-run proof artifact,
+and compares the complete proof before writing the canonical handoff or
+`detector_attested` authorization. The immutable artifact upload fails on a
+same-name collision; an agent-created lookalike cannot substitute for successful
+native emission. Missing, warning, skipped, cancelled, or failed detector
+outcomes block both repair push and guidance comment. Fork reports uploaded by
+the agent post-step before detection remain non-publication evidence. No model
+report claim, console log parsing, or standalone green detector job is authority.
+An unresolved HIGH fork report still posts blocking guidance after this gate;
+the controller's intentional later blocking report status is not a detector
+failure.
 
 Both workers accept only a non-mutating `noop` result because generated gh-aw
 publication jobs are not ordered after native post-validation. gh-aw always
@@ -114,9 +204,13 @@ requires successful native diff/source/candidate reads and a structured
 source approval. Model-authored approval is rejected by report submission.
 For every proposed finding, successful bounded native head reads must cover its
 reported line interval. Native base reads must cover the corresponding original
-hunk/context, accounting for insertion and deletion offsets. Read fragments may
-form a complete interval union; gaps, wrong revisions, mismatched immutable
-source bytes, and `view`-only substitutes do not satisfy this gate.
+hunk/context, accounting for insertion and deletion offsets. For a pure deletion
+anchored to surviving head context, this includes the entire deleted base interval
+as well as the offset-mapped surviving context. Immutable native reads distinguish
+the following-line anchor from the preceding physical row at EOF; an empty head
+has no valid repair anchor, and a trailing newline does not create a phantom row.
+Read fragments may form a complete interval union; gaps, wrong revisions,
+mismatched immutable source bytes, and `view`-only substitutes do not satisfy this gate.
 Missing evidence, failed review, malformed output, or subprocess failure stops
 the repair rather than accepting a prompt-only reviewer restriction.
 
