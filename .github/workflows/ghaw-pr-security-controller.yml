@@ -282,6 +282,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PATCH_SHA256: ${{ needs.security-review.outputs.patch_sha256 }}
@@ -289,16 +290,25 @@ jobs:
           set -euo pipefail
           [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
           [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$PATCH_SHA256" =~ ^[0-9a-f]{64}$ ]]
           git check-ref-format "refs/heads/$HEAD_REF"
           patch="$RUNNER_TEMP/security-canonical/security-repair.patch"
           [ "$(sha256sum "$patch" | cut -d ' ' -f 1)" = "$PATCH_SHA256" ]
-          metadata="$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
-          [ "$(printf '%s' "$metadata" | jq -r .head.sha)" = "$EXPECTED_HEAD_SHA" ]
-          [ "$(printf '%s' "$metadata" | jq -r .head.repo.full_name)" = "$GITHUB_REPOSITORY" ]
-          [ "$(printf '%s' "$metadata" | jq -r .head.ref)" = "$HEAD_REF" ]
+          verify_live_pr_identity() {
+            local metadata
+            metadata="$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+            if [ "$(printf '%s' "$metadata" | jq -r .head.sha)" != "$EXPECTED_HEAD_SHA" ] ||
+               [ "$(printf '%s' "$metadata" | jq -r .base.sha)" != "$EXPECTED_BASE_SHA" ] ||
+               [ "$(printf '%s' "$metadata" | jq -r .head.repo.full_name)" != "$GITHUB_REPOSITORY" ] ||
+               [ "$(printf '%s' "$metadata" | jq -r .head.ref)" != "$HEAD_REF" ]; then
+              echo "::error::Stale security publication identity."
+              return 1
+            fi
+          }
           git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
             fetch --no-tags origin "$EXPECTED_HEAD_SHA"
+          verify_live_pr_identity
           export GIT_INDEX_FILE="$RUNNER_TEMP/security-repair.index"
           git read-tree "$EXPECTED_HEAD_SHA"
           git apply --cached --binary "$patch"
@@ -311,7 +321,7 @@ jobs:
                   commit-tree "$tree" -p "$EXPECTED_HEAD_SHA"
           )"
           git merge-base --is-ancestor "$EXPECTED_HEAD_SHA" "$commit"
-          [ "$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)" = "$EXPECTED_HEAD_SHA" ]
+          verify_live_pr_identity
           git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
             push --force-with-lease="refs/heads/$HEAD_REF:$EXPECTED_HEAD_SHA" \
               origin "$commit:refs/heads/$HEAD_REF"
@@ -334,22 +344,27 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         with:
           script: |
             const fs = require('node:fs');
             const head = process.env.EXPECTED_HEAD_SHA;
+            const base = process.env.EXPECTED_BASE_SHA;
             const number = process.env.PR_NUMBER;
-            if (!/^[0-9a-f]{40}$/.test(head) || !/^[1-9][0-9]*$/.test(number)) throw new Error('Invalid publication identity.');
+            if (!/^[0-9a-f]{40}$/.test(head) || !/^[0-9a-f]{40}$/.test(base) ||
+                !/^[1-9][0-9]*$/.test(number)) throw new Error('Invalid publication identity.');
             const pull_number = Number(number);
             const current = (await github.rest.pulls.get({ ...context.repo, pull_number })).data;
-            if (current.head.sha !== head || current.head.repo.id === Number(context.payload.repository.id)) throw new Error('Stale or non-fork guidance.');
+            if (current.head.sha !== head || current.base?.sha !== base ||
+                current.head.repo.id === Number(context.payload.repository.id)) throw new Error('Stale or non-fork guidance.');
             const marker = '<!-- ghaw-pr-security -->';
             const summary = fs.readFileSync(`${process.env.RUNNER_TEMP}/security-canonical/security-summary.md`, 'utf8');
             const body = `${marker}\n<!-- reviewed-head: ${head} -->\n${summary}`;
             const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number: pull_number, per_page: 100 });
             const existing = comments.filter(comment => comment.user.login === 'github-actions[bot]' && comment.body.startsWith(marker)).at(-1);
-            if ((await github.rest.pulls.get({ ...context.repo, pull_number })).data.head.sha !== head) throw new Error('Head changed before guidance publication.');
+            const latest = (await github.rest.pulls.get({ ...context.repo, pull_number })).data;
+            if (latest.head.sha !== head || latest.base?.sha !== base) throw new Error('Head or base changed before guidance publication.');
             if (existing) {
               if (existing.body !== body) await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
             } else {

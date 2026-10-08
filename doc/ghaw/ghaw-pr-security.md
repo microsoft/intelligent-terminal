@@ -342,6 +342,8 @@ readiness have explicit bounds and retain raw diagnostic output. A terminated
 Docker-info probe timeout is retryable only within the same readiness deadline:
 an exact child exiting between the timed wait and termination remains a
 diagnosed retryable timeout, while termination errors for a live child propagate.
+Terminated info timeouts still pass through the failed-probe service-state
+handling, so a stopped known service can start within the same deadline.
 Service-start and child-termination failures remain fatal. Cleanup queries
 Docker only when this run recorded a container-creation attempt and still
 checks exact name/labels before removal.
@@ -492,6 +494,10 @@ base update still fails the worker SHA guard and controller success gate,
 preventing publication rather than silently accepting a missing review. The
 run-correlation fallback paginates the workflow's branch/event results with
 a dispatch-time lower bound and still requires the unique dispatch title.
+Canonicalization rechecks both live head and base before issuing a handoff;
+repair and guidance publishers check both again before mutation. A base change
+invalidates the old snapshot. These reads are not atomic with the subsequent
+mutation: the Git lease protects the head only, and guidance remains advisory.
 Workers' `workflow_dispatch` context deliberately omits gh-aw's `pull_request`
 `item_type`, so the generated generic `Checkout PR branch` step is ineligible.
 The repair worker's explicit checkout is pinned to the immutable head; fork

@@ -85,10 +85,7 @@ function Wait-WindowsDocker {
             $result = Invoke-WindowsDockerPreflightProcess -FilePath $dockerPath -Arguments @('--host', 'npipe:////./pipe/docker_engine', 'info', '--format', '{{json .}}') -TimeoutSeconds ([Math]::Min(30, $remaining)) -LogPrefix (Join-Path $EvidenceDirectory "$DiagnosticPrefix-info-$attempt") -DeadlineUtc $deadline
         } catch [System.TimeoutException] {
             Write-Warning "Docker info probe timed out: attempt=$attempt; $($_.Exception.Message) Raw diagnostics: $DiagnosticPrefix-info-$attempt.stdout.log / .stderr.log."
-            if ([DateTime]::UtcNow -lt $deadline) {
-                Start-Sleep -Milliseconds ([Math]::Min(2000, [Math]::Max(1, [int](($deadline - [DateTime]::UtcNow).TotalMilliseconds))))
-            }
-            continue
+            $result = [pscustomobject]@{ ExitCode = -1; Output = '' }
         }
         if ([DateTime]::UtcNow -ge $deadline) { break }
         $service = Get-Service -Name docker -ErrorAction Stop

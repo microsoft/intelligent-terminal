@@ -169,6 +169,24 @@ Describe 'Windows Docker readiness (no real Docker or service mutation)' {
         Should -Invoke Invoke-WindowsDockerPreflightProcess -Times 2 -Exactly
     }
 
+    It 'starts the known stopped service even when the first info probe times out' {
+        $script:serviceStarted = $false
+        $script:probeCount = 0
+        Mock Get-Service { [pscustomobject]@{ Name = 'docker'; Status = $(if ($script:serviceStarted) { 'Running' } else { 'Stopped' }) } }
+        Mock Invoke-WindowsDockerPreflightProcess {
+            if ($Arguments[0] -eq '--host') {
+                $script:probeCount++
+                if ($script:probeCount -eq 1) { throw [TimeoutException]::new('Owned info child terminated after timeout.') }
+                return [pscustomobject]@{ ExitCode = 0; Output = '{"OSType":"windows","DockerRootDir":"C:\\ProgramData\\docker"}' }
+            }
+            $script:serviceStarted = $true
+            return [pscustomobject]@{ ExitCode = 0; Output = '' }
+        }
+        (Wait-WindowsDocker -EvidenceDirectory $script:evidenceDirectory -WarningAction SilentlyContinue).OSType | Should -BeExactly 'windows'
+        $script:serviceStarted | Should -BeTrue
+        Should -Invoke Invoke-WindowsDockerPreflightProcess -Times 3 -Exactly
+    }
+
     It 'fails at the original global deadline when every info probe times out' {
         $script:deadlines = [Collections.Generic.List[DateTime]]::new()
         Mock Invoke-WindowsDockerPreflightProcess {

@@ -1146,9 +1146,12 @@ export function preparePublication({ environment = process.env, request, paths =
     encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024,
   })));
   const sameRepo = environment.SAME_REPO === 'true';
-  const pull = api(`pulls/${pr}`);
-  if (pull.head?.sha !== head || (pull.head?.repo?.full_name === repository) !== sameRepo ||
-      pull.head?.ref !== environment.HEAD_REF) fail('stale publication identity');
+  const validateLivePublicationIdentity = pull => {
+    if (pull.head?.sha !== head || pull.base?.sha !== base ||
+        (pull.head?.repo?.full_name === repository) !== sameRepo ||
+        pull.head?.ref !== environment.HEAD_REF) fail('stale publication identity');
+  };
+  validateLivePublicationIdentity(api(`pulls/${pr}`));
   const run = api(`actions/runs/${runId}`);
   const jobs = [];
   for (let page = 1; ; page++) {
@@ -1214,6 +1217,7 @@ export function preparePublication({ environment = process.env, request, paths =
     }
     git(['read-tree', authorizedTree], workspace);
   } else if (patch !== '') fail('unreported publication patch');
+  validateLivePublicationIdentity(api(`pulls/${pr}`));
   const decision = publicationDecision(report);
   writeFileSync(resolve(output, 'security-summary.md'), renderReport(report), { flag: 'wx' });
   writeFileSync(resolve(output, 'security-repair.patch'), patch, { flag: 'wx' });

@@ -93,6 +93,13 @@ test('controller separates analysis from mutually exclusive narrow publication j
   assert(repair.includes('git apply --cached --binary'));
   assert(repair.includes('--force-with-lease="refs/heads/$HEAD_REF:$EXPECTED_HEAD_SHA"'));
   assert(repair.includes('git merge-base --is-ancestor'));
+  assert(repair.includes('EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}'));
+  assert(repair.includes('jq -r .base.sha'));
+  const identityChecks = [...repair.matchAll(/^          verify_live_pr_identity\r?$/gm)];
+  assert.equal(identityChecks.length, 2);
+  assert(repair.indexOf('fetch --no-tags') < identityChecks[0].index);
+  assert(identityChecks[0].index < repair.indexOf('git read-tree'));
+  assert(identityChecks[1].index < repair.indexOf('push --force-with-lease'));
   const guidance = controller.split('  publish-guidance:')[1];
   assert(guidance.includes("outputs.publication == 'comment'"));
   assert(guidance.includes('issues: write'));
@@ -272,6 +279,42 @@ test('typed detector proof rejects warning, cancelled, missing and self-reported
     })) assert.throws(() => validateDetectorPublicationProof({ ...proof, [key]: value }, run, current, bytes, '', 'owner/repo'), /attestation/);
     assert.throws(() => validateDetectorPublicationProof(proof, run, current, `${bytes}\n`, '', 'owner/repo'), /attestation/);
     assert.throws(() => validateDetectorPublicationProof(proof, run, current, bytes, PATCH_TEXT, 'owner/repo'), /attestation/);
+  }
+});
+
+test('actual guidance publisher rejects base drift at initial and final reads for create and update', async () => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  const script = "const fs = require('node:fs');" + controller.split("            const fs = require('node:fs');")[1];
+  const execute = new (Object.getPrototypeOf(async function () {}).constructor)('require', 'github', 'context', 'process', script);
+  for (const existing of [false, true]) {
+    for (const variant of ['current', 'initial-stale', 'closing-stale']) {
+      let reads = 0;
+      let writes = 0;
+      const publish = async args => {
+        writes++;
+        assert(args.body.includes(`reviewed-head: ${HEAD}`));
+      };
+      const github = {
+        rest: {
+          pulls: { get: async () => {
+            reads++;
+            return { data: { head: { sha: HEAD, repo: { id: 2 } },
+              base: { sha: variant === 'initial-stale' || (variant === 'closing-stale' && reads === 2) ? HEAD : BASE } } };
+          } },
+          issues: { listComments: {}, createComment: publish, updateComment: publish },
+        },
+        paginate: async () => existing ? [{ id: 7, user: { login: 'github-actions[bot]' },
+          body: '<!-- ghaw-pr-security --> old report' }] : [],
+      };
+      const run = () => execute(name => {
+        assert.equal(name, 'node:fs');
+        return { readFileSync: () => 'Validated findings table.' };
+      }, github, { repo: { owner: 'owner', repo: 'repo' }, payload: { repository: { id: 1 } } },
+      { env: { EXPECTED_HEAD_SHA: HEAD, EXPECTED_BASE_SHA: BASE, PR_NUMBER: '17', RUNNER_TEMP: 'owned-proof' } });
+      if (variant === 'current') await run();
+      else await assert.rejects(run, /Stale|base changed/);
+      assert.equal(writes, variant === 'current' ? 1 : 0);
+    }
   }
 });
 
@@ -619,7 +662,7 @@ test('canonical handoff rematerializes fork and no-patch reports and fails close
       };
       const jobs = publicationJobs(sameRepo);
       let proofArtifacts = [detectorArtifact()];
-      const pull = { head: { sha: HEAD, ref: environment.HEAD_REF, repo: { full_name: sameRepo ? 'owner/repo' : 'fork/repo' } } };
+      const pull = { base: { sha: BASE }, head: { sha: HEAD, ref: environment.HEAD_REF, repo: { full_name: sameRepo ? 'owner/repo' : 'fork/repo' } } };
       const request = endpoint => {
         if (endpoint === 'pulls/17') return pull;
         if (endpoint === 'actions/runs/123') return run;
@@ -636,6 +679,18 @@ test('canonical handoff rematerializes fork and no-patch reports and fails close
       assert.throws(() => preparePublication({ environment, request, paths }), /stale/);
       assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
       pull.head.sha = HEAD;
+      pull.base.sha = HEAD;
+      assert.throws(() => preparePublication({ environment, request, paths }), /stale/);
+      assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
+      pull.base.sha = BASE;
+      let closingReads = 0;
+      const closingRequest = endpoint => endpoint === 'pulls/17'
+        ? { ...pull, base: { sha: ++closingReads === 2 ? HEAD : BASE } } : request(endpoint);
+      assert.throws(() => preparePublication({ environment, request: closingRequest, paths }), /stale/);
+      assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
+      for (const file of ['security-summary.md', 'security-repair.patch', 'security-status.txt']) {
+        assert.throws(() => readFileSync(join(output, file)));
+      }
       jobs[1].conclusion = 'skipped';
       assert.throws(() => preparePublication({ environment, request, paths }), /source jobs/);
       assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
@@ -772,7 +827,7 @@ test('canonical repair applies only a digest-bound native-attested patch to an i
       display_title: 'Security Repair fixed', status: 'completed', conclusion: 'success' };
     const jobs = publicationJobs(true);
     const request = endpoint => {
-      if (endpoint === 'pulls/17') return { head: { sha: head, ref: 'reviewed', repo: { full_name: 'owner/repo' } } };
+      if (endpoint === 'pulls/17') return { base: { sha: base }, head: { sha: head, ref: 'reviewed', repo: { full_name: 'owner/repo' } } };
       if (endpoint === 'actions/runs/123') return run;
       if (endpoint === 'actions/runs/123/attempts/1/jobs?per_page=100&page=1') return { jobs };
       if (endpoint === 'actions/runs/123/artifacts?per_page=100&page=1') return { artifacts: [
