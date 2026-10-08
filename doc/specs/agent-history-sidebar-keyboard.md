@@ -27,6 +27,10 @@ use the latest received report. Live updates and refreshed session snapshots use
 the same rule, and tab/pane icons follow the selected reported provider rather
 than remaining fixed to the agent originally launched. No nested-agent stack is
 inferred.
+Once the selected session has ended, a newer session can replace it, including
+a custom-provider session. A completed built-in session must not permanently
+mask a new session using the same pane; custom reports about that same completed
+session still cannot override its built-in report.
 
 ## One-time Sidebar upgrade and introduction
 

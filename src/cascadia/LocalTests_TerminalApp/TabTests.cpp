@@ -5767,6 +5767,23 @@ namespace TerminalAppLocalTests
                 candidate.lastActivityAtMs = 9999;
                 VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(latest, candidate));
                 VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(candidate, latest));
+                auto ended = latest;
+                ended.status = "Ended";
+                candidate.sessionId = "new-custom-session";
+                VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(ended, candidate));
+                candidate.lastActivityAtMs = 1000;
+                VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(ended, candidate));
+                candidate.lastActivityAtMs = 9999;
+                candidate.sessionId = ended.sessionId;
+                VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(ended, candidate));
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(latest.sessionId, paneIdString, "copilot", 1600, "Ended"));
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("new-custom-session", paneIdString, "custom:wrapper", 2000, "Working"));
+                const auto rebound = page->_RichTabAgentInfoForControl(control);
+                VERIFY_IS_TRUE(rebound.has_value());
+                VERIFY_ARE_EQUAL(std::string{ "new-custom-session" }, rebound->sessionId);
+                VERIFY_ARE_EQUAL(std::string{ "custom:wrapper" }, rebound->providerId);
+                VERIFY_ARE_EQUAL(std::string{ "Working" }, rebound->status);
+                VERIFY_ARE_EQUAL(pane->GetContent().Icon(), tab->Icon());
             }
         });
     }
@@ -11840,11 +11857,16 @@ namespace TerminalAppLocalTests
     {
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
         const auto connection = winrt::make_self<TestConnection>(winrt::guid{ L"{436c8552-a3b3-4141-9b6c-c57b3251936e}" }, State::Connected);
-        auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
 
         TestOnUIThread([&]() {
+            page->Width(1200);
+            page->Height(600);
+            page->UpdateLayout();
             const auto tab = page->_GetFocusedTabImpl();
-            const auto sourcePane = tab->GetActivePane();
+            tab->SuppressAgentPrewarm();
+            tab->GetActiveTerminalControl().Connection(*connection);
+            auto sourcePane = tab->GetActivePane();
             const auto paneSessionId = sourcePane->GetSessionId();
             const auto profileIcon = sourcePane->GetContent().Icon();
             page->_UpdateTabIcon(*tab);
@@ -11855,6 +11877,8 @@ namespace TerminalAppLocalTests
             agentPane->IsAgentPane(true);
             VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane));
             VERIFY_IS_TRUE(tab->GetActivePane() == agentPane);
+            sourcePane = tab->GetRootPane()->FindPaneBySessionId(paneSessionId);
+            VERIFY_IS_NOT_NULL(sourcePane);
 
             const std::u16string progressStart{ u"\x1b]9;4;3\x07" };
             connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ progressStart.data(), progressStart.data() + progressStart.size() });
@@ -12004,6 +12028,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(tab->FocusPane(sourcePane->Id().value()));
             const auto secondPane = page->_MakePane(nullptr, page->_GetFocusedTab(), nullptr);
             VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, secondPane));
+            sourcePane = tab->GetRootPane()->FindPaneBySessionId(paneSessionId);
+            VERIFY_IS_NOT_NULL(sourcePane);
             VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
                 "second-pane-session",
                 winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(secondPane->GetSessionId())),

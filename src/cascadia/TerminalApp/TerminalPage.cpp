@@ -1455,11 +1455,13 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_ShouldReplaceReportedAgentState(const _RichTabAgentInfo& existing, const _RichTabAgentInfo& incoming)
     {
-        if (!_ShouldUseIncomingAgentProvider(existing.providerId, incoming.providerId))
+        const auto newSessionAfterExit = existing.sessionId != incoming.sessionId &&
+                                         (existing.status == "Ended" || existing.status == "Historical");
+        if (!newSessionAfterExit && !_ShouldUseIncomingAgentProvider(existing.providerId, incoming.providerId))
         {
             return false;
         }
-        if (_IsBuiltinAgentProviderId(incoming.providerId) && !_IsBuiltinAgentProviderId(existing.providerId))
+        if (!newSessionAfterExit && _IsBuiltinAgentProviderId(incoming.providerId) && !_IsBuiltinAgentProviderId(existing.providerId))
         {
             return true;
         }

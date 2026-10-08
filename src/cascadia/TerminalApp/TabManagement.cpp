@@ -69,13 +69,14 @@ namespace winrt::TerminalApp::implementation
             if (const auto agentInfo = _RichTabAgentInfoForControl(control);
                 agentInfo &&
                 !agentInfo->providerId.empty() &&
-                _ShouldUseIncomingAgentProvider(winrt::to_string(providerId), agentInfo->providerId) &&
                 (agentInfo->status == "Idle" ||
                  agentInfo->status == "Working" ||
                  agentInfo->status == "Attention" ||
                  agentInfo->status == "Error"))
             {
-                return ::Microsoft::Terminal::UI::AgentIcons::IconPathForProvider(std::wstring_view{ winrt::to_hstring(agentInfo->providerId) });
+                return _IsBuiltinAgentProviderId(agentInfo->providerId) ?
+                           ::Microsoft::Terminal::UI::AgentIcons::IconPathForProvider(std::wstring_view{ winrt::to_hstring(agentInfo->providerId) }) :
+                           profileIcon;
             }
             if (!providerId.empty())
             {
