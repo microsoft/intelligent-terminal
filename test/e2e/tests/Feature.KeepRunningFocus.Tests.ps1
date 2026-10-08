@@ -14,6 +14,10 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
         . (Join-Path $PSScriptRoot 'helpers\PackageProfileActivation.ps1')
         . (Join-Path $PSScriptRoot 'helpers\KeptTabReattachment.ps1')
         $script:app = $null
+        $script:originalRunToken = $env:ITE2E_RUN_TOKEN
+        $script:originalOwnedReceipt = $env:ITE2E_OWNED_PROCESS_RECEIPT
+        $env:ITE2E_RUN_TOKEN = [guid]::NewGuid().ToString('N')
+        $env:ITE2E_OWNED_PROCESS_RECEIPT = Join-Path $TestDrive ("keep-running-owned-$env:ITE2E_RUN_TOKEN.jsonl")
         function script:Close-KeptTabFromMenu {
             param([string]$PaneSessionId, [string]$Title)
             $visible = Find-UiElement -App $script:app -Selector KeepTabRunningMenuItem
@@ -45,7 +49,13 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
         }
     }
     AfterEach {
-        if ($script:app) { Stop-Terminal -App $script:app }
+        try {
+            if ($script:app) { Stop-Terminal -App $script:app }
+        }
+        finally {
+            $env:ITE2E_RUN_TOKEN = $script:originalRunToken
+            $env:ITE2E_OWNED_PROCESS_RECEIPT = $script:originalOwnedReceipt
+        }
     }
 
     It 'Focusing a kept session reattaches its original tab' {
