@@ -11,6 +11,7 @@
 #include <json/json.h>
 #include <til/io.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
+#include "../TerminalProtocol/ProtocolMarshaling.h"
 
 #include <algorithm>
 #include <thread>
@@ -71,35 +72,40 @@ try
 
     g_comMtaThread = std::thread([&ready, &regHr]() {
         auto coInit = wil::CoInitializeEx(COINIT_MULTITHREADED);
+        Microsoft::Terminal::Protocol::ScopedMarshaling marshaling;
+        regHr = marshaling.InitializeForElevatedProcess();
 
         // Classic-COM class factory (WRL) — marshaled via the OpenConsoleProxy
         // proxy/stub, not WinRT MBM.
-        const auto factory = Make<SimpleClassFactory<TerminalProtocolComServer>>();
-        if (!factory)
+        if (SUCCEEDED(regHr))
         {
-            regHr = E_OUTOFMEMORY;
-        }
-        else
-        {
-            ComPtr<IUnknown> unk;
-            regHr = factory.As(&unk);
-            if (SUCCEEDED(regHr))
+            const auto factory = Make<SimpleClassFactory<TerminalProtocolComServer>>();
+            if (!factory)
             {
-                regHr = CoRegisterClassObject(
-                    __uuidof(TerminalProtocolComServer),
-                    unk.Get(),
-                    CLSCTX_LOCAL_SERVER,
-                    REGCLS_MULTIPLEUSE,
-                    &g_comRegistration);
+                regHr = E_OUTOFMEMORY;
+            }
+            else
+            {
+                ComPtr<IUnknown> unk;
+                regHr = factory.As(&unk);
                 if (SUCCEEDED(regHr))
                 {
-                    // Publish the same factory under the fixed CLSID for non-activating
-                    // hook lookups. A ROT failure must not disable ordinary COM clients.
-                    LOG_IF_FAILED(RegisterActiveObject(
-                        unk.Get(),
+                    regHr = CoRegisterClassObject(
                         __uuidof(TerminalProtocolComServer),
-                        ACTIVEOBJECT_STRONG,
-                        &g_activeRegistration));
+                        unk.Get(),
+                        CLSCTX_LOCAL_SERVER,
+                        REGCLS_MULTIPLEUSE,
+                        &g_comRegistration);
+                    if (SUCCEEDED(regHr))
+                    {
+                        // Publish the same factory under the fixed CLSID for non-activating
+                        // hook lookups. A ROT failure must not disable ordinary COM clients.
+                        LOG_IF_FAILED(RegisterActiveObject(
+                            unk.Get(),
+                            __uuidof(TerminalProtocolComServer),
+                            ACTIVEOBJECT_STRONG,
+                            &g_activeRegistration));
+                    }
                 }
             }
         }

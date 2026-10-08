@@ -8,6 +8,7 @@
 #include "Formatting.h"
 #include "wtcli_functions.h"
 #include "../../cascadia/TerminalProtocol/ProtocolParsing.h"
+#include "../../cascadia/TerminalProtocol/ProtocolMarshaling.h"
 
 // Classic-COM Terminal protocol. Generated from
 // src/host/proxy/ITerminalProtocol.idl; found via the OpenConsoleProxy IntDir
@@ -111,25 +112,35 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
 
     winrt::com_ptr<ITerminalProtocol> server;
     HRESULT hr;
-    if (mode == TerminalConnectionMode::ExistingOnly)
-    {
+    const auto connectExisting = [&]() -> HRESULT {
         // Keep the returned factory instead of probing then activating: shutdown
         // can race either call, but must never launch a replacement Terminal.
         winrt::com_ptr<IUnknown> running;
-        hr = GetActiveObject(cls, nullptr, running.put());
-        if (SUCCEEDED(hr))
+        auto result = GetActiveObject(cls, nullptr, running.put());
+        if (SUCCEEDED(result))
         {
             winrt::com_ptr<IClassFactory> factory;
-            hr = running->QueryInterface(__uuidof(IClassFactory), factory.put_void());
-            if (SUCCEEDED(hr))
+            result = running->QueryInterface(__uuidof(IClassFactory), factory.put_void());
+            if (SUCCEEDED(result))
             {
-                hr = factory->CreateInstance(nullptr, __uuidof(ITerminalProtocol), server.put_void());
+                result = factory->CreateInstance(nullptr, __uuidof(ITerminalProtocol), server.put_void());
             }
         }
+        return result;
+    };
+    if (mode == TerminalConnectionMode::ExistingOnly)
+    {
+        hr = connectExisting();
     }
     else
     {
         hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
+        if (hr == REGDB_E_CLASSNOTREG)
+        {
+            // Elevated unpackaged shells cannot discover the packaged class,
+            // but can use an already-running factory at their integrity level.
+            hr = connectExisting();
+        }
     }
     if (FAILED(hr))
     {
@@ -404,6 +415,13 @@ static HRESULT SupportsCapability(ITerminalProtocol* server, const std::string_v
 int wmain(int argc, wchar_t** argv)
 {
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
+    Microsoft::Terminal::Protocol::ScopedMarshaling marshaling;
+    const auto marshalingResult = marshaling.InitializeForElevatedProcess();
+    if (FAILED(marshalingResult))
+    {
+        fprintf(stderr, "[wtcli] Proxy/stub initialization failed: 0x%08X\n", static_cast<uint32_t>(marshalingResult));
+        return 1;
+    }
 
     CLI::App app{ "wtcli - Windows Terminal CLI" };
     app.require_subcommand(0, 1);

@@ -57,6 +57,7 @@
     <ClInclude Include="VirtualDesktopUtils.h" />
     <ClInclude Include="WindowEmperor.h" />
     <ClInclude Include="TerminalProtocolComServer.h" />
+    <ClInclude Include="..\TerminalProtocol\ProtocolMarshaling.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">

@@ -152,6 +152,26 @@ The `bx` will build just the Terminal package, critically, populating the `Casca
 Notably, this method of building the Terminal package can't leverage the FastUpToDate check in Visual Studio, so the builds end up being considerably slower for the whole package, as cppwinrt does a lot of work before confirming that it's up to date and doing nothing.
 
 
+### Elevated Intelligent Terminal agent integration
+
+The Terminal protocol uses classic COM interfaces marshaled by
+`OpenConsoleProxy.dll`. Normal processes use the packaged COM declarations.
+Elevated `WindowsTerminal.exe` and `wtcli.exe` additionally register the protocol
+and event-sink proxy/stub factory inside their own processes, without writing
+global COM registry entries. Keep `OpenConsoleProxy.dll` beside both executables;
+the elevated path loads the proxy from that absolute path and restricts
+dependency searches to its directory and system DLL directories.
+
+An elevated shell outside the package can use the already-running Terminal
+factory when packaged class activation returns `REGDB_E_CLASSNOTREG`. This
+lookup does not launch another Terminal and does not bypass COM integrity-level
+isolation. Agent hooks continue to use the existing-only connection path.
+
+If the agent bar stays at its default title while chat works, inspect helper
+logs for `wtcli publish failed` and event-listener errors. A proxy/stub
+initialization error from `wtcli` identifies a missing or unusable adjacent DLL;
+`E_NOINTERFACE` during connection indicates custom-interface marshaling failed.
+
 ### Are you seeing `DEP0700: Registration of the app failed`?
 
 Once in a blue moon, I get a `DEP0700: Registration of the app failed.
