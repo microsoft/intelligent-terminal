@@ -8113,6 +8113,9 @@ namespace TerminalAppLocalTests
                 const auto section = button.Parent().as<Grid>();
                 VERIFY_ARE_EQUAL(1.0, section.BorderThickness().Top);
                 VERIFY_IS_NOT_NULL(section.BorderBrush());
+                VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Transparent(),
+                                 button.Resources().Lookup(winrt::box_value(L"ToggleButtonBackgroundChecked"))
+                                     .as<Media::SolidColorBrush>().Color());
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"HistoryHeaderButton" }, Automation::AutomationProperties::GetAutomationId(button));
                 const auto peer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(button);
                 VERIFY_IS_NOT_NULL(peer.try_as<Automation::Peers::ToggleButtonAutomationPeer>());
@@ -8133,6 +8136,32 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(first.Parent() == firstParent);
             VERIFY_IS_TRUE(second.Parent() == secondParent);
         });
+        for (const auto theme : { ElementTheme::Dark, ElementTheme::Light, ElementTheme::Dark })
+        {
+            TestOnUIThread([&]() {
+                host.RequestedTheme(theme);
+                host.UpdateLayout();
+            });
+            _waitForContentTransferReviewUI([&]() {
+                host.UpdateLayout();
+                const auto heading = first.FindName(L"HistoryHeader").as<TextBlock>();
+                const auto color = heading.Foreground().as<Media::SolidColorBrush>().Color();
+                const uint8_t expectedChannel = theme == ElementTheme::Dark ? 255 : 0;
+                return color.R == expectedChannel && color.G == expectedChannel && color.B == expectedChannel;
+            });
+            TestOnUIThread([&]() {
+                for (const auto& button : { firstButton, secondButton })
+                {
+                    VERIFY_IS_TRUE(button.IsChecked().Value());
+                    const auto heading = button.Content().as<Grid>().Children().GetAt(0).as<TextBlock>();
+                    const auto color = heading.Foreground().as<Media::SolidColorBrush>().Color();
+                    const uint8_t expectedChannel = theme == ElementTheme::Dark ? 255 : 0;
+                    VERIFY_ARE_EQUAL(expectedChannel, color.R);
+                    VERIFY_ARE_EQUAL(expectedChannel, color.G);
+                    VERIFY_ARE_EQUAL(expectedChannel, color.B);
+                }
+            });
+        }
     }
 
     void TabTests::AgentsViewTabVectorChangesKeepViewportInSync()

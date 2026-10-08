@@ -127,6 +127,8 @@ and focuses ordinary tab search on entry.
   Collapsing this section does not leave Agents, clear shared search, delete
   sessions, or close agent tabs. Its action tooltip says **Expand recent sessions**
   or **Collapse recent sessions**, matching the current expanded state.
+  Expansion is not selection: the heading retains neutral theme styling rather
+  than an accent-colored checked fill, with ordinary hover and pressed feedback.
   Its custom automation peer derives from `ToggleButtonAutomationPeer`, matching
   the heading's `ToggleButton` base. XAML requires that peer interface when
   `IsChecked` changes with UI Automation property listeners active, including
