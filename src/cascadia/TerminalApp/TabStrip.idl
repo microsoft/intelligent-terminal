@@ -8,9 +8,26 @@
 // TabManagement.cpp call, so those call sites don't have to branch on which
 // strip is live. Orientation is a public property (per the B→C migration
 // rules in the investigation doc); the prototype only implements Vertical.
+import "TabHeaderControl.idl";
 
 namespace TerminalApp
 {
+    [default_interface] runtimeclass TabStripItemTemplateSelector : Windows.UI.Xaml.Controls.DataTemplateSelector
+    {
+        TabStripItemTemplateSelector();
+    };
+
+    [default_interface] runtimeclass TabStripHistoryHeader : Windows.UI.Xaml.Controls.Primitives.ToggleButton
+    {
+        TabStripHistoryHeader();
+    };
+    [default_interface] runtimeclass TabStripHistoryHeaderAutomationPeer :
+        Windows.UI.Xaml.Automation.Peers.ToggleButtonAutomationPeer,
+        Windows.UI.Xaml.Automation.Provider.IExpandCollapseProvider
+    {
+        TabStripHistoryHeaderAutomationPeer(TabStripHistoryHeader owner);
+    };
+
     enum TabStripOrientation
     {
         Horizontal = 0,
@@ -65,12 +82,20 @@ namespace TerminalApp
         Windows.UI.Xaml.Visibility MetadataVisibility;
         Windows.UI.Xaml.Controls.IconElement Icon;
         String HighlightQuery;
+        UInt64 ProgressState;
+        Boolean IsProgressRingActive;
+        Boolean IsProgressRingIndeterminate;
+        UInt32 ProgressValue;
+        Object IconSource;
+        Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
     };
 
     [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged
     {
         Microsoft.UI.Xaml.Controls.TabViewItem Tab { get; };
         Windows.Foundation.Collections.IObservableVector<TabStripPaneItem> PaneItems { get; };
+        // Data-only TabHeaderPresentation, not the canonical TabHeaderControl.
+        // The Object getter/setter slots are retained for ABI compatibility.
         Object Header;
         String Title;
         String SearchText;
@@ -91,6 +116,13 @@ namespace TerminalApp
         String AcceleratorKey;
         Boolean IsPinned;
         Windows.UI.Xaml.Visibility PinnedIconVisibility;
+        TabHeaderPresentation Presentation { get; };
+        Boolean IsMetadataVisible;
+        Boolean ShowProgressRing;
+        // Source identity is retained; each template creates its own element.
+        // Object carries MUX IconSource data; the setter validates its type.
+        Object IconSource;
+        Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
     };
 
     [default_interface] runtimeclass TabStripPaneEventArgs
@@ -189,5 +221,6 @@ namespace TerminalApp
         Boolean RichTabChangesVisible;
         Boolean RichTabWorkingDirectoryVisible;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> VisibleFieldsChanged;
+        Boolean RichTabGitAvailable;
     };
 }

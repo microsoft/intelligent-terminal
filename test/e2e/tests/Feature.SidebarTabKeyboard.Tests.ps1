@@ -19,7 +19,9 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             throw "The selected $($target.Package) package is already running; close it before the Sidebar keyboard test."
         }
         try {
-            $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{
+                sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+            } -Settings @{
                 language = 'en-US'
                 tabLayout = 'vertical'
                 startupActions = ''
@@ -112,7 +114,7 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
         $script:evidenceDir = Join-Path ([IO.Path]::GetFullPath($artifactRoot)) "sidebar-tab-keyboard-$([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Force -Path $script:evidenceDir | Out-Null
-        Wait-UiElement -App $script:app -Selector TabHistoryButton | Out-Null
+        Wait-UiElement -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
         $initialTabs = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId))
         if ($initialTabs.Count -ne 1) { throw "Expected one initial terminal tab, found $($initialTabs.Count)." }
 
@@ -140,10 +142,10 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             return
         }
         Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
-        $history = Get-SidebarElement -AutomationId 'TabHistoryButton'
-        $history.Current.IsOffscreen | Should -BeFalse
-        $history.SetFocus()
-        $history.Current.HasKeyboardFocus | Should -BeTrue
+        $toolbarEnd = Get-SidebarElement -AutomationId 'FilterTabsButton'
+        $toolbarEnd.Current.IsOffscreen | Should -BeFalse
+        $toolbarEnd.SetFocus()
+        $toolbarEnd.Current.HasKeyboardFocus | Should -BeTrue
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'unfiltered-before.png') | Out-Null
         Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'unfiltered-after-tab.png') | Out-Null
@@ -243,5 +245,50 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         $observed.FocusProcessId | Should -Be $script:app.Pid -Because 'the owned Dev window must retain keyboard focus'
         $observed.SelectedTab | Should -Be ([string]$script:tabA.tab_id) -Because 'Enter must keep the selected tab active'
         $entered | Should -BeTrue -Because 'Enter on the already selected row must also enter its terminal'
+    }
+
+    It 'Sidebar hotkey entry and Tab traversal return to the same shell' -Tag 'SidebarHotkeyTabJourney' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        $sourceFocus = Wait-Until -TimeoutSec 5 -Condition {
+            $focused = [Windows.Automation.AutomationElement]::FocusedElement
+            if ($focused -and $focused.Current.ProcessId -eq $script:app.Pid -and
+                $focused.Current.HasKeyboardFocus -and $focused.Current.ClassName -eq 'TermControl') { $focused }
+        }
+        $sourceFocus | Should -Not -BeNullOrEmpty
+        $tabId = [string](Get-ActivePane -App $script:app).tab_id
+        $draft = "SIDEBAR_HOTKEY_DRAFT_$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+        Send-WtInput -App $script:app -SessionId $script:tabB.session_id -Text $draft | Out-Null
+        Wait-Until -TimeoutSec 8 -Because 'the original shell to display its unsent draft' -Condition {
+            (Get-WtCapture -App $script:app -SessionId $script:tabB.session_id -MaxLines 30).TrimEnd().EndsWith($draft)
+        } | Out-Null
+
+        foreach ($fromCollapsed in @($false, $true)) {
+            Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                $search = Get-SidebarElement -AutomationId 'SearchTextBox'
+                $search -and -not $search.Current.IsOffscreen -and $search.Current.HasKeyboardFocus
+            }) | Should -BeTrue -Because 'Ctrl+Shift+S must enter the Sidebar search box'
+
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition { (Get-FocusedTabRowIndex) -ge 0 }) |
+                Should -BeTrue -Because 'Tab from hotkey-opened search must enter a Sidebar tab row'
+            $row = Get-FocusedTabRowIndex
+            Assert-FocusedTabRow -Index $row -SelectedTabId $tabId -Because 'Tab must not activate a terminal after hotkey entry'
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir "hotkey-tab-row-$fromCollapsed.png") | Out-Null
+
+            Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+            Wait-UiElement -App $script:app -Selector CompactNewTabButton | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $sourceFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'the hotkey must return from a Sidebar tab row to the original shell'
+            (Get-WtCapture -App $script:app -SessionId $script:tabB.session_id -MaxLines 30).TrimEnd() |
+                Should -Match ([regex]::Escape($draft) + '$') -Because 'the unsent shell draft must survive both hotkey transitions'
+        }
     }
 }

@@ -35,6 +35,7 @@ namespace winrt::TerminalApp::implementation
         // In vertical mode, this complete chrome row is hosted in the window
         // titlebar when available and falls back to the top of the rail.
         winrt::Windows::UI::Xaml::UIElement VerticalTitleBarContent() const noexcept { return _verticalTitleBarContent; }
+        winrt::Windows::UI::Xaml::Controls::Button VerticalRailToggleButton() const noexcept { return _verticalRailToggleButton; }
         winrt::Microsoft::UI::Xaml::Controls::SplitButton VerticalNewTabButton() const noexcept { return _verticalNewTabButton; }
         void SidebarToggleKeyChordText(const winrt::hstring& value);
         void SetVerticalRailState(bool visible, bool collapsed, double width);

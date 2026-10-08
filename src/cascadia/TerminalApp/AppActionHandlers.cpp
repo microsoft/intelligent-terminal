@@ -290,6 +290,12 @@ namespace winrt::TerminalApp::implementation
             const auto& duplicateFromTab{ realArgs.SplitMode() == SplitType::Duplicate ? _GetFocusedTab() : nullptr };
 
             const auto& activeTab{ _senderOrFocusedTab(sender) };
+            if (_tabStrip.HistoryActive() && realArgs.SplitMode() == SplitType::Duplicate)
+            {
+                _SplitAgentDelegate(activeTab, realArgs.SplitDirection(), realArgs.SplitSize());
+                args.Handled(true);
+                return;
+            }
 
             // A persisted agent pane replays as an ordinary splitPane action,
             // but it cannot be built by `_MakePane`: the helper needs this
@@ -648,10 +654,17 @@ namespace winrt::TerminalApp::implementation
         args.Handled(res);
     }
 
-    void TerminalPage::_HandleToggleSidebar(const IInspectable& /*sender*/,
+    void TerminalPage::_HandleToggleSidebar(const IInspectable& sender,
                                             const ActionEventArgs& args)
     {
-        _OnVerticalRailCollapseRequested(nullptr, nullptr);
+        if (sender.try_as<KeyChord>())
+        {
+            _ToggleSidebarHotkey();
+        }
+        else
+        {
+            _OnVerticalRailCollapseRequested(nullptr, nullptr);
+        }
         args.Handled(true);
     }
 

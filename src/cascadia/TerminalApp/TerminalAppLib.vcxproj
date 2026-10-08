@@ -89,6 +89,9 @@
     <Page Include="AgentIconResources.xaml">
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="IndeterminateProgressResources.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="FreOverlay.xaml">
       <SubType>Designer</SubType>
     </Page>
@@ -152,6 +155,9 @@
     <ClInclude Include="TabStripAutomationPeer.h" />
     <ClInclude Include="HighlightedTextControl.h">
       <DependentUpon>HighlightedTextControl.idl</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="IndeterminateProgressRing.h">
+      <DependentUpon>IndeterminateProgressRing.idl</DependentUpon>
     </ClInclude>
     <ClInclude Include="ColorPickupFlyout.h">
       <DependentUpon>ColorPickupFlyout.xaml</DependentUpon>
@@ -281,6 +287,9 @@
     <ClCompile Include="HighlightedTextControl.cpp">
       <DependentUpon>HighlightedTextControl.idl</DependentUpon>
     </ClCompile>
+    <ClCompile Include="IndeterminateProgressRing.cpp">
+      <DependentUpon>IndeterminateProgressRing.idl</DependentUpon>
+    </ClCompile>
     <ClCompile Include="ColorPickupFlyout.cpp">
       <DependentUpon>ColorPickupFlyout.xaml</DependentUpon>
     </ClCompile>
@@ -405,6 +414,9 @@
       <SubType>Code</SubType>
     </Midl>
     <Midl Include="HighlightedTextControl.idl">
+      <SubType>Code</SubType>
+    </Midl>
+    <Midl Include="IndeterminateProgressRing.idl">
       <SubType>Code</SubType>
     </Midl>
     <Midl Include="ColorPickupFlyout.idl">

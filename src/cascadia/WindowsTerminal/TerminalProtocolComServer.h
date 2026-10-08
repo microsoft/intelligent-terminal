@@ -35,9 +35,7 @@ class WindowEmperor;
 // failures. Complex results cross the wire as JSON (BSTR); the per-method logic
 // and the UI-thread-marshaled page queries are unchanged from the WinRT server.
 struct __declspec(uuid(__CLSID_TerminalProtocolServer))
-TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
-                                Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::RuntimeClassType::ClassicCom>,
-                                ITerminalProtocol>
+TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::RuntimeClassType::ClassicCom>, ITerminalProtocol, ITerminalProtocolNativeAgent>
 {
     ~TerminalProtocolComServer();
 
@@ -62,6 +60,8 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     STDMETHODIMP Unsubscribe() override;
     STDMETHODIMP SendEvent(BSTR eventJson) override;
     STDMETHODIMP GetPaneContext(GUID sourceSessionId, boolean hasExplicitSource, long maxLines, long maxCharacters, BSTR* json) override;
+    STDMETHODIMP CreateAgentCliTab(unsigned __int64 windowId, BSTR profile, BSTR commandline, BSTR title, BSTR startingDirectory, boolean suppressAppTitle, boolean background, BSTR providerId, BSTR* json) override;
+    STDMETHODIMP SplitAgentCliPane(GUID sessionId, BSTR direction, float size, BSTR profile, BSTR commandline, boolean background, BSTR providerId, BSTR* json) override;
 
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;
@@ -77,6 +77,8 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     static void s_NotifyEventToComClients(const std::string& eventJson);
 
 private:
+    HRESULT _CreateTab(unsigned __int64 windowId, BSTR profile, BSTR commandline, BSTR title, BSTR startingDirectory, boolean suppressAppTitle, boolean background, const winrt::hstring& nativeAgentProviderId, BSTR* json);
+    HRESULT _SplitPane(GUID sessionId, BSTR direction, float size, BSTR profile, BSTR commandline, boolean background, const winrt::hstring& nativeAgentProviderId, BSTR* json);
     // ── Per-subscriber asynchronous event delivery (issue #239) ──
     //
     // Each connected client (= one instance) owns a bounded FIFO queue drained

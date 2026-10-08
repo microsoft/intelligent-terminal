@@ -23,6 +23,9 @@
 
     <UserControl.Resources>
         <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-resource:///Files/TerminalApp/IndeterminateProgressResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
             <!--  KeyChordText styles  -->
             <Style x:Key="KeyChordBorderStyle"
                    TargetType="Border">
@@ -200,20 +203,33 @@
                         <!--  gutter for scrollbar  -->
                     </Grid.ColumnDefinitions>
 
-                    <mux:ProgressRing Grid.Column="0"
+                    <Grid Grid.Column="0"
+                          Visibility="{x:Bind Item.(local:TabPaletteItem.TabStatus).IsProgressRingActive, Mode=OneWay}">
+                        <mux:ProgressRing x:Name="TabProgressRing"
+                                          Width="15"
+                                          Height="15"
+                                          MinWidth="0"
+                                          MinHeight="0"
+                                          IsActive="{x:Bind Item.(local:TabPaletteItem.TabStatus).IsProgressRingActive, Mode=OneWay}"
+                                          IsIndeterminate="False"
+                                          Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(Item.(local:TabPaletteItem.TabStatus).IsProgressRingIndeterminate), Mode=OneWay}"
+                                          Value="{x:Bind Item.(local:TabPaletteItem.TabStatus).ProgressValue, Mode=OneWay}" />
+                        <local:IndeterminateProgressRing x:Name="TabIndeterminateProgressRing"
+                                      Style="{StaticResource DeclarativeSpinner}"
                                       Width="15"
                                       Height="15"
                                       MinWidth="0"
                                       MinHeight="0"
+                                      Foreground="{Binding Foreground, ElementName=TabProgressRing, Mode=OneWay}"
                                       IsActive="{x:Bind Item.(local:TabPaletteItem.TabStatus).IsProgressRingActive, Mode=OneWay}"
-                                      IsIndeterminate="{x:Bind Item.(local:TabPaletteItem.TabStatus).IsProgressRingIndeterminate, Mode=OneWay}"
-                                      Visibility="{x:Bind Item.(local:TabPaletteItem.TabStatus).IsProgressRingActive, Mode=OneWay}"
-                                      Value="{x:Bind Item.(local:TabPaletteItem.TabStatus).ProgressValue, Mode=OneWay}" />
+                                      Visibility="{x:Bind Item.(local:TabPaletteItem.TabStatus).IsProgressRingIndeterminate, Mode=OneWay}" />
+                    </Grid>
 
                     <ContentPresenter Grid.Column="0"
                                       Width="16"
                                       Height="16"
-                                      Content="{x:Bind Item.ResolvedIcon, Mode=OneWay}" />
+                                      Content="{x:Bind Item.ResolvedIcon, Mode=OneWay}"
+                                      Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(Item.(local:TabPaletteItem.TabStatus).IsProgressRingActive), Mode=OneWay}" />
 
                     <local:HighlightedTextControl Grid.Column="1"
                                                   HorizontalAlignment="Left"

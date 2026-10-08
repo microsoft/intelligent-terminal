@@ -16,6 +16,10 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto cmd{ _actionMap.GetActionByKeyChord(kc) })
         {
+            if (cmd.ActionAndArgs().Action() == winrt::Microsoft::Terminal::Settings::Model::ShortcutAction::ToggleSidebar)
+            {
+                return _dispatch.DoAction(kc, cmd.ActionAndArgs());
+            }
             return _dispatch.DoAction(cmd.ActionAndArgs());
         }
         return false;

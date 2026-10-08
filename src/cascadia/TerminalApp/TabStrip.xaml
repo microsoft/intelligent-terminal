@@ -1,4 +1,4 @@
-<!--
+﻿<!--
     Copyright (c) Microsoft Corporation. All rights reserved. Licensed under
     the MIT License. See LICENSE in the project root for license information.
 
@@ -14,6 +14,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="using:TerminalApp"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:mtu="using:Microsoft.Terminal.UI"
              xmlns:mux="using:Microsoft.UI.Xaml.Controls"
              MinWidth="40"
              Background="{ThemeResource TabViewBackground}"
@@ -23,6 +24,35 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="ms-resource:///Files/TerminalApp/AgentIconResources.xaml" />
+                <ResourceDictionary Source="ms-resource:///Files/TerminalApp/IndeterminateProgressResources.xaml" />
+                <ResourceDictionary>
+                    <ResourceDictionary.ThemeDictionaries>
+                        <ResourceDictionary x:Key="Light">
+                            <StaticResource x:Key="PaneProgressAccentBrush"
+                                            ResourceKey="SystemControlForegroundAccentBrush" />
+                            <StaticResource x:Key="PaneProgressCriticalBrush"
+                                            ResourceKey="SystemFillColorCriticalBrush" />
+                            <StaticResource x:Key="PaneProgressCautionBrush"
+                                            ResourceKey="SystemFillColorCautionBrush" />
+                        </ResourceDictionary>
+                        <ResourceDictionary x:Key="Dark">
+                            <StaticResource x:Key="PaneProgressAccentBrush"
+                                            ResourceKey="SystemControlForegroundAccentBrush" />
+                            <StaticResource x:Key="PaneProgressCriticalBrush"
+                                            ResourceKey="SystemFillColorCriticalBrush" />
+                            <StaticResource x:Key="PaneProgressCautionBrush"
+                                            ResourceKey="SystemFillColorCautionBrush" />
+                        </ResourceDictionary>
+                        <ResourceDictionary x:Key="HighContrast">
+                            <StaticResource x:Key="PaneProgressAccentBrush"
+                                            ResourceKey="SystemControlForegroundAccentBrush" />
+                            <StaticResource x:Key="PaneProgressCriticalBrush"
+                                            ResourceKey="SystemFillColorCriticalBrush" />
+                            <StaticResource x:Key="PaneProgressCautionBrush"
+                                            ResourceKey="SystemFillColorCautionBrush" />
+                        </ResourceDictionary>
+                    </ResourceDictionary.ThemeDictionaries>
+                </ResourceDictionary>
             </ResourceDictionary.MergedDictionaries>
             <!--  Remove the native horizontal tab border within this vertical-only scope.  -->
             <Thickness x:Key="TabViewItemBorderThickness">0</Thickness>
@@ -73,11 +103,204 @@
                 <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
                 <Setter Property="Opacity" Value="1" />
             </Style>
+            <DataTemplate x:Key="HistoryHeaderTemplate">
+                <Grid x:Name="HistorySection"
+                      Background="Transparent"
+                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                      BorderThickness="0,1,0,0"
+                      Loaded="OnHistorySectionLoaded"
+                      Unloaded="OnHistorySectionUnloaded">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <local:TabStripHistoryHeader x:Name="HistoryHeaderButton"
+                                                AutomationProperties.AutomationId="HistoryHeaderButton"
+                                                MinHeight="44"
+                                                Padding="12,0"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Stretch"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                IsChecked="True"
+                                                Checked="OnHistoryExpandedChanged"
+                                                Unchecked="OnHistoryExpandedChanged">
+                        <local:TabStripHistoryHeader.Resources>
+                            <ResourceDictionary>
+                                <ResourceDictionary.ThemeDictionaries>
+                                    <ResourceDictionary x:Key="Default">
+                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="ToggleButtonBackgroundPointerOver" />
+                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="ToggleButtonBackgroundPressed" />
+                                        <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="ToggleButtonForeground" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="ToggleButtonForegroundPointerOver" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="ToggleButtonForegroundPressed" />
+                                    </ResourceDictionary>
+                                    <ResourceDictionary x:Key="Light">
+                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="ToggleButtonBackgroundPointerOver" />
+                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="ToggleButtonBackgroundPressed" />
+                                        <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="ToggleButtonForeground" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="ToggleButtonForegroundPointerOver" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="ToggleButtonForegroundPressed" />
+                                    </ResourceDictionary>
+                                    <ResourceDictionary x:Key="HighContrast">
+                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="ToggleButtonBackgroundPointerOver" />
+                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="ToggleButtonBackgroundPressed" />
+                                        <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="ToggleButtonForeground" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="ToggleButtonForegroundPointerOver" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="ToggleButtonForegroundPressed" />
+                                    </ResourceDictionary>
+                                </ResourceDictionary.ThemeDictionaries>
+                                <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="Transparent" />
+                            </ResourceDictionary>
+                        </local:TabStripHistoryHeader.Resources>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="HistoryHeader"
+                                       x:Uid="VerticalTabsSessionHistoryHeader"
+                                       VerticalAlignment="Center"
+                                       FontWeight="SemiBold" />
+                            <FontIcon x:Name="HistoryChevron"
+                                      Grid.Column="1"
+                                      FontSize="10"
+                                      Glyph="&#xE70D;"
+                                      AutomationProperties.AccessibilityView="Raw" />
+                        </Grid>
+                    </local:TabStripHistoryHeader>
+                    <Grid x:Name="HistoryStatusPanel" Grid.Row="1">
+                        <ProgressRing x:Name="HistoryLoadingIndicator"
+                                      Width="24"
+                                      Height="24"
+                                      Margin="0,8"
+                                      HorizontalAlignment="Center"
+                                      IsActive="False"
+                                      Visibility="Collapsed" />
+                        <TextBlock x:Name="HistoryMessage"
+                                   Margin="16,0"
+                                   HorizontalAlignment="Center"
+                                   LineHeight="20"
+                                   LineStackingStrategy="BlockLineHeight"
+                                   MaxLines="3"
+                                   TextAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   TextWrapping="Wrap"
+                                   ToolTipService.ToolTip="{Binding Text, ElementName=HistoryMessage}"
+                                   Visibility="Collapsed" />
+                    </Grid>
+                </Grid>
+            </DataTemplate>
+            <DataTemplate x:Key="HistoryRowTemplate" x:DataType="local:TabStripHistoryItem">
+                <Grid Padding="12,8" Loaded="OnHistoryRowLoaded">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Border x:Name="HistorySelectionBackground"
+                            Grid.ColumnSpan="2"
+                            Grid.RowSpan="2"
+                            Margin="-12,-8"
+                            Background="{ThemeResource ListViewItemBackgroundSelected}"
+                            CornerRadius="{StaticResource SidebarTabCornerRadius}"
+                            IsHitTestVisible="False"
+                            Visibility="{x:Bind IsCurrent, Mode=OneWay}">
+                        <ContentControl x:Name="HistorySelectionPalette"
+                                        HorizontalContentAlignment="Stretch"
+                                        VerticalContentAlignment="Stretch"
+                                        AutomationProperties.AccessibilityView="Raw"
+                                        Foreground="{ThemeResource ListViewItemForegroundSelected}"
+                                        IsTabStop="False">
+                            <Border Background="{x:Bind CurrentBackground, Mode=OneWay}"
+                                    CornerRadius="{StaticResource SidebarTabCornerRadius}" />
+                        </ContentControl>
+                    </Border>
+                    <ContentControl x:Name="HistoryProviderIcon"
+                                    Grid.RowSpan="2"
+                                    Width="16"
+                                    Height="16"
+                                    Margin="0,0,12,0"
+                                    VerticalAlignment="Center"
+                                    HorizontalContentAlignment="Stretch"
+                                    VerticalContentAlignment="Stretch"
+                                    AutomationProperties.Name="{x:Bind ProviderDisplayName}"
+                                    AutomationProperties.AccessibilityView="Raw"
+                                    Content="{Binding Foreground, ElementName=HistoryTitleText}"
+                                    ContentTemplate="{x:Bind IconTemplate}"
+                                    ToolTipService.ToolTip="{x:Bind ProviderDisplayName}"
+                                    IsTabStop="False" />
+                    <local:HighlightedTextControl x:Name="HistoryTitleText"
+                                                  Grid.Column="1"
+                                                  Text="{x:Bind Title}"
+                                                  SearchText="{x:Bind SearchQuery}"
+                                                  TextBlockStyle="{StaticResource HistoryTitleTextStyle}" />
+                    <Grid x:Name="HistoryMetadata"
+                          Grid.Row="1"
+                          Grid.Column="1"
+                          Margin="0,2,0,0"
+                          HorizontalAlignment="Left">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <local:HighlightedTextControl x:Name="HistorySubtitleText"
+                                                      SearchText="{x:Bind SearchQuery}"
+                                                      Text="{x:Bind Subtitle}"
+                                                      TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
+                        <local:HighlightedTextControl x:Name="HistoryStatusText"
+                                                      Grid.Column="1"
+                                                      Margin="4,0,0,0"
+                                                      SearchText="{x:Bind SearchQuery}"
+                                                      Text="{x:Bind StatusText, Mode=OneWay}"
+                                                      Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(IsHistorical), Mode=OneWay}"
+                                                      TextBlockStyle="{x:Bind StatusTextStyle, Mode=OneWay}" />
+                        <local:HighlightedTextControl x:Name="HistoryProviderNameText"
+                                                      Grid.Column="2"
+                                                      Margin="8,0,0,0"
+                                                      SearchText="{x:Bind SearchQuery}"
+                                                      Text="{x:Bind ProviderDisplayName}"
+                                                      TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
+                        <Button x:Name="HistoryOwnershipButton"
+                                Grid.Column="3"
+                                Width="24"
+                                Height="24"
+                                MinWidth="0"
+                                MinHeight="0"
+                                Padding="2"
+                                Margin="4,0,0,0"
+                                VerticalAlignment="Center"
+                                Foreground="{Binding Foreground, ElementName=HistoryTitleText}"
+                                Visibility="Collapsed"
+                                Click="OnHistoryOwnershipClick">
+                            <Grid>
+                                <PathIcon x:Name="HistoryBackgroundIcon"
+                                          Width="16"
+                                          Height="16"
+                                          Visibility="Collapsed"
+                                          AutomationProperties.AccessibilityView="Raw"
+                                          Data="M 1,3 L 7,3 L 7,4 L 2,4 L 2,14 L 14,14 L 14,9 L 15,9 L 15,15 L 1,15 Z M 10,5 L 10,11 L 11,11 L 11,5 L 13.5,7.5 L 14.2,6.8 L 10.5,3.1 L 6.8,6.8 L 7.5,7.5 Z" />
+                                <PathIcon x:Name="HistoryOtherWindowIcon"
+                                          Width="16"
+                                          Height="16"
+                                          Visibility="Collapsed"
+                                          AutomationProperties.AccessibilityView="Raw"
+                                          Data="M 1,1 L 12,1 L 12,4 L 11,4 L 11,2 L 2,2 L 2,11 L 4,11 L 4,12 L 1,12 Z M 5,5 L 16,5 L 16,16 L 5,16 Z M 6,6 L 6,15 L 15,15 L 15,6 Z" />
+                            </Grid>
+                        </Button>
+                    </Grid>
+                </Grid>
+            </DataTemplate>
         </ResourceDictionary>
     </UserControl.Resources>
 
     <!--  Keep an explicit painted surface for the background in XAML Islands.  -->
-    <Grid Background="{x:Bind Background, Mode=OneWay}">
+    <Grid x:Name="ContentGrid" Background="{x:Bind Background, Mode=OneWay}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -149,13 +372,40 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <TextBlock x:Name="VerticalTabsHeader"
-                       x:Uid="VerticalTabsHeader"
-                       VerticalAlignment="Center"
-                       FontWeight="SemiBold" />
+            <Button x:Name="VerticalTabsHeaderButton"
+                    Padding="8,4"
+                    HorizontalAlignment="Left"
+                    HorizontalContentAlignment="Left"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource SidebarTabCornerRadius}"
+                    UseSystemFocusVisuals="True"
+                    Click="OnHeaderToggleClick">
+                <Button.Resources>
+                    <StaticResource x:Key="ButtonBackgroundPointerOver"
+                                    ResourceKey="SubtleFillColorSecondaryBrush" />
+                    <StaticResource x:Key="ButtonBackgroundPressed"
+                                    ResourceKey="SubtleFillColorTertiaryBrush" />
+                    <StaticResource x:Key="ButtonBorderBrushPointerOver"
+                                    ResourceKey="CardStrokeColorDefaultBrush" />
+                    <StaticResource x:Key="ButtonBorderBrushPressed"
+                                    ResourceKey="CardStrokeColorDefaultBrush" />
+                </Button.Resources>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock x:Name="VerticalTabsHeader"
+                               x:Uid="VerticalTabsHeader"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold" />
+                    <PathIcon x:Name="SidebarViewSwitchIcon"
+                              Width="12"
+                              Height="12"
+                              VerticalAlignment="Center"
+                              AutomationProperties.AccessibilityView="Raw"
+                              Data="M0,3 L3,0 L3,2 L10,2 L10,4 L3,4 L3,6 Z M12,9 L9,6 L9,8 L2,8 L2,10 L9,10 L9,12 Z" />
+                </StackPanel>
+            </Button>
 
             <ToggleButton x:Name="SearchTabsButton"
                           x:Uid="VerticalTabsSearchButton"
@@ -214,20 +464,7 @@
                     </MenuFlyout>
                 </Button.Flyout>
             </Button>
-            <Button x:Name="TabHistoryButton"
-                    x:Uid="VerticalTabsHistoryButton"
-                    Grid.Column="3"
-                    Width="40"
-                    Height="40"
-                    Padding="0"
-                    VerticalAlignment="Center"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Click="OnHistoryClick">
-                <PathIcon Width="16"
-                          Height="16"
-                          Data="M5.10198 3C4.92335 3 4.75829 3.0953 4.66897 3.25L2.07089 7.75C1.98158 7.9047 1.98158 8.0953 2.07089 8.25L4.5746 12.5866C4.72231 12.8424 4.99529 13 5.29071 13C5.65144 13 5.97055 12.7662 6.0792 12.4222L8.96823 3.27622C9.20821 2.51649 9.913 2 10.7097 2C11.3622 2 11.9651 2.34809 12.2914 2.91316L14.7953 7.25C15.0632 7.7141 15.0632 8.2859 14.7953 8.75L12.1972 13.25C11.9292 13.7141 11.434 14 10.8981 14H8.50155C8.22541 14 8.00155 13.7761 8.00155 13.5C8.00155 13.2239 8.22541 13 8.50155 13H10.8981C11.0768 13 11.2418 12.9047 11.3311 12.75L13.9292 8.25C14.0185 8.0953 14.0185 7.9047 13.9292 7.75L11.4254 3.41316C11.2777 3.1575 11.005 3 10.7097 3C10.3493 3 10.0304 3.23369 9.92179 3.57743L7.03276 12.7234C6.7927 13.4834 6.08769 14 5.29071 14C4.63803 14 4.03492 13.6518 3.70858 13.0866L1.20487 8.75C0.936918 8.2859 0.936919 7.7141 1.20487 7.25L3.80295 2.75C4.07089 2.2859 4.56609 2 5.10198 2H7.50155C7.77769 2 8.00155 2.22386 8.00155 2.5C8.00155 2.77614 7.77769 3 7.50155 3H5.10198Z" />
-            </Button>
+
         </Grid>
 
         <Grid x:Name="SearchPanel"
@@ -250,6 +487,7 @@
         <!-- One display descriptor per canonical tab. The hosted TabViewItem
              remains the real tab; pane rows are a vertical-only projection. -->
         <ListView x:Name="ItemsList"
+                  AutomationProperties.AutomationId="ItemsList"
                   Grid.Row="4"
                   Padding="0"
                   AllowDrop="False"
@@ -261,9 +499,13 @@
                   DragItemsStarting="OnDragItemsStarting"
                   DragItemsCompleted="OnDragItemsCompleted"
                   IsItemClickEnabled="False"
+                  ItemClick="OnHistoryItemClick"
                   ReorderMode="Disabled"
                   SelectionChanged="OnListSelectionChanged"
                   SelectionMode="Single"
+                  ScrollViewer.VerticalScrollMode="Auto"
+                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                   SingleSelectionFollowsFocus="False">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:TabStripDisplayItem">
@@ -294,10 +536,11 @@
                                     Background="Transparent"
                                     CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                     IsHitTestVisible="False" />
-                            <!--  Share one centerline for shell icons and group toggles.  -->
-                            <Grid Width="28"
-                                  Margin="{x:Bind LeadingContentMargin, Mode=OneWay}"
+                            <Grid Margin="{x:Bind LeadingContentMargin, Mode=OneWay}"
                                   VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="28" />
+                                </Grid.ColumnDefinitions>
                                 <Button x:Name="TabGroupToggleButton"
                                         Width="28"
                                         Height="28"
@@ -316,7 +559,7 @@
                                                   Height="16"
                                                   HorizontalAlignment="Center"
                                                   VerticalAlignment="Center"
-                                                  Content="{x:Bind Icon, Mode=OneWay}"
+                                                  Content="{x:Bind CreateIcon(IconSource), Mode=OneWay}"
                                                   Visibility="{x:Bind IconVisibility, Mode=OneWay}" />
                                 <FontIcon x:Uid="CollapsedPinnedTabIcon"
                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
@@ -327,13 +570,16 @@
                                           IsHitTestVisible="False"
                                           Visibility="{x:Bind PinnedIconVisibility, Mode=OneWay}" />
                             </Grid>
-                            <ContentPresenter x:Name="TabHeaderPresenter"
-                                              Grid.Column="1"
-                                              Margin="0,3"
-                                              HorizontalAlignment="Stretch"
-                                              VerticalAlignment="Center"
-                                              Content="{x:Bind Header, Mode=OneWay}"
-                                              Visibility="{x:Bind HeaderVisibility, Mode=OneWay}" />
+                            <local:TabHeaderControl x:Name="TabHeaderPresenter"
+                                                    Grid.Column="1"
+                                                    Margin="0,3"
+                                                    HorizontalAlignment="Stretch"
+                                                    VerticalAlignment="Center"
+                                                    Loaded="OnRowHeaderLoaded"
+                                                    Presentation="{x:Bind Presentation, Mode=OneWay}"
+                                                    IsMetadataVisible="{x:Bind IsMetadataVisible, Mode=OneWay}"
+                                                    ShowProgressRing="{x:Bind ShowProgressRing, Mode=OneWay}"
+                                                    Visibility="{x:Bind HeaderVisibility, Mode=OneWay}" />
                             <Button x:Name="TabCloseButton"
                                     Grid.Column="2"
                                     Width="28"
@@ -404,6 +650,7 @@
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="3" />
                                                     <ColumnDefinition Width="28" />
+                                                    <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
                                                 <Border x:Name="PaneActiveIndicator"
@@ -415,15 +662,42 @@
                                                         Background="{ThemeResource SystemAccentColor}"
                                                         CornerRadius="2"
                                                         Visibility="{x:Bind ActiveIndicatorVisibility, Mode=OneWay}" />
-                                                <ContentPresenter Grid.Column="1"
+                                                <ContentPresenter x:Name="PaneIconPresenter"
+                                                                  Grid.Column="1"
                                                                   Grid.RowSpan="2"
                                                                   Width="16"
                                                                   Height="16"
                                                                   HorizontalAlignment="Center"
                                                                   VerticalAlignment="Center"
-                                                                  Content="{x:Bind Icon, Mode=OneWay}" />
+                                                                  Content="{x:Bind CreateIcon(IconSource), Mode=OneWay}" />
+                                                <Grid Grid.RowSpan="2"
+                                                      Grid.Column="2"
+                                                      Visibility="{x:Bind IsProgressRingActive, Mode=OneWay}">
+                                                    <mux:ProgressRing x:Name="PaneProgressRing"
+                                                                      Width="15"
+                                                                      Height="15"
+                                                                      MinWidth="0"
+                                                                      MinHeight="0"
+                                                                      Margin="0,0,6,0"
+                                                                      VerticalAlignment="Center"
+                                                                      IsActive="{x:Bind IsProgressRingActive, Mode=OneWay}"
+                                                                      IsIndeterminate="False"
+                                                                      Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(IsProgressRingIndeterminate), Mode=OneWay}"
+                                                                      Value="{x:Bind ProgressValue, Mode=OneWay}" />
+                                                    <local:IndeterminateProgressRing x:Name="PaneIndeterminateProgressRing"
+                                                                  Style="{StaticResource DeclarativeSpinner}"
+                                                                  Width="15"
+                                                                  Height="15"
+                                                                  MinWidth="0"
+                                                                  MinHeight="0"
+                                                                  Margin="0,0,6,0"
+                                                                  VerticalAlignment="Center"
+                                                                  AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
+                                                                  IsActive="{x:Bind IsProgressRingActive, Mode=OneWay}"
+                                                                  Visibility="{x:Bind IsProgressRingIndeterminate, Mode=OneWay}" />
+                                                </Grid>
                                                 <local:HighlightedTextControl x:Name="PaneTitleText"
-                                                                              Grid.Column="2"
+                                                                              Grid.Column="3"
                                                                               Margin="2,3,0,0"
                                                                               VerticalAlignment="Center"
                                                                               SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
@@ -435,7 +709,7 @@
                                                     </local:HighlightedTextControl.TextBlockStyle>
                                                 </local:HighlightedTextControl>
                                                 <local:HighlightedTextControl Grid.Row="1"
-                                                                              Grid.Column="2"
+                                                                              Grid.Column="3"
                                                                               Margin="2,1,0,3"
                                                                               Opacity="0.72"
                                                                               SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
@@ -484,8 +758,6 @@
                     <Setter Property="BorderThickness" Value="0" />
                     <Setter Property="CornerRadius" Value="{StaticResource SidebarTabCornerRadius}" />
                     <Setter Property="UseSystemFocusVisuals" Value="True" />
-                    <Setter Property="AutomationProperties.AcceleratorKey" Value="{Binding AcceleratorKey}" />
-                    <Setter Property="AutomationProperties.HelpText" Value="{Binding ToolTipText}" />
                     <!--  Keep the native presenter and state brushes, but forward the row's corner radius.  -->
                     <Setter Property="Template">
                         <Setter.Value>
@@ -529,7 +801,7 @@
             </ListView.ItemContainerStyle>
             <ListView.ItemsPanel>
                 <ItemsPanelTemplate>
-                    <ItemsStackPanel Orientation="Vertical" />
+                    <ItemsStackPanel Orientation="Vertical" ItemsUpdatingScrollMode="KeepScrollOffset" />
                 </ItemsPanelTemplate>
             </ListView.ItemsPanel>
         </ListView>
@@ -577,152 +849,5 @@
             </Grid>
         </Border>
 
-        <Grid x:Name="HistoryPanel"
-              Grid.Row="2"
-              Grid.RowSpan="4"
-              Background="Transparent"
-              Visibility="Collapsed">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="44" />
-                <RowDefinition Height="40" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-            <Grid Padding="12,0,8,0"
-                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                  BorderThickness="0,1,0,1">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="HistoryHeader"
-                           x:Uid="VerticalTabsHistoryHeader"
-                           VerticalAlignment="Center"
-                           FontWeight="SemiBold" />
-                <Button x:Name="HistoryCloseButton"
-                        x:Uid="VerticalTabsHistoryCloseButton"
-                        Grid.Column="1"
-                        Width="40"
-                        Height="40"
-                        Padding="0"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Click="OnHistoryCloseClick">
-                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                              FontSize="12"
-                              Glyph="&#xE711;" />
-                </Button>
-            </Grid>
-            <TextBox x:Name="HistorySearchTextBox"
-                     x:Uid="VerticalTabsHistorySearchBox"
-                     Grid.Row="1"
-                     Height="32"
-                     Margin="6,4"
-                     Padding="8,6,8,0"
-                     VerticalAlignment="Center"
-                     VerticalContentAlignment="Center"
-                     KeyDown="OnHistorySearchBoxKeyDown"
-                     TextChanged="OnHistorySearchTextChanged" />
-            <Grid Grid.Row="2">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <ListView x:Name="HistoryList"
-                          ItemsSource="{x:Bind HistoryItems}"
-                          ContainerContentChanging="OnHistoryContainerContentChanging"
-                          IsItemClickEnabled="True"
-                          ItemClick="OnHistoryItemClick"
-                          SelectionMode="None">
-                    <ListView.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <ItemsStackPanel ItemsUpdatingScrollMode="KeepScrollOffset" />
-                        </ItemsPanelTemplate>
-                    </ListView.ItemsPanel>
-                    <ListView.ItemTemplate>
-                        <DataTemplate x:DataType="local:TabStripHistoryItem">
-                            <Grid Padding="12,8"
-                                  Loaded="OnHistoryRowLoaded">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <Border x:Name="HistorySelectionBackground"
-                                        Grid.RowSpan="2"
-                                        Grid.ColumnSpan="2"
-                                        Margin="-12,-8"
-                                        Background="{ThemeResource ListViewItemBackgroundSelected}"
-                                        CornerRadius="{StaticResource SidebarTabCornerRadius}"
-                                        IsHitTestVisible="False"
-                                        Visibility="{x:Bind IsCurrent, Mode=OneWay}">
-                                    <ContentControl x:Name="HistorySelectionPalette"
-                                                    HorizontalContentAlignment="Stretch"
-                                                    VerticalContentAlignment="Stretch"
-                                                    AutomationProperties.AccessibilityView="Raw"
-                                                    Foreground="{ThemeResource ListViewItemForegroundSelected}"
-                                                    IsTabStop="False">
-                                        <Border Background="{x:Bind CurrentBackground, Mode=OneWay}"
-                                                CornerRadius="{StaticResource SidebarTabCornerRadius}" />
-                                    </ContentControl>
-                                </Border>
-                                <ContentControl Grid.RowSpan="2"
-                                                Width="16"
-                                                Height="16"
-                                                Margin="0,0,12,0"
-                                                VerticalAlignment="Center"
-                                                HorizontalContentAlignment="Stretch"
-                                                VerticalContentAlignment="Stretch"
-                                                AutomationProperties.AccessibilityView="Raw"
-                                                Content="{Binding Foreground, ElementName=HistoryTitleText}"
-                                                ContentTemplate="{x:Bind IconTemplate}"
-                                                IsHitTestVisible="False"
-                                                IsTabStop="False" />
-                                <local:HighlightedTextControl x:Name="HistoryTitleText"
-                                                              Grid.Column="1"
-                                                              Text="{x:Bind Title}"
-                                                              SearchText="{x:Bind SearchQuery}"
-                                                              TextBlockStyle="{StaticResource HistoryTitleTextStyle}" />
-                                <Grid Grid.Row="1"
-                                      Grid.Column="1"
-                                      Margin="0,2,0,0"
-                                      HorizontalAlignment="Left">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <local:HighlightedTextControl x:Name="HistorySubtitleText"
-                                                                  SearchText="{x:Bind SearchQuery}"
-                                                                  Text="{x:Bind Subtitle}"
-                                                                  TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
-                                    <local:HighlightedTextControl x:Name="HistoryStatusText"
-                                                                  Grid.Column="1"
-                                                                  Margin="4,0,0,0"
-                                                                  SearchText="{x:Bind SearchQuery}"
-                                                                  Text="{x:Bind StatusText}"
-                                                                  TextBlockStyle="{x:Bind StatusTextStyle}" />
-                                </Grid>
-                            </Grid>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
-                <ProgressRing x:Name="HistoryLoadingIndicator"
-                              Width="24"
-                              Height="24"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center"
-                              IsActive="False"
-                              Visibility="Collapsed" />
-                <TextBlock x:Name="HistoryMessage"
-                           Margin="16"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           TextAlignment="Center"
-                           TextWrapping="Wrap"
-                           Visibility="Collapsed" />
-            </Grid>
-        </Grid>
     </Grid>
 </UserControl>

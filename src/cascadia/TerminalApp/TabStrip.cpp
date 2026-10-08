@@ -7,6 +7,9 @@
 #include "TabStrip.h"
 #include "AgentIconUtils.h"
 #include "TabStripAutomationPeer.h"
+#include "..\RichTabProvider\ProviderBroker.h"
+#include "TabHeaderControl.h"
+#include "Utils.h"
 
 #include "TabStrip.g.cpp"
 #include "TabStripSelectionChangedEventArgs.g.cpp"
@@ -16,6 +19,9 @@
 #include "TabStripPaneItem.g.cpp"
 #include "TabStripDisplayItem.g.cpp"
 #include "TabStripPaneEventArgs.g.cpp"
+#include "TabStripItemTemplateSelector.g.cpp"
+#include "TabStripHistoryHeader.g.cpp"
+#include "TabStripHistoryHeaderAutomationPeer.g.cpp"
 
 using namespace winrt;
 using namespace winrt::Windows::Foundation;
@@ -34,6 +40,81 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    DataTemplate TabStripItemTemplateSelector::SelectTemplateCore(IInspectable const& item)
+    {
+        return item.try_as<TerminalApp::TabStripDisplayItem>() ? LiveTemplate :
+               item.try_as<TerminalApp::TabStripHistoryItem>() ? HistoryTemplate : HeaderTemplate;
+    }
+
+    DataTemplate TabStripItemTemplateSelector::SelectTemplateCore(IInspectable const& item, DependencyObject const&)
+    {
+        return SelectTemplateCore(item);
+    }
+
+    TabStripHistoryHeader::TabStripHistoryHeader()
+    {
+        const auto changed = [weakThis = get_weak()](auto&&, auto&&) {
+            if (const auto self = weakThis.get())
+            {
+                using namespace WUX::Automation;
+                if (const auto peer = Peers::FrameworkElementAutomationPeer::FromElement(*self))
+                {
+                    const auto expanded = self->IsChecked().Value();
+                    peer.RaisePropertyChangedEvent(ExpandCollapsePatternIdentifiers::ExpandCollapseStateProperty(),
+                                                   box_value(expanded ? ExpandCollapseState::Collapsed : ExpandCollapseState::Expanded),
+                                                   box_value(expanded ? ExpandCollapseState::Expanded : ExpandCollapseState::Collapsed));
+                }
+            }
+        };
+        Checked(changed);
+        Unchecked(changed);
+    }
+
+    WUX::Automation::Peers::AutomationPeer TabStripHistoryHeader::OnCreateAutomationPeer()
+    {
+        return winrt::make<TabStripHistoryHeaderAutomationPeer>(*this);
+    }
+
+    TabStripHistoryHeaderAutomationPeer::TabStripHistoryHeaderAutomationPeer(TerminalApp::TabStripHistoryHeader const& owner) :
+        TabStripHistoryHeaderAutomationPeerT<TabStripHistoryHeaderAutomationPeer>(owner)
+    {
+    }
+
+    IInspectable TabStripHistoryHeaderAutomationPeer::GetPatternCore(WUX::Automation::Peers::PatternInterface const& pattern)
+    {
+        if (pattern == WUX::Automation::Peers::PatternInterface::ExpandCollapse)
+        {
+            return *this;
+        }
+        return m_inner.as<WUX::Automation::Peers::IAutomationPeerOverrides>().GetPatternCore(pattern);
+    }
+
+    WUX::Automation::Peers::AutomationControlType TabStripHistoryHeaderAutomationPeer::GetAutomationControlTypeCore() const
+    {
+        return WUX::Automation::Peers::AutomationControlType::Button;
+    }
+
+    hstring TabStripHistoryHeaderAutomationPeer::GetClassNameCore() const
+    {
+        return L"ToggleButton";
+    }
+
+    WUX::Automation::ExpandCollapseState TabStripHistoryHeaderAutomationPeer::ExpandCollapseState() const
+    {
+        return Owner().as<TerminalApp::TabStripHistoryHeader>().IsChecked().Value() ?
+                   WUX::Automation::ExpandCollapseState::Expanded : WUX::Automation::ExpandCollapseState::Collapsed;
+    }
+
+    void TabStripHistoryHeaderAutomationPeer::Expand()
+    {
+        Owner().as<TerminalApp::TabStripHistoryHeader>().IsChecked(true);
+    }
+
+    void TabStripHistoryHeaderAutomationPeer::Collapse()
+    {
+        Owner().as<TerminalApp::TabStripHistoryHeader>().IsChecked(false);
+    }
+
     TabStripPaneItem::TabStripPaneItem(MUX::Controls::TabViewItem tab,
                                        uint32_t contentId,
                                        hstring iconPath,
@@ -51,26 +132,54 @@ namespace winrt::TerminalApp::implementation
 
     void TabStripPaneItem::SyncIcon(const hstring& iconPath)
     {
-        if (_iconPath == iconPath && Icon())
+        if (_iconPath == iconPath && IconSource())
         {
             return;
         }
 
+        _iconPath = iconPath;
         if (iconPath.empty())
         {
-            WUX::Controls::FontIcon fallback;
+            MUX::Controls::FontIconSource fallback;
             fallback.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
             fallback.FontSize(12);
             fallback.Glyph(L"\xE756");
-            Icon(fallback);
+            IconSource(fallback);
         }
         else
         {
-            Icon(::Microsoft::Terminal::UI::AgentIcons::ElementForIconPath(iconPath));
+            IconSource(::Microsoft::Terminal::UI::AgentIcons::SourceForIconPath(iconPath, false));
         }
-        Icon().Width(16);
-        Icon().Height(16);
-        _iconPath = iconPath;
+    }
+
+    WUX::Controls::IconElement TabStripPaneItem::Icon() const
+    {
+        return CreateIcon(IconSource());
+    }
+
+    WUX::Controls::IconElement TabStripPaneItem::CreateIcon(IInspectable const& source) const
+    {
+        auto element = ::Microsoft::Terminal::UI::AgentIcons::ElementForIconSource(source.as<MUX::Controls::IconSource>(), _iconPath);
+        element.Width(16);
+        element.Height(16);
+        return element;
+    }
+
+    void TabStripPaneItem::IconSource(IInspectable const& value)
+    {
+        const auto source = value.try_as<MUX::Controls::IconSource>();
+        THROW_HR_IF(E_INVALIDARG, !source);
+        if (_iconSource != source)
+        {
+            _iconSource = source;
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"IconSource" });
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Icon" });
+        }
+    }
+
+    void TabStripPaneItem::Icon(WUX::Controls::IconElement const& value)
+    {
+        IconSource(::Microsoft::Terminal::UI::AgentIcons::SourceForIconElement(value));
     }
 
     TabStripDisplayItem::TabStripDisplayItem(MUX::Controls::TabViewItem tab,
@@ -78,27 +187,91 @@ namespace winrt::TerminalApp::implementation
         _tab{ std::move(tab) },
         _paneItems{ single_threaded_observable_vector<TerminalApp::TabStripPaneItem>() }
     {
-        Header(std::move(header));
+        Header(header);
     }
 
-    void TabStripDisplayItem::SyncTabPresentation(bool railCollapsed)
+    void TabStripDisplayItem::Header(IInspectable const& value)
     {
-        if (const auto header = Header().try_as<TerminalApp::TabHeaderControl>())
+        TerminalApp::TabHeaderPresentation presentation{ nullptr };
+        if (const auto control = value.try_as<TerminalApp::TabHeaderControl>())
         {
-            Title(header.Title());
-            IsPinned(header.TabStatus().IsPinned());
-            header.IsMetadataVisible(!railCollapsed && !IsGroup() && !header.MetadataText().empty());
+            presentation = control.Presentation();
         }
-        else if (const auto headerText = Header().try_as<hstring>())
+        else if (const auto data = value.try_as<TerminalApp::TabHeaderPresentation>())
         {
-            Title(*headerText);
+            presentation = data;
         }
+        else if (!value || value.try_as<hstring>())
+        {
+            presentation = winrt::make<TabHeaderPresentation>();
+            if (const auto text = value.try_as<hstring>())
+            {
+                presentation.Title(*text);
+            }
+        }
+        else
+        {
+            THROW_HR(E_INVALIDARG);
+        }
+        if (_header != presentation)
+        {
+            _header = presentation;
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Header" });
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Presentation" });
+        }
+    }
+
+    WUX::Controls::IconElement TabStripDisplayItem::Icon() const
+    {
+        return CreateIcon(IconSource());
+    }
+
+    WUX::Controls::IconElement TabStripDisplayItem::CreateIcon(IInspectable const& source) const
+    {
+        return ::Microsoft::Terminal::UI::AgentIcons::ElementForIconSource(source.as<MUX::Controls::IconSource>(), _iconPath.value_or(winrt::hstring{}));
+    }
+
+    void TabStripDisplayItem::IconSource(IInspectable const& value)
+    {
+        _setIconSource(value, std::nullopt);
+    }
+
+    void TabStripDisplayItem::SyncIcon(hstring const& iconPath, MUX::Controls::IconSource const& source)
+    {
+        _setIconSource(source, iconPath);
+    }
+
+    void TabStripDisplayItem::_setIconSource(IInspectable const& value, std::optional<winrt::hstring> iconPath)
+    {
+        const auto source = value.try_as<MUX::Controls::IconSource>();
+        THROW_HR_IF(E_INVALIDARG, !source);
+        if (_iconSource != source || _iconPath != iconPath)
+        {
+            _iconSource = source;
+            _iconPath = std::move(iconPath);
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"IconSource" });
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Icon" });
+        }
+    }
+
+    void TabStripDisplayItem::Icon(WUX::Controls::IconElement const& value)
+    {
+        IconSource(::Microsoft::Terminal::UI::AgentIcons::SourceForIconElement(value));
+    }
+
+    void TabStripDisplayItem::SyncTabPresentation(bool railCollapsed, bool verticalPresentation)
+    {
+        const auto presentation = Presentation();
+        Title(presentation.Title());
+        const auto status = presentation.TabStatus();
+        IsPinned(status && status.IsPinned());
+        IsMetadataVisible(!railCollapsed && !IsGroup() && !presentation.MetadataText().empty());
         ContextFlyout(_tab.ContextFlyout());
         ToolTipText(WUX::Automation::AutomationProperties::GetHelpText(_tab));
         AcceleratorKey(WUX::Automation::AutomationProperties::GetAcceleratorKey(_tab));
         HeaderVisibility(railCollapsed ? Visibility::Collapsed : Visibility::Visible);
         CloseVisibility(!railCollapsed && _tab.IsClosable() ? Visibility::Visible : Visibility::Collapsed);
-        UpdatePresentation(railCollapsed);
+        UpdatePresentation(railCollapsed, verticalPresentation);
     }
 
     void TabStripDisplayItem::SyncIcon(hstring const& iconPath)
@@ -110,24 +283,29 @@ namespace winrt::TerminalApp::implementation
 
         if (iconPath.empty())
         {
-            WUX::Controls::FontIcon fallback;
+            MUX::Controls::FontIconSource fallback;
             fallback.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons" });
             fallback.Glyph(L"\xE756");
-            Icon(fallback);
+            SyncIcon(iconPath, fallback);
         }
         else
         {
-            Icon(::Microsoft::Terminal::UI::AgentIcons::ElementForIconPath(iconPath));
+            SyncIcon(iconPath, ::Microsoft::Terminal::UI::AgentIcons::SourceForIconPath(iconPath, false));
         }
-        _iconPath = iconPath;
     }
 
-    void TabStripDisplayItem::UpdatePresentation(bool railCollapsed)
+    void TabStripDisplayItem::UpdatePresentation(bool railCollapsed, bool verticalPresentation)
     {
         const auto isGroup = IsGroup();
+        const auto showPaneRows = verticalPresentation && isGroup && !railCollapsed && IsExpanded();
+        const auto showHeaderProgressRing = !showPaneRows || !HeaderProgressProjectedToPaneRows();
+
+        ShowProgressRing(showHeaderProgressRing);
+
         GroupVisibility(isGroup && !railCollapsed ? Visibility::Visible : Visibility::Collapsed);
-        ChildrenVisibility(isGroup && !railCollapsed && IsExpanded() ? Visibility::Visible : Visibility::Collapsed);
-        IconVisibility(isGroup && !railCollapsed ? Visibility::Collapsed : Visibility::Visible);
+        ChildrenVisibility(showPaneRows ? Visibility::Visible : Visibility::Collapsed);
+        const auto bitmap = IconSource().try_as<MUX::Controls::BitmapIconSource>();
+        IconVisibility((isGroup && !railCollapsed) || (bitmap && !bitmap.UriSource()) ? Visibility::Collapsed : Visibility::Visible);
         PinnedIconVisibility(railCollapsed && IsPinned() ? Visibility::Visible : Visibility::Collapsed);
         HeaderMinHeight(railCollapsed ? 32.0 : 40.0);
         LeadingContentMargin(railCollapsed ? WUX::Thickness{} : WUX::Thickness{ 6, 0, 10, 0 });
@@ -163,6 +341,58 @@ namespace winrt::TerminalApp::implementation
         }
 
         return nullptr;
+    }
+
+    static WUX::Media::Brush _paneProgressBrush(const WUX::ResourceDictionary& resources,
+                                                const WUX::ElementTheme requestedTheme,
+                                                const uint64_t progressState,
+                                                const bool highContrastActive)
+    {
+        std::wstring_view key;
+        switch (progressState)
+        {
+        case 1:
+        case 3:
+            key = L"PaneProgressAccentBrush";
+            break;
+        case 2:
+            key = L"PaneProgressCriticalBrush";
+            break;
+        case 4:
+            key = L"PaneProgressCautionBrush";
+            break;
+        default:
+            return nullptr;
+        }
+
+        const auto keyValue = winrt::box_value(key);
+        if (highContrastActive)
+        {
+            const auto highContrastKey = winrt::box_value(L"HighContrast");
+            for (const auto& dictionary : resources.MergedDictionaries())
+            {
+                if (dictionary.Source())
+                {
+                    continue;
+                }
+
+                const auto themeDictionaries = dictionary.ThemeDictionaries();
+                if (!themeDictionaries.HasKey(highContrastKey))
+                {
+                    continue;
+                }
+
+                const auto highContrastDictionary = themeDictionaries.Lookup(highContrastKey).as<WUX::ResourceDictionary>();
+                if (highContrastDictionary.HasKey(keyValue))
+                {
+                    return highContrastDictionary.Lookup(keyValue).try_as<WUX::Media::Brush>();
+                }
+            }
+
+            return resources.Lookup(keyValue).try_as<WUX::Media::Brush>();
+        }
+
+        return ThemeLookup(resources, requestedTheme, keyValue).try_as<WUX::Media::Brush>();
     }
 
     static bool _originatesFromHeaderControl(IInspectable const& source, WUX::DependencyObject const& root)
@@ -293,15 +523,25 @@ namespace winrt::TerminalApp::implementation
         _tabItems = single_threaded_observable_vector<IInspectable>();
         _displayItems = single_threaded_observable_vector<TerminalApp::TabStripDisplayItem>();
         _historyItems = single_threaded_observable_vector<TerminalApp::TabStripHistoryItem>();
+        _viewportItems = single_threaded_observable_vector<IInspectable>();
 
         InitializeComponent();
-        ::Microsoft::Terminal::UI::AgentIcons::Resources() = Resources();
 
+        // ItemsControl handles a UIElement item as its own content; it must not
+        // also be the data item for the section's DataTemplate.
+        _historySectionItem = box_value(RS_(L"VerticalTabsSessionHistoryHeader/Text"));
+        const auto selector = winrt::make_self<TabStripItemTemplateSelector>();
+        selector->LiveTemplate = ItemsList().ItemTemplate();
+        selector->HistoryTemplate = Resources().Lookup(box_value(L"HistoryRowTemplate")).as<DataTemplate>();
+        selector->HeaderTemplate = Resources().Lookup(box_value(L"HistoryHeaderTemplate")).as<DataTemplate>();
+        ItemsList().ItemTemplate(nullptr);
+        ItemsList().ItemTemplateSelector(*selector);
         ItemsList().ItemsSource(_displayItems);
         // ListView consumes Enter even when its focused row is already selected.
         ItemsList().AddHandler(WUX::UIElement::KeyDownEvent(),
                                winrt::box_value(WUX::Input::KeyEventHandler{ get_weak(), &TabStrip::_onListKeyDown }),
                                true);
+        ItemsList().PreviewKeyDown({ get_weak(), &TabStrip::_onHistoryPreviewKeyDown });
         _vectorChangedRevoker = _tabItems.VectorChanged(auto_revoke, { get_weak(), &TabStrip::_onItemsVectorChanged });
         _highContrast = _accessibilitySettings.HighContrast();
         _highContrastChangedRevoker = _accessibilitySettings.HighContrastChanged(auto_revoke, [weakThis{ get_weak() }, dispatcher{ Dispatcher() }](auto&&, auto&&) {
@@ -323,6 +563,12 @@ namespace winrt::TerminalApp::implementation
                 self->_updateSearchVisualState();
             }
         });
+        ActualThemeChanged([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto self = weakThis.get())
+            {
+                self->_refreshRealizedPaneRowVisuals(self->_highContrast);
+            }
+        });
         Unloaded([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto self = weakThis.get())
             {
@@ -330,6 +576,10 @@ namespace winrt::TerminalApp::implementation
                 self->_setSearchPanelExpanded(false, false);
             }
         });
+        if constexpr (Feature_RichTabProviders::IsEnabled())
+        {
+            _richTabGitAvailable = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().GitAvailable();
+        }
         _applyRailState();
         _updateRichTabMetadataSelectionState();
     }
@@ -342,27 +592,28 @@ namespace winrt::TerminalApp::implementation
     {
         if (!value)
         {
-            ItemsList().SelectedIndex(-1);
+            ItemsList().SelectedItem(nullptr);
             return;
         }
 
         uint32_t index{};
         if (_tabItems.IndexOf(value, index))
         {
-            ItemsList().SelectedIndex(gsl::narrow_cast<int32_t>(index));
+            ItemsList().SelectedItem(_displayItems.GetAt(index));
         }
     }
     int32_t TabStrip::SelectedIndex()
     {
-        return ItemsList().SelectedIndex();
+        const auto index = ItemsList().SelectedIndex();
+        return index < static_cast<int32_t>(_tabItems.Size()) ? index : -1;
     }
     void TabStrip::SelectedIndex(int32_t value)
     {
-        ItemsList().SelectedIndex(value);
+        ItemsList().SelectedIndex(value < static_cast<int32_t>(_tabItems.Size()) ? value : -1);
     }
     DependencyObject TabStrip::ContainerFromIndex(int32_t index)
     {
-        return ItemsList().ContainerFromIndex(index);
+        return index >= 0 && index < static_cast<int32_t>(_tabItems.Size()) ? ItemsList().ContainerFromIndex(index) : nullptr;
     }
 
     void TabStrip::SetTabItemVisibility(IInspectable const& item, bool visible)
@@ -396,7 +647,7 @@ namespace winrt::TerminalApp::implementation
                                     RS_(L"VerticalTabsFilterStatusSingle") :
                                     winrt::hstring{ RS_fmt(L"VerticalTabsFilterStatusPlural", visibleTabCount) });
         HiddenCurrentTabIndicator().Visibility(selectedTabVisible ? Visibility::Collapsed : Visibility::Visible);
-        FilterStatusBar().Visibility(_filterMode != TerminalApp::TabStripFilterMode::AllTabs ?
+        FilterStatusBar().Visibility(!_historyActive && _filterMode != TerminalApp::TabStripFilterMode::AllTabs ?
                                          Visibility::Visible :
                                          Visibility::Collapsed);
     }
@@ -413,15 +664,29 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::SetTabPresentation(TerminalApp::TabStripDisplayItem const& display,
                                       hstring const& title,
-                                      hstring const& iconPath)
+                                      hstring const& iconPath,
+                                      const bool useNativeIconSource)
     {
         display.Title(title);
-        if (const auto header = display.Header().try_as<TerminalApp::TabHeaderControl>())
+        display.Presentation().Title(title);
+        if (useNativeIconSource)
         {
-            header.Title(title);
+            const auto source = display.Tab().IconSource();
+            if (source)
+            {
+                winrt::get_self<TabStripDisplayItem>(display)->SyncIcon(iconPath, source);
+            }
+            else if (const auto empty = display.IconSource().try_as<MUX::Controls::BitmapIconSource>();
+                     !empty || empty.UriSource())
+            {
+                display.IconSource(MUX::Controls::BitmapIconSource{});
+            }
         }
-        winrt::get_self<TabStripDisplayItem>(display)->SyncIcon(iconPath);
-        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+        else
+        {
+            winrt::get_self<TabStripDisplayItem>(display)->SyncIcon(iconPath);
+        }
+        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
         _refreshDisplayItemVisuals(display);
     }
 
@@ -429,15 +694,31 @@ namespace winrt::TerminalApp::implementation
                                 IVector<TerminalApp::TabStripPaneItem> const& panes,
                                 bool isGroup)
     {
+        SetPaneItems(item, panes, isGroup, false);
+    }
+
+    void TabStrip::SetPaneItems(IInspectable const& item,
+                                IVector<TerminalApp::TabStripPaneItem> const& panes,
+                                bool isGroup,
+                                bool headerProgressProjectedToPaneRows)
+    {
         if (const auto display = DisplayItemForTab(item))
         {
-            SetPaneItems(display, panes, isGroup);
+            SetPaneItems(display, panes, isGroup, headerProgressProjectedToPaneRows);
         }
     }
 
     void TabStrip::SetPaneItems(TerminalApp::TabStripDisplayItem const& display,
                                 IVector<TerminalApp::TabStripPaneItem> const& panes,
                                 bool isGroup)
+    {
+        SetPaneItems(display, panes, isGroup, false);
+    }
+
+    void TabStrip::SetPaneItems(TerminalApp::TabStripDisplayItem const& display,
+                                IVector<TerminalApp::TabStripPaneItem> const& panes,
+                                bool isGroup,
+                                bool headerProgressProjectedToPaneRows)
     {
         const auto current = display.PaneItems();
         const auto count = panes ? panes.Size() : 0;
@@ -464,6 +745,10 @@ namespace winrt::TerminalApp::implementation
                 existing.MetadataText(pane.MetadataText());
                 existing.MetadataVisibility(pane.MetadataVisibility());
                 existing.AutomationName(pane.AutomationName());
+                existing.ProgressState(pane.ProgressState());
+                existing.IsProgressRingActive(pane.IsProgressRingActive());
+                existing.IsProgressRingIndeterminate(pane.IsProgressRingIndeterminate());
+                existing.ProgressValue(pane.ProgressValue());
                 if (match != index)
                 {
                     current.RemoveAt(match);
@@ -480,16 +765,57 @@ namespace winrt::TerminalApp::implementation
             pane.HighlightQuery(display.SearchText());
         }
         display.IsGroup(isGroup);
-        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+        winrt::get_self<TabStripDisplayItem>(display)->HeaderProgressProjectedToPaneRows(headerProgressProjectedToPaneRows);
+        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
+        _refreshPaneRowVisuals(display);
     }
 
-    IInspectable TabStrip::HeaderForTab(IInspectable const& item) const
+    IInspectable TabStrip::HeaderForTab(IInspectable const& item, const bool realize)
     {
         if (const auto tab = item.try_as<MUX::Controls::TabViewItem>())
         {
             if (const auto display = _displayItemForTab(tab))
             {
-                return display.Header();
+                if (const auto desired = _tabItemVisibility.find(winrt::get_abi(tab));
+                    desired != _tabItemVisibility.end() && desired->second.Item.get() == tab && !desired->second.Visible)
+                {
+                    return nullptr;
+                }
+                if (realize)
+                {
+                    if (_historyActive)
+                    {
+                        HistoryClosed.raise(*this, nullptr);
+                    }
+                    if (_isRailCollapsed)
+                    {
+                        RailCollapseRequested.raise(*this, nullptr);
+                    }
+                    ItemsList().ScrollIntoView(display);
+                    ItemsList().UpdateLayout();
+                }
+                if (_isRailCollapsed || _historyActive || ItemsList().Visibility() != Visibility::Visible ||
+                    Visibility() != WUX::Visibility::Visible)
+                {
+                    return nullptr;
+                }
+                if (const auto container = ItemsList().ContainerFromItem(display).try_as<ListViewItem>())
+                {
+                    if (const auto root = container.ContentTemplateRoot().try_as<FrameworkElement>();
+                        root && container.Visibility() == WUX::Visibility::Visible)
+                    {
+                        const auto header = _findNamedElement(root, L"TabHeaderPresenter").try_as<TerminalApp::TabHeaderControl>();
+                        for (auto current = header.try_as<DependencyObject>(); current; current = WUX::Media::VisualTreeHelper::GetParent(current))
+                        {
+                            if (const auto element = current.try_as<UIElement>();
+                                element && element.Visibility() != WUX::Visibility::Visible)
+                            {
+                                return nullptr;
+                            }
+                        }
+                        return header;
+                    }
+                }
             }
         }
         return nullptr;
@@ -513,7 +839,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (display)
         {
-            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
             _refreshDisplayItemVisuals(display);
         }
     }
@@ -525,10 +851,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto display = _displayItemForTab(tab))
             {
                 display.SearchText(searchText);
-                if (const auto header = display.Header().try_as<TerminalApp::TabHeaderControl>())
-                {
-                    header.SearchText(searchText);
-                }
+                display.Presentation().SearchText(searchText);
                 for (const auto& pane : display.PaneItems())
                 {
                     pane.HighlightQuery(searchText);
@@ -560,9 +883,30 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto isCurrent = item && item.IsCurrent();
+        const auto nativeItem = item ? winrt::get_self<TabStripHistoryItem>(item) : nullptr;
+        const auto background = nativeItem && nativeItem->BackgroundTab();
+        const auto otherWindow = nativeItem && nativeItem->OtherWindow();
+        if (const auto button = root.FindName(L"HistoryOwnershipButton").try_as<Button>())
+        {
+            const auto label = background ? RS_(L"VerticalTabsHistoryRestoreBackgroundTab") :
+                               otherWindow ? RS_(L"VerticalTabsHistorySwitchOtherWindow") : winrt::hstring{};
+            button.Tag(background || otherWindow ? item : nullptr);
+            button.Visibility(background || otherWindow ? Visibility::Visible : Visibility::Collapsed);
+            button.IsEnabled(background || otherWindow);
+            WUX::Automation::AutomationProperties::SetName(button, label);
+            ToolTipService::SetToolTip(button, label.empty() ? nullptr : box_value(label));
+        }
+        for (const auto& [name, visible] : { std::pair{ L"HistoryBackgroundIcon", background },
+                                            std::pair{ L"HistoryOtherWindowIcon", otherWindow } })
+        {
+            if (const auto icon = root.FindName(name).try_as<UIElement>())
+            {
+                icon.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
+            }
+        }
         const auto foreground = isCurrent ? item.CurrentForeground() : nullptr;
         const auto palette = root.FindName(L"HistorySelectionPalette").try_as<Control>();
-        for (const auto name : { L"HistoryTitleText", L"HistorySubtitleText", L"HistoryStatusText" })
+        for (const auto name : { L"HistoryTitleText", L"HistorySubtitleText", L"HistoryStatusText", L"HistoryProviderNameText" })
         {
             if (const auto control = root.FindName(name).try_as<Control>())
             {
@@ -645,8 +989,13 @@ namespace winrt::TerminalApp::implementation
                 selectionBackground.Background(brush);
             }
             grid.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
-            const auto header = display.Header().try_as<WUX::Controls::Control>();
+            const auto header = grid.FindName(L"TabHeaderPresenter").try_as<WUX::Controls::Control>();
             const auto close = grid.FindName(L"TabCloseButton").try_as<WUX::Controls::Control>();
+            const auto iconPresenter = grid.FindName(L"TabIconPresenter").try_as<ContentPresenter>();
+            const auto icon = iconPresenter ? iconPresenter.Content().try_as<IconElement>() : nullptr;
+            const auto bitmap = icon ? icon.try_as<BitmapIcon>() : nullptr;
+            const auto monochromeIcon = icon && !icon.try_as<MUX::Controls::ImageIcon>() &&
+                                        (!bitmap || bitmap.ShowAsMonochrome());
             if (tabColor && selected)
             {
                 const auto foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(*tabColor) };
@@ -668,6 +1017,58 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
             }
+            if (monochromeIcon && header)
+            {
+                WUX::Data::Binding binding;
+                binding.Source(header);
+                binding.Path(WUX::PropertyPath{ L"Foreground" });
+                binding.Mode(WUX::Data::BindingMode::OneWay);
+                icon.SetBinding(IconElement::ForegroundProperty(), binding);
+            }
+        }
+    }
+
+    void TabStrip::_updatePaneRowVisuals(FrameworkElement const& root,
+                                         TerminalApp::TabStripPaneItem const& pane)
+    {
+        _updatePaneRowVisuals(root, pane, _highContrast);
+    }
+
+    void TabStrip::_updatePaneRowVisuals(FrameworkElement const& root,
+                                         TerminalApp::TabStripPaneItem const& pane,
+                                         const bool highContrastActive)
+    {
+        if (!root || !pane)
+        {
+            return;
+        }
+
+        const auto updateRing = [&](WUX::Controls::Control const& ring) {
+            if (!ring)
+            {
+                return;
+            }
+
+            if (const auto brush = _paneProgressBrush(Resources(), root.ActualTheme(), pane.ProgressState(), highContrastActive))
+            {
+                ring.Foreground(brush);
+            }
+            else
+            {
+                ring.ClearValue(WUX::Controls::Control::ForegroundProperty());
+            }
+
+            WUX::Automation::AutomationProperties::SetName(ring, pane.AutomationName());
+        };
+        updateRing(_findNamedElement(root, L"PaneProgressRing").try_as<WUX::Controls::Control>());
+        updateRing(_findNamedElement(root, L"PaneIndeterminateProgressRing").try_as<WUX::Controls::Control>());
+    }
+
+    void TabStrip::_refreshRealizedPaneRowVisuals(const bool highContrastActive)
+    {
+        for (uint32_t index = 0; index < _displayItems.Size(); ++index)
+        {
+            _refreshPaneRowVisuals(_displayItems.GetAt(index), highContrastActive);
         }
     }
 
@@ -684,6 +1085,50 @@ namespace winrt::TerminalApp::implementation
             if (const auto container = ItemsList().ContainerFromIndex(index).try_as<FrameworkElement>())
             {
                 _updateDisplayItemVisuals(container, display);
+                _refreshPaneRowVisuals(display);
+            }
+        }
+    }
+
+    void TabStrip::_refreshPaneRowVisuals(TerminalApp::TabStripDisplayItem const& display)
+    {
+        _refreshPaneRowVisuals(display, _highContrast);
+    }
+
+    void TabStrip::_refreshPaneRowVisuals(TerminalApp::TabStripDisplayItem const& display,
+                                          const bool highContrastActive)
+    {
+        if (!display)
+        {
+            return;
+        }
+
+        uint32_t displayIndex{};
+        if (!_displayItems.IndexOf(display, displayIndex))
+        {
+            return;
+        }
+
+        const auto container = ItemsList().ContainerFromIndex(displayIndex).try_as<ListViewItem>();
+        const auto root = container ? container.ContentTemplateRoot().try_as<FrameworkElement>() : nullptr;
+        const auto paneList = root ? _findNamedElement(root, L"TabPaneItems").try_as<ItemsControl>() : nullptr;
+        if (!paneList)
+        {
+            return;
+        }
+
+        const auto panes = display.PaneItems();
+        for (uint32_t index = 0; index < panes.Size(); ++index)
+        {
+            const auto paneContainer = paneList.ContainerFromIndex(index).try_as<ContentPresenter>();
+            if (!paneContainer || WUX::Media::VisualTreeHelper::GetChildrenCount(paneContainer) == 0)
+            {
+                continue;
+            }
+
+            if (const auto paneRoot = WUX::Media::VisualTreeHelper::GetChild(paneContainer, 0).try_as<FrameworkElement>())
+            {
+                _updatePaneRowVisuals(paneRoot, panes.GetAt(index), highContrastActive);
             }
         }
     }
@@ -701,6 +1146,35 @@ namespace winrt::TerminalApp::implementation
                     ToolTipService::SetToolTip(close, box_value(RS_(L"TabCloseToolTip")));
                 }
             }
+        }
+    }
+
+    void TabStrip::OnRowHeaderLoaded(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        const auto header = sender.as<TerminalApp::TabHeaderControl>();
+        const auto impl = winrt::get_self<TabHeaderControl>(header);
+        if (std::exchange(impl->SidebarEventsAttached, true))
+        {
+            return;
+        }
+        header.TitleChangeRequested([weakThis = get_weak(), weakHeader = winrt::make_weak(header)](const auto& title) {
+            const auto self = weakThis.get();
+            const auto view = weakHeader.get();
+            const auto display = view ? view.DataContext().try_as<TerminalApp::TabStripDisplayItem>() : nullptr;
+            if (self && display)
+            {
+                self->HeaderTitleChangeRequested.raise(display.Tab(), title);
+            }
+        });
+        header.RenameEnded({ get_weak(), &TabStrip::OnHeaderRenameEnded });
+    }
+
+    void TabStrip::OnHeaderRenameEnded(IInspectable const& sender, IInspectable const&)
+    {
+        const auto view = sender.try_as<FrameworkElement>();
+        if (const auto display = view ? view.DataContext().try_as<TerminalApp::TabStripDisplayItem>() : nullptr)
+        {
+            TabFocusRequested.raise(*this, winrt::make<TabStripCloseRequestedEventArgs>(display.Tab()));
         }
     }
 
@@ -724,6 +1198,8 @@ namespace winrt::TerminalApp::implementation
                     WUX::Automation::AutomationProperties::SetName(close, label);
                     ToolTipService::SetToolTip(close, box_value(label));
                 }
+
+                _updatePaneRowVisuals(root, pane);
             }
         }
     }
@@ -766,7 +1242,7 @@ namespace winrt::TerminalApp::implementation
         {
             _tabsVisible = value;
             const auto historyVisible = _historyActive && !_isRailCollapsed;
-            ItemsList().Visibility(value && !historyVisible ? Visibility::Visible : Visibility::Collapsed);
+            ItemsList().Visibility(value || historyVisible ? Visibility::Visible : Visibility::Collapsed);
         }
     }
     void TabStrip::IsRailCollapsed(bool value)
@@ -782,7 +1258,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto display = _displayItemForTab(item))
         {
-            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
         }
     }
 
@@ -795,7 +1271,7 @@ namespace winrt::TerminalApp::implementation
     {
         const auto changed = _filterMode != value;
         _filterMode = value;
-        FilterStatusBar().Visibility(value != TerminalApp::TabStripFilterMode::AllTabs ?
+        FilterStatusBar().Visibility(!_historyActive && value != TerminalApp::TabStripFilterMode::AllTabs ?
                                          Visibility::Visible :
                                          Visibility::Collapsed);
         if (changed)
@@ -822,7 +1298,24 @@ namespace winrt::TerminalApp::implementation
             SearchTextBox().Text(value);
             _syncingSearchState = false;
             _updateSearchVisualState();
+            _applyHistoryProjection();
         }
+    }
+
+    bool TabStrip::FocusTabSearch()
+    {
+        if (_isRailCollapsed || !SearchTabsButton().IsEnabled())
+        {
+            return false;
+        }
+
+        if (!_searchActive)
+        {
+            SearchActivationRequested.raise(*this, nullptr);
+            SearchTabsButton().IsChecked(true);
+            OnSearchToggleClick(nullptr, nullptr);
+        }
+        return SearchTextBox().Focus(WUX::FocusState::Programmatic);
     }
 
     WUX::Style TabStrip::_historyStatusTextStyle(winrt::hstring const& status)
@@ -872,6 +1365,18 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::SetRepresentedHistorySessions(std::vector<RepresentedHistorySession> sessions)
+    {
+        if (_representedHistorySessions != sessions)
+        {
+            _representedHistorySessions = std::move(sessions);
+            if (_historyActive)
+            {
+                _applyHistoryProjection(true);
+            }
+        }
+    }
+
     void TabStrip::SetCurrentHistoryItem(TerminalApp::TabStripHistoryItem const& current,
                                          MUX::Controls::TabViewItem const& tab)
     {
@@ -889,7 +1394,7 @@ namespace winrt::TerminalApp::implementation
             item.IsCurrent(isCurrent);
             item.CurrentBackground(isCurrent ? background : nullptr);
             item.CurrentForeground(isCurrent ? foreground : nullptr);
-            if (const auto container = HistoryList().ContainerFromIndex(index).try_as<ListViewItem>())
+            if (const auto container = ItemsList().ContainerFromItem(item).try_as<ListViewItem>())
             {
                 _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), item);
                 _applyHistoryRowAutomation(container, item);
@@ -903,6 +1408,17 @@ namespace winrt::TerminalApp::implementation
                                            winrt::hstring const& statusText)
     {
         bool updated = false;
+        const auto applyStatus = [&](TerminalApp::TabStripHistoryItem const& item) {
+            item.PaneSessionId(paneSessionId);
+            item.Status(status);
+            item.StatusText(statusText);
+            item.StatusTextStyle(_historyStatusTextStyle(status));
+            item.IsLive(status == L"Idle" ||
+                        status == L"Working" ||
+                        status == L"Attention" ||
+                        status == L"Error");
+            item.IsHistorical(status == L"Ended" || status == L"Historical");
+        };
         for (size_t index = 0; index < _historySnapshot.size(); ++index)
         {
             auto& item = _historySnapshot[index];
@@ -911,24 +1427,23 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
 
-            item.PaneSessionId(paneSessionId);
-            item.Status(status);
-            item.StatusText(statusText);
-            item.StatusTextStyle(_historyStatusTextStyle(status));
-            const auto isLive = status == L"Idle" ||
-                                status == L"Working" ||
-                                status == L"Attention" ||
-                                status == L"Error";
-            item.IsLive(isLive);
-            item.IsHistorical(status == L"Ended" || status == L"Historical");
-
+            applyStatus(item);
             _historySearchTerms[index] = _buildHistorySearchTerms(item);
             updated = true;
         }
 
         if (updated)
         {
-            _applyHistoryProjection();
+            // Equal snapshot refreshes retain the visible row's older object.
+            // Update that object too rather than replacing its focused container.
+            for (const auto& item : _historyItems)
+            {
+                if (item.SessionId() == sessionId)
+                {
+                    applyStatus(item);
+                }
+            }
+            _applyHistoryProjection(true);
         }
         return updated;
     }
@@ -943,16 +1458,18 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::ClearHistorySearch()
     {
-        if (_historySearchQuery.empty() && HistorySearchTextBox().Text().empty())
+        if (_searchQuery.empty())
         {
             return;
         }
 
-        _historySearchQuery.clear();
-        _syncingHistorySearchState = true;
-        HistorySearchTextBox().Text(L"");
-        _syncingHistorySearchState = false;
+        _searchQuery.clear();
+        _syncingSearchState = true;
+        SearchTextBox().Text(L"");
+        _syncingSearchState = false;
         _applyHistoryProjection();
+        _updateSearchVisualState();
+        SearchChanged.raise(*this, nullptr);
     }
 
     void TabStrip::HistoryActive(bool value)
@@ -961,13 +1478,15 @@ namespace winrt::TerminalApp::implementation
         {
             _agentFilterTelemetryPending = false;
         }
-        FilterMode(TerminalApp::TabStripFilterMode::AllTabs);
+        const auto changed = _historyActive != value;
+        _historyActive = value;
+        FilterMode(value ? TerminalApp::TabStripFilterMode::AgentsOnly :
+                           TerminalApp::TabStripFilterMode::AllTabs);
 
-        if (_historyActive != value)
+        if (changed)
         {
-            _historyActive = value;
             _historyActivating = false;
-            ClearHistorySearch();
+            _applyHistoryProjection(true);
             _updateSearchVisualState();
             _updateHistoryVisualState();
         }
@@ -1012,9 +1531,9 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::ProjectionControlsEnabled(bool value)
     {
         _projectionControlsEnabled = value;
+        VerticalTabsHeaderButton().IsEnabled(value && !_isRailCollapsed);
         SearchTabsButton().IsEnabled(value);
         FilterTabsButton().IsEnabled(value && !_isRailCollapsed);
-        TabHistoryButton().IsEnabled(value && !_isRailCollapsed);
     }
 
     void TabStrip::MoveTabItem(uint32_t from, uint32_t to)
@@ -1046,6 +1565,19 @@ namespace winrt::TerminalApp::implementation
         _tabItems.InsertAt(to, item);
         _displayItems.RemoveAt(from);
         _displayItems.InsertAt(to, display);
+        _syncViewportItems();
+    }
+
+    void TabStrip::SetVerticalPresentation(const bool vertical)
+    {
+        if (_isVerticalPresentation != vertical)
+        {
+            _isVerticalPresentation = vertical;
+            for (const auto& display : _displayItems)
+            {
+                winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
+            }
+        }
     }
 
     void TabStrip::RestoreTabOrder(const std::vector<IInspectable>& items)
@@ -1063,32 +1595,13 @@ namespace winrt::TerminalApp::implementation
         if (const auto display = _displayItemForTab(item))
         {
             display.IsPinned(pinned);
-            winrt::get_self<TabStripDisplayItem>(display)->UpdatePresentation(_isRailCollapsed);
+            winrt::get_self<TabStripDisplayItem>(display)->UpdatePresentation(_isRailCollapsed, _isVerticalPresentation);
         }
-    }
-
-    void TabStrip::BeginHeaderTransfer()
-    {
-        _pendingHeaderTransfers.clear();
-        _deferringHeaderRestore = true;
-    }
-
-    void TabStrip::CompleteHeaderTransfer()
-    {
-        _deferringHeaderRestore = false;
-        for (const auto& [_, pending] : _pendingHeaderTransfers)
-        {
-            if (const auto tab = pending.Item.get(); tab && pending.Header && !tab.Header())
-            {
-                tab.Header(pending.Header);
-            }
-        }
-        _pendingHeaderTransfers.clear();
     }
 
     void TabStrip::RichTabRepositoryVisible(bool value)
     {
-        if (value && !_richTabRepositoryVisible && _richTabMetadataSelectionCount() >= 2)
+        if (value && (!_richTabGitAvailable || (!_richTabRepositoryVisible && _richTabMetadataSelectionCount() >= 2)))
         {
             RichTabRepositoryVisibleItem().IsChecked(false);
             return;
@@ -1100,7 +1613,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::RichTabBranchVisible(bool value)
     {
-        if (value && !_richTabBranchVisible && _richTabMetadataSelectionCount() >= 2)
+        if (value && (!_richTabGitAvailable || (!_richTabBranchVisible && _richTabMetadataSelectionCount() >= 2)))
         {
             RichTabBranchVisibleItem().IsChecked(false);
             return;
@@ -1136,7 +1649,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::RichTabChangesVisible(bool value)
     {
-        if (value && !_richTabChangesVisible && _richTabMetadataSelectionCount() >= 2)
+        if (value && (!_richTabGitAvailable || (!_richTabChangesVisible && _richTabMetadataSelectionCount() >= 2)))
         {
             RichTabChangesVisibleItem().IsChecked(false);
             return;
@@ -1169,6 +1682,38 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::RichTabGitAvailable(bool value)
+    {
+        if (_richTabGitAvailable != value)
+        {
+            _richTabGitAvailable = value;
+            bool changedVisibility = false;
+            if (!value)
+            {
+                if (_richTabRepositoryVisible)
+                {
+                    RichTabRepositoryVisible(false);
+                    changedVisibility = true;
+                }
+                if (_richTabBranchVisible)
+                {
+                    RichTabBranchVisible(false);
+                    changedVisibility = true;
+                }
+                if (_richTabChangesVisible)
+                {
+                    RichTabChangesVisible(false);
+                    changedVisibility = true;
+                }
+            }
+            _updateRichTabMetadataSelectionState();
+            if (changedVisibility)
+            {
+                VisibleFieldsChanged.raise(*this, nullptr);
+            }
+        }
+    }
+
     uint32_t TabStrip::_richTabMetadataSelectionCount() const noexcept
     {
         return static_cast<uint32_t>(_richTabAgentStatusVisible) +
@@ -1184,9 +1729,9 @@ namespace winrt::TerminalApp::implementation
 
         RichTabAgentStatusVisibleItem().IsEnabled(_richTabAgentStatusVisible || canSelectAnother);
         RichTabWorkingDirectoryVisibleItem().IsEnabled(_richTabWorkingDirectoryVisible || canSelectAnother);
-        RichTabRepositoryVisibleItem().IsEnabled(_richTabRepositoryVisible || canSelectAnother);
-        RichTabBranchVisibleItem().IsEnabled(_richTabBranchVisible || canSelectAnother);
-        RichTabChangesVisibleItem().IsEnabled(_richTabChangesVisible || canSelectAnother);
+        RichTabRepositoryVisibleItem().IsEnabled(_richTabGitAvailable && (_richTabRepositoryVisible || canSelectAnother));
+        RichTabBranchVisibleItem().IsEnabled(_richTabGitAvailable && (_richTabBranchVisible || canSelectAnother));
+        RichTabChangesVisibleItem().IsEnabled(_richTabGitAvailable && (_richTabChangesVisible || canSelectAnother));
     }
 
     UIElement TabStrip::TopChromeContent()
@@ -1219,6 +1764,22 @@ namespace winrt::TerminalApp::implementation
         OpenHistory();
     }
 
+    void TabStrip::OnHeaderToggleClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        if (_isRailCollapsed || !_projectionControlsEnabled)
+        {
+            return;
+        }
+        if (_historyActive)
+        {
+            HistoryClosed.raise(*this, nullptr);
+        }
+        else
+        {
+            OpenHistory();
+        }
+    }
+
     void TabStrip::OpenHistory()
     {
         if (_isRailCollapsed || !_projectionControlsEnabled)
@@ -1231,7 +1792,10 @@ namespace winrt::TerminalApp::implementation
         }
         HistoryActive(true);
         HistoryRequested.raise(*this, nullptr);
-        HistorySearchTextBox().Focus(WUX::FocusState::Programmatic);
+        if (_searchActive)
+        {
+            SearchTextBox().Focus(WUX::FocusState::Programmatic);
+        }
     }
 
     void TabStrip::OnHistoryCloseClick(IInspectable const&, WUX::RoutedEventArgs const&)
@@ -1317,6 +1881,7 @@ namespace winrt::TerminalApp::implementation
             _syncingSearchState = true;
             SearchTextBox().Text(L"");
             _syncingSearchState = false;
+            _applyHistoryProjection();
         }
         _updateSearchVisualState();
         SearchChanged.raise(*this, nullptr);
@@ -1344,6 +1909,10 @@ namespace winrt::TerminalApp::implementation
 
         _searchQuery = SearchTextBox().Text();
         _updateSearchVisualState();
+        if (_historyActive)
+        {
+            _applyHistoryProjection();
+        }
         SearchChanged.raise(*this, nullptr);
     }
 
@@ -1357,39 +1926,56 @@ namespace winrt::TerminalApp::implementation
             SearchTextBox().Text(L"");
             _syncingSearchState = false;
             _updateSearchVisualState();
+            _applyHistoryProjection();
             SearchChanged.raise(*this, nullptr);
             e.Handled(true);
         }
     }
 
-    void TabStrip::OnHistorySearchTextChanged(IInspectable const&, TextChangedEventArgs const&)
+    Grid TabStrip::HistorySection()
     {
-        if (_syncingHistorySearchState)
-        {
-            return;
-        }
-
-        _historySearchQuery = HistorySearchTextBox().Text();
-        _applyHistoryProjection();
+        const auto container = ItemsList().ContainerFromItem(_historySectionItem).try_as<ListViewItem>();
+        const auto root = container ? container.ContentTemplateRoot().try_as<Grid>() : nullptr;
+        return root && root == _historySection.get() ? root : nullptr;
     }
 
-    void TabStrip::OnHistorySearchBoxKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)
+    void TabStrip::OnHistorySectionLoaded(IInspectable const& sender, RoutedEventArgs const&)
     {
-        if (e.OriginalKey() != Windows::System::VirtualKey::Escape)
+        if (const auto root = sender.try_as<Grid>())
+        {
+            const auto container = ItemsList().ContainerFromItem(_historySectionItem).try_as<ListViewItem>();
+            if (container && container.ContentTemplateRoot() == root)
+            {
+                _historySection = winrt::make_weak(root);
+                const auto previousSync = std::exchange(_syncingHistorySection, true);
+                const auto endSync = wil::scope_exit([&]() noexcept { _syncingHistorySection = previousSync; });
+                _updateHistoryVisualState();
+            }
+        }
+    }
+
+    void TabStrip::OnHistorySectionUnloaded(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        if (_historySection.get() == sender)
+        {
+            _historySection = {};
+        }
+    }
+
+    void TabStrip::OnHistoryExpandedChanged(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        if (_syncingHistorySection || !_historySection.get())
         {
             return;
         }
-
-        if (!_historySearchQuery.empty())
+        if (const auto button = sender.try_as<TerminalApp::TabStripHistoryHeader>())
         {
-            ClearHistorySearch();
-            HistorySearchTextBox().Focus(WUX::FocusState::Programmatic);
+            if (button == HistoryHeaderButton())
+            {
+                _historyExpanded = button.IsChecked().Value();
+                _updateHistoryVisualState();
+            }
         }
-        else
-        {
-            HistoryClosed.raise(*this, nullptr);
-        }
-        e.Handled(true);
     }
 
     void TabStrip::OnHistoryItemClick(IInspectable const&, ItemClickEventArgs const& e)
@@ -1413,14 +1999,18 @@ namespace winrt::TerminalApp::implementation
         _applyHistoryRowForeground(root, item);
     }
 
-    void TabStrip::OnHistoryContainerContentChanging(ListViewBase const&, ContainerContentChangingEventArgs const& e)
+    void TabStrip::OnHistoryOwnershipClick(IInspectable const& sender, RoutedEventArgs const&)
     {
-        if (const auto container = e.ItemContainer())
+        if (_historyActivating || _historyLoading)
         {
-            const auto item = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripHistoryItem>();
-            _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(),
-                                       item);
-            _applyHistoryRowAutomation(container, item);
+            return;
+        }
+        if (const auto button = sender.try_as<Button>())
+        {
+            if (const auto item = button.Tag().try_as<TerminalApp::TabStripHistoryItem>())
+            {
+                HistoryActivationRequested.raise(*this, winrt::make<TabStripHistoryActivationEventArgs>(item));
+            }
         }
     }
 
@@ -1431,6 +2021,67 @@ namespace winrt::TerminalApp::implementation
         if (!container)
         {
             return;
+        }
+
+        const auto display = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripDisplayItem>();
+        const auto history = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripHistoryItem>();
+        const auto header = !e.InRecycleQueue() && e.Item() == _historySectionItem;
+        container.IsTabStop(!header);
+        // History keeps the previous row geometry; it isn't indented under the header.
+        container.Margin(history || header ? Thickness{ 0 } : Thickness{ 6, 4, 6, 4 });
+        _applyHistoryRowAutomation(container, history);
+        _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), history);
+        if (display)
+        {
+            // XAML's dynamic binding subscriber is not agile and attempts to marshal
+            // PropertyChangedEventHandler during realization. Keep these UI-thread
+            // automation updates on our own native delegates instead.
+            const auto presentation = display.Presentation();
+            WUX::Automation::AutomationProperties::SetName(container, presentation.AutomationName());
+            WUX::Automation::AutomationProperties::SetAcceleratorKey(container, display.AcceleratorKey());
+            WUX::Automation::AutomationProperties::SetHelpText(container, display.ToolTipText());
+            for (auto it = _rowAutomationSubscriptions.begin(); it != _rowAutomationSubscriptions.end();)
+            {
+                it = it->second.Container.get() ? std::next(it) : _rowAutomationSubscriptions.erase(it);
+            }
+            const auto key = winrt::get_abi(container);
+            _rowAutomationSubscriptions.erase(key);
+            const auto weakContainer = winrt::make_weak(container);
+            const auto weakDisplay = winrt::make_weak(display);
+            auto presentationChanged = presentation.PropertyChanged(auto_revoke, [weakContainer, weakDisplay](auto&&, auto&&) {
+                if (const auto row = weakContainer.get())
+                {
+                    if (const auto item = weakDisplay.get();
+                        item && row.Content() == item)
+                    {
+                        WUX::Automation::AutomationProperties::SetName(row, item.Presentation().AutomationName());
+                    }
+                }
+            });
+            auto displayChanged = display.PropertyChanged(auto_revoke, [weakContainer, weakDisplay](auto&&, auto&&) {
+                if (const auto row = weakContainer.get())
+                {
+                    if (const auto item = weakDisplay.get();
+                        item && row.Content() == item)
+                    {
+                        WUX::Automation::AutomationProperties::SetAcceleratorKey(row, item.AcceleratorKey());
+                        WUX::Automation::AutomationProperties::SetHelpText(row, item.ToolTipText());
+                    }
+                }
+            });
+            _rowAutomationSubscriptions.emplace(key, RowAutomationSubscriptions{
+                weakContainer, std::move(presentationChanged), std::move(displayChanged) });
+        }
+        else
+        {
+            _rowAutomationSubscriptions.erase(winrt::get_abi(container));
+            container.ClearValue(WUX::Automation::AutomationProperties::NameProperty());
+            container.ClearValue(WUX::Automation::AutomationProperties::AcceleratorKeyProperty());
+            container.ClearValue(WUX::Automation::AutomationProperties::HelpTextProperty());
+            if (history)
+            {
+                WUX::Automation::AutomationProperties::SetName(container, history.Title());
+            }
         }
 
         if (e.InRecycleQueue())
@@ -1449,7 +2100,7 @@ namespace winrt::TerminalApp::implementation
             container.Visibility(Visibility::Visible);
         }
         _updateDisplayItemVisuals(container.ContentTemplateRoot().try_as<FrameworkElement>(),
-                                  e.Item().try_as<TerminalApp::TabStripDisplayItem>());
+                                  display);
     }
 
     void TabStrip::_applyRailState()
@@ -1460,14 +2111,13 @@ namespace winrt::TerminalApp::implementation
         MinWidth(_isRailCollapsed ? 40.0 : 180.0);
         CompactNewTabToolbar().Visibility(collapsedVisibility);
         VerticalTabsHeader().Visibility(expandedVisibility);
+        VerticalTabsHeaderButton().Visibility(expandedVisibility);
+        VerticalTabsHeaderButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         SearchTabsButton().IsHitTestVisible(true);
         SearchTabsButton().IsEnabled(_projectionControlsEnabled);
         FilterTabsButton().Visibility(_richTabMetadataControlsVisible ? expandedVisibility : Visibility::Collapsed);
         FilterTabsButton().IsHitTestVisible(!_isRailCollapsed);
         FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
-        TabHistoryButton().Visibility(expandedVisibility);
-        TabHistoryButton().IsHitTestVisible(!_isRailCollapsed);
-        TabHistoryButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         FilterStatusBar().IsHitTestVisible(!_isRailCollapsed);
         ItemsList().AllowDrop(ItemsList().CanDragItems() && !_isRailCollapsed);
         TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 12, 0, 8, 0 });
@@ -1492,7 +2142,7 @@ namespace winrt::TerminalApp::implementation
             }
             if (const auto display = _displayItemAt(index))
             {
-                winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+                winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
             }
         }
 
@@ -1528,7 +2178,7 @@ namespace winrt::TerminalApp::implementation
         _refreshCloseButton(item);
         if (const auto display = _displayItemForTab(item))
         {
-            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+            winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
         }
     }
 
@@ -1664,12 +2314,23 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::_updateSearchVisualState()
     {
+        const auto agentsLabel = _historyActive ? RS_(L"VerticalTabsAgentsSearch/Text") : winrt::hstring{};
+        SearchTextBox().PlaceholderText(_historyActive ? agentsLabel : RS_(L"VerticalTabsSearchBox/PlaceholderText"));
+        WUX::Automation::AutomationProperties::SetName(
+            SearchTextBox(), _historyActive ? agentsLabel : RS_(L"VerticalTabsSearchBox/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name"));
+        WUX::Automation::AutomationProperties::SetName(
+            SearchTabsButton(), _historyActive ? agentsLabel : RS_(L"VerticalTabsSearchButton/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name"));
+        ToolTipService::SetToolTip(
+            SearchTabsButton(), box_value(_historyActive ? agentsLabel : RS_(L"VerticalTabsSearchButton/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip")));
+        WUX::Automation::AutomationProperties::SetHelpText(
+            SearchTabsButton(), _historyActive ? agentsLabel : RS_(L"VerticalTabsSearchButton/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip"));
+
         _syncingSearchState = true;
         SearchTabsButton().IsChecked(_searchActive);
         _syncingSearchState = false;
 
-        const auto expanded = _searchActive && !_isRailCollapsed && !_historyActive;
-        _setSearchPanelExpanded(expanded, _searchAnimationEnabled && !_isRailCollapsed && !_historyActive);
+        const auto expanded = _searchActive && !_isRailCollapsed;
+        _setSearchPanelExpanded(expanded, _searchAnimationEnabled && !_isRailCollapsed);
     }
 
     std::vector<winrt::hstring> TabStrip::_buildHistorySearchTerms(TerminalApp::TabStripHistoryItem const& item)
@@ -1684,6 +2345,13 @@ namespace winrt::TerminalApp::implementation
 
         append(item.Title());
         append(item.Subtitle() + item.StatusText());
+        append(item.Subtitle() + L" \u00b7 " + item.StatusText());
+        auto providerLabel = item.ProviderDisplayName();
+        if (item.AgentSource() == L"wsl" && !item.WslDistro().empty())
+        {
+            providerLabel = providerLabel + L" \u00b7 " + item.WslDistro();
+        }
+        append(providerLabel + L" \u00b7 " + item.Subtitle() + L" \u00b7 " + item.StatusText());
         append(item.AgentId());
         append(item.ProviderDisplayName());
         append(item.AgentSource());
@@ -1702,12 +2370,12 @@ namespace winrt::TerminalApp::implementation
 
     bool TabStrip::_matchesHistorySearch(const size_t index) const
     {
-        if (_historySearchQuery.empty())
+        if (_searchQuery.empty())
         {
             return true;
         }
 
-        const std::wstring_view query{ _historySearchQuery.c_str(), _historySearchQuery.size() };
+        const std::wstring_view query{ _searchQuery.c_str(), _searchQuery.size() };
         for (const auto& value : _historySearchTerms.at(index))
         {
             const std::wstring_view candidate{ value.c_str(), value.size() };
@@ -1747,17 +2415,86 @@ namespace winrt::TerminalApp::implementation
                 left.IsLive() == right.IsLive() &&
                 left.IsAgentPane() == right.IsAgentPane() &&
                 left.IsHistorical() == right.IsHistorical() &&
+                winrt::get_self<TabStripHistoryItem>(left)->BackgroundTab() == winrt::get_self<TabStripHistoryItem>(right)->BackgroundTab() &&
+                winrt::get_self<TabStripHistoryItem>(left)->OtherWindow() == winrt::get_self<TabStripHistoryItem>(right)->OtherWindow() &&
                 left.StatusTextStyle() == right.StatusTextStyle() &&
                 left.IconTemplate() == right.IconTemplate());
     }
 
     void TabStrip::_applyHistoryProjection(const bool preserveScroll)
     {
+        const auto sameHistoryKey = [](const auto& left, const auto& right) {
+            return left.SessionId() == right.SessionId() &&
+                   left.AgentId() == right.AgentId() &&
+                   left.AgentSource() == right.AgentSource() &&
+                   left.WslDistro() == right.WslDistro() &&
+                   left.SessionUniverse() == right.SessionUniverse();
+        };
+        std::vector<TerminalApp::TabStripHistoryItem> representedKeys;
+        if (_historyActive)
+        {
+            for (const auto& session : _representedHistorySessions)
+            {
+                TerminalApp::TabStripHistoryItem candidate{ nullptr };
+                TerminalApp::TabStripHistoryItem paneCandidate{ nullptr };
+                bool ambiguous = false;
+                bool paneAmbiguous = false;
+                for (const auto& item : _historySnapshot)
+                {
+                    if (item.SessionId() != session.sessionId ||
+                        (!session.agentId.empty() && item.AgentId() != session.agentId))
+                    {
+                        continue;
+                    }
+                    if (candidate && !sameHistoryKey(candidate, item))
+                    {
+                        ambiguous = true;
+                    }
+                    else if (!candidate)
+                    {
+                        candidate = item;
+                    }
+                    const auto rowPaneId = item.PaneSessionId();
+                    if (!session.paneSessionId.empty() &&
+                        til::compare_ordinal_insensitive(
+                            std::wstring_view{ rowPaneId.c_str(), rowPaneId.size() },
+                            std::wstring_view{ session.paneSessionId.c_str(), session.paneSessionId.size() }) == 0)
+                    {
+                        if (paneCandidate && !sameHistoryKey(paneCandidate, item))
+                        {
+                            paneAmbiguous = true;
+                        }
+                        else if (!paneCandidate)
+                        {
+                            paneCandidate = item;
+                        }
+                    }
+                }
+                // Rebound sessions may still carry an old pane ID in the snapshot.
+                // With colliding identities, only a pane-qualified match is safe.
+                if (!paneAmbiguous && paneCandidate)
+                {
+                    representedKeys.emplace_back(paneCandidate);
+                }
+                else if (!ambiguous && candidate)
+                {
+                    representedKeys.emplace_back(candidate);
+                }
+            }
+        }
+
         std::vector<TerminalApp::TabStripHistoryItem> visibleItems;
         visibleItems.reserve(_historySnapshot.size());
         for (size_t index = 0; index < _historySnapshot.size(); ++index)
         {
-            _historySnapshot[index].SearchQuery(_historySearchQuery);
+            _historySnapshot[index].SearchQuery(_searchQuery);
+            const auto& item = _historySnapshot[index];
+            if (std::ranges::any_of(representedKeys, [&](const auto& represented) {
+                    return sameHistoryKey(represented, item);
+                }))
+            {
+                continue;
+            }
             if (_matchesHistorySearch(index))
             {
                 visibleItems.emplace_back(_historySnapshot[index]);
@@ -1794,37 +2531,156 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::_updateHistoryVisualState()
     {
         const auto visible = _historyActive && !_isRailCollapsed;
-        HistoryPanel().Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
-        TabsToolbar().Visibility(visible ? Visibility::Collapsed : Visibility::Visible);
-        ItemsList().Visibility(_tabsVisible && !visible ? Visibility::Visible : Visibility::Collapsed);
-        HistoryLoadingIndicator().IsActive(visible && _historyLoading);
-        HistoryLoadingIndicator().Visibility(visible && _historyLoading ? Visibility::Visible : Visibility::Collapsed);
-        HistoryList().IsItemClickEnabled(!_historyActivating && !_historyLoading);
-        const auto showList = visible && !_historyLoading && _historyItems.Size() > 0;
-        HistoryList().Visibility(showList ?
-                                     Visibility::Visible :
-                                     Visibility::Collapsed);
-        Grid::SetRow(HistoryMessage(), showList ? 1 : 0);
-        if (!visible || _historyLoading)
+        const auto section = HistorySection();
+        if (section)
         {
-            HistoryMessage().Visibility(Visibility::Collapsed);
+            section.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
         }
-        else if (const auto error = HistoryError(); !error.empty())
+        TabsToolbar().Visibility(Visibility::Visible);
+        VerticalTabsHeader().Text(visible ? RS_(L"VerticalTabsHistoryHeader/Text") :
+                                           RS_(L"VerticalTabsHeader/Text"));
+        const auto switchLabel = _historyActive ? RS_(L"VerticalTabsSwitchToTabs") : RS_(L"VerticalTabsSwitchToAgents");
+        ToolTipService::SetToolTip(VerticalTabsHeaderButton(), box_value(switchLabel));
+        WUX::Automation::AutomationProperties::SetName(VerticalTabsHeaderButton(), switchLabel);
+        WUX::Automation::AutomationProperties::SetHelpText(VerticalTabsHeaderButton(), switchLabel);
+        const auto detailsLabel = RS_(L"VerticalTabsFilterButton/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip");
+        ToolTipService::SetToolTip(FilterTabsButton(), box_value(detailsLabel));
+        WUX::Automation::AutomationProperties::SetName(FilterTabsButton(), detailsLabel);
+        WUX::Automation::AutomationProperties::SetHelpText(FilterTabsButton(), detailsLabel);
+        ItemsList().Visibility(visible || _tabsVisible ? Visibility::Visible : Visibility::Collapsed);
+        FilterStatusBar().Visibility(!visible && _filterMode != TerminalApp::TabStripFilterMode::AllTabs ?
+                                         Visibility::Visible :
+                                         Visibility::Collapsed);
+        ItemsList().IsItemClickEnabled(visible && !_historyActivating && !_historyLoading);
+        if (section)
         {
-            HistoryMessage().Text(error);
-            HistoryMessage().Visibility(Visibility::Visible);
+            const auto previousSync = std::exchange(_syncingHistorySection, true);
+            const auto endSync = wil::scope_exit([&]() noexcept { _syncingHistorySection = previousSync; });
+            HistoryHeaderButton().IsChecked(_historyExpanded);
+            HistoryChevron().Glyph(_historyExpanded ? L"\xE70D" : L"\xE76C");
+            HistoryStatusPanel().Visibility(_historyExpanded ? Visibility::Visible : Visibility::Collapsed);
+            HistoryLoadingIndicator().IsActive(visible && _historyExpanded && _historyLoading);
+            HistoryLoadingIndicator().Visibility(visible && _historyLoading ? Visibility::Visible : Visibility::Collapsed);
+            WUX::Automation::AutomationProperties::SetName(HistoryHeaderButton(), HistoryHeader().Text());
+            const auto historyAction = _historyExpanded ?
+                                           RS_(L"VerticalTabsCollapseRecentSessions") : RS_(L"VerticalTabsExpandRecentSessions");
+            ToolTipService::SetToolTip(HistoryHeaderButton(), box_value(historyAction));
+            WUX::Automation::AutomationProperties::SetHelpText(HistoryHeaderButton(), historyAction);
+            if (!visible || _historyLoading)
+            {
+                HistoryMessage().Visibility(Visibility::Collapsed);
+            }
+            else if (const auto error = HistoryError(); !error.empty())
+            {
+                HistoryMessage().Text(error);
+                HistoryMessage().Visibility(Visibility::Visible);
+            }
+            else if (_historyItems.Size() == 0)
+            {
+                const std::wstring_view query{ _searchQuery.c_str(), _searchQuery.size() };
+                const auto hasSearchQuery = query.find_first_not_of(L" \t\r\n") != std::wstring_view::npos;
+                HistoryMessage().Text(_historySnapshot.empty() || !hasSearchQuery ?
+                                          RS_(L"VerticalTabsHistoryEmpty") :
+                                          RS_(L"VerticalTabsHistoryNoMatches"));
+                HistoryMessage().Visibility(Visibility::Visible);
+            }
+            else
+            {
+                HistoryMessage().Visibility(Visibility::Collapsed);
+            }
         }
-        else if (_historyItems.Size() == 0)
+        if (!_syncingHistorySection)
         {
-            HistoryMessage().Text(_historySnapshot.empty() ?
-                                      RS_(L"VerticalTabsHistoryEmpty") :
-                                      RS_(L"VerticalTabsHistoryNoMatches"));
-            HistoryMessage().Visibility(Visibility::Visible);
+            _syncViewportItems();
         }
-        else
+    }
+
+    void TabStrip::_syncViewportItems()
+    {
+        const auto combined = _historyActive && !_isRailCollapsed;
+        const auto selection = SelectedItem();
+        const auto previousSync = std::exchange(_syncingViewportSelection, true);
+        const auto endSync = wil::scope_exit([&]() noexcept { _syncingViewportSelection = previousSync; });
+        if (combined)
         {
-            HistoryMessage().Visibility(Visibility::Collapsed);
+            uint32_t headerIndex{};
+            if (!_viewportItems.IndexOf(_historySectionItem, headerIndex))
+            {
+                _viewportItems.Clear();
+                for (const auto& display : _displayItems)
+                {
+                    _viewportItems.Append(display);
+                }
+                headerIndex = _viewportItems.Size();
+                _viewportItems.Append(_historySectionItem);
+            }
+            else
+            {
+                // Native reorder can drop a live row below Recent Sessions.
+                // Keep the section element/container alive while normalizing that move.
+                for (uint32_t index = _viewportItems.Size(); index > headerIndex + 1; --index)
+                {
+                    if (_viewportItems.GetAt(index - 1).try_as<TerminalApp::TabStripDisplayItem>())
+                    {
+                        _viewportItems.RemoveAt(index - 1);
+                    }
+                }
+                for (uint32_t index = headerIndex; index > 0; --index)
+                {
+                    const auto display = _viewportItems.GetAt(index - 1).try_as<TerminalApp::TabStripDisplayItem>();
+                    uint32_t canonicalIndex{};
+                    if (!display || !_displayItems.IndexOf(display, canonicalIndex))
+                    {
+                        _viewportItems.RemoveAt(index - 1);
+                        --headerIndex;
+                    }
+                }
+                for (uint32_t index = 0; index < _displayItems.Size(); ++index)
+                {
+                    const auto desired = _displayItems.GetAt(index);
+                    if (index < headerIndex && _viewportItems.GetAt(index) == desired)
+                    {
+                        continue;
+                    }
+                    uint32_t existingIndex{};
+                    if (_viewportItems.IndexOf(desired, existingIndex) && existingIndex < headerIndex)
+                    {
+                        _viewportItems.RemoveAt(existingIndex);
+                        --headerIndex;
+                    }
+                    _viewportItems.InsertAt(index, desired);
+                    ++headerIndex;
+                }
+            }
+            const auto historyCount = _historyExpanded ? _historyItems.Size() : 0;
+            for (uint32_t index = 0; index < historyCount; ++index)
+            {
+                const auto slot = headerIndex + 1 + index;
+                const auto item = _historyItems.GetAt(index);
+                if (slot >= _viewportItems.Size())
+                {
+                    _viewportItems.Append(item);
+                }
+                else if (_viewportItems.GetAt(slot) != item)
+                {
+                    _viewportItems.SetAt(slot, item);
+                }
+            }
+            while (_viewportItems.Size() > headerIndex + 1 + historyCount)
+            {
+                _viewportItems.RemoveAtEnd();
+            }
+            if (ItemsList().ItemsSource() != _viewportItems)
+            {
+                ItemsList().ItemsSource(_viewportItems);
+            }
         }
+        else if (ItemsList().ItemsSource() != _displayItems)
+        {
+            ItemsList().ItemsSource(_displayItems);
+            _viewportItems.Clear();
+        }
+        SelectedItem(selection);
     }
 
     void TabStrip::_onItemsVectorChanged(IObservableVector<IInspectable> const& sender,
@@ -1846,6 +2702,7 @@ namespace winrt::TerminalApp::implementation
             _dragCollectionChanged = true;
             _syncDisplayItems();
             _removeStaleCloseRequestedSubscriptions(sender);
+            _syncViewportItems();
             TabItemsChanged.raise(*this, args);
             return;
         }
@@ -1858,24 +2715,22 @@ namespace winrt::TerminalApp::implementation
             if (const auto item = sender.GetAt(args.Index()).try_as<MUX::Controls::TabViewItem>())
             {
                 _displayItems.InsertAt(args.Index(), _makeDisplayItem(item));
+                _syncViewportItems();
                 _applyTabItemVisibility(item);
             }
             break;
         case CollectionChange::ItemRemoved:
             if (args.Index() < _displayItems.Size())
             {
-                _restoreDisplayItemHeader(_displayItems.GetAt(args.Index()));
                 _displayItems.RemoveAt(args.Index());
+                _syncViewportItems();
             }
             break;
         case CollectionChange::ItemChanged:
             if (const auto item = sender.GetAt(args.Index()).try_as<MUX::Controls::TabViewItem>())
             {
-                if (args.Index() < _displayItems.Size())
-                {
-                    _restoreDisplayItemHeader(_displayItems.GetAt(args.Index()));
-                }
                 _displayItems.SetAt(args.Index(), _makeDisplayItem(item));
+                _syncViewportItems();
                 _applyTabItemVisibility(item);
             }
             break;
@@ -1910,15 +2765,17 @@ namespace winrt::TerminalApp::implementation
 
     TerminalApp::TabStripDisplayItem TabStrip::_makeDisplayItem(MUX::Controls::TabViewItem const& tab)
     {
-        auto header = tab.Header();
-        tab.Header(nullptr);
-        auto display = winrt::make<TabStripDisplayItem>(tab, std::move(header));
+        auto display = winrt::make<TabStripDisplayItem>(tab, tab.Header());
         auto title = WUX::Automation::AutomationProperties::GetName(tab);
         if (title.empty())
         {
             title = RS_(L"VerticalTabsFallbackTabTitle");
         }
         display.Title(title);
+        if (!tab.Header())
+        {
+            display.Presentation().Title(title);
+        }
         winrt::get_self<TabStripDisplayItem>(display)->SyncIcon({});
         const auto key = winrt::get_abi(tab);
         if (const auto found = _groupExpansion.find(key);
@@ -1930,49 +2787,8 @@ namespace winrt::TerminalApp::implementation
         {
             _groupExpansion.insert_or_assign(key, GroupExpansionState{ winrt::make_weak(tab), true });
         }
-        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed);
+        winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
         return display;
-    }
-
-    void TabStrip::_restoreDisplayItemHeader(TerminalApp::TabStripDisplayItem const& display)
-    {
-        if (display)
-        {
-            const auto tab = display.Tab();
-            const auto header = display.Header();
-            if (tab && header && !tab.Header())
-            {
-                auto current = header.try_as<DependencyObject>();
-                while (current)
-                {
-                    const auto parent = WUX::Media::VisualTreeHelper::GetParent(current);
-                    if (const auto presenter = parent.try_as<ContentPresenter>())
-                    {
-                        if (winrt::get_abi(presenter.Content()) == winrt::get_abi(header))
-                        {
-                            presenter.Content(nullptr);
-                            break;
-                        }
-                    }
-                    current = parent;
-                }
-                display.Header(nullptr);
-                if (const auto headerControl = header.try_as<TerminalApp::TabHeaderControl>())
-                {
-                    headerControl.IsMetadataVisible(!headerControl.MetadataText().empty());
-                }
-                if (_deferringHeaderRestore)
-                {
-                    _pendingHeaderTransfers.insert_or_assign(
-                        winrt::get_abi(tab),
-                        PendingHeaderTransfer{ winrt::make_weak(tab), header });
-                }
-                else
-                {
-                    tab.Header(header);
-                }
-            }
-        }
     }
 
     MUX::Controls::TabViewItem TabStrip::_tabFromItem(IInspectable const& item)
@@ -2016,15 +2832,8 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
-        for (const auto& [_, display] : existing)
-        {
-            uint32_t index{};
-            if (!_tabItems.IndexOf(display.Tab(), index))
-            {
-                _restoreDisplayItemHeader(display);
-            }
-        }
         _displayItems.ReplaceAll(next);
+        _syncViewportItems();
         SelectedItem(previousSelection);
     }
 
@@ -2169,6 +2978,49 @@ namespace winrt::TerminalApp::implementation
         return winrt::make<TabStripAutomationPeer>(*this);
     }
 
+    void TabStrip::_onHistoryPreviewKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)
+    {
+        if (e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::Enter ||
+            _historyActivating || _historyLoading)
+        {
+            return;
+        }
+
+        const auto coreWindow = Windows::UI::Core::CoreWindow::GetForCurrentThread();
+        const auto root = XamlRoot();
+        if (!coreWindow || !root)
+        {
+            return;
+        }
+        constexpr auto down = Windows::UI::Core::CoreVirtualKeyStates::Down;
+        if (WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Control), down) ||
+            WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Menu), down) ||
+            WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Shift), down))
+        {
+            return;
+        }
+
+        auto focused = WUX::Input::FocusManager::GetFocusedElement(root).try_as<DependencyObject>();
+        while (focused)
+        {
+            if (focused.try_as<WUX::Controls::Primitives::ButtonBase>())
+            {
+                return;
+            }
+            if (const auto container = focused.try_as<ListViewItem>())
+            {
+                const auto item = container.Content().try_as<TerminalApp::TabStripHistoryItem>();
+                if (item && ItemsList().ContainerFromItem(item) == container)
+                {
+                    e.Handled(true);
+                    HistoryActivationRequested.raise(*this, winrt::make<TabStripHistoryActivationEventArgs>(item));
+                }
+                return;
+            }
+            focused = WUX::Media::VisualTreeHelper::GetParent(focused);
+        }
+    }
+
     void TabStrip::_onListKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)
     {
         if (e.OriginalKey() != Windows::System::VirtualKey::Enter)
@@ -2211,6 +3063,18 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::OnListSelectionChanged(IInspectable const& /*sender*/,
                                            SelectionChangedEventArgs const& e)
     {
+        if (_syncingViewportSelection)
+        {
+            return;
+        }
+        if (e.AddedItems().Size() && !_tabFromItem(e.AddedItems().GetAt(0)))
+        {
+            // Focusing/resuming history must not change the canonical tab selection.
+            _syncingViewportSelection = true;
+            const auto endSync = wil::scope_exit([&]() noexcept { _syncingViewportSelection = false; });
+            ItemsList().SelectedItem(e.RemovedItems().Size() ? e.RemovedItems().GetAt(0) : nullptr);
+            return;
+        }
         // Keep TabViewItem selection synchronized for close-button and
         // accessibility behavior. ListView renders the interaction states.
         for (const auto& removed : e.RemovedItems())
@@ -2254,6 +3118,11 @@ namespace winrt::TerminalApp::implementation
         // to the canonical TabViewItem before entering the shared drag pipeline.
         IInspectable surfacedItem = e.Items().Size() > 0 ? e.Items().GetAt(0) : nullptr;
         auto tab = _tabFromItem(surfacedItem);
+        if (!tab)
+        {
+            e.Cancel(true);
+            return;
+        }
         // Stash the resolved TabViewItem (not the surfaced Border) so
         // OnDragItemsCompleted's tearoff path also gets the right identity.
         _draggingItem = tab ? IInspectable{ tab } : surfacedItem;
@@ -2292,7 +3161,7 @@ namespace winrt::TerminalApp::implementation
         _groupExpansion.insert_or_assign(
             winrt::get_abi(display.Tab()),
             GroupExpansionState{ winrt::make_weak(display.Tab()), display.IsExpanded() });
-        winrt::get_self<TabStripDisplayItem>(display)->UpdatePresentation(_isRailCollapsed);
+        winrt::get_self<TabStripDisplayItem>(display)->UpdatePresentation(_isRailCollapsed, _isVerticalPresentation);
         _refreshDisplayItemVisuals(display);
         GroupExpansionChanged.raise(*this, display.Tab());
     }
@@ -2471,14 +3340,20 @@ namespace winrt::TerminalApp::implementation
             const auto draggedTab = _draggingItem.try_as<MUX::Controls::TabViewItem>();
             uint32_t sourceIndex{};
             std::optional<uint32_t> destinationIndex;
-            for (uint32_t i = 0; i < _displayItems.Size(); ++i)
+            uint32_t tabIndex{};
+            for (const auto& value : ItemsList().Items())
             {
-                const auto display = _displayItems.GetAt(i);
+                const auto display = value.try_as<TerminalApp::TabStripDisplayItem>();
+                if (!display)
+                {
+                    continue;
+                }
                 if (draggedTab && winrt::get_abi(display.Tab()) == winrt::get_abi(draggedTab))
                 {
-                    destinationIndex = i;
+                    destinationIndex = tabIndex;
                     break;
                 }
+                ++tabIndex;
             }
 
             if (draggedTab &&
@@ -2493,7 +3368,14 @@ namespace winrt::TerminalApp::implementation
                 const auto item = _tabItems.GetAt(sourceIndex);
                 _tabItems.RemoveAt(sourceIndex);
                 _tabItems.InsertAt(*destinationIndex, item);
+                if (_historyActive && !_isRailCollapsed)
+                {
+                    const auto display = _displayItems.GetAt(sourceIndex);
+                    _displayItems.RemoveAt(sourceIndex);
+                    _displayItems.InsertAt(*destinationIndex, display);
+                }
             }
+            _syncViewportItems();
         }
         else if (_dragCollectionChanged)
         {

@@ -96,6 +96,7 @@ namespace winrt::TerminalApp::implementation
         _UpdateMenuItemStates();
 
         _headerControl.TabStatus(_tabStatus);
+        _headerControl.ShowPinnedIcon(false);
 
         // Add an event handler for the header control to tell us when they want their title to change
         _headerControl.TitleChangeRequested([weakThis = get_weak()](auto&& title) {
@@ -485,27 +486,20 @@ namespace winrt::TerminalApp::implementation
         _lastIconPath = iconPath;
         _lastIconStyle = iconStyle;
 
-        if (iconStyle == IconStyle::Hidden)
+        const auto previousIcon = Icon();
+        TabViewItem().IconSource(iconStyle == IconStyle::Hidden || _iconHidden ?
+                                     IconSource{ nullptr } :
+                                     ::Microsoft::Terminal::UI::AgentIcons::SourceForIconPath(_lastIconPath, iconStyle == IconStyle::Monochrome));
+        Icon(iconStyle == IconStyle::Hidden ? winrt::hstring{} : _lastIconPath);
+        if (Icon() == previousIcon)
         {
-            // The TabViewItem Icon needs MUX while the IconSourceElement in the CommandPalette needs WUX...
-            Icon({});
-            TabViewItem().IconSource(IconSource{ nullptr });
-        }
-        else
-        {
-            Icon(_lastIconPath);
-            if (_iconHidden)
-            {
-                return;
-            }
-            bool isMonochrome = iconStyle == IconStyle::Monochrome;
-            TabViewItem().IconSource(::Microsoft::Terminal::UI::AgentIcons::SourceForIconPath(_lastIconPath, isMonochrome));
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Icon" });
         }
     }
 
     // Method Description:
     // - Hide or show the tab icon for this tab
-    // - Used when we want to show the progress ring, which should replace the icon
+    // - Independent of progress; explicit icon visibility is retained.
     // Arguments:
     // - hide: if true, we hide the icon; if false, we show the icon
     void Tab::HideIcon(const bool hide)
@@ -525,6 +519,7 @@ namespace winrt::TerminalApp::implementation
                                              ::Microsoft::Terminal::UI::AgentIcons::SourceForIconPath(_lastIconPath, _lastIconStyle == IconStyle::Monochrome));
             }
             _iconHidden = hide;
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Icon" });
         }
     }
 
@@ -653,6 +648,7 @@ namespace winrt::TerminalApp::implementation
             name += L", ";
             name += _richTabAccessibilityText;
         }
+        _headerControl.Presentation().AutomationName(name);
         Automation::AutomationProperties::SetName(TabViewItem(), name);
     }
 
@@ -1043,6 +1039,12 @@ namespace winrt::TerminalApp::implementation
     {
         ASSERT_UI_THREAD();
 
+        const auto header = _HeaderControl(true);
+        if (!header)
+        {
+            LOG_HR(E_UNEXPECTED);
+            return;
+        }
         auto weakThis{ get_weak() };
 
         _tabColorPickup = colorPicker;
@@ -1071,7 +1073,7 @@ namespace winrt::TerminalApp::implementation
             }
         });
 
-        _tabColorPickup.ShowAt(_headerControl);
+        _tabColorPickup.ShowAt(header);
     }
 
     // Method Description:
@@ -1271,13 +1273,28 @@ namespace winrt::TerminalApp::implementation
     {
         ASSERT_UI_THREAD();
 
-        _headerControl.BeginRename();
+        if (const auto header = _HeaderControl(true))
+        {
+            header.BeginRename();
+        }
+        else
+        {
+            LOG_HR(E_UNEXPECTED);
+        }
     }
 
     void Tab::CancelTabRename()
     {
         ASSERT_UI_THREAD();
-        _headerControl.CancelRename();
+        if (const auto header = _HeaderControl())
+        {
+            header.CancelRename();
+        }
+    }
+
+    TerminalApp::TabHeaderControl Tab::_HeaderControl(const bool realize)
+    {
+        return _isVerticalTabLayout ? (_headerResolver ? _headerResolver(realize) : nullptr) : _headerControl;
     }
 
     // Method Description:
@@ -1348,6 +1365,7 @@ namespace winrt::TerminalApp::implementation
                 if (const auto tab = weakThis.get())
                 {
                     tab->_UpdateProgressState();
+                    tab->PaneProjectionChanged.raise();
                 }
             });
 
@@ -1485,26 +1503,35 @@ namespace winrt::TerminalApp::implementation
     //   progress percentage of all our panes.
     winrt::TerminalApp::TaskbarState Tab::GetCombinedTaskbarState() const
     {
+        return GetCombinedTaskbarStateWithContentId().CombinedState;
+    }
+
+    Pane::TaskbarStateWithContentId Tab::GetCombinedTaskbarStateWithContentId() const
+    {
         ASSERT_UI_THREAD();
 
-        std::vector<winrt::TerminalApp::TaskbarState> states;
+        std::vector<Pane::TaskbarStateWithContentId> states;
         if (_rootPane)
         {
             _rootPane->CollectTaskbarStates(states);
         }
-        return states.empty() ? winrt::make<winrt::TerminalApp::implementation::TaskbarState>() :
-                                *std::min_element(states.begin(), states.end(), TerminalApp::implementation::TaskbarState::ComparePriority);
+        return states.empty() ?
+                   Pane::TaskbarStateWithContentId{
+                       .CombinedState = winrt::make<winrt::TerminalApp::implementation::TaskbarState>(),
+                       .ContentId = std::nullopt,
+                   } :
+                   *std::min_element(states.begin(), states.end(), [](const auto& lhs, const auto& rhs) {
+                       return TerminalApp::implementation::TaskbarState::ComparePriority(lhs.CombinedState, rhs.CombinedState);
+                   });
     }
 
     // Method Description:
     // - This should be called on the UI thread. If you don't, then it might
     //   silently do nothing.
-    // - Update our TabStatus to reflect the progress state of the currently
-    //   active pane.
-    // - This is called every time _any_ control's progress state changes,
-    //   regardless of if that control is the active one or not. This is simpler
-    //   then re-attaching this handler to the active control each time it
-    //   changes.
+    // - Update our TabStatus to reflect the aggregate progress state of this
+    //   tab's panes. This is the tab-level status used by the horizontal tab
+    //   header and by collapsed vertical groups; per-pane sidebar rows have
+    //   their own projection.
     // Arguments:
     // - <none>
     // Return Value:
@@ -1514,8 +1541,8 @@ namespace winrt::TerminalApp::implementation
         const auto state{ GetCombinedTaskbarState() };
 
         const auto taskbarState = state.State();
-        // The progress of the control changed, but not necessarily the progress of the tab.
-        // Set the tab's progress ring to the active pane's progress
+        // Mirror the tab's aggregate progress state. Individual pane rows in
+        // the vertical rail project their own raw progress separately.
         if (taskbarState > 0)
         {
             if (taskbarState == 3)
@@ -1531,14 +1558,10 @@ namespace winrt::TerminalApp::implementation
                 const auto progressValue = gsl::narrow<uint32_t>(state.Progress());
                 _tabStatus.ProgressValue(progressValue);
             }
-            // Hide the tab icon (the progress ring is placed over it)
-            HideIcon(true);
             _tabStatus.IsProgressRingActive(true);
         }
         else
         {
-            // Show the tab icon
-            HideIcon(false);
             _tabStatus.IsProgressRingActive(false);
         }
 
@@ -1981,12 +2004,11 @@ namespace winrt::TerminalApp::implementation
         }
 
         // Create a sub-menu for our extended move tab items.
-        Controls::MenuFlyoutSubItem moveSubMenu;
-        moveSubMenu.Text(RS_(L"TabMoveSubMenu"));
-        moveSubMenu.Items().Append(_moveToNewWindowMenuItem);
-        moveSubMenu.Items().Append(_moveRightMenuItem);
-        moveSubMenu.Items().Append(_moveLeftMenuItem);
-        flyout.Items().Append(moveSubMenu);
+        _moveSubMenu.Text(RS_(L"TabMoveSubMenu"));
+        _moveSubMenu.Items().Append(_moveToNewWindowMenuItem);
+        _moveSubMenu.Items().Append(_isVerticalTabLayout ? _moveLeftMenuItem : _moveRightMenuItem);
+        _moveSubMenu.Items().Append(_isVerticalTabLayout ? _moveRightMenuItem : _moveLeftMenuItem);
+        flyout.Items().Append(_moveSubMenu);
     }
 
     // Method Description:
@@ -2079,6 +2101,14 @@ namespace winrt::TerminalApp::implementation
 
         _moveRightMenuItem.Text(vertical ? RS_(L"TabMoveDown") : RS_(L"TabMoveRight"));
         _moveLeftMenuItem.Text(vertical ? RS_(L"TabMoveUp") : RS_(L"TabMoveLeft"));
+        uint32_t leftIndex{};
+        const auto expectedLeftIndex = vertical ? 1u : 2u;
+        const auto moveItems = _moveSubMenu.Items();
+        if (moveItems.IndexOf(_moveLeftMenuItem, leftIndex) && leftIndex != expectedLeftIndex)
+        {
+            moveItems.RemoveAt(leftIndex);
+            moveItems.InsertAt(expectedLeftIndex, _moveLeftMenuItem);
+        }
 
         _switchTabLayoutTarget = vertical ? TabLayout::Horizontal : TabLayout::Vertical;
         const auto switchLabel = vertical ? RS_(L"SwitchToHorizontalTabsText") : RS_(L"SwitchToVerticalTabsText");
@@ -2306,7 +2336,8 @@ namespace winrt::TerminalApp::implementation
                 // If we're
                 // * NOT in a rename
                 // * AND (the content isn't a TermControl, OR the term control doesn't have focus in the search box)
-                if (!tab->_headerControl.InRename() &&
+                const auto header = tab->_HeaderControl();
+                if ((!header || !header.InRename()) &&
                     (terminalControl == nullptr || !terminalControl.SearchBoxEditInFocus()))
                 {
                     tab->RequestFocusActiveControl.raise();
@@ -3135,6 +3166,8 @@ namespace winrt::TerminalApp::implementation
                         .IsActive = pane == activeLeaf,
                         .IsAgentPane = pane->_content.try_as<winrt::TerminalApp::AgentPaneContent>() != nullptr ||
                                        pane->IsAgentPane(),
+                        .ProgressState = pane->_content.TaskbarState(),
+                        .ProgressValue = pane->_content.TaskbarProgress(),
                     });
                 }
                 return;
@@ -3490,6 +3523,10 @@ namespace winrt::TerminalApp::implementation
             currentDictionary.Insert(winrt::box_value(L"TabViewItemHeaderForegroundSelected"), fontBrush);
             currentDictionary.Insert(winrt::box_value(L"TabViewItemHeaderForegroundPointerOver"), isHighContrast ? selectedTabBrush : fontBrush);
             currentDictionary.Insert(winrt::box_value(L"TabViewItemHeaderForegroundPressed"), fontBrush);
+            currentDictionary.Insert(winrt::box_value(L"TabViewItemIconForeground"), deselectedFontBrush);
+            currentDictionary.Insert(winrt::box_value(L"TabViewItemIconForegroundSelected"), fontBrush);
+            currentDictionary.Insert(winrt::box_value(L"TabViewItemIconForegroundPointerOver"), isHighContrast ? selectedTabBrush : fontBrush);
+            currentDictionary.Insert(winrt::box_value(L"TabViewItemIconForegroundPressed"), fontBrush);
 
             // TabViewItem.CloseButton.Foreground (aka X)
             currentDictionary.Insert(winrt::box_value(L"TabViewItemHeaderCloseButtonForeground"), deselectedFontBrush);
@@ -3546,6 +3583,10 @@ namespace winrt::TerminalApp::implementation
             L"TabViewItemHeaderForegroundSelected",
             L"TabViewItemHeaderForegroundPointerOver",
             L"TabViewItemHeaderForegroundPressed",
+            L"TabViewItemIconForeground",
+            L"TabViewItemIconForegroundSelected",
+            L"TabViewItemIconForegroundPointerOver",
+            L"TabViewItemIconForegroundPressed",
 
             // TabViewItem.CloseButton.Foreground (aka X)
             L"TabViewItemHeaderCloseButtonForeground",

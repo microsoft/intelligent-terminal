@@ -69,10 +69,12 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
         function Test-NativeVisible {
             param([string]$Id)
             $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
+            if ($window.Current.ProcessId -ne $script:app.Pid) { throw 'Session view window changed ownership.' }
             $condition = [Windows.Automation.PropertyCondition]::new(
                 [Windows.Automation.AutomationElement]::AutomationIdProperty, $Id)
             $element = $window.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
-            $element -and -not $element.Current.IsOffscreen
+            $element -and $element.Current.ProcessId -eq $script:app.Pid -and -not $element.Current.IsOffscreen -and
+                $element.Current.BoundingRectangle.Width -gt 0 -and $element.Current.BoundingRectangle.Height -gt 0
         }
         function Set-TestLayout {
             param([ValidateSet('vertical', 'horizontal')][string]$Layout)
@@ -82,18 +84,27 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
                 $matches = [regex]::Matches((Get-HelperTrace), '"sessions_in_sidebar":(true|false)')
                 $matches.Count -gt 0 -and $matches[$matches.Count - 1].Groups[1].Value -eq $expected
             } | Out-Null
-            $selector = if ($Layout -eq 'vertical') { 'TabHistoryButton' } else { 'SessionToggleButton' }
+            $selector = if ($Layout -eq 'vertical') { 'VerticalTabsHeaderButton' } else { 'SessionToggleButton' }
             Wait-Until -TimeoutSec 15 -Because "$Layout session entry point is visible" -Condition {
                 Test-NativeVisible -Id $selector
             } | Out-Null
         }
         function Open-TestSidebar {
-            if (-not (Test-NativeVisible -Id HistorySearchTextBox)) {
-                Invoke-UiElement -App $script:app -Selector TabHistoryButton | Out-Null
+            if (-not (Test-NativeVisible -Id HistoryHeaderButton)) {
+                Invoke-UiClick -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
             }
             Wait-Until -TimeoutSec 15 -Because 'native history panel is open' -Condition {
-                Test-NativeVisible -Id HistorySearchTextBox
+                Test-NativeVisible -Id HistoryHeaderButton
             } | Out-Null
+            $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
+            $header = $window.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, 'VerticalTabsHeader'))
+            $header.Current.Name | Should -Be 'Agents'
+            $search = $window.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, 'SearchTabsButton'))
+            $search.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState |
+                Should -Be ([Windows.Automation.ToggleState]::Off)
+            Test-NativeVisible -Id SearchTextBox | Should -BeFalse -Because 'passive Agents navigation must not enable search'
         }
         function Read-TraceRecords {
             param([DateTimeOffset]$Since)
@@ -175,7 +186,9 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
             throw 'Dev was opened during preparation; refusing to close it.'
         }
         $script:ownsConfig = $true
-        $script:app = Start-Terminal -Package Dev -CleanSettings $false -PassFre $true -Settings @{
+        $script:app = Start-Terminal -Package Dev -CleanSettings $false -PassFre $true -State @{
+            sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+        } -Settings @{
             profiles = $profiles; defaultProfile = $profileId
             firstWindowPreference = 'defaultProfile'; startupActions = ''
             tabLayout = 'vertical'; tabLayoutVerticalWidth = 320; language = 'en-US'

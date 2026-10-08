@@ -92,6 +92,7 @@ pub struct PromptSubmission {
     is_byok: bool,
     agent_id: String,
     reattached_session_id: Option<String>,
+    restore_identity: Option<crate::telemetry::RestoreIdentity>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -526,6 +527,7 @@ impl PromptSubmission {
             is_byok: false,
             agent_id: String::new(),
             reattached_session_id: None,
+            restore_identity: None,
         }
     }
 
@@ -557,6 +559,14 @@ impl PromptSubmission {
 
     pub fn with_reattached_session(mut self, session_id: Option<String>) -> Self {
         self.reattached_session_id = session_id;
+        self
+    }
+
+    pub fn with_restore_identity(
+        mut self,
+        identity: Option<crate::telemetry::RestoreIdentity>,
+    ) -> Self {
+        self.restore_identity = identity;
         self
     }
 
@@ -5827,6 +5837,7 @@ async fn dispatch_prompt_body(
             &shell_mgr_task,
             wt_connected,
             prompt.pane_context.as_ref(),
+            Some(&conn_task),
         )
         .await;
         let _ = event_tx_task.send(AppEvent::PromptTemplateLoaded { name });
@@ -5931,6 +5942,9 @@ async fn dispatch_prompt_body(
     let telemetry_is_byok = prompt.is_byok();
     let telemetry_agent_id = prompt.agent_id().to_string();
     let telemetry_reattached = prompt.was_reattached_at_dispatch(&telemetry_session_id);
+    let telemetry_restore = telemetry_reattached
+        .then_some(prompt.restore_identity)
+        .flatten();
     let telemetry_prompt_id = prompt.id;
     let telemetry_is_agent_command = prompt.is_agent_command();
     let prompt_started = Arc::new(AtomicBool::new(false));
@@ -5984,15 +5998,21 @@ async fn dispatch_prompt_body(
                     telemetry_timing.mark_prompt_sent(&telemetry_session_id);
                     let user_prompt_ordinal = telemetry_timing
                         .record_user_prompt_dispatch(&telemetry_session_id, telemetry_is_autofix);
-                    crate::telemetry::log_agent_prompt_sent(
-                        telemetry_prompt_len,
-                        telemetry_is_autofix,
-                        telemetry_source,
-                        telemetry_is_byok,
-                        &telemetry_agent_id,
-                        telemetry_reattached,
-                        user_prompt_ordinal,
-                    );
+                    if let Some(identity) = telemetry_timing.telemetry_identity(&telemetry_session_id, telemetry_is_autofix) {
+                        crate::telemetry::log_agent_prompt_sent(
+                            telemetry_prompt_len,
+                            telemetry_is_autofix,
+                            telemetry_source,
+                            telemetry_is_byok,
+                            &telemetry_agent_id,
+                            telemetry_reattached,
+                            user_prompt_ordinal,
+                            identity,
+                            telemetry_restore,
+                        );
+                    } else {
+                        tracing::error!(target: "telemetry", "dispatched prompt has no timing identity");
+                    }
                 }
                 should_send
             }
