@@ -39,6 +39,20 @@ namespace Microsoft::Terminal::Protocol
                 return S_OK;
             }
 
+            return InitializeFromExecutableDirectory();
+        }
+        CATCH_RETURN()
+
+        // Separate the elevation policy from registration so native tests can
+        // exercise the real proxy loader and COM mappings without requiring UAC.
+        [[nodiscard]] HRESULT InitializeFromExecutableDirectory() noexcept
+        try
+        {
+            if (_registration)
+            {
+                return S_OK;
+            }
+
             auto path = wil::GetModuleFileNameW<std::wstring>();
             const auto separator = path.find_last_of(L'\\');
             RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME), separator == std::wstring::npos);

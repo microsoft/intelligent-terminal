@@ -172,6 +172,16 @@ logs for `wtcli publish failed` and event-listener errors. A proxy/stub
 initialization error from `wtcli` identifies a missing or unusable adjacent DLL;
 `E_NOINTERFACE` during connection indicates custom-interface marshaling failed.
 
+The `ProtocolMarshalingTests` unit tests launch isolated native probes to test
+both interface registrations and missing adjacent DLL failures without requiring
+elevation. After building `TerminalApp.UnitTests.vcxproj`, run:
+
+```powershell
+& .\bin\x64\Debug\UnitTests_TerminalApp\TE.exe `
+    .\bin\x64\Debug\UnitTests_TerminalApp\Terminal.App.Unit.Tests.dll `
+    '/name:*ProtocolMarshalingTests*'
+```
+
 ### Are you seeing `DEP0700: Registration of the app failed`?
 
 Once in a blue moon, I get a `DEP0700: Registration of the app failed.
