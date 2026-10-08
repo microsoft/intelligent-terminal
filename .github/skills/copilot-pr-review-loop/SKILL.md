@@ -112,7 +112,10 @@ message.
   `01-request-review.ps1` enforces this via event-`id` comparison —
   don't weaken it.
 - **A "no new comments" review is necessary but not sufficient for
-  convergence.** It must ALSO be at the current `HEAD` SHA AND every
+  convergence.** Use the latest review's actual comment count, not
+  changing prose such as "0 open findings"; resolving comments does not
+  make that review's original comment count zero.
+  It must ALSO be at the current `HEAD` SHA AND every
   open thread must have a reply from the agent
   (`OpenThreadsAwaitingReply == 0`). A stale review on an earlier
   commit lets a regression slip through unreviewed; an open Copilot

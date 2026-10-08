@@ -19,8 +19,8 @@
                             this window — treat null as "no recent
                             review", not "never reviewed")
       - ReviewAtHead       : true iff latest Copilot review's commit.oid == HeadOid
-      - NoNewComments      : true iff the latest review body matches
-                             "generated no new comments" / "generated 0 comments"
+      - NoNewComments      : true iff the latest Copilot review's
+                             authoritative comment count is zero
       - OpenThreadCount    : number of unresolved review threads (from all
                              reviewers); informational — convergence does
                              NOT require this to be zero
@@ -148,7 +148,7 @@ query($o:String!,$r:String!,$n:Int!){
     pullRequest(number:$n){
       headRefOid
       state
-      reviews(last:100){nodes{author{login} state submittedAt body commit{oid}}}
+      reviews(last:100){nodes{author{login} state submittedAt body commit{oid} comments(first:1){totalCount}}}
       reviewRequests(first:100){nodes{requestedReviewer{__typename ... on Bot{login} ... on User{login} ... on Mannequin{login}}}}
     }
   }
@@ -219,13 +219,18 @@ $reviewAtHead = $false
 $noNewComments = $false
 $bodyHead = $null
 $latestCommitOid = $null
+$latestReviewCommentCount = $null
 if ($latest) {
     if ($latest.commit -and $latest.commit.oid) {
         $latestCommitOid = $latest.commit.oid
         $reviewAtHead = ($latestCommitOid -eq $pr.headRefOid)
     }
     $bodyText = if ($latest.body) { $latest.body } else { '' }
-    $noNewComments = ($bodyText -match '(?i)generated no new comments|generated\s+0\s+comments|reviewed\s+\d+\s+out\s+of\s+\d+\s+changed\s+files\s+in\s+this\s+pull\s+request\s+and\s+generated\s+no\s+new\s+comments')
+    $latestReviewCommentCount = $latest.comments.totalCount
+    if (($latestReviewCommentCount -isnot [int] -and $latestReviewCommentCount -isnot [long]) -or $latestReviewCommentCount -lt 0) {
+        throw 'Latest Copilot review has an invalid or missing comment count.'
+    }
+    $noNewComments = ($latestReviewCommentCount -eq 0)
     $bodyHead = if ($bodyText.Length -gt 300) { $bodyText.Substring(0, 300) } else { $bodyText }
 }
 
@@ -289,6 +294,7 @@ $result = [ordered]@{
             state       = $latest.state
             submittedAt = $submittedAtIso
             commitOid   = $latestCommitOid
+            commentCount = $latestReviewCommentCount
             bodyHead    = $bodyHead
         }
     } else { $null }
