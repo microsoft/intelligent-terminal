@@ -56,6 +56,10 @@ publication has only `issues: write` plus PR read. Publisher code is
 rematerialized from the trusted base, not supplied by the handoff artifact.
 Matching run/attempt/revision/source jobs, detector outcome, scope and patch
 identity, applicable native attestation and live-head checks remain mandatory.
+Trusted materialization, identity, and reconstruction reads disable Git
+replacement objects across the controller, both workers, and reusable Windows
+validation. The standalone restoration helper also forces that environment
+itself, so an ambient replacement namespace cannot redirect a trusted SHA.
 
 Detector success is not inferred from the workflow/job conclusion or the two
 generated success outputs alone. Pinned threat-detect v0.5.1
@@ -265,7 +269,10 @@ Do not infer failure from directory existence alone or remove evidence after
 inference. This is a test-threshold correction, not a new production quarantine
 or a benign-log-file exception.
 Each driver phase has a private configuration home and debug-log directory;
-compiler-provided configuration/log overrides cannot redirect those logs back
+`GH_AW_MCP_CONFIG` is rebound to that phase's copied configuration file.
+The job-scoped native MCP service capability remains intentionally shared;
+this does not create separate MCP servers or rotate their credentials.
+Compiler-provided configuration/log overrides cannot redirect those logs back
 into collected roots. Original session stores and historical evidence are not
 deleted. Updating the runtime pin requires re-verifying these asset hashes and
 collector paths.

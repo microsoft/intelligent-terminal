@@ -253,6 +253,19 @@ test('repair detector stages the actual patch bytes under the pinned aw patch co
   }
 });
 
+test('all trusted materialization and reconstruction workflows disable ambient replacement refs', () => {
+  for (const name of [
+    'ghaw-pr-security.md', 'ghaw-pr-security-guide-fork.md',
+    'ghaw-pr-security.lock.yml', 'ghaw-pr-security-guide-fork.lock.yml',
+    'ghaw-pr-security-controller.yml',
+  ]) {
+    const text = readFileSync(new URL(`../../../workflows/${name}`, import.meta.url), 'utf8');
+    assert.match(text, /^env:\r?\n  GIT_NO_REPLACE_OBJECTS: ['"]1['"]/m, name);
+  }
+  const windows = readFileSync(new URL('../../../workflows/ghaw-pr-security-validate-windows.yml', import.meta.url), 'utf8');
+  assert.match(windows, /^    env:\r?\n      GIT_NO_REPLACE_OBJECTS: ['"]1['"]/m);
+});
+
 test('pinned actual preparation and installer assets match the trusted detector hook contract',
   { skip: !process.env.SECURITY_PINNED_GHAW_RUNTIME }, () => {
     const source = process.env.SECURITY_PINNED_GHAW_RUNTIME;

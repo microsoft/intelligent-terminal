@@ -447,6 +447,7 @@ function driverOptions(fixture, events = reviewerEvents(), hooks = {}) {
       assert.equal(options.timeout, 540_000);
       assert.equal(options.env.COPILOT_HOME, join(options.env.HOME, '.copilot'));
       assert.equal(options.env.XDG_CONFIG_HOME, options.env.HOME);
+      assert.equal(options.env.GH_AW_MCP_CONFIG, join(options.env.COPILOT_HOME, 'mcp-config.json'));
       assert(options.env.HOME.startsWith(fixture.privateRoot));
       assert.equal(readFileSync(join(options.env.COPILOT_HOME, 'mcp-config.json'), 'utf8'),
         '{"mcpServers":{"fixture":{}}}');

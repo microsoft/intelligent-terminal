@@ -46,6 +46,9 @@ permissions:
   security-events: read
   copilot-requests: write
 
+env:
+  GIT_NO_REPLACE_OBJECTS: '1'
+
 engine:
   id: copilot
   agent: ghaw-pr-security

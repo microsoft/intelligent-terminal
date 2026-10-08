@@ -34,7 +34,8 @@ function checkedPath(path, directory = false) {
 
 function git(workspace, ...args) {
   return execFileSync('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=', '-C', workspace, ...args],
-    { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+    { env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' },
+      maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
 function plan({ workspace, trustedSha, paths }) {

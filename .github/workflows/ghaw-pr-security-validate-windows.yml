@@ -47,6 +47,7 @@ jobs:
       run:
         shell: pwsh
     env:
+      GIT_NO_REPLACE_OBJECTS: '1'
       TRUSTED_SHA: ${{ inputs.trusted_workflow_sha }}
       WORKFLOW_SHA: ${{ github.workflow_sha }}
       BASE_SHA: ${{ inputs.expected_base_sha }}

@@ -65,6 +65,34 @@ test('restores trusted Git bytes, removes generated stamp, and leaves WTA and in
   assert.deepEqual(readFileSync(join(f.workspace, SKILL)), f.files[SKILL]);
 });
 
+for (const replaced of ['commit', 'blob']) {
+  test(`trusted restoration ignores ambient ${replaced} replacement refs`, t => {
+    const f = fixture(t);
+    const original = replaced === 'commit' ? f.options.trustedSha : f.git('rev-parse', `${f.options.trustedSha}:AGENTS.md`).toString().trim();
+    writeFileSync(join(f.workspace, 'AGENTS.md'), 'ATTACKER REPLACEMENT');
+    f.git('add', 'AGENTS.md');
+    f.git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'replacement');
+    const substitute = f.git('rev-parse', replaced === 'commit' ? 'HEAD' : 'HEAD:AGENTS.md').toString().trim();
+    const oldBase = process.env.GIT_REPLACE_REF_BASE;
+    process.env.GIT_REPLACE_REF_BASE = 'refs/security-restore-replacements/';
+    try {
+      const ambient = { ...process.env };
+      delete ambient.GIT_NO_REPLACE_OBJECTS;
+      const unprotectedGit = (...args) => execFileSync('git', ['-C', f.workspace, ...args], { env: ambient });
+      unprotectedGit('replace', original, substitute);
+      assert.equal(unprotectedGit('show', `${f.options.trustedSha}:AGENTS.md`).toString(), 'ATTACKER REPLACEMENT');
+      const index = readFileSync(join(f.workspace, '.git', 'index'));
+      restoreTrustedInputs(f.options);
+      assert.deepEqual(readFileSync(join(f.workspace, 'AGENTS.md')), f.files['AGENTS.md']);
+      assert.deepEqual(readFileSync(join(f.workspace, '.git', 'index')), index);
+      assert.equal(readFileSync(join(f.outside, 'sentinel'), 'utf8'), 'OUTSIDE UNCHANGED');
+    } finally {
+      if (oldBase === undefined) delete process.env.GIT_REPLACE_REF_BASE;
+      else process.env.GIT_REPLACE_REF_BASE = oldBase;
+    }
+  });
+}
+
 for (const path of ['AGENTS.md', '.agents/policy.md', SKILL]) {
   test(`rejects real leaf symlink at ${path} without changing any target or index`, t => {
     const f = fixture(t);

@@ -22,6 +22,9 @@ concurrency:
   group: ghaw-pr-security-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+env:
+  GIT_NO_REPLACE_OBJECTS: '1'
+
 jobs:
   security-review:
     name: Intelligent Terminal security review

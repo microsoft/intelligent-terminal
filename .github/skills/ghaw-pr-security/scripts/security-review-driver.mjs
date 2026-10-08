@@ -424,7 +424,8 @@ export function runSecurityReviewDriver({
       : '[security-review-driver] starting fixed independent reviewer');
     const result = runChild(executable, buildPhaseArguments(argv, phase, prompt, logDir), {
       cwd: root, env: { ...process.env, COPILOT_AUTO_UPDATE: 'false', COPILOT_CLI_VERSION: '1.0.90',
-        HOME: phaseHome, XDG_CONFIG_HOME: phaseHome, COPILOT_HOME: configDir },
+        HOME: phaseHome, XDG_CONFIG_HOME: phaseHome, COPILOT_HOME: configDir,
+        GH_AW_MCP_CONFIG: resolve(configDir, 'mcp-config.json') },
       shell: false, encoding: 'utf8', timeout, maxBuffer: MAX_OUTPUT, killSignal: 'SIGKILL',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
