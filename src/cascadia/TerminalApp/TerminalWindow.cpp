@@ -282,6 +282,11 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    WindowLayout TerminalWindow::GetStartupRestoreLayout() const
+    {
+        return _root ? _root->GetStartupRestoreLayout() : nullptr;
+    }
+
     winrt::Windows::UI::Xaml::ElementTheme TerminalWindow::GetRequestedTheme()
     {
         return Theme().RequestedTheme();

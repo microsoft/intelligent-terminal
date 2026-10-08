@@ -43,6 +43,7 @@
 #include "DebugTapConnection.h"
 #include "FreOverlay.h"
 #include "../inc/AgentPaneRestore.h"
+#include "../inc/WindowPersistence.h"
 #include "MarkdownPaneContent.h"
 #include "Remoting.h"
 #include "ScratchpadContent.h"
@@ -12388,6 +12389,14 @@ namespace winrt::TerminalApp::implementation
         QuitRequested.raise(nullptr, nullptr);
     }
 
+    std::vector<ActionAndArgs> TerminalPage::_BuildPersistedTabActions(Tab* tab)
+    {
+        _RefreshAgentRestoreIdentity(tab);
+        auto actions = tab->BuildStartupActions(BuildStartupKind::Persist);
+        _StampAgentResumeCommandlines(actions);
+        return actions;
+    }
+
     WindowLayout TerminalPage::GetWindowLayout()
     {
         // This method may be called for a window even if it hasn't had a tab yet or lost all of them.
@@ -12403,11 +12412,7 @@ namespace winrt::TerminalApp::implementation
         for (auto tab : _tabs)
         {
             auto t = winrt::get_self<implementation::Tab>(tab);
-            // Must run before `BuildStartupActions`, which is what reads the
-            // identity out of the agent pane.
-            _RefreshAgentRestoreIdentity(t);
-            auto tabActions = t->BuildStartupActions(BuildStartupKind::Persist);
-            _StampAgentResumeCommandlines(tabActions);
+            auto tabActions = _BuildPersistedTabActions(t);
             actions.insert(actions.end(), std::make_move_iterator(tabActions.begin()), std::make_move_iterator(tabActions.end()));
         }
 
@@ -12466,6 +12471,69 @@ namespace winrt::TerminalApp::implementation
         return layout;
     }
 
+    WindowLayout TerminalPage::GetStartupRestoreLayout()
+    {
+        if (_windowCloseAccepted && _closingStartupRestoreLayout)
+        {
+            return _closingStartupRestoreLayout;
+        }
+        return _AppendKeptTabsToStartupLayout(GetWindowLayout());
+    }
+
+    WindowLayout TerminalPage::_AppendKeptTabsToStartupLayout(const WindowLayout& visibleLayout)
+    {
+        std::unordered_set<winrt::guid> savedTabs;
+        for (const auto& tab : _tabs)
+        {
+            savedTabs.emplace(winrt::guid{ _GetTabImpl(tab)->StableId() });
+        }
+
+        std::vector<ActionAndArgs> extraActions;
+        const auto available = _manager.KeptGroups();
+        for (const auto& owner : _manager.KeptPages())
+        {
+            const auto page = winrt::get_self<TerminalPage>(owner);
+            for (const auto& tab : _manager.KeptTabs(owner))
+            {
+                const auto impl = winrt::get_self<Tab>(tab);
+                const winrt::guid id{ impl->StableId() };
+                if (!available.HasKey(id) || !savedTabs.emplace(id).second)
+                {
+                    continue;
+                }
+                auto actions = page->_BuildPersistedTabActions(impl);
+                extraActions.insert(extraActions.end(), std::make_move_iterator(actions.begin()), std::make_move_iterator(actions.end()));
+            }
+        }
+        if (extraActions.empty())
+        {
+            return visibleLayout;
+        }
+
+        WindowLayout layout;
+        std::vector<ActionAndArgs> actions;
+        if (visibleLayout)
+        {
+            for (const auto& action : visibleLayout.TabLayout())
+            {
+                actions.emplace_back(action);
+            }
+            layout.InitialPosition(visibleLayout.InitialPosition());
+            layout.InitialSize(visibleLayout.InitialSize());
+            layout.LaunchMode(visibleLayout.LaunchMode());
+        }
+        actions.insert(actions.end(), std::make_move_iterator(extraActions.begin()), std::make_move_iterator(extraActions.end()));
+        if (visibleLayout)
+        {
+            if (const auto focused = _GetFocusedTabIndex())
+            {
+                actions.emplace_back(ShortcutAction::SwitchToTab, SwitchToTabArgs{ *focused });
+            }
+        }
+        layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+        return layout;
+    }
+
     void TerminalPage::PersistState()
     {
         // There are two persistence mechanisms in play here:
@@ -12480,32 +12548,8 @@ namespace winrt::TerminalApp::implementation
         // so the generic restore path re-opens the named window which in
         // turn claims its own workspace. Unnamed windows don't have a stable
         // key, so their full layout is stored directly in the vector.
-        const auto& windowName = _WindowProperties.WindowName();
-        if (const auto layout = GetWindowLayout())
-        {
-            if (!windowName.empty())
-            {
-                // Persist the full layout into the workspace collection.
-                ApplicationState::SharedInstance().SaveWorkspace(windowName, layout);
-
-                // Build a minimal layout with just an openWorkspace action
-                // so the generic restore path re-opens this workspace by name.
-                std::vector<ActionAndArgs> actions;
-                ActionAndArgs action;
-                action.Action(ShortcutAction::OpenWorkspace);
-                OpenWorkspaceArgs args{ windowName };
-                action.Args(args);
-                actions.emplace_back(std::move(action));
-
-                WindowLayout stub;
-                stub.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
-                ApplicationState::SharedInstance().AppendPersistedWindowLayout(stub);
-            }
-            else
-            {
-                ApplicationState::SharedInstance().AppendPersistedWindowLayout(layout);
-            }
-        }
+        ::Microsoft::Terminal::WindowPersistence::AppendLayout(
+            ApplicationState::SharedInstance(), { GetWindowLayout(), _WindowProperties.WindowName() });
     }
 
     // Method Description:
@@ -12569,16 +12613,8 @@ namespace winrt::TerminalApp::implementation
         {
             co_return;
         }
-        // During FRE, tabs are deferred (zero tabs). No warning needed;
-        // just close the window immediately.
-        if (_tabs.Size() == 0)
-        {
-            _windowCloseAccepted = true;
-            CloseWindowRequested.raise(*this, nullptr);
-            co_return;
-        }
-
-        if (_ShouldWarnOnClose() &&
+        // FRE can leave this window empty while other tabs are already headless.
+        if (_tabs.Size() != 0 && _ShouldWarnOnClose() &&
             !_displayingCloseDialog)
         {
             if (_newTabButton && _newTabButton.Flyout())
@@ -12612,15 +12648,37 @@ namespace winrt::TerminalApp::implementation
         }
         CATCH_LOG()
         const auto keepAlive = get_strong();
+        WindowLayout closingLayout{ nullptr };
+        try
+        {
+            if (_settings.GlobalSettings().ShouldUsePersistedLayout())
+            {
+                // Capture every tab before Keep running removes it from this window.
+                closingLayout = GetWindowLayout();
+                _closingStartupRestoreLayout = _AppendKeptTabsToStartupLayout(closingLayout);
+                if (_settings.GlobalSettings().FirstWindowPreference() == FirstWindowPreference::PersistedLayoutAndContent)
+                {
+                    const std::filesystem::path directory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+                    ::Microsoft::Terminal::WindowPersistence::PersistBuffers(
+                        Panes(), directory, IsRunningElevated());
+                    ::Microsoft::Terminal::WindowPersistence::PersistBuffers(
+                        _manager.KeptPanes(), directory, IsRunningElevated());
+                }
+            }
+        }
+        CATCH_LOG()
         _windowCloseAccepted = true;
-        auto rollback = wil::scope_exit([&]() noexcept { _windowCloseAccepted = false; });
+        auto rollback = wil::scope_exit([&]() noexcept {
+            _windowCloseAccepted = false;
+            _closingStartupRestoreLayout = nullptr;
+        });
         const std::vector<winrt::TerminalApp::Tab> closingTabs{ _tabs.begin(), _tabs.end() };
         for (const auto& tab : closingTabs)
         {
             _KeepTabRunning(_GetTabImpl(tab));
         }
         rollback.release();
-        CloseWindowRequested.raise(*this, nullptr);
+        CloseWindowRequested.raise(*this, closingLayout);
     }
 
     void TerminalPage::ShutdownPanes()
