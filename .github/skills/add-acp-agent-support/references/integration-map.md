@@ -131,6 +131,36 @@ authentication, model selection, and probing for agent-specific assumptions.
 Do not add protocol special cases when profile metadata or ACP capabilities can
 drive the behavior.
 
+### First-user authentication
+
+An `InProtocol` profile is not proof of working onboarding. Test an uninitialized
+provider authentication context through the normal Agent pane:
+
+- retain the advertised `authMethods` for the exact provider/source;
+- expose a real sign-in action and let the user select the advertised method;
+- issue standard ACP `authenticate` on the same master-owned provider process,
+  keeping stdin and the browser callback alive until completion;
+- distinguish authorization waiting, cancellation, timeout, provider rejection,
+  and authenticated session creation;
+- never substitute ordinary CLI login, credential copying, sudo or manual
+  protocol messages for product first-login acceptance.
+
+Provider browser progress belongs to the initiating helper's private channel,
+not a public COM broadcast. Validate browser destinations and attempt ownership;
+discard stale/source-mismatched results and redact authorization URLs/codes from
+all diagnostic phases. Cancelling the client wait does not log out the provider
+or revoke an authorization that already completed.
+
+External login adapters must construct native argument vectors for the selected
+source. A WSL provider must sign in inside its distro/default-user environment,
+not via a host executable found on Windows PATH. Preserve the existing host
+device-login behavior and enterprise-host normalization.
+
+WSL discovery uses the selected user's login shell. A failed shell/profile probe
+is not proof that the executable was deleted. Surface that environment and
+actionable PATH/profile guidance without inspecting another user's home or
+silently rewriting shell configuration.
+
 ### Session hooks and history
 
 Implement hooks only when the CLI exposes a documented hook or plugin API that

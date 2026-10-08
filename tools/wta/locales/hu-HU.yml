@@ -266,3 +266,8 @@ system.config_update_failed: "A(z) %{option} frissítése sikertelen: %{error}"
 system.yolo_disable_pending: "az AI-ügynök szolgáltatója nem erősítette meg, hogy a munkamenet az előírt, emelt jogosultság nélküli állapotban van"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Az automatikus jóváhagyást a szervezet szabályzata letiltotta."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Ismeretlen modell: %{model} — írja be a /model parancsot az elérhető lista megtekintéséhez."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Válasszon bejelentkezési módot az itteni folytatáshoz."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Fejezze be a bejelentkezést a böngészőben. A várakozás megszakításához nyomja meg az Esc billentyűt."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "A bejelentkezés nem fejeződött be időben. Próbálja újra, amikor készen áll."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Nem találtuk a(z) \"%{agent}\" ügynököt a(z) %{distro} bejelentkezési környezetében. Ellenőrizze ennek a Linux-felhasználónak a telepítését, PATH változóját és rendszerhéjprofilját, majd próbálja újra."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

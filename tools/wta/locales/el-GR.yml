@@ -268,3 +268,8 @@ system.config_update_failed: "Αποτυχία ενημέρωσης του %{opt
 system.yolo_disable_pending: "ο πάροχος του πράκτορα τεχνητής νοημοσύνης δεν έχει επιβεβαιώσει ότι η συνεδρία βρίσκεται στην απαιτούμενη κατάσταση χωρίς προνόμια"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Η αυτόματη έγκριση είναι απενεργοποιημένη από την πολιτική του οργανισμού σας."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Άγνωστο μοντέλο %{model} — πληκτρολογήστε /model για να δείτε τη διαθέσιμη λίστα."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Επιλέξτε μια μέθοδο σύνδεσης για να συνεχίσετε εδώ."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Ολοκληρώστε τη σύνδεση στο πρόγραμμα περιήγησής σας. Πατήστε Esc για να ακυρώσετε την αναμονή."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "Η σύνδεση δεν ολοκληρώθηκε εγκαίρως. Δοκιμάστε ξανά όταν είστε έτοιμοι."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Δεν μπορέσαμε να βρούμε το \"%{agent}\" στο περιβάλλον σύνδεσης του %{distro}. Ελέγξτε την εγκατάσταση, το PATH και το προφίλ κελύφους αυτού του χρήστη Linux και δοκιμάστε ξανά."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

@@ -337,8 +337,22 @@ through WSL interop is not a Linux ACP installation.
 
 For a Windows agent pane, select **Google Antigravity** in agent settings. For WSL,
 open that distro's profile settings and select its Antigravity backend. Authentication
-is offered through ACP in the agent pane; keep the connection alive while completing
-any browser authorization. Do not copy credentials between Windows and Linux.
+is offered through ACP in the agent pane: select **Sign in**, choose a method
+advertised by the server, and complete any browser authorization while the pane
+is waiting. The server remains alive and Terminal establishes the authenticated
+session after authorization. Press **Esc** to cancel waiting; this does not log
+out the provider or revoke authorization already completed. Do not copy credentials
+between Windows and Linux or between Linux users.
+
+The WSL runtime must be visible in the selected distro's default user's login
+environment. Files installed for another user can exist while discovery cannot
+find them. Check that user's `bash -lc` PATH and profile syntax rather than
+switching to root or entering an ACP path as a custom agent. After correcting the
+environment, reopen the profile settings so discovery runs again.
+
+Signing in to the independent interactive `agy` CLI does not select an ACP
+authentication method. Do not run an invented `agy --acp` or manually submit
+JSON-RPC to complete normal product onboarding.
 
 Model selection and native permission modes use the options advertised by the
 connected ACP session. Intelligent Terminal's shared BYOK configuration is not

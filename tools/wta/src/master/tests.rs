@@ -9,6 +9,104 @@ use crate::coordinator::mock_native_delegate_executables;
 use acp::schema::v1::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+#[tokio::test(flavor = "current_thread")]
+async fn auth_bridge_private_owner_and_shared_serialization_survive_disconnect() {
+    LocalSet::new().run_until(async {
+        const URL: &str = "https://accounts.google.com/o/oauth2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A8181%2Fcallback&state=fixture";
+        let bridge = Arc::new(AgentAuthenticationBridge {
+            gate: Mutex::new(()),
+            stderr: AgentStderrLog::new("test-agent"),
+        });
+        let attempt = uuid::Uuid::new_v4();
+        let (owner, mut owner_rx) = mpsc::unbounded_channel();
+        let (peer, mut peer_rx) = mpsc::unbounded_channel();
+        let (arrived, arrival) = tokio::sync::oneshot::channel();
+        let (release, released) = tokio::sync::oneshot::channel::<()>();
+        let (reply, result) = tokio::sync::oneshot::channel();
+        let first = tokio::task::spawn_local(forward_shared_authentication(
+            Arc::clone(&bridge), Some(attempt), Some(owner),
+            async move {
+                arrived.send(()).unwrap();
+                released.await.unwrap();
+                Ok(acp::schema::v1::AuthenticateResponse::new())
+            }, reply,
+        ));
+        arrival.await.unwrap();
+        bridge.stderr.log_line(&format!("Open {URL}"));
+        let notification = owner_rx.recv().await.unwrap();
+        assert_eq!(
+            crate::protocol::acp::authentication::parse_browser_notification(&notification),
+            Some(Ok((attempt, URL.to_string())))
+        );
+        assert!(peer_rx.try_recv().is_err());
+        drop(owner_rx);
+        let (second_arrived, mut second_arrival) = tokio::sync::oneshot::channel();
+        let (second_reply, second_result) = tokio::sync::oneshot::channel();
+        let second = tokio::task::spawn_local(forward_shared_authentication(
+            Arc::clone(&bridge), None, Some(peer),
+            async move {
+                second_arrived.send(()).unwrap();
+                Ok(acp::schema::v1::AuthenticateResponse::new())
+            }, second_reply,
+        ));
+        tokio::task::yield_now().await;
+        assert!(second_arrival.try_recv().is_err(), "provider RPC must stay serialized after owner closes");
+        assert!(bridge.gate.try_lock().is_err());
+        release.send(()).unwrap();
+        assert!(result.await.unwrap().is_ok());
+        assert!(second_result.await.unwrap().is_ok(), "legacy authenticate needs no attempt metadata");
+        first.await.unwrap();
+        second.await.unwrap();
+        assert!(bridge.gate.try_lock().is_ok());
+        assert!(peer_rx.try_recv().is_err());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn auth_bridge_bounds_provider_wait_and_releases_guard() {
+    LocalSet::new()
+        .run_until(async {
+            let bridge = Arc::new(AgentAuthenticationBridge {
+                gate: Mutex::new(()),
+                stderr: AgentStderrLog::new("test-agent"),
+            });
+            let (owner, _owner_rx) = mpsc::unbounded_channel();
+            let (arrived, arrival) = tokio::sync::oneshot::channel();
+            let (reply, result) = tokio::sync::oneshot::channel();
+            let task = tokio::task::spawn_local(forward_shared_authentication(
+                Arc::clone(&bridge),
+                Some(uuid::Uuid::new_v4()),
+                Some(owner),
+                async move {
+                    arrived.send(()).unwrap();
+                    futures::future::pending::<AuthenticationResult>().await
+                },
+                reply,
+            ));
+            arrival.await.unwrap();
+            tokio::time::advance(AUTH_TIMEOUT).await;
+            let error = result.await.unwrap().unwrap_err();
+            assert!(error.to_string().contains("timed out"));
+            task.await.unwrap();
+            assert!(bridge.gate.try_lock().is_ok());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn auth_bridge_rejects_unadvertised_method_before_forwarding() {
+    LocalSet::new()
+        .run_until(async {
+            let handler = model_handler(unbound_test_agent("test-agent"), 1);
+            let request = acp::schema::v1::AuthenticateRequest::new(
+                acp::schema::v1::AuthMethodId::new("unadvertised"),
+            );
+            assert!(handler.authenticate(request).await.is_err());
+            assert!(handler.state.agent_authentication.lock().await.is_empty());
+        })
+        .await;
+}
+
 fn empty_agent_cell() -> AgentCell {
     Arc::new(OnceCell::new())
 }
@@ -1529,6 +1627,7 @@ fn make_state_with_retirement_pending_timeout(
         registry: crate::session_registry::InMemoryRegistry::shared(),
         session_activation_receipts: Mutex::new(HashMap::new()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
+        agent_authentication: Mutex::new(HashMap::new()),
         wt: None,
         agents: Mutex::new(HashMap::new()),
         history_refresh: Arc::new(Mutex::new(())),
@@ -11863,6 +11962,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         registry: crate::session_registry::InMemoryRegistry::shared(),
         session_activation_receipts: Mutex::new(HashMap::new()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
+        agent_authentication: Mutex::new(HashMap::new()),
         wt: Some(wt),
         agents: Mutex::new(HashMap::new()),
         history_refresh: Arc::new(Mutex::new(())),

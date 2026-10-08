@@ -268,3 +268,8 @@ system.config_update_failed: "%{option} کو اپ ڈیٹ کرنے میں ناک�
 system.yolo_disable_pending: "ایجنٹ فراہم کنندہ نے ابھی تک اس مطلوبہ سیشن حالت کی تصدیق نہیں کی جس میں خصوصی اختیارات والا موڈ بند ہے"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: آپ کی تنظیم کی پالیسی کے ذریعے خودکار منظوری غیر فعال ہے۔"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "نامعلوم ماڈل %{model} — دستیاب فہرست دیکھنے کے لیے /model ٹائپ کریں۔"  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "آپ کے ایجنٹ \"%{agent}\" کو تصدیق کی ضرورت ہے۔ یہاں جاری رکھنے کے لیے سائن ان کا طریقہ منتخب کریں۔"  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "اپنے براؤزر میں سائن ان مکمل کریں۔ انتظار منسوخ کرنے کے لیے Esc دبائیں۔"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "سائن ان وقت پر مکمل نہیں ہوا۔ جب آپ تیار ہوں تو دوبارہ کوشش کریں۔"  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} کے لاگ ان ماحول میں \"%{agent}\" نہیں ملا۔ اس Linux صارف کی تنصیب، PATH اور شیل پروفائل کی جانچ کریں، پھر دوبارہ کوشش کریں۔"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

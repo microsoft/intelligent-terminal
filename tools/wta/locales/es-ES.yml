@@ -267,3 +267,8 @@ system.config_update_failed: "Error al actualizar %{option}: %{error}"
 system.yolo_disable_pending: "el proveedor no ha confirmado el estado de sesión sin privilegios requerido"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: La aprobación automática está deshabilitada por la directiva de tu organización."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Modelo desconocido %{model} — escriba /model para ver la lista disponible."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Su agente \"%{agent}\" requiere autenticación. Seleccione un método de inicio de sesión para continuar aquí."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Complete el inicio de sesión en su navegador. Pulse Esc para cancelar la espera."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "El inicio de sesión no se completó a tiempo. Inténtelo de nuevo cuando esté listo."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "No hemos podido encontrar \"%{agent}\" en el entorno de inicio de sesión de %{distro}. Compruebe la instalación, PATH y el perfil del intérprete de comandos de este usuario de Linux y vuelva a intentarlo."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

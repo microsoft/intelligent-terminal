@@ -267,3 +267,8 @@ system.config_update_failed: "Bigo sa pag-update ng %{option}: %{error}"
 system.yolo_disable_pending: "hindi pa kinukumpirma ng tagapagbigay ng agent ang kinakailangang hindi pribilehiyadong estado ng session"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Naka-disable ang awtomatikong pag-apruba ayon sa patakaran ng iyong organisasyon."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Hindi kilalang modelo %{model} — i-type ang /model para makita ang available na listahan."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Pumili ng paraan ng pag-sign in para magpatuloy dito."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Kumpletuhin ang pag-sign in sa iyong browser. Pindutin ang Esc para kanselahin ang paghihintay."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "Hindi natapos sa oras ang pag-sign in. Subukang muli kapag handa ka na."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Hindi namin makita ang \"%{agent}\" sa kapaligiran ng pag-login ng %{distro}. Suriin ang pagkaka-install, PATH, at profile ng shell ng Linux user na ito, pagkatapos ay subukang muli."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

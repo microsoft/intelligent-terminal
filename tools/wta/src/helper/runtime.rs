@@ -779,7 +779,8 @@ async fn run_acp_app(
                         master_ext_rx,
                         shell_mgr_for_pipe,
                         wt_connected,
-                        false, // post_login_reconnect: first connection, no authenticate needed
+                        false, // first connection; first-login authentication is an explicit UI action
+                        None,
                         proposal_channels_for_pipe,
                     )
                     .await

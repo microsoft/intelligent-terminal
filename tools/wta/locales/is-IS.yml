@@ -267,3 +267,8 @@ system.config_update_failed: "Tókst ekki að uppfæra %{option}: %{error}"
 system.yolo_disable_pending: "veitandi agentsins hefur ekki staðfest að lotan sé í nauðsynlegri stöðu án aukinna réttinda"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Sjálfvirkt samþykki er óvirkt samkvæmt stefnu fyrirtækis þíns."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Óþekkt líkan %{model} — sláðu inn /model til að sjá tiltækan lista."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Agentinn þinn \"%{agent}\" krefst auðkenningar. Veldu innskráningaraðferð til að halda áfram hér."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Ljúktu innskráningu í vafranum þínum. Ýttu á Esc til að hætta að bíða."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "Innskráningu lauk ekki í tæka tíð. Reyndu aftur þegar þú ert tilbúinn."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Við fundum ekki \"%{agent}\" í innskráningarumhverfi %{distro}. Athugaðu uppsetningu, PATH og skeljarprófíl þessa Linux-notanda og reyndu síðan aftur."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

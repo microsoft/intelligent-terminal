@@ -12593,6 +12593,133 @@ fn diagnostic_setup_options_route_auth_by_agent() {
     );
 }
 
+#[test]
+fn protocol_auth_onboarding_offers_product_sign_in_instead_of_external_retry() {
+    for (id, name) in [("antigravity", "Google Antigravity"), ("gemini", "Gemini")] {
+        let status = agent_status_for_test(id, name, true);
+        let options =
+            build_setup_options_with_uncertainty(&SetupReason::AgentError, Some(&status), false);
+        assert!(
+            options.iter().any(|option| matches!(
+                option, SetupOption::SignIn { agent_id, .. } if agent_id == id
+            )),
+            "{id} must offer a real product sign-in action, not an external-login retry"
+        );
+        assert!(!options
+            .iter()
+            .any(|option| matches!(option, SetupOption::Retry)));
+    }
+}
+
+#[test]
+fn protocol_auth_onboarding_copilot_login_preserves_selected_wsl_source() {
+    let mut app = test_app();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu-24.04".into(),
+    };
+    app.show_copilot_auth_screen();
+    let command = &app.auth.as_ref().unwrap().login_command;
+    assert!(command.contains("wsl.exe"), "{command}");
+    assert!(command.contains("Ubuntu-24.04"), "{command}");
+    assert!(!command.contains("-u root"), "{command}");
+}
+
+#[test]
+fn protocol_auth_onboarding_selects_advertised_method_and_cancels_without_quitting() {
+    let mut app = test_app();
+    app.current_agent_id = "antigravity".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu-24.04".into(),
+    };
+    app.handle_event(AppEvent::AcpAuthenticationMethods {
+        agent_id: "antigravity".into(),
+        source: app.current_agent_source.clone(),
+        methods: vec![agent_client_protocol::schema::v1::AuthMethod::Agent(
+            agent_client_protocol::schema::v1::AuthMethodAgent::new(
+                "oauth-personal",
+                "Personal OAuth",
+            ),
+        )],
+    });
+    app.handle_event(AppEvent::AgentError {
+        session_id: None,
+        failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+            message: "No authentication method selected".into(),
+        },
+        message: "No authentication method selected".into(),
+    });
+    assert!(matches!(
+        app.setup.as_ref().unwrap().options[0],
+        SetupOption::SignIn { .. }
+    ));
+    app.handle_setup_enter(app.setup.as_ref().unwrap().options[0].clone());
+    assert!(matches!(
+        &app.setup.as_ref().unwrap().options[0],
+        SetupOption::Authenticate { method_id, .. } if method_id == "oauth-personal"
+    ));
+    app.handle_setup_enter(app.setup.as_ref().unwrap().options[0].clone());
+    let attempt = app
+        .pending_acp_authentication
+        .as_ref()
+        .unwrap()
+        .attempt
+        .clone();
+    assert_eq!(attempt.method_id.0.as_ref(), "oauth-personal");
+    assert_eq!(
+        app.pending_acp_authentication.as_ref().unwrap().source,
+        app.current_agent_source
+    );
+    assert!(app.setup.as_ref().unwrap().is_busy());
+    app.handle_setup_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert!(attempt.cancelled.is_cancelled());
+    assert!(!app.should_quit);
+    assert!(!app.acp_authentication_pending());
+    assert_eq!(app.setup.as_ref().unwrap().phase, SetupPhase::Ready);
+}
+
+#[test]
+fn protocol_auth_onboarding_ignores_foreign_source_methods_and_late_cancelled_links() {
+    let mut app = test_app();
+    app.current_agent_id = "antigravity".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu-24.04".into(),
+    };
+    app.handle_event(AppEvent::AcpAuthenticationMethods {
+        agent_id: "antigravity".into(),
+        source: crate::agent_source::AgentSource::Host,
+        methods: vec![agent_client_protocol::schema::v1::AuthMethod::Agent(
+            agent_client_protocol::schema::v1::AuthMethodAgent::new("foreign", "Foreign"),
+        )],
+    });
+    assert!(app.acp_auth_methods.is_empty());
+    // No active attempt means this untrusted late link cannot open a browser.
+    app.handle_event(AppEvent::AcpAuthenticationBrowser {
+        attempt_id: uuid::Uuid::new_v4(),
+        url: "file:///must-not-open".into(),
+    });
+    assert!(app.pending_acp_authentication.is_none());
+}
+
+#[test]
+fn protocol_auth_onboarding_drops_copilot_login_completion_for_another_source() {
+    let mut app = test_app();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu-24.04".into(),
+    };
+    app.show_copilot_auth_screen();
+    app.handle_event(AppEvent::SourceLoginComplete {
+        agent_id: "copilot".into(),
+        source: crate::agent_source::AgentSource::Host,
+        generation: app.auth_recovery_generation,
+        success: true,
+        error: None,
+    });
+    assert_eq!(app.mode, AppMode::Auth);
+    assert!(app.auth.is_some());
+    assert!(!app.pending_acp_start);
+    assert!(!app.needs_post_login_authenticate);
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn fre_auto_install_hint_starts_missing_copilot_install() {
     tokio::task::LocalSet::new()

@@ -267,3 +267,8 @@ system.config_update_failed: "%{option} güncelleştirilemedi: %{error}"
 system.yolo_disable_pending: "AI aracı sağlayıcısı oturumun gerekli ayrıcalıksız durumda olduğunu onaylamadı"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Otomatik onay, kuruluşunuzun ilkesi tarafından devre dışı bırakıldı."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Bilinmeyen model %{model} — kullanılabilir listeyi görmek için /model yazın."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Burada devam etmek için bir oturum açma yöntemi seçin."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Tarayıcınızda oturum açmayı tamamlayın. Beklemeyi iptal etmek için Esc tuşuna basın."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "Oturum açma işlemi zamanında tamamlanmadı. Hazır olduğunuzda yeniden deneyin."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} oturum açma ortamında \"%{agent}\" bulunamadı. Bu Linux kullanıcısının kurulumunu, PATH değişkenini ve kabuk profilini kontrol edip yeniden deneyin."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

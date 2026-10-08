@@ -262,3 +262,8 @@ system.config_update_failed: "更新 %{option} 失敗：%{error}"
 system.yolo_disable_pending: "智能體提供者尚未確認所需的非特殊權限工作階段狀態"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: 您組織的原則已停用自動核准。"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "未知模型 %{model} — 輸入 /model 查看可用清單。"  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "您的智能體 \"%{agent}\" 需要驗證。請選擇登入方式以在此處繼續。"  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "請在瀏覽器中完成登入。按 Esc 取消等待。"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "登入未在規定時間內完成。準備好後請重試。"  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "無法在 %{distro} 的登入環境中找到 \"%{agent}\"。請檢查此 Linux 使用者的安裝狀態、PATH 和 shell 設定檔，然後重試。"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

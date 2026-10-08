@@ -858,6 +858,85 @@ impl App {
                     self.current_tab_mut().input_vertical_goal = None;
                 }
             }
+            AppEvent::AcpAuthenticationMethods {
+                agent_id,
+                source,
+                methods,
+            } => {
+                if agent_id == self.current_agent_id && source == self.current_agent_source {
+                    self.acp_auth_methods = methods;
+                }
+            }
+            AppEvent::AcpAuthenticationBrowser { attempt_id, url } => {
+                let valid = self
+                    .pending_acp_authentication
+                    .as_ref()
+                    .is_some_and(|pending| {
+                        pending.attempt.attempt_id == attempt_id
+                            && pending.agent_id == self.current_agent_id
+                            && pending.source == self.current_agent_source
+                            && !pending.attempt.cancelled.is_cancelled()
+                            && !pending.browser_opened
+                    });
+                if !valid {
+                    return;
+                }
+                match super::open_url_in_browser(&url) {
+                    Ok(()) => {
+                        if let Some(pending) = self.pending_acp_authentication.as_mut() {
+                            pending.browser_opened = true;
+                        }
+                    }
+                    Err(error) => {
+                        tracing::warn!(target: "auth", %error, "could not open authentication browser");
+                        self.cancel_acp_authentication();
+                        self.show_connection_failure_setup(
+                            t!("system.authentication_failed").into_owned(),
+                        );
+                    }
+                }
+            }
+            AppEvent::SourceLoginProgress {
+                agent_id,
+                source,
+                generation,
+                device_code,
+                verify_url,
+            } => {
+                if source == self.current_agent_source
+                    && generation == self.auth_recovery_generation
+                    && self
+                        .auth
+                        .as_ref()
+                        .is_some_and(|auth| auth.agent_id == agent_id)
+                {
+                    self.handle_event(AppEvent::LoginProgress {
+                        device_code,
+                        verify_url,
+                    });
+                }
+            }
+            AppEvent::SourceLoginComplete {
+                agent_id,
+                source,
+                generation,
+                success,
+                error,
+            } => {
+                if source == self.current_agent_source
+                    && generation == self.auth_recovery_generation
+                    && self
+                        .auth
+                        .as_ref()
+                        .is_some_and(|auth| auth.agent_id == agent_id)
+                {
+                    self.handle_event(AppEvent::LoginComplete {
+                        agent_id,
+                        success,
+                        error,
+                    });
+                }
+            }
             AppEvent::ConnectionStage(stage) => {
                 self.state = ConnectionState::Connecting(stage);
                 self.publish_agent_status();
@@ -915,6 +994,7 @@ impl App {
                 session_capabilities_ready,
                 telemetry_byok_binding,
             } => {
+                self.cancel_acp_authentication();
                 self.telemetry_byok_binding = telemetry_byok_binding;
                 self.initial_startup_presentation_eligible = false;
                 self.reconnect_after_transport_retired = false;
@@ -1630,6 +1710,7 @@ impl App {
                     );
 
                 let is_auth_error = failure.is_auth();
+                self.cancel_acp_authentication();
                 if is_auth_error && !self.preflight_setup_active {
                     tracing::info!("AgentError auth fallback: showing setup screen");
                     // Use current_agent_id — set at preflight or agent selection time.
@@ -1641,13 +1722,31 @@ impl App {
                     tracing::info!("AgentError: resolved agent_id={}", agent_id);
                     let profile = crate::agent_registry::lookup_profile(&agent_id);
                     let reason = SetupReason::AgentError;
-                    let options = if matches!(
-                        self.current_agent_source,
-                        crate::agent_source::AgentSource::Wsl { .. }
-                    ) {
-                        build_setup_options(&reason, None)
+                    let options = if !self.acp_auth_methods.is_empty()
+                        && (matches!(
+                            profile.acp_auth_flow,
+                            crate::agent_registry::AcpAuthFlow::InProtocol
+                        ) || self.current_agent_id.starts_with("custom:"))
+                    {
+                        vec![
+                            SetupOption::SignIn {
+                                agent_id: self.current_agent_id.clone(),
+                                display_name: profile.display_name.to_string(),
+                            },
+                            SetupOption::ChooseAgentSource,
+                        ]
                     } else {
-                        let agent_status = crate::agent_check::check_agent(profile.id);
+                        // AuthRequired comes from an initialized source-bound ACP
+                        // process; probing Windows here would misclassify WSL login.
+                        let agent_status = crate::agent_check::AgentStatus {
+                            id: profile.id.to_string(),
+                            display_name: profile.display_name.to_string(),
+                            cli_found: true,
+                            cli_path: None,
+                            install_hint: profile.install_hint.to_string(),
+                            auth_hint: profile.auth_hint.to_string(),
+                            auto_installable: false,
+                        };
                         build_setup_options(&reason, Some(&agent_status))
                     };
                     self.mode = AppMode::Setup;
@@ -1671,7 +1770,10 @@ impl App {
                         phase: SetupPhase::Ready,
                         options,
                         title: t!("setup.title.sign_in").into_owned(),
-                        subtitle: if profile.id == "copilot" {
+                        subtitle: if !self.acp_auth_methods.is_empty() && profile.id != "copilot" {
+                            t!("setup.subtitle.protocol_auth", agent = profile.display_name)
+                                .into_owned()
+                        } else if profile.id == "copilot" {
                             t!("setup.subtitle.copilot_auth", agent = profile.display_name)
                                 .into_owned()
                         } else {

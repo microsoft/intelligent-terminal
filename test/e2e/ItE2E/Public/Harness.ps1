@@ -65,9 +65,14 @@ function Get-DescendantWtaIds {
         throw 'Terminal process disappeared during descendant discovery without a confirmed owned exit.'
     }
     # CIM's DMTF timestamp has microsecond precision; Process.StartTime has 100ns ticks.
-    $rootTicks = $RootStartTime.ToUniversalTime().Ticks
-    if ($AsProcess -and $root.CreationDate.ToUniversalTime().Ticks -ne ($rootTicks - $rootTicks % 10)) {
-        throw 'Terminal process identity changed during descendant discovery.'
+    if ($AsProcess) {
+        if (-not $PSBoundParameters.ContainsKey('RootStartTime')) {
+            throw 'Creation-proven descendant discovery requires RootStartTime.'
+        }
+        $rootTicks = $RootStartTime.ToUniversalTime().Ticks
+        if ($root.CreationDate.ToUniversalTime().Ticks -ne ($rootTicks - $rootTicks % 10)) {
+            throw 'Terminal process identity changed during descendant discovery.'
+        }
     }
     $byParent = @{}
     foreach ($p in $all) { $byParent[[int]$p.ParentProcessId] += @($p) }
@@ -182,9 +187,15 @@ function Get-WtProcessesForApp {
             if (-not $path) {
                 if ($process.HasExited) { continue }
                 if (-not $process.ProcessName -or $process.ProcessName -in $executableNames) {
-                    throw "Cannot establish package inactivity: executable path unavailable for pid=$($process.Id) ($($process.ProcessName))."
+                    try { $path = Get-ItProcessImagePath -Id $process.Id }
+                    catch {
+                        if ($process.HasExited) { continue }
+                        throw "Cannot establish package inactivity: executable path unavailable for pid=$($process.Id) ($($process.ProcessName))."
+                    }
+                    if (-not $path) { throw "Cannot establish package inactivity: empty executable path for pid=$($process.Id)." }
+                } else {
+                    continue
                 }
-                continue
             }
             if ([IO.Path]::GetFullPath($path).StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { $process }
         }
@@ -258,8 +269,7 @@ namespace ItE2EActivation {
     [ItE2EActivation.Native]::Activate($AppUserModelId)
 }
 
-function Get-ItCreatedProcessPackage {
-    param([Parameter(Mandatory)]$Process)
+function Initialize-ItCreatedPackageNative {
     if (-not ('ItE2ECreatedPackage.Native' -as [type])) {
         Add-Type @'
 using System;
@@ -271,6 +281,16 @@ namespace ItE2ECreatedPackage {
   static extern int GetPackageFullName(IntPtr process, ref uint length, StringBuilder name);
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
   static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder name, ref uint length);
+  [DllImport("kernel32.dll", SetLastError=true)]
+  static extern IntPtr OpenProcess(uint access, bool inherit, uint processId);
+  [DllImport("kernel32.dll")]
+  static extern bool CloseHandle(IntPtr process);
+  public static string ImageNameForId(uint processId) {
+   var process = OpenProcess(0x1000, false, processId);
+   if(process == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+   try { return ImageName(process); }
+   finally { CloseHandle(process); }
+  }
   public static string ImageName(IntPtr process) {
    uint length = 32768; var name = new StringBuilder((int)length);
    if(!QueryFullProcessImageName(process, 0, name, ref length))
@@ -290,6 +310,17 @@ namespace ItE2ECreatedPackage {
 }
 '@
     }
+}
+
+function Get-ItProcessImagePath {
+    param([Parameter(Mandatory)][int]$Id)
+    Initialize-ItCreatedPackageNative
+    [ItE2ECreatedPackage.Native]::ImageNameForId([uint32]$Id)
+}
+
+function Get-ItCreatedProcessPackage {
+    param([Parameter(Mandatory)]$Process)
+    Initialize-ItCreatedPackageNative
     [ItE2ECreatedPackage.Native]::FullName($Process.Handle)
 }
 

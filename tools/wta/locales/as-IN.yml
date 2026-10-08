@@ -270,3 +270,8 @@ system.config_update_failed: "আপডেট কৰিবলৈ ব্যৰ্
 system.yolo_disable_pending: "এজেণ্ট প্ৰদানকাৰীয়ে বিশেষাধিকাৰ মোড বন্ধ থকা প্ৰয়োজনীয় ছেশ্বন অৱস্থাটো এতিয়াও নিশ্চিত কৰা নাই"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: আপোনাৰ সংগঠনৰ নীতি অনুসৰি স্বয়ংক্ৰিয় অনুমোদন নিষ্ক্ৰিয় কৰা হৈছে।"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "অজ্ঞাত মডেল %{model} — উপলব্ধ তালিকা চাবলৈ /model টাইপ কৰক।"  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "আপোনাৰ এজেণ্ট \"%{agent}\"-ৰ প্ৰমাণীকৰণৰ প্ৰয়োজন। ইয়াত আগবাঢ়িবলৈ এটা ছাইন ইন পদ্ধতি নিৰ্বাচন কৰক।"  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "আপোনাৰ ব্ৰাউজাৰত ছাইন ইন সম্পূৰ্ণ কৰক। অপেক্ষা বাতিল কৰিবলৈ Esc টিপক।"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "নিৰ্ধাৰিত সময়ৰ ভিতৰত ছাইন ইন সম্পূৰ্ণ নহ'ল। আপুনি সাজু হ'লে পুনৰ চেষ্টা কৰক।"  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro}-ৰ লগইন পৰিৱেশত \"%{agent}\" বিচাৰি পোৱা নগ'ল। এই Linux ব্যৱহাৰকাৰীৰ ইনষ্টলেশ্বন, PATH আৰু শ্বেল প্ৰ'ফাইল পৰীক্ষা কৰক, তাৰ পিছত পুনৰ চেষ্টা কৰক।"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

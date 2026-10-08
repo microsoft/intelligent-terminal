@@ -2462,6 +2462,22 @@ impl WtaClient {
     /// surfacing the error here would tear down the connection on what
     /// is by definition optional, advisory data.
     async fn ext_notification(&self, args: acp::schema::v1::ExtNotification) -> acp::Result<()> {
+        if let Some(progress) =
+            crate::protocol::acp::authentication::parse_browser_notification(&args)
+        {
+            match progress {
+                Ok((attempt_id, url)) => {
+                    let _ = self
+                        .state
+                        .event_tx
+                        .send(AppEvent::AcpAuthenticationBrowser { attempt_id, url });
+                }
+                Err(reason) => {
+                    tracing::warn!(target: "auth", reason, "rejected authentication browser notification");
+                }
+            }
+            return Ok(());
+        }
         if let Some(catalog) =
             crate::protocol::acp::model_select::parse_wta_cloud_catalog_notification(&args)
         {
@@ -3020,6 +3036,9 @@ pub async fn run_acp_client_over_pipe(
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     post_login_reconnect: bool,
+    requested_authentication: Option<
+        crate::protocol::acp::authentication::AcpAuthenticationAttempt,
+    >,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) -> Result<AcpClientExit> {
     let startup_probe = StartupProbe::new();
@@ -3438,6 +3457,51 @@ pub async fn run_acp_client_over_pipe(
         "Agent init response received (over pipe): {:?}",
         init_resp
     ));
+    let _ = event_tx.send(AppEvent::AcpAuthenticationMethods {
+        agent_id: agent_id.clone().unwrap_or_else(|| "copilot".to_string()),
+        source: agent_source.clone(),
+        methods: init_resp.auth_methods.clone(),
+    });
+
+    let mut explicit_authentication_completed = false;
+    if let Some(attempt) = requested_authentication.as_ref() {
+        if !init_resp
+            .auth_methods
+            .iter()
+            .any(|method| method.id() == &attempt.method_id)
+        {
+            anyhow::bail!("selected authentication method is not advertised by this agent");
+        }
+        let _ = event_tx.send(AppEvent::ConnectionStage(
+            t!("connection.authenticating").into_owned(),
+        ));
+        let request = acp::schema::v1::AuthenticateRequest::new(attempt.method_id.clone()).meta(
+            serde_json::json!({"wta": {"auth_attempt_id": attempt.attempt_id.to_string()}})
+                .as_object()
+                .cloned(),
+        );
+        let result = tokio::select! {
+            biased;
+            _ = attempt.cancelled.cancelled() => return Ok(AcpClientExit::ChannelsClosed),
+            result = tokio::time::timeout(std::time::Duration::from_secs(300), conn.authenticate(request)) => result,
+        };
+        match result {
+            Ok(Ok(_)) => explicit_authentication_completed = true,
+            Ok(Err(error)) => {
+                tracing::warn!(target: "auth", error_code = Into::<i32>::into(error.code), "agent authentication failed");
+                return Err(anyhow::Error::new(AgentFailure::HandshakeFailed {
+                    stage: crate::protocol::acp::failure::HandshakeStage::Authenticate,
+                    detail: crate::protocol::acp::authentication::safe_auth_error_message(&error),
+                }));
+            }
+            Err(_) => {
+                return Err(anyhow::Error::new(AgentFailure::HandshakeFailed {
+                    stage: crate::protocol::acp::failure::HandshakeStage::Authenticate,
+                    detail: t!("auth.failure_wait_timeout").into_owned(),
+                }));
+            }
+        }
+    }
 
     // ── Post-login authenticate ──────────────────────────────────────────
     // If this is a reconnect after LoginComplete (the user just completed
@@ -3633,6 +3697,12 @@ pub async fn run_acp_client_over_pipe(
             );
             let mut session = new_session_result.map_err(|e| {
                 let failure = AgentFailure::from_acp_error(&e);
+                if explicit_authentication_completed && failure.is_auth() {
+                    return anyhow::Error::new(AgentFailure::HandshakeFailed {
+                        stage: crate::protocol::acp::failure::HandshakeStage::NewSession,
+                        detail: crate::protocol::acp::authentication::safe_auth_error_message(&e),
+                    });
+                }
                 // If we just completed post-login authenticate successfully
                 // but new_session STILL returns AuthRequired, do NOT route
                 // back to the login screen (that would recreate the auth

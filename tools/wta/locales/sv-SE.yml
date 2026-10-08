@@ -267,3 +267,8 @@ system.config_update_failed: "Det gick inte att uppdatera %{option}: %{error}"
 system.yolo_disable_pending: "AI-agentleverantören har inte bekräftat att sessionen är i det nödvändiga icke-privilegierade läget"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Automatiskt godkännande är inaktiverat av organisationens policy."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Okänd modell %{model} — skriv /model för att se den tillgängliga listan."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Din agent \"%{agent}\" kräver autentisering. Välj en inloggningsmetod för att fortsätta här."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Slutför inloggningen i din webbläsare. Tryck på Esc för att avbryta väntan."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "Inloggningen slutfördes inte i tid. Försök igen när du är redo."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Vi kunde inte hitta \"%{agent}\" i inloggningsmiljön för %{distro}. Kontrollera den här Linux-användarens installation, PATH och skalprofil och försök sedan igen."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

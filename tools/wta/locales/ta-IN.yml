@@ -268,3 +268,8 @@ system.config_update_failed: "%{option} ஐப் புதுப்பிப்
 system.yolo_disable_pending: "சிறப்புரிமை முறை முடக்கப்பட்டிருக்க வேண்டிய அமர்வு நிலையை ஏஜெண்ட் வழங்குநர் இன்னும் உறுதிப்படுத்தவில்லை"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: உங்கள் நிறுவனத்தின் கொள்கையால் தானியங்கி ஒப்புதல் முடக்கப்பட்டுள்ளது."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "அறியப்படாத மாதிரி %{model} — கிடைக்கும் பட்டியலைக் காண /model எனத் தட்டச்சு செய்யவும்."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "உங்கள் எஜென்ட் \"%{agent}\"-க்கு அங்கீகாரம் தேவைப்படுகிறது. இங்கே தொடர உள்நுழையும் முறையைத் தேர்ந்தெடுக்கவும்."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "உங்கள் உலாவியில் உள்நுழைவை முடிக்கவும். காத்திருப்பதை ரத்துசெய்ய Esc ஐ அழுத்தவும்."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "உள்நுழைவு உரிய நேரத்தில் முடியவில்லை. நீங்கள் தயாரானதும் மீண்டும் முயற்சிக்கவும்."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} உள்நுழைவு சூழலில் \"%{agent}\" கிடைக்கவில்லை. இந்த Linux பயனரின் நிறுவல், PATH மற்றும் ஷெல் சுயவிவரத்தைச் சரிபார்த்து, மீண்டும் முயற்சிக்கவும்."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

@@ -269,3 +269,8 @@ system.config_update_failed: "Aktualizace %{option} se nezdařila: %{error}"
 system.yolo_disable_pending: "poskytovatel nepotvrdil požadovaný neprivilegovaný stav relace"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Automatické schvalování je zakázáno zásadami vaší organizace."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Neznámý model %{model} — zadáním /model zobrazíte dostupný seznam."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Vyberte způsob přihlášení a pokračujte zde."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Dokončete přihlášení v prohlížeči. Stisknutím Esc zrušíte čekání."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "Přihlášení nebylo dokončeno včas. Až budete připraveni, zkuste to znovu."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "V přihlašovacím prostředí distribuce %{distro} se nepodařilo najít \"%{agent}\". Zkontrolujte instalaci, PATH a profil shellu tohoto uživatele Linuxu a zkuste to znovu."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

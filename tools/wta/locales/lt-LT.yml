@@ -267,3 +267,8 @@ system.config_update_failed: "Nepavyko atnaujinti %{option}: %{error}"
 system.yolo_disable_pending: "AI agento teikėjas nepatvirtino, kad seansas yra reikiamos neprivilegijuotos būsenos"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Automatinis patvirtinimas išjungtas pagal jūsų organizacijos politiką."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Nežinomas modelis %{model} — įveskite /model, kad pamatytumėte galimų sąrašą."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Pasirinkite prisijungimo būdą, kad tęstumėte čia."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Užbaikite prisijungimą naršyklėje. Paspauskite Esc, kad atšauktumėte laukimą."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "Prisijungimas nebuvo užbaigtas laiku. Bandykite dar kartą, kai būsite pasiruošę."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Nepavyko rasti \"%{agent}\" distribucijos %{distro} prisijungimo aplinkoje. Patikrinkite šio Linux naudotojo diegimą, PATH ir komandų interpretatoriaus profilį, tada bandykite dar kartą."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

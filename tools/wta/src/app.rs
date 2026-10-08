@@ -67,6 +67,14 @@ struct PendingAgentInstall {
     agent_source: crate::agent_source::AgentSource,
 }
 
+#[derive(Clone)]
+struct PendingAcpAuthentication {
+    attempt: crate::protocol::acp::authentication::AcpAuthenticationAttempt,
+    agent_id: String,
+    source: crate::agent_source::AgentSource,
+    browser_opened: bool,
+}
+
 fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Option<ParsedCommand> {
     commands::agent_id_prefix(input)?;
     Some(ParsedCommand {
@@ -246,6 +254,10 @@ pub enum SetupOption {
         agent_id: String,
         display_name: String,
     },
+    Authenticate {
+        method_id: String,
+        display_name: String,
+    },
     /// Re-run executable/prerequisite discovery without starting an installer.
     Recheck,
     /// Preflight: retry connection (custom agent)
@@ -349,7 +361,12 @@ fn build_setup_options_with_uncertainty(
             opts.push(SetupOption::Recheck);
         } else if *reason == SetupReason::AgentError {
             // CLI found but auth missing or known to have failed
-            if status.id == "copilot" {
+            if status.id == "copilot"
+                || matches!(
+                    crate::agent_registry::lookup_profile_by_id(&status.id).acp_auth_flow,
+                    crate::agent_registry::AcpAuthFlow::InProtocol
+                )
+            {
                 // Copilot: we can drive the device-flow sign-in
                 opts.push(SetupOption::SignIn {
                     agent_id: status.id.clone(),
@@ -1166,6 +1183,8 @@ pub struct App {
     /// on agent-switch / retry / install-complete reconnects that also go
     /// through try_start_acp.
     needs_post_login_authenticate: bool,
+    acp_auth_methods: Vec<agent_client_protocol::schema::v1::AuthMethod>,
+    pending_acp_authentication: Option<PendingAcpAuthentication>,
     /// Monotonic id for the in-flight post-login auth recovery. Bumped each
     /// time `PostLoginAuthRecovery` arms its 8s dead-man timer, and bumped
     /// again on a successful `AgentConnected`. The `AuthRecoveryTimedOut`
@@ -1568,6 +1587,8 @@ impl App {
             agent_binding_generation: 0,
             auto_install_selected_agent: false,
             needs_post_login_authenticate: false,
+            acp_auth_methods: Vec::new(),
+            pending_acp_authentication: None,
             auth_recovery_generation: 0,
             auth_recovery_state: AuthRecoveryState::Idle,
             restart_without_acp_pending: false,
@@ -1767,6 +1788,15 @@ impl App {
         self.pending_acp_start = false;
         let post_login_auth = self.needs_post_login_authenticate;
         self.needs_post_login_authenticate = false;
+        let requested_auth = self
+            .pending_acp_authentication
+            .as_ref()
+            .filter(|pending| {
+                pending.agent_id == self.current_agent_id
+                    && pending.source == self.current_agent_source
+                    && !pending.attempt.cancelled.is_cancelled()
+            })
+            .map(|pending| pending.attempt.clone());
         tracing::info!(target: "acp", has_event_tx = self.event_tx.is_some(), has_deferred = self.deferred_acp.is_some(), post_login_auth, "try_start_acp triggered");
 
         let cloud_models = self.cloud_models.clone();
@@ -1904,6 +1934,7 @@ impl App {
                             shell_mgr,
                             wt_connected,
                             post_login_auth, // only true on genuine LoginComplete reconnects
+                            requested_auth,
                             proposal_channels,
                         )
                         .await
@@ -4003,6 +4034,8 @@ impl App {
     }
 
     fn reset_agent_scoped_state(&mut self) {
+        self.cancel_acp_authentication();
+        self.acp_auth_methods.clear();
         self.pending_acp_start = false;
         self.reconnect_after_transport_retired = false;
         self.pending_agent_selection = None;
@@ -4176,18 +4209,26 @@ impl App {
         };
         let options = build_setup_options(&reason, current_status.as_ref());
         let title = reason.title().to_string();
-        let subtitle = if current_status
-            .as_ref()
-            .is_some_and(crate::agent_check::AgentStatus::can_auto_install)
-        {
-            t!(
-                "setup.subtitle.copilot_missing",
-                agent = &result.display_name
-            )
-            .into_owned()
-        } else {
-            t!("setup.subtitle.agent_missing", agent = &result.display_name).into_owned()
-        };
+        let subtitle =
+            if let crate::agent_source::AgentSource::Wsl { distro } = &self.current_agent_source {
+                t!(
+                    "setup.subtitle.wsl_agent_missing",
+                    agent = &result.display_name,
+                    distro = distro
+                )
+                .into_owned()
+            } else if current_status
+                .as_ref()
+                .is_some_and(crate::agent_check::AgentStatus::can_auto_install)
+            {
+                t!(
+                    "setup.subtitle.copilot_missing",
+                    agent = &result.display_name
+                )
+                .into_owned()
+            } else {
+                t!("setup.subtitle.agent_missing", agent = &result.display_name).into_owned()
+            };
         self.mode = AppMode::Setup;
         self.preflight_setup_active = true;
         self.setup = Some(SetupState {
@@ -4229,7 +4270,22 @@ impl App {
                 kind: SetupFailureKind::Connection,
                 message,
             },
-            options: vec![SetupOption::RetryConnection, SetupOption::ChooseAgentSource],
+            options: if !self.acp_auth_methods.is_empty()
+                && (matches!(
+                    profile.acp_auth_flow,
+                    crate::agent_registry::AcpAuthFlow::InProtocol
+                ) || self.current_agent_id.starts_with("custom:"))
+            {
+                vec![
+                    SetupOption::SignIn {
+                        agent_id: self.current_agent_id.clone(),
+                        display_name: profile.display_name.into(),
+                    },
+                    SetupOption::ChooseAgentSource,
+                ]
+            } else {
+                vec![SetupOption::RetryConnection, SetupOption::ChooseAgentSource]
+            },
             title: reason.title(),
             subtitle: t!(
                 "setup.subtitle.connection_failed",
@@ -4249,10 +4305,77 @@ impl App {
     /// leak into the checking view, which treats a non-empty status as live
     /// device-flow progress and would otherwise render a phantom "code copied".
     fn begin_auth_checking(&mut self) {
+        self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
         if let Some(ref mut auth) = self.auth {
             auth.checking = true;
             auth.status_message.clear();
         }
+    }
+
+    fn cancel_acp_authentication(&mut self) {
+        if let Some(pending) = self.pending_acp_authentication.take() {
+            pending.attempt.cancelled.cancel();
+        }
+    }
+
+    pub(crate) fn acp_authentication_pending(&self) -> bool {
+        self.pending_acp_authentication
+            .as_ref()
+            .is_some_and(|pending| {
+                pending.agent_id == self.current_agent_id
+                    && pending.source == self.current_agent_source
+                    && !pending.attempt.cancelled.is_cancelled()
+            })
+    }
+
+    fn show_acp_authentication_methods(&mut self) {
+        let profile = crate::agent_registry::lookup_profile_by_id(&self.current_agent_id);
+        let mut options: Vec<_> = self
+            .acp_auth_methods
+            .iter()
+            .filter(|method| !method.id().0.is_empty())
+            .map(|method| SetupOption::Authenticate {
+                method_id: method.id().to_string(),
+                display_name: format!("{} · {}", profile.display_name, method.name()),
+            })
+            .collect();
+        if options.is_empty() {
+            self.show_connection_failure_setup(t!("system.authentication_failed").into_owned());
+            return;
+        }
+        options.push(SetupOption::ChooseAgentSource);
+        if let Some(setup) = self.setup.as_mut() {
+            setup.options = options;
+            setup.selected_index = 0;
+            setup.phase = SetupPhase::Ready;
+            setup.title = t!("setup.title.sign_in").into_owned();
+            setup.subtitle =
+                t!("setup.subtitle.protocol_auth", agent = profile.display_name).into_owned();
+        }
+    }
+
+    fn start_acp_authentication(&mut self, method_id: String) {
+        if !self
+            .acp_auth_methods
+            .iter()
+            .any(|method| method.id().0.as_ref() == method_id)
+        {
+            tracing::warn!(target: "auth", "refusing an unadvertised authentication method");
+            return;
+        }
+        self.cancel_acp_authentication();
+        self.pending_acp_authentication = Some(PendingAcpAuthentication {
+            attempt: crate::protocol::acp::authentication::AcpAuthenticationAttempt {
+                attempt_id: uuid::Uuid::new_v4(),
+                method_id: agent_client_protocol::schema::v1::AuthMethodId::new(method_id),
+                cancelled: tokio_util::sync::CancellationToken::new(),
+            },
+            agent_id: self.current_agent_id.clone(),
+            source: self.current_agent_source.clone(),
+            browser_opened: false,
+        });
+        let agent_id = self.current_agent_id.clone();
+        self.reconnect_confirmed_available_agent(&agent_id);
     }
 
     fn spawn_login(&self, agent_id: &str, login_command: &str) {
@@ -4260,36 +4383,24 @@ impl App {
             let tx = tx.clone();
             let cmd = login_command.to_string();
             let id = agent_id.to_string();
+            let source = self.current_agent_source.clone();
+            let login_source = source.clone();
+            let generation = self.auth_recovery_generation;
+            let enterprise_host = self
+                .auth
+                .as_ref()
+                .filter(|auth| auth.enterprise_mode)
+                .map(|auth| auth.enterprise_host.clone());
             tokio::task::spawn_local(async move {
                 let progress_tx = tx.clone();
                 let result = tokio::task::spawn_blocking(move || {
                     use std::io::BufRead;
 
-                    // Parse command into exe + args (e.g. "C:\path\copilot.exe login")
-                    // Handle quoted paths: "C:\path with spaces\copilot.exe" login
-                    let (exe, args) = if cmd.starts_with('"') {
-                        // Quoted path: find closing quote
-                        if let Some(end) = cmd[1..].find('"') {
-                            let exe = &cmd[1..end + 1];
-                            let rest = cmd[end + 2..].trim();
-                            (
-                                exe.to_string(),
-                                rest.split_whitespace()
-                                    .map(String::from)
-                                    .collect::<Vec<_>>(),
-                            )
-                        } else {
-                            (cmd.clone(), vec![])
-                        }
-                    } else {
-                        let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
-                        (
-                            parts[0].to_string(),
-                            parts
-                                .get(1)
-                                .map(|s| s.split_whitespace().map(String::from).collect())
-                                .unwrap_or_default(),
-                        )
+                    let invocation = match crate::agent_check::build_login_invocation(
+                        "copilot", &source, enterprise_host.as_deref(),
+                    ) {
+                        Ok(invocation) => invocation,
+                        Err(error) => return (false, Some(error)),
                     };
 
                     // The device-verification URL follows the (optional)
@@ -4297,8 +4408,8 @@ impl App {
                     let verify_url = device_verify_url(&cmd);
                     let verify_url_stderr = verify_url.clone();
 
-                    let mut child = match std::process::Command::new(&exe)
-                        .args(&args)
+                    let mut child = match std::process::Command::new(&invocation.program)
+                        .args(&invocation.args)
                         .stdout(std::process::Stdio::piped())
                         .stderr(std::process::Stdio::piped())
                         .stdin(std::process::Stdio::null())
@@ -4306,8 +4417,8 @@ impl App {
                     {
                         Ok(c) => c,
                         Err(e) => {
-                            tracing::warn!("spawn_login: failed to spawn '{}': {}", exe, e);
-                            return (false, None);
+                            tracing::warn!(target: "login", %e, "could not start source-bound login");
+                            return (false, Some(e.to_string()));
                         }
                     };
 
@@ -4317,6 +4428,7 @@ impl App {
                     let stderr = child.stderr.take();
 
                     let progress_tx2 = progress_tx.clone();
+                    let stderr_source = source.clone();
                     let stderr_handle = std::thread::spawn(move || {
                         let mut found_success = false;
                         let mut error_line: Option<String> = None;
@@ -4328,7 +4440,10 @@ impl App {
                                 if line.contains("enter code") {
                                     if let Some(code) = line.split("enter code ").nth(1) {
                                         let code = code.trim_end_matches('.');
-                                        let _ = progress_tx2.send(AppEvent::LoginProgress {
+                                        let _ = progress_tx2.send(AppEvent::SourceLoginProgress {
+                                            agent_id: "copilot".into(),
+                                            source: stderr_source.clone(),
+                                            generation,
                                             device_code: code.to_string(),
                                             verify_url: verify_url_stderr.clone(),
                                         });
@@ -4359,7 +4474,10 @@ impl App {
                             if line.contains("enter code") {
                                 if let Some(code) = line.split("enter code ").nth(1) {
                                     let code = code.trim_end_matches('.');
-                                    let _ = progress_tx.send(AppEvent::LoginProgress {
+                                    let _ = progress_tx.send(AppEvent::SourceLoginProgress {
+                                        agent_id: "copilot".into(),
+                                        source: source.clone(),
+                                        generation,
                                         device_code: code.to_string(),
                                         verify_url: verify_url.clone(),
                                     });
@@ -4426,7 +4544,9 @@ impl App {
                     "login: spawn_blocking returned, sending LoginComplete success={}",
                     success
                 );
-                let send_result = tx.send(AppEvent::LoginComplete {
+                let send_result = tx.send(AppEvent::SourceLoginComplete {
+                    source: login_source,
+                    generation,
                     agent_id: id,
                     success,
                     error,
@@ -4437,16 +4557,32 @@ impl App {
     }
 
     pub(crate) fn show_copilot_auth_screen(&mut self) {
+        self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
         let agent_id = "copilot";
         let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
         let (enterprise_mode, enterprise_host) = copilot_enterprise_prefill(agent_id);
         self.current_agent_id = agent_id.to_string();
         self.mode = AppMode::Auth;
         self.setup = None;
+        let login_command = match crate::agent_check::build_login_invocation(
+            agent_id,
+            &self.current_agent_source,
+            None,
+        ) {
+            Ok(invocation) => std::iter::once(invocation.program.as_str())
+                .chain(invocation.args.iter().map(String::as_str))
+                .map(crate::coordinator::quote_windows_commandline_arg)
+                .collect::<Vec<_>>()
+                .join(" "),
+            Err(error) => {
+                self.show_connection_failure_setup(error);
+                return;
+            }
+        };
         self.auth = Some(AuthState {
             agent_id: agent_id.to_string(),
             agent_name: profile.display_name.to_string(),
-            login_command: crate::agent_check::build_login_cmd(agent_id, None),
+            login_command,
             checking: false,
             status_message: String::new(),
             enterprise_mode,
@@ -4467,7 +4603,13 @@ impl App {
                 self.should_quit = true;
             }
             KeyCode::Esc => {
-                self.should_quit = true;
+                if self.pending_acp_authentication.is_some() {
+                    self.cancel_acp_authentication();
+                    self.state = ConnectionState::Disconnected;
+                    self.show_acp_authentication_methods();
+                } else {
+                    self.should_quit = true;
+                }
             }
             _ if is_busy => {
                 return;
@@ -4534,12 +4676,11 @@ impl App {
                 if agent_id == "copilot" {
                     self.show_copilot_auth_screen();
                 } else {
-                    tracing::warn!(
-                        target: "setup_key",
-                        agent_id = %agent_id,
-                        "ignoring SignIn option for non-Copilot agent"
-                    );
+                    self.show_acp_authentication_methods();
                 }
+            }
+            SetupOption::Authenticate { method_id, .. } => {
+                self.start_acp_authentication(method_id);
             }
             SetupOption::Recheck | SetupOption::Retry | SetupOption::RetryConnection => {
                 // Re-run preflight detection and try to reconnect
@@ -4975,6 +5116,10 @@ impl App {
             AppEvent::Resize(_, _) => "resize",
             AppEvent::FocusChanged(_) => "focus_changed",
             AppEvent::ConnectionStage(_) => "connection_stage",
+            AppEvent::AcpAuthenticationMethods { .. } => "acp_authentication_methods",
+            AppEvent::AcpAuthenticationBrowser { .. } => "acp_authentication_browser",
+            AppEvent::SourceLoginProgress { .. } => "source_login_progress",
+            AppEvent::SourceLoginComplete { .. } => "source_login_complete",
             AppEvent::CloudModelsAvailable(_) => "cloud_models_available",
             AppEvent::AgentConnected { .. } => "agent_connected",
             AppEvent::AgentReconnectReady(_) => "agent_reconnect_ready",

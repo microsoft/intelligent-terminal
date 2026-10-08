@@ -267,3 +267,8 @@ system.config_update_failed: "Bijwerken van %{option} is mislukt: %{error}"
 system.yolo_disable_pending: "de leverancier van de AI-agent heeft niet bevestigd dat de sessie zich in de vereiste niet-geprivilegieerde status bevindt"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Automatische goedkeuring is uitgeschakeld door het beleid van uw organisatie."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Onbekend model %{model} — typ /model om de beschikbare lijst te zien."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Uw agent \"%{agent}\" vereist verificatie. Selecteer een aanmeldmethode om hier verder te gaan."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Voltooi de aanmelding in uw browser. Druk op Esc om het wachten te annuleren."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "De aanmelding is niet op tijd voltooid. Probeer het opnieuw wanneer u klaar bent."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "We konden \"%{agent}\" niet vinden in de aanmeldomgeving van %{distro}. Controleer de installatie, PATH en het shellprofiel van deze Linux-gebruiker en probeer het opnieuw."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

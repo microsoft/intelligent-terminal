@@ -37,6 +37,12 @@ Add or update tests for:
 - ACP launch command construction and adapter identification;
 - ACP model flags versus delegate model flags;
 - auth command generation and host-argument handling;
+- cold-auth product sign-in actions, advertised-method selection and the actual
+  initialize/authenticate/session handoff without an external-login seed;
+- private browser-progress ownership, URL validation, diagnostic redaction,
+  cancellation, long authorization waiting and stale/source-mismatched results;
+- source-correct external login argument vectors, including WSL/default-user and
+  preserved host/enterprise behavior;
 - resume/new-session metadata when supported;
 - session source parsing, filtering, wire round-trips, labels, and exact resume
   dispatch when session management is supported;
@@ -126,9 +132,12 @@ trusting UI results.
    - no unexpected error or panic is present.
 6. Exercise model selection and reconnect. Verify the selected model reaches
    the ACP session through the protocol or supported server flag.
-7. Exercise unauthenticated startup, the advertised login flow, and credential
-   refresh. Verify logout returns the agent to the expected unauthenticated
-   state.
+7. Exercise unauthenticated startup through the normal product sign-in action,
+   select an advertised method and complete authorization without raw JSON or
+   provider configuration edits. Then verify authenticated session creation,
+   cancellation/timeout/error recovery and fresh-process credential reuse.
+   Use a disposable fixture/context for cold-auth controls; never log out or
+   switch an existing user's account without explicit permission.
 8. If session management is supported, open `/sessions`, select a historical
    row from the new agent, and verify Enter chooses the intended CLI/ACP resume
    path rather than `UnknownCli`. Confirm the resumed tab starts with the stored
@@ -141,6 +150,11 @@ Also verify a fresh agent process can create a session using the established
 authentication. During browser authorization, keep the ACP process and stdin alive
 and let the browser complete the callback; do not actively connect to the OAuth
 listener as a readiness probe.
+
+Perform real first-login acceptance in the selected Windows/WSL source and its
+actual user context. Ordinary CLI sign-in alone is not proof that a separately
+distributed ACP server is authenticated. A successful browser page or a preseeded
+authenticated fixture cannot substitute for this product-owned entry point.
 
 Run the native command for each supported execution source. When a live runtime
 is unavailable, distinguish that prerequisite from product behavior and state

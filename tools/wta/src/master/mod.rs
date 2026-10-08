@@ -61,6 +61,9 @@ use tokio::sync::{mpsc, watch, Mutex, OnceCell};
 use tokio::task::LocalSet;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+use crate::protocol::acp::authentication::{
+    authentication_result_for_helper, browser_notification, take_auth_attempt_id, AUTH_TIMEOUT,
+};
 use crate::protocol::acp::conn;
 use crate::protocol::acp::spawn::{
     spawn_agent_process_for_source_with_provider, AgentStderrLog, ChildEnvironmentPolicy,
@@ -579,6 +582,7 @@ struct MasterStateInner {
     /// of the registry.
     pub(crate) helper_ext_subscribers:
         Mutex<HashMap<HelperId, mpsc::UnboundedSender<acp::schema::v1::ExtNotification>>>,
+    agent_authentication: Mutex<HashMap<AgentInstanceId, Arc<AgentAuthenticationBridge>>>,
     /// Shared `WtChannel` for outbound wtcli/COM calls — currently
     /// used only for `intellterm.wta/focus_session` (resolves a
     /// SessionId → pane_session_id via `registry`, then issues
@@ -1958,6 +1962,90 @@ struct AgentCli {
     /// eventual clean-probe result without leaking one agent/source catalog to
     /// unrelated helpers in the same master.
     bound_helpers: Mutex<HashSet<HelperId>>,
+}
+
+struct AgentAuthenticationBridge {
+    gate: Mutex<()>,
+    stderr: AgentStderrLog,
+}
+
+type AuthenticationResult = acp::Result<acp::schema::v1::AuthenticateResponse>;
+type PrivateAuthSubscriber = mpsc::UnboundedSender<acp::schema::v1::ExtNotification>;
+
+async fn auth_subscriber_closed(subscriber: &Option<PrivateAuthSubscriber>) {
+    if let Some(subscriber) = subscriber {
+        subscriber.closed().await;
+    } else {
+        futures::future::pending::<()>().await;
+    }
+}
+
+async fn forward_shared_authentication(
+    bridge: Arc<AgentAuthenticationBridge>,
+    attempt_id: Option<uuid::Uuid>,
+    subscriber: Option<PrivateAuthSubscriber>,
+    request: impl Future<Output = AuthenticationResult>,
+    mut response: tokio::sync::oneshot::Sender<AuthenticationResult>,
+) {
+    let result = tokio::time::timeout(AUTH_TIMEOUT, async {
+        let _guard = tokio::select! {
+            biased;
+            _ = auth_subscriber_closed(&subscriber) =>
+                return Err(acp::Error::internal_error().data("authentication helper disconnected")),
+            _ = response.closed() =>
+                return Err(acp::Error::internal_error().data("authentication request cancelled")),
+            guard = bridge.gate.lock() => guard,
+        };
+        let (mut progress_guard, mut progress) = if attempt_id.is_some() {
+            let (guard, receiver) = bridge.stderr.subscribe_auth_browser();
+            (Some(guard), Some(receiver))
+        } else {
+            (None, None)
+        };
+        tokio::pin!(request);
+        let mut sent_browser = false;
+        loop {
+            tokio::select! {
+                biased;
+                result = &mut request => return result,
+                _ = auth_subscriber_closed(&subscriber) => {
+                    drop(progress_guard.take());
+                    drop(progress.take());
+                    // Standard ACP has no authenticate cancellation. Keep the
+                    // same process serialized until its reply or the deadline,
+                    // but immediately retire the disconnected owner's progress.
+                    return request.await;
+                }
+                _ = response.closed() => {
+                    drop(progress_guard.take());
+                    drop(progress.take());
+                    return request.await;
+                }
+                Some(url) = async {
+                    match &mut progress {
+                        Some(receiver) => receiver.recv().await,
+                        None => futures::future::pending().await,
+                    }
+                }, if !sent_browser && progress.is_some() => {
+                    if let (Some(attempt_id), Some(subscriber)) = (attempt_id, &subscriber) {
+                        let notification = browser_notification(attempt_id, &url)?;
+                        if subscriber.send(notification).is_err() {
+                            drop(progress_guard.take());
+                            drop(progress.take());
+                            return request.await;
+                        }
+                        sent_browser = true;
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .unwrap_or_else(|_| {
+        Err(acp::Error::internal_error().data("authentication timed out after 300 seconds"))
+    });
+    // The requesting pipe may already have gone away.
+    let _ = response.send(result);
 }
 
 fn update_model_switch_channel_from_load(
@@ -3422,8 +3510,42 @@ impl HelperHandler {
 
     async fn authenticate(
         &self,
-        args: acp::schema::v1::AuthenticateRequest,
+        mut args: acp::schema::v1::AuthenticateRequest,
     ) -> acp::Result<acp::schema::v1::AuthenticateResponse> {
+        let agent = self.resolved_agent("authenticate")?;
+        if !agent
+            .cached_init_resp
+            .auth_methods
+            .iter()
+            .any(|method| method.id() == &args.method_id)
+        {
+            return Err(
+                acp::Error::invalid_params().data("authentication method was not advertised")
+            );
+        }
+        let attempt_id = take_auth_attempt_id(&mut args)?;
+        let subscriber = self
+            .state
+            .helper_ext_subscribers
+            .lock()
+            .await
+            .get(&self.helper_id)
+            .cloned();
+        if attempt_id.is_some() && subscriber.is_none() {
+            return Err(acp::Error::internal_error().data("authentication helper disconnected"));
+        }
+        let bridge = {
+            let mut bridges = self.state.agent_authentication.lock().await;
+            Arc::clone(bridges.entry(agent.instance_id).or_insert_with(|| {
+                Arc::new(AgentAuthenticationBridge {
+                    gate: Mutex::new(()),
+                    stderr: AgentStderrLog::new("agent"),
+                })
+            }))
+        };
+        let browser_attempt = matches!(agent.resolved_agent_id.as_str(), "antigravity" | "gemini")
+            .then_some(attempt_id)
+            .flatten();
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -3431,10 +3553,20 @@ impl HelperHandler {
             helper_id = ?self.helper_id,
             "forwarding authenticate"
         );
-        self.resolved_agent("authenticate")?
-            .conn
-            .authenticate(args)
-            .await
+        let (response, result) = tokio::sync::oneshot::channel();
+        tokio::task::spawn_local(forward_shared_authentication(
+            bridge,
+            browser_attempt,
+            subscriber,
+            async move {
+                authentication_result_for_helper(
+                    agent.conn.authenticate(args).await,
+                    attempt_id.is_some(),
+                )
+            },
+            response,
+        ));
+        result.await.map_err(|_| acp::Error::internal_error())?
     }
 
     async fn close_session(
@@ -4943,6 +5075,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         registry: crate::session_registry::InMemoryRegistry::shared(),
         session_activation_receipts: Mutex::new(HashMap::new()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
+        agent_authentication: Mutex::new(HashMap::new()),
         wt,
         agents: Mutex::new(HashMap::new()),
         history_refresh: Arc::new(Mutex::new(())),
@@ -6011,6 +6144,13 @@ async fn spawn_one_agent(
         history_refresh: AgentHistoryRefresh::default(),
         listed_ever: Mutex::new(HashSet::new()),
     });
+    state.agent_authentication.lock().await.insert(
+        instance_id,
+        Arc::new(AgentAuthenticationBridge {
+            gate: Mutex::new(()),
+            stderr: stderr_log,
+        }),
+    );
 
     // Seed THIS CLI's history. Every agent entering the pool seeds, not just
     // the first: master outlives a Settings agent switch (the helper
@@ -6064,6 +6204,7 @@ async fn reap_agent(
     cell: &AgentCell,
     instance_id: AgentInstanceId,
 ) {
+    state.agent_authentication.lock().await.remove(&instance_id);
     if let Some(agent) = cell.get().filter(|agent| agent.instance_id == instance_id) {
         // Retirement and registry publication share a boundary, without holding
         // the pool lock or waiting for an ACP network request.
@@ -6350,6 +6491,9 @@ async fn serve_helper(
         }
     };
 
+    // Close the private subscriber before any potentially slow session cleanup.
+    // This retires auth progress even while the provider's RPC remains pending.
+    drop(ext_rx);
     // Unregister BEFORE dropping sessions: prevents a race where
     // `drop_sessions_for_helper` would broadcast `session_removed`
     // to ourselves (harmless but pointless, and our `ext_rx` is

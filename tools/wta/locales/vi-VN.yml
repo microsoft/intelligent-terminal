@@ -267,3 +267,8 @@ system.config_update_failed: "Không thể cập nhật %{option}: %{error}"
 system.yolo_disable_pending: "nhà cung cấp tác nhân AI chưa xác nhận rằng phiên đang ở trạng thái không có đặc quyền theo yêu cầu"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Phê duyệt tự động bị vô hiệu hóa bởi chính sách của tổ chức bạn."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Mô hình không xác định %{model} — nhập /model để xem danh sách khả dụng."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Tác nhân AI \"%{agent}\" của bạn yêu cầu xác thực. Chọn phương thức đăng nhập để tiếp tục tại đây."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Hoàn tất đăng nhập trong trình duyệt. Nhấn Esc để hủy chờ."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.failure_wait_timeout: "Đăng nhập không hoàn tất trong thời gian quy định. Hãy thử lại khi bạn sẵn sàng."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Chúng tôi không tìm thấy \"%{agent}\" trong môi trường đăng nhập của %{distro}. Kiểm tra bản cài đặt, PATH và hồ sơ shell của người dùng Linux này, rồi thử lại."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}
