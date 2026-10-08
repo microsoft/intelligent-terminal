@@ -54,6 +54,10 @@ private:
     std::optional<til::point> _oldIslandPos;
 
     winrt::TerminalApp::TitlebarControl _titlebar{ nullptr };
+    winrt::Windows::UI::Xaml::FrameworkElement::SizeChanged_revoker _titlebarContentSizeChangedRevoker;
+    winrt::Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _titlebarContentLayoutUpdatedRevoker;
+    winrt::Windows::UI::Xaml::FrameworkElement _contentDragArea{ nullptr };
+    til::rect _contentDragAreaRect;
 
     wil::unique_hbrush _backgroundBrush;
     til::color _backgroundBrushColor;
@@ -76,6 +80,7 @@ private:
 
     int _GetResizeHandleHeight() const noexcept;
     til::rect _GetDragAreaRect() const noexcept;
+    til::rect _GetContentDragAreaRect() const;
     int _GetTopBorderHeight() const noexcept;
     LRESULT _dragBarNcHitTest(const til::point pointer);
 

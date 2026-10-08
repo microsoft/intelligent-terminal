@@ -988,6 +988,7 @@
   </data>
   <data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>Terminal Protocol-Info anzeigen</value><comment>{Locked="Terminal Protocol"}</comment></data>
   <data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>Bereichssichtbarkeit umschalten</value></data>
+  <data name="ToggleSidebarCommandKey" xml:space="preserve"><value>Seitenleiste ein-/ausblenden</value><comment>A command that shows or collapses the vertical tabs sidebar.</comment></data>
   <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>KI-Agent umschalten</value></data>
   <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>KI-Agent-Bereich fokussieren</value></data>
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>KI-Agent-Sitzungsliste öffnen</value></data>

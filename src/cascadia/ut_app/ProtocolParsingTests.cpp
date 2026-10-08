@@ -16,7 +16,9 @@ namespace TerminalAppUnitTests
 
         TEST_METHOD(DefaultPasteRequestUsesDirectRoute);
         TEST_METHOD(AgentAvailabilityUsesDirectRoute);
+        TEST_METHOD(AgentInstallationNotifiesPageAndSubscribers);
         TEST_METHOD(AgentSessionsRetiredUsesDirectRoute);
+        TEST_METHOD(SessionRegistryChangedUsesDirectRoute);
         TEST_METHOD(RestartRequestIdentityIsStampedOnce);
         TEST_METHOD(BoundedCommandPreservesUtf8Characters);
         TEST_METHOD(BoundedBufferTailAppliesLineAndCharacterLimits);
@@ -77,6 +79,41 @@ namespace TerminalAppUnitTests
 
         VERIFY_ARE_EQUAL(SendEventRoute::AgentSessionsRetired, route);
         VERIFY_ARE_EQUAL("123-1", event["params"]["operation_id"].asString());
+    }
+
+    void ProtocolParsingTests::AgentInstallationNotifiesPageAndSubscribers()
+    {
+        Json::Value event;
+        VERIFY_ARE_EQUAL(
+            SendEventRoute::AgentInstallation,
+            ClassifySendEvent(
+                R"({"type":"event","method":"agent_availability_changed","params":{"agent_id":"copilot","tab_id":"tab-a","installation_completed":true}})",
+                event));
+        VERIFY_ARE_EQUAL("agent_availability_changed", event["method"].asString());
+        VERIFY_ARE_EQUAL("copilot", event["params"]["agent_id"].asString());
+        VERIFY_ARE_EQUAL("tab-a", event["params"]["tab_id"].asString());
+
+        for (const auto* payload : {
+                 R"({"method":"agent_availability_changed","params":{"installation_completed":false}})",
+                 R"({"method":"agent_availability_changed","params":{"installation_completed":"true"}})",
+                 R"({"method":"agent_availability_changed","params":null})",
+                 R"({"method":"agent_availability_changed"})" })
+        {
+            VERIFY_ARE_EQUAL(SendEventRoute::AgentAvailability, ClassifySendEvent(payload, event));
+        }
+    }
+
+    void ProtocolParsingTests::SessionRegistryChangedUsesDirectRoute()
+    {
+        Json::Value event;
+        const auto route = ClassifySendEvent(
+            R"({"type":"event","method":"session_registry_changed","params":{"session_id":"session-a","pane_session_id":"pane-a","status":"Attention"}})",
+            event);
+
+        VERIFY_ARE_EQUAL(SendEventRoute::SessionRegistryChanged, route);
+        VERIFY_ARE_EQUAL("session-a", event["params"]["session_id"].asString());
+        VERIFY_ARE_EQUAL("pane-a", event["params"]["pane_session_id"].asString());
+        VERIFY_ARE_EQUAL("Attention", event["params"]["status"].asString());
     }
 
     void ProtocolParsingTests::RestartRequestIdentityIsStampedOnce()

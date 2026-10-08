@@ -181,13 +181,7 @@ async fn probe_models_impl(
         conn.new_session(acp::schema::v1::NewSessionRequest::new(cwd)),
     )
     .await;
-    let session_id = session_result
-        .as_ref()
-        .ok()
-        .and_then(|inner| inner.as_ref().ok())
-        .map(|resp| resp.session_id.to_string());
     crate::telemetry::log_acp_new_session_complete(
-        session_id.as_deref(),
         session_started.elapsed().as_secs_f64() * 1000.0,
         matches!(session_result, Ok(Ok(_))),
         "Probe",

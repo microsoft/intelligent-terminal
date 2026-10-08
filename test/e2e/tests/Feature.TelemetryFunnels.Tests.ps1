@@ -352,11 +352,15 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
 
     It 'ACP session creation and completed ordinary prompts expose engagement' {
         $created = @($script:records | Where-Object {
-            $_.Name -eq 'AcpNewSessionComplete' -and $_.Fields.SessionId -eq $script:agent.AcpSessionId
+            $_.Name -eq 'AcpNewSessionComplete' -and $_.ProcessId -eq $script:agent.HelperProcessId
         })
-        $created.Fields.Route | Should -Contain 'MasterForward'
+        @($script:records | Where-Object {
+            $_.Name -eq 'AcpNewSessionComplete' -and $_.Fields.Route -eq 'MasterForward' -and
+            $_.Fields.Success -in @('true', '1')
+        }).Count | Should -BeGreaterThan 0
         @($created | Where-Object { $_.Fields.Route -like 'Helper*' }).Count | Should -BeGreaterThan 0
         foreach ($record in $created) {
+            $record.Fields.Keys | Should -Not -Contain 'SessionId'
             $record.Fields.Success | Should -BeIn @('true', '1')
             $record.Types.Success | Should -Match 'Boolean$'
             $record.Types.DurationMs | Should -Match 'Double$'
@@ -364,17 +368,19 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         $prompts = @(Get-TelemetryPhaseEvents -Phase conversation -Name AgentPromptSent)
         $prompts | Should -HaveCount 2
         foreach ($record in $prompts) {
-            $record.Fields.SessionId | Should -Be $script:agent.AcpSessionId
+            $record.Fields.Keys | Should -Not -Contain 'SessionId'
             $record.Fields.IsAutofix | Should -BeIn @('false', '0')
             $record.Fields.TemplateKind | Should -Not -Be 'AgentCommand'
-            $record.Types.SessionId | Should -Match 'AnsiString$'
             $record.Types.PromptLengthBytes | Should -Match 'UInt32$'
+            $record.Types.UserPromptOrdinal | Should -Match 'AnsiString$'
+            $record.Fields.UserPromptOrdinal | Should -BeIn @('First', 'Second', 'Later')
         }
         $completed = @(Get-TelemetryPhaseEvents -Phase conversation -Name AgentResponseComplete | Where-Object {
-            $_.Fields.SessionId -eq $script:agent.AcpSessionId
+            $_.ProcessId -eq $script:agent.HelperProcessId
         })
         $completed.Count | Should -BeGreaterOrEqual 2
         foreach ($record in $completed) {
+            $record.Fields.Keys | Should -Not -Contain 'SessionId'
             $record.Fields.Success | Should -BeIn @('true', '1')
             $record.Types.TotalDurationMs | Should -Match 'Double$'
         }
@@ -526,7 +532,7 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             }) | Should -HaveCount 0 -Because 'connection failure is notification-only, never an Autofix offer'
         }
         $prompts = @(Get-TelemetryPhaseEvents -Phase $phaseName -Name AgentPromptSent | Where-Object {
-            $_.ProcessId -eq $data.HelperPid -and $_.Fields.SessionId -eq $data.SessionId
+            $_.ProcessId -eq $data.HelperPid
         })
         $prompts | Should -HaveCount $(if ($Allowed) { 1 } else { 0 })
         if ($Allowed) {

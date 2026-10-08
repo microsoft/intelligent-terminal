@@ -993,6 +993,10 @@
   <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
     <value>Показать/скрыть панель</value>
   </data>
+  <data name="ToggleSidebarCommandKey" xml:space="preserve">
+    <value>Показать/скрыть боковую панель</value>
+    <comment>A command that shows or collapses the vertical tabs sidebar.</comment>
+  </data>
   <data name="OpenAgentPaneCommandKey" xml:space="preserve">
     <value>Показать/скрыть ИИ-агента</value>
   </data>

@@ -977,6 +977,7 @@ impl App {
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     tab.usage = None;
                     tab.usage_staleness = crate::usage::UsageStaleness::default();
+                    tab.reattached_session_id = None;
                 }
                 tab.session_id = Some(session_id.clone());
                 let has_real_content = !tab.completed_turns.is_empty()
@@ -1067,6 +1068,7 @@ impl App {
                     tab.config_picker = ConfigPickerState::Closed;
                     tab.config_pending_id = None;
                     tab.native_yolo_config_pending = false;
+                    tab.reattached_session_id = None;
                 }
                 tab.session_id = Some(session_id.clone());
                 if let Some(prompt_id) = prompt_id {
@@ -2571,10 +2573,10 @@ impl App {
                     reg.upsert(info).await;
                 });
             }
-            AppEvent::AliveSessionRemoved(sid) => {
+            AppEvent::AliveSessionRemoved(params) => {
                 tracing::debug!(
                     target: "alive_mirror",
-                    session_id = %sid.0,
+                    session_id = %params.session_id.0,
                     "alive session removed by master"
                 );
                 // Mirror PaneClosed's reducer for this sid synchronously,
@@ -2584,11 +2586,21 @@ impl App {
                 // `apply_alive_pane_snapshot` is only called at startup
                 // and `AliveSessionRemoved` had no path into the reducer
                 // (the bug rubber-duck Finding 2 surfaced post-B-12).
-                self.agent_sessions
-                    .apply_master_session_ended(sid.0.as_ref());
+                if session_removed_matches_scope(
+                    &params,
+                    &self.current_agent_id,
+                    &self.current_agent_source.session_location(),
+                ) {
+                    self.agent_sessions
+                        .apply_master_session_ended(params.session_id.0.as_ref());
+                }
                 let reg = std::sync::Arc::clone(&self.alive);
                 tokio::task::spawn_local(async move {
-                    reg.remove(&sid).await;
+                    if params.history_key.is_some() {
+                        reg.remove_identity(&params.identity()).await;
+                    } else {
+                        reg.remove(&params.session_id).await;
+                    }
                 });
             }
             AppEvent::AliveJoinUpgrade(tuples) => {
@@ -2605,6 +2617,11 @@ impl App {
             }
             AppEvent::SessionsChanged => {
                 self.schedule_agents_refetch_for_open_views();
+            }
+            AppEvent::SessionsFallbackTick => {
+                if !self.sessions_in_sidebar {
+                    self.schedule_agents_refetch_for_open_views();
+                }
             }
             AppEvent::DirectTerminalActionProposal {
                 context,
@@ -2723,10 +2740,22 @@ impl App {
                     // from here would apply one real hook once per live helper.
                     // What the helper still needs is the pane→session binding
                     // its OSC 133;A and autofix paths read synchronously.
-                    let _ = route_agent_event_to_registry(
+                    let origin_scope = self
+                        .pane_id
+                        .as_deref()
+                        .filter(|own_pane| own_pane.eq_ignore_ascii_case(pane_id.as_str()))
+                        .and_then(|_| {
+                            crate::agent_pane_origin::OriginScope::new(
+                                &self.current_agent_id,
+                                self.current_agent_source.session_location(),
+                                None,
+                            )
+                        });
+                    let _ = route_agent_event_to_registry_scoped(
                         &mut self.agent_sessions,
                         pane_id.as_str(),
                         &params,
+                        origin_scope.as_ref(),
                     );
                     // Diagnostics aid: surface the raw event payload in the
                     // active tab's chat so a developer can correlate hook
@@ -2924,6 +2953,25 @@ impl App {
                     return;
                 }
 
+                if method == "keep_running_reattached" {
+                    let target_tab = params.get("tab_id").and_then(|value| value.as_str());
+                    let target_window = params.get("window_id").and_then(|value| value.as_str());
+                    if let (Some(target_tab), Some(target_window)) = (target_tab, target_window) {
+                        if self.owner_tab_id.as_deref() == Some(target_tab)
+                            && self.window_id.as_deref() == Some(target_window)
+                        {
+                            let tab = self.tab_mut(target_tab);
+                            tab.reattached_session_id = tab.session_id.clone();
+                        }
+                    }
+                    return;
+                }
+
+                if method == "agent_availability_changed" {
+                    // Native UI and master own the installation-completion broadcast.
+                    return;
+                }
+
                 if method == "agent_config_changed" {
                     // C++ pushes this when the user changes a hot-updatable
                     // agent setting (auto-suggest gate, acp-model, delegate
@@ -2956,6 +3004,17 @@ impl App {
                         && target_tab == owner_tab
                         && !owner_window.is_empty()
                         && target_window == owner_window;
+
+                    if let Some(in_sidebar) = params
+                        .get("sessions_in_sidebar")
+                        .and_then(|value| value.as_bool())
+                    {
+                        let changed = self.sessions_in_sidebar != in_sidebar;
+                        self.sessions_in_sidebar = in_sidebar;
+                        if changed && !in_sidebar {
+                            self.schedule_agents_refetch_for_open_views();
+                        }
+                    }
 
                     if let Some(enabled) = params.get("autofix_enabled").and_then(|v| v.as_bool()) {
                         tracing::info!(
@@ -3938,6 +3997,18 @@ impl App {
                 if installed {
                     let status = crate::agent_check::recheck_agent(&agent_id);
                     if status.cli_found {
+                        if matches!(
+                            self.current_agent_source,
+                            crate::agent_source::AgentSource::Host
+                        ) {
+                            crate::wt_protocol_events::send(
+                                crate::wt_protocol_events::agent_availability_changed_event(
+                                    &agent_id,
+                                    self.agent_routing_tab_id(),
+                                    true,
+                                ),
+                            );
+                        }
                         if self.state == ConnectionState::Connected
                             && self.current_agent_id.eq_ignore_ascii_case(&agent_id)
                         {

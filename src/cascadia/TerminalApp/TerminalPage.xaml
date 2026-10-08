@@ -22,15 +22,23 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <!--
-            Spec A §5.1: the first column is the vertical-tabs rail. Width
-            defaults to 0 so horizontal layouts render identically; code-behind
-            (_ApplyVerticalLayoutReshape) sets the width and moves TabRow into
-            column 0 with RowSpan=4 when the layout flips to vertical.
+            Spec A §5.1: code-behind assigns the vertical rail to the leading
+            column for the active flow direction. Its width defaults to 0 so
+            horizontal layouts render identically.
         -->
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="VerticalRailColumn" Width="0" />
-            <ColumnDefinition Width="*" />
+            <ColumnDefinition x:Name="TrailingColumn"
+                              Width="*" />
         </Grid.ColumnDefinitions>
+
+        <local:TabStrip x:Name="VerticalTabStrip"
+                        Grid.Row="0"
+                        Grid.RowSpan="4"
+                        Grid.Column="0"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        Visibility="Collapsed" />
 
         <local:TabRowControl x:Name="TabRow"
                              Grid.Row="0"
@@ -207,10 +215,6 @@
                         Margin="12,0"
                         Visibility="Collapsed" />
 
-            <!-- Button 3: Session list toggle — opens the agent pane (if needed)
-                 and switches wta into the Agents/sessions view. Mirrors the
-                 Ctrl+Shift+/ keybinding. Anchored to the right edge of the
-                 BottomBar via the spacer column (Column 2, Width="*"). -->
             <Button x:Name="SessionToggleButton"
                     Grid.Column="3"
                     Width="32"
@@ -218,19 +222,18 @@
                     Padding="0"
                     Background="Transparent"
                     BorderBrush="Transparent"
+                    Visibility="Collapsed"
                     Click="_SessionToggleButtonOnClick">
                 <ToolTipService.ToolTip>
                     <ToolTip>
                         <StackPanel>
-                            <TextBlock Text="Show sessions"
+                            <TextBlock x:Name="SessionToggleLabel"
                                        FontFamily="Segoe UI Variable"
                                        FontSize="12"
-                                       FontWeight="Normal"
                                        LineHeight="16" />
                             <TextBlock Text="Ctrl+Shift+/"
                                        FontFamily="Segoe UI Variable"
                                        FontSize="12"
-                                       FontWeight="Normal"
                                        LineHeight="16"
                                        Opacity="0.7" />
                         </StackPanel>

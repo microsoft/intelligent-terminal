@@ -993,6 +993,10 @@
   <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
     <value>창 표시 여부 전환</value>
   </data>
+  <data name="ToggleSidebarCommandKey" xml:space="preserve">
+    <value>사이드바 전환</value>
+    <comment>A command that shows or collapses the vertical tabs sidebar.</comment>
+  </data>
   <data name="OpenAgentPaneCommandKey" xml:space="preserve">
     <value>AI 에이전트 표시/숨기기</value>
   </data>

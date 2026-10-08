@@ -220,7 +220,7 @@ pub(crate) async fn run_host_sessions(agent: &str) -> Result<()> {
                 tracing::info!("probe-host-sessions: session/list unavailable ({e}); returning []");
                 Vec::new()
             });
-            let idx = crate::agent_pane_origin::load_default_set();
+            let idx = crate::agent_pane_origin::load_default_index();
             Ok::<_, anyhow::Error>(crate::session_history::classify_and_map(
                 &sessions,
                 &idx,

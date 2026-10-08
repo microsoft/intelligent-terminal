@@ -499,6 +499,10 @@
   </data><data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
     <value>Укључи/искључи видљивост панела</value>
   </data>
+  <data name="ToggleSidebarCommandKey" xml:space="preserve">
+    <value>Укључи/искључи бочну траку</value>
+    <comment>A command that shows or collapses the vertical tabs sidebar.</comment>
+  </data>
   
   <data name="TogglePaneReadOnlyCommandKey" xml:space="preserve">
     <value>Укљ./искљ. режим панела само-за-читање</value>

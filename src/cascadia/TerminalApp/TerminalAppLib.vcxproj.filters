@@ -124,6 +124,7 @@
     <Page Include="SnippetsPaneContent.xaml" />
     <Page Include="MarkdownPaneContent.xaml" />
     <Page Include="AgentPaneContent.xaml" />
+    <Page Include="AgentIconResources.xaml" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="app">

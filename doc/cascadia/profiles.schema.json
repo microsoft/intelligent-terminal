@@ -479,6 +479,7 @@
         "togglePaneZoom",
         "toggleReadOnlyMode",
         "toggleShaderEffects",
+        "toggleSidebar",
         "toggleSplitOrientation",
         "workspaces",
         "wt",

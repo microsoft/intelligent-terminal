@@ -210,6 +210,7 @@ colortool
 COLORVALUE
 comctl
 commdlg
+commondir
 conapi
 conattrs
 conbufferout
@@ -605,6 +606,7 @@ frob
 frobnicate
 frontends
 fsanitize
+fsmonitor
 FSINFOCLASS
 ftcs
 fte
@@ -1127,6 +1129,7 @@ NOSELECTION
 NOSENDCHANGING
 NOSIZE
 NOSNAPSHOT
+NOSYSTEM
 NOTELLSHELL
 NOTHOUSANDS
 NOTICKS
@@ -1161,6 +1164,7 @@ nullness
 nullonfailure
 nullopts
 NUMSCROLL
+numstat
 NUnit
 nupkg
 nvidia
@@ -1332,6 +1336,7 @@ prg
 processhost
 PROCESSINFOCLASS
 PRODEXT
+PROGRAMDATA
 PROPERTYID
 PROPERTYKEY
 propertyval
@@ -1353,6 +1358,7 @@ PSHNOTIFY
 PSINGLE
 psl
 psldl
+PSMODULEPATH
 PSNRET
 psp
 PSPCB
@@ -1651,6 +1657,7 @@ SYSLIB
 SYSLINK
 SYSMENU
 sysparams
+SYSTEMDRIVE
 SYSTEMHAND
 SYSTEMMENU
 SYSTEMTIME
@@ -1694,6 +1701,7 @@ textattribute
 TEXTATTRIBUTEID
 textboxes
 textbuffer
+textconv
 TEXTINCLUDE
 textinfo
 TEXTMETRIC
@@ -1941,6 +1949,7 @@ Wndproc
 wordiswrapped
 workarea
 worktree
+worktreeconfig
 WOWARM
 WOWx
 wparam

@@ -864,8 +864,11 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // against prompt modules that chain back into us, and renders fail-safe,
     // degrading to the wrapped prompt without marks instead of throwing on
     // every prompt.
+    //
+    // v10: emit the dedicated Resume OSC from the PSConsoleHostReadLine
+    // boundary immediately after a supported resume command is accepted.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 7;
+    inline constexpr int kVersion = 10;
 
     inline std::wstring ScriptFileName()
     {
@@ -942,6 +945,28 @@ if (-not $Global:__ShellInteg_Installed) {
             $line = & $Global:__ShellInteg_OriginalPSConsoleHostReadLine @args
             $Global:__ShellInteg_LastSubmittedLine =
                 if ($line -is [string]) { $line } else { $null }
+            if ($line -is [string]) {
+                $resumeAgent = $null
+                $resumeSession = $null
+                if ($line -match '^\s*(copilot|claude|gemini)\s+--resume(?:\s+|=)([A-Za-z0-9_.:-]+)\s*$') {
+                    $resumeAgent = $Matches[1]
+                    $resumeSession = $Matches[2]
+                }
+                elseif ($line -match '^\s*codex\s+resume\s+([A-Za-z0-9_.:-]+)\s*$') {
+                    $resumeAgent = 'codex'
+                    $resumeSession = $Matches[1]
+                }
+                elseif ($line -match '^\s*opencode\s+--session\s+([A-Za-z0-9_.:-]+)\s*$') {
+                    $resumeAgent = 'opencode'
+                    $resumeSession = $Matches[1]
+                }
+                if ($null -ne $resumeAgent) {
+                    $resumeMark = '{0}]9001;Resume;{1};{2}{3}' -f
+                        $Global:__ShellInteg_ESC, $resumeAgent, $resumeSession,
+                        $Global:__ShellInteg_BEL
+                    [Console]::Write($resumeMark)
+                }
+            }
             return $line
         }
     }
@@ -1171,6 +1196,7 @@ __ShellInteg_Rearm
         std::string           ScriptContent() const override        { return Powershell::ScriptContent(); }
         std::wstring          ProfileFriendlyName() const override  { return L"PowerShell profile"; }
         LineEndingPolicy      LineEndings() const override          { return LineEndingPolicy::Auto; }
+        bool                  PlaceBlockAtEnd() const noexcept override { return true; }
 
         std::string ScriptBlock(std::string_view eol) const override
         {

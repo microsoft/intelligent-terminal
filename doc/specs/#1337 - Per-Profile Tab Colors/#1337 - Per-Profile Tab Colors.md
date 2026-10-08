@@ -1,7 +1,7 @@
 ---
 author: Mike Griese @zadjii-msft
 created on: 2020-07-31
-last updated: 2020-08-03
+last updated: 2026-09-30
 issue id: #1337
 ---
 # Per-Profile Tab Colors
@@ -75,6 +75,13 @@ Some examples:
 In general, this is going to look exactly like the colored tabs look now.
 
 ![preview](profile-tabColor-000.gif)
+
+In the vertical sidebar, a selected tab shows its full explicit color. An
+unselected tab shows a translucent tint of its runtime or profile tab color,
+including immediately after choosing a color for a tab that is not selected.
+Clearing the runtime color restores the profile color, or the native sidebar
+background if none is set. Unselected tabs keep the system background in high
+contrast mode.
 
 ## Capabilities
 

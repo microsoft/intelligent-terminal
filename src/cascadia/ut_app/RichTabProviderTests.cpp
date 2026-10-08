@@ -1,0 +1,1149 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+#include "precomp.h"
+
+#include <iterator>
+
+#include "../RichTabProvider/CommandRunner.h"
+#include "../RichTabProvider/ProviderBroker.h"
+
+using namespace WEX::TestExecution;
+using namespace Microsoft::Terminal::RichTab::Provider;
+
+namespace
+{
+    std::filesystem::path _TestModuleDirectory()
+    {
+        HMODULE module = nullptr;
+        VERIFY_WIN32_BOOL_SUCCEEDED(GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCWSTR>(&_TestModuleDirectory),
+            &module));
+
+        std::wstring path(32768, L'\0');
+        const auto length = GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size()));
+        VERIFY_IS_TRUE(length > 0 && length < path.size());
+        path.resize(length);
+        return std::filesystem::path{ path }.parent_path();
+    }
+
+    void _WriteFile(const std::filesystem::path& path, const std::string_view contents)
+    {
+        std::ofstream stream{ path, std::ios::binary };
+        VERIFY_IS_TRUE(stream.is_open());
+        stream.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+        VERIFY_IS_TRUE(stream.good());
+    }
+}
+
+namespace TerminalAppUnitTests
+{
+    class RichTabProviderTests
+    {
+        TEST_CLASS(RichTabProviderTests);
+
+        TEST_METHOD(PowerShellProviderPreservesUnicodeAcrossProcessBoundary);
+        TEST_METHOD(LocalizedFieldDisplayNamesOverrideManifestFallbacks);
+        TEST_METHOD(BrokerClearsSuccessfulSnapshotAfterProviderFailure);
+        TEST_METHOD(BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected);
+        TEST_METHOD(ResolveGitUsesExplicitPathAndDetectsMissingExecutable);
+        TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
+        TEST_METHOD(BrokerInjectsImmutableGitAvailabilityIntoRequests);
+        TEST_METHOD(GitStatusProviderKnownMissingGitDoesNotFallBack);
+        TEST_METHOD(GitStatusProviderInvokesLiteralApplicationPath);
+        TEST_METHOD(GitStatusProviderSkipsGitWhenNoGitFieldsVisible);
+        TEST_METHOD(GitStatusProviderHandlesGitFailureGracefully);
+        TEST_METHOD(GitStatusProviderSetsSafeGitConfigEnvironment);
+    };
+
+    void RichTabProviderTests::ResolveGitUsesExplicitPathAndDetectsMissingExecutable()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        const auto fixtureRoot = std::filesystem::temp_directory_path() /
+                                 (L"RichTabResolveGit-" + std::to_wstring(GetCurrentProcessId()) +
+                                  L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(fixtureRoot.is_absolute());
+        VERIFY_IS_TRUE(std::filesystem::create_directory(fixtureRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(fixtureRoot, error);
+        });
+        const auto gitPath = fixtureRoot / L"git.exe";
+        _WriteFile(gitPath, "fixture");
+
+        SetLastError(ERROR_SUCCESS);
+        const auto priorLength = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+        const auto priorError = GetLastError();
+        const auto priorMissing = priorLength == 0 && priorError == ERROR_ENVVAR_NOT_FOUND;
+        VERIFY_IS_TRUE(priorLength > 0 || priorMissing || priorError == ERROR_SUCCESS);
+        std::wstring priorPath(priorLength, L'\0');
+        if (priorLength > 0)
+        {
+            VERIFY_ARE_EQUAL(priorLength - 1, GetEnvironmentVariableW(L"PATH", priorPath.data(), priorLength));
+            priorPath.resize(priorLength - 1);
+        }
+        const auto restorePath = wil::scope_exit([&]() {
+            VERIFY_WIN32_BOOL_SUCCEEDED(SetEnvironmentVariableW(L"PATH", priorMissing ? nullptr : priorPath.c_str()));
+        });
+        VERIFY_WIN32_BOOL_SUCCEEDED(SetEnvironmentVariableW(L"PATH", fixtureRoot.c_str()));
+
+        const auto resolved = CommandRunner::ResolveGit();
+        VERIFY_IS_TRUE(resolved.has_value());
+        VERIFY_ARE_EQUAL(gitPath.native(), resolved->native());
+        VERIFY_IS_TRUE(std::filesystem::remove(gitPath));
+        VERIFY_IS_FALSE(CommandRunner::ResolveGit().has_value());
+    }
+
+    void RichTabProviderTests::PowerShellProviderPreservesUnicodeAcrossProcessBoundary()
+    {
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryName =
+            L"RichTabUnicode-" + std::to_wstring(GetCurrentProcessId()) + L"-\u7EC8\u7AEF";
+        const auto repositoryRoot = std::filesystem::temp_directory_path() / repositoryName;
+        std::filesystem::remove_all(repositoryRoot);
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+
+        const auto gitDirectory = repositoryRoot / L".git";
+        std::filesystem::create_directories(gitDirectory / L"objects");
+        std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+        std::filesystem::create_directories(gitDirectory / L"logs");
+        _WriteFile(
+            gitDirectory / L"config",
+            "[core]\n\t"
+            "repository"
+            "format"
+            "version = 0\n\tbare = false\n");
+        _WriteFile(
+            gitDirectory / L"HEAD",
+            "ref: refs/heads/\xE4\xB8\xBB\xE5\x88\x86\xE6\x94\xAF\n");
+        _WriteFile(repositoryRoot / L"\u6587\u4EF6.txt", "content\n");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = providerRoot;
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "unicode-provider";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace(
+            "agentStatus",
+            "\xE6\xAD\xA3\xE5\x9C\xA8\xE5\xB7\xA5\xE4\xBD\x9C");
+        request.firstPartyFields.emplace("branchLabel", "\xE5\x88\x86\xE6\x94\xAF");
+        request.firstPartyFields.emplace("changesLabel", "\xE6\x9B\xB4\xE6\x94\xB9");
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+
+        const auto command =
+            CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+
+        const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(
+            std::string{ "\xE6\xAD\xA3\xE5\x9C\xA8\xE5\xB7\xA5\xE4\xBD\x9C" },
+            std::get<std::string>(parsed.value->fields.at("agentStatus")));
+        VERIFY_ARE_EQUAL(
+            std::string{
+                "RichTabUnicode-" + std::to_string(GetCurrentProcessId()) +
+                "-\xE7\xBB\x88\xE7\xAB\xAF" },
+            std::get<std::string>(parsed.value->fields.at("repository")));
+        VERIFY_ARE_EQUAL(
+            std::string{ "\xE4\xB8\xBB\xE5\x88\x86\xE6\x94\xAF" },
+            std::get<std::string>(parsed.value->fields.at("branch")));
+        VERIFY_IS_TRUE(parsed.value->tooltip.has_value());
+        VERIFY_ARE_NOT_EQUAL(
+            std::string::npos,
+            parsed.value->tooltip->find("\xE5\x88\x86\xE6\x94\xAF: \xE4\xB8\xBB\xE5\x88\x86\xE6\x94\xAF"));
+        VERIFY_ARE_EQUAL(std::string::npos, parsed.value->tooltip->find("branch:"));
+
+        Registration registration;
+        registration.manifest = manifest;
+        ProviderBroker::FieldDisplayNameMap localizedDisplayNames;
+        localizedDisplayNames[manifest.id] = {
+            { "agentStatus", "\xE4\xBB\xA3\xE7\x90\x86\xE7\x8A\xB6\xE6\x80\x81" },
+            { "workingDirectory", "\xE5\xB7\xA5\xE4\xBD\x9C\xE7\x9B\xAE\xE5\xBD\x95" },
+            { "repository", "\xE4\xBB\x93\xE5\xBA\x93" },
+            { "branch", "\xE5\x88\x86\xE6\x94\xAF" },
+            { "changes", "\xE6\x9B\xB4\xE6\x94\xB9" },
+        };
+        const auto presentation = ProviderBroker::ComposePresentation(
+            { std::move(registration) },
+            { { manifest.id, *parsed.value } },
+            {},
+            localizedDisplayNames);
+        VERIFY_IS_TRUE(presentation.has_value());
+        VERIFY_ARE_NOT_EQUAL(
+            std::wstring::npos,
+            presentation->accessibilityText.find(L"\u4EE3\u7406\u72B6\u6001: \u6B63\u5728\u5DE5\u4F5C"));
+        VERIFY_ARE_NOT_EQUAL(
+            std::wstring::npos,
+            presentation->accessibilityText.find(L"\u5DE5\u4F5C\u76EE\u5F55: "));
+        VERIFY_ARE_EQUAL(std::wstring::npos, presentation->accessibilityText.find(L"Agent status"));
+        VERIFY_ARE_EQUAL(std::wstring::npos, presentation->accessibilityText.find(L"Current working directory"));
+    }
+
+    void RichTabProviderTests::LocalizedFieldDisplayNamesOverrideManifestFallbacks()
+    {
+        Registration provider;
+        provider.manifest.id = "git";
+        provider.manifest.fields = {
+            { "branch", "Git branch", FieldType::String, true },
+            { "changes", "Git changes", FieldType::String, true },
+        };
+
+        Snapshot snapshot;
+        snapshot.fields.emplace("branch", std::string{ "\xE4\xB8\xBB\xE5\x88\x86\xE6\x94\xAF" });
+        snapshot.fields.emplace("changes", std::string{ "~12 +200 -35" });
+
+        ProviderBroker::FieldDisplayNameMap localizedDisplayNames;
+        localizedDisplayNames["git"] = {
+            { "branch", "\xE5\x88\x86\xE6\x94\xAF" },
+            { "changes", "\xE6\x9B\xB4\xE6\x94\xB9" },
+        };
+
+        const auto presentation = ProviderBroker::ComposePresentation(
+            { provider },
+            { { "git", std::move(snapshot) } },
+            {},
+            localizedDisplayNames);
+
+        VERIFY_IS_TRUE(presentation.has_value());
+        VERIFY_ARE_EQUAL(
+            std::wstring{ L"\u5206\u652F: \u4E3B\u5206\u652F, \u66F4\u6539: ~12 +200 -35" },
+            presentation->accessibilityText);
+    }
+
+    void RichTabProviderTests::BrokerClearsSuccessfulSnapshotAfterProviderFailure()
+    {
+        const auto providerRoot = std::filesystem::temp_directory_path() /
+                                  (L"RichTabBrokerFailure-" + std::to_wstring(GetCurrentProcessId()) +
+                                   L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(providerRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(providerRoot, error);
+        });
+        const auto script = providerRoot / L"provider.ps1";
+        _WriteFile(
+            script,
+            "$request = [Console]::In.ReadToEnd() | ConvertFrom-Json\n"
+            "[Console]::Error.WriteLine('broker-provider-warning')\n"
+            "@{ protocolVersion = 1; requestId = $request.requestId; result = @{\n"
+            "    fields = @{ branch = 'main' }; tooltip = 'Current branch: main'\n"
+            "} } | ConvertTo-Json -Depth 4 -Compress\n");
+
+        Registration provider;
+        provider.manifest.id = "test.broker-failure";
+        provider.manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        provider.manifest.runtime.entrypoint = L"provider.ps1";
+        provider.manifest.extensionRoot = providerRoot;
+        provider.manifest.activationEvents = { ActivationEvent::ManualRefresh };
+        provider.manifest.fields = { { "branch", "Git branch", FieldType::String, true } };
+        provider.enabled = true;
+        provider.integrityValid = true;
+
+        std::vector<BrokerUpdate> updates;
+        ProviderBroker broker;
+        broker._providers = { provider };
+        auto& session = broker._sessions["broker-failure-session"];
+        session.context.sessionId = "broker-failure-session";
+        session.context.workingDirectory = providerRoot;
+        session.context.workingDirectoryAuthoritative = true;
+        session.context.shellType = "powershell";
+        session.sessionIncarnation = 1;
+        session.contextRevision = 7;
+        session.callbacks.emplace(1, [&](const BrokerUpdate& update) {
+            updates.emplace_back(update);
+        });
+        auto& state = session.providers[provider.manifest.id];
+        state.generation = 1;
+        state.runningGeneration = 1;
+        state.running = true;
+
+        Request request;
+        request.requestId = "broker-success";
+        request.providerId = provider.manifest.id;
+        request.processEpoch = broker.ProcessEpoch();
+        request.sessionId = session.context.sessionId;
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = session.context.workingDirectory;
+        request.workingDirectoryAuthoritative = session.context.workingDirectoryAuthoritative;
+        request.shellType = session.context.shellType;
+        request.contextRevision = session.contextRevision;
+
+        // Run synchronously with matching generations; no singleton or queued refreshes.
+        broker._RunProvider(provider, request, 1);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, updates.size());
+        VERIFY_IS_TRUE(updates[0].presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, updates[0].presentation->text);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Current branch: main" }, updates[0].presentation->tooltip);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Git branch: main" }, updates[0].presentation->accessibilityText);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, updates[0].diagnostics.size());
+        VERIFY_ARE_NOT_EQUAL(
+            std::string::npos,
+            updates[0].diagnostics[0].find("broker-provider-warning"));
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, updates[0].updateSequence);
+        VERIFY_IS_TRUE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.running);
+
+        _WriteFile(
+            script,
+            "$null = [Console]::In.ReadToEnd()\n"
+            "[Console]::Error.WriteLine('broker-provider-failure')\n"
+            "exit 23\n");
+        request.requestId = "broker-failure";
+        state.generation = 2;
+        state.runningGeneration = 2;
+        state.running = true;
+        broker._RunProvider(provider, request, 2);
+
+        VERIFY_ARE_EQUAL(size_t{ 2 }, updates.size());
+        VERIFY_ARE_EQUAL(request.sessionId, updates[1].sessionId);
+        VERIFY_ARE_EQUAL(updates[0].sessionIncarnation, updates[1].sessionIncarnation);
+        VERIFY_ARE_EQUAL(uint64_t{ 7 }, updates[0].contextRevision);
+        VERIFY_ARE_EQUAL(updates[0].contextRevision, updates[1].contextRevision);
+        VERIFY_ARE_EQUAL(uint64_t{ 2 }, updates[1].updateSequence);
+        VERIFY_IS_FALSE(updates[1].presentation.has_value());
+        VERIFY_IS_FALSE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.running);
+        VERIFY_IS_FALSE(state.pending.has_value());
+        VERIFY_ARE_EQUAL(size_t{ 2 }, updates[1].diagnostics.size());
+        VERIFY_ARE_EQUAL(
+            "Provider '" + provider.manifest.id + "' failed with status " +
+                std::to_string(static_cast<int>(CommandResult::Status::Completed)) + " and exit code 23",
+            updates[1].diagnostics[0]);
+        VERIFY_ARE_NOT_EQUAL(
+            std::string::npos,
+            updates[1].diagnostics[1].find("broker-provider-failure"));
+    }
+
+    void RichTabProviderTests::BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected()
+    {
+        const auto providerRoot = std::filesystem::temp_directory_path() /
+                                  (L"RichTabBrokerEmptySelection-" + std::to_wstring(GetCurrentProcessId()) +
+                                   L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(providerRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(providerRoot, error);
+        });
+        const auto sentinel = providerRoot / L"invocations.txt";
+        _WriteFile(
+            providerRoot / L"provider.ps1",
+            "$request = [Console]::In.ReadToEnd() | ConvertFrom-Json\n"
+            "[IO.File]::AppendAllText((Join-Path $PSScriptRoot 'invocations.txt'), \"invoked`n\")\n"
+            "@{ protocolVersion = 1; requestId = $request.requestId; result = @{\n"
+            "    fields = @{ branch = 'main' }; tooltip = 'Current branch: main'\n"
+            "} } | ConvertTo-Json -Depth 4 -Compress\n");
+        const auto invocationContents = [&]() {
+            std::ifstream stream{ sentinel, std::ios::binary };
+            VERIFY_IS_TRUE(stream.is_open());
+            return std::string{ std::istreambuf_iterator<char>{ stream }, std::istreambuf_iterator<char>{} };
+        };
+
+        Registration provider;
+        provider.manifest.id = "test.broker-empty-selection";
+        provider.manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        provider.manifest.runtime.entrypoint = L"provider.ps1";
+        provider.manifest.extensionRoot = providerRoot;
+        provider.manifest.activationEvents = { ActivationEvent::ManualRefresh };
+        provider.manifest.fields = { { "branch", "Git branch", FieldType::String, true } };
+        provider.enabled = true;
+        provider.integrityValid = true;
+
+        std::vector<BrokerUpdate> updates;
+        ProviderBroker broker;
+        // Stop idle workers before scheduling anything; drain actual broker work synchronously.
+        {
+            std::lock_guard lock{ broker._executorMutex };
+            broker._executorStopping = true;
+        }
+        broker._executorCondition.notify_all();
+        for (auto& worker : broker._executorWorkers)
+        {
+            worker.join();
+        }
+        broker._executorStopping = false;
+        const auto takeWork = [&]() {
+            VERIFY_ARE_EQUAL(size_t{ 1 }, broker._executorQueue.size());
+            auto work = std::move(broker._executorQueue.front());
+            broker._executorQueue.pop_front();
+            return work;
+        };
+
+        broker._providers = { provider };
+        broker._visibleFields[provider.manifest.id] = { "branch" };
+        auto& session = broker._sessions["broker-empty-selection-session"];
+        session.context.sessionId = "broker-empty-selection-session";
+        session.context.workingDirectory = providerRoot;
+        session.context.workingDirectoryAuthoritative = true;
+        session.context.shellType = "powershell";
+        session.sessionIncarnation = 1;
+        session.contextRevision = 7;
+        session.callbacks.emplace(1, [&](const BrokerUpdate& update) {
+            updates.emplace_back(update);
+        });
+        broker._Refresh(session.context.sessionId, ActivationEvent::ManualRefresh, false);
+        takeWork()();
+        auto& state = session.providers.at(provider.manifest.id);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, updates.size());
+        VERIFY_IS_TRUE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, updates.back().presentation->text);
+        VERIFY_IS_TRUE(updates.back().diagnostics.empty());
+        VERIFY_IS_TRUE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.running);
+        VERIFY_ARE_EQUAL(std::string{ "invoked\n" }, invocationContents());
+
+        const auto successfulGeneration = state.generation;
+        broker.SetVisibleFields(provider.manifest.id, {});
+        VERIFY_ARE_EQUAL(size_t{ 2 }, updates.size());
+        VERIFY_IS_FALSE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(uint64_t{ 7 }, updates.back().contextRevision);
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, updates.back().sessionIncarnation);
+        VERIFY_ARE_EQUAL(uint64_t{ 2 }, updates.back().updateSequence);
+        VERIFY_IS_TRUE(updates.back().diagnostics.empty());
+        VERIFY_IS_FALSE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.running);
+        VERIFY_IS_FALSE(state.pending.has_value());
+        VERIFY_IS_TRUE(state.generation > successfulGeneration);
+        VERIFY_IS_TRUE(broker._executorQueue.empty());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\n" }, invocationContents());
+
+        broker.SetVisibleFields(provider.manifest.id, { "branch" });
+        takeWork()();
+        VERIFY_IS_TRUE(state.snapshot.has_value());
+        VERIFY_IS_TRUE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\n" "invoked\n" }, invocationContents());
+
+        broker._Refresh(session.context.sessionId, ActivationEvent::ManualRefresh, false);
+        auto staleWork = takeWork();
+        const auto runningGeneration = state.runningGeneration;
+        broker._Refresh(session.context.sessionId, ActivationEvent::ManualRefresh, false);
+        VERIFY_IS_TRUE(state.running);
+        VERIFY_IS_TRUE(state.pending.has_value());
+        broker.SetVisibleFields(provider.manifest.id, {});
+        VERIFY_ARE_EQUAL(size_t{ 5 }, updates.size());
+        VERIFY_IS_FALSE(updates.back().presentation.has_value());
+        VERIFY_IS_FALSE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.pending.has_value());
+        VERIFY_IS_TRUE(state.running);
+        VERIFY_IS_TRUE(state.generation > runningGeneration);
+        VERIFY_ARE_EQUAL(runningGeneration, state.runningGeneration);
+        VERIFY_IS_TRUE(broker._executorQueue.empty());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\n" "invoked\n" }, invocationContents());
+
+        // Only the previously dispatched invocation completes; it must not restore the snapshot.
+        const auto updateCount = updates.size();
+        const auto updateSequence = session.updateSequence;
+        staleWork();
+        VERIFY_IS_FALSE(state.running);
+        VERIFY_IS_FALSE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.pending.has_value());
+        VERIFY_ARE_EQUAL(updateCount, updates.size());
+        VERIFY_ARE_EQUAL(updateSequence, session.updateSequence);
+        VERIFY_ARE_EQUAL(uint64_t{ 7 }, session.contextRevision);
+        VERIFY_IS_TRUE(broker._executorQueue.empty());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\n" "invoked\n" "invoked\n" }, invocationContents());
+
+        broker._Refresh(session.context.sessionId, ActivationEvent::ManualRefresh, false);
+        VERIFY_IS_FALSE(state.running);
+        VERIFY_IS_FALSE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(state.pending.has_value());
+        VERIFY_IS_TRUE(broker._executorQueue.empty());
+        VERIFY_ARE_EQUAL(std::string{ "invoked\n" "invoked\n" "invoked\n" }, invocationContents());
+    }
+
+    void RichTabProviderTests::BrokerInjectsImmutableGitAvailabilityIntoRequests()
+    {
+        const auto providerRoot = std::filesystem::temp_directory_path() /
+                                  (L"RichTabBrokerGit-" + std::to_wstring(GetCurrentProcessId()) +
+                                   L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(providerRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(providerRoot, error);
+        });
+        const auto gitBinary = providerRoot / L"\u7EC8\u7AEF-git.cmd";
+        VERIFY_IS_TRUE(gitBinary.is_absolute());
+        _WriteFile(gitBinary, "@echo off\r\nexit /b 0\r\n");
+        _WriteFile(
+            providerRoot / L"provider.ps1",
+            "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)\n"
+            "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n"
+            "$request = [Console]::In.ReadToEnd() | ConvertFrom-Json\n"
+            "if (-not $request.params.firstPartyFields.PSObject.Properties['gitBinary']) { throw 'Missing gitBinary' }\n"
+            "$binary = [string]$request.params.firstPartyFields.gitBinary\n"
+            "$branch = if ($binary.Length) { $binary } else { '[missing]' }\n"
+            "@{ protocolVersion = 1; requestId = $request.requestId; result = @{\n"
+            "    fields = @{ branch = $branch }\n"
+            "} } | ConvertTo-Json -Depth 4 -Compress\n");
+
+        Registration provider;
+        provider.manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        provider.manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        provider.manifest.runtime.entrypoint = L"provider.ps1";
+        provider.manifest.extensionRoot = providerRoot;
+        provider.manifest.activationEvents = { ActivationEvent::ManualRefresh };
+        provider.manifest.fields = { { "branch", "Git branch", FieldType::String, true } };
+        provider.enabled = true;
+        provider.integrityValid = true;
+
+        for (const auto& binary : { std::optional<std::filesystem::path>{}, std::optional<std::filesystem::path>{ gitBinary } })
+        {
+            std::vector<BrokerUpdate> updates;
+            ProviderBroker broker{ binary };
+            VERIFY_ARE_EQUAL(binary.has_value(), broker.GitAvailable());
+            const auto utf8 = binary ? binary->u8string() : std::u8string{};
+            const std::string expected{ utf8.begin(), utf8.end() };
+            broker._providers = { provider };
+            auto& session = broker._sessions["broker-git-session"];
+            session.context.sessionId = "broker-git-session";
+            session.context.workingDirectory = providerRoot;
+            session.context.workingDirectoryAuthoritative = true;
+            session.sessionIncarnation = 1;
+            session.contextRevision = 1;
+            session.callbacks.emplace(1, [&](const BrokerUpdate& update) {
+                updates.emplace_back(update);
+            });
+            auto& state = session.providers[provider.manifest.id];
+            for (const auto spoofed : { "caller-override", "changed-override" })
+            {
+                session.context.firstPartyFields = { { "gitBinary", spoofed }, { "agentStatus", "idle" } };
+                // Capture the real refresh request as pending work without racing executor threads.
+                state.running = true;
+                broker._Refresh(session.context.sessionId, ActivationEvent::ManualRefresh, false);
+                VERIFY_IS_TRUE(state.pending.has_value());
+                auto pending = std::move(*state.pending);
+                state.pending.reset();
+                VERIFY_ARE_EQUAL(expected, pending.request.firstPartyFields.at("gitBinary"));
+                VERIFY_ARE_EQUAL(std::string{ "idle" }, pending.request.firstPartyFields.at("agentStatus"));
+                state.runningGeneration = pending.generation;
+                broker._RunProvider(provider, std::move(pending.request), pending.generation);
+                VERIFY_IS_FALSE(state.running);
+                VERIFY_IS_TRUE(broker._executorQueue.empty());
+                VERIFY_IS_TRUE(state.snapshot.has_value());
+                VERIFY_ARE_EQUAL(expected.empty() ? std::string{ "[missing]" } : expected,
+                                 std::get<std::string>(state.snapshot->fields.at("branch")));
+                VERIFY_IS_TRUE(updates.back().diagnostics.empty());
+                if (binary && std::filesystem::exists(*binary))
+                {
+                    VERIFY_IS_TRUE(std::filesystem::remove(*binary));
+                }
+                VERIFY_ARE_EQUAL(binary.has_value(), broker.GitAvailable());
+            }
+            VERIFY_ARE_EQUAL(size_t{ 2 }, updates.size());
+        }
+    }
+
+    void RichTabProviderTests::GitStatusProviderHandlesMissingGitGracefully()
+    {
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryName =
+            L"RichTabMissingGit-" + std::to_wstring(GetCurrentProcessId());
+        const auto repositoryRoot = std::filesystem::temp_directory_path() / repositoryName;
+        std::filesystem::remove_all(repositoryRoot);
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+
+        const auto gitDirectory = repositoryRoot / L".git";
+        std::filesystem::create_directories(gitDirectory / L"objects");
+        std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+        std::filesystem::create_directories(gitDirectory / L"logs");
+        _WriteFile(
+            gitDirectory / L"config",
+            "[core]\n\t"
+            "repository"
+            "format"
+            "version = 0\n\tbare = false\n");
+        _WriteFile(
+            gitDirectory / L"HEAD",
+            "ref: refs/heads/main\n");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = providerRoot;
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "missing-git-test";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace("agentStatus", "idle");
+        request.firstPartyFields.emplace("gitBinary", (repositoryRoot / L"nonexistent-git.exe").string());
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+
+        const auto command =
+            CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+
+        const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(
+            std::string{ "idle" },
+            std::get<std::string>(parsed.value->fields.at("agentStatus")));
+        VERIFY_ARE_EQUAL(
+            repositoryRoot.string(),
+            std::get<std::string>(parsed.value->fields.at("workingDirectory")));
+        VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
+        VERIFY_IS_TRUE(parsed.value->fields.find("branch") == parsed.value->fields.end());
+        VERIFY_IS_TRUE(parsed.value->fields.find("changes") == parsed.value->fields.end());
+    }
+
+    void RichTabProviderTests::GitStatusProviderKnownMissingGitDoesNotFallBack()
+    {
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryName =
+            L"RichTabKnownMissingGit-" + std::to_wstring(GetCurrentProcessId());
+        const auto repositoryRoot = std::filesystem::temp_directory_path() / repositoryName;
+        std::filesystem::remove_all(repositoryRoot);
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+
+        const auto gitDirectory = repositoryRoot / L".git";
+        std::filesystem::create_directories(gitDirectory / L"objects");
+        std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+        std::filesystem::create_directories(gitDirectory / L"logs");
+        _WriteFile(
+            gitDirectory / L"config",
+            "[core]\n\t"
+            "repository"
+            "format"
+            "version = 0\n\tbare = false\n");
+        _WriteFile(
+            gitDirectory / L"HEAD",
+            "ref: refs/heads/main\n");
+
+        wchar_t systemDirectory[MAX_PATH]{};
+        const auto length = GetSystemDirectoryW(systemDirectory, MAX_PATH);
+        VERIFY_IS_TRUE(length > 0 && length < MAX_PATH);
+        std::filesystem::copy_file(std::filesystem::path{ systemDirectory } / L"cmd.exe", repositoryRoot / L"git.exe");
+        _WriteFile(repositoryRoot / L"recording-git.ps1",
+                   "$global:LASTEXITCODE = 0\n"
+                   "if ($args -contains 'status') { '# branch.head fallback-branch' }\n");
+        std::filesystem::copy_file(providerRoot / L"provider.ps1", repositoryRoot / L"original-provider.ps1");
+        _WriteFile(repositoryRoot / L"provider.ps1", R"(
+$env:PATH = "$PSScriptRoot;$env:PATH"
+if (-not (Microsoft.PowerShell.Core\Get-Command git.exe -CommandType Application -ErrorAction Stop)) {
+    throw 'Expected Git application on child PATH'
+}
+function Get-Command {
+    param($Name, $CommandType, $ErrorAction)
+    if ($Name -eq 'git.exe') {
+        [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'fallback.txt'), 'discovered')
+        [pscustomobject]@{ Source = (Join-Path $PSScriptRoot 'recording-git.ps1') }
+    }
+    else {
+        Microsoft.PowerShell.Core\Get-Command $Name -CommandType $CommandType -ErrorAction $ErrorAction
+    }
+}
+. (Join-Path $PSScriptRoot 'original-provider.ps1')
+)");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = repositoryRoot;
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "known-missing-git-test";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace("agentStatus", "idle");
+        request.firstPartyFields.emplace("gitBinary", "");
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+
+        const auto command =
+            CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+
+        const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(
+            std::string{ "idle" },
+            std::get<std::string>(parsed.value->fields.at("agentStatus")));
+        VERIFY_ARE_EQUAL(
+            repositoryRoot.string(),
+            std::get<std::string>(parsed.value->fields.at("workingDirectory")));
+        VERIFY_IS_FALSE(std::filesystem::exists(repositoryRoot / L"fallback.txt"));
+        VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
+        VERIFY_IS_TRUE(parsed.value->fields.find("branch") == parsed.value->fields.end());
+        VERIFY_IS_TRUE(parsed.value->fields.find("changes") == parsed.value->fields.end());
+
+        // An absent parameter retains standalone discovery; this also proves the probe is live.
+        request.firstPartyFields.erase("gitBinary");
+        const auto legacyRequest = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(legacyRequest));
+        const auto legacy = CommandRunner{}.Run(manifest, *legacyRequest.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(legacy.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, legacy.exitCode);
+        VERIFY_IS_TRUE(std::filesystem::exists(repositoryRoot / L"fallback.txt"));
+        const auto legacySnapshot = ParseSnapshot(legacy.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(legacySnapshot));
+        VERIFY_ARE_EQUAL(std::string{ "fallback-branch" }, std::get<std::string>(legacySnapshot.value->fields.at("branch")));
+    }
+
+    void RichTabProviderTests::GitStatusProviderInvokesLiteralApplicationPath()
+    {
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryRoot = std::filesystem::temp_directory_path() /
+                                    (L"RichTabLiteralGit-" + std::to_wstring(GetCurrentProcessId()) +
+                                     L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(repositoryRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+        std::filesystem::create_directory(repositoryRoot / L".git");
+        _WriteFile(repositoryRoot / L".git" / L"HEAD", "ref: refs/heads/literal-branch\n");
+        const auto literalGit = repositoryRoot / L"git[1].cmd";
+        const auto alternateGit = repositoryRoot / L"git1.cmd";
+        const auto invocationsFile = repositoryRoot / L"invocations.txt";
+        const std::string fakeGit =
+            "@echo off\r\necho invoked \"%~f0\" %* >> \"" + invocationsFile.string() +
+            "\"\r\n:next\r\nif \"%~1\"==\"\" exit /b 0\r\n"
+            "if \"%~1\"==\"status\" echo # branch.head literal-branch\r\n"
+            "shift\r\ngoto next\r\n";
+        _WriteFile(literalGit, fakeGit);
+        _WriteFile(alternateGit, fakeGit);
+        // Windows PowerShell passes the filter regexp's pipe through cmd.exe.
+        _WriteFile(repositoryRoot / L"process)$.cmd", "@echo off\r\nexit /b 0\r\n");
+        std::filesystem::copy_file(providerRoot / L"provider.ps1", repositoryRoot / L"original-provider.ps1");
+        _WriteFile(repositoryRoot / L"provider.ps1", R"(
+$env:PATH = "$PSScriptRoot;$env:PATH"
+function Get-Command {
+    [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'discovery.txt'), 'unexpected discovery')
+    Microsoft.PowerShell.Core\Get-Command @args
+}
+. (Join-Path $PSScriptRoot 'original-provider.ps1')
+)");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = repositoryRoot;
+        manifest.activationEvents = { ActivationEvent::ManualRefresh };
+        manifest.fields = {
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "literal-git-test";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.visibleFields = { "repository", "branch" };
+        request.firstPartyFields.emplace("gitBinary", literalGit.string());
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+        const auto command = CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+        VERIFY_IS_TRUE(command.standardError.empty());
+        VERIFY_IS_FALSE(std::filesystem::exists(repositoryRoot / L"discovery.txt"));
+        std::ifstream invocations{ invocationsFile };
+        VERIFY_IS_TRUE(invocations.is_open());
+        const std::string recorded{ std::istreambuf_iterator<char>{ invocations }, std::istreambuf_iterator<char>{} };
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, recorded.find("status"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, recorded.find(literalGit.string()));
+        VERIFY_ARE_EQUAL(std::string::npos, recorded.find(alternateGit.string()));
+        invocations.close();
+        const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(repositoryRoot.filename().string(), std::get<std::string>(parsed.value->fields.at("repository")));
+        VERIFY_ARE_EQUAL(std::string{ "literal-branch" }, std::get<std::string>(parsed.value->fields.at("branch")));
+
+        VERIFY_IS_TRUE(std::filesystem::remove(literalGit));
+        VERIFY_IS_TRUE(std::filesystem::remove(invocationsFile));
+        request.requestId = "missing-literal-git-test";
+        const auto missingRequest = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(missingRequest));
+        const auto missing = CommandRunner{}.Run(manifest, *missingRequest.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(missing.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, missing.exitCode);
+        VERIFY_IS_TRUE(missing.standardError.empty());
+        VERIFY_IS_FALSE(std::filesystem::exists(invocationsFile));
+        VERIFY_IS_FALSE(std::filesystem::exists(repositoryRoot / L"discovery.txt"));
+        const auto missingSnapshot = ParseSnapshot(missing.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(missingSnapshot));
+        VERIFY_ARE_EQUAL(repositoryRoot.string(), std::get<std::string>(missingSnapshot.value->fields.at("workingDirectory")));
+        VERIFY_IS_TRUE(missingSnapshot.value->fields.find("repository") == missingSnapshot.value->fields.end());
+        VERIFY_IS_TRUE(missingSnapshot.value->fields.find("branch") == missingSnapshot.value->fields.end());
+        VERIFY_IS_TRUE(missingSnapshot.value->fields.find("changes") == missingSnapshot.value->fields.end());
+    }
+
+    void RichTabProviderTests::GitStatusProviderSkipsGitWhenNoGitFieldsVisible()
+    {
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryName =
+            L"RichTabNoGitFields-" + std::to_wstring(GetCurrentProcessId());
+        const auto repositoryRoot = std::filesystem::temp_directory_path() / repositoryName;
+        std::filesystem::remove_all(repositoryRoot);
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+
+        const auto sentinelFile = repositoryRoot / L"sentinel.txt";
+        const auto recordingGitScript = repositoryRoot / L"recording-git.cmd";
+        std::filesystem::create_directories(repositoryRoot);
+        _WriteFile(recordingGitScript, "@echo off\r\necho invoked > \"" + sentinelFile.string() + "\"\r\nexit /b 1\r\n");
+
+        const auto probeFile = repositoryRoot / L"probes.txt";
+        std::filesystem::copy_file(providerRoot / L"provider.ps1", repositoryRoot / L"original-provider.ps1");
+        _WriteFile(repositoryRoot / L"provider.ps1", R"(
+$probeFile = Join-Path $PSScriptRoot 'probes.txt'
+function Get-PSDrive {
+    [IO.File]::AppendAllText($probeFile, "Get-PSDrive`n")
+    Microsoft.PowerShell.Management\Get-PSDrive @args
+}
+function Test-Path {
+    [IO.File]::AppendAllText($probeFile, "Test-Path`n")
+    Microsoft.PowerShell.Management\Test-Path @args
+}
+function Get-Item {
+    [IO.File]::AppendAllText($probeFile, "Get-Item`n")
+    Microsoft.PowerShell.Management\Get-Item @args
+}
+function Get-ChildItem {
+    [IO.File]::AppendAllText($probeFile, "Get-ChildItem`n")
+    Microsoft.PowerShell.Management\Get-ChildItem @args
+}
+function Get-Command {
+    [IO.File]::AppendAllText($probeFile, "Get-Command $($args[0])`n")
+    Microsoft.PowerShell.Core\Get-Command @args
+}
+. (Join-Path $PSScriptRoot 'original-provider.ps1')
+)");
+
+        const auto gitDirectory = repositoryRoot / L".git";
+        std::filesystem::create_directories(gitDirectory / L"objects");
+        std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+        std::filesystem::create_directories(gitDirectory / L"logs");
+        _WriteFile(
+            gitDirectory / L"config",
+            "[core]\n\t"
+            "repository"
+            "format"
+            "version = 0\n\tbare = false\n");
+        _WriteFile(
+            gitDirectory / L"HEAD",
+            "ref: refs/heads/main\n");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = providerRoot;
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "no-git-fields-test";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace("agentStatus", "working");
+        request.visibleFields = { "workingDirectory", "agentStatus" };
+        request.firstPartyFields.emplace("gitBinary", recordingGitScript.string());
+
+        manifest.extensionRoot = repositoryRoot;
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+
+        const auto command =
+            CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+
+        VERIFY_IS_FALSE(std::filesystem::exists(probeFile));
+        VERIFY_IS_FALSE(std::filesystem::exists(sentinelFile));
+
+        const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(
+            std::string{ "working" },
+            std::get<std::string>(parsed.value->fields.at("agentStatus")));
+        VERIFY_ARE_EQUAL(
+            repositoryRoot.string(),
+            std::get<std::string>(parsed.value->fields.at("workingDirectory")));
+        VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
+        VERIFY_IS_TRUE(parsed.value->fields.find("branch") == parsed.value->fields.end());
+        VERIFY_IS_TRUE(parsed.value->fields.find("changes") == parsed.value->fields.end());
+        VERIFY_ARE_EQUAL(size_t{ 2 }, parsed.value->fields.size());
+        VERIFY_IS_FALSE(parsed.value->tooltip.has_value());
+
+        // Positive controls prove the wrappers observe discovery, including legacy empty visibility.
+        for (const auto& visibleFields : std::vector<std::vector<std::string>>{ { "branch" }, {} })
+        {
+            request.visibleFields = visibleFields;
+            const auto controlRequest = SerializeRequest(request, manifest);
+            VERIFY_IS_TRUE(static_cast<bool>(controlRequest));
+            const auto control =
+                CommandRunner{}.Run(manifest, *controlRequest.value, std::chrono::seconds{ 10 });
+            VERIFY_IS_TRUE(control.status == CommandResult::Status::Completed);
+            VERIFY_ARE_EQUAL(0u, control.exitCode);
+            VERIFY_IS_TRUE(static_cast<bool>(ParseSnapshot(control.standardOutput, manifest, request.requestId)));
+            VERIFY_IS_TRUE(std::filesystem::exists(sentinelFile));
+
+            std::ifstream probes{ probeFile };
+            VERIFY_IS_TRUE(probes.is_open());
+            const std::string recorded{ std::istreambuf_iterator<char>{ probes }, std::istreambuf_iterator<char>{} };
+            for (const auto probe : { "Get-PSDrive\n", "Test-Path\n", "Get-Item\n", "Get-ChildItem\n" })
+            {
+                VERIFY_ARE_NOT_EQUAL(std::string::npos, recorded.find(probe));
+            }
+            VERIFY_ARE_EQUAL(std::string::npos, recorded.find("Get-Command "));
+            probes.close();
+            VERIFY_IS_TRUE(std::filesystem::remove(probeFile));
+            VERIFY_IS_TRUE(std::filesystem::remove(sentinelFile));
+        }
+    }
+
+    void RichTabProviderTests::GitStatusProviderHandlesGitFailureGracefully()
+    {
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryName =
+            L"RichTabGitFail-" + std::to_wstring(GetCurrentProcessId());
+        const auto repositoryRoot = std::filesystem::temp_directory_path() / repositoryName;
+        std::filesystem::remove_all(repositoryRoot);
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+
+        // Create a failing script to simulate git failure (exit code 1)
+        const auto failingGitScript = repositoryRoot / L"failing-git.cmd";
+        std::filesystem::create_directories(repositoryRoot);
+        _WriteFile(failingGitScript, "@echo off\r\nexit /b 1\r\n");
+
+        const auto gitDirectory = repositoryRoot / L".git";
+        std::filesystem::create_directories(gitDirectory / L"objects");
+        std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+        std::filesystem::create_directories(gitDirectory / L"logs");
+        _WriteFile(
+            gitDirectory / L"config",
+            "[core]\n\t"
+            "repository"
+            "format"
+            "version = 0\n\tbare = false\n");
+        _WriteFile(
+            gitDirectory / L"HEAD",
+            "ref: refs/heads/main\n");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = providerRoot;
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "git-fail-test";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace("agentStatus", "busy");
+        request.firstPartyFields.emplace("gitBinary", failingGitScript.string());
+        request.visibleFields = { "repository", "branch", "changes", "workingDirectory" };
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+
+        const auto command =
+            CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+        VERIFY_ARE_NOT_EQUAL(
+            std::string::npos,
+            command.standardError.find("Git status inspection failed:"));
+
+        const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+        VERIFY_IS_TRUE(static_cast<bool>(parsed));
+        VERIFY_ARE_EQUAL(
+            std::string{ "busy" },
+            std::get<std::string>(parsed.value->fields.at("agentStatus")));
+        VERIFY_ARE_EQUAL(
+            repositoryRoot.string(),
+            std::get<std::string>(parsed.value->fields.at("workingDirectory")));
+        VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
+    }
+
+    void RichTabProviderTests::GitStatusProviderSetsSafeGitConfigEnvironment()
+    {
+        const auto providerRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        const auto repositoryName =
+            L"RichTabGitEnv-" + std::to_wstring(GetCurrentProcessId());
+        const auto repositoryRoot = std::filesystem::temp_directory_path() / repositoryName;
+        std::filesystem::remove_all(repositoryRoot);
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(repositoryRoot, error);
+        });
+
+        // Create a fake git script that records GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM
+        const auto recordFile = repositoryRoot / L"git-env.txt";
+        const auto recordingGitScript = repositoryRoot / L"recording-git.cmd";
+        std::filesystem::create_directories(repositoryRoot);
+        _WriteFile(
+            recordingGitScript,
+            "@echo off\r\n"
+            "echo GLOBAL=%GIT_CONFIG_GLOBAL%> \"" + recordFile.string() + "\"\r\n"
+            "echo SYSTEM=%GIT_CONFIG_SYSTEM%>> \"" + recordFile.string() + "\"\r\n"
+            "exit /b 1\r\n");
+
+        const auto gitDirectory = repositoryRoot / L".git";
+        std::filesystem::create_directories(gitDirectory / L"objects");
+        std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+        std::filesystem::create_directories(gitDirectory / L"logs");
+        _WriteFile(
+            gitDirectory / L"config",
+            "[core]\n\t"
+            "repository"
+            "format"
+            "version = 0\n\tbare = false\n");
+        _WriteFile(
+            gitDirectory / L"HEAD",
+            "ref: refs/heads/main\n");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = providerRoot;
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "agentStatus", "Agent status", FieldType::String, true },
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, false },
+            { "branch", "Git branch", FieldType::String, false },
+            { "changes", "Git changes", FieldType::String, false },
+        };
+
+        Request request;
+        request.requestId = "git-env-test";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = repositoryRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace("agentStatus", "ready");
+        request.firstPartyFields.emplace("gitBinary", recordingGitScript.string());
+        request.visibleFields = { "repository", "branch", "changes", "workingDirectory" };
+
+        const auto serialized = SerializeRequest(request, manifest);
+        VERIFY_IS_TRUE(static_cast<bool>(serialized));
+
+        const auto command =
+            CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+        VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+        VERIFY_ARE_EQUAL(0u, command.exitCode);
+
+        // Verify that the environment variables were set to /dev/null
+        VERIFY_IS_TRUE(std::filesystem::exists(recordFile));
+        std::ifstream stream{ recordFile };
+        std::string line;
+        bool globalVerified = false;
+        bool systemVerified = false;
+        while (std::getline(stream, line))
+        {
+            if (line.find("GLOBAL=/dev/null") != std::string::npos)
+            {
+                globalVerified = true;
+            }
+            if (line.find("SYSTEM=/dev/null") != std::string::npos)
+            {
+                systemVerified = true;
+            }
+        }
+        VERIFY_IS_TRUE(globalVerified);
+        VERIFY_IS_TRUE(systemVerified);
+    }
+}
