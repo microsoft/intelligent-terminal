@@ -8,7 +8,7 @@ import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   createReportTemplate, inspectSecurityRepair, readSecurityDiff, readSecuritySource, validateCandidate,
-  SECURITY_REPORT_MAX_BYTES, serializeSecurityReport, validatePatch, validateProposal, validateReport,
+  SECURITY_REPORT_MAX_BYTES, serializeSecurityReport, normalizePath, validatePatch, validateProposal, validateReport,
 } from './security-review.mjs';
 
 const SOURCE = fileURLToPath(import.meta.url);
@@ -262,29 +262,42 @@ function coversRange(intervals, start, end) {
   return false;
 }
 
-export function validateReviewerTranscript(output, scope, inspection, originalDiff, paths, diffForPaths,
-  findings, sourceForRange) {
-  const { events, calls } = parseTranscript(output, ['view', ...READ_TOOLS]);
+export function validateCompleteDiffCoverage(calls, scope, diffForPaths) {
   const diffCalls = calls.filter(call => call.toolName === READ_TOOLS[0]);
   const covered = new Set();
+  let completeReads = 0;
   for (const call of diffCalls) {
     const data = nativeResult(call);
     if (data?.baseSha !== scope.baseSha || data.headSha !== scope.headSha) continue;
     try {
       const selected = JSON.parse(call.arguments?.paths_json ?? '[]');
       if (!Array.isArray(selected) || selected.length > 20) continue;
-      const expected = selected.length === 0 ? originalDiff : diffForPaths?.(selected);
+      selected.forEach(path => normalizePath(path));
+      const expected = diffForPaths(selected);
       if (typeof expected !== 'string' || data.diff !== expected) continue;
-      for (const path of selected.length === 0 ? scope.changedFiles.map(file => file.path) : selected) {
-        covered.add(path);
+      completeReads++;
+      const includes = path => selected.length === 0 ||
+        selected.some(parent => path === parent || path.startsWith(`${parent}/`));
+      for (const file of scope.changedFiles) {
+        for (const path of [file.path, ...(file.oldPath ? [file.oldPath] : [])]) {
+          if (includes(path)) covered.add(path);
+        }
       }
     } catch {
       // Truncated or failed reads do not count; later bounded native reads can complete coverage.
     }
   }
-  if (!scope.changedFiles.every(file => covered.has(file.path))) {
-    fail('reviewer did not read the complete immutable original diff');
+  if (completeReads === 0 ||
+      !scope.changedFiles.every(file => covered.has(file.path) && (!file.oldPath || covered.has(file.oldPath)))) {
+    fail('transcript did not read the complete immutable original diff');
   }
+}
+
+export function validateReviewerTranscript(output, scope, inspection, originalDiff, paths, diffForPaths,
+  findings, sourceForRange) {
+  const { events, calls } = parseTranscript(output, ['view', ...READ_TOOLS]);
+  validateCompleteDiffCoverage(calls, scope, selected =>
+    selected.length === 0 ? originalDiff : diffForPaths?.(selected));
   if (typeof sourceForRange !== 'function') fail('missing immutable source coverage reader');
   const required = requiredSourceRanges(findings, paths, diffForPaths, sourceForRange);
   const intervals = new Map();
@@ -437,6 +450,7 @@ export function runSecurityReviewDriver({
   };
   const primary = launch('primary');
   const transcript = parseTranscript(primary, PRIMARY_TOOLS);
+  validateCompleteDiffCoverage(transcript.calls, scope, paths => readDiff(scope, paths, root));
   if (!transcript.calls.some(call => call.toolName === 'mcpscripts-submit_security_report' &&
       nativeResult(call)?.accepted === true)) fail('primary did not successfully submit a native report');
   if (transcript.calls.filter(call => call.toolName === 'safeoutputs-noop').length !== 1) {

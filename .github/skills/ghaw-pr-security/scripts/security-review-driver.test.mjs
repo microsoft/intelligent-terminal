@@ -10,7 +10,8 @@ import {
   SECURITY_REPORT_MAX_BYTES, serializeSecurityReport, readSecurityDiff, readSecuritySource,
 } from './security-review.mjs';
 import {
-  buildPhaseArguments, parseTranscript, runSecurityReviewDriver, validateReviewerTranscript as validateTranscript,
+  buildPhaseArguments, parseTranscript, runSecurityReviewDriver, validateCompleteDiffCoverage,
+  validateReviewerTranscript as validateTranscript,
 } from './security-review-driver.mjs';
 
 const BASE = '1'.repeat(40);
@@ -52,12 +53,12 @@ function candidate() {
   };
 }
 
-function call(name, value, args = {}, success = true) {
+function call(name, value, args = {}, success = true, id = name) {
   return [
-    { type: 'tool.execution_start', data: { toolCallId: name, toolName: name, arguments: args,
+    { type: 'tool.execution_start', data: { toolCallId: id, toolName: name, arguments: args,
       ...(name.startsWith('mcpscripts-') ? { mcpServerName: 'mcpscripts', mcpToolName: name.slice('mcpscripts-'.length) } : {}),
     } },
-    { type: 'tool.execution_complete', data: { toolCallId: name, success, result: { content: JSON.stringify(value) } } },
+    { type: 'tool.execution_complete', data: { toolCallId: id, success, result: { content: JSON.stringify(value) } } },
   ];
 }
 
@@ -457,6 +458,7 @@ function driverOptions(fixture, events = reviewerEvents(), hooks = {}) {
         assert.equal(args[args.lastIndexOf('--agent') + 1], 'ghaw-pr-security');
         const accepted = submitSecurityReport(JSON.stringify(hooks.candidate?.() ?? candidate()), scope, fixture.reportPath);
         return { status: 0, stdout: output([
+          ...call('mcpscripts-read_security_diff', { baseSha: BASE, headSha: HEAD, diff: DIFF }, { paths_json: '[]' }),
           ...call('mcpscripts-submit_security_report', accepted),
           ...call('safeoutputs-noop', { accepted: true }), terminal(),
         ]) };
@@ -683,6 +685,87 @@ test('bounded native diff groups must cover every immutable changed file, not ju
     [PATH], expected).status, 'SOURCE_PASS');
 });
 
+test('complete native diff coverage rejects missing, partial, forged, failed and truncated reads', () => {
+  const other = 'tools/wta/src/other.rs';
+  const current = buildScope(BASE, HEAD, 17, 'fork', `M\0${PATH}\0M\0${other}\0`, BASE, 'guide');
+  const expected = paths => paths.length === 0 ? 'whole' : paths.join('\n');
+  const reads = (paths = [], data = {}, success = true) => call('mcpscripts-read_security_diff',
+    { baseSha: BASE, headSha: HEAD, diff: expected(paths), ...data }, { paths_json: JSON.stringify(paths) }, success);
+  const validate = events => validateCompleteDiffCoverage(
+    parseTranscript(output([...events, terminal()]), ['view', 'mcpscripts-read_security_diff']).calls, current, expected);
+  for (const events of [
+    [], call('view', { content: 'whole' }), reads([PATH]),
+    reads([], { baseSha: HEAD }), reads([], { headSha: BASE }),
+    reads([], { diff: 'altered' }), reads([], { diff: 'Output truncated' }),
+    reads([], { baseSha: undefined, headSha: undefined }), reads([], {}, false),
+    reads(['tools/wta/src-unrelated']),
+  ]) assert.throws(() => validate(events), /complete immutable/);
+  validate(reads());
+  validate(reads(['tools/wta/src']));
+  const second = reads([other]).map(event => ({ ...event, data: { ...event.data, toolCallId: 'second' } }));
+  validate([...reads([PATH]), ...second]);
+  const duplicate = reads([PATH]).map(event => ({ ...event, data: { ...event.data, toolCallId: 'duplicate' } }));
+  assert.throws(() => validate([...reads([PATH]), ...duplicate]), /complete immutable/);
+  validate([...reads([PATH]), ...duplicate, ...second]);
+});
+
+test('rename coverage requires both endpoints and empty scopes still require one complete native read', () => {
+  const oldPath = 'tools/wta/src/old.rs';
+  const renamed = buildScope(BASE, HEAD, 17, 'fork', `R100\0${oldPath}\0${PATH}\0`, BASE, 'guide');
+  const empty = buildScope(BASE, HEAD, 17, 'fork', '', BASE, 'guide');
+  const validate = (current, paths) => validateCompleteDiffCoverage(
+    parseTranscript(output([...call('mcpscripts-read_security_diff',
+      { baseSha: BASE, headSha: HEAD, diff: paths.join('\n') }, { paths_json: JSON.stringify(paths) }), terminal()]),
+    ['mcpscripts-read_security_diff']).calls, current, selected => selected.join('\n'));
+  for (const paths of [[PATH], [oldPath]]) assert.throws(() => validate(renamed, paths), /complete immutable/);
+  for (const paths of [[], [oldPath, PATH], ['tools/wta/src']]) validate(renamed, paths);
+  const separateReads = parseTranscript(output([
+    ...call('mcpscripts-read_security_diff', { baseSha: BASE, headSha: HEAD, diff: oldPath },
+      { paths_json: JSON.stringify([oldPath]) }, true, 'rename-old'),
+    ...call('mcpscripts-read_security_diff', { baseSha: BASE, headSha: HEAD, diff: PATH },
+      { paths_json: JSON.stringify([PATH]) }, true, 'rename-new'),
+    terminal(),
+  ]), ['mcpscripts-read_security_diff']).calls;
+  assert.doesNotThrow(() => validateCompleteDiffCoverage(separateReads, renamed, selected => selected.join('\n')));
+  validate(empty, []);
+  assert.throws(() => validateCompleteDiffCoverage([], empty, () => ''), /complete immutable/);
+  assert.throws(() => validateCompleteDiffCoverage(
+    [{ toolName: 'mcpscripts-read_security_diff', result: { content: JSON.stringify({
+      baseSha: BASE, headSha: HEAD, diff: 'truncated',
+    }) } }], empty, () => ''), /complete immutable/);
+});
+
+test('primary guide and repair no-patch coverage is enforced before accepting or emitting reports', () => {
+  for (const mode of ['guide', 'repair']) {
+    for (const complete of [false, true]) {
+      withFixture(fixture => {
+        const current = buildScope(BASE, HEAD, 17, mode === 'guide' ? 'fork' : 'same-repo',
+          `M\0${PATH}\0`, BASE, mode);
+        writeFileSync(fixture.scopePath, JSON.stringify(current));
+        const options = driverOptions(fixture);
+        let emitted = false;
+        options.emitPrimary = () => { emitted = true; };
+        options.inspect = () => ({ headSha: HEAD, patch: '', paths: [],
+          patchSha256: createHash('sha256').update('').digest('hex') });
+        options.runChild = () => {
+          const accepted = submitSecurityReport(JSON.stringify({
+            ...createReportTemplate(current), summary: 'No findings after review.',
+          }), current, fixture.reportPath);
+          return { status: 0, stdout: output([
+            ...(complete ? call('mcpscripts-read_security_diff',
+              { baseSha: BASE, headSha: HEAD, diff: DIFF }, { paths_json: '[]' }) : []),
+            ...call('mcpscripts-submit_security_report', accepted),
+            ...call('safeoutputs-noop', { accepted: true }), terminal(),
+          ]) };
+        };
+        if (complete) assert.equal(runSecurityReviewDriver(options).reviewed, false);
+        else assert.throws(() => runSecurityReviewDriver(options), /complete immutable/);
+        assert.equal(emitted, complete);
+      });
+    }
+  }
+});
+
 test('unknown native server identity and hidden subsidiary-agent events cannot forge provenance', () => {
   const events = reviewerEvents();
   events[0].data.mcpServerName = 'arbitrary';
@@ -835,7 +918,7 @@ test('source-bearing transcripts stay in memory across repair, guide, no-patch, 
             ...createReportTemplate(currentScope), summary: 'Guidance only.',
           }), currentScope, fixture.reportPath);
           return { status: 0, stdout: output([
-            ...call('mcpscripts-read_security_diff', { diff }),
+            ...call('mcpscripts-read_security_diff', { baseSha: BASE, headSha: HEAD, diff }),
             ...call('mcpscripts-submit_security_report', accepted),
             ...call('safeoutputs-noop', { accepted: true }), terminal(),
           ]), stderr: sentinel };
@@ -843,8 +926,8 @@ test('source-bearing transcripts stay in memory across repair, guide, no-patch, 
         const result = originalRun(...args);
         if (launches === 1) {
           const events = JSON.parse(`[${result.stdout.trim().split('\n').join(',')}]`);
-          events.splice(0, 0, ...call('mcpscripts-read_security_diff', { diff }),
-            { type: 'assistant.message', data: { content: sentinel } });
+          events[1].data.result.content = JSON.stringify({ baseSha: BASE, headSha: HEAD, diff });
+          events.splice(0, 0, { type: 'assistant.message', data: { content: sentinel } });
           events.at(-1).sessionId = sentinel;
           events.at(-1).usage = { inputTokens: 7, extra: sentinel, outputTokens: sentinel };
           result.stdout = scenario === 'malformed-primary' ? sentinel : output(events);
@@ -1056,6 +1139,7 @@ test('driver rejects physical report files beyond the shared serialized bound wi
     options.runChild = () => {
       writeFileSync(fixture.reportPath, oversized);
       return { status: 0, stdout: output([
+        ...call('mcpscripts-read_security_diff', { baseSha: BASE, headSha: HEAD, diff: DIFF }),
         ...call('mcpscripts-submit_security_report', { accepted: true }),
         ...call('safeoutputs-noop', { accepted: true }), terminal(),
       ]) };

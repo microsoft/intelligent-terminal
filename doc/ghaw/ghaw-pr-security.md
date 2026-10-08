@@ -201,6 +201,12 @@ generic delegation. The guide also excludes `task`, `read_agent`, `write_agent`,
 and `list_agents` in the native CLI invocation.
 
 Repair uses a trusted sequential driver inside the existing agent sandbox.
+Before accepting any primary report (guide, repair, or no-patch), the driver
+requires successful correlated native reads covering the complete immutable
+original diff. It compares base/head identities and exact recomputed diff bytes;
+whole-diff reads or bounded path groups count, including directory selections
+and both endpoints of renames. Model claims, `view`, truncated results, and
+partial coverage do not count. Coverage proves inspection, not correct reasoning.
 After the primary exits, the driver validates its pending candidate and alone
 launches the fixed `ghaw-pr-security-reviewer` profile. The reviewer has only
 trusted reads and the three read-only native inspection capabilities; it cannot
@@ -462,7 +468,13 @@ analyzer may substantiate finding evidence but cannot become a passing local
 validation check or authorize repair.
 
 Detached workers are dispatched on the base branch but fail in `prepare` unless
-`github.workflow_sha` equals the controller-recorded base SHA. Their
+`github.workflow_sha` equals the controller-recorded base SHA. The
+controller first resolves the exact base branch through the Git refs API and
+explicitly rejects a stale base before dispatch without replacing that SHA.
+Dispatch retains a documented branch reference, not an assumed raw-SHA ref,
+and does not create writable tags. This preflight is not atomic: a subsequent
+base update still fails the worker SHA guard and controller success gate,
+preventing publication rather than silently accepting a missing review. Their
 `workflow_dispatch` context deliberately omits gh-aw's `pull_request`
 `item_type`, so the generated generic `Checkout PR branch` step is ineligible.
 The repair worker's explicit checkout is pinned to the immutable head; fork

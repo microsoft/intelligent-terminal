@@ -135,6 +135,14 @@ jobs:
                 root_workflow_id: "ghaw-pr-security-controller"
               })
             };
+            const baseRef = await github.rest.git.getRef({
+              ...context.repo, ref: `heads/${pr.base.ref}`
+            });
+            if (baseRef.data.ref !== `refs/heads/${pr.base.ref}` ||
+                baseRef.data.object.type !== "commit" ||
+                baseRef.data.object.sha !== process.env.EXPECTED_BASE_SHA) {
+              throw new Error("Stale security base: the base branch changed before dispatch; refusing to replace the immutable expected base.");
+            }
             const startedAt = Date.now() - 5000;
             const response = await github.request(
               "POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches",

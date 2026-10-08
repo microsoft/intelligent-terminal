@@ -128,6 +128,52 @@ test('both compiled workers attest generated detector outputs only after detecti
   }
 });
 
+test('controller rejects stale or unresolved exact base refs before dispatch without changing SHA inputs', async () => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  const script = controller.split('            const pr = context.payload.pull_request;')[1]
+    .split('\n      - name: Canonicalize worker')[0];
+  const execute = new (Object.getPrototypeOf(async function () {}).constructor)(
+    'github', 'context', 'core', 'process', `const pr = context.payload.pull_request;${script}`);
+  for (const variant of ['current', 'stale', 'wrong-ref', 'wrong-type', 'api-failure', 'post-read-race']) {
+    let dispatched = false;
+    const outputs = {};
+    const context = { repo: { owner: 'owner', repo: 'repo' }, runId: 123, runAttempt: 1,
+      payload: { pull_request: { number: 17, base: { ref: 'release/nested' } } } };
+    const env = { EXPECTED_BASE_SHA: BASE, EXPECTED_HEAD_SHA: HEAD, COMPARISON_BASE_SHA: BASE,
+      WORKER: 'ghaw-pr-security-guide-fork.lock.yml' };
+    const github = {
+      rest: {
+        git: { getRef: async args => {
+          assert.equal(args.ref, 'heads/release/nested');
+          if (variant === 'api-failure') throw new Error('API unavailable');
+          return { data: { ref: variant === 'wrong-ref' ? 'refs/heads/other' : 'refs/heads/release/nested',
+            object: { type: variant === 'wrong-type' ? 'tag' : 'commit', sha: variant === 'stale' ? HEAD : BASE } } };
+        } },
+        actions: { getWorkflowRun: async () => ({ data: { status: 'completed',
+          conclusion: variant === 'post-read-race' ? 'failure' : 'success', html_url: 'https://example.invalid/run' } }) },
+      },
+      request: async (route, args) => {
+        dispatched = true;
+        assert.equal(args.ref, 'release/nested');
+        assert.equal(args.inputs.expected_base_sha, BASE);
+        return { data: { workflow_run_id: 321 } };
+      },
+    };
+    const run = () => execute(github, context, { setOutput: (key, value) => { outputs[key] = value; } }, { env });
+    if (['current', 'post-read-race'].includes(variant)) {
+      await run();
+      assert.equal(dispatched, true);
+      assert.equal(outputs.conclusion, variant === 'current' ? 'success' : 'failure');
+    } else {
+      await assert.rejects(run, variant === 'api-failure' ? /API unavailable/ : /Stale security base/);
+      assert.equal(dispatched, false);
+    }
+    assert.equal(env.EXPECTED_BASE_SHA, BASE);
+  }
+  assert(controller.includes('[ "$WORKER_CONCLUSION" = success ]'));
+  assert(controller.includes('echo "::error::The internal security worker did not succeed."'));
+});
+
 test('typed detector proof rejects warning, cancelled, missing and self-reported success', () => {
   for (const relation of ['same-repo', 'fork']) {
     const current = buildScope(BASE, HEAD, 17, relation, 'M\0tools/wta/src/master/mod.rs\0', BASE,
