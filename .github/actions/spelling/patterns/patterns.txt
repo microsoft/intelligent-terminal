@@ -36,6 +36,9 @@ D2D
 # tools/wta/build.rs: Rust stdlib char predicate
 \bis_ascii_hexdigit\b
 
+# Axe.Windows artifact file extension
+(?<=\.)a11ytest\b
+
 # Automatically suggested patterns
 
 # hit-count: 26 file-count: 12
