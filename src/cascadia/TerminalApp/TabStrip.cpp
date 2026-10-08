@@ -86,7 +86,7 @@ namespace winrt::TerminalApp::implementation
         {
             return *this;
         }
-        return nullptr;
+        return m_inner.as<WUX::Automation::Peers::IAutomationPeerOverrides>().GetPatternCore(pattern);
     }
 
     WUX::Automation::Peers::AutomationControlType TabStripHistoryHeaderAutomationPeer::GetAutomationControlTypeCore() const
