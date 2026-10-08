@@ -325,7 +325,7 @@ namespace
                     {
                         double amount{};
                         const auto parsed = std::from_chars(item->valueDecimalText.data(), item->valueDecimalText.data() + item->valueDecimalText.size(), amount);
-                        THROW_HR_IF(E_INVALIDARG, parsed.ec != std::errc{} || parsed.ptr != item->valueDecimalText.data() + item->valueDecimalText.size() || !std::isfinite(amount));
+                        winrt::check_hresult(parsed.ec != std::errc{} || parsed.ptr != item->valueDecimalText.data() + item->valueDecimalText.size() || !std::isfinite(amount) ? E_INVALIDARG : S_OK);
                         using namespace winrt::Windows::Globalization::NumberFormatting;
                         CurrencyFormatter formatter{
                             til::u8u16(item->unitId),
@@ -334,6 +334,8 @@ namespace
                         };
                         formatter.Mode(CurrencyFormatterMode::UseCurrencyCode);
                         const auto fractionDigits = formatter.FractionDigits();
+                        // Windows rounded currency formatting preserves only 15 significant decimal digits.
+                        winrt::check_hresult(amount >= std::pow(10.0, 15.0 - static_cast<double>(fractionDigits)) ? E_BOUNDS : S_OK);
                         formatter.FractionDigits(0);
                         const auto localizedFullText = formatter.FormatDouble(amount);
                         formatter.FractionDigits(fractionDigits);

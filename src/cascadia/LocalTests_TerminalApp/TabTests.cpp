@@ -5690,6 +5690,58 @@ namespace TerminalAppLocalTests
                     }
                 }
             }
+            struct CurrencyRangeCase
+            {
+                const char* currency;
+                const char* value;
+                bool localized;
+            };
+            for (const auto language : { L"en-US", L"fr-FR", L"ar-SA" })
+            {
+                for (const auto& test : {
+                         CurrencyRangeCase{ "USD", "9999999999999.99", true },
+                         CurrencyRangeCase{ "USD", "10000000000000", false },
+                         CurrencyRangeCase{ "USD", "10000000000000.01", false },
+                         CurrencyRangeCase{ "JPY", "999999999999999", true },
+                         CurrencyRangeCase{ "JPY", "1000000000000000", false },
+                         CurrencyRangeCase{ "JPY", "1000000000000001", false },
+                         CurrencyRangeCase{ "KWD", "999999999999.999", true },
+                         CurrencyRangeCase{ "KWD", "1000000000000", false },
+                         CurrencyRangeCase{ "KWD", "1000000000000.001", false },
+                         CurrencyRangeCase{ "CLF", "99999999999.9999", true },
+                         CurrencyRangeCase{ "CLF", "100000000000", false },
+                         CurrencyRangeCase{ "CLF", "100000000000.0001", false },
+                         CurrencyRangeCase{ "USD", "123456789012345.67", false },
+                         CurrencyRangeCase{ "USD", "9007199254740992", false },
+                     })
+                {
+                    const std::vector<::TerminalApp::AgentUsage::Item> items{
+                        { .displayKind = ::TerminalApp::AgentUsage::DisplayKind::Billing,
+                          .valueDecimalText = test.value,
+                          .unitId = test.currency,
+                          .unitDisplayText = test.currency,
+                          .source = "acp_standard" }
+                    };
+                    const auto display = ::TerminalApp::AgentUsage::BuildPrimaryDisplay(items, L"tokens", true, L"Context Window", language);
+                    VERIFY_IS_TRUE(display.visible);
+                    VERIFY_ARE_EQUAL(size_t{ 1 }, display.items.size());
+                    if (test.localized)
+                    {
+                        CurrencyFormatter formatter{ til::u8u16(test.currency), winrt::single_threaded_vector<winrt::hstring>({ language }), L"ZZ" };
+                        formatter.Mode(CurrencyFormatterMode::UseCurrencyCode);
+                        const auto amount = std::stod(test.value);
+                        VERIFY_ARE_EQUAL(std::wstring{ formatter.FormatDouble(amount) }, display.items[0].text);
+                        formatter.FractionDigits(0);
+                        VERIFY_ARE_EQUAL(std::wstring{ formatter.FormatDouble(amount) }, display.items[0].fullText);
+                    }
+                    else
+                    {
+                        const auto legacy = ::TerminalApp::AgentUsage::BuildPrimaryDisplay(items, L"tokens", true, L"Context Window");
+                        VERIFY_ARE_EQUAL(legacy.items[0].text, display.items[0].text);
+                        VERIFY_ARE_EQUAL(legacy.items[0].fullText, display.items[0].fullText);
+                    }
+                }
+            }
             const std::vector<::TerminalApp::AgentUsage::Item> unsupported{
                 { .displayKind = ::TerminalApp::AgentUsage::DisplayKind::Billing,
                   .valueDecimalText = "0.004",
