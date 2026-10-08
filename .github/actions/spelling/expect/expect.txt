@@ -493,6 +493,7 @@ DSRCPR
 DSSCL
 DTo
 DTTERM
+DUNICODE
 dup'ed
 dvi
 dwl
@@ -1175,6 +1176,7 @@ oemcp
 OEMFONT
 OEMFORMAT
 OEMs
+oleaut
 OLEAUT
 OLECHAR
 onebranch
@@ -1477,6 +1479,7 @@ runfuzz
 runsettings
 runtest
 runtimeclass
+runtimeobject
 runuia
 runut
 runxamlformat
