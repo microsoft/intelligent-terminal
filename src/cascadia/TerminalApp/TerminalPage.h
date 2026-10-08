@@ -338,8 +338,10 @@ namespace winrt::TerminalApp::implementation
         // Populated with real TabViewItems via the routed _tabItems() helper.
         TerminalApp::TabStrip _tabStrip{ nullptr };
         bool _isVerticalLayout{ false };
+        bool _isRightToLeft{ false };
         bool _changingTabLayout{ false };
         bool _hasTitlebarHost{ false };
+        bool _verticalTitlebarKeyHandlerInstalled{ false };
         uint64_t _tabLayoutGeneration{ 0 };
         std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _pendingTabLayout;
         std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _tabLayoutTransitionTarget;
@@ -347,6 +349,7 @@ namespace winrt::TerminalApp::implementation
         bool _tabLayoutTransitionPreviousVertical{ false };
         bool _isVerticalRailVisible{ true };
         bool _isVerticalRailCollapsed{ false };
+        winrt::weak_ref<Microsoft::Terminal::Control::TermControl> _sidebarHotkeyReturnControl;
         TerminalApp::TabStripFilterMode _tabFilterMode{ TerminalApp::TabStripFilterMode::AllTabs };
         bool _tabSearchActive{ false };
         winrt::hstring _tabSearchQuery;
@@ -360,6 +363,7 @@ namespace winrt::TerminalApp::implementation
         struct _SidebarHistoryEntryState
         {
             bool railWasCollapsed{ false };
+            bool tabSearchHadFocus{ false };
             winrt::weak_ref<Microsoft::Terminal::Control::TermControl> sourceControl;
         };
         std::optional<_SidebarHistoryEntryState> _historyEntryState;
@@ -374,8 +378,7 @@ namespace winrt::TerminalApp::implementation
         winrt::weak_ref<Tab> _pendingPinTab;
         bool _pendingPinValue{ false };
         // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
-        // Lives in column 1 of the Root Grid, hugging its left edge, so the
-        // hit strip straddles the column boundary.
+        // Lives in the content column and straddles the rail boundary.
         Windows::UI::Xaml::Controls::Border _verticalRailSplitter{ nullptr };
         Windows::UI::Core::CoreCursor _railSplitterPriorCursor{ nullptr };
         bool _railSplitterCursorSaved{ false };
@@ -574,6 +577,7 @@ namespace winrt::TerminalApp::implementation
             bool yoloEnabled{ false };
             bool yoloPolicyBlocked{ false };
             std::string autofixPolicyState{ "unknown" };
+            bool sessionsInSidebar{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
         bool _agentRuntimeConfigInitialized{ false };
@@ -931,6 +935,8 @@ namespace winrt::TerminalApp::implementation
         std::vector<winrt::guid> _startupKeptGroups;
         bool _restoringStartupKeptGroups{ false };
         std::vector<winrt::TerminalApp::Tab> _RuntimeTabs() const;
+        std::pair<uint32_t, uint32_t> _KeepRunningTabCounts() const;
+        void _LogKeepRunningMarked(const winrt::com_ptr<Tab>& tab);
         bool _KeepTabRunning(const winrt::com_ptr<Tab>& tab);
         friend struct ContentManager;
         void _SettingsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
@@ -957,7 +963,16 @@ namespace winrt::TerminalApp::implementation
             const Microsoft::Terminal::Control::TermControl& control,
             ::Microsoft::Terminal::RichTab::Provider::ActivationEvent reason);
         void _ReleaseRichTabAttachments(const std::shared_ptr<Pane>& rootPane);
-        std::optional<std::string> _RichTabAgentStatusForControl(const Microsoft::Terminal::Control::TermControl& control);
+        struct _RichTabAgentInfo
+        {
+            std::string sessionId;
+            std::string status;
+            std::string providerId;
+            std::optional<uint64_t> lastActivityAtMs;
+            std::optional<winrt::guid> paneSessionId;
+        };
+        std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
+        winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& profileIcon);
         std::unordered_map<std::string, std::string> _BuildRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _LogSidebarRowFieldsTelemetry() const;
@@ -1004,8 +1019,11 @@ namespace winrt::TerminalApp::implementation
         void _RequestSidebarHistoryRefresh(bool initialLoad);
         void _UpdateSidebarHistoryCurrentSession();
         static winrt::hstring _SidebarHistoryStatusText(std::string_view status);
+        static winrt::hstring _FormatLocalizedPercentValue(uint32_t progressValue, std::wstring_view languageTag = {});
         bool _ApplyAgentSessionStatusDelta(std::string_view sessionId,
                                            std::string_view paneSessionId,
+                                           std::string_view providerId,
+                                           std::optional<uint64_t> lastActivityAtMs,
                                            std::string_view status);
         static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs);
         struct _SidebarHistorySnapshot
@@ -1015,6 +1033,7 @@ namespace winrt::TerminalApp::implementation
                 Loading,
                 Ready,
                 Error,
+                Timeout,
                 InvalidResponse,
                 Cancelled,
             };
@@ -1069,8 +1088,8 @@ namespace winrt::TerminalApp::implementation
         std::mutex _richTabAttachmentsMutex;
         std::unordered_map<uintptr_t, RichTabAttachment> _richTabAttachments;
         std::unordered_map<std::string, RichTabPresentationState> _richTabPresentations;
-        std::unordered_map<std::string, std::string> _richTabAgentStatusBySessionId;
-        std::unordered_map<winrt::guid, std::string> _richTabAgentStatusByPaneId;
+        std::unordered_map<std::string, _RichTabAgentInfo> _richTabAgentStatusBySessionId;
+        std::unordered_map<winrt::guid, _RichTabAgentInfo> _richTabAgentStatusByPaneId;
         bool _richTabAgentStatusSnapshotLoaded{ false };
         bool _richTabAgentStatusRefreshInFlight{ false };
         bool _richTabAgentStatusRefreshPending{ false };
@@ -1279,6 +1298,7 @@ namespace winrt::TerminalApp::implementation
         void _OnFirstLayout(const IInspectable& sender, const IInspectable& eventArgs);
         void _ApplyVerticalLayoutReshape(bool initializeWidth = false);
         void _ApplyHorizontalLayoutReshape();
+        void _SetVerticalRailColumnWidth(double width);
         void _UpdateTabLayoutHost();
         void _RequestTabLayoutChange(winrt::Microsoft::Terminal::Settings::Model::TabLayout targetLayout);
         bool _ApplyTabLayout(winrt::Microsoft::Terminal::Settings::Model::TabLayout targetLayout);
@@ -1287,6 +1307,7 @@ namespace winrt::TerminalApp::implementation
         void _ApplyPendingTabLayout();
         void _InstallVerticalRailSplitter();
         void _SetVerticalRailVisibility(bool visible);
+        void _ToggleSidebarHotkey();
         void _OnVerticalRailCollapseRequested(const IInspectable& sender, const IInspectable& eventArgs);
         void _CancelRailSplitterDrag();
         void _SetRailSplitterCursor();

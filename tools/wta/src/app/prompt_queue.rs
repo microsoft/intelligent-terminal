@@ -452,7 +452,12 @@ impl App {
             item.submission = item
                 .submission
                 .with_byok(self.current_model_is_byok())
-                .with_agent_id(self.current_agent_id.clone());
+                .with_agent_id(self.current_agent_id.clone())
+                .with_reattached_session(
+                    self.tab_sessions
+                        .get(&tab_id)
+                        .and_then(|tab| tab.reattached_session_id().map(str::to_string)),
+                );
             item.submission.submitted_at_unix_s = now_unix_s();
             if let Some(context) = item.submission.pane_context.as_mut() {
                 context.tab_id = Some(tab_id.clone());

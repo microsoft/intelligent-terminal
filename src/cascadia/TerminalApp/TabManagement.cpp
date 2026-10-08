@@ -59,6 +59,30 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    winrt::hstring TerminalPage::_AgentIconForControl(const TermControl& control, const winrt::hstring& profileIcon)
+    {
+        if (control)
+        {
+            if (const auto agentInfo = _RichTabAgentInfoForControl(control);
+                agentInfo &&
+                (agentInfo->status == "Idle" ||
+                 agentInfo->status == "Working" ||
+                 agentInfo->status == "Attention" ||
+                 agentInfo->status == "Error"))
+            {
+                const auto providerId = winrt::to_hstring(agentInfo->providerId);
+                for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents)
+                {
+                    if (::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(agent.id, providerId))
+                    {
+                        return winrt::hstring{ L"ms-appx:///AgentIcons/" } + winrt::hstring{ agent.id } + L".svg";
+                    }
+                }
+            }
+        }
+        return profileIcon;
+    }
+
     // Method Description:
     // - Open a new tab. This will create the TerminalControl hosting the
     //   terminal, and add a new Tab to our list of tabs. The method can
@@ -161,6 +185,13 @@ namespace winrt::TerminalApp::implementation
         // Don't capture a strong ref to the tab. If the tab is removed as this
         // is called, we don't really care anymore about handling the event.
         auto weakTab = make_weak(newTabImpl);
+        newTabImpl->SetHeaderResolver([weakTab, weakThis = get_weak()](const bool realize) -> TerminalApp::TabHeaderControl {
+            const auto page = weakThis.get();
+            const auto tab = weakTab.get();
+            return page && tab ?
+                       winrt::get_self<implementation::TabStrip>(page->_tabStrip)->HeaderForTab(tab->TabViewItem(), realize).try_as<TerminalApp::TabHeaderControl>() :
+                       nullptr;
+        });
 
         // When the tab's active pane changes, we'll want to lookup a new icon
         // for it. The Title change will be propagated upwards through the tab's
@@ -281,14 +312,7 @@ namespace winrt::TerminalApp::implementation
             const auto tab = weakTab.get();
             if (page && tab && page->_GetTabIndex(*tab))
             {
-                uint32_t pinnedCount = 0;
-                for (const auto& candidate : page->_tabs)
-                {
-                    if (const auto impl = page->_GetTabImpl(candidate); impl && impl->KeepRunning())
-                    {
-                        ++pinnedCount;
-                    }
-                }
+                const auto pinnedCount = page->_KeepRunningTabCounts().second;
                 TraceLoggingWrite(
                     g_hTerminalAppProvider,
                     "SidebarTabPinned",
@@ -296,6 +320,7 @@ namespace winrt::TerminalApp::implementation
                     TraceLoggingUInt32(pinnedCount, "pinned_count"),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                page->_LogKeepRunningMarked(tab);
             }
         });
 
@@ -493,14 +518,14 @@ namespace winrt::TerminalApp::implementation
     // - tab: the Tab to update the title for.
     void TerminalPage::_UpdateTabIcon(Tab& tab)
     {
-        // Don't change the icon when an agent pane has focus — same as title.
-        if (const auto activePane = tab.GetActivePane(); activePane && activePane->IsAgentPane())
+        const auto sourcePane = _SourceTerminalPaneForTab(tab.get_strong());
+        if (!sourcePane)
         {
             return;
         }
-        if (const auto content{ tab.GetActiveContent() })
+        if (const auto content{ sourcePane->GetContent() })
         {
-            const auto& icon{ content.Icon() };
+            const auto icon = _AgentIconForControl(sourcePane->GetTerminalControl(), content.Icon());
             const auto theme = _settings.GlobalSettings().CurrentTheme();
             const auto iconStyle = (theme && theme.Tab()) ? theme.Tab().IconStyle() : IconStyle::Default;
 
@@ -889,7 +914,44 @@ namespace winrt::TerminalApp::implementation
         const auto tab = _FindTabByStableId(winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(tabId) });
         THROW_HR_IF(E_INVALIDARG, !tab || !_GetTabIndex(*tab));
         THROW_HR_IF(E_ILLEGAL_METHOD_CALL, enabled && !CanKeepTabRunning(tabId));
+        const auto wasEnabled = tab->KeepRunning();
         tab->KeepRunning(enabled);
+        if (enabled && !wasEnabled)
+        {
+            _LogKeepRunningMarked(tab);
+        }
+    }
+
+    std::pair<uint32_t, uint32_t> TerminalPage::_KeepRunningTabCounts() const
+    {
+        uint32_t totalTabCount = 0;
+        uint32_t keepRunningTabCount = 0;
+        for (const auto& candidate : _tabs)
+        {
+            if (const auto tab = _GetTabImpl(candidate); tab && tab->CanKeepRunning())
+            {
+                ++totalTabCount;
+                if (tab->KeepRunning())
+                {
+                    ++keepRunningTabCount;
+                }
+            }
+        }
+        return { totalTabCount, keepRunningTabCount };
+    }
+
+    void TerminalPage::_LogKeepRunningMarked(const winrt::com_ptr<Tab>& tab)
+    {
+        const auto [totalTabCount, keepRunningTabCount] = _KeepRunningTabCounts();
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "KeepRunningMarked",
+            TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
+            TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
+            TraceLoggingUInt32(totalTabCount, "TotalTabCount"),
+            TraceLoggingUInt32(keepRunningTabCount, "KeepRunningTabCount"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
     bool TerminalPage::_KeepTabRunning(const winrt::com_ptr<Tab>& tab)
@@ -928,6 +990,13 @@ namespace winrt::TerminalApp::implementation
         });
         _RemoveTab(*tab, true, true);
         rollback.release();
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "KeepRunningDetached",
+            TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
+            TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         return true;
     }
 
@@ -944,10 +1013,51 @@ namespace winrt::TerminalApp::implementation
             }
             CATCH_LOG()
         });
-        auto actions = winrt::single_threaded_vector(sourceTab->BuildStartupActions(BuildStartupKind::Content));
-        THROW_HR_IF(E_ABORT, !_AttachTransferredContent(*winrt::get_self<TerminalPage>(owner), sourceTab, sourceTab->GetRootPane(), actions, -1));
+        const auto keepId = sourceTab->KeepRunningTelemetryId();
+        const auto hasAgentPane = !!sourceTab->FindAgentPaneContent();
+        const auto logReattach = [&](const char* outcome) {
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "KeepRunningReattached",
+                TraceLoggingWideString(keepId.c_str(), "KeepId"),
+                TraceLoggingString(outcome, "Outcome"),
+                TraceLoggingBool(hasAgentPane, "HasAgentPane"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        };
+        bool attached = false;
+        try
+        {
+            auto actions = winrt::single_threaded_vector(sourceTab->BuildStartupActions(BuildStartupKind::Content));
+            attached = _AttachTransferredContent(*winrt::get_self<TerminalPage>(owner), sourceTab, sourceTab->GetRootPane(), actions, -1);
+        }
+        catch (...)
+        {
+            rollback.reset();
+            logReattach("failed");
+            throw;
+        }
+        if (!attached)
+        {
+            rollback.reset();
+            logReattach("failed");
+            return false;
+        }
         _manager.CompleteKeptGroupReattach(groupId, true);
         rollback.release();
+        logReattach("live");
+        const auto restoredTab = _GetFocusedTabImpl();
+        if (hasAgentPane)
+        {
+            try
+            {
+                Json::Value params;
+                params["tab_id"] = winrt::to_string(restoredTab->StableId());
+                params["window_id"] = std::to_string(_WindowProperties.WindowId());
+                _RaiseProtocolEvent("keep_running_reattached", params);
+            }
+            CATCH_LOG()
+        }
         _GetFocusedTabImpl()->GetRootPane()->WalkTree([&](const auto& pane) {
             const auto control = pane->GetTerminalControl();
             const auto binding = control ? _manager.AgentSessionEvent(control.ContentId()) : winrt::hstring{};
@@ -1240,7 +1350,11 @@ namespace winrt::TerminalApp::implementation
         {
             return _tabLayoutTransitionSelectedItem;
         }
-        return _isVerticalLayout ? _tabStrip.SelectedItem() : _tabView.SelectedItem();
+        if (_isVerticalLayout)
+        {
+            return _tabStrip.SelectedItem();
+        }
+        return _tabView.SelectedItem().try_as<MUX::Controls::TabViewItem>();
     }
 
     void TerminalPage::_selectedTabItem(const IInspectable& item)
@@ -2025,12 +2139,11 @@ namespace winrt::TerminalApp::implementation
             const auto item = tab.TabViewItem();
             const auto display = projectedDisplay ? projectedDisplay :
                                                     (tabStrip ? tabStrip->DisplayItemForTab(item) : nullptr);
-            auto header = display ?
-                              display.Header().try_as<TerminalApp::TabHeaderControl>() :
-                              item.Header().try_as<TerminalApp::TabHeaderControl>();
+            const auto header = item.Header().try_as<TerminalApp::TabHeaderControl>();
             if (display)
             {
                 display.SearchText(highlightQuery);
+                display.Presentation().SearchText(highlightQuery);
                 for (const auto& pane : display.PaneItems())
                 {
                     pane.HighlightQuery(highlightQuery);
@@ -2158,12 +2271,11 @@ namespace winrt::TerminalApp::implementation
                                   nullptr;
         const auto display = projectedDisplay ? projectedDisplay :
                                                 (tabStrip ? tabStrip->DisplayItemForTab(tab.TabViewItem()) : nullptr);
-        const auto header = display ?
-                                display.Header().try_as<TerminalApp::TabHeaderControl>() :
-                                tab.TabViewItem().Header().try_as<TerminalApp::TabHeaderControl>();
-        if (header && header.IsMetadataVisible())
+        const auto header = tab.TabViewItem().Header().try_as<TerminalApp::TabHeaderControl>();
+        const auto metadataVisible = display ? display.IsMetadataVisible() : header && header.IsMetadataVisible();
+        if (metadataVisible)
         {
-            const auto metadata = header.MetadataText();
+            const auto metadata = display ? display.Presentation().MetadataText() : header.MetadataText();
             if (matches(std::wstring_view{ metadata.c_str(), metadata.size() }))
             {
                 return true;

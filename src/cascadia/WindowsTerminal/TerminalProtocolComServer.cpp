@@ -1219,7 +1219,12 @@ try
         _dispatchAgentStatusToPage(eventH);
         return S_OK;
     case ProtocolParsing::SendEventRoute::AgentAvailability:
+    case ProtocolParsing::SendEventRoute::AgentInstallation:
         _dispatchAgentAvailabilityToPage(eventH);
+        if (route == ProtocolParsing::SendEventRoute::AgentInstallation)
+        {
+            s_NotifyEventToComClients(jsonStr);
+        }
         return S_OK;
     case ProtocolParsing::SendEventRoute::AgentSwitch:
         _dispatchAgentSwitchToPage(eventH);

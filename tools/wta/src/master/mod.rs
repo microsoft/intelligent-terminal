@@ -52,6 +52,7 @@ const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
 const SESSION_LOAD_TIMEOUT_SECS: u64 = 55;
 const SESSION_ROLLBACK_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
+const HISTORY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Context, Result};
@@ -621,7 +622,10 @@ struct MasterStateInner {
     /// tab switch; that trade-off favors warm agents for a terminal app.
     pub(crate) agents: Mutex<HashMap<AgentCmdKey, AgentCell>>,
     history_refresh: Arc<Mutex<()>>,
-    history_status: watch::Sender<crate::session_registry::HistoryLoadStatus>,
+    history_discovery_state: std::sync::atomic::AtomicU8,
+    history_discovery_errors: Mutex<HashMap<AgentCmdKey, HistoryRefreshFailure>>,
+    history_status: watch::Sender<HistorySyncStatus>,
+    history_status_gate: Mutex<()>,
     helper_roles: Mutex<HashMap<HelperId, HelperRole>>,
     /// Master-only BYOK configurations keyed by the credential-free selection
     /// ID. A changed endpoint/model/credential reference advances the
@@ -1857,6 +1861,43 @@ fn agent_cmd_key_with_provider(
     )
 }
 
+#[derive(Default)]
+struct AgentHistoryRefresh {
+    gate: Mutex<HistoryRefreshState>,
+    mutation_gate: Mutex<()>,
+    generation: std::sync::atomic::AtomicU64,
+    retired: std::sync::atomic::AtomicBool,
+    failure: Mutex<Option<HistoryRefreshFailure>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HistoryRefreshFailure {
+    Timeout,
+    Other,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HistorySyncStatus {
+    status: crate::session_registry::HistoryLoadStatus,
+    error_kind: Option<crate::session_registry::HistoryErrorKind>,
+}
+
+impl From<crate::session_registry::HistoryLoadStatus> for HistorySyncStatus {
+    fn from(status: crate::session_registry::HistoryLoadStatus) -> Self {
+        Self {
+            status,
+            error_kind: None,
+        }
+    }
+}
+
+#[derive(Default)]
+struct HistoryRefreshState {
+    next_refresh_at: Option<tokio::time::Instant>,
+    failures: u32,
+    last_count: Option<usize>,
+}
+
 /// One spawned agent CLI subprocess and everything a helper needs to
 /// talk to it. Shared (`Arc`) across every helper currently bound to
 /// this agent.
@@ -1876,23 +1917,7 @@ struct AgentCli {
     /// F2 view labels each row with its real CLI (Gemini vs Claude),
     /// not one process-wide value.
     cli_source: Option<crate::agent_sessions::CliSource>,
-    /// Short-TTL cache of THIS CLI's raw `session/list` response.
-    /// `Some(Some(sessions))` = the agent listed (possibly empty);
-    /// `Some(None)` = the last fetch failed / timed out / is unsupported —
-    /// negative-cached so a burst of hook/watcher events and the 5 s poll share
-    /// one round-trip and don't hammer a hung agent. Both the host-history
-    /// reconcile and the synthetic-title refresh derive from this one fetch.
-    ///
-    /// Per-agent (not per-master) because an agent enumerates only its OWN
-    /// sessions: a shared cache would serve one CLI's rows to another and, once
-    /// the user switches agents in Settings, permanently answer for the wrong
-    /// one. Dies with the `AgentCli` when the pool reaps it.
-    host_list_cache: Mutex<
-        Option<(
-            std::time::Instant,
-            Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>>,
-        )>,
-    >,
+    history_refresh: AgentHistoryRefresh,
     /// Session ids THIS agent's `session/list` has returned at least once.
     ///
     /// Reconcile may only drop rows from this set. `cli_source` does not
@@ -4484,6 +4509,9 @@ impl HelperHandler {
             }
             Req::SessionFocus(p) => handle_session_focus(&self.state, &p).await,
             Req::CloseTabSession(p) => handle_close_tab_session(&self.state, &p, false).await,
+            Req::SourcePaneSessionByPane(p) => {
+                handle_source_pane_session_by_pane(&self.state, &p).await
+            }
             Req::ForwardToAgent(raw) => {
                 self.resolved_agent("ext_method")?
                     .conn
@@ -4905,7 +4933,11 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         wt,
         agents: Mutex::new(HashMap::new()),
         history_refresh: Arc::new(Mutex::new(())),
-        history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading).0,
+        history_discovery_state: std::sync::atomic::AtomicU8::new(0),
+        history_discovery_errors: Mutex::new(HashMap::new()),
+        history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading.into())
+            .0,
+        history_status_gate: Mutex::new(()),
         helper_roles: Mutex::new(HashMap::new()),
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: config.agent.clone(),
@@ -5051,6 +5083,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     let _pipe_discovery_guard = MasterPipeDiscoveryGuard::write(&pipe_name);
     tracing::info!(target: "master_history", "starting host agent discovery at master startup");
     request_host_history_refresh(&inner);
+    start_history_refresh_loop(&inner);
 
     let mut next_helper_id: u64 = 1;
     // Cheap monotonic counter for tracking concurrent helper count.
@@ -5556,7 +5589,7 @@ async fn get_or_spawn_agent(
 ) -> Result<Arc<AgentCli>> {
     let key = agent_cmd_key_with_provider(agent_cmd, agent_id, source, &provider_binding);
     let initialization_key = key.clone();
-    acquire_agent_from_pool(state, &key, move |cell| {
+    let agent = acquire_agent_from_pool(state, &key, move |cell| {
         let key = initialization_key.clone();
         let provider_binding = provider_binding.clone();
         let supplied_cloud_models = supplied_cloud_models.clone();
@@ -5574,7 +5607,9 @@ async fn get_or_spawn_agent(
             .await
         }
     })
-    .await
+    .await?;
+    state.history_discovery_errors.lock().await.remove(&key);
+    Ok(agent)
 }
 
 /// Spawn one agent CLI subprocess, wire master as its ACP client, run
@@ -5957,7 +5992,7 @@ async fn spawn_one_agent(
         cmd_key: key.clone(),
         cloud_catalog: Mutex::new(cloud_catalog),
         bound_helpers: Mutex::new(HashSet::new()),
-        host_list_cache: Mutex::new(None),
+        history_refresh: AgentHistoryRefresh::default(),
         listed_ever: Mutex::new(HashSet::new()),
     });
 
@@ -5973,6 +6008,13 @@ async fn spawn_one_agent(
         let agent = Arc::clone(&agent);
         tokio::task::spawn_local(async move {
             let count = seed_host_and_broadcast(&state, &agent).await;
+            if update_history_sync_status(&state).await {
+                broadcast_ext_to_helpers(
+                    &state,
+                    crate::session_registry::build_sessions_changed_notification(),
+                )
+                .await;
+            }
             tracing::info!(
                 target: "master_history",
                 cli = ?agent.cli_source,
@@ -6006,6 +6048,15 @@ async fn reap_agent(
     cell: &AgentCell,
     instance_id: AgentInstanceId,
 ) {
+    if let Some(agent) = cell.get().filter(|agent| agent.instance_id == instance_id) {
+        // Retirement and registry publication share a boundary, without holding
+        // the pool lock or waiting for an ACP network request.
+        let _mutation = agent.history_refresh.mutation_gate.lock().await;
+        agent
+            .history_refresh
+            .retired
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
     #[cfg(test)]
     let cleanup_pause = state.reap_agent_orphan_cleanup_pause.lock().await.clone();
     let removed = {
@@ -6567,8 +6618,16 @@ pub(crate) async fn broadcast_ext_to_helpers(
     state: &MasterStateInner,
     notification: acp::schema::v1::ExtNotification,
 ) {
-    let notify_terminal =
-        &*notification.method == crate::session_registry::INTELLTERM_METHOD_SESSIONS_CHANGED;
+    broadcast_ext_to_helpers_impl(state, notification, true).await;
+}
+
+async fn broadcast_ext_to_helpers_impl(
+    state: &MasterStateInner,
+    notification: acp::schema::v1::ExtNotification,
+    notify_terminal: bool,
+) {
+    let notify_terminal = notify_terminal
+        && &*notification.method == crate::session_registry::INTELLTERM_METHOD_SESSIONS_CHANGED;
     let mut subs = state.helper_ext_subscribers.lock().await;
     let mut dead: Vec<HelperId> = Vec::new();
     for (helper_id, tx) in subs.iter() {
@@ -6592,30 +6651,59 @@ pub(crate) async fn broadcast_ext_to_helpers(
     }
 }
 
-async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str) {
+/// Only activity events leave registry membership and pane ownership unchanged.
+/// Binding changes need a snapshot: a delta cannot remove Terminal's old pane entry.
+fn session_event_is_activity_only(event: &crate::agent_sessions::SessionEvent) -> bool {
+    use crate::agent_sessions::SessionEvent;
+    matches!(
+        event,
+        SessionEvent::ToolStarting { .. }
+            | SessionEvent::ToolCompleted { .. }
+            | SessionEvent::Notification { .. }
+    )
+}
+
+/// Helpers still refetch. A known, bound activity row can use a complete status
+/// delta; structural changes and unbound rows require generic invalidation.
+async fn broadcast_session_status_change(state: &MasterStateInner, session_id: Option<&str>) {
+    let delta_published = if let Some(session_id) = session_id {
+        publish_session_status_delta(state, session_id).await
+    } else {
+        false
+    };
+    broadcast_ext_to_helpers_impl(
+        state,
+        crate::session_registry::build_sessions_changed_notification(),
+        !delta_published,
+    )
+    .await;
+}
+
+async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str) -> bool {
     let sid = acp::schema::v1::SessionId::new(session_id.to_string());
     let Some(row) = state.registry.lookup(&sid).await else {
-        return;
+        return false;
     };
     let Some(status) = row.status.as_ref() else {
-        return;
+        return false;
     };
+    if row.pane_session_id.as_deref().is_none_or(str::is_empty) {
+        return false;
+    }
     crate::wt_protocol_events::send(crate::wt_protocol_events::session_status_changed_event(
         session_id,
         row.pane_session_id.as_deref(),
+        row.provider_id.as_deref(),
+        row.last_activity_at_ms,
         status,
     ));
+    true
 }
 
-/// Cached raw host `session/list`. `Some(sessions)` = the agent listed (possibly
-/// empty); `None` = unsupported (Gemini / non-ACP custom), not connected yet, or
-/// the call failed / timed out. Callers MUST treat `None` as "unknown", never as
-/// "no sessions" — the reconcile skips it so a transient error can't wipe the
-/// view. 2s TTL so the 5s poll, the title refresh, and a burst of hook events
-/// share one round-trip.
+/// Called only under the per-connection refresh gate. Failure is not an empty list.
 async fn host_session_list_raw(
     agent: &AgentCli,
-) -> Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>> {
+) -> Result<Vec<acp::schema::v1::SessionInfo>, HistoryRefreshFailure> {
     if agent
         .cached_init_resp
         .agent_capabilities
@@ -6623,23 +6711,10 @@ async fn host_session_list_raw(
         .list
         .is_none()
     {
-        return None;
+        return Err(HistoryRefreshFailure::Other);
     }
 
-    const TTL: std::time::Duration = std::time::Duration::from_secs(2);
-    {
-        let cache = agent.host_list_cache.lock().await;
-        if let Some((at, outcome)) = cache.as_ref() {
-            if at.elapsed() < TTL {
-                return outcome.clone();
-            }
-        }
-    }
-
-    // Captured before the await so the write-back can detect a result another
-    // caller published while we were in-flight.
-    let fetch_started = std::time::Instant::now();
-    let outcome = match tokio::time::timeout(
+    match tokio::time::timeout(
         std::time::Duration::from_secs(5),
         agent
             .conn
@@ -6647,14 +6722,14 @@ async fn host_session_list_raw(
     )
     .await
     {
-        Ok(Ok(resp)) => Some(resp.sessions.into()),
+        Ok(Ok(resp)) => Ok(resp.sessions),
         Ok(Err(e)) => {
-            tracing::debug!(
+            tracing::warn!(
                 target: "master_history",
                 cli = ?agent.cli_source,
                 "host session/list error: {e}"
             );
-            None
+            Err(HistoryRefreshFailure::Other)
         }
         Err(_) => {
             tracing::warn!(
@@ -6662,37 +6737,13 @@ async fn host_session_list_raw(
                 cli = ?agent.cli_source,
                 "host session/list timed out"
             );
-            None
-        }
-    };
-    // Single-flight write-back: if a concurrent caller already published a
-    // result while we were awaiting `list_sessions`, adopt it instead of
-    // clobbering — so a slow failure can't overwrite a fast success (or
-    // vice-versa) and poison the 2 s cache with a transient None.
-    let mut cache = agent.host_list_cache.lock().await;
-    if let Some((at, cached)) = cache.as_ref() {
-        if *at >= fetch_started {
-            return cached.clone();
+            Err(HistoryRefreshFailure::Timeout)
         }
     }
-    *cache = Some((std::time::Instant::now(), outcome.clone()));
-    outcome
 }
 
-/// The `CliSource` an agent's history rows are stamped with.
-///
-/// An agent we don't recognize (a `custom:<name>` provider) has
-/// `cli_source: None`, but [`host_history_via_acp`] stamps its rows
-/// `Unknown("custom")`. Reconcile authority and row-driven routing must
-/// collapse `None` the same way, or an unrecognized agent can never match its
-/// own rows: reconcile silently no-ops and title refresh never finds the
-/// owning CLI. Every caller that compares an agent against a stamped row goes
-/// through here so the two can't drift apart again.
-///
-/// This does bucket all custom providers together — with two pooled, either
-/// may reconcile the other's rows. That is no worse than the pre-pool behavior
-/// (one listing reconciled every row regardless of CLI) and stays bounded by
-/// the host / Class-B / terminal gates in [`is_stale_host_history_row`].
+/// Legacy fallback for rows without a qualified provider identity.
+/// Newly listed custom history uses the actual custom provider ID instead.
 fn stamped_cli(cli: Option<&crate::agent_sessions::CliSource>) -> crate::agent_sessions::CliSource {
     cli.cloned()
         .unwrap_or_else(|| crate::agent_sessions::CliSource::Unknown("custom".into()))
@@ -6710,15 +6761,25 @@ fn stamped_cli(cli: Option<&crate::agent_sessions::CliSource>) -> crate::agent_s
 async fn host_history_via_acp(
     state: &MasterStateInner,
     agent: &AgentCli,
+    sessions: &[acp::schema::v1::SessionInfo],
 ) -> Option<Vec<crate::agent_sessions::AgentSession>> {
-    let sessions = host_session_list_raw(agent).await?;
-    let cli = stamped_cli(agent.cli_source.as_ref());
+    let cli = agent.cli_source.clone().unwrap_or_else(|| {
+        crate::agent_sessions::CliSource::Unknown(agent.resolved_agent_id.clone())
+    });
     // Class-A (agent-pane) exclusion. The on-disk index is written by the helper
     // *after* session/new lands, so a just-created pane session can be returned by
     // session/list before its index line exists, leaking a phantom historical row.
     // Master routes every session/new, so its live `session_to_helper` keys are the
     // authoritative live-pane set — union them in to close that race.
-    let mut idx = crate::agent_pane_origin::load_default_index();
+    let mut idx = match tokio::task::spawn_blocking(crate::agent_pane_origin::load_default_index)
+        .await
+    {
+        Ok(index) => index,
+        Err(error) => {
+            tracing::warn!(target: "master_history", %error, "could not load agent-pane origin index");
+            return None;
+        }
+    };
     let routes = state.session_to_helper.lock().await;
     extend_live_origin_index_for_agent(
         &mut idx,
@@ -6729,7 +6790,7 @@ async fn host_history_via_acp(
     );
     drop(routes);
     Some(crate::session_history::classify_and_map(
-        &sessions,
+        sessions,
         &idx,
         // Where this agent's sessions actually live. Blanket-stamping `Host`
         // collapsed host Copilot, Copilot in WSL Debian, and Copilot in WSL
@@ -6772,10 +6833,10 @@ fn extend_live_origin_index_for_agent(
 /// Raw host `session/list` as session_id → title, UNFILTERED (includes Class-A
 /// agent-pane rows, whose live registry entries still need synthetic-title
 /// upgrades). Empty when `agent` can't list.
-async fn host_titles_via_acp(agent: &AgentCli) -> std::collections::HashMap<String, String> {
-    let Some(sessions) = host_session_list_raw(agent).await else {
-        return std::collections::HashMap::new();
-    };
+fn titles_from_listing(
+    agent: &AgentCli,
+    sessions: &[acp::schema::v1::SessionInfo],
+) -> std::collections::HashMap<String, String> {
     sessions
         .iter()
         .filter_map(|row| {
@@ -6796,20 +6857,43 @@ async fn host_titles_via_acp(agent: &AgentCli) -> std::collections::HashMap<Stri
         .collect()
 }
 
-/// Sync master's host-history rows for `agent` to its `session/list` (the
+/// Sync master's history rows for `agent` to its `session/list` (the
 /// single source of truth for THAT CLI): add newly-listed sessions and drop
-/// terminal Class-B host rows it no longer lists (phantoms, CLI-side deletes).
+/// terminal Class-B rows it no longer lists (phantoms, CLI-side deletes).
 /// No-op when the agent can't list (unsupported / failed / timed out) so a
 /// transient error never wipes the view. Returns `(changed, listed_count)`, or
-/// `None` when the agent couldn't be listed.
-async fn sync_host_history(state: &MasterStateInner, agent: &AgentCli) -> Option<(bool, usize)> {
-    let rows = host_history_via_acp(state, agent).await?;
+/// a typed failure when the agent couldn't be listed or its result applied.
+async fn sync_host_history(
+    state: &MasterStateInner,
+    agent: &AgentCli,
+) -> Result<(bool, usize), HistoryRefreshFailure> {
+    let sessions = host_session_list_raw(agent).await?;
+    if agent
+        .history_refresh
+        .retired
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return Err(HistoryRefreshFailure::Other);
+    }
+    let rows = host_history_via_acp(state, agent, &sessions)
+        .await
+        .ok_or(HistoryRefreshFailure::Other)?;
+    let _mutation = agent.history_refresh.mutation_gate.lock().await;
+    if agent
+        .history_refresh
+        .retired
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return Err(HistoryRefreshFailure::Other);
+    }
     let listed_ids: std::collections::HashSet<String> =
         rows.iter().map(|r| r.key.clone()).collect();
     // Must match how `host_history_via_acp` stamped those same rows, or an
     // unrecognized (custom) agent could never prove authority over its own
     // rows and reconcile would silently never prune.
-    let listing_cli = stamped_cli(agent.cli_source.as_ref());
+    let listing_cli = agent.cli_source.clone().unwrap_or_else(|| {
+        crate::agent_sessions::CliSource::Unknown(agent.resolved_agent_id.clone())
+    });
     let listing_cli = Some(&listing_cli);
     // Ids THIS agent listed before and no longer lists — the only rows it may
     // drop. `cli_source` alone is not a session universe: host Copilot and an
@@ -6824,7 +6908,7 @@ async fn sync_host_history(state: &MasterStateInner, agent: &AgentCli) -> Option
     };
 
     // Snapshot once; compute existing ids for the add pass and reconcile the
-    // terminal Class-B host rows in the same pass.
+    // terminal Class-B rows in the same pass.
     let snapshot = state.registry.snapshot().await;
     let existing: std::collections::HashSet<crate::session_registry::SessionIdentity> = snapshot
         .iter()
@@ -6842,19 +6926,22 @@ async fn sync_host_history(state: &MasterStateInner, agent: &AgentCli) -> Option
         }
     }
 
-    // Reconcile: drop terminal Class-B host rows the agent no longer lists.
+    // Reconcile: drop terminal Class-B rows the agent no longer lists.
     // `remove_if` re-checks staleness on the *current* row under the registry
     // lock, so a row a hook/watcher flips live between the snapshot above and
     // the remove below is never deleted out from under that update.
     for row in &snapshot {
-        if !is_stale_host_history_row(row, &prunable_ids, listing_cli) {
+        if !row_belongs_to_agent(row, agent)
+            || !is_stale_host_history_row(row, &prunable_ids, listing_cli)
+        {
             continue;
         }
         let identity = crate::session_registry::SessionIdentity::from_info(row);
         let removed = state
             .registry
             .remove_identity_if(&identity, &|cur| {
-                is_stale_host_history_row(cur, &prunable_ids, listing_cli)
+                row_belongs_to_agent(cur, agent)
+                    && is_stale_host_history_row(cur, &prunable_ids, listing_cli)
             })
             .await;
         if removed.is_some() {
@@ -6862,53 +6949,37 @@ async fn sync_host_history(state: &MasterStateInner, agent: &AgentCli) -> Option
                 target: "master_history",
                 key = %row.session_id.0,
                 cli = ?listing_cli,
-                "reconcile: dropped host row no longer in session/list"
+                "reconcile: dropped history row no longer in session/list"
             );
             changed = true;
         }
     }
 
-    // Title refresh: the agent CLI owns a session's display name and keeps
-    // rewriting it (Copilot reports the first user message until it generates
-    // a summary), so re-adopt the current listing title for every row this
-    // agent owns — not just the still-synthetic ones, which is all
-    // `refresh_synthetic_titles_from` can do. A row that latched the transient
-    // first-message echo is non-synthetic and would otherwise display it
-    // forever. Uses the UNFILTERED title map so live Class-A agent-pane rows,
-    // which `host_history_via_acp` subtracts, are refreshed too, and reuses the
-    // same 2 s-cached `session/list` fetch this function already made.
     if refresh_titles_from_listing(
         &*state.registry,
-        &host_titles_via_acp(agent).await,
+        &titles_from_listing(agent, &sessions),
         listing_cli,
+        Some(agent),
     )
     .await
     {
         changed = true;
     }
 
-    Some((changed, rows.len()))
+    Ok((changed, rows.len()))
 }
 
 /// Adopt `titles` (session_id → the listing agent's own `session/list` title)
 /// for every registry row that agent owns, replacing a stale real title rather
 /// than only filling a synthetic one. Returns true if any row changed.
 ///
-/// Authority is `row_refreshable_by_connected_agent` plus the session id
-/// itself, and deliberately NOT `SessionInfo::location`. Host Copilot and an
-/// in-distro Copilot share a `CliSource` while enumerating disjoint stores, but
-/// the id is what separates them: a host agent's listing simply never contains
-/// an in-distro session id (`doc/specs/wsl-session-management.md` calls a
-/// host/WSL key collision astronomically unlikely). Gating on `location` would
-/// instead *lose* refreshes, because only the born-bound path stamps it —
-/// an ordinary `session_hook` row for a CLI running inside WSL keeps the
-/// reducer's default `Host`, so the in-distro agent that actually holds its
-/// title would be skipped.
+/// Production refreshes also qualify provider and execution source: raw IDs may
+/// collide across Host, WSL, and custom providers.
 ///
 /// [`crate::session_registry::SessionRegistry::adopt_agent_title`] overwrites
 /// whatever it is handed, so every candidate is re-checked with
 /// [`crate::session_registry::title_is_displayable`] here, at the point of
-/// mutation, and not only where [`host_titles_via_acp`] builds the map. The
+/// mutation, and not only where [`titles_from_listing`] builds the map. The
 /// row's own `cli_source` is the stamp to check against when it has one — it
 /// is the CLI that actually produced the session — falling back to
 /// `listing_cli` for a row `row_refreshable_by_connected_agent` admitted while
@@ -6920,13 +6991,16 @@ async fn refresh_titles_from_listing(
     reg: &dyn crate::session_registry::SessionRegistry,
     titles: &std::collections::HashMap<String, String>,
     listing_cli: Option<&crate::agent_sessions::CliSource>,
+    agent: Option<&AgentCli>,
 ) -> bool {
     if titles.is_empty() {
         return false;
     }
     let mut changed = false;
     for row in reg.snapshot().await {
-        if !row_refreshable_by_connected_agent(&row, listing_cli) {
+        if !row_refreshable_by_connected_agent(&row, listing_cli)
+            || agent.is_some_and(|agent| !row_belongs_to_agent(&row, agent))
+        {
             continue;
         }
         let Some(title) = titles.get(row.session_id.0.as_ref()) else {
@@ -6957,12 +7031,13 @@ async fn refresh_titles_from_listing(
     changed
 }
 
-/// Whether a registry row is a stale host-history row to drop during reconcile:
-/// a terminal (Historical / Ended) Class-B **host** row belonging to
+/// Whether a registry row is stale history to drop during reconcile:
+/// a terminal (Historical / Ended) shell row belonging to
 /// `listing_cli` whose id is in `prunable_ids` — the set the listing agent
 /// previously returned from `session/list` and no longer returns. Live rows
-/// (Working / Idle), agent panes (ACP-driven), and WSL rows are never
-/// reconciled away. Pure for unit testing.
+/// (Working / Idle) and agent panes (ACP-driven) are never reconciled away.
+/// The caller must additionally enforce exact provider, source, and universe
+/// ownership with `row_belongs_to_agent`, including for WSL. Pure for unit testing.
 ///
 /// Two guards, and both are load-bearing:
 ///
@@ -6983,10 +7058,7 @@ fn is_stale_host_history_row(
     prunable_ids: &std::collections::HashSet<String>,
     listing_cli: Option<&crate::agent_sessions::CliSource>,
 ) -> bool {
-    use crate::agent_sessions::{AgentStatus, SessionLocation, SessionOrigin};
-    if !matches!(row.location, SessionLocation::Host) {
-        return false;
-    }
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
     if row.origin == Some(SessionOrigin::AgentPane) {
         return false;
     }
@@ -7005,19 +7077,185 @@ fn is_stale_host_history_row(
 
 /// Seed + reconcile `agent`'s history against its own `session/list`,
 /// broadcasting when anything changed. Returns the listed count.
-async fn seed_host_and_broadcast(
-    state: &std::sync::Arc<MasterStateInner>,
+async fn seed_host_and_broadcast(state: &MasterStateInner, agent: &AgentCli) -> Option<usize> {
+    refresh_agent_history(state, agent, HistoryRefreshTrigger::Immediate).await
+}
+
+#[derive(Clone, Copy)]
+enum HistoryRefreshTrigger {
+    Immediate,
+    Periodic,
+    Event,
+}
+
+fn row_belongs_to_agent(row: &crate::session_registry::SessionInfo, agent: &AgentCli) -> bool {
+    row.location == agent.source.session_location()
+        && row.session_universe.is_none()
+        && row.history_row_key().is_some_and(|key| {
+            key.provider_id
+                .eq_ignore_ascii_case(&agent.resolved_agent_id)
+        })
+}
+
+async fn refresh_agent_history(
+    state: &MasterStateInner,
     agent: &AgentCli,
+    trigger: HistoryRefreshTrigger,
 ) -> Option<usize> {
-    let (changed, count) = sync_host_history(state, agent).await?;
-    if changed {
+    use std::sync::atomic::Ordering;
+    if agent.history_refresh.retired.load(Ordering::Acquire)
+        || agent
+            .cached_init_resp
+            .agent_capabilities
+            .session_capabilities
+            .list
+            .is_none()
+    {
+        return None;
+    }
+    let generation = agent.history_refresh.generation.load(Ordering::Acquire);
+    let mut refresh = agent.history_refresh.gate.lock().await;
+    if agent.history_refresh.retired.load(Ordering::Acquire) {
+        return None;
+    }
+    // The interval already paces periodic work. Applying the success delay
+    // again would skip ticks whenever the previous dispatch started slightly late.
+    let honor_delay = match trigger {
+        HistoryRefreshTrigger::Immediate => false,
+        HistoryRefreshTrigger::Periodic => refresh.failures != 0,
+        HistoryRefreshTrigger::Event => true,
+    };
+    // Waiters share the completed refresh rather than queueing another ACP call.
+    if agent.history_refresh.generation.load(Ordering::Acquire) != generation
+        || (honor_delay
+            && refresh
+                .next_refresh_at
+                .is_some_and(|at| at > tokio::time::Instant::now()))
+    {
+        return refresh.last_count;
+    }
+    let started_at = tokio::time::Instant::now();
+    let result = sync_host_history(state, agent).await;
+    let delay = if result.is_ok() {
+        refresh.failures = 0;
+        HISTORY_REFRESH_INTERVAL
+    } else {
+        refresh.failures = refresh.failures.saturating_add(1).min(5);
+        std::time::Duration::from_secs((5u64 << (refresh.failures - 1)).min(60))
+    };
+    refresh.next_refresh_at = Some(if result.is_ok() {
+        started_at + delay
+    } else {
+        tokio::time::Instant::now() + delay
+    });
+    refresh.last_count = result.ok().map(|(_, count)| count);
+    {
+        let mut discovery_errors = state.history_discovery_errors.lock().await;
+        match result {
+            Ok(_) => {
+                discovery_errors.remove(&agent.cmd_key);
+            }
+            Err(failure) => {
+                if let Some(previous) = discovery_errors.get_mut(&agent.cmd_key) {
+                    *previous = failure;
+                }
+            }
+        }
+    }
+    *agent.history_refresh.failure.lock().await = result.err();
+    agent
+        .history_refresh
+        .generation
+        .fetch_add(1, Ordering::Release);
+    drop(refresh);
+    let status_changed = update_history_sync_status(state).await;
+    if status_changed || result.is_ok_and(|(changed, _)| changed) {
         broadcast_ext_to_helpers(
             state,
             crate::session_registry::build_sessions_changed_notification(),
         )
         .await;
     }
-    Some(count)
+    result.ok().map(|(_, count)| count)
+}
+
+async fn update_history_sync_status(state: &MasterStateInner) -> bool {
+    use crate::session_registry::HistoryLoadStatus;
+    use std::sync::atomic::Ordering;
+    if state.history_status.borrow().status == HistoryLoadStatus::Loading
+        || state.history_discovery_state.load(Ordering::Acquire) != 0
+    {
+        return false;
+    }
+    publish_history_sync_status(state).await
+}
+
+async fn publish_history_sync_status(state: &MasterStateInner) -> bool {
+    let _publication = state.history_status_gate.lock().await;
+    let mut failures: Vec<_> = state
+        .history_discovery_errors
+        .lock()
+        .await
+        .values()
+        .copied()
+        .collect();
+    let agents: Vec<_> = state
+        .agents
+        .lock()
+        .await
+        .values()
+        .filter_map(|cell| cell.get().cloned())
+        .collect();
+    for agent in agents {
+        if let Some(failure) = *agent.history_refresh.failure.lock().await {
+            failures.push(failure);
+        }
+    }
+    let status = history_sync_status(&failures);
+    state.history_status.send_replace(status) != status
+}
+
+fn history_sync_status(failures: &[HistoryRefreshFailure]) -> HistorySyncStatus {
+    use crate::session_registry::{HistoryErrorKind, HistoryLoadStatus};
+    if failures.is_empty() {
+        return HistoryLoadStatus::Ready.into();
+    }
+    HistorySyncStatus {
+        status: HistoryLoadStatus::Error,
+        error_kind: failures
+            .iter()
+            .all(|failure| *failure == HistoryRefreshFailure::Timeout)
+            .then_some(HistoryErrorKind::Timeout),
+    }
+}
+
+fn start_history_refresh_loop(state: &Arc<MasterStateInner>) {
+    let weak = Arc::downgrade(state);
+    tokio::task::spawn_local(async move {
+        let mut ticks = tokio::time::interval(HISTORY_REFRESH_INTERVAL);
+        ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        ticks.tick().await;
+        loop {
+            ticks.tick().await;
+            let Some(state) = weak.upgrade() else { break };
+            let agents: Vec<_> = state
+                .agents
+                .lock()
+                .await
+                .values()
+                .filter_map(|cell| cell.get().cloned())
+                .collect();
+            for agent in agents {
+                if agent.history_refresh.gate.try_lock().is_err() {
+                    continue;
+                }
+                let state = Arc::clone(&state);
+                tokio::task::spawn_local(async move {
+                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic).await;
+                });
+            }
+        }
+    });
 }
 
 fn host_history_agent_ids(
@@ -7049,6 +7287,9 @@ async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &
         {
             Ok(agent) => agent,
             Err(error) => {
+                state.history_discovery_errors.lock().await.insert(agent_cmd_key(
+                    &command, Some(agent_id), &crate::agent_source::AgentSource::Host,
+                ), HistoryRefreshFailure::Other);
                 tracing::warn!(
                     target: "master_history",
                     agent_id,
@@ -7059,10 +7300,13 @@ async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &
             }
         };
         if agent.cached_init_resp.agent_capabilities.session_capabilities.list.is_none() {
+            state.history_discovery_errors.lock().await.remove(&agent.cmd_key);
             tracing::debug!(target: "master_history", agent_id, "agent does not support session/list");
             return true;
         }
         if seed_host_and_broadcast(state, &agent).await.is_none() {
+            let failure = agent.history_refresh.failure.lock().await.unwrap_or(HistoryRefreshFailure::Other);
+            state.history_discovery_errors.lock().await.insert(agent.cmd_key.clone(), failure);
             tracing::warn!(target: "master_history", agent_id, "could not load agent history");
             return false;
         }
@@ -7073,71 +7317,100 @@ async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &
 }
 
 fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
-    let Ok(guard) = Arc::clone(&state.history_refresh).try_lock_owned() else {
+    use std::sync::atomic::Ordering;
+    // Bit 0 owns the single worker; bit 1 requests another pass. The worker's
+    // idle transition is atomic with respect to requests, even on COM threads.
+    if state.history_discovery_state.fetch_or(3, Ordering::AcqRel) & 1 != 0 {
         return;
-    };
+    }
+    let guard = Arc::clone(&state.history_refresh).try_lock_owned().ok();
     let state = Arc::clone(state);
     tokio::task::spawn_local(async move {
         // Survives the short-lived control client; overlapping windows share one refresh.
-        let _guard = guard;
-        let allowed_ids = state.allowed_agent_ids.clone();
-        let discovery = tokio::task::spawn_blocking(move || {
-            let npx_available = crate::agent_check::host_npx_available();
-            host_history_agent_ids(allowed_ids.as_ref(), |agent_id| {
-                crate::agent_check::check_host_agent_availability(agent_id, npx_available)
-                    .launch_ready
+        let _guard = match guard {
+            Some(guard) => guard,
+            None => Arc::clone(&state.history_refresh).lock_owned().await,
+        };
+        loop {
+            state
+                .history_discovery_state
+                .fetch_and(!2, Ordering::AcqRel);
+            state.history_discovery_errors.lock().await.clear();
+            let allowed_ids = state.allowed_agent_ids.clone();
+            let discovery = tokio::task::spawn_blocking(move || {
+                let npx_available = crate::agent_check::host_npx_available();
+                host_history_agent_ids(allowed_ids.as_ref(), |agent_id| {
+                    crate::agent_check::check_host_agent_availability(agent_id, npx_available)
+                        .launch_ready
+                })
             })
-        })
-        .await;
-        let succeeded = match discovery {
-            Ok(agent_ids) => refresh_host_history_agents(&state, &agent_ids).await,
-            Err(error) => {
-                tracing::error!(target: "master_history", %error, "host agent availability check failed");
-                false
-            }
-        };
-        use crate::session_registry::HistoryLoadStatus;
-        let status = if succeeded {
-            HistoryLoadStatus::Ready
-        } else {
-            HistoryLoadStatus::Error
-        };
-        // Keep the last completed outcome during subsequent refreshes. Resetting
-        // to Loading on every snapshot request would prevent an empty list settling.
-        if state.history_status.send_replace(status) != status {
-            broadcast_ext_to_helpers(
-                &state,
-                crate::session_registry::build_sessions_changed_notification(),
-            )
             .await;
+            match discovery {
+                Ok(agent_ids) => {
+                    refresh_host_history_agents(&state, &agent_ids).await;
+                }
+                Err(error) => {
+                    state
+                        .history_discovery_errors
+                        .lock()
+                        .await
+                        .insert("host-discovery".into(), HistoryRefreshFailure::Other);
+                    tracing::error!(target: "master_history", %error, "host agent availability check failed");
+                }
+            }
+            // Keep the last completed outcome during subsequent refreshes. Resetting
+            // to Loading on every snapshot request would prevent an empty list settling.
+            if publish_history_sync_status(&state).await {
+                broadcast_ext_to_helpers(
+                    &state,
+                    crate::session_registry::build_sessions_changed_notification(),
+                )
+                .await;
+            }
+            if state
+                .history_discovery_state
+                .compare_exchange(1, 0, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                // A pooled refresh can complete while the discovery broadcast
+                // awaits subscribers. Reconcile it after relinquishing worker
+                // ownership so its suppressed status update is not lost.
+                if update_history_sync_status(&state).await {
+                    broadcast_ext_to_helpers(
+                        &state,
+                        crate::session_registry::build_sessions_changed_notification(),
+                    )
+                    .await;
+                }
+                break;
+            }
         }
     });
 }
 
-/// Before returning the snapshot, opportunistically upgrade any row whose title
-/// is still synthetic (empty / cwd-basename) from the agent's raw ACP
-/// `session/list` titles.
-/// This is what gets a title onto **born-bound** rows — e.g. `?<prompt>`
-/// delegate sessions, which register with an empty title before the CLI has
-/// generated its real one.
-///
-/// `agent` is the caller's bound CLI. Unbound control clients get the current
-/// snapshot without spawning an agent unless they explicitly request
-/// `all_agents`, which schedules independent host-agent discovery.
+/// Ordinary reads never contact agents. Only an explicit rescan may refresh.
 async fn handle_sessions_list(
     state: &std::sync::Arc<MasterStateInner>,
     agent: Option<&AgentCli>,
     parsed: &crate::session_registry::SessionsListParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
-    if parsed.all_agents {
-        request_host_history_refresh(state);
-    }
-    if let Some(agent) = agent {
-        if parsed.rescan {
+    if parsed.rescan {
+        if let Some(agent) = agent {
             // Re-pull this agent's own `session/list` and broadcast. Each pooled
             // agent — host or in-distro — enumerates its own sessions, so an
             // F5 in a WSL pane refreshes that distro through its own CLI.
             let count = seed_host_and_broadcast(state, agent).await;
+            if count.is_none()
+                && agent
+                    .cached_init_resp
+                    .agent_capabilities
+                    .session_capabilities
+                    .list
+                    .is_some()
+            {
+                return Err(acp::Error::internal_error()
+                    .data("session history refresh failed; previous snapshot retained"));
+            }
             tracing::info!(
                 target: "master_history",
                 cli = ?agent.cli_source,
@@ -7145,18 +7418,7 @@ async fn handle_sessions_list(
                 "sessions/list rescan: reloaded history via ACP"
             );
         } else {
-            // Periodic poll: reconcile host rows against `session/list` (the source
-            // of truth) so phantom / CLI-deleted host rows are pruned and newly-listed
-            // ones appear. Reuses the 2s-cached fetch. No-op (and no broadcast) when
-            // nothing changed or the agent can't list — so a transient error never
-            // wipes the view and steady state causes no push storm.
-            if let Some((true, _)) = sync_host_history(state, agent).await {
-                broadcast_ext_to_helpers(
-                    state,
-                    crate::session_registry::build_sessions_changed_notification(),
-                )
-                .await;
-            }
+            request_host_history_refresh(state);
         }
     }
 
@@ -7164,20 +7426,26 @@ async fn handle_sessions_list(
     // its newly published Ready status.
     let history_status = *state.history_status.borrow();
     let mut sessions = state.registry.snapshot().await;
-    if let Some(agent) = agent {
-        if sessions
-            .iter()
-            .any(crate::session_registry::title_is_synthetic)
-        {
-            let titles = host_titles_via_acp(agent).await;
-            if refresh_synthetic_titles_from(&*state.registry, &titles).await {
-                sessions = state.registry.snapshot().await;
-            }
-        }
-    }
 
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
-    let raw = crate::session_registry::build_sessions_list_response(sessions, Some(history_status));
+    let raw = crate::session_registry::build_sessions_list_response(
+        sessions,
+        Some(history_status.status),
+        history_status.error_kind,
+    );
+    Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+}
+
+async fn handle_source_pane_session_by_pane(
+    state: &std::sync::Arc<MasterStateInner>,
+    parsed: &crate::session_registry::SourcePaneSessionByPaneParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let session_id = state
+        .registry
+        .lookup_active_by_pane(&parsed.pane_session_id)
+        .await
+        .map(|info| info.session_id);
+    let raw = crate::session_registry::build_source_pane_session_by_pane_response(session_id);
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
 }
 
@@ -7588,24 +7856,18 @@ async fn handle_session_hook(
         }
     }
 
+    let activity_only = session_event_is_activity_only(&event);
     let status_key = session_event_status_key(state, &event).await;
     let (applied, refresh_key) = apply_master_session_event(state, event, is_born_bound).await;
-    let title_upgraded = if let Some(key) = refresh_key {
-        try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key)).await
-    } else {
-        false
-    };
     if applied {
-        if let Some(key) = status_key {
-            publish_session_status_delta(state, &key).await;
-        }
-    }
-    if applied || title_upgraded {
-        broadcast_ext_to_helpers(
+        broadcast_session_status_change(
             state,
-            crate::session_registry::build_sessions_changed_notification(),
+            status_key.as_deref().filter(|_| applied && activity_only),
         )
         .await;
+    }
+    if let Some(key) = refresh_key {
+        try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key)).await;
     }
 
     Ok(crate::session_registry::build_session_hook_response(
@@ -7842,19 +8104,16 @@ async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_w
     // status and never changes that binding.
     if state.born_bound.lock().await.contains(&sid) {
         let key = emitted.key.clone();
+        let activity_only = session_event_is_activity_only(&emitted.event);
         let applied = state.registry.apply_event(emitted.event).await;
-        let title_upgraded =
-            try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key.clone())).await;
         if applied {
-            publish_session_status_delta(state, &key).await;
-        }
-        if applied || title_upgraded {
-            broadcast_ext_to_helpers(
+            broadcast_session_status_change(
                 state,
-                crate::session_registry::build_sessions_changed_notification(),
+                Some(key.as_str()).filter(|_| applied && activity_only),
             )
             .await;
         }
+        try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key)).await;
         return;
     }
 
@@ -9350,6 +9609,7 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
     if plan.events.is_empty() {
         return;
     }
+    let activity_only = plan.events.iter().all(session_event_is_activity_only);
 
     let mut changed = false;
     let mut refresh_keys = HashSet::new();
@@ -9381,20 +9641,9 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         "processed COM agent hook"
     );
     if changed {
-        if let Some(row) = final_row {
-            if let Some(status) = row.status.as_ref() {
-                crate::wt_protocol_events::send(
-                    crate::wt_protocol_events::session_status_changed_event(
-                        &session_key,
-                        row.pane_session_id.as_deref(),
-                        status,
-                    ),
-                );
-            }
-        }
-        broadcast_ext_to_helpers(
+        broadcast_session_status_change(
             state,
-            crate::session_registry::build_sessions_changed_notification(),
+            Some(session_key.as_str()).filter(|_| activity_only),
         )
         .await;
     }
@@ -9406,13 +9655,7 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         let state = Arc::clone(state);
         tokio::spawn(async move {
             let sid = acp::schema::v1::SessionId::new(key);
-            if try_refresh_title_via_acp(&state, &sid).await {
-                broadcast_ext_to_helpers(
-                    &state,
-                    crate::session_registry::build_sessions_changed_notification(),
-                )
-                .await;
-            }
+            try_refresh_title_via_acp(&state, &sid).await;
         });
     }
 }
@@ -9506,6 +9749,17 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         .get("params")
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
+
+    if method == "agent_availability_changed" {
+        if params
+            .get("installation_completed")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+        {
+            request_host_history_refresh(state);
+        }
+        return;
+    }
 
     if method == "retire_agent_sessions" {
         handle_retire_agent_sessions_event(state, params).await;
@@ -9695,12 +9949,7 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
                     session_key = %row.session_id.0,
                     "shell prompt ended bound session in COM event order"
                 );
-                publish_session_status_delta(state, &row.session_id.0).await;
-                broadcast_ext_to_helpers(
-                    state,
-                    crate::session_registry::build_sessions_changed_notification(),
-                )
-                .await;
+                broadcast_session_status_change(state, None).await;
             }
         }
         return;
@@ -9723,7 +9972,6 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         }
         _ => return,
     };
-    let status_key = session_event_status_key(state, &event).await;
     tracing::info!(
         target: "master_wt_event",
         pane_id = %pane_id,
@@ -9733,19 +9981,12 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
     );
     let applied = state.registry.apply_event(event).await;
     if applied {
-        if let Some(key) = status_key {
-            publish_session_status_delta(state, &key).await;
-        }
         tracing::info!(
             target: "master_wt_event",
             pane_id = %pane_id,
             "broadcasting sessions/changed after WT-driven demotion"
         );
-        broadcast_ext_to_helpers(
-            state,
-            crate::session_registry::build_sessions_changed_notification(),
-        )
-        .await;
+        broadcast_session_status_change(state, None).await;
     } else {
         tracing::debug!(
             target: "master_wt_event",
@@ -9773,32 +10014,6 @@ fn session_event_key(event: &crate::agent_sessions::SessionEvent) -> Option<&str
         | SessionEvent::ResumePaneAssigned { key, .. } => Some(key.as_str()),
         SessionEvent::PaneClosed { .. } | SessionEvent::ConnectionFailed { .. } => None,
     }
-}
-
-/// Upgrade every still-synthetic registry row's title from `titles`
-/// (session_id → CLI title). Returns true if any row changed.
-async fn refresh_synthetic_titles_from(
-    reg: &dyn crate::session_registry::SessionRegistry,
-    titles: &std::collections::HashMap<String, String>,
-) -> bool {
-    let mut changed = false;
-    for row in reg.snapshot().await {
-        if !crate::session_registry::title_is_synthetic(&row) {
-            continue;
-        }
-        if let Some(title) = titles.get(row.session_id.0.as_ref()) {
-            if reg
-                .upgrade_title_if_synthetic_identity(
-                    &crate::session_registry::SessionIdentity::from_info(&row),
-                    title,
-                )
-                .await
-            {
-                changed = true;
-            }
-        }
-    }
-    changed
 }
 
 /// Whether `info`'s row can be title-refreshed from `conn_cli`'s
@@ -9841,6 +10056,7 @@ async fn agent_for_row(
     state: &MasterStateInner,
     cli: Option<&crate::agent_sessions::CliSource>,
     location: &crate::agent_sessions::SessionLocation,
+    provider_id: Option<&str>,
 ) -> Option<Arc<AgentCli>> {
     let want = stamped_cli(cli);
     let agents = state.agents.lock().await;
@@ -9848,39 +10064,43 @@ async fn agent_for_row(
         .values()
         .filter_map(|cell| cell.get().cloned())
         .find(|agent| {
-            stamped_cli(agent.cli_source.as_ref()) == want
-                && &agent.source.session_location() == location
+            provider_id.map_or_else(
+                || stamped_cli(agent.cli_source.as_ref()) == want,
+                |provider| agent.resolved_agent_id.eq_ignore_ascii_case(provider),
+            ) && &agent.source.session_location() == location
         })
 }
 
 /// ACP replacement for the former on-disk single-session title refresh. Cheap
 /// early-out: only fetch the agent's session/list when this row is synthetic.
-async fn try_refresh_title_via_acp(
-    state: &MasterStateInner,
-    sid: &acp::schema::v1::SessionId,
-) -> bool {
+/// The shared refresh owns history/title notifications; callers publish only
+/// their own lifecycle mutations.
+async fn try_refresh_title_via_acp(state: &MasterStateInner, sid: &acp::schema::v1::SessionId) {
     let Some(info) = state.registry.lookup(sid).await else {
-        return false;
+        return;
     };
     if !crate::session_registry::title_is_synthetic(&info) {
-        return false;
+        return;
     }
     // Ask the agent that owns this row's provider AND source. Hooks and the
     // file watcher report machine-wide across CLIs and distros, so the
     // responder is chosen per row, not per master. No pooled agent for that
     // pair means nobody can title the row right now; a later poll retries once
     // one is up.
-    let Some(agent) = agent_for_row(state, info.cli_source.as_ref(), &info.location).await else {
-        return false;
+    let Some(agent) = agent_for_row(
+        state,
+        info.cli_source.as_ref(),
+        &info.location,
+        info.provider_id.as_deref(),
+    )
+    .await
+    else {
+        return;
     };
-    if !row_refreshable_by_connected_agent(&info, Some(&stamped_cli(agent.cli_source.as_ref()))) {
-        return false;
+    if !row_belongs_to_agent(&info, &agent) {
+        return;
     }
-    let titles = host_titles_via_acp(&agent).await;
-    match titles.get(sid.0.as_ref()) {
-        Some(title) => state.registry.upgrade_title_if_synthetic(sid, title).await,
-        None => false,
-    }
+    refresh_agent_history(state, &agent, HistoryRefreshTrigger::Event).await;
 }
 
 /// Pure async handler for the `intellterm.wta/focus_session` ExtRequest.

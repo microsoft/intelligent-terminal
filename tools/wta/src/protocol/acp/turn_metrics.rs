@@ -131,9 +131,33 @@ struct ActivePromptTiming {
 #[derive(Default)]
 pub(crate) struct PromptTimingState {
     active: Mutex<HashMap<String, ActivePromptTiming>>,
+    user_prompt_ordinals: Mutex<HashMap<String, u8>>,
 }
 
 impl PromptTimingState {
+    pub(crate) fn record_user_prompt_dispatch(
+        &self,
+        session_id: &str,
+        is_autofix: bool,
+    ) -> &'static str {
+        if is_autofix {
+            return "NotUserPrompt";
+        }
+        let mut ordinals = self.user_prompt_ordinals.lock().unwrap();
+        let ordinal = ordinals.entry(session_id.to_string()).or_default();
+        let category = match *ordinal {
+            0 => "First",
+            1 => "Second",
+            _ => "Later",
+        };
+        *ordinal = ordinal.saturating_add(1).min(2);
+        category
+    }
+
+    pub(crate) fn forget_session(&self, session_id: &str) {
+        self.user_prompt_ordinals.lock().unwrap().remove(session_id);
+    }
+
     pub(crate) fn activate(
         &self,
         session_id: &str,
@@ -530,6 +554,27 @@ fn acp_trace_content(msg: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn user_prompt_ordinals_follow_dispatched_turns_per_session() {
+        let timing = PromptTimingState::default();
+        assert_eq!(
+            timing.record_user_prompt_dispatch("one", true),
+            "NotUserPrompt"
+        );
+        assert_eq!(timing.record_user_prompt_dispatch("one", false), "First");
+        assert_eq!(timing.record_user_prompt_dispatch("two", false), "First");
+        assert_eq!(
+            timing.record_user_prompt_dispatch("one", true),
+            "NotUserPrompt"
+        );
+        assert_eq!(timing.record_user_prompt_dispatch("one", false), "Second");
+        assert_eq!(timing.record_user_prompt_dispatch("one", false), "Later");
+        assert_eq!(timing.record_user_prompt_dispatch("one", false), "Later");
+        timing.forget_session("one");
+        assert_eq!(timing.record_user_prompt_dispatch("one", false), "First");
+        assert_eq!(timing.record_user_prompt_dispatch("two", false), "Second");
+    }
 
     #[test]
     fn prompt_preview_escapes_newlines_and_normalizes_crlf() {

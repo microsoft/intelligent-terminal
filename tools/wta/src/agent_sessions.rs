@@ -436,6 +436,7 @@ pub const USER_INPUT_TOOL_NAMES: &[&str] = &[
     "user_input",
     "prompt_user",
     "clarification_request",
+    "question",
 ];
 
 /// Returns `true` for tool names that represent the agent soliciting input
@@ -447,6 +448,7 @@ pub const USER_INPUT_TOOL_NAMES: &[&str] = &[
 /// Known matches (verified against actual hook payloads / transcripts):
 ///   - Copilot CLI: `ask_user` (carries `tool_input.question` + `choices`)
 ///   - Claude CLI: `AskUserQuestion` (assistant `tool_use`, `caller.type=direct`)
+///   - OpenCode: `question` (`tool.execute.before`, paired with `question.asked`)
 /// Speculative aliases for other CLIs are included so the heuristic catches
 /// the common variants without needing per-CLI plumbing.
 pub fn is_user_input_tool(name: &str) -> bool {
@@ -2591,8 +2593,11 @@ mod tests {
 
     #[test]
     fn is_user_input_tool_recognises_known_aliases() {
-        // Verified Copilot CLI alias.
+        // Verified CLI tool names.
         assert!(is_user_input_tool("ask_user"));
+        assert!(is_user_input_tool("AskUserQuestion"));
+        assert!(is_user_input_tool("question"));
+        assert!(is_user_input_tool("Question"));
         // Speculative aliases (case-insensitive, hyphen/underscore variants).
         assert!(is_user_input_tool("Ask_User"));
         assert!(is_user_input_tool("ask-user"));
@@ -2603,6 +2608,7 @@ mod tests {
         assert!(!is_user_input_tool("shell.run"));
         assert!(!is_user_input_tool("read_file"));
         assert!(!is_user_input_tool("bash"));
+        assert!(!is_user_input_tool("questionnaire"));
         assert!(!is_user_input_tool(""));
     }
 

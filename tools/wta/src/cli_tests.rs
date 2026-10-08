@@ -135,7 +135,6 @@ fn sessions_list_cli_parses_json_and_master_override() {
                 SessionsAction::List {
                     master,
                     origin,
-                    all_agents,
                     include_status,
                 },
         }) => {
@@ -146,7 +145,6 @@ fn sessions_list_cli_parses_json_and_master_override() {
             // intentionally divergent so `wta sessions list` is
             // the "see everything" debug tool.
             assert_eq!(origin, SessionsOriginArg::All);
-            assert!(!all_agents, "plain listing must remain snapshot-only");
             assert!(!include_status, "plain JSON listing must remain JSONL");
         }
         other => panic!("expected sessions list command, got {other:?}"),
@@ -154,14 +152,13 @@ fn sessions_list_cli_parses_json_and_master_override() {
 }
 
 #[test]
-fn sessions_list_cli_opts_into_all_agent_discovery() {
+fn sessions_list_cli_preserves_status_snapshot_without_discovery() {
     let cli = Cli::try_parse_from([
         "wta",
         "sessions",
         "list",
         "--origin",
         "shell",
-        "--all-agents",
         "--json",
         "--include-status",
     ])
@@ -171,18 +168,29 @@ fn sessions_list_cli_opts_into_all_agent_discovery() {
         Some(Command::Sessions {
             action:
                 SessionsAction::List {
-                    all_agents,
                     origin,
                     include_status,
                     ..
                 },
         }) => {
-            assert!(all_agents);
             assert!(include_status);
             assert_eq!(origin, SessionsOriginArg::Shell);
         }
         other => panic!("expected sessions list command, got {other:?}"),
     }
+}
+
+#[test]
+fn sessions_refresh_is_explicit_and_removed_discovery_flag_is_rejected() {
+    assert!(Cli::try_parse_from(["wta", "sessions", "list", "--all-agents"]).is_err());
+    let cli = Cli::try_parse_from(["wta", "sessions", "refresh", "--json"]).unwrap();
+    assert!(cli.json);
+    assert!(matches!(
+        cli.command,
+        Some(Command::Sessions {
+            action: SessionsAction::Refresh { master: None }
+        })
+    ));
 }
 
 #[test]

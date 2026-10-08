@@ -78,6 +78,7 @@ namespace winrt::TerminalApp::implementation
         void ResetTabText();
         void ActivateTabRenamer();
         void CancelTabRename();
+        void SetHeaderResolver(std::function<winrt::TerminalApp::TabHeaderControl(bool)> resolver) { _headerResolver = std::move(resolver); }
 
         std::optional<winrt::Windows::UI::Color> GetTabColor();
         void SetRuntimeTabColor(const winrt::Windows::UI::Color& color);
@@ -104,6 +105,7 @@ namespace winrt::TerminalApp::implementation
 
         std::shared_ptr<Pane> GetActivePane() const;
         winrt::TerminalApp::TaskbarState GetCombinedTaskbarState() const;
+        Pane::TaskbarStateWithContentId GetCombinedTaskbarStateWithContentId() const;
 
         std::shared_ptr<Pane> GetRootPane() const { return _rootPane; }
         std::vector<uint32_t> GetMruPanes() const { return _mruPanes; }
@@ -115,6 +117,8 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring Icon;
             bool IsActive{};
             bool IsAgentPane{};
+            uint64_t ProgressState{};
+            uint64_t ProgressValue{};
         };
         std::vector<VisiblePaneSnapshot> GetVisiblePaneSnapshot() const;
         std::vector<std::shared_ptr<Pane>> GetPaneCloseScope(uint32_t contentId) const;
@@ -223,7 +227,9 @@ namespace winrt::TerminalApp::implementation
         const winrt::hstring& StableId() const noexcept { return _stableId; }
         bool CanKeepRunning() const;
         bool KeepRunning() const noexcept { return _keepRunning; }
+        const winrt::hstring& KeepRunningTelemetryId() const noexcept { return _keepRunningTelemetryId; }
         void KeepRunning(bool enabled);
+        void CopyKeepRunningState(const Tab& source);
         bool IsPinned() const noexcept { return _isPinned; }
         void IsPinned(bool pinned);
         void RestoreKeptTabState(const Tab& source);
@@ -287,6 +293,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _duplicateTabMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _splitTabMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _moveToNewWindowMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutSubItem _moveSubMenu{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _moveRightMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _moveLeftMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _exportTabMenuItem{};
@@ -338,6 +345,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _lastIconPath{};
         std::optional<winrt::Windows::UI::Color> _runtimeTabColor{};
         winrt::TerminalApp::TabHeaderControl _headerControl{};
+        std::function<winrt::TerminalApp::TabHeaderControl(bool)> _headerResolver;
+        winrt::TerminalApp::TabHeaderControl _HeaderControl(bool realize = false);
         winrt::TerminalApp::TerminalTabStatus _tabStatus{};
 
         winrt::TerminalApp::ColorPickupFlyout _tabColorPickup{ nullptr };
@@ -377,6 +386,7 @@ namespace winrt::TerminalApp::implementation
 
         winrt::hstring _stableId{};
         bool _keepRunning{ false };
+        winrt::hstring _keepRunningTelemetryId{};
         bool _isPinned{ false };
         uint32_t _pinnedTabCount{ 0 };
 

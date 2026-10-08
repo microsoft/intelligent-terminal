@@ -73,6 +73,7 @@ pub(crate) async fn build_prompt_text(
     wt_connected: bool,
     pane_context: Option<&PaneContext>,
     autofix_snapshot: Option<&AutofixSnapshot>,
+    master_conn: Option<&super::conn::ClientLink>,
 ) -> (String, String, String, Option<String>) {
     let is_autofix = autofix_text_kind.is_some();
     let total_started = std::time::Instant::now();
@@ -98,8 +99,20 @@ pub(crate) async fn build_prompt_text(
     // the resulting terminal context and resolver invocation, while the App
     // binds the same target pane to the matching turn before recommendations
     // can execute.
+    let master_lookup = master_conn.map(prompt_context::MasterSourcePaneSessionLookup::new);
+    let source_pane_session_lookup = master_lookup
+        .as_ref()
+        .map(|lookup| lookup as &dyn prompt_context::SourcePaneSessionLookup);
     let resolved_context = match autofix_snapshot.filter(|_| is_autofix) {
-        Some(snapshot) => snapshot.resolved_context(),
+        Some(snapshot) => {
+            let mut resolved = snapshot.resolved_context();
+            resolved.agent_session_id = prompt_context::lookup_source_pane_agent_session_id(
+                source_pane_session_lookup,
+                snapshot.source_pane_id(),
+            )
+            .await;
+            resolved
+        }
         None => {
             // Automatic failures without their pinned source must never borrow
             // the active pane, even for callers without a queued snapshot.
@@ -112,6 +125,7 @@ pub(crate) async fn build_prompt_text(
                 wt_connected && can_resolve,
                 shell_mgr,
                 pane_context,
+                source_pane_session_lookup,
             )
             .await
         }
@@ -129,6 +143,7 @@ pub(crate) async fn build_prompt_text(
         shell_exe: resolved_context.shell_exe.as_deref(),
         terminal_output: resolved_context.terminal_output.as_deref(),
         planner_terminal_context: resolved_context.planner_terminal_context.as_deref(),
+        agent_session_id: resolved_context.agent_session_id.as_deref(),
         command_resolver_invocation: resolved_context.command_resolver_invocation.as_ref(),
     };
     for provider in prompt_context::default_providers() {
@@ -539,6 +554,7 @@ mod tests {
             false,
             None,
             Some(&snapshot),
+            None,
         )
         .await;
         assert_eq!(target.as_deref(), Some("fixture-source"));
@@ -598,6 +614,7 @@ mod tests {
                 wt_connected,
                 Some(&moved_context),
                 Some(&snapshot.clone()),
+                None,
             )
             .await;
             assert!(built_prompt.contains("\"shell\":\"bash\""));
@@ -621,6 +638,7 @@ mod tests {
             true,
             None,
             Some(&snapshot),
+            None,
         )
         .await;
         assert!(planner_prompt.contains(r#""cwd":"C:\\live""#));
@@ -658,6 +676,7 @@ mod tests {
             true,
             Some(&context),
             Some(&snapshot),
+            None,
         )
         .await;
         assert_eq!(target.as_deref(), Some("failed-pane"));
@@ -711,6 +730,7 @@ mod tests {
                 &mgr,
                 true,
                 Some(&context),
+                None,
                 None,
             )
             .await;
@@ -851,6 +871,7 @@ mod tests {
                 true,
                 Some(&later_context),
                 Some(&snapshot),
+                None,
             )
             .await;
             assert_eq!(target.as_deref(), Some("failed-pane"));
@@ -925,6 +946,7 @@ mod tests {
                 true,
                 Some(&context),
                 None,
+                None,
             )
             .await;
             if source == "pane-missing" {
@@ -944,8 +966,19 @@ mod tests {
     async fn build_prompt_text_planner_includes_template_and_user_request() {
         let mgr = ShellManager::new();
         let expected = prompt::load_planner_prompt_template();
-        let (built_prompt, _source, display_name, target_pane) =
-            build_prompt_text(1, 0.0, "list files", None, true, &mgr, false, None, None).await;
+        let (built_prompt, _source, display_name, target_pane) = build_prompt_text(
+            1,
+            0.0,
+            "list files",
+            None,
+            true,
+            &mgr,
+            false,
+            None,
+            None,
+            None,
+        )
+        .await;
         assert_eq!(display_name, expected.display_name);
         assert!(
             built_prompt.contains("### Supported Delegate Agents"),
@@ -993,6 +1026,7 @@ mod tests {
             true,
             None,
             None,
+            None,
         )
         .await;
 
@@ -1030,6 +1064,7 @@ mod tests {
             true,
             Some(&pane_context),
             None,
+            None,
         )
         .await;
 
@@ -1058,6 +1093,7 @@ mod tests {
             true,
             None,
             None,
+            None,
         )
         .await;
 
@@ -1081,6 +1117,7 @@ mod tests {
             true,
             &mgr,
             false,
+            None,
             None,
             None,
         )
@@ -1169,6 +1206,7 @@ mod tests {
             false,
             None,
             None,
+            None,
         )
         .await;
         assert!(
@@ -1188,6 +1226,7 @@ mod tests {
             true,
             &mgr,
             false,
+            None,
             None,
             None,
         )
@@ -1211,7 +1250,7 @@ mod tests {
             "test precondition: planner template body is non-empty"
         );
         let (built_prompt, _s, _d, _f) =
-            build_prompt_text(4, 0.0, "hi", None, false, &mgr, false, None, None).await;
+            build_prompt_text(4, 0.0, "hi", None, false, &mgr, false, None, None, None).await;
         assert!(
             !built_prompt.contains(planner.content.trim()),
             "include_base_prompt=false must omit the base prompt body"
@@ -1232,6 +1271,7 @@ mod tests {
             false,
             &mgr,
             false,
+            None,
             None,
             None,
         )
@@ -1263,6 +1303,7 @@ mod tests {
             true,
             &mgr,
             true,
+            None,
             None,
             None,
         )
@@ -1307,6 +1348,7 @@ mod tests {
             &mgr,
             true,
             Some(&ctx),
+            None,
             None,
         )
         .await;
@@ -1353,6 +1395,7 @@ mod tests {
             &mgr,
             true,
             Some(&ctx),
+            None,
             None,
         )
         .await;
@@ -1403,6 +1446,7 @@ mod tests {
                 &mgr,
                 true,
                 Some(&context),
+                None,
                 None,
             )
             .await;

@@ -1,4 +1,6 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
+param([switch]$KeepRunningOnly)
+
 # Real UI actions -> App TraceLogging -> bounded ETW capture -> typed TDH payloads.
 # No policy writes, model quota, or synthetic telemetry producers.
 Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelemetry' -Skip:($env:ITE2E_TELEMETRY -ne '1') {
@@ -33,6 +35,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             changes = 'RichTabChangesVisibleItem'
         }
         $script:appProvider = '24a1622f-7da7-5c77-3303-d850bd1ab2ed'
+        $script:wtaProvider = '4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b'
         if ((Get-ItTestPackage) -ne 'Dev') { throw 'Sidebar telemetry validation requires explicitly selected Dev.' }
         if (-not $env:ITE2E_EXPECTED_APP_SHA256 -or -not $env:ITE2E_EXPECTED_WTA_SHA256) {
             throw 'Supply TerminalApp.dll and WTA SHA256 values from the exact-source build receipt.'
@@ -83,7 +86,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             $path = Join-Path $script:root ('agent-view-' + [guid]::NewGuid().ToString('N') + '.jsonl')
             # The external test runner does not inherit package identity.
             $pipe = (Get-Content -LiteralPath (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
-            $result = Invoke-Wta -App $script:app -Arguments @('sessions', 'list', '--master', $pipe, '--origin', 'shell', '--all-agents', '--json') -Raw
+            $result = Invoke-Wta -App $script:app -Arguments @('sessions', 'list', '--master', $pipe, '--origin', 'shell', '--json') -Raw
             $result.StdOut | Set-Content -LiteralPath $path
             $result.ExitCode | Should -Be 0 -Because $result.StdErr
             $rows = @($result.StdOut -split '\r?\n' | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
@@ -132,8 +135,13 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         function Get-SidebarHeader {
             param([string]$Title)
             $tree = Get-UiTree -App $script:app -Selector ItemsList -Depth 8
-            $pattern = '(?m)^\s*(?<Selector>lbl-textview-\S+|TextView) Text "' + [regex]::Escape($Title) + '"(?<State>[^\r\n]*)'
+            $pattern = '(?m)^(?<Indent>[ \t]*)(?<Selector>lbl-textview-\S+|TextView) Text "' + [regex]::Escape($Title) + '"(?<State>[^\r\n]*)'
             $matches = @([regex]::Matches($tree, $pattern))
+            if ($matches.Count -gt 1) {
+                # Expanded split panes can repeat the tab title beneath its parent header.
+                $depth = ($matches | ForEach-Object { $_.Groups['Indent'].Length } | Measure-Object -Minimum).Minimum
+                $matches = @($matches | Where-Object { $_.Groups['Indent'].Length -eq $depth })
+            }
             if ($matches.Count -gt 1) { throw "Ambiguous sidebar parent header: $Title" }
             if ($matches.Count -eq 1 -and $matches[0].Groups['State'].Value -notmatch '\[offscreen\]') {
                 $matches[0].Groups['Selector'].Value
@@ -147,6 +155,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         }
         function Open-SidebarContextMenu {
             param([string]$Title)
+            Set-WtWindowForeground -App $script:app | Should -BeTrue
             Wait-SidebarHeader -Title $Title
             Invoke-UiClick -App $script:app -Selector (Get-SidebarHeader -Title $Title) -Right | Out-Null
             Wait-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
@@ -233,117 +242,134 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             $helperB = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $existingHelpers -TimeoutSec 40
             @(Get-AgentPaneSessions -App $script:app | Where-Object PaneSessionId -notin $existingHelpers) | Should -HaveCount 1
             Wait-AgentReady -App $script:app -PaneSessionId $helperB.PaneSessionId -TimeoutSec 40 | Should -BeTrue
+            $script:helperB = $helperB
             Split-WtPane -App $script:app -SessionId $script:tabA.session_id -Direction right -Size 0.4 -Command 'pwsh -NoProfile' | Out-Null
             Set-WtPaneFocus -App $script:app -SessionId $script:tabA.session_id
             Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
             $script:tabCount = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count
             $script:tabCount | Should -Be 3
 
-            Invoke-TelemetryPhase -Name fields-menu-only -Action {
-                Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
-                Assert-SidebarRowFields -Fields 'agentStatus,workingDirectory'
-                Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+            Invoke-TelemetryPhase -Name pre-reattach-prompt -Action {
+                $script:preReattachAgentSessionId = (Get-AgentPaneSession -App $script:app -PaneSessionId $script:helperB.PaneSessionId).AcpSessionId
+                $script:preReattachAgentSessionId | Should -Not -BeNullOrEmpty
+                $marker = 'TELEMETRY_CHAT_' + [guid]::NewGuid().ToString('N')
+                Send-AgentPrompt -App $script:app -PaneSessionId $script:helperB.PaneSessionId -Text $marker | Out-Null
+                Assert-AgentPaneText -App $script:app -PaneSessionId $script:helperB.PaneSessionId -Pattern "ACK:$marker" -TimeoutSec 20
+                Wait-Until -TimeoutSec 20 -Because 'the retained ACP session completes its first user prompt' -Condition {
+                    (Get-Content -LiteralPath $log -Raw).Contains("telemetry-chat-complete|$($script:preReattachAgentSessionId)|$marker")
+                } | Out-Null
+                Start-Sleep -Seconds 1
             }
-            Invoke-TelemetryPhase -Name fields-third-disabled -Action {
-                Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
-                Test-UiElementEnabled -App $script:app -Selector RichTabRepositoryVisibleItem | Should -BeFalse
-                Invoke-UiClick -App $script:app -Selector RichTabRepositoryVisibleItem | Out-Null
-                Assert-SidebarRowFields -Fields 'agentStatus,workingDirectory'
-                Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
-            }
-            foreach ($case in $script:rowFieldCases) {
-                Invoke-TelemetryPhase -Name $case.Phase -Action {
+            function Invoke-OtherSidebarScenarios {
+                Invoke-TelemetryPhase -Name fields-menu-only -Action {
                     Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
-                    Test-UiElementEnabled -App $script:app -Selector $case.Selector | Should -BeTrue
-                    Invoke-UiElement -App $script:app -Selector $case.Selector | Out-Null
-                    Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
-                    Assert-SidebarRowFields -Fields $case.Fields
-                    Get-UiTree -App $script:app -Depth 8 |
-                        Set-Content -LiteralPath (Join-Path $script:root "$($case.Phase).txt")
+                    Assert-SidebarRowFields -Fields 'agentStatus,workingDirectory'
                     Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
                 }
-                if ($case.Phase -eq 'fields-repository-branch') {
-                    Invoke-TelemetryPhase -Name fields-session-start -Action {
-                        $existing = @(Get-AgentPaneSessions -App $script:app).PaneSessionId
-                        $tab = New-WtTab -App $script:app -Command 'pwsh -NoProfile' -Title 'IT-sidebar-start-snapshot'
-                        $helper = $null
-                        try {
-                            $helper = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $existing -TimeoutSec 40
-                            Wait-AgentReady -App $script:app -PaneSessionId $helper.PaneSessionId -TimeoutSec 40 | Should -BeTrue
-                            Save-TelemetryOwnedProcesses -App $script:app
-                        }
-                        finally {
-                            if ($helper) {
-                                Close-WtPane -App $script:app -SessionId $helper.PaneSessionId
-                                Wait-Until -TimeoutSec 20 -Because 'the temporary session helper retires' -Condition {
-                                    -not (Get-Process -Id $helper.HelperProcessId -ErrorAction SilentlyContinue)
-                                } | Out-Null
+                Invoke-TelemetryPhase -Name fields-third-disabled -Action {
+                    Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                    Test-UiElementEnabled -App $script:app -Selector RichTabRepositoryVisibleItem | Should -BeFalse
+                    Invoke-UiClick -App $script:app -Selector RichTabRepositoryVisibleItem | Out-Null
+                    Assert-SidebarRowFields -Fields 'agentStatus,workingDirectory'
+                    Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+                }
+                foreach ($case in $script:rowFieldCases) {
+                    Invoke-TelemetryPhase -Name $case.Phase -Action {
+                        Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                        Test-UiElementEnabled -App $script:app -Selector $case.Selector | Should -BeTrue
+                        Invoke-UiElement -App $script:app -Selector $case.Selector | Out-Null
+                        Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                        Assert-SidebarRowFields -Fields $case.Fields
+                        Get-UiTree -App $script:app -Depth 8 |
+                            Set-Content -LiteralPath (Join-Path $script:root "$($case.Phase).txt")
+                        Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+                    }
+                    if ($case.Phase -eq 'fields-repository-branch') {
+                        Invoke-TelemetryPhase -Name fields-session-start -Action {
+                            $existing = @(Get-AgentPaneSessions -App $script:app).PaneSessionId
+                            $tab = New-WtTab -App $script:app -Command 'pwsh -NoProfile' -Title 'IT-sidebar-start-snapshot'
+                            $helper = $null
+                            try {
+                                $helper = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $existing -TimeoutSec 40
+                                Wait-AgentReady -App $script:app -PaneSessionId $helper.PaneSessionId -TimeoutSec 40 | Should -BeTrue
+                                Save-TelemetryOwnedProcesses -App $script:app
                             }
-                            Close-WtPane -App $script:app -SessionId $tab.session_id
-                            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+                            finally {
+                                if ($helper) {
+                                    Close-WtPane -App $script:app -SessionId $helper.PaneSessionId
+                                    Wait-Until -TimeoutSec 20 -Because 'the temporary session helper retires' -Condition {
+                                        -not (Get-Process -Id $helper.HelperProcessId -ErrorAction SilentlyContinue)
+                                    } | Out-Null
+                                }
+                                Close-WtPane -App $script:app -SessionId $tab.session_id
+                                Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+                            }
                         }
                     }
                 }
-            }
-            Invoke-TelemetryPhase -Name search-open -Action {
-                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
-                Wait-UiElement -App $script:app -Selector SearchTextBox | Out-Null
-            }
-            Invoke-TelemetryPhase -Name search-edit -Action {
-                Set-SidebarQuery -Text $script:titleB
-                Wait-SidebarHeader -Title $script:titleB
-                Wait-SidebarHeader -Title $script:titleA -Hidden
-                Set-SidebarQuery -Text 'IT-sidebar-'
-                Wait-SidebarHeader -Title $script:titleA
-            }
-            Invoke-TelemetryPhase -Name search-close -Action {
-                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
-                Wait-UiElement -App $script:app -Selector SearchTextBox -Gone | Out-Null
-            }
-            Invoke-TelemetryPhase -Name search-reopen -Action {
-                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
-                Wait-UiElement -App $script:app -Selector SearchTextBox | Out-Null
-            }
-            Invoke-TelemetryPhase -Name filter-all -Action {
-                $count = Get-AgentViewRowCount
-                Set-SidebarHistory -Open $true
-                Wait-AgentViewLoaded -Count $count
-                @{ Count = $count }
-            }
-            Invoke-TelemetryPhase -Name history-refresh -Action {
-                Wait-AgentViewLoaded -Count $script:phases['filter-all'].Data.Count
-                Start-Sleep -Seconds 7
-            }
-            Invoke-TelemetryPhase -Name filter-search-edit -Action {
-                Set-UiValue -App $script:app -Selector HistorySearchTextBox -Value ('no-session-' + [guid]::NewGuid().ToString('N')) | Out-Null
-                Wait-UiElement -App $script:app -Selector HistoryMessage | Out-Null
-                (Get-UiElement -App $script:app -Selector HistoryMessage).name |
-                    Should -BeIn @('No matching agent sessions.', 'No agent sessions found.')
-            }
-            Invoke-TelemetryPhase -Name filter-live-search -Action {
+                Invoke-TelemetryPhase -Name search-open -Action {
+                    Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+                    Wait-UiElement -App $script:app -Selector SearchTextBox | Out-Null
+                }
+                Invoke-TelemetryPhase -Name search-edit -Action {
+                    Set-SidebarQuery -Text $script:titleB
+                    Wait-SidebarHeader -Title $script:titleB
+                    Wait-SidebarHeader -Title $script:titleA -Hidden
+                    Set-SidebarQuery -Text 'IT-sidebar-'
+                    Wait-SidebarHeader -Title $script:titleA
+                }
+                Invoke-TelemetryPhase -Name search-close -Action {
+                    Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+                    Wait-UiElement -App $script:app -Selector SearchTextBox -Gone | Out-Null
+                }
+                Invoke-TelemetryPhase -Name search-reopen -Action {
+                    Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+                    Wait-UiElement -App $script:app -Selector SearchTextBox | Out-Null
+                }
+                Invoke-TelemetryPhase -Name filter-all -Action {
+                    $count = Get-AgentViewRowCount
+                    Set-SidebarHistory -Open $true
+                    Wait-AgentViewLoaded -Count $count
+                    @{ Count = $count }
+                }
+                Invoke-TelemetryPhase -Name history-refresh -Action {
+                    Wait-AgentViewLoaded -Count $script:phases['filter-all'].Data.Count
+                    Start-Sleep -Seconds 7
+                }
+                Invoke-TelemetryPhase -Name filter-search-edit -Action {
+                    Set-UiValue -App $script:app -Selector HistorySearchTextBox -Value ('no-session-' + [guid]::NewGuid().ToString('N')) | Out-Null
+                    Wait-UiElement -App $script:app -Selector HistoryMessage | Out-Null
+                    (Get-UiElement -App $script:app -Selector HistoryMessage).name |
+                        Should -BeIn @('No matching agent sessions.', 'No agent sessions found.')
+                }
+                Invoke-TelemetryPhase -Name filter-live-search -Action {
+                    Set-SidebarHistory -Open $false
+                    Add-AgentViewFixtures
+                    Set-SidebarQuery -Text $script:titleA
+                    Wait-SidebarHeader -Title $script:titleA
+                    $count = Get-AgentViewRowCount
+                    $count | Should -BeGreaterOrEqual 2
+                    Set-SidebarHistory -Open $true
+                    Wait-AgentViewLoaded -Count $count
+                    Get-UiTree -App $script:app -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'agent-view.txt')
+                    @{ Count = $count }
+                }
+                Invoke-TelemetryPhase -Name filter-live-no-match -Action {
+                    Set-SidebarHistory -Open $false
+                    Set-SidebarQuery -Text 'IT-sidebar-no-match'
+                    Wait-SidebarHeader -Title $script:titleA -Hidden
+                    Wait-SidebarHeader -Title $script:titleB -Hidden
+                    $count = Get-AgentViewRowCount
+                    Set-SidebarHistory -Open $true
+                    Wait-AgentViewLoaded -Count $count
+                    @{ Count = $count }
+                }
                 Set-SidebarHistory -Open $false
-                Add-AgentViewFixtures
-                Set-SidebarQuery -Text $script:titleA
-                Wait-SidebarHeader -Title $script:titleA
-                $count = Get-AgentViewRowCount
-                $count | Should -BeGreaterOrEqual 2
-                Set-SidebarHistory -Open $true
-                Wait-AgentViewLoaded -Count $count
-                Get-UiTree -App $script:app -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'agent-view.txt')
-                @{ Count = $count }
+                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
             }
-            Invoke-TelemetryPhase -Name filter-live-no-match -Action {
-                Set-SidebarHistory -Open $false
-                Set-SidebarQuery -Text 'IT-sidebar-no-match'
-                Wait-SidebarHeader -Title $script:titleA -Hidden
-                Wait-SidebarHeader -Title $script:titleB -Hidden
-                $count = Get-AgentViewRowCount
-                Set-SidebarHistory -Open $true
-                Wait-AgentViewLoaded -Count $count
-                @{ Count = $count }
+            if (-not $KeepRunningOnly) {
+                Invoke-OtherSidebarScenarios
             }
-            Set-SidebarHistory -Open $false
-            Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
             Invoke-TelemetryPhase -Name pin-first -Action {
                 Invoke-SidebarKeepRunning -Title $script:titleA -Enable $true
             }
@@ -362,6 +388,8 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
             Invoke-TelemetryPhase -Name retain-restore -Action {
                 $before = Get-WtPaneStatus -App $script:app -SessionId $script:tabB.session_id
+                $script:restoredAgentSessionId = (Get-AgentPaneSession -App $script:app -PaneSessionId $script:helperB.PaneSessionId).AcpSessionId
+                $script:restoredAgentSessionId | Should -Be $script:preReattachAgentSessionId
                 Open-SidebarContextMenu -Title $script:titleB
                 Invoke-UiElement -App $script:app -Selector 'Close tab' | Out-Null
                 Wait-Until -TimeoutSec 15 -Because 'the kept tab detaches' -Condition {
@@ -372,10 +400,21 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
                 Wait-SidebarHeader -Title $script:titleB
                 (Get-WtPaneStatus -App $script:app -SessionId $script:tabB.session_id).pid | Should -Be $before.pid
+                (Get-AgentPaneSession -App $script:app -PaneSessionId $script:helperB.PaneSessionId).AcpSessionId |
+                    Should -Be $script:restoredAgentSessionId
                 @(Get-WtWindows -App $script:app | Where-Object { [string]$_.window_id -eq [string]$script:app.WindowId })[0].tab_count |
                     Should -Be $script:tabCount
                 Invoke-SidebarKeepRunning -Title $script:titleB -Enable $false
                 Invoke-SidebarKeepRunning -Title $script:titleA -Enable $false
+            }
+            Invoke-TelemetryPhase -Name reattach-prompt -Action {
+                $marker = 'TELEMETRY_CHAT_' + [guid]::NewGuid().ToString('N')
+                Send-AgentPrompt -App $script:app -PaneSessionId $script:helperB.PaneSessionId -Text $marker | Out-Null
+                Assert-AgentPaneText -App $script:app -PaneSessionId $script:helperB.PaneSessionId -Pattern "ACK:$marker" -TimeoutSec 20
+                Wait-Until -TimeoutSec 20 -Because 'the retained ACP session completes a prompt after reattachment' -Condition {
+                    (Get-Content -LiteralPath $log -Raw).Contains("telemetry-chat-complete|$($script:restoredAgentSessionId)|$marker")
+                } | Out-Null
+                Start-Sleep -Seconds 1
             }
             Invoke-TelemetryPhase -Name layout-refresh -Action {
                 Set-WtSetting -App $script:app -Key tabLayout -Value horizontal | Out-Null
@@ -397,7 +436,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             finally { Stop-TestTelemetryTrace -Trace $trace }
         }
         $script:records = @(Read-TestTelemetryTrace -Directory $trace.Directory -ProcessIds @($script:ownedPids) `
-            -IncludeEventName @('AppCreated', 'AgentSessionStarted', 'AcpNewSessionComplete', 'AgentPromptSent', 'AgentResponseFirstToken', 'AgentResponseComplete', 'SidebarStateOnLaunch', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged'))
+            -IncludeEventName @('AppCreated', 'AgentSessionStarted', 'AcpNewSessionComplete', 'AgentPromptSent', 'AgentResponseFirstToken', 'AgentResponseComplete', 'SidebarStateOnLaunch', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged', 'KeepRunningMarked', 'KeepRunningDetached', 'KeepRunningReattached'))
         Initialize-TelemetryPhaseClock -CaptureDirectory $trace.Directory
         ConvertTo-Json -InputObject $script:records -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'scoped-events.json')
         [xml]$raw = Get-Content -LiteralPath (Join-Path $trace.Directory 'events.xml') -Raw
@@ -410,7 +449,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 if ($provider.GetAttribute('Guid').Trim('{}') -ne $script:appProvider -or
                     [int]$execution.GetAttribute('ProcessID') -ne $script:app.Pid) { continue }
                 $name = $event.SelectSingleNode("*[local-name()='RenderingInfo']/*[local-name()='Task']").InnerText
-                if ($name -notin @('AppCreated', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged')) { continue }
+                if ($name -notin @('AppCreated', 'SidebarSearchOpened', 'SidebarAgentFilterApplied', 'SidebarTabPinned', 'SidebarRowFieldsChanged', 'KeepRunningMarked', 'KeepRunningDetached', 'KeepRunningReattached')) { continue }
                 [pscustomobject]@{
                     Name = $name
                     Level = $system.SelectSingleNode("*[local-name()='Level']").InnerText
@@ -481,7 +520,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             @($event.Fields.Keys) | Should -HaveCount 14
         }
         $starts = @($script:records | Where-Object Name -eq AgentSessionStarted)
-        $script:metadata | Should -HaveCount (11 + $script:rowFieldCases.Count + $starts.Count)
+        $script:metadata | Should -HaveCount (16 + $script:rowFieldCases.Count + $starts.Count)
         $startupMetadata = @($script:metadata | Where-Object Name -eq AppCreated)[0]
         foreach ($metadata in $script:metadata) {
             [int]$metadata.Level | Should -Be 5
@@ -526,6 +565,69 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarTabPinned) | Should -HaveCount 0
         }
         @($script:records | Where-Object Name -eq SidebarTabPinned) | Should -HaveCount 3
+    }
+
+    It 'Keep-running telemetry correlates opt-in, retention, and live reattachment' {
+        if ($script:phaseErrors.Count) { throw ($script:phaseErrors.Values | Out-String) }
+        $ids = @()
+        foreach ($case in @(@{ Phase = 'pin-first'; Count = 1 }, @{ Phase = 'pin-second-hidden-first'; Count = 2 }, @{ Phase = 'repin'; Count = 2 })) {
+            $events = @(Get-TelemetryPhaseEvents -Phase $case.Phase -Name KeepRunningMarked -Provider $script:appProvider)
+            $events | Should -HaveCount 1
+            $event = $events[0]
+            @($event.Fields.Keys | Sort-Object) | Should -Be @('HasAgentPane', 'KeepId', 'KeepRunningTabCount', 'PartA_PrivTags', 'TotalTabCount')
+            $event.Types.KeepId | Should -Match 'UnicodeString$'
+            $event.Types.HasAgentPane | Should -Match 'Boolean$'
+            $event.Types.TotalTabCount | Should -Match 'UInt32$'
+            $event.Types.KeepRunningTabCount | Should -Match 'UInt32$'
+            [uint32]$event.Fields.TotalTabCount | Should -Be $script:tabCount
+            [uint32]$event.Fields.KeepRunningTabCount | Should -Be $case.Count
+            $event.Fields.KeepId | Should -Match '^\{[0-9a-fA-F-]{36}\}$'
+            $event.Fields.HasAgentPane | Should -BeIn @('true', '1')
+            $ids += $event.Fields.KeepId
+        }
+        @($ids | Select-Object -Unique) | Should -HaveCount 3
+        foreach ($phase in @('unpin', 'retain-restore', 'layout-refresh')) {
+            @(Get-TelemetryPhaseEvents -Phase $phase -Name KeepRunningMarked) | Should -HaveCount 0
+        }
+        $detached = @(Get-TelemetryPhaseEvents -Phase retain-restore -Name KeepRunningDetached -Provider $script:appProvider)
+        $reattached = @(Get-TelemetryPhaseEvents -Phase retain-restore -Name KeepRunningReattached -Provider $script:appProvider)
+        $detached | Should -HaveCount 1
+        $reattached | Should -HaveCount 1
+        @($detached[0].Fields.Keys | Sort-Object) | Should -Be @('HasAgentPane', 'KeepId', 'PartA_PrivTags')
+        @($reattached[0].Fields.Keys | Sort-Object) | Should -Be @('HasAgentPane', 'KeepId', 'Outcome', 'PartA_PrivTags')
+        $detached[0].Types.KeepId | Should -Match 'UnicodeString$'
+        $reattached[0].Types.Outcome | Should -Match 'AnsiString$'
+        $detached[0].Fields.KeepId | Should -Be $ids[2]
+        $reattached[0].Fields.KeepId | Should -Be $ids[2]
+        $reattached[0].Fields.Outcome | Should -BeExactly 'live'
+        @($script:records | Where-Object Name -eq KeepRunningMarked) | Should -HaveCount 3
+        @($script:records | Where-Object Name -eq KeepRunningDetached) | Should -HaveCount 1
+        @($script:records | Where-Object Name -eq KeepRunningReattached) | Should -HaveCount 1
+    }
+
+    It 'Restored agent prompt telemetry identifies the surviving ACP session' {
+        if ($script:phaseErrors.Count) { throw ($script:phaseErrors.Values | Out-String) }
+        $before = @(Get-TelemetryPhaseEvents -Phase session-id-privacy -Name AgentPromptSent -Provider $script:wtaProvider)
+        $beforeRetained = @(Get-TelemetryPhaseEvents -Phase pre-reattach-prompt -Name AgentPromptSent -Provider $script:wtaProvider)
+        $after = @(Get-TelemetryPhaseEvents -Phase reattach-prompt -Name AgentPromptSent -Provider $script:wtaProvider)
+        $before | Should -HaveCount 1
+        $beforeRetained | Should -HaveCount 1
+        $after | Should -HaveCount 1
+        $before[0].Fields.Reattached | Should -BeIn @('false', '0')
+        $beforeRetained[0].Fields.Reattached | Should -BeIn @('false', '0')
+        $after[0].Fields.Reattached | Should -BeIn @('true', '1')
+        $before[0].Fields.UserPromptOrdinal | Should -BeExactly 'First'
+        $beforeRetained[0].Fields.UserPromptOrdinal | Should -BeExactly 'First'
+        $after[0].Fields.UserPromptOrdinal | Should -BeExactly 'Second'
+        $beforeRetained[0].ProcessId | Should -Be $after[0].ProcessId
+        $after[0].Fields.IsAutofix | Should -BeIn @('false', '0')
+        $after[0].Types.Reattached | Should -Match 'Boolean$'
+        $after[0].Types.UserPromptOrdinal | Should -Match 'AnsiString$'
+        @($script:records | Where-Object Name -eq AgentPromptSent) | Should -HaveCount 3
+        $after[0].Fields.Keys | Should -Not -Contain 'SessionId'
+        foreach ($phase in @('pin-first', 'pin-second-hidden-first', 'unpin', 'repin', 'retain-restore')) {
+            @(Get-TelemetryPhaseEvents -Phase $phase -Name AgentPromptSent) | Should -HaveCount 0
+        }
     }
 
     It 'Sidebar row-field telemetry reports only selected field identifiers' {

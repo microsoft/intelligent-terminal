@@ -25,6 +25,7 @@ use crate::pane_context::PaneContext;
 use crate::shell::ShellManager;
 
 const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 4000;
+const SOURCE_PANE_SESSION_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 fn truncate_for_prompt(text: &str, max_chars: usize) -> String {
     let mut chars = text.chars();
@@ -472,6 +473,87 @@ async fn capture_pane_context(
     })
 }
 
+#[async_trait]
+pub(super) trait SourcePaneSessionLookup: Send + Sync {
+    async fn lookup_source_pane_session(
+        &self,
+        pane_session_id: &str,
+    ) -> anyhow::Result<Option<String>>;
+}
+
+pub(super) struct MasterSourcePaneSessionLookup<'a> {
+    conn: &'a super::conn::ClientLink,
+}
+
+impl<'a> MasterSourcePaneSessionLookup<'a> {
+    pub(super) fn new(conn: &'a super::conn::ClientLink) -> Self {
+        Self { conn }
+    }
+}
+
+#[async_trait]
+impl SourcePaneSessionLookup for MasterSourcePaneSessionLookup<'_> {
+    async fn lookup_source_pane_session(
+        &self,
+        pane_session_id: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let request =
+            crate::session_registry::build_source_pane_session_by_pane_request(pane_session_id);
+        let response = self.conn.ext_method(request).await?;
+        let parsed =
+            crate::session_registry::parse_source_pane_session_by_pane_response(&response.0)?;
+        Ok(parsed.session_id.map(|sid| sid.0.to_string()))
+    }
+}
+
+pub(super) async fn lookup_source_pane_agent_session_id(
+    lookup: Option<&dyn SourcePaneSessionLookup>,
+    pane_session_id: &str,
+) -> Option<String> {
+    lookup_source_pane_agent_session_id_with_timeout(
+        lookup,
+        pane_session_id,
+        SOURCE_PANE_SESSION_LOOKUP_TIMEOUT,
+    )
+    .await
+}
+
+async fn lookup_source_pane_agent_session_id_with_timeout(
+    lookup: Option<&dyn SourcePaneSessionLookup>,
+    pane_session_id: &str,
+    timeout: std::time::Duration,
+) -> Option<String> {
+    let Some(lookup) = lookup else {
+        tracing::debug!(
+            target: "acp.terminal_context",
+            pane_session_id,
+            "source_pane_session_lookup_unsupported"
+        );
+        return None;
+    };
+    match tokio::time::timeout(timeout, lookup.lookup_source_pane_session(pane_session_id)).await {
+        Ok(Ok(session_id)) => session_id,
+        Ok(Err(error)) => {
+            tracing::warn!(
+                target: "acp.terminal_context",
+                pane_session_id,
+                error = %error,
+                "source_pane_session_lookup_failed"
+            );
+            None
+        }
+        Err(_) => {
+            tracing::warn!(
+                target: "acp.terminal_context",
+                pane_session_id,
+                timeout_ms = timeout.as_millis() as u64,
+                "source_pane_session_lookup_timed_out"
+            );
+            None
+        }
+    }
+}
+
 struct PlannerTerminalContext {
     json: String,
     target_pane_id: String,
@@ -481,6 +563,7 @@ struct PlannerTerminalContext {
 async fn build_terminal_context(
     shell_mgr: &ShellManager,
     pane_context: Option<&PaneContext>,
+    source_pane_session_lookup: Option<&dyn SourcePaneSessionLookup>,
 ) -> Option<PlannerTerminalContext> {
     let captured = capture_pane_context(
         shell_mgr,
@@ -489,9 +572,15 @@ async fn build_terminal_context(
         ACTIVE_PANE_CONTEXT_MAX_CHARS,
     )
     .await?;
-    let active = captured.pane;
+    let CapturedPaneContext {
+        pane: active,
+        output,
+        ..
+    } = captured;
 
     let target_pane_id = json_str_or_num(active.get("session_id"))?;
+    let agent_session_id =
+        lookup_source_pane_agent_session_id(source_pane_session_lookup, &target_pane_id).await;
     let target_window_title = active
         .get("title")
         .and_then(|v| v.as_str())
@@ -516,15 +605,18 @@ async fn build_terminal_context(
         "terminal_context_target_resolved"
     );
 
-    let json = serde_json::to_string(&serde_json::json!({
+    let mut terminal_context = serde_json::json!({
         "activeTarget": target_pane_id,
         "window_title": target_window_title,
         "cwd": target_cwd,
         "shell": target_shell,
         "locale": user_locale_tag(),
-        "buffer": captured.output,
-    }))
-    .ok()?;
+        "buffer": output,
+    });
+    if let Some(agent_session_id) = agent_session_id {
+        terminal_context["agent_session_id"] = serde_json::Value::String(agent_session_id);
+    }
+    let json = serde_json::to_string(&terminal_context).ok()?;
 
     Some(PlannerTerminalContext {
         json,
@@ -601,6 +693,7 @@ impl AutofixSnapshot {
             resolved_fix_pane: Some(self.source_pane_id.clone()),
             planner_terminal_context: None,
             resolved_planner_pane: None,
+            agent_session_id: None,
             command_resolver_invocation: self.command_resolver_invocation.clone(),
         }
     }
@@ -682,6 +775,7 @@ pub(super) struct ResolvedProviderContext {
     pub(super) resolved_fix_pane: Option<String>,
     pub(super) planner_terminal_context: Option<String>,
     pub(super) resolved_planner_pane: Option<String>,
+    pub(super) agent_session_id: Option<String>,
     pub(super) command_resolver_invocation:
         Option<crate::agent_tools::command_resolution::CommandResolverInvocation>,
 }
@@ -691,6 +785,7 @@ pub(super) async fn resolve_provider_context(
     wt_connected: bool,
     shell_mgr: &ShellManager,
     pane_context: Option<&PaneContext>,
+    source_pane_session_lookup: Option<&dyn SourcePaneSessionLookup>,
 ) -> ResolvedProviderContext {
     let mut resolved = ResolvedProviderContext {
         context_pane: None,
@@ -699,6 +794,7 @@ pub(super) async fn resolve_provider_context(
         resolved_fix_pane: None,
         planner_terminal_context: None,
         resolved_planner_pane: None,
+        agent_session_id: None,
         command_resolver_invocation: if is_autofix {
             None
         } else {
@@ -709,7 +805,9 @@ pub(super) async fn resolve_provider_context(
         return resolved;
     }
     if !is_autofix {
-        if let Some(context) = build_terminal_context(shell_mgr, pane_context).await {
+        if let Some(context) =
+            build_terminal_context(shell_mgr, pane_context, source_pane_session_lookup).await
+        {
             resolved.planner_terminal_context = Some(context.json);
             resolved.resolved_planner_pane = Some(context.target_pane_id);
             resolved.command_resolver_invocation = context.resolver_invocation;
@@ -730,6 +828,12 @@ pub(super) async fn resolve_provider_context(
     };
 
     let source_pane_id = json_str_or_num(captured.pane.get("session_id"));
+    resolved.agent_session_id = match source_pane_id.as_deref() {
+        Some(pane_id) => {
+            lookup_source_pane_agent_session_id(source_pane_session_lookup, pane_id).await
+        }
+        None => None,
+    };
     if explicit_source.is_none() {
         resolved.resolved_fix_pane = source_pane_id.clone();
     }
@@ -775,6 +879,8 @@ pub(super) struct ContextRequest<'a> {
     pub(super) terminal_output: Option<&'a str>,
     /// Planner only: terminal context assembled with its authoritative target.
     pub(super) planner_terminal_context: Option<&'a str>,
+    /// Autofix only: resumable agent session currently bound to the failing pane.
+    pub(super) agent_session_id: Option<&'a str>,
     /// Resolver contract derived from the same authoritative pane.
     pub(super) command_resolver_invocation:
         Option<&'a crate::agent_tools::command_resolution::CommandResolverInvocation>,
@@ -991,12 +1097,16 @@ impl ContextProvider for ShellContextProvider {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let json = serde_json::to_string(&serde_json::json!({
+        let mut shell_context = serde_json::json!({
             "shell": req.shell_exe,
             "cwd": cwd,
             "locale": user_locale_tag(),
-        }))
-        .unwrap_or_else(|_| "{}".to_string());
+        });
+        if let Some(agent_session_id) = req.agent_session_id {
+            shell_context["agent_session_id"] =
+                serde_json::Value::String(agent_session_id.to_string());
+        }
+        let json = serde_json::to_string(&shell_context).unwrap_or_else(|_| "{}".to_string());
         Some(ContextSection {
             heading: "Shell Context",
             body: format!("```json\n{}\n```", json),
@@ -1151,6 +1261,7 @@ pub(super) mod tests {
                 "session_id": "pane-explicit",
                 "is_agent_pane": false,
             },
+            "agent_session_id": "agent-session-resumed",
             "content": "command output",
             "output_source": "last_command",
             "fallback_reason": "",
@@ -1193,6 +1304,29 @@ pub(super) mod tests {
 
         fn is_available(&self) -> bool {
             true
+        }
+    }
+
+    enum MockSourcePaneSessionLookup {
+        Found(&'static str),
+        Missing,
+        Error,
+        Pending,
+    }
+
+    #[async_trait::async_trait]
+    impl SourcePaneSessionLookup for MockSourcePaneSessionLookup {
+        async fn lookup_source_pane_session(
+            &self,
+            pane_session_id: &str,
+        ) -> anyhow::Result<Option<String>> {
+            assert_eq!(pane_session_id, "pane-explicit");
+            match self {
+                Self::Found(id) => Ok(Some((*id).to_string())),
+                Self::Missing => Ok(None),
+                Self::Error => anyhow::bail!("lookup failed"),
+                Self::Pending => std::future::pending().await,
+            }
         }
     }
 
@@ -1403,6 +1537,60 @@ pub(super) mod tests {
     }
 
     #[tokio::test]
+    async fn pane_context_ignores_legacy_terminal_agent_session_id() {
+        let mut response = pane_context_response();
+        response["agent_session_id"] = serde_json::json!("terminal-cache-session");
+        let channel = Arc::new(RecordingPaneContextChannel {
+            requests: AtomicUsize::new(0),
+            params: Mutex::new(None),
+            error: None,
+            response: Some(response),
+        });
+        let mgr = ShellManager::new().with_wt_channel(channel);
+
+        let context =
+            build_terminal_context(&mgr, None, Some(&MockSourcePaneSessionLookup::Missing))
+                .await
+                .expect("pane context remains valid without a registry match");
+        let parsed: serde_json::Value = serde_json::from_str(&context.json).unwrap();
+        assert!(parsed.get("agent_session_id").is_none());
+    }
+
+    #[tokio::test]
+    async fn source_pane_session_lookup_omits_field_when_missing_error_or_timeout() {
+        assert_eq!(
+            lookup_source_pane_agent_session_id_with_timeout(
+                Some(&MockSourcePaneSessionLookup::Found("agent-session-resumed")),
+                "pane-explicit",
+                std::time::Duration::from_millis(1),
+            )
+            .await
+            .as_deref(),
+            Some("agent-session-resumed")
+        );
+        for lookup in [
+            MockSourcePaneSessionLookup::Missing,
+            MockSourcePaneSessionLookup::Error,
+            MockSourcePaneSessionLookup::Pending,
+        ] {
+            assert!(lookup_source_pane_agent_session_id_with_timeout(
+                Some(&lookup),
+                "pane-explicit",
+                std::time::Duration::from_millis(1),
+            )
+            .await
+            .is_none());
+        }
+        assert!(lookup_source_pane_agent_session_id_with_timeout(
+            None,
+            "pane-explicit",
+            std::time::Duration::from_millis(1),
+        )
+        .await
+        .is_none());
+    }
+
+    #[tokio::test]
     async fn planner_and_autofix_resolve_context_with_one_request() {
         for is_autofix in [false, true] {
             for explicit_source in [None, Some("pane-explicit")] {
@@ -1418,8 +1606,15 @@ pub(super) mod tests {
                     ..Default::default()
                 };
 
-                let resolved =
-                    resolve_provider_context(is_autofix, true, &mgr, Some(&pane_context)).await;
+                let lookup = MockSourcePaneSessionLookup::Found("agent-session-resumed");
+                let resolved = resolve_provider_context(
+                    is_autofix,
+                    true,
+                    &mgr,
+                    Some(&pane_context),
+                    Some(&lookup),
+                )
+                .await;
 
                 assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
                 let params = channel.params.lock().unwrap().clone().unwrap();
@@ -1436,6 +1631,10 @@ pub(super) mod tests {
                     );
                     assert_eq!(resolved.terminal_output.as_deref(), Some("command output"));
                     assert_eq!(
+                        resolved.agent_session_id.as_deref(),
+                        Some("agent-session-resumed")
+                    );
+                    assert_eq!(
                         resolved.resolved_fix_pane.as_deref(),
                         explicit_source.is_none().then_some("pane-explicit")
                     );
@@ -1447,6 +1646,7 @@ pub(super) mod tests {
                     let context: serde_json::Value =
                         serde_json::from_str(&resolved.planner_terminal_context.unwrap()).unwrap();
                     assert_eq!(context["activeTarget"], "pane-explicit");
+                    assert_eq!(context["agent_session_id"], "agent-session-resumed");
                     assert_eq!(context["buffer"], "command output");
                 }
             }
@@ -1470,7 +1670,8 @@ pub(super) mod tests {
                 };
 
                 let resolved =
-                    resolve_provider_context(is_autofix, true, &mgr, Some(&pane_context)).await;
+                    resolve_provider_context(is_autofix, true, &mgr, Some(&pane_context), None)
+                        .await;
 
                 assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
                 assert!(resolved.context_pane.is_none());
@@ -1776,7 +1977,7 @@ pub(super) mod tests {
     #[tokio::test]
     async fn build_terminal_context_none_without_wt_channel() {
         let mgr = ShellManager::new();
-        assert!(build_terminal_context(&mgr, None).await.is_none());
+        assert!(build_terminal_context(&mgr, None, None).await.is_none());
     }
 
     #[tokio::test]
@@ -1786,7 +1987,7 @@ pub(super) mod tests {
             "is_agent_pane": true,
         }));
         assert!(
-            build_terminal_context(&mgr, None).await.is_none(),
+            build_terminal_context(&mgr, None, None).await.is_none(),
             "an active agent pane has no terminal output to ship"
         );
     }
@@ -1800,7 +2001,7 @@ pub(super) mod tests {
             "pid": std::process::id(),
             "is_agent_pane": false,
         }));
-        let context = build_terminal_context(&mgr, None)
+        let context = build_terminal_context(&mgr, None, None)
             .await
             .expect("a non-agent active pane must yield context json");
         let v: serde_json::Value = serde_json::from_str(&context.json).unwrap();
@@ -1810,6 +2011,7 @@ pub(super) mod tests {
         assert_eq!(v["cwd"], "C:\\workspace");
         // The mock returns metadata-only context, so `buffer` is null.
         assert!(v["buffer"].is_null());
+        assert!(v.get("agent_session_id").is_none());
         // pid is our own test process → shell resolves to the test binary exe.
         if cfg!(windows) {
             assert!(
@@ -1878,6 +2080,7 @@ pub(super) mod tests {
             shell_exe: None,
             terminal_output: None,
             planner_terminal_context: None,
+            agent_session_id: None,
             command_resolver_invocation: None,
         }
     }
@@ -2025,6 +2228,7 @@ pub(super) mod tests {
                 context_pane: Some(&pane),
                 shell_exe: Some("pwsh.exe"),
                 terminal_output: Some(output),
+                agent_session_id: Some("agent-session-resumed"),
                 command_resolver_invocation: Some(&invocation),
                 ..req_planner(&mgr, true)
             };
@@ -2062,6 +2266,9 @@ pub(super) mod tests {
                 assert!(sections[0].body.contains("indeterminate"));
                 assert!(sections[0].body.contains("unsupported"));
                 assert!(sections[0].body.contains(r"C:\\failing-pane"));
+                assert!(sections[1]
+                    .body
+                    .contains(r#""agent_session_id":"agent-session-resumed""#));
                 assert_eq!(sections[2].body, format!("```\n{output}\n```"));
                 assert!(
                     probes.attempts().is_empty(),

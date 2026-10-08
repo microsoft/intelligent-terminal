@@ -140,6 +140,14 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $search = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
             $search -and -not $search.Current.IsOffscreen -and $search.Current.HasKeyboardFocus
         }
+        $script:TabSearchFocused = {
+            param($App)
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$App.Hwnd))
+            $condition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'SearchTextBox')
+            $search = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+            $search -and -not $search.Current.IsOffscreen -and $search.Current.HasKeyboardFocus
+        }
         $script:StartLayoutApp = {
             param([ValidateSet('horizontal', 'vertical')][string]$Layout)
             Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
@@ -155,8 +163,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
         }
     }
 
-    # One result owns both checklist contracts, including their shared focus and data-preservation oracles.
-    It 'Agent history hotkey toggles the layout-appropriate history surface; Sidebar show/collapse hotkey works' {
+    It 'Agent history hotkey toggles the layout-appropriate history surface' -Tag 'SidebarHistory' {
         $horizontal = $null
         try {
             $horizontal = & $script:StartLayoutApp 'horizontal'
@@ -229,9 +236,23 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'history-from-collapsed-sidebar.png') | Out-Null
             $reopened | Should -BeTrue -Because 'the history accelerator must expand a collapsed sidebar and restore history search focus'
 
+            $historyTerminal = Get-ActivePane -App $vertical
+            Set-WtPaneFocus -App $vertical -SessionId ([string]$historyTerminal.session_id)
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'from focus outside History, the sidebar hotkey must enter tab search instead of collapsing the rail'
+            $hiddenHistory = Get-UiElement -App $vertical -Selector 'HistorySearchTextBox'
+            ($hiddenHistory -and -not $hiddenHistory.isOffscreen -and $hiddenHistory.width -gt 0) |
+                Should -BeFalse -Because 'entering tab search must dismiss History without restoring its old focus'
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
+
+            & $script:OpenAgentHistoryHotkey $vertical
+            (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
             & $script:OpenAgentHistoryHotkey $vertical
             Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
-            & $script:ToggleSidebarHotkey $vertical
+            Invoke-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
             Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
             $terminal = Get-ActivePane -App $vertical
             $split = Split-WtPane -App $vertical -SessionId $terminal.session_id -Direction right -Command 'pwsh.exe -NoLogo -NoProfile -NoExit'
@@ -301,7 +322,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 }.GetNewClosure()
                 foreach ($initiallyCollapsed in @($false, $true)) {
                     if ($initiallyCollapsed) {
-                        & $script:ToggleSidebarHotkey $vertical
+                        Invoke-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
                         Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
                     }
                     foreach ($closeWithButton in @($false, $true)) {
@@ -316,31 +337,54 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                         & $verifyPreservation
                     }
                     if ($initiallyCollapsed) {
-                        & $script:ToggleSidebarHotkey $vertical
+                        Invoke-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
                         Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
-                        (Test-Until -TimeoutSec 5 -Condition $focusRestored) |
-                            Should -BeTrue -Because 'expanding the sidebar must not steal input focus or activate search'
+                        & $verifyPreservation
                     }
                 }
+                if ($origin.Agent) {
+                    Invoke-WtCli -App $vertical -Arguments @('focus-pane', '-t', $origin.Id) | Out-Null
+                }
+                else {
+                    Set-WtPaneFocus -App $vertical -SessionId $origin.Id
+                }
+                (Test-Until -TimeoutSec 5 -Condition $focusRestored) |
+                    Should -BeTrue -Because 'the source input must own focus before invoking the History hotkey'
                 & $script:OpenAgentHistoryHotkey $vertical
                 (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
                 & $script:ToggleSidebarHotkey $vertical
                 Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
-                (Test-Until -TimeoutSec 5 -Condition {
-                    $focused = [Windows.Automation.AutomationElement]::FocusedElement
-                    $focused -and $focused.Current.ProcessId -eq $vertical.Pid -and $focused.Current.HasKeyboardFocus -and
-                        $focused.Current.Name -ne 'Agent Pane' -and $focused.Current.ClassName -eq 'TermControl'
-                }) | Should -BeTrue -Because 'collapsing from history must choose a visible terminal without restoring an agent origin'
+                (Test-Until -TimeoutSec 5 -Condition $focusRestored) |
+                    Should -BeTrue -Because "collapsing from history should return to the still-visible $($origin.Name) input without reading History's saved source"
                 Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir "focus-$($origin.Name)-restored.png") | Out-Null
                 & $verifyPreservation
-                $fallbackFocus = [Windows.Automation.AutomationElement]::FocusedElement
+                Invoke-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
+                Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+                & $verifyPreservation
+            }
+
+            foreach ($origin in $origins) {
+                Set-WtWindowForeground -App $vertical | Should -BeTrue
+                if ($origin.Agent) {
+                    Invoke-WtCli -App $vertical -Arguments @('focus-pane', '-t', $origin.Id) | Out-Null
+                }
+                else {
+                    Set-WtPaneFocus -App $vertical -SessionId $origin.Id
+                }
+                $sourceFocus = [Windows.Automation.AutomationElement]::FocusedElement
                 & $script:ToggleSidebarHotkey $vertical
                 Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+                (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) |
+                    Should -BeTrue -Because "the $($origin.Name) input must enter Search tabs without collapsing the rail"
+                & $script:ToggleSidebarHotkey $vertical
+                Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
                 (Test-Until -TimeoutSec 5 -Condition {
                     [Windows.Automation.Automation]::Compare(
-                        $fallbackFocus, [Windows.Automation.AutomationElement]::FocusedElement)
-                }) |
-                    Should -BeTrue -Because 'expanding the sidebar must not steal input focus'
+                        $sourceFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+                }) | Should -BeTrue -Because "the hotkey must return to the exact $($origin.Name) input when it is still available"
+                & $verifyPreservation
+                Invoke-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
+                Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
             }
 
             $boundSession = $agent.AcpSessionId
@@ -434,38 +478,340 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
         finally {
             if ($horizontal) { Stop-Terminal -App $horizontal }
         }
+    }
 
+    It 'Agent history hotkey toggles the layout-appropriate history surface and restores tab search focus' -Tag 'SidebarHistoryTabSearch' {
         $vertical = $null
         try {
-            $vertical = & $script:StartLayoutApp 'horizontal'
+            $vertical = & $script:StartLayoutApp 'vertical'
+            if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for physical history input'
+                return
+            }
+            Wait-UiElement -App $vertical -Selector SearchTabsButton | Out-Null
+            $pane = Get-ActivePane -App $vertical
+            Set-WtPaneFocus -App $vertical -SessionId $pane.session_id
+            $draft = "HISTORY_TAB_SEARCH_DRAFT_$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+            Send-WtInput -App $vertical -SessionId $pane.session_id -Text $draft | Out-Null
+            Wait-Until -TimeoutSec 8 -Because 'the unsent shell draft before history' -Condition {
+                (Get-WtCapture -App $vertical -SessionId $pane.session_id -MaxLines 30).TrimEnd().EndsWith($draft)
+            } | Out-Null
+
+            & $script:ToggleSidebarHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'the Sidebar shortcut must first focus ordinary tab search'
+            $query = "history-focus-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+            Set-UiValue -App $vertical -Selector SearchTextBox -Value $query | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) | Should -BeTrue
+
+            & $script:OpenAgentHistoryHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:HistorySearchFocused $vertical }) |
+                Should -BeTrue -Because 'History must take focus from tab search'
+            & $script:OpenAgentHistoryHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'closing History by hotkey must return focus to the prior tab search'
+            Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+            (Get-WtCapture -App $vertical -SessionId $pane.session_id -MaxLines 30).TrimEnd() |
+                Should -Match ([regex]::Escape($draft) + '$')
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'history-returns-to-tab-search.png') | Out-Null
+
+            & $script:OpenAgentHistoryHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
+            Invoke-UiElement -App $vertical -Selector HistoryCloseButton | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'closing History by button must also return to tab search'
+        }
+        finally {
+            if ($vertical) { Stop-Terminal -App $vertical }
+        }
+    }
+
+    It 'Sidebar hotkey opens search and returns to input' -Tag 'SidebarHotkey' {
+        $vertical = $null
+        try {
+            $vertical = & $script:StartLayoutApp 'vertical'
             if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
                 Set-ItResult -Skipped -Because 'WT window cannot take foreground for window-level keys'
                 return
             }
-            Set-WtSetting -App $vertical -Key tabLayout -Value 'vertical' | Out-Null
             Wait-UiElement -App $vertical -Selector 'SearchTabsButton' | Out-Null
-            $sidebarReady = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {
-                $button = Get-UiElement -App $vertical -Selector 'Collapse sidebar'
-                $button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0
-            }
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-expanded-before.png') | Out-Null
-            $sidebarReady | Should -BeTrue -Because 'switching to vertical layout must initialize the sidebar toggle action label before the first hotkey'
 
+            $pane = Get-ActivePane -App $vertical
+            Set-WtPaneFocus -App $vertical -SessionId ([string]$pane.session_id)
+            $shellFocus = [Windows.Automation.AutomationElement]::FocusedElement
             & $script:ToggleSidebarHotkey $vertical
-            $sidebarCollapsed = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {
-                $button = Get-UiElement -App $vertical -Selector 'Expand sidebar'
-                $button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0
-            }
+            (Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'the hotkey must enter and focus Search tabs from an expanded rail'
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-after-first-hotkey.png') | Out-Null
-            $sidebarCollapsed | Should -BeTrue -Because 'Ctrl+Shift+S must collapse the expanded vertical sidebar'
+            Set-WtPaneFocus -App $vertical -SessionId ([string]$pane.session_id)
+            & $script:ToggleSidebarHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'the hotkey must reenter Search tabs without collapsing an expanded rail'
 
             & $script:ToggleSidebarHotkey $vertical
-            $sidebarExpanded = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition {
-                $button = Get-UiElement -App $vertical -Selector 'Collapse sidebar'
-                $button -and -not $button.isOffscreen -and $button.width -gt 0 -and $button.height -gt 0
-            }
+            Wait-UiElement -App $vertical -Selector 'CompactNewTabButton' | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $shellFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'the hotkey must return to the shell input used before entering the sidebar'
+            Test-UiElementExists -App $vertical -Selector SearchTextBox -TimeoutSec 1 |
+                Should -BeFalse -Because 'collapsing the rail must close tab search'
+            & $script:ToggleSidebarHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'entering a collapsed sidebar must expand and focus tab search'
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'sidebar-expanded-after.png') | Out-Null
-            $sidebarExpanded | Should -BeTrue -Because 'a second Ctrl+Shift+S must show the collapsed vertical sidebar'
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector 'CompactNewTabButton' | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $shellFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'repeated sidebar hotkeys must return focus to the same shell'
+
+            Invoke-UiClick -App $vertical -Selector SearchTabsButton | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'the mouse can open tab search without creating a hotkey return source'
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$vertical.Hwnd))
+            $condition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'SearchTabsButton')
+            $searchButton = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+            $searchButton | Should -Not -BeNullOrEmpty
+            $searchButton.SetFocus()
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector 'CompactNewTabButton' | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $shellFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'exiting from a still-visible sidebar button must fall back to a terminal even without a saved source'
+        }
+        finally {
+            if ($vertical) { Stop-Terminal -App $vertical }
+        }
+    }
+
+    It 'Sidebar hotkey opens search and returns to input after pointer search replaces hotkey session' -Tag 'SidebarStaleSource' {
+        $vertical = $null
+        try {
+            $vertical = & $script:StartLayoutApp 'vertical'
+            if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for physical keyboard input'
+                return
+            }
+            Wait-UiElement -App $vertical -Selector SearchTabsButton | Out-Null
+            $source = Get-ActivePane -App $vertical
+            $other = Split-WtPane -App $vertical -SessionId $source.session_id -Direction right -Command 'pwsh.exe -NoLogo -NoProfile -NoExit'
+
+            Set-WtPaneFocus -App $vertical -SessionId $source.session_id
+            (Test-Until -TimeoutSec 5 -Condition {
+                [string](Get-ActivePane -App $vertical).session_id -eq [string]$source.session_id
+            }) | Should -BeTrue -Because 'split A must be the active pane saved by the first hotkey'
+            $sourceFocus = [Windows.Automation.AutomationElement]::FocusedElement
+            $sourceFocus.Current.ClassName | Should -Be 'TermControl'
+            & $script:ToggleSidebarHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'the first hotkey must capture split A as its return source'
+
+            Send-WtWindowKey -App $vertical -Vk 0x1B -RequireForeground | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition {
+                $search = Get-UiElement -App $vertical -Selector SearchTextBox
+                -not ($search -and -not $search.isOffscreen -and $search.width -gt 0)
+            }) | Should -BeTrue -Because 'Escape ends the hotkey-opened search session'
+            Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+
+            Set-WtPaneFocus -App $vertical -SessionId $other.session_id
+            (Test-Until -TimeoutSec 5 -Condition {
+                [string](Get-ActivePane -App $vertical).session_id -eq [string]$other.session_id
+            }) | Should -BeTrue -Because 'split B must be active before the pointer opens a new search'
+            $otherFocus = Wait-Until -TimeoutSec 5 -Because 'split B to take keyboard focus' -Condition {
+                $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                if ($focused -and $focused.Current.ProcessId -eq $vertical.Pid -and
+                    $focused.Current.ClassName -eq 'TermControl' -and
+                    -not [Windows.Automation.Automation]::Compare($sourceFocus, $focused)) { $focused }
+            }
+            $otherFocus | Should -Not -BeNullOrEmpty
+            Invoke-UiClick -App $vertical -Selector SearchTabsButton | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'pointer search must start a new session without split A as its hotkey source'
+            $sourceFocus.Current.IsOffscreen | Should -BeFalse -Because 'the stale split A target remains visible and focusable'
+            [string](Get-ActivePane -App $vertical).session_id |
+                Should -BeExactly ([string]$other.session_id) -Because 'split B remains the active fallback'
+
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector CompactNewTabButton | Out-Null
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'pointer-search-return.png') | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $otherFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'pointer-opened search must return to active split B, not the stale hotkey source in split A'
+
+            & $script:ToggleSidebarHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'a later hotkey must capture a fresh source from split B'
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector CompactNewTabButton | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $otherFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'the next hotkey-only session must still return to its fresh split B source'
+        }
+        finally {
+            if ($vertical) { Stop-Terminal -App $vertical }
+        }
+    }
+
+    It 'Sidebar hotkey opens search and returns to input after pointer replaces an agent source' -Tag 'SidebarStaleSource' {
+        $vertical = $null
+        try {
+            $vertical = & $script:StartLayoutApp 'vertical'
+            if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for physical keyboard input'
+                return
+            }
+            Wait-UiElement -App $vertical -Selector SearchTabsButton | Out-Null
+            $shell = Get-ActivePane -App $vertical
+            Open-AgentPane -App $vertical | Out-Null
+            Wait-AgentReady -App $vertical -TimeoutSec 30 | Out-Null
+            $agent = Get-AgentPaneSession -App $vertical
+            $agent.AcpSessionId | Should -Match '^chat-fixture-\d+-\d+$' -Because 'this regression uses a deterministic provider without real inference'
+            Invoke-WtCli -App $vertical -Arguments @('focus-pane', '-t', $agent.PaneSessionId) | Out-Null
+            $agentFocus = Wait-Until -TimeoutSec 5 -Because 'the visible Agent chat input to take focus' -Condition {
+                $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                if ($focused -and $focused.Current.ProcessId -eq $vertical.Pid -and
+                    $focused.Current.ClassName -eq 'TermControl' -and $focused.Current.Name -eq 'Agent Pane') { $focused }
+            }
+            $agentFocus | Should -Not -BeNullOrEmpty
+            & $script:ToggleSidebarHotkey $vertical
+            (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
+                Should -BeTrue -Because 'the first hotkey enters search from the Agent input'
+            Send-WtWindowKey -App $vertical -Vk 0x1B -RequireForeground | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition {
+                $search = Get-UiElement -App $vertical -Selector SearchTextBox
+                -not ($search -and -not $search.isOffscreen -and $search.width -gt 0)
+            }) | Should -BeTrue
+            Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+
+            Set-WtPaneFocus -App $vertical -SessionId $shell.session_id
+            $shellFocus = Wait-Until -TimeoutSec 5 -Because 'the active shell to receive focus' -Condition {
+                $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                if ($focused -and $focused.Current.ProcessId -eq $vertical.Pid -and
+                    $focused.Current.ClassName -eq 'TermControl' -and
+                    -not [Windows.Automation.Automation]::Compare($agentFocus, $focused)) { $focused }
+            }
+            $shellFocus | Should -Not -BeNullOrEmpty
+            Invoke-UiClick -App $vertical -Selector SearchTabsButton | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) | Should -BeTrue
+            Test-AgentPaneOpen -App $vertical | Should -BeTrue -Because 'the stale Agent source remains visible and focusable'
+            & $script:ToggleSidebarHotkey $vertical
+            Wait-UiElement -App $vertical -Selector CompactNewTabButton | Out-Null
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'pointer-search-agent-source-return.png') | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $shellFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'pointer search must return to the current shell, not a stale visible Agent input'
+        }
+        finally {
+            if ($vertical) { Stop-Terminal -App $vertical }
+        }
+    }
+
+    It 'Sidebar hotkey opens search and returns to input while command palette Toggle sidebar changes visibility' -Tag 'SidebarActionSource' {
+        $vertical = $null
+        try {
+            $vertical = & $script:StartLayoutApp 'vertical'
+            if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for physical command palette input'
+                return
+            }
+            Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+            $pane = Get-ActivePane -App $vertical
+            Set-WtPaneFocus -App $vertical -SessionId $pane.session_id
+            $draft = "SIDEBAR_ACTION_DRAFT_$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+            Send-WtInput -App $vertical -SessionId $pane.session_id -Text $draft | Out-Null
+            Wait-Until -TimeoutSec 8 -Because 'the unsent shell draft' -Condition {
+                (Get-WtCapture -App $vertical -SessionId $pane.session_id -MaxLines 30).TrimEnd().EndsWith($draft)
+            } | Out-Null
+
+            $name = 'IT E2E toggle sidebar'
+            Set-WtSettings -App $vertical -Settings @{
+                actions = @(@{ name = $name; command = 'toggleSidebar' })
+            } | Out-Null
+            $invokePalette = {
+                Send-WtWindowKey -App $vertical -Vk 0x50 -Ctrl -Shift -RequireForeground | Out-Null
+                (Test-Until -TimeoutSec 6 -Condition { Test-CommandPaletteOpen -App $vertical }) | Should -BeTrue
+                Set-UiValue -App $vertical -Selector '_searchBox' -Value $name | Out-Null
+                Wait-UiElement -App $vertical -Selector $name | Out-Null
+                & winapp ui invoke $name -w ([string]$vertical.Hwnd) 2>&1 | Out-Null
+                $LASTEXITCODE | Should -Be 0
+            }.GetNewClosure()
+
+            & $invokePalette
+            Wait-UiElement -App $vertical -Selector CompactNewTabButton | Out-Null
+            [bool](& $script:TabSearchFocused $vertical) | Should -BeFalse -Because 'the palette action must collapse, not enter Search tabs'
+            (Get-WtCapture -App $vertical -SessionId $pane.session_id -MaxLines 30).TrimEnd() |
+                Should -Match ([regex]::Escape($draft) + '$')
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'palette-toggle-collapsed.png') | Out-Null
+
+            & $invokePalette
+            Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+            $search = Get-UiElement -App $vertical -Selector SearchTextBox
+            [bool]($search -and -not $search.isOffscreen -and $search.width -gt 0) |
+                Should -BeFalse -Because 'the palette action must expand without opening tab search'
+            (Get-WtCapture -App $vertical -SessionId $pane.session_id -MaxLines 30).TrimEnd() |
+                Should -Match ([regex]::Escape($draft) + '$')
+        }
+        finally {
+            if ($vertical) { Stop-Terminal -App $vertical }
+        }
+    }
+
+    It 'Sidebar hotkey opens search and returns to input when Collapse button has focus' -Tag 'SidebarTitlebarFocus' {
+        $vertical = $null
+        try {
+            $vertical = & $script:StartLayoutApp 'vertical'
+            if (-not (Test-WtWindowKeyFocusable -App $vertical)) {
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for physical titlebar input'
+                return
+            }
+            Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
+            $pane = Get-ActivePane -App $vertical
+            Set-WtPaneFocus -App $vertical -SessionId $pane.session_id
+            $shellFocus = Wait-Until -TimeoutSec 5 -Because 'the original shell to have keyboard focus' -Condition {
+                $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                if ($focused -and $focused.Current.ProcessId -eq $vertical.Pid -and
+                    $focused.Current.ClassName -eq 'TermControl') { $focused }
+            }
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$vertical.Hwnd))
+            $nameCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::NameProperty, 'Collapse sidebar')
+            $typeCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)
+            $button = Wait-Until -TimeoutSec 5 -Because 'the expanded rail toggle button' -Condition {
+                $root.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                    [Windows.Automation.AndCondition]::new($nameCondition, $typeCondition))
+            }
+            $button.Current.IsOffscreen | Should -BeFalse
+            $button.SetFocus()
+            $button.Current.HasKeyboardFocus | Should -BeTrue
+            $focusedBefore = $button.Current.HasKeyboardFocus
+            & $script:ToggleSidebarHotkey $vertical
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'titlebar-after-shortcut.png') | Out-Null
+            $focusedAfter = [Windows.Automation.AutomationElement]::FocusedElement
+            [pscustomobject]@{
+                ButtonFocusedBefore = $focusedBefore
+                ButtonFocusedAfter = $button.Current.HasKeyboardFocus
+                FocusedClassAfter = if ($focusedAfter) { $focusedAfter.Current.ClassName } else { '' }
+                FocusedNameAfter = if ($focusedAfter) { $focusedAfter.Current.Name } else { '' }
+                FocusedIdAfter = if ($focusedAfter) { $focusedAfter.Current.AutomationId } else { '' }
+                ExpandedButtonVisible = Test-UiElementExists -App $vertical -Selector 'Collapse sidebar' -TimeoutSec 1
+                CollapsedButtonVisible = Test-UiElementExists -App $vertical -Selector 'Expand sidebar' -TimeoutSec 1
+                SearchFocused = [bool](& $script:TabSearchFocused $vertical)
+            } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'titlebar-after-shortcut.json') -Encoding utf8
+            Wait-UiElement -App $vertical -Selector CompactNewTabButton | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $shellFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'focus on the Collapse button must count as inside the sidebar'
+            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'titlebar-hotkey-return.png') | Out-Null
         }
         finally {
             if ($vertical) { Stop-Terminal -App $vertical }
@@ -481,22 +827,22 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $states = @(
                 @{ Name = 'collapse'; Label = 'Collapse sidebar'; Chord = 'Ctrl+Shift+S' }
                 @{ Name = 'expand'; Label = 'Expand sidebar'; Chord = 'Ctrl+Shift+S'; Collapsed = $true }
-                @{ Name = 'additional'; Label = 'Collapse sidebar'; Chord = 'Ctrl+Shift+Y'; Reload = @{
+                @{ Name = 'additional'; Label = 'Expand sidebar'; Chord = 'Ctrl+Shift+Y'; Collapsed = $true; Reload = @{
                     actions = @(@{ command = 'toggleSidebar'; keys = 'ctrl+shift+y' })
                 } }
-                @{ Name = 'rebound'; Label = 'Collapse sidebar'; Chord = 'Ctrl+Shift+Y'; Reload = @{
+                @{ Name = 'rebound'; Label = 'Expand sidebar'; Chord = 'Ctrl+Shift+Y'; Collapsed = $true; Reload = @{
                     actions = @(
                         @{ command = 'unbound'; keys = 'ctrl+shift+s' }
                         @{ command = 'toggleSidebar'; keys = 'ctrl+shift+y' }
                     )
                 } }
-                @{ Name = 'unbound'; Label = 'Collapse sidebar'; Chord = ''; Reload = @{
+                @{ Name = 'unbound'; Label = 'Expand sidebar'; Chord = ''; Collapsed = $true; Reload = @{
                     actions = @(@{ command = 'unbound'; keys = 'ctrl+shift+s' })
                 } }
-                @{ Name = 'reassigned'; Label = 'Collapse sidebar'; Chord = ''; Reload = @{
+                @{ Name = 'reassigned'; Label = 'Expand sidebar'; Chord = ''; Collapsed = $true; Reload = @{
                     actions = @(@{ command = 'copy'; keys = 'ctrl+shift+s' })
                 } }
-                @{ Name = 'overridden'; Label = 'Collapse sidebar'; Chord = ''; Reload = @{
+                @{ Name = 'overridden'; Label = 'Expand sidebar'; Chord = ''; Collapsed = $true; Reload = @{
                     actions = @(@{ command = 'copy'; id = 'Terminal.ToggleSidebar' })
                 } }
             )
@@ -514,7 +860,7 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 $processCondition = [Windows.Automation.PropertyCondition]::new(
                     [Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$vertical.Pid)
                 if ($state.Collapsed) {
-                    & $script:ToggleSidebarHotkey $vertical
+                    Invoke-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
                 }
                 if ($state.Reload) { Set-WtSettings -App $vertical -Settings $state.Reload | Out-Null }
                 Wait-UiElement -App $vertical -Selector $state.Label | Out-Null

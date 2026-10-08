@@ -323,6 +323,7 @@ pub enum AppEvent {
     AliveSessionRemoved(crate::session_registry::SessionRemovedParams),
     AliveJoinUpgrade(Vec<(String, Option<String>)>),
     SessionsChanged,
+    SessionsFallbackTick,
     DirectTerminalActionProposal {
         context: crate::agent_tools::action_proposal::channel::ValidationContext,
         payload: String,
