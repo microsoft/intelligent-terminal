@@ -73,6 +73,15 @@ struct PendingAcpAuthentication {
     agent_id: String,
     source: crate::agent_source::AgentSource,
     browser_opened: bool,
+    browser_url: Option<String>,
+    browser_feedback: Option<AcpAuthenticationBrowserFeedback>,
+}
+
+#[derive(Clone, Copy)]
+enum AcpAuthenticationBrowserFeedback {
+    OpenFailed,
+    CopyFailed,
+    Copied,
 }
 
 fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Option<ParsedCommand> {
@@ -4328,6 +4337,129 @@ impl App {
             })
     }
 
+    pub(crate) fn acp_authentication_browser_url(&self) -> Option<&str> {
+        self.pending_acp_authentication
+            .as_ref()
+            .filter(|_| self.acp_authentication_pending())
+            .and_then(|pending| pending.browser_url.as_deref())
+    }
+
+    pub(crate) fn acp_authentication_browser_feedback(&self) -> Option<(String, bool)> {
+        let feedback = self
+            .pending_acp_authentication
+            .as_ref()
+            .filter(|_| self.acp_authentication_pending())?
+            .browser_feedback?;
+        Some(match feedback {
+            AcpAuthenticationBrowserFeedback::OpenFailed => {
+                (t!("auth.browser_open_failed").into_owned(), true)
+            }
+            AcpAuthenticationBrowserFeedback::CopyFailed => {
+                (t!("auth.browser_copy_failed").into_owned(), true)
+            }
+            AcpAuthenticationBrowserFeedback::Copied => {
+                (t!("system.selection_copied").into_owned(), false)
+            }
+        })
+    }
+
+    fn handle_acp_authentication_browser(
+        &mut self,
+        attempt_id: uuid::Uuid,
+        url: String,
+        open_browser: impl FnOnce(&str) -> io::Result<()>,
+    ) {
+        if !self.acp_authentication_pending() {
+            return;
+        }
+        let Some(pending) = self.pending_acp_authentication.as_mut() else {
+            return;
+        };
+        if pending.attempt.attempt_id != attempt_id || pending.browser_url.is_some() {
+            return;
+        }
+        if !crate::protocol::acp::authentication::valid_browser_url(&url) {
+            tracing::warn!(target: "auth", "refusing an unsafe authentication browser link");
+            return;
+        }
+        pending.browser_url = Some(url);
+        if !pending.browser_opened {
+            self.open_acp_authentication_browser(open_browser);
+        }
+    }
+
+    fn open_acp_authentication_browser(
+        &mut self,
+        open_browser: impl FnOnce(&str) -> io::Result<()>,
+    ) {
+        if !self.acp_authentication_pending() {
+            return;
+        }
+        let Some(pending) = self.pending_acp_authentication.as_mut() else {
+            return;
+        };
+        let Some(url) = pending.browser_url.as_deref() else {
+            return;
+        };
+        match open_browser(url) {
+            Ok(()) => {
+                pending.browser_opened = true;
+                pending.browser_feedback = None;
+            }
+            Err(error) => {
+                pending.browser_feedback = Some(AcpAuthenticationBrowserFeedback::OpenFailed);
+                // Opener errors may contain the URL. Only persist the error category.
+                tracing::warn!(target: "auth", error_kind = ?error.kind(), "could not open authentication browser; manual sign-in remains available");
+            }
+        }
+    }
+
+    fn copy_acp_authentication_browser_url(
+        &mut self,
+        copy_text: impl FnOnce(&str) -> io::Result<()>,
+    ) {
+        if !self.acp_authentication_pending() {
+            return;
+        }
+        let Some(pending) = self.pending_acp_authentication.as_mut() else {
+            return;
+        };
+        let Some(url) = pending.browser_url.as_deref() else {
+            return;
+        };
+        pending.browser_feedback = Some(match copy_text(url) {
+            Ok(()) => AcpAuthenticationBrowserFeedback::Copied,
+            Err(error) => {
+                tracing::warn!(target: "clipboard", error_kind = ?error.kind(), "could not copy authentication browser link");
+                AcpAuthenticationBrowserFeedback::CopyFailed
+            }
+        });
+    }
+
+    fn handle_acp_authentication_browser_key(
+        &mut self,
+        key: KeyEvent,
+        open_browser: impl FnOnce(&str) -> io::Result<()>,
+        copy_text: impl FnOnce(&str) -> io::Result<()>,
+    ) -> bool {
+        if !matches!(key.modifiers, KeyModifiers::NONE | KeyModifiers::SHIFT)
+            || self.acp_authentication_browser_url().is_none()
+        {
+            return false;
+        }
+        match key.code {
+            KeyCode::Char('o') | KeyCode::Char('O') => {
+                self.open_acp_authentication_browser(open_browser);
+                true
+            }
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                self.copy_acp_authentication_browser_url(copy_text);
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn show_acp_authentication_methods(&mut self) {
         let profile = crate::agent_registry::lookup_profile_by_id(&self.current_agent_id);
         let mut options: Vec<_> = self
@@ -4373,6 +4505,8 @@ impl App {
             agent_id: self.current_agent_id.clone(),
             source: self.current_agent_source.clone(),
             browser_opened: false,
+            browser_url: None,
+            browser_feedback: None,
         });
         let agent_id = self.current_agent_id.clone();
         self.reconnect_confirmed_available_agent(&agent_id);
@@ -4598,8 +4732,17 @@ impl App {
         let is_busy = self.setup.as_ref().is_some_and(SetupState::is_busy);
         tracing::debug!(target: "setup_key", code = ?key.code, is_busy, selected = ?self.setup.as_ref().map(|s| s.selected_index), options_count = ?self.setup.as_ref().map(|s| s.options.len()), "handle_setup_key");
 
+        if self.handle_acp_authentication_browser_key(
+            key,
+            open_url_in_browser,
+            crate::win32::copy_text_to_clipboard,
+        ) {
+            return;
+        }
+
         match key.code {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.cancel_acp_authentication();
                 self.should_quit = true;
             }
             KeyCode::Esc => {

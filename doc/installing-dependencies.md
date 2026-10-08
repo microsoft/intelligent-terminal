@@ -340,7 +340,10 @@ open that distro's profile settings and select its Antigravity backend. Authenti
 is offered through ACP in the agent pane: select **Sign in**, choose a method
 advertised by the server, and complete any browser authorization while the pane
 is waiting. The server remains alive and Terminal establishes the authenticated
-session after authorization. Press **Esc** to cancel waiting; this does not log
+session after authorization. The waiting page also displays the current sign-in
+link: press **O** to open it again or **Y** to copy the complete link into a
+browser yourself. If automatic browser launch fails, authorization continues
+waiting and the manual link remains available. Press **Esc** to cancel waiting; this does not log
 out the provider or revoke authorization already completed. Do not copy credentials
 between Windows and Linux or between Linux users.
 
@@ -423,8 +426,10 @@ installed:
 | Gemini CLI        | Run `gemini` once — it opens a browser to sign in with your Google account *(or set the `GEMINI_API_KEY` environment variable)* | [Gemini CLI authentication](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/authentication.md) |
 | Google Antigravity ACP | Use the authentication method offered in the agent pane; no external `agy login` command is generated | [Antigravity documentation](https://antigravity.google/docs/ide/extensions) |
 
-After signing in, restart Intelligent Terminal once so the agent pane picks
-up the new credentials.
+After an external CLI sign-in, retry the agent connection so it picks up the
+credentials. For authentication initiated in the agent pane, keep that pane
+open: it completes the existing connection after authorization, with no
+Terminal restart required.
 
 ---
 

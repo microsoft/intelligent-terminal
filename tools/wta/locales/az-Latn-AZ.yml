@@ -272,5 +272,8 @@ system.model_unknown: "Naməlum model %{model} — əlçatan siyahını görmək
 
 setup.subtitle.protocol_auth: "Agentiniz \"%{agent}\" kimlik doğrulaması tələb edir. Burada davam etmək üçün giriş üsulu seçin."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "Brauzerinizdə girişi tamamlayın. Gözləməni ləğv etmək üçün Esc basın."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Brauzer açılmayıb? Bu giriş keçidindən istifadə edin. O: aç · Y: kopyala."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Brauzeri açmaq mümkün olmadı. Giriş keçidini əl ilə açın."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Giriş keçidini kopyalamaq mümkün olmadı. Onu seçib əl ilə kopyalayın."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "Giriş vaxtında tamamlanmadı. Hazır olduğunuz zaman yenidən cəhd edin."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "%{distro} giriş mühitində \"%{agent}\" tapılmadı. Bu Linux istifadəçisinin quraşdırmasını, PATH dəyişənini və qabıq profilini yoxlayın, sonra yenidən cəhd edin."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

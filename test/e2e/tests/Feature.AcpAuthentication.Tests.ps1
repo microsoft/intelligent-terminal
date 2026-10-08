@@ -2,7 +2,9 @@
 # Contract/trigger: first sign-in and Esc/retry through the normal agent TUI.
 # Boundary: packaged XAML/ConPTY -> helper/master -> the existing stdio ACP process.
 # Oracles: owned UIA text/focus, safe protocol records, unchanged process leases,
-# a real session/model and retained tab. No auth seeding, CLI login, browser or fees.
+# a real session/model and retained tab. No auth seeding, CLI login or fees.
+# The fallback case emits a synthetic URL with an invalid client ID. The default
+# browser may show a fixture error page; never sign in there or capture a browser.
 # Negative controls: no authenticate before consent; an abandoned response cannot
 # connect while a different advertised method is merely highlighted.
 # Existing protection: Feature.AgentProtocolExperience / Feature.FreAgentSetup.
@@ -202,7 +204,8 @@ Describe 'Feature: ACP first-login authentication' -Tag 'Feature', 'AcpAuthentic
         $script:caseDir = Join-Path $script:evidenceRoot ([guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $script:caseDir -Force | Out-Null
         $script:requestLog = Join-Path $script:caseDir 'authentication.jsonl'
-        $invocation = "& '$($script:fixture.Replace("'", "''"))' -LogPath '$($script:requestLog.Replace("'", "''"))'"
+        $script:browserProgressTrigger = Join-Path $script:caseDir 'emit-browser-progress.flag'
+        $invocation = "& '$($script:fixture.Replace("'", "''"))' -LogPath '$($script:requestLog.Replace("'", "''"))' -BrowserProgressTriggerPath '$($script:browserProgressTrigger.Replace("'", "''"))'"
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation))
         $command = "pwsh -NoLogo -NoProfile -EncodedCommand $encoded"
         $profileId = "{$([guid]::NewGuid())}"
@@ -355,5 +358,45 @@ Describe 'Feature: ACP first-login authentication' -Tag 'Feature', 'AcpAuthentic
         $auth[2].methodId | Should -BeExactly 'other-method'
         $auth[3].methodId | Should -BeExactly 'other-method'
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:caseDir 'retry-authenticated.png') | Out-Null
+    }
+
+    It 'ACP authorization displays a usable manual sign-in link' -Tag 'AcpBrowserFallback' {
+        Set-Content -LiteralPath $script:browserProgressTrigger -Value 'Synthetic browser progress only.' -Encoding utf8
+        Open-AuthenticationMethods
+        Start-PersonalAuthentication | Out-Null
+        Wait-Until -TimeoutSec 5 -IntervalSec 0.1 -Because 'browser progress from the original stdio fixture' -Condition {
+            Get-AuthenticationRecords | Where-Object { $_.method -eq 'browser-progress' -and -not $_.authenticated }
+        } | Out-Null
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:caseDir 'browser-link-before-oracle.png') | Out-Null
+        $url = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=invalid-acp-integration-fixture&redirect_uri=http%3A%2F%2F127.0.0.1%3A43210%2Fcallback&prompt=none&state=fixture-only'
+        Wait-Until -TimeoutSec 8 -IntervalSec 0.2 -Because 'the full current sign-in link to cross SDK wire dispatch into the waiting page' -Condition {
+            ([regex]::Replace((Get-AuthenticationText), '\s+', '')).Contains($url)
+        } | Out-Null
+        $hint = Get-WtaLocalizedTextRegex -Key 'auth.browser_link_hint'
+        if (-not $hint) { throw 'The deployed fallback instruction resource is unavailable.' }
+        (Get-AuthenticationText) | Should -Match $hint
+        (Get-AuthenticationText) | Should -Match $script:waitingRegex
+        Assert-AuthenticationOwnedProcesses
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:caseDir 'manual-sign-in-link.png') | Out-Null
+
+        Send-AuthenticationKey -Vk 0x1B
+        Assert-AuthenticationSelection -Name 'Personal OAuth'
+        (Get-AuthenticationText) | Should -Not -Match 'accounts\.google\.com'
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:caseDir 'cancelled-link-cleared.png') | Out-Null
+        Wait-Until -TimeoutSec 20 -IntervalSec 0.2 -Because 'the abandoned fixture to emit late browser progress' -Condition {
+            Get-AuthenticationRecords | Where-Object { $_.method -eq 'browser-progress' -and $_.authenticated }
+        } | Out-Null
+        $observation = [Diagnostics.Stopwatch]::StartNew()
+        Wait-Until -TimeoutSec 5 -IntervalSec 0.2 -Because 'late browser progress to remain absent from the cancelled pane' -Condition {
+            $text = Get-AuthenticationText
+            $text | Should -Not -Match 'accounts\.google\.com'
+            $text | Should -Not -Match $script:connectedRegex
+            $text | Should -Not -Match $script:waitingRegex
+            $observation.Elapsed.TotalSeconds -ge 2
+        } | Out-Null
+        @(Get-AuthenticationRecords | Where-Object { $_.method -eq 'session/new' -and $_.authenticated }) |
+            Should -HaveCount 0 -Because 'late progress and completion are not new consent'
+        Assert-AuthenticationOwnedProcesses
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:caseDir 'late-link-remains-cleared.png') | Out-Null
     }
 }

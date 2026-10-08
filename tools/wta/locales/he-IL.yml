@@ -270,5 +270,8 @@ system.model_unknown: "מודל לא ידוע %{model} — הקלד /model כד�
 
 setup.subtitle.protocol_auth: "הסוכן \"%{agent}\" דורש אימות. בחר שיטת כניסה כדי להמשיך כאן."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "השלם את הכניסה בדפדפן שלך. לחץ על Esc כדי לבטל את ההמתנה."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "הדפדפן לא נפתח? השתמש בקישור הכניסה הזה. O: פתיחה · Y: העתקה."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "לא ניתן לפתוח את הדפדפן. פתח את קישור הכניסה באופן ידני."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "לא ניתן להעתיק את קישור הכניסה. בחר אותו והעתק אותו באופן ידני."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "הכניסה לא הושלמה בזמן. נסה שוב כשתהיה מוכן."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "לא הצלחנו למצוא את \"%{agent}\" בסביבת הכניסה של %{distro}. בדוק את ההתקנה, PATH ופרופיל המעטפת של משתמש Linux זה, ולאחר מכן נסה שוב."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

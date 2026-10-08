@@ -270,5 +270,8 @@ system.model_unknown: "Onbekend model %{model} — typ /model om de beschikbare 
 
 setup.subtitle.protocol_auth: "Uw agent \"%{agent}\" vereist verificatie. Selecteer een aanmeldmethode om hier verder te gaan."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "Voltooi de aanmelding in uw browser. Druk op Esc om het wachten te annuleren."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Browser niet geopend? Gebruik deze aanmeldlink. O: openen · Y: kopiëren."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "De browser kon niet worden geopend. Open de aanmeldlink handmatig."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "De aanmeldlink kon niet worden gekopieerd. Selecteer en kopieer deze handmatig."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "De aanmelding is niet op tijd voltooid. Probeer het opnieuw wanneer u klaar bent."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "We konden \"%{agent}\" niet vinden in de aanmeldomgeving van %{distro}. Controleer de installatie, PATH en het shellprofiel van deze Linux-gebruiker en probeer het opnieuw."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

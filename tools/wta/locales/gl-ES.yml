@@ -270,5 +270,8 @@ system.model_unknown: "Modelo descoñecido %{model} — escriba /model para ver 
 
 setup.subtitle.protocol_auth: "O seu axente \"%{agent}\" require autenticación. Seleccione un método de inicio de sesión para continuar aquí."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "Complete o inicio de sesión no seu navegador. Prema Esc para cancelar a espera."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Non se abriu o navegador? Use esta ligazón de inicio de sesión. O: abrir · Y: copiar."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Non se puido abrir o navegador. Abra a ligazón de inicio de sesión manualmente."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Non se puido copiar a ligazón de inicio de sesión. Selecciónea e cópiea manualmente."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "O inicio de sesión non se completou a tempo. Ténteo de novo cando estea listo."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Non puidemos atopar \"%{agent}\" no contorno de inicio de sesión de %{distro}. Comprobe a instalación, PATH e o perfil do intérprete de ordes deste usuario de Linux e ténteo de novo."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

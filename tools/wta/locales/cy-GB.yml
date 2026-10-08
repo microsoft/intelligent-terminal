@@ -271,5 +271,8 @@ system.model_unknown: "Model anhysbys %{model} — teipiwch /model i weld y rhes
 
 setup.subtitle.protocol_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Dewiswch ddull mewngofnodi i barhau yma."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "Cwblhewch y mewngofnodi yn eich porwr. Pwyswch Esc i ganslo'r aros."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Nid yw'r porwr wedi agor? Defnyddiwch y ddolen mewngofnodi hon. O: agor · Y: copïo."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Nid oedd modd agor y porwr. Agorwch y ddolen mewngofnodi â llaw."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Nid oedd modd copïo'r ddolen mewngofnodi. Dewiswch hi a'i chopïo â llaw."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "Ni chwblhawyd y mewngofnodi mewn pryd. Rhowch gynnig arall arni pan fyddwch yn barod."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Ni allem ddod o hyd i \"%{agent}\" yn amgylchedd mewngofnodi %{distro}. Gwiriwch osodiad, PATH a phroffil cragen y defnyddiwr Linux hwn, yna rhowch gynnig arall arni."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

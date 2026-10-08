@@ -271,5 +271,8 @@ system.model_unknown: "अज्ञात मोडेल %{model} — उपल
 
 setup.subtitle.protocol_auth: "तपाईंको एजेन्ट \"%{agent}\" लाई प्रमाणीकरण आवश्यक छ। यहाँ जारी राख्न साइन इन गर्ने विधि चयन गर्नुहोस्।"  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "आफ्नो ब्राउजरमा साइन इन पूरा गर्नुहोस्। प्रतीक्षा रद्द गर्न Esc थिच्नुहोस्।"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ब्राउजर खुलेन? साइन इन गर्न यो लिङ्क प्रयोग गर्नुहोस्। O: खोल्नुहोस् · Y: प्रतिलिपि गर्नुहोस्।"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ब्राउजर खोल्न सकिएन। साइन इन गर्ने लिङ्क आफैं खोल्नुहोस्।"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "साइन इन गर्ने लिङ्क प्रतिलिपि गर्न सकिएन। यसलाई चयन गरेर आफैं प्रतिलिपि गर्नुहोस्।"  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "साइन इन समयमै पूरा भएन। तयार हुँदा फेरि प्रयास गर्नुहोस्।"  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "%{distro} को लगइन वातावरणमा \"%{agent}\" भेटिएन। यो Linux प्रयोगकर्ताको स्थापना, PATH र शेल प्रोफाइल जाँच गर्नुहोस्, त्यसपछि फेरि प्रयास गर्नुहोस्।"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

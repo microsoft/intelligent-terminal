@@ -12700,6 +12700,233 @@ fn protocol_auth_onboarding_ignores_foreign_source_methods_and_late_cancelled_li
     assert!(app.pending_acp_authentication.is_none());
 }
 
+fn pending_protocol_auth_app_for_browser_tests() -> App {
+    let mut app = test_app();
+    app.current_agent_id = "antigravity".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu-24.04".into(),
+    };
+    app.handle_event(AppEvent::AcpAuthenticationMethods {
+        agent_id: app.current_agent_id.clone(),
+        source: app.current_agent_source.clone(),
+        methods: vec![agent_client_protocol::schema::v1::AuthMethod::Agent(
+            agent_client_protocol::schema::v1::AuthMethodAgent::new(
+                "oauth-personal",
+                "Log in with Google",
+            ),
+        )],
+    });
+    app.handle_event(AppEvent::AgentError {
+        session_id: None,
+        failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+            message: "Authentication required".into(),
+        },
+        message: "Authentication required".into(),
+    });
+    app.handle_setup_enter(app.setup.as_ref().unwrap().options[0].clone());
+    app.handle_setup_enter(app.setup.as_ref().unwrap().options[0].clone());
+    app
+}
+
+#[test]
+fn protocol_auth_onboarding_renders_manual_link_even_after_browser_launch_reports_success() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = pending_protocol_auth_app_for_browser_tests();
+    let pending = app.pending_acp_authentication.as_mut().unwrap();
+    // A successful platform launch does not prove that the user saw a browser.
+    // Avoid actually launching a browser from this deterministic render test.
+    pending.browser_opened = true;
+    let attempt_id = pending.attempt.attempt_id;
+    let url = "https://accounts.google.com/o/oauth2/v2/auth?client_id=fixture&redirect_uri=http%3A%2F%2F127.0.0.1%3A43210%2Fcallback&state=fixture-only";
+    app.handle_event(AppEvent::AcpAuthenticationBrowser {
+        attempt_id,
+        url: url.into(),
+    });
+
+    let text = render_to_text(&mut app, 180, 24);
+    assert!(
+        text.contains(url),
+        "The waiting page must show the full current sign-in link even when the browser launch reports success."
+    );
+    assert!(app.acp_authentication_pending());
+    assert!(app.setup.as_ref().unwrap().is_busy());
+}
+
+#[test]
+fn protocol_auth_onboarding_browser_failure_keeps_link_and_explicit_actions_available() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = pending_protocol_auth_app_for_browser_tests();
+    let attempt = app
+        .pending_acp_authentication
+        .as_ref()
+        .unwrap()
+        .attempt
+        .clone();
+    let url = "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2Flocalhost%3A43210%2Fcallback&state=fixture-only";
+    app.handle_acp_authentication_browser(attempt.attempt_id, url.into(), |actual| {
+        assert_eq!(actual, url);
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Fixture browser is unavailable.",
+        ))
+    });
+    assert!(app.acp_authentication_pending());
+    assert!(!attempt.cancelled.is_cancelled());
+    assert_eq!(app.acp_authentication_browser_url(), Some(url));
+    assert!(render_to_text(&mut app, 180, 24).contains("Could not open the browser."));
+
+    assert!(app.handle_acp_authentication_browser_key(
+        KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE),
+        |_| panic!("Copy must not retry the browser."),
+        |actual| {
+            assert_eq!(actual, url);
+            Err(io::Error::new(
+                io::ErrorKind::WouldBlock,
+                "Fixture clipboard is busy.",
+            ))
+        },
+    ));
+    assert!(render_to_text(&mut app, 180, 24).contains("Could not copy the sign-in link."));
+    assert_eq!(app.acp_authentication_browser_url(), Some(url));
+
+    assert!(app.handle_acp_authentication_browser_key(
+        KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::SHIFT),
+        |_| panic!("Copy must not retry the browser."),
+        |actual| {
+            assert_eq!(actual, url);
+            Ok(())
+        },
+    ));
+    assert!(render_to_text(&mut app, 180, 24).contains("Copied"));
+    assert!(app.handle_acp_authentication_browser_key(
+        KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT),
+        |actual| {
+            assert_eq!(actual, url);
+            Ok(())
+        },
+        |_| panic!("Open must not alter the clipboard."),
+    ));
+    assert!(app.acp_authentication_browser_feedback().is_none());
+    assert!(app.acp_authentication_pending());
+    assert!(!attempt.cancelled.is_cancelled());
+    assert!(!app.should_quit);
+    assert!(!app.handle_acp_authentication_browser_key(
+        KeyEvent::new(KeyCode::Char('y'), KeyModifiers::CONTROL),
+        |_| panic!("Modified keys must not open a browser."),
+        |_| panic!("Modified keys must not alter the clipboard."),
+    ));
+}
+
+#[test]
+fn protocol_auth_onboarding_browser_link_rejects_unsafe_foreign_and_duplicate_progress() {
+    let mut app = pending_protocol_auth_app_for_browser_tests();
+    let attempt_id = app
+        .pending_acp_authentication
+        .as_ref()
+        .unwrap()
+        .attempt
+        .attempt_id;
+    let url = "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2Flocalhost%3A43210&state=fixture-only";
+    app.handle_acp_authentication_browser(uuid::Uuid::new_v4(), url.into(), |_| {
+        panic!("Foreign progress must not open a browser.")
+    });
+    for unsafe_url in [
+        "file:///must-not-open",
+        "https://evil.test/?state=fixture",
+        "https://accounts.google.com/o/oauth2/auth?redirect_uri=https%3A%2F%2Fevil.test",
+    ] {
+        app.handle_acp_authentication_browser(attempt_id, unsafe_url.into(), |_| {
+            panic!("Unsafe progress must not open a browser.")
+        });
+        assert!(app.acp_authentication_browser_url().is_none());
+    }
+    app.handle_acp_authentication_browser(attempt_id, url.into(), |_| Ok(()));
+    app.handle_acp_authentication_browser(
+        attempt_id,
+        url.replace("fixture-only", "new-link"),
+        |_| panic!("Duplicate progress must not reopen a browser or replace the current link."),
+    );
+    assert_eq!(app.acp_authentication_browser_url(), Some(url));
+    app.current_agent_source = crate::agent_source::AgentSource::Host;
+    assert!(app.acp_authentication_browser_url().is_none());
+    assert!(!app.handle_acp_authentication_browser_key(
+        KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE),
+        |_| panic!("A link from another source must not open."),
+        |_| panic!("A link from another source must not copy."),
+    ));
+}
+
+#[test]
+fn protocol_auth_onboarding_clears_browser_link_on_cancel_timeout_source_reset_and_quit() {
+    let _locale = crate::test_support::lock_locale();
+    for action in ["cancel", "timeout", "source-reset", "quit"] {
+        let mut app = pending_protocol_auth_app_for_browser_tests();
+        let attempt = app
+            .pending_acp_authentication
+            .as_ref()
+            .unwrap()
+            .attempt
+            .clone();
+        let url = "https://accounts.google.com/o/oauth2/auth?redirect_uri=http%3A%2F%2Flocalhost%3A43210&state=fixture-only";
+        app.handle_acp_authentication_browser(attempt.attempt_id, url.into(), |_| Ok(()));
+        match action {
+            "cancel" => app.handle_setup_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+            "timeout" => app.handle_event(AppEvent::AgentError {
+                session_id: None,
+                failure: crate::protocol::acp::failure::AgentFailure::HandshakeFailed {
+                    stage: crate::protocol::acp::failure::HandshakeStage::Authenticate,
+                    detail: "Authentication timed out".into(),
+                },
+                message: "Authentication timed out".into(),
+            }),
+            "source-reset" => app.reset_agent_scoped_state(),
+            "quit" => {
+                app.handle_setup_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+            }
+            _ => unreachable!(),
+        }
+        assert!(attempt.cancelled.is_cancelled(), "{action}");
+        assert!(app.pending_acp_authentication.is_none(), "{action}");
+        assert!(app.acp_authentication_browser_url().is_none(), "{action}");
+        app.handle_acp_authentication_browser(attempt.attempt_id, url.into(), |_| {
+            panic!("Late progress after {action} must not open a browser.")
+        });
+        assert!(!render_to_text(&mut app, 180, 24).contains(url), "{action}");
+    }
+}
+
+#[test]
+fn protocol_auth_onboarding_long_link_keeps_actions_visible_and_copies_without_wrapping() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = pending_protocol_auth_app_for_browser_tests();
+    let attempt_id = app
+        .pending_acp_authentication
+        .as_ref()
+        .unwrap()
+        .attempt
+        .attempt_id;
+    let url = format!(
+        "https://accounts.google.com/o/oauth2/auth?redirect_uri=http%3A%2F%2Flocalhost%3A43210&state={}",
+        "fixture".repeat(200),
+    );
+    app.handle_acp_authentication_browser(attempt_id, url.clone(), |_| Ok(()));
+    let text = render_to_text(&mut app, 70, 10);
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(normalized.contains("O: open"), "{text}");
+    assert!(normalized.contains("Y: copy"), "{text}");
+    assert!(app.handle_acp_authentication_browser_key(
+        KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE),
+        |_| panic!("Copy must not reopen a browser."),
+        |actual| {
+            assert_eq!(actual, url);
+            assert!(!actual.contains(['\r', '\n']));
+            Ok(())
+        },
+    ));
+}
+
 #[test]
 fn protocol_auth_onboarding_drops_copilot_login_completion_for_another_source() {
     let mut app = test_app();

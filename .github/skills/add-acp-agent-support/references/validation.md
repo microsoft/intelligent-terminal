@@ -41,6 +41,9 @@ Add or update tests for:
   initialize/authenticate/session handoff without an external-login seed;
 - private browser-progress ownership, URL validation, diagnostic redaction,
   cancellation, long authorization waiting and stale/source-mismatched results;
+- real SDK dispatch of browser extension notifications, visible full-link
+  fallback, exact-copy/open actions and retained waiting after browser launch
+  failure, plus cleared links on cancellation/timeout/source changes;
 - source-correct external login argument vectors, including WSL/default-user and
   preserved host/enterprise behavior;
 - resume/new-session metadata when supported;
@@ -136,6 +139,10 @@ trusting UI results.
    select an advertised method and complete authorization without raw JSON or
    provider configuration edits. Then verify authenticated session creation,
    cancellation/timeout/error recovery and fresh-process credential reuse.
+   Confirm that the waiting page shows a usable manual link even when automatic
+   browser launch succeeds or fails; copy/open must use the full current link,
+   and cancellation must clear it. Never persist a real authorization URL in
+   screenshot/log evidence; use synthetic fixture URLs or redact in memory.
    Use a disposable fixture/context for cold-auth controls; never log out or
    switch an existing user's account without explicit permission.
 8. If session management is supported, open `/sessions`, select a historical

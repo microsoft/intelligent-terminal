@@ -150,6 +150,12 @@ not a public COM broadcast. Validate browser destinations and attempt ownership;
 discard stale/source-mismatched results and redact authorization URLs/codes from
 all diagnostic phases. Cancelling the client wait does not log out the provider
 or revoke an authorization that already completed.
+Retain the validated current-attempt link in the waiting UI with explicit
+open/copy actions. A successful OS launch does not prove that the user saw a
+browser, and launch failure must not cancel otherwise valid authorization.
+Clear the link when the attempt ends. Exercise extension notifications through
+actual SDK wire dispatch, including its required extension method naming, rather
+than only calling the parser on a locally constructed notification.
 
 External login adapters must construct native argument vectors for the selected
 source. A WSL provider must sign in inside its distro/default-user environment,

@@ -270,5 +270,8 @@ system.model_unknown: "Óþekkt líkan %{model} — sláðu inn /model til að s
 
 setup.subtitle.protocol_auth: "Agentinn þinn \"%{agent}\" krefst auðkenningar. Veldu innskráningaraðferð til að halda áfram hér."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "Ljúktu innskráningu í vafranum þínum. Ýttu á Esc til að hætta að bíða."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Opnaðist vafrinn ekki? Notaðu þennan innskráningartengil. O: opna · Y: afrita."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Ekki tókst að opna vafrann. Opnaðu innskráningartengilinn handvirkt."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Ekki tókst að afrita innskráningartengilinn. Veldu hann og afritaðu handvirkt."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "Innskráningu lauk ekki í tæka tíð. Reyndu aftur þegar þú ert tilbúinn."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Við fundum ekki \"%{agent}\" í innskráningarumhverfi %{distro}. Athugaðu uppsetningu, PATH og skeljarprófíl þessa Linux-notanda og reyndu síðan aftur."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

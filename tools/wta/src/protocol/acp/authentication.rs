@@ -13,7 +13,7 @@ pub(crate) struct AcpAuthenticationAttempt {
     pub cancelled: CancellationToken,
 }
 
-pub(crate) const AUTH_BROWSER_NOTIFICATION: &str = "intellterm.wta/auth_browser";
+pub(crate) const AUTH_BROWSER_NOTIFICATION: &str = "_intellterm.wta/auth_browser";
 pub(crate) const AUTH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 pub(crate) fn authentication_result_for_helper<T>(
@@ -175,7 +175,7 @@ pub(crate) fn browser_url_from_stderr(line: &str) -> Option<String> {
 
 // A deliberately narrow parser: only the two observed Google endpoints and
 // loopback HTTP callbacks are accepted, without URL normalization surprises.
-fn valid_browser_url(url: &str) -> bool {
+pub(crate) fn valid_browser_url(url: &str) -> bool {
     if !url.is_ascii()
         || url.bytes().any(|byte| byte <= b' ' || byte == 127)
         || url.contains(['\\', '#', '"', '\'', '<', '>'])
@@ -364,6 +364,26 @@ mod tests {
         }
         let error = acp::Error::new(-32603, "Provider unavailable; try again later");
         assert_eq!(safe_auth_error_message(&error), error.message);
+    }
+
+    #[test]
+    fn auth_bridge_browser_notification_survives_actual_sdk_wire_dispatch() {
+        use acp::JsonRpcMessage;
+
+        let id = uuid::Uuid::new_v4();
+        let outbound = browser_notification(id, URL).unwrap();
+        let params: serde_json::Value = serde_json::from_str(outbound.params.get()).unwrap();
+        let inbound = acp::schema::v1::AgentNotification::parse_message(&outbound.method, &params)
+            .expect(
+                "The actual SDK dispatcher must accept the private authentication notification.",
+            );
+        let acp::schema::v1::AgentNotification::ExtNotification(inbound) = inbound else {
+            panic!("Browser progress must arrive as an extension notification.");
+        };
+        assert_eq!(
+            parse_browser_notification(&inbound),
+            Some(Ok((id, URL.to_string())))
+        );
     }
 
     #[test]

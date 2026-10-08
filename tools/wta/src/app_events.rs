@@ -868,33 +868,7 @@ impl App {
                 }
             }
             AppEvent::AcpAuthenticationBrowser { attempt_id, url } => {
-                let valid = self
-                    .pending_acp_authentication
-                    .as_ref()
-                    .is_some_and(|pending| {
-                        pending.attempt.attempt_id == attempt_id
-                            && pending.agent_id == self.current_agent_id
-                            && pending.source == self.current_agent_source
-                            && !pending.attempt.cancelled.is_cancelled()
-                            && !pending.browser_opened
-                    });
-                if !valid {
-                    return;
-                }
-                match super::open_url_in_browser(&url) {
-                    Ok(()) => {
-                        if let Some(pending) = self.pending_acp_authentication.as_mut() {
-                            pending.browser_opened = true;
-                        }
-                    }
-                    Err(error) => {
-                        tracing::warn!(target: "auth", %error, "could not open authentication browser");
-                        self.cancel_acp_authentication();
-                        self.show_connection_failure_setup(
-                            t!("system.authentication_failed").into_owned(),
-                        );
-                    }
-                }
+                self.handle_acp_authentication_browser(attempt_id, url, super::open_url_in_browser);
             }
             AppEvent::SourceLoginProgress {
                 agent_id,

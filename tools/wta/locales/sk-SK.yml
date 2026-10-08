@@ -270,5 +270,8 @@ system.model_unknown: "Neznámy model %{model} — zadaním /model zobrazíte do
 
 setup.subtitle.protocol_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Vyberte spôsob prihlásenia a pokračujte tu."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "Dokončite prihlásenie v prehliadači. Stlačením Esc zrušíte čakanie."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Prehliadač sa neotvoril? Použite tento odkaz na prihlásenie. O: otvoriť · Y: kopírovať."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Prehliadač sa nepodarilo otvoriť. Otvorte odkaz na prihlásenie manuálne."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Odkaz na prihlásenie sa nepodarilo skopírovať. Vyberte ho a skopírujte manuálne."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "Prihlásenie sa nedokončilo včas. Keď budete pripravení, skúste to znova."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "V prihlasovacom prostredí distribúcie %{distro} sa nepodarilo nájsť \"%{agent}\". Skontrolujte inštaláciu, PATH a profil shellu tohto používateľa Linuxu a skúste to znova."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

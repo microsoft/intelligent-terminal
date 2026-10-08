@@ -270,5 +270,8 @@ system.model_unknown: "Model tidak diketahui %{model} — taip /model untuk meli
 
 setup.subtitle.protocol_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Pilih kaedah daftar masuk untuk meneruskan di sini."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "Lengkapkan daftar masuk dalam pelayar anda. Tekan Esc untuk membatalkan penantian."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Pelayar tidak terbuka? Gunakan pautan daftar masuk ini. O: buka · Y: salin."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Tidak dapat membuka pelayar. Buka pautan daftar masuk secara manual."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Tidak dapat menyalin pautan daftar masuk. Pilih dan salin secara manual."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "Daftar masuk tidak selesai dalam masa yang ditetapkan. Cuba lagi apabila anda bersedia."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Kami tidak dapat menemui \"%{agent}\" dalam persekitaran log masuk %{distro}. Semak pemasangan, PATH dan profil shell pengguna Linux ini, kemudian cuba lagi."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

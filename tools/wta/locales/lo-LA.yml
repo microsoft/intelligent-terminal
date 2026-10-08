@@ -270,5 +270,8 @@ system.model_unknown: "ບໍ່ຮູ້ຈັກແບບຈຳລອງ %{mod
 
 setup.subtitle.protocol_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ. ເລືອກວິທີເຂົ້າສູ່ລະບົບເພື່ອສືບຕໍ່ຢູ່ທີ່ນີ້."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "ດຳເນີນການເຂົ້າສູ່ລະບົບໃຫ້ສຳເລັດໃນຕົວທ່ອງເວັບຂອງທ່ານ. ກົດ Esc ເພື່ອຍົກເລີກການລໍຖ້າ."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ຕົວທ່ອງເວັບບໍ່ໄດ້ເປີດບໍ? ໃຊ້ລິ້ງເຂົ້າສູ່ລະບົບນີ້. O: ເປີດ · Y: ຄັດລອກ."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ບໍ່ສາມາດເປີດຕົວທ່ອງເວັບໄດ້. ກະລຸນາເປີດລິ້ງເຂົ້າສູ່ລະບົບດ້ວຍຕົນເອງ."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "ບໍ່ສາມາດຄັດລອກລິ້ງເຂົ້າສູ່ລະບົບໄດ້. ກະລຸນາເລືອກ ແລະ ຄັດລອກດ້ວຍຕົນເອງ."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "ການເຂົ້າສູ່ລະບົບບໍ່ສຳເລັດພາຍໃນເວລາທີ່ກຳນົດ. ລອງອີກຄັ້ງເມື່ອທ່ານພ້ອມ."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "ພວກເຮົາບໍ່ພົບ \"%{agent}\" ໃນສະພາບແວດລ້ອມການເຂົ້າສູ່ລະບົບຂອງ %{distro}. ກວດສອບການຕິດຕັ້ງ, PATH ແລະ ໂປຣໄຟລ໌ shell ຂອງຜູ້ໃຊ້ Linux ຄົນນີ້, ແລ້ວລອງອີກຄັ້ງ."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

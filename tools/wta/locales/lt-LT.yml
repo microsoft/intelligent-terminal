@@ -270,5 +270,8 @@ system.model_unknown: "Nežinomas modelis %{model} — įveskite /model, kad pam
 
 setup.subtitle.protocol_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Pasirinkite prisijungimo būdą, kad tęstumėte čia."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "Užbaikite prisijungimą naršyklėje. Paspauskite Esc, kad atšauktumėte laukimą."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Naršyklė neatsidarė? Naudokite šią prisijungimo nuorodą. O: atidaryti · Y: kopijuoti."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Nepavyko atidaryti naršyklės. Atidarykite prisijungimo nuorodą rankiniu būdu."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Nepavyko nukopijuoti prisijungimo nuorodos. Pažymėkite ją ir nukopijuokite rankiniu būdu."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "Prisijungimas nebuvo užbaigtas laiku. Bandykite dar kartą, kai būsite pasiruošę."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Nepavyko rasti \"%{agent}\" distribucijos %{distro} prisijungimo aplinkoje. Patikrinkite šio Linux naudotojo diegimą, PATH ir komandų interpretatoriaus profilį, tada bandykite dar kartą."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

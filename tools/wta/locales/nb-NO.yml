@@ -270,5 +270,8 @@ system.model_unknown: "Ukjent modell %{model} — skriv /model for å se den til
 
 setup.subtitle.protocol_auth: "Agenten din \"%{agent}\" krever autentisering. Velg en påloggingsmetode for å fortsette her."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "Fullfør påloggingen i nettleseren din. Trykk på Esc for å avbryte ventingen."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Åpnet ikke nettleseren seg? Bruk denne påloggingslenken. O: åpne · Y: kopier."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Kunne ikke åpne nettleseren. Åpne påloggingslenken manuelt."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Kunne ikke kopiere påloggingslenken. Merk og kopier den manuelt."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "Påloggingen ble ikke fullført i tide. Prøv igjen når du er klar."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Vi fant ikke \"%{agent}\" i påloggingsmiljøet til %{distro}. Kontroller denne Linux-brukerens installasjon, PATH og skallprofil, og prøv deretter igjen."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

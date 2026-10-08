@@ -268,5 +268,8 @@ system.model_unknown: "[!! Unk_nown model %{model} — type /model to see the av
 
 setup.subtitle.protocol_auth: "[!! \u202eYou_r agent \"%{agent}\" requires authentication. Select a sign-in method to continue here.\u202c !!]"  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "[!! \u202eCom_plete sign-in in your browser. Press Esc to cancel waiting.\u202c !!]"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "[!! \u202eBro_wser not open? Use this sign-in link. O: open · Y: copy.\u202c !!]"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "[!! \u202eCou_ld not open the browser. Open the sign-in link manually.\u202c !!]"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "[!! \u202eCou_ld not copy the sign-in link. Select and copy it manually.\u202c !!]"  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "[!! \u202eSig_n-in did not finish in time. Try again when you are ready.\u202c !!]"  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "[!! \u202eWe_ could not find \"%{agent}\" in the %{distro} login environment. Check this Linux user's installation, PATH, and shell profile, then try again.\u202c !!]"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

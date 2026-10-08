@@ -270,5 +270,8 @@ system.model_unknown: "Tuntematon malli %{model} — kirjoita /model nähdäkses
 
 setup.subtitle.protocol_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Valitse kirjautumistapa jatkaaksesi tässä."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "Viimeistele kirjautuminen selaimessasi. Peruuta odottaminen painamalla Esc."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Eikö selain avautunut? Käytä tätä kirjautumislinkkiä. O: avaa · Y: kopioi."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Selainta ei voitu avata. Avaa kirjautumislinkki manuaalisesti."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Kirjautumislinkkiä ei voitu kopioida. Valitse ja kopioi se manuaalisesti."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "Kirjautuminen ei valmistunut ajoissa. Yritä uudelleen, kun olet valmis."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Emme löytäneet agenttia \"%{agent}\" jakelun %{distro} kirjautumisympäristöstä. Tarkista tämän Linux-käyttäjän asennus, PATH ja komentotulkin profiili ja yritä sitten uudelleen."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

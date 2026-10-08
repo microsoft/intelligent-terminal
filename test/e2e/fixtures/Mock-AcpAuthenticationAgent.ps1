@@ -1,5 +1,6 @@
 param(
-    [Parameter(Mandatory)][string]$LogPath
+    [Parameter(Mandatory)][string]$LogPath,
+    [string]$BrowserProgressTriggerPath = ''
 )
 
 # Legacy Agent auth methods intentionally have no browser/device-code metadata.
@@ -38,6 +39,14 @@ function Write-AuthenticationRecord {
     } | ConvertTo-Json -Compress | Add-Content -LiteralPath $LogPath -Encoding utf8
 }
 
+function Send-FixtureBrowserProgress {
+    param([string]$State)
+    # Invalid client ID and synthetic state: no real sign-in or provider tokens.
+    Write-AuthenticationRecord -Method 'browser-progress' -MethodId 'oauth-personal'
+    [Console]::Error.WriteLine("Open https://accounts.google.com/o/oauth2/v2/auth?client_id=invalid-acp-integration-fixture&redirect_uri=http%3A%2F%2F127.0.0.1%3A43210%2Fcallback&prompt=none&state=$State")
+    [Console]::Error.Flush()
+}
+
 $reader = [IO.StreamReader]::new([Console]::OpenStandardInput(), [Text.Encoding]::UTF8)
 try {
     $readTask = $reader.ReadLineAsync()
@@ -46,6 +55,9 @@ try {
             if ($clock.Elapsed.TotalSeconds -lt $authentication.Due) { continue }
             $authenticated = $true
             Write-AuthenticationRecord -Method 'authenticate' -MethodId $authentication.MethodId
+            if ($authentication.BrowserProgress) {
+                Send-FixtureBrowserProgress -State 'late-fixture-only'
+            }
             Send-AcpMessage @{ jsonrpc = '2.0'; id = $authentication.Id; result = @{} }
             [void]$pending.Remove($authentication)
         }
@@ -112,9 +124,15 @@ try {
                 }
                 Write-AuthenticationRecord -Method 'authenticate' -MethodId $methodId
                 $delay = if ($methodId -eq 'oauth-personal') { 12 } else { 0 }
+                $browserProgress = $methodId -eq 'oauth-personal' -and
+                    $BrowserProgressTriggerPath -and (Test-Path -LiteralPath $BrowserProgressTriggerPath)
+                if ($browserProgress) {
+                    Send-FixtureBrowserProgress -State 'fixture-only'
+                }
                 $pending.Add([pscustomobject]@{
                     Id = $request.id; MethodId = $methodId
                     Due = $clock.Elapsed.TotalSeconds + $delay
+                    BrowserProgress = $browserProgress
                 })
             }
             { $_ -in @('session/cancel', 'session/close') } {

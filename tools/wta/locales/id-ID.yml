@@ -270,5 +270,8 @@ system.model_unknown: "Model tidak dikenal %{model} — ketik /model untuk melih
 
 setup.subtitle.protocol_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Pilih metode masuk untuk melanjutkan di sini."  # AI-agent sign-in methods; %{agent} is the agent display name.
 auth.browser_wait_hint: "Selesaikan proses masuk di browser Anda. Tekan Esc untuk membatalkan penantian."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Browser belum terbuka? Gunakan tautan masuk ini. O: buka · Y: salin."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Tidak dapat membuka browser. Buka tautan masuk secara manual."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Tidak dapat menyalin tautan masuk. Pilih dan salin secara manual."  # Clipboard failure; the displayed current sign-in URL remains usable.
 auth.failure_wait_timeout: "Proses masuk tidak selesai tepat waktu. Coba lagi saat Anda siap."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Kami tidak dapat menemukan \"%{agent}\" di lingkungan login %{distro}. Periksa instalasi, PATH, dan profil shell pengguna Linux ini, lalu coba lagi."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}
