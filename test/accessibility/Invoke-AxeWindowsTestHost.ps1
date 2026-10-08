@@ -198,6 +198,38 @@ function Stop-OwnedProcess
     return [pscustomobject]$evidence
 }
 
+function Get-TestHostPackage
+{
+    param(
+        [Parameter(Mandatory)][xml]$Manifest,
+        [string]$InstallLocation
+    )
+
+    $identity = $Manifest.Package.Identity
+    if ($identity.Name -ne 'WindowsTerminal.TestHost' -or
+        $identity.Publisher -ne 'CN=Windows Terminal Team' -or
+        $identity.ProcessorArchitecture -ne 'x64')
+    {
+        throw 'Manifest must identify the expected WindowsTerminal.TestHost x64 package and publisher.'
+    }
+    $matches = @(Get-AppxPackage -Name $identity.Name | Where-Object {
+        $_.Name -eq $identity.Name -and $_.Publisher -eq $identity.Publisher -and
+        $_.Architecture -eq $identity.ProcessorArchitecture
+    })
+    if ($InstallLocation)
+    {
+        $expectedLocation = [IO.Path]::GetFullPath($InstallLocation).TrimEnd([IO.Path]::DirectorySeparatorChar)
+        $matches = @($matches | Where-Object {
+            [version]$_.Version -eq [version]$identity.Version -and
+            [string]::Equals(
+                [IO.Path]::GetFullPath($_.InstallLocation).TrimEnd([IO.Path]::DirectorySeparatorChar),
+                $expectedLocation, [StringComparison]::OrdinalIgnoreCase)
+        })
+        if ($matches.Count -gt 1) { throw 'Registered test host package identity is ambiguous.' }
+    }
+    return $matches | Sort-Object { [version]$_.Version } -Descending | Select-Object -First 1
+}
+
 $resolvedManifest = (Resolve-Path -LiteralPath $ManifestPath).Path
 $resolvedAxe = (Resolve-Path -LiteralPath $AxePath).Path
 $surfaceOutput = Join-Path $OutputDirectory $Surface
@@ -207,9 +239,7 @@ $stderrPath = Join-Path $surfaceOutput 'axe.stderr.log'
 $axeResultPath = Join-Path $surfaceOutput 'axe-results.json'
 $resultPath = Join-Path $surfaceOutput 'result.json'
 $package = $null
-$previousPackage = Get-AppxPackage -Name 'WindowsTerminal.TestHost' |
-    Sort-Object Version -Descending |
-    Select-Object -First 1
+$previousPackage = $null
 $processId = 0
 $ownedProcess = $null
 $axe = $null
@@ -226,6 +256,7 @@ try
     }
     [IntelligentTerminal.Accessibility.PackagedApp]::VerifyInteractiveDesktop()
     [xml]$manifest = Get-Content -LiteralPath $resolvedManifest -Raw
+    $previousPackage = Get-TestHostPackage -Manifest $manifest
     foreach ($dependency in $manifest.Package.Dependencies.PackageDependency)
     {
         $installed = @(Get-AppxPackage -Name $dependency.Name | Where-Object {
@@ -239,9 +270,7 @@ try
         }
     }
     Add-AppxPackage -Register $resolvedManifest -ForceApplicationShutdown
-    $package = Get-AppxPackage -Name 'WindowsTerminal.TestHost' |
-        Sort-Object Version -Descending |
-        Select-Object -First 1
+    $package = Get-TestHostPackage -Manifest $manifest -InstallLocation (Split-Path -Parent $resolvedManifest)
     if (-not $package)
     {
         throw 'WindowsTerminal.TestHost was not registered.'

@@ -323,6 +323,11 @@ The harness uses bounded launch/scan waits, closes only the launched process,
 removes only `WindowsTerminal.TestHost`, and restores a prior registration of
 that test package when one existed. It never removes or deploys the Intelligent
 Terminal package.
+Selection requires the expected name, publisher, and x64 architecture; the
+current registration must also match the manifest version and resolved install
+location. Same-name registrations from other publishers are never selected for
+activation, cleanup, or restoration. Previous owned versions are compared
+numerically.
 
 ## Findings and publication
 

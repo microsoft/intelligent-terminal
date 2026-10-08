@@ -210,3 +210,78 @@ Describe 'Axe test host owned-process cleanup' -Tag Unit {
         Should -Invoke Set-Content -Times 1 -Exactly
     }
 }
+
+Describe 'Axe test host package identity' -Tag Unit {
+    BeforeAll {
+        $path = Join-Path $PSScriptRoot 'Invoke-AxeWindowsTestHost.ps1'
+        $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$errors)
+        if ($errors) { throw 'Test host harness could not be parsed.' }
+        $definition = $ast.Find({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+                $node.Name -eq 'Get-TestHostPackage'
+        }, $true)
+        . ([scriptblock]::Create($definition.Extent.Text))
+        function Get-AppxPackage {}
+    }
+
+    BeforeEach {
+        $script:manifest = [xml]'<Package><Identity Name="WindowsTerminal.TestHost" Publisher="CN=Windows Terminal Team" ProcessorArchitecture="x64" Version="1.0.0.0" /></Package>'
+        $script:matching = [pscustomobject]@{
+            Name = 'WindowsTerminal.TestHost'
+            Publisher = 'CN=Windows Terminal Team'
+            Architecture = 'X64'
+            Version = '1.0.0.0'
+            InstallLocation = 'C:\testhost'
+        }
+        $script:packages = @($script:matching)
+        Mock Get-AppxPackage { $script:packages }
+    }
+
+    It 'does not select a same-name package from another publisher' {
+        $script:matching.Publisher = 'CN=Other publisher'
+        Get-TestHostPackage -Manifest $script:manifest | Should -BeNullOrEmpty
+    }
+
+    It 'ignores wrong publisher even when its version is higher' {
+        $wrong = $script:matching.PSObject.Copy()
+        $wrong.Publisher = 'CN=Other publisher'
+        $wrong.Version = '99.0.0.0'
+        $script:packages = @($wrong, $script:matching)
+        (Get-TestHostPackage -Manifest $script:manifest).Publisher | Should -Be 'CN=Windows Terminal Team'
+    }
+
+    It 'does not select another name or architecture' -ForEach @(
+        @{ Property='Name'; Value='Other.App' }, @{ Property='Architecture'; Value='X86' }
+    ) {
+        $script:matching.$Property = $Value
+        Get-TestHostPackage -Manifest $script:manifest | Should -BeNullOrEmpty
+    }
+
+    It 'requires the registered manifest version and install location' {
+        Get-TestHostPackage -Manifest $script:manifest -InstallLocation 'C:\testhost' | Should -Not -BeNullOrEmpty
+        Get-TestHostPackage -Manifest $script:manifest -InstallLocation 'C:\other' | Should -BeNullOrEmpty
+        $script:matching.Version = '2.0.0.0'
+        Get-TestHostPackage -Manifest $script:manifest -InstallLocation 'C:\testhost' | Should -BeNullOrEmpty
+    }
+
+    It 'sorts previous owned registrations by numeric version' {
+        $newer = $script:matching.PSObject.Copy()
+        $newer.Version = '10.0.0.0'
+        $script:matching.Version = '2.0.0.0'
+        $script:packages = @($script:matching, $newer)
+        (Get-TestHostPackage -Manifest $script:manifest).Version | Should -Be '10.0.0.0'
+    }
+
+    It 'rejects a manifest for a different package before querying registrations' {
+        $script:manifest.Package.Identity.Name = 'Other.App'
+        { Get-TestHostPackage -Manifest $script:manifest } | Should -Throw '*expected WindowsTerminal.TestHost*'
+        Should -Invoke Get-AppxPackage -Times 0 -Exactly
+    }
+
+    It 'rejects ambiguous current registrations instead of selecting one arbitrarily' {
+        $script:packages = @($script:matching, $script:matching.PSObject.Copy())
+        { Get-TestHostPackage -Manifest $script:manifest -InstallLocation 'C:\testhost' } | Should -Throw '*ambiguous*'
+    }
+}
