@@ -33,6 +33,7 @@
     <ClCompile Include="BoundedDispatchQueueTests.cpp" />
     <ClCompile Include="CustomAgentIdTests.cpp" />
     <ClCompile Include="ProtocolParsingTests.cpp" />
+    <ClCompile Include="ProtocolMarshalingTests.cpp" />
     <ClCompile Include="RichTabProviderTests.cpp" />
     <ClCompile Include="RtlHelperTests.cpp" />
     <ClCompile Include="SharedWtaTests.cpp" />
@@ -48,6 +49,10 @@
     <ProjectReference Include="$(OpenConsoleDir)\src\cascadia\TerminalSettingsModel\Microsoft.Terminal.Settings.ModelLib.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)\src\types\lib\types.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)src\propslib\propslib.vcxproj" />
+    <ProjectReference Include="ProtocolMarshalingProbe\ProtocolMarshalingProbe.vcxproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
   </ItemGroup>
 
   <!-- ========================= Globals ======================== -->
@@ -84,6 +89,13 @@
   <Import Project="$(OpenConsoleDir)src\common.build.post.props" />
   <Import Project="$(OpenConsoleDir)src\common.build.tests.props" />
   <Import Project="$(SolutionDir)src\common.nugetversions.targets" />
+
+  <Target Name="CopyProtocolMarshalingFixtures" AfterTargets="Build" Condition="'$(Configuration)'!='Fuzzing'">
+    <MakeDir Directories="$(OutDir)ProtocolMarshaling\Present;$(OutDir)ProtocolMarshaling\Missing" />
+    <Copy SourceFiles="$(OpenConsoleCommonOutDir)ProtocolMarshalingProbe.exe" DestinationFolder="$(OutDir)ProtocolMarshaling\Present" />
+    <Copy SourceFiles="$(OpenConsoleCommonOutDir)ProtocolMarshalingProbe.exe" DestinationFolder="$(OutDir)ProtocolMarshaling\Missing" />
+    <Copy SourceFiles="$(OpenConsoleCommonOutDir)OpenConsoleProxy.dll" DestinationFolder="$(OutDir)ProtocolMarshaling\Present" />
+  </Target>
 
   <ItemDefinitionGroup>
     <PreBuildEvent>

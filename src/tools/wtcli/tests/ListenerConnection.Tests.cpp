@@ -7,12 +7,24 @@
 #include "ITerminalProtocol.h"
 #include <stdexcept>
 
+// Load SDK/WIL declarations before mocking the CLI's COM activation calls.
+#include "..\..\..\cascadia\TerminalProtocol\ProtocolMarshaling.h"
+
 namespace NativeMock
 {
     HRESULT WINAPI GetActiveObject(REFCLSID, void*, IUnknown**);
     HRESULT WINAPI CoCreateInstance(REFCLSID, IUnknown*, DWORD, REFIID, void**);
+    HRESULT LoadProxy(wil::unique_hmodule&);
+    HRESULT RegisterProxy(const wil::unique_hmodule&);
 }
 
+#define LoadAndVerifyLocalProxyDll LoadProxy
+#define RegisterProcessLocalProxyFactory RegisterProxy
+namespace Microsoft::Terminal::Protocol
+{
+    using NativeMock::LoadProxy;
+    using NativeMock::RegisterProxy;
+}
 #define GetActiveObject NativeMock::GetActiveObject
 #define CoCreateInstance NativeMock::CoCreateInstance
 #define wmain WtcliMain
@@ -20,14 +32,38 @@ namespace NativeMock
 #undef wmain
 #undef CoCreateInstance
 #undef GetActiveObject
+#undef RegisterProcessLocalProxyFactory
+#undef LoadAndVerifyLocalProxyDll
 
 namespace NativeMock
 {
     unsigned activeCalls = 0;
     unsigned activationCalls = 0;
     unsigned factoryCalls = 0;
+    HRESULT activationResult = E_NOINTERFACE;
     bool registered = true;
     bool supportsFactory = true;
+    HRESULT loadResult = S_OK;
+    HRESULT registerResult = S_OK;
+    unsigned loadCalls = 0;
+    unsigned registerCalls = 0;
+
+    HRESULT LoadProxy(wil::unique_hmodule& module)
+    {
+        ++loadCalls;
+        if (FAILED(loadResult))
+        {
+            module.reset();
+            return loadResult;
+        }
+        return Microsoft::Terminal::Protocol::LoadAndVerifyLocalProxyDll(module);
+    }
+
+    HRESULT RegisterProxy(const wil::unique_hmodule& module)
+    {
+        ++registerCalls;
+        return FAILED(registerResult) ? registerResult : Microsoft::Terminal::Protocol::RegisterProcessLocalProxyFactory(module);
+    }
 
     struct Factory : IClassFactory
     {
@@ -66,13 +102,16 @@ namespace NativeMock
     {
         ++activationCalls;
         *object = nullptr;
-        return E_NOINTERFACE;
+        return activationResult;
     }
 
     void Reset()
     {
         activeCalls = activationCalls = factoryCalls = 0;
+        activationResult = E_NOINTERFACE;
         registered = supportsFactory = true;
+        loadResult = registerResult = S_OK;
+        loadCalls = registerCalls = 0;
     }
 
     void Require(bool condition)
@@ -122,9 +161,33 @@ int wmain()
     try
     {
         SetEnvironmentVariableW(L"WT_COM_CLSID", L"{11111111-1111-1111-1111-111111111111}");
+        for (const auto failLoad : { false, true })
+        {
+            for (const auto existingOnly : { false, true })
+            {
+                for (const auto operation : { 0, 1, 2 })
+                {
+                    Reset();
+                    const auto resetFailure = wil::scope_exit([]() noexcept { loadResult = registerResult = S_OK; });
+                    (failLoad ? loadResult : registerResult) = E_OUTOFMEMORY;
+                    Require((operation == 0 ? Listen(existingOnly) : Publish(existingOnly, operation == 2)) == 1);
+                    Require(loadCalls == 1 && registerCalls == (failLoad ? 0u : 1u));
+                    Require(activationCalls == 0 && activeCalls == 0 && factoryCalls == 0);
+                }
+            }
+        }
         Reset();
         Require(Listen(false) == 1);
         Require(activationCalls == 1 && activeCalls == 0 && factoryCalls == 0);
+
+        for (const auto factoryRegistered : { false, true })
+        {
+            Reset();
+            activationResult = REGDB_E_CLASSNOTREG;
+            registered = factoryRegistered;
+            Require(Listen(false) == 1);
+            Require(activationCalls == 1 && activeCalls == 1 && factoryCalls == (factoryRegistered ? 1u : 0u));
+        }
 
         Reset();
         Require(Listen(true) == 1);
@@ -145,6 +208,15 @@ int wmain()
             Reset();
             Require(Publish(false, fromStdin) == 1);
             Require(activationCalls == 1 && activeCalls == 0 && factoryCalls == 0);
+
+            for (const auto factoryRegistered : { false, true })
+            {
+                Reset();
+                activationResult = REGDB_E_CLASSNOTREG;
+                registered = factoryRegistered;
+                Require(Publish(false, fromStdin) == 1);
+                Require(activationCalls == 1 && activeCalls == 1 && factoryCalls == (factoryRegistered ? 1u : 0u));
+            }
 
             Reset();
             Require(Publish(true, fromStdin) == 1);

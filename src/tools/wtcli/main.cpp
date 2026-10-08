@@ -15,6 +15,7 @@
 // proxy/stub (NOT WinRT MBM), so activation/marshaling never hits the combase
 // WinRT activation catalog.
 #include "ITerminalProtocol.h"
+#include "../../cascadia/inc/TerminalProtocolProxyRegistration.h"
 #include "../../cascadia/inc/WslDistroName.h"
 
 #include <CLI/CLI.hpp>
@@ -110,27 +111,50 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
         return nullptr;
     }
 
-    winrt::com_ptr<ITerminalProtocol> server;
-    HRESULT hr;
-    if (mode == TerminalConnectionMode::ExistingOnly)
+    wil::unique_hmodule proxyDll;
+    auto hr = Microsoft::Terminal::Protocol::LoadAndVerifyLocalProxyDll(proxyDll);
+    if (SUCCEEDED(hr))
     {
+        // Set the process-local proxy factory used by activation and callbacks.
+        hr = Microsoft::Terminal::Protocol::RegisterProcessLocalProxyFactory(proxyDll);
+    }
+    if (FAILED(hr))
+    {
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Failed to load or register protocol proxy: 0x%08X\n", static_cast<uint32_t>(hr));
+        return nullptr;
+    }
+
+    winrt::com_ptr<ITerminalProtocol> server;
+    const auto connectExisting = [&]() -> HRESULT {
         // Keep the returned factory instead of probing then activating: shutdown
         // can race either call, but must never launch a replacement Terminal.
         winrt::com_ptr<IUnknown> running;
-        hr = GetActiveObject(cls, nullptr, running.put());
-        if (SUCCEEDED(hr))
+        auto result = GetActiveObject(cls, nullptr, running.put());
+        if (SUCCEEDED(result))
         {
             winrt::com_ptr<IClassFactory> factory;
-            hr = running->QueryInterface(__uuidof(IClassFactory), factory.put_void());
-            if (SUCCEEDED(hr))
+            result = running->QueryInterface(__uuidof(IClassFactory), factory.put_void());
+            if (SUCCEEDED(result))
             {
-                hr = factory->CreateInstance(nullptr, __uuidof(ITerminalProtocol), server.put_void());
+                result = factory->CreateInstance(nullptr, __uuidof(ITerminalProtocol), server.put_void());
             }
         }
+        return result;
+    };
+    if (mode == TerminalConnectionMode::ExistingOnly)
+    {
+        hr = connectExisting();
     }
     else
     {
         hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
+        if (hr == REGDB_E_CLASSNOTREG)
+        {
+            // Elevated unpackaged shells cannot discover the packaged class,
+            // but can use an already-running factory at their integrity level.
+            hr = connectExisting();
+        }
     }
     if (FAILED(hr))
     {
@@ -442,6 +466,9 @@ static HRESULT SupportsCapability(ITerminalProtocol* server, const std::string_v
 int wmain(int argc, wchar_t** argv)
 {
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
+    const auto unregisterProxy = wil::scope_exit([]() noexcept {
+        LOG_IF_FAILED(Microsoft::Terminal::Protocol::UnregisterTerminalProtocolProxy());
+    });
 
     CLI::App app{ "wtcli - Windows Terminal CLI" };
     app.require_subcommand(0, 1);
