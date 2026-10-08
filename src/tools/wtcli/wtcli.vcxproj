@@ -40,8 +40,7 @@
   <ItemGroup>
     <!-- Build dependency — OpenConsoleProxy must build first so
          ITerminalProtocol.h exists before we compile. Build-order only; the
-         proxy/stub is discovered through the package manifest, or registered
-         process-locally from the adjacent DLL when running elevated. -->
+         proxy/stub itself is loaded from beside wtcli at runtime. -->
     <ProjectReference Include="$(OpenConsoleDir)src\host\proxy\Host.Proxy.vcxproj">
       <Project>{71CC9D78-BA29-4D93-946F-BEF5D9A3A6EF}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
@@ -49,4 +48,9 @@
   </ItemGroup>
   <Import Project="$(OpenConsoleDir)src\cppwinrt.build.post.props" />
   <Import Project="$(OpenConsoleDir)src\common.nugetversions.targets" />
+  <Target Name="CopyOpenConsoleProxy" AfterTargets="Build" Condition="'$(Configuration)'!='Fuzzing'">
+    <Copy SourceFiles="$(OpenConsoleCommonOutDir)OpenConsoleProxy.dll"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

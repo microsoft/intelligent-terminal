@@ -8,7 +8,6 @@
 #include "Formatting.h"
 #include "wtcli_functions.h"
 #include "../../cascadia/TerminalProtocol/ProtocolParsing.h"
-#include "../../cascadia/TerminalProtocol/ProtocolMarshaling.h"
 
 // Classic-COM Terminal protocol. Generated from
 // src/host/proxy/ITerminalProtocol.idl; found via the OpenConsoleProxy IntDir
@@ -16,6 +15,7 @@
 // proxy/stub (NOT WinRT MBM), so activation/marshaling never hits the combase
 // WinRT activation catalog.
 #include "ITerminalProtocol.h"
+#include "../../cascadia/inc/TerminalProtocolProxyRegistration.h"
 
 #include <CLI/CLI.hpp>
 
@@ -110,8 +110,21 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
         return nullptr;
     }
 
+    wil::unique_hmodule proxyDll;
+    auto hr = Microsoft::Terminal::Protocol::LoadAndVerifyLocalProxyDll(proxyDll);
+    if (SUCCEEDED(hr))
+    {
+        // Set the process-local proxy factory used by activation and callbacks.
+        hr = Microsoft::Terminal::Protocol::RegisterProcessLocalProxyFactory(proxyDll);
+    }
+    if (FAILED(hr))
+    {
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Failed to load or register protocol proxy: 0x%08X\n", static_cast<uint32_t>(hr));
+        return nullptr;
+    }
+
     winrt::com_ptr<ITerminalProtocol> server;
-    HRESULT hr;
     const auto connectExisting = [&]() -> HRESULT {
         // Keep the returned factory instead of probing then activating: shutdown
         // can race either call, but must never launch a replacement Terminal.
@@ -415,13 +428,9 @@ static HRESULT SupportsCapability(ITerminalProtocol* server, const std::string_v
 int wmain(int argc, wchar_t** argv)
 {
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
-    Microsoft::Terminal::Protocol::ScopedMarshaling marshaling;
-    const auto marshalingResult = marshaling.InitializeForElevatedProcess();
-    if (FAILED(marshalingResult))
-    {
-        fprintf(stderr, "[wtcli] Proxy/stub initialization failed: 0x%08X\n", static_cast<uint32_t>(marshalingResult));
-        return 1;
-    }
+    const auto unregisterProxy = wil::scope_exit([]() noexcept {
+        LOG_IF_FAILED(Microsoft::Terminal::Protocol::UnregisterTerminalProtocolProxy());
+    });
 
     CLI::App app{ "wtcli - Windows Terminal CLI" };
     app.require_subcommand(0, 1);

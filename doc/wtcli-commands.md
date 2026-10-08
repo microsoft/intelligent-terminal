@@ -92,7 +92,7 @@ bin\x64\Debug\wtcli\wtcli-listener-native-tests.exe
 ```
 
 The test build uses a separate executable name and copies the adjacent proxy DLL
-so production proxy initialization also works when the tests run elevated.
+so the shared all-mode proxy initialization uses the built DLL in native tests.
 Rebuild `wtcli.vcxproj` without
 the test import to produce the normal product binary. WTA unit tests cover the
 managed argument contract, bounded retries, and transient listener recovery

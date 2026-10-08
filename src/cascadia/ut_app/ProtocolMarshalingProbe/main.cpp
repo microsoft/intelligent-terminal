@@ -32,24 +32,24 @@ int wmain(int argc, wchar_t** argv)
         TOKEN_ELEVATION elevation{};
         DWORD returnedSize{};
         CHECK_RESULT(GetTokenInformation(token.get(), TokenElevation, &elevation, sizeof(elevation), &returnedSize) ? S_OK : HRESULT_FROM_WIN32(GetLastError()));
-        const IID interfaces[]{ __uuidof(ITerminalProtocol), __uuidof(ITerminalProtocolEventSink), __uuidof(ITerminalProtocolNativeAgent) };
-        CLSID before[ARRAYSIZE(interfaces)]{};
-        HRESULT beforeResult[ARRAYSIZE(interfaces)]{};
-        for (size_t i = 0; i < ARRAYSIZE(interfaces); ++i)
+        const auto& interfaces = Microsoft::Terminal::Protocol::details::ProxyInterfaces;
+        std::array<CLSID, interfaces.size()> before{};
+        std::array<HRESULT, interfaces.size()> beforeResult{};
+        for (size_t i = 0; i < interfaces.size(); ++i)
         {
             beforeResult[i] = CoGetPSClsid(interfaces[i], &before[i]);
         }
         const auto result = registration.InitializeForElevatedProcess();
         if (elevation.TokenIsElevated)
         {
-            std::printf("Elevated production gate HRESULT: 0x%08lX\n", static_cast<unsigned long>(result));
+            std::printf("Elevated scope gate HRESULT: 0x%08lX\n", static_cast<unsigned long>(result));
             return result == HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND) ? 0 : 1;
         }
         if (result != S_OK || GetModuleHandleW(L"OpenConsoleProxy.dll"))
         {
             return 1;
         }
-        for (size_t i = 0; i < ARRAYSIZE(interfaces); ++i)
+        for (size_t i = 0; i < interfaces.size(); ++i)
         {
             CLSID after{};
             const auto afterResult = CoGetPSClsid(interfaces[i], &after);
@@ -58,7 +58,7 @@ int wmain(int argc, wchar_t** argv)
                 return 1;
             }
         }
-        std::puts("Normal production gate preserved all mappings without loading the missing proxy");
+        std::puts("Normal scope gate preserved all mappings without loading the missing proxy");
         return 0;
     }
     if (argc == 2 && std::wcscmp(argv[1], L"--missing") == 0)
@@ -82,6 +82,12 @@ int wmain(int argc, wchar_t** argv)
     }
 
     wil::com_ptr<IPSFactoryBuffer> retainedFactory;
+    CLSID sentinel{};
+    CHECK_RESULT(CoCreateGuid(&sentinel));
+    for (const auto& iid : Microsoft::Terminal::Protocol::details::ProxyInterfaces)
+    {
+        CHECK_RESULT(CoRegisterPSClsid(iid, sentinel));
+    }
     {
         ScopedMarshaling scope;
         CHECK_RESULT(scope.InitializeFromExecutableDirectory());
@@ -104,7 +110,7 @@ int wmain(int argc, wchar_t** argv)
         {
             return 1;
         }
-        for (const auto iid : { __uuidof(ITerminalProtocol), __uuidof(ITerminalProtocolEventSink), __uuidof(ITerminalProtocolNativeAgent) })
+        for (const auto& iid : Microsoft::Terminal::Protocol::details::ProxyInterfaces)
         {
             CLSID actual{};
             CHECK_RESULT(CoGetPSClsid(iid, &actual));
