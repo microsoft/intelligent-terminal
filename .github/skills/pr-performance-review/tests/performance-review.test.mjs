@@ -705,21 +705,20 @@ test('rejects malformed output and stale head identity', () => {
     assert.throws(() => validateReport(stale, identity), /does not match/);
 });
 
-test('fork-compatible publication gate allows only an exact deterministic comment', () => {
+test('fork worker gate allows only a validated report and noop for controller reporting', () => {
     const scope = classifyPullRequest([{ filename: 'src/buffer/out/TextBuffer.cpp' }], identity);
     const valid = report([finding()]);
-    const body = renderReport(valid);
-    assert.doesNotThrow(() => gatePublication(scope, valid, { items: [{ type: 'add_comment', body }], errors: [] }, identity));
-    assert.throws(() => gatePublication(scope, valid, { items: [{ type: 'add_comment', body: `${body}changed` }] }, identity), /exactly match/);
+    assert.doesNotThrow(() => gatePublication(scope, valid, { items: [{ type: 'noop' }], errors: [] }, identity));
+    assert.throws(() => gatePublication(scope, valid, { items: [{ type: 'add_comment', body: renderReport(valid) }] }, identity), /only the controller/);
     for (const key of ['item_number', 'pr', 'pr_number', 'issue', 'issue_number', 'repo', 'target', 'target_repo',
         'target-repo', 'comment_id', 'reply_to_id', 'discussion_id']) {
         assert.throws(() => gatePublication(scope, valid, {
-            items: [{ type: 'add_comment', body, [key]: key === 'repo' ? 'other/repo' : 999 }],
+            items: [{ type: 'noop', [key]: key === 'repo' ? 'other/repo' : 999 }],
         }, identity), /must not override/);
     }
     assert.throws(() => gatePublication(scope, valid, {
-        items: [{ type: 'add_comment', body }, { type: 'noop' }],
-    }, identity), /exactly one add_comment/);
+        items: [{ type: 'noop' }, { type: 'noop' }],
+    }, identity), /exactly one noop/);
 });
 
 test('non-applicable scope short-circuits with one noop and no report', () => {

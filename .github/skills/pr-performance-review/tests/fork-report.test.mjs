@@ -29,18 +29,19 @@ function report() {
             exitCode: null, detail: 'No Windows runner available' }],
     };
 }
-function queue(value = report()) {
-    return { items: [{ type: 'add_comment', body: JSON.stringify(value) }], errors: [] };
+function submission(value = report()) {
+    return { report: value, queued: { items: [{ type: 'noop' }], errors: [] } };
 }
-const processSubmission = (queued, selectedScope = scope) =>
-    processGuideSubmission(selectedScope, queued, expected, runtime);
+const processSubmission = (input, selectedScope = scope) =>
+    processGuideSubmission(selectedScope, input.queued, expected, runtime, input.report);
 
-test('complete JSON report becomes the exact card without mutating the input or adding outputs', () => {
-    const input = queue();
+test('validated guide report produces a verdict without a worker comment or input mutation', () => {
+    const input = submission();
     const snapshot = structuredClone(input);
     const result = processSubmission(input);
     assert.deepEqual(result.report, report());
-    assert.equal(result.queued.items[0].body, runtime.renderReport(report()));
+    assert.equal(result.queued.items[0].type, 'noop');
+    assert.deepEqual(result.queued, input.queued);
     assert.deepEqual(input, snapshot);
     assert.deepEqual(Object.keys(result), ['report', 'queued', 'verdict']);
     assert.deepEqual(result.verdict, { version: 1, identity, status: 'action_required' });
@@ -49,7 +50,7 @@ test('complete JSON report becomes the exact card without mutating the input or 
 
 test('malformed JSON, rendered cards, invalid identity/mode and mismatched outcomes fail', () => {
     for (const body of ['{', runtime.renderReport(report()), 'null'])
-        assert.throws(() => processSubmission({ items: [{ type: 'add_comment', body }] }));
+        assert.throws(() => processSubmission(submission(body)));
     for (const mutate of [
         r => { r.identity.prNumber++; },
         r => { r.identity.headSha = 'c'.repeat(40); },
@@ -60,45 +61,46 @@ test('malformed JSON, rendered cards, invalid identity/mode and mismatched outco
     ]) {
         const value = report();
         mutate(value);
-        assert.throws(() => processSubmission(queue(value)));
+        assert.throws(() => processSubmission(submission(value)));
     }
 });
 
 test('target aliases, ingestion errors, missing or extra outputs are rejected', () => {
     for (const alias of ['item_number', 'pr', 'pr_number', 'issue', 'issue_number', 'repo',
         'target', 'target_repo', 'target-repo', 'comment_id', 'reply_to_id', 'discussion_id']) {
-        const input = queue();
-        input.items[0][alias] = 42;
+        const input = submission();
+        input.queued.items[0][alias] = 42;
         assert.throws(() => processSubmission(input), /override/);
     }
-    for (const input of [{ items: [] }, { ...queue(), errors: ['bad'] },
-        { ...queue(), errors: 'bad' }, { items: [...queue().items, { type: 'noop' }] },
-        { items: [{ type: 'noop' }] }])
-        assert.throws(() => processSubmission(input));
+    for (const queued of [{ items: [] }, { ...submission().queued, errors: ['bad'] },
+        { ...submission().queued, errors: 'bad' }, { items: [{ type: 'noop' }, { type: 'noop' }] },
+        { items: [{ type: 'add_comment', body: JSON.stringify(report()) }] }])
+        assert.throws(() => processSubmission({ report: report(), queued }));
+    assert.throws(() => processSubmission(submission(null)));
 });
 
 test('only a single noop with null report passes for a non-applicable scope', () => {
     const excluded = runtime.classifyPullRequest([{ filename: 'README.md' }], identity);
-    const result = processSubmission({ items: [{ type: 'noop' }], errors: [] }, excluded);
+    const result = processSubmission(submission(null), excluded);
     assert.equal(result.report, null);
     assert.equal(result.verdict.status, 'pass');
-    for (const input of [queue(), { items: [] }, { items: [{ type: 'noop' }, { type: 'noop' }] },
+    assert.throws(() => processSubmission(submission(), excluded));
+    for (const queued of [{ items: [] }, { items: [{ type: 'noop' }, { type: 'noop' }] },
         { items: [{ type: 'noop' }], errors: ['bad'] }])
-        assert.throws(() => processSubmission(input, excluded));
-    assert.throws(() => processSubmission({ items: [{ type: 'noop' }] }), /add_comment/);
+        assert.throws(() => processSubmission({ report: null, queued }, excluded));
 });
 
 test('zero findings requires pass, or blocked when a check errors', () => {
     const value = report();
     value.findings = [];
     value.status = 'pass';
-    assert.equal(processSubmission(queue(value)).verdict.status, 'pass');
+    assert.equal(processSubmission(submission(value)).verdict.status, 'pass');
     value.status = 'advisory';
-    assert.throws(() => processSubmission(queue(value)), /must be pass/);
+    assert.throws(() => processSubmission(submission(value)), /must be pass/);
     value.checks[0].status = 'error';
     value.checks[0].exitCode = 1;
     value.status = 'blocked';
-    assert.equal(processSubmission(queue(value)).verdict.status, 'blocked');
+    assert.equal(processSubmission(submission(value)).verdict.status, 'blocked');
 });
 
 test('medium and low advice stays advisory, never claims a repair', () => {
@@ -107,11 +109,11 @@ test('medium and low advice stays advisory, never claims a repair', () => {
         value.findings[0].severity = severity;
         value.findings[0].fixDisposition = 'advice_only';
         value.status = 'advisory';
-        const result = processSubmission(queue(value));
+        const result = processSubmission(submission(value));
         assert.equal(result.verdict.status, 'advisory');
-        assert.match(result.queued.items[0].body, /advice_only/);
+        assert.equal(result.report.findings[0].fixDisposition, 'advice_only');
         value.findings[0].fixDisposition = 'proposed';
-        assert.throws(() => processSubmission(queue(value)), /advice_only/);
+        assert.throws(() => processSubmission(submission(value)), /advice_only/);
     }
 });
 
@@ -142,7 +144,17 @@ test('workflow exposes no model shell/edit route and only fixed read-only GitHub
     assert.doesNotMatch(workflow, /mcp-servers:/);
 });
 
-test('inline preview captures only fixed summary output with fixed identity and returns the same card', async t => {
+test('fork worker cannot publish a comment after its agent-job freshness check', () => {
+    const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-fork-guidance.md', import.meta.url), 'utf8');
+    const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-fork-guidance.lock.yml', import.meta.url), 'utf8');
+    assert.match(workflow, /safe-outputs: \{\}/);
+    assert.match(workflow, /Then request exactly one `noop`/);
+    assert.doesNotMatch(compiled, /add_comment|add-comment|pull-requests: write/);
+    assert.match(compiled, /"noop"/);
+    assert.match(compiled, /performance-report\.json/);
+});
+
+test('inline guide tool captures only fixed summary/report outputs with immutable identity', async t => {
     const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-fork-guidance.md', import.meta.url), 'utf8');
     const script = workflow.match(/    script: \|\n([\s\S]*?)\n\njobs:/)[1]
         .split('\n').map(line => line.slice(6)).join('\n');
@@ -157,19 +169,24 @@ test('inline preview captures only fixed summary output with fixed identity and 
         t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
         assert.match(script, /runtime\.captureReviewSummary\('\/tmp\/gh-aw', summaryMarkdown\)/);
         const preview = new (Object.getPrototypeOf(async function () {}).constructor)(
-            'report_json', 'summaryMarkdown', 'summaryDirectory',
+            'report_json', 'summaryMarkdown', 'summaryDirectory', 'reportFilename',
             script.replace("runtime.captureReviewSummary('/tmp/gh-aw', summaryMarkdown)",
-                'runtime.captureReviewSummary(summaryDirectory, summaryMarkdown)'));
+                'runtime.captureReviewSummary(summaryDirectory, summaryMarkdown)')
+                .replace("fs.writeFileSync('/tmp/gh-aw/performance-report.json'", 'fs.writeFileSync(reportFilename'));
+        const reportFilename = path.join(directory, 'report.json');
         const markdown = 'Read-only findings.\n\n| Severity | Finding |\n| LOW | Advice |\n';
-        assert.deepEqual(await preview(JSON.stringify(report()), markdown, directory),
+        assert.deepEqual(await preview(JSON.stringify(report()), markdown, directory, reportFilename),
             { renderedCard: runtime.renderReport(report()) });
         assert.equal(runtime.readReviewSummary(directory), markdown);
+        assert.deepEqual(JSON.parse(fs.readFileSync(reportFilename, 'utf8')), report());
         const invalid = report();
         invalid.identity.prNumber++;
-        await assert.rejects(preview(JSON.stringify(invalid), markdown, directory), /triggering pull request/);
-        await assert.rejects(preview('{', markdown, directory), SyntaxError);
+        await assert.rejects(preview(JSON.stringify(invalid), markdown, directory, reportFilename), /triggering pull request/);
+        await assert.rejects(preview('{', markdown, directory, reportFilename), SyntaxError);
         assert.equal(runtime.readReviewSummary(directory), markdown, 'summary survives invalid JSON and identity failures');
-        assert.doesNotMatch(script, /writeFile|exec|spawn|fetch\(/);
+        assert.deepEqual(JSON.parse(fs.readFileSync(reportFilename, 'utf8')), report(), 'rejected data cannot replace accepted JSON');
+        assert.match(script, /fs\.writeFileSync\('\/tmp\/gh-aw\/performance-report\.json'/);
+        assert.doesNotMatch(script, /exec|spawn|fetch\(/);
     } finally {
         for (const key of ['TRUSTED_REVIEW_RUNTIME', 'PR_NUMBER', 'BASE_SHA', 'HEAD_SHA']) {
             if (prior[key] === undefined) delete process.env[key];

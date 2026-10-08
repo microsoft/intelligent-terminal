@@ -45,7 +45,7 @@ tools:
 
 mcp-scripts:
   validate_performance_report:
-    description: 'Capture only the fixed review-summary output before validating and previewing guide JSON; never executes or mutates fork source or submits comments.'
+    description: 'Capture fixed summary and validated guide JSON for controller reporting; never executes or mutates fork source or submits comments.'
     inputs:
       summaryMarkdown:
         type: string
@@ -68,6 +68,8 @@ mcp-scripts:
         mode: 'guide', prNumber: Number(process.env.PR_NUMBER),
         baseSha: process.env.BASE_SHA, headSha: process.env.HEAD_SHA
       });
+      const fs = await import('node:fs');
+      fs.writeFileSync('/tmp/gh-aw/performance-report.json', `${JSON.stringify(report, null, 2)}\n`, 'utf8');
       return { renderedCard: runtime.renderReport(report) };
 
 jobs:
@@ -156,6 +158,10 @@ jobs:
     needs: [prepare]
   safe_outputs:
     if: needs.agent.result == 'success'
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
 
 pre-agent-steps:
   - name: Classify immutable performance scope
@@ -179,11 +185,7 @@ pre-agent-steps:
         --safe-outputs "$GH_AW_SAFE_OUTPUTS" \
         --pr "$PR_NUMBER" --base "$BASE_SHA" --head "$HEAD_SHA"
 
-safe-outputs:
-  add-comment:
-    target: '${{ github.event.inputs.pr_number }}'
-    max: 1
-    hide-older-comments: true
+safe-outputs: {}
 
 post-steps:
   - name: Upload review-time Markdown summary
@@ -211,7 +213,7 @@ post-steps:
         exit 1
       }
 
-  - name: Validate guidance JSON and render exact comment
+  - name: Validate guidance report for controller publication
     shell: bash
     env:
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
@@ -285,10 +287,12 @@ it never executes or mutates fork source. The summary is not validation authorit
 Construct the complete version-1 guide report as JSON data. First call
 `validate_performance_report` with `summaryMarkdown` and `report_json` to capture
 the human summary and validate and preview the
-deterministic card. Correct any validation errors before submission.
-Then request exactly one `add_comment` whose `body` is that exact report JSON
-string, NOT the rendered card. Trusted post-processing validates it again and
-replaces the queued body with the deterministic card before publication.
+deterministic card. Correct any validation errors before completion.
+The tool captures only the caller-fixed summary and validated report files.
+Then request exactly one `noop` and stop. Never request `add_comment`:
+the controller is the sole PR Conversation publisher and checks the live head
+immediately before creating or updating its result comment. Trusted
+post-processing validates the captured JSON again and emits its verdict.
 All HIGH findings remain
 `manual_required` or `unsafe`; MEDIUM/LOW remain `advice_only`.
 Omit all repository, PR/issue number, target, comment ID, and reply ID fields
@@ -296,7 +300,7 @@ from the tool call: the trusted caller fixes the destination. The gate rejects
 these overrides even when the body is correct.
 
 Shell execution, CLI proxies, edits, and direct report file writes are disabled.
-Use only the read tool, read-only GitHub MCP, the read-only report validator,
+Use only the read tool, read-only GitHub MCP, the scoped report validator,
 and the configured safe-output tools. These caller restrictions override any
 imported PowerShell, local Git, report-write, or repair instructions.
 Never execute fork code or seek an alternate execution route. Caller mode and

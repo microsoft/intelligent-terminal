@@ -429,7 +429,7 @@ for (const worker of [
             assert.match(JSON.parse(collect.match(/^ {8}run: (".*")$/m)[1]), /performance-review\.mjs" summary/);
             assert.ok(compiled.indexOf(upload) < compiled.indexOf('name: Validate repair report and changed files'));
         } else {
-            assert.ok(compiled.indexOf(upload) < compiled.indexOf('name: Validate guidance JSON and render exact comment'));
+            assert.ok(compiled.indexOf(upload) < compiled.indexOf('name: Validate guidance report for controller publication'));
         }
     });
 

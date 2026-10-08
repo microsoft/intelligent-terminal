@@ -92,6 +92,9 @@ Conversation posting errors fail the reporting step and leave an otherwise
 successful check non-successful until delivery completes. This trusted
 reporting action is separate from the gh-aw workers: repair still never
 combines a comment with a branch commit, and fork guidance never edits source.
+The controller is the sole Conversation publisher for both modes. Fork
+guidance captures its validated JSON and Markdown, then emits `noop`; it has
+no later `add-comment` job that could post after an earlier freshness check.
 
 Automatic conversation delivery was verified in a reporting-only
 [GitHub Actions run](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37768180616).
@@ -225,9 +228,10 @@ proposal and GitHub's job result. Same-repo and fork workers cannot both
 comment and commit.
 
 The fork agent has no shell or edit permission. It reads the prepared patch
-and immutable source through read-only tools, validates structured report data
-through the declared checker, and queues that JSON as its safe-output body.
-Trusted post-processing validates the data and renders the comment; fork
+and immutable source through read-only tools, validates and captures structured
+report data through the declared checker, and requests only `noop`.
+Trusted post-processing validates the captured JSON and emits a verdict;
+the controller publishes the summary after its live-head check. Fork
 content is never executed to produce the report.
 
 ## Evidence and limitations

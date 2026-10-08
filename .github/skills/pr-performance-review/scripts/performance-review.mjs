@@ -321,9 +321,8 @@ export function gatePublication(scope, report, agentOutput, expected) {
     }
     validateReport(report, expected);
     if (expected.mode === 'guide') {
-        if (agentOutput.items.length !== 1 || item?.type !== 'add_comment') fail('applicable guide scope requires exactly one add_comment');
-        if (TARGET_ALIASES.some(key => Object.hasOwn(item, key))) fail('guidance comment must not override the configured immutable PR target');
-        if (item.body !== renderReport(report)) fail('queued comment must exactly match the deterministic report rendering');
+        if (agentOutput.items.length !== 1 || item?.type !== 'noop') fail('applicable guide scope requires exactly one noop; only the controller publishes comments');
+        if (TARGET_ALIASES.some(key => Object.hasOwn(item, key))) fail('guidance output must not override the configured immutable PR target');
         return;
     }
     const proposed = report.findings.some(finding => finding.fixDisposition === 'proposed');
@@ -641,31 +640,17 @@ export function sealProposal(scope, report, baseline, expected) {
     return { proposal: validateProposal(proposal, expected), changedFiles };
 }
 
-export function processGuideSubmission(scope, queued, expected, runtime) {
+export function processGuideSubmission(scope, queued, expected, runtime, submittedReport) {
     if (expected.mode !== 'guide') throw new Error('guide submission requires guide mode');
-    let report = null;
-    let output = queued;
-    if (scope.applicable) {
-        if (queued?.items?.length !== 1 || queued.items[0]?.type !== 'add_comment' ||
-            typeof queued.items[0].body !== 'string')
-            throw new Error('applicable guide scope requires exactly one JSON add_comment');
-        try {
-            report = JSON.parse(queued.items[0].body);
-        } catch {
-            throw new Error('guidance comment body must be valid report JSON');
-        }
-        runtime.validateReport(report, expected);
-        // Preserve targeting aliases and envelope errors so the existing gate rejects them.
-        output = { ...queued, items: [{ ...queued.items[0], body: runtime.renderReport(report) }] };
-    }
-    runtime.gatePublication(scope, report, output, expected);
+    const report = submittedReport ?? null;
+    runtime.gatePublication(scope, report, queued, expected);
     return {
-        report, queued: output,
+        report, queued,
         verdict: { version: 1, identity: scope.identity, status: report?.status ?? 'pass' },
     };
 }
 
-async function renderForkReport(args) {
+async function validateForkReport(args) {
     if (args.length !== 0) throw new Error('guide submission accepts no command or path arguments');
     const runtimePath = process.env.TRUSTED_REVIEW_RUNTIME;
     if (!runtimePath || !path.isAbsolute(runtimePath)) throw new Error('trusted runtime must be an absolute environment path');
@@ -681,12 +666,10 @@ async function renderForkReport(args) {
     const queued = JSON.parse(fs.readFileSync(queuePath, 'utf8'));
     const resultDirectory = '/tmp/gh-aw/performance-result';
     const scope = runtime.prepareScope(expected, resultDirectory);
-    const result = processGuideSubmission(scope, queued, expected, runtime);
-    const reportJson = `${JSON.stringify(result.report, null, 2)}\n`;
-    const queueJson = `${JSON.stringify(result.queued, null, 2)}\n`;
+    const reportPath = '/tmp/gh-aw/performance-report.json';
+    const report = fs.existsSync(reportPath) ? readJson(reportPath) : null;
+    const result = processGuideSubmission(scope, queued, expected, runtime, report);
     const verdictJson = `${JSON.stringify(result.verdict, null, 2)}\n`;
-    fs.writeFileSync('/tmp/gh-aw/performance-report.json', reportJson, 'utf8');
-    fs.writeFileSync(queuePath, queueJson, 'utf8');
     fs.writeFileSync(`${resultDirectory}/performance-verdict.json`, verdictJson, 'utf8');
 }
 
@@ -765,7 +748,7 @@ function expectedFromArgs(args, requireMode = true) {
 
 async function main() {
     const [command, ...args] = process.argv.slice(2);
-    if (command === 'fork-report') return renderForkReport(args);
+    if (command === 'fork-report') return validateForkReport(args);
     if (command === 'summary') {
         const summary = readReviewSummary(option(args, '--root'));
         captureReviewSummary(option(args, '--output-dir'), summary);

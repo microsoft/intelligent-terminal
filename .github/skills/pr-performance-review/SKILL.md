@@ -174,7 +174,8 @@ Repair only when every condition holds:
 If any condition fails, keep the finding unresolved with disposition
 `manual_required` or `unsafe`, and do not edit. A repair caller requests native
 validation of a proposed patch, never direct publication. A guidance caller
-stays read-only and emits at most one comment. **Never combine a PR comment and
+stays read-only, submits fixed report artifacts and emits one `noop`;
+the trusted controller alone publishes Conversation results. **Never combine a PR comment and
 branch commit in one worker.**
 
 ## Native repair handoff
@@ -344,9 +345,9 @@ reviewed SHA, and run links separately; the summary cannot override them.
 ## Report contract
 
 Produce the following report. Use the caller-provided file path in repair
-mode; in shell-disabled fork guidance, validate the JSON through the declared
-scoped report tool and submit its unchanged JSON string as the safe-output
-body. That tool captures only the caller's fixed summary artifact; it does not
+mode; in shell-disabled fork guidance, validate and capture the JSON through the
+declared scoped report tool, then request one `noop`. That tool captures only
+the caller's fixed summary and JSON report artifacts; it does not
 permit general file writes or source execution. Native post-processing owns
 mechanical artifacts and final card rendering.
 
