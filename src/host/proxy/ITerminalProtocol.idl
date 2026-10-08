@@ -28,6 +28,31 @@ import "unknwn.idl";
     HRESULT OnEvent([in] BSTR eventJson);
 };
 
+[
+    object,
+    uuid(6401A89E-1DD7-4A46-A288-38B6506C891D),
+    pointer_default(unique)
+] interface ITerminalProtocolNativeAgent : IUnknown
+{
+    HRESULT CreateAgentCliTab([in] unsigned hyper windowId,
+                             [in] BSTR profile,
+                             [in] BSTR commandline,
+                             [in] BSTR title,
+                             [in] BSTR startingDirectory,
+                             [in] boolean suppressAppTitle,
+                             [in] boolean background,
+                             [in] BSTR providerId,
+                             [out, retval] BSTR* json);
+    HRESULT SplitAgentCliPane([in] GUID sessionId,
+                             [in] BSTR direction,
+                             [in] float size,
+                             [in] BSTR profile,
+                             [in] BSTR commandline,
+                             [in] boolean background,
+                             [in] BSTR providerId,
+                             [out, retval] BSTR* json);
+};
+
 // Terminal protocol — implemented by WindowsTerminal.exe, activated by the
 // client via CoCreateInstance(CLSCTX_LOCAL_SERVER) under the existing
 // per-branding CLSID (discovered through the WT_COM_CLSID env var).

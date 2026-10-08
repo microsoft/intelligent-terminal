@@ -736,7 +736,7 @@ int wmain(int argc, wchar_t** argv)
     });
 
     // ── new-tab ──
-    std::string newTabCommand, newTabTitle, newTabCwd, newTabProfile;
+    std::string newTabCommand, newTabTitle, newTabCwd, newTabProfile, newTabAgentProvider;
     uint64_t newTabWindowId = 0;
     bool newTabBackground = false;
     auto* newTabCmd = app.add_subcommand("new-tab", "Create a new tab")->alias("neww");
@@ -744,6 +744,7 @@ int wmain(int argc, wchar_t** argv)
     newTabCmd->add_option("-n,--title", newTabTitle, "Tab title");
     newTabCmd->add_option("-d,--cwd", newTabCwd, "Starting directory");
     newTabCmd->add_option("-p,--profile", newTabProfile, "Profile");
+    newTabCmd->add_option("--agent-provider", newTabAgentProvider, "Native interactive agent CLI provider ID");
     newTabCmd->add_option("-w,--window-id", newTabWindowId, "Target window ID (0 uses the most recent window)");
     newTabCmd->add_flag("--background", newTabBackground, "Create the tab without selecting it");
     newTabCmd->callback([&]() {
@@ -752,8 +753,19 @@ int wmain(int argc, wchar_t** argv)
         wil::unique_bstr profile{ Bstr(newTabProfile) }, command{ Bstr(newTabCommand) }, title{ Bstr(newTabTitle) }, cwd{ Bstr(newTabCwd) };
         Json::Value result;
         auto hr = CallJson([&](BSTR* j) {
+            if (newTabCmd->get_option("--agent-provider")->count())
+            {
+                const auto support = SupportsCapability(server.get(), "create_agent_cli_tab");
+                RETURN_IF_FAILED(support);
+                RETURN_HR_IF(E_NOINTERFACE, support != S_OK);
+                winrt::com_ptr<ITerminalProtocolNativeAgent> nativeAgent;
+                RETURN_IF_FAILED(server->QueryInterface(__uuidof(ITerminalProtocolNativeAgent), nativeAgent.put_void()));
+                wil::unique_bstr provider{ Bstr(newTabAgentProvider) };
+                return nativeAgent->CreateAgentCliTab(newTabWindowId, profile.get(), command.get(), title.get(), cwd.get(), false, newTabBackground, provider.get(), j);
+            }
             return server->CreateTab(newTabWindowId, profile.get(), command.get(), title.get(), cwd.get(), false, newTabBackground, j);
-        }, result);
+        },
+                           result);
         if (FAILED(hr)) { fprintf(stderr, "CreateTab failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
         if (jsonMode)
             PrintJson(result);
@@ -762,7 +774,7 @@ int wmain(int argc, wchar_t** argv)
     });
 
     // ── split-pane ──
-    std::string splitPaneTarget, splitPaneCommand, splitPaneDirection, splitPaneProfile;
+    std::string splitPaneTarget, splitPaneCommand, splitPaneDirection, splitPaneProfile, splitPaneAgentProvider;
     bool splitHorizontal = false, splitVertical = false;
     double splitSize = 0.5;
     auto* splitPaneCmd = app.add_subcommand("split-pane", "Split a pane")->alias("splitw");
@@ -773,6 +785,7 @@ int wmain(int argc, wchar_t** argv)
     splitPaneCmd->add_option("-s,--size", splitSize, "Size fraction");
     splitPaneCmd->add_option("-c,--command", splitPaneCommand, "Command to run");
     splitPaneCmd->add_option("-p,--profile", splitPaneProfile, "Profile");
+    splitPaneCmd->add_option("--agent-provider", splitPaneAgentProvider, "Native interactive agent CLI provider ID");
     splitPaneCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
@@ -789,8 +802,19 @@ int wmain(int argc, wchar_t** argv)
         wil::unique_bstr dirB{ Bstr(dir) }, profile{ Bstr(splitPaneProfile) }, command{ Bstr(splitPaneCommand) };
         Json::Value result;
         auto hr = CallJson([&](BSTR* j) {
+            if (splitPaneCmd->get_option("--agent-provider")->count())
+            {
+                const auto support = SupportsCapability(server.get(), "split_agent_cli_pane");
+                RETURN_IF_FAILED(support);
+                RETURN_HR_IF(E_NOINTERFACE, support != S_OK);
+                winrt::com_ptr<ITerminalProtocolNativeAgent> nativeAgent;
+                RETURN_IF_FAILED(server->QueryInterface(__uuidof(ITerminalProtocolNativeAgent), nativeAgent.put_void()));
+                wil::unique_bstr provider{ Bstr(splitPaneAgentProvider) };
+                return nativeAgent->SplitAgentCliPane(sessionId, dirB.get(), static_cast<float>(splitSize), profile.get(), command.get(), true, provider.get(), j);
+            }
             return server->SplitPane(sessionId, dirB.get(), static_cast<float>(splitSize), profile.get(), command.get(), true, j);
-        }, result);
+        },
+                           result);
         if (FAILED(hr)) { fprintf(stderr, "SplitPane failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
         if (jsonMode)
             PrintJson(result);
@@ -1045,11 +1069,14 @@ int wmain(int argc, wchar_t** argv)
     // Low-level "pass this JSON through to SendEvent verbatim" escape hatch.
     std::string publishJson;
     bool publishFromStdin = false;
+    bool publishExistingOnly = false;
     auto* publishCmd = app.add_subcommand("publish", "Forward raw JSON to SendEvent");
     auto* publishJsonOption = publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})");
     auto* publishStdinOption = publishCmd->add_flag("--stdin", publishFromStdin, "Read the full UTF-8 event JSON from stdin");
+    publishCmd->add_flag("--existing-only", publishExistingOnly, "Connect only to a running Terminal; never activate a new server");
     publishJsonOption->excludes(publishStdinOption);
-    publishCmd->require_option(1, 1);
+    // The connection flag can accompany either mutually exclusive input form.
+    publishCmd->require_option(1, 2);
     publishCmd->callback([&]() {
         if (publishFromStdin)
         {
@@ -1079,7 +1106,7 @@ int wmain(int argc, wchar_t** argv)
             exitCode = 1;
             return;
         }
-        auto server = connect();
+        auto server = connect(publishExistingOnly ? TerminalConnectionMode::ExistingOnly : TerminalConnectionMode::Activate);
         if (!server) return;
         wil::unique_bstr evt{ Bstr(publishJson) };
         auto hr = server->SendEvent(evt.get());
@@ -1214,12 +1241,14 @@ int wmain(int argc, wchar_t** argv)
     std::string listenTarget;
     std::string listenEventFilter;
     std::string listenReadyToken;
+    bool listenExistingOnly = false;
     DWORD listenParentPid = 0;
     auto* listenCmd = app.add_subcommand("listen", "Stream real-time events from Windows Terminal");
     listenCmd->add_option("-t,--target", listenTarget, "Filter by session ID (GUID)");
     listenCmd->add_option("--event", listenEventFilter, "Filter by event type (supports trailing wildcard, e.g. agent.*)");
     listenCmd->add_option("--parent-pid", listenParentPid, "Exit when the specified parent process exits");
     listenCmd->add_option("--ready-token", listenReadyToken, "Emit an internal JSON readiness marker after Subscribe succeeds");
+    listenCmd->add_flag("--existing-only", listenExistingOnly, "Connect only to a running Terminal; never activate a new server");
     listenCmd->callback([&]() {
         wil::unique_handle parentProcess;
         if (listenParentPid != 0)
@@ -1233,7 +1262,7 @@ int wmain(int argc, wchar_t** argv)
             }
         }
 
-        auto server = connect();
+        auto server = connect(listenExistingOnly ? TerminalConnectionMode::ExistingOnly : TerminalConnectionMode::Activate);
         if (!server)
         {
             exitCode = 1;

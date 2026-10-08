@@ -12,6 +12,7 @@
 #include <til/io.h>
 #include "../inc/TerminalProtocolProxyRegistration.h"
 #include "../TerminalProtocol/ProtocolParsing.h"
+#include "../inc/AgentRegistry.h"
 
 #include <algorithm>
 #include <thread>
@@ -310,6 +311,7 @@ static Json::Value _toJson(const Protocol::PaneInfo& p)
     v["profile"] = winrt::to_string(p.Profile);
     v["is_active"] = static_cast<bool>(p.IsActive);
     v["is_agent_pane"] = static_cast<bool>(p.IsAgentPane);
+    v["native_agent_provider_id"] = winrt::to_string(p.NativeAgentProviderId);
     v["pid"] = static_cast<Json::UInt>(p.Pid);
     v["size"]["rows"] = p.Rows;
     v["size"]["columns"] = p.Columns;
@@ -594,6 +596,8 @@ try
         "get_settings",
         "create_tab",
         "split_pane",
+        "create_agent_cli_tab",
+        "split_agent_cli_pane",
         "close_pane",
         "send_input",
         "focus_pane",
@@ -829,7 +833,10 @@ try
             if (context.Pane.SessionId != winrt::guid{})
             {
                 context.Pane.WindowId = page.WindowProperties().WindowId();
-                *json = _bstrFromJson(_toJson(context));
+                auto value = _toJson(context);
+                // Response-only membership avoids changing the protocol PaneContext ABI.
+                value["pane"]["is_background_tab"] = page.GetProtocolPaneIsBackground(context.Pane.SessionId).get();
+                *json = _bstrFromJson(value);
                 return S_OK;
             }
         }
@@ -849,7 +856,9 @@ try
         return fail("page_returned_no_pane", E_FAIL, host.get());
 
     context.Pane.WindowId = host->Logic().WindowProperties().WindowId();
-    *json = _bstrFromJson(_toJson(context));
+    auto value = _toJson(context);
+    value["pane"]["is_background_tab"] = page.GetProtocolPaneIsBackground(context.Pane.SessionId).get();
+    *json = _bstrFromJson(value);
     return S_OK;
 }
 CATCH_RETURN()
@@ -928,6 +937,29 @@ STDMETHODIMP TerminalProtocolComServer::CreateTab(unsigned __int64 windowId,
                                                   boolean suppressAppTitle,
                                                   boolean background,
                                                   BSTR* json)
+{
+    return _CreateTab(windowId, profile, commandline, title, startingDirectory, suppressAppTitle, background, {}, json);
+}
+
+static winrt::hstring _CanonicalNativeAgentProviderId(const winrt::hstring& provider)
+{
+    namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+    namespace Policy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
+    Policy::Reload();
+    const auto id = Registry::CanonicalNativeAgentProviderId(std::wstring_view{ provider });
+    THROW_HR_IF(E_INVALIDARG, id.empty());
+    THROW_HR_IF(E_ACCESSDENIED, !Registry::IsNativeAgentProviderAllowed(id, *Policy::_GetSnapshot()));
+    return winrt::hstring{ id };
+}
+
+STDMETHODIMP TerminalProtocolComServer::CreateAgentCliTab(unsigned __int64 windowId, BSTR profile, BSTR commandline, BSTR title, BSTR startingDirectory, boolean suppressAppTitle, boolean background, BSTR providerId, BSTR* json)
+try
+{
+    return _CreateTab(windowId, profile, commandline, title, startingDirectory, suppressAppTitle, background, _CanonicalNativeAgentProviderId(_hstr(providerId)), json);
+}
+CATCH_RETURN()
+
+HRESULT TerminalProtocolComServer::_CreateTab(unsigned __int64 windowId, BSTR profile, BSTR commandline, BSTR title, BSTR startingDirectory, boolean suppressAppTitle, boolean background, const winrt::hstring& nativeAgentProviderId, BSTR* json)
 try
 {
     RETURN_HR_IF_NULL(E_POINTER, json);
@@ -962,6 +994,7 @@ try
 
     // Build NewTerminalArgs.
     winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs newTermArgs;
+    newTermArgs.NativeAgentProviderId(nativeAgentProviderId);
     const auto profileH = _hstr(profile);
     const auto commandlineH = _hstr(commandline);
     const auto titleH = _hstr(title);
@@ -996,6 +1029,18 @@ STDMETHODIMP TerminalProtocolComServer::SplitPane(GUID sessionId,
                                                   BSTR commandline,
                                                   boolean background,
                                                   BSTR* json)
+{
+    return _SplitPane(sessionId, direction, size, profile, commandline, background, {}, json);
+}
+
+STDMETHODIMP TerminalProtocolComServer::SplitAgentCliPane(GUID sessionId, BSTR direction, float size, BSTR profile, BSTR commandline, boolean background, BSTR providerId, BSTR* json)
+try
+{
+    return _SplitPane(sessionId, direction, size, profile, commandline, background, _CanonicalNativeAgentProviderId(_hstr(providerId)), json);
+}
+CATCH_RETURN()
+
+HRESULT TerminalProtocolComServer::_SplitPane(GUID sessionId, BSTR direction, float size, BSTR profile, BSTR commandline, boolean background, const winrt::hstring& nativeAgentProviderId, BSTR* json)
 try
 {
     RETURN_HR_IF_NULL(E_POINTER, json);
@@ -1010,6 +1055,7 @@ try
 
     // Build NewTerminalArgs.
     winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs newTermArgs;
+    newTermArgs.NativeAgentProviderId(nativeAgentProviderId);
     const auto profileH = _hstr(profile);
     const auto commandlineH = _hstr(commandline);
     if (!profileH.empty())
