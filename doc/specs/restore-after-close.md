@@ -55,12 +55,17 @@ picks it up for free:
 
 If closing the last visible window leaves Keep running tabs or headless mode
 active, the close captures the complete window layout before detaching any tabs.
-The process persists that snapshot while it has no windows, including when the
-last background tab is explicitly closed from the tray. With the content option
-enabled, it also saves the buffers before teardown and retains those files during
-exit cleanup. A control that has not initialized retains its existing saved
-buffer instead of truncating it. A subsequently opened window replaces the
-headless fallback.
+`GetStartupRestoreLayout` appends all other detached tabs, including those from
+previously closed windows or individually closed tabs in the same window. It
+uses each tab's owning page to stamp the correct agent resume identity, deduplicates
+by stable tab ID, and preserves the visible window's focus and geometry.
+The process persists that complete snapshot while it has no windows, including
+when the last background tab is explicitly closed from the tray. Timer saves
+and normal shutdown also include detached tabs once, appended to one persisted
+window. With the content option enabled, visible and detached buffers are saved
+before teardown and retained during exit cleanup. A control that has not
+initialized retains its existing saved buffer instead of truncating it.
+A subsequently opened window replaces the frozen headless fallback.
 
 **Shell panes.** `_paneAgentSessions` holds the most recent agent session seen in
 each shell pane, keyed by the pane's connection `SessionId`. The binding arrives

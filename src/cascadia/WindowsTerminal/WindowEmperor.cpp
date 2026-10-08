@@ -1300,7 +1300,7 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                             const auto layout = strong->ClosingLayout() ? strong->ClosingLayout() : strong->Logic().GetWindowLayout();
                             if (_windows.size() == 1 && globalSettings.ShouldUsePersistedLayout())
                             {
-                                _lastClosedWindow = { layout, windowName };
+                                _lastClosedWindow = { strong->Logic().GetStartupRestoreLayout(), windowName };
                             }
                             if (strong->ClosingLayout() && globalSettings.FirstWindowPreference() == FirstWindowPreference::PersistedLayoutAndContent)
                             {
@@ -1566,10 +1566,14 @@ void WindowEmperor::_persistState(const ApplicationState& state) const
     const auto enabled = _app.Logic().Settings().GlobalSettings().ShouldUsePersistedLayout();
     if (enabled)
     {
-        for (const auto& w : _windows)
+        for (size_t index = 0; index < _windows.size(); ++index)
         {
+            const auto& w = _windows[index];
             const auto logic = w->Logic();
-            windows.push_back({ w->ClosingLayout() ? w->ClosingLayout() : logic.GetWindowLayout(), logic.WindowProperties().WindowName() });
+            const auto layout = index + 1 == _windows.size() ? logic.GetStartupRestoreLayout() :
+                                w->ClosingLayout()           ? w->ClosingLayout() :
+                                                               logic.GetWindowLayout();
+            windows.push_back({ layout, logic.WindowProperties().WindowName() });
         }
     }
     ::Microsoft::Terminal::WindowPersistence::PersistLayouts(state, windows, _lastClosedWindow, enabled);
@@ -1622,10 +1626,19 @@ void WindowEmperor::_finalizeSessionPersistence() const
 
         // Persist all terminal buffers to "buffer_{guid}.txt" files.
         // We remember the filenames so that we can clean up old ones later.
-        for (const auto& w : _windows)
+        for (size_t index = 0; index < _windows.size(); ++index)
         {
+            const auto& w = _windows[index];
             bufferFilenames.merge(::Microsoft::Terminal::WindowPersistence::BufferFilesForLayout(w->ClosingLayout(), admin));
+            if (index + 1 == _windows.size())
+            {
+                bufferFilenames.merge(::Microsoft::Terminal::WindowPersistence::BufferFilesForLayout(w->Logic().GetStartupRestoreLayout(), admin));
+            }
             bufferFilenames.merge(::Microsoft::Terminal::WindowPersistence::PersistBuffers(w->Logic().Panes(), settingsDirectory, admin));
+        }
+        if (_keptManager)
+        {
+            bufferFilenames.merge(::Microsoft::Terminal::WindowPersistence::PersistBuffers(_keptManager.KeptPanes(), settingsDirectory, admin));
         }
     }
 

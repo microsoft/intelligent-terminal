@@ -101,10 +101,18 @@ Explicit profile launches keep their normal new-tab behavior.
 Startup-layout restoration remains independent of background retention. With
 **Restore window layout** or **Restore window layout and content** enabled,
 closing the last visible window saves its complete arrangement before any tabs
-move to the background. Headless operation and tray Close commands retain that
-snapshot for the next process start. The content option saves scrollback before
-the window's controls are torn down. Opening another window supersedes the
-snapshot; subsequent persistence describes the visible windows instead.
+move to the background, then appends distinct detached tabs from every owning
+window. This also includes tabs individually moved to the background earlier
+in the same window. Stable tab IDs prevent duplicate restoration; the visible
+window's selected tab, window geometry, and name remain unchanged. Added tabs
+restore visibly in that window, not in additional windows or as live background
+processes. Headless operation and tray Close commands retain this complete
+snapshot for the next process start.
+The content option saves both visible and detached scrollback before teardown
+and protects those files during exit cleanup. Opening another window supersedes
+the frozen snapshot; subsequent persistence describes the visible windows plus
+all remaining detached tabs, appended to one window only. Tabs already claimed
+by a live reattachment are represented by their destination, not added again.
 The Keep running choice itself is still runtime-only, and explicitly closing
 kept tabs terminates their current processes, not the saved startup layout.
 

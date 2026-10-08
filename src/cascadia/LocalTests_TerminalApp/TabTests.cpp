@@ -507,6 +507,11 @@ namespace TerminalAppLocalTests
         TEST_METHOD(KeepRunningWindowClosePreservesStartupSnapshot);
         TEST_METHOD(KeepRunningWindowCloseSavesContent);
         TEST_METHOD(KeepRunningWindowCloseRetainsUninitializedContent);
+        TEST_METHOD(KeepRunningWindowCloseIncludesOtherWindowTabs);
+        TEST_METHOD(KeepRunningWindowCloseIncludesEarlierDetachedTabs);
+        TEST_METHOD(StartupRestoreLayoutDeduplicatesVisibleAndClaimedTabs);
+        TEST_METHOD(KeepRunningWindowCloseSavesDetachedOwnerContent);
+        TEST_METHOD(KeepRunningEmptyWindowClosePreservesDetachedTabs);
         TEST_METHOD(WindowSnapshotPrefersCurrentWindows);
         TEST_METHOD(KeepRunningStartupWaitsForHostRegistration);
         TEST_METHOD(KeepRunningStartupRestoresBatchAfterLayout);
@@ -621,6 +626,7 @@ namespace TerminalAppLocalTests
             uint32_t thirdContentId{};
         };
         static winrt::TerminalApp::implementation::SharedWtaLease _acquireIsolatedAgentLease();
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _createStartupRestorePeer(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& source);
         std::unique_ptr<ContentTransferFixture> _createContentTransferFixture(bool agentFirst, bool hidden, bool freshReceiver = false, bool twoLeaves = false, std::optional<int32_t> historySize = std::nullopt);
         VerticalProgressProjectionFixture _createVerticalProgressProjectionFixture(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
                                                                                   const winrt::com_ptr<TestConnection>& first,
@@ -2404,6 +2410,308 @@ namespace TerminalAppLocalTests
             std::ifstream file{ path, std::ios::binary };
             const std::string retained{ std::istreambuf_iterator<char>{ file }, std::istreambuf_iterator<char>{} };
             VERIFY_ARE_EQUAL(bytes, retained);
+        });
+    }
+
+    winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_createStartupRestorePeer(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& source)
+    {
+        const auto properties = winrt::make<winrt::TerminalApp::implementation::WindowProperties>();
+        const winrt::TerminalApp::TerminalPage projected{ properties, source->_manager };
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+        page.copy_from(winrt::get_self<winrt::TerminalApp::implementation::TerminalPage>(projected));
+        page->_settings = source->_settings.Copy();
+        page->_terminalSettingsCache = std::make_shared<winrt::TerminalApp::implementation::TerminalSettingsCache>(page->_settings);
+        page->Create();
+        page->_layoutUpdatedRevoker.revoke();
+        page->_startupState = winrt::TerminalApp::implementation::StartupState::Initialized;
+        page->Width(1200);
+        page->Height(600);
+        return page;
+    }
+
+    void TabTests::KeepRunningWindowCloseIncludesOtherWindowTabs()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        namespace Persistence = ::Microsoft::Terminal::WindowPersistence;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto background = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1120}" }, State::Connected);
+        const auto split = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1121}" }, State::Connected);
+        const auto visible = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1122}" }, State::Connected);
+        const auto focused = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1123}" }, State::Connected);
+        const auto source = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> last;
+        const auto state = ApplicationState::SharedInstance();
+        state.Reset();
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                source->_manager.DiscardAllKeptGroups();
+                source->ShutdownPanes();
+                if (last)
+                {
+                    last->ShutdownPanes();
+                }
+            });
+            state.Reset();
+        });
+        TestOnUIThread([&]() {
+            source->_settings.GlobalSettings().FirstWindowPreference(FirstWindowPreference::PersistedLayout);
+            source->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+            const auto tab = source->_GetFocusedTabImpl();
+            tab->SetTabText(L"older window background");
+            tab->SuppressAgentPrewarm();
+            tab->GetActiveTerminalControl().Connection(*background);
+            source->Width(1200);
+            source->Height(600);
+            source->UpdateLayout();
+            VERIFY_IS_TRUE(source->_SplitPane(tab, SplitDirection::Right, 0.35f, source->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *split)));
+            source->_paneAgentSessions[split->SessionId()] = { L"older-window-session", L"copilot", L"copilot --resume older-window-session" };
+            source->SetTabKeepRunning(winrt::guid{ tab->StableId() }, true);
+            last = _createStartupRestorePeer(source);
+            last->_CreateNewTabFromPane(last->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *visible));
+            last->_GetFocusedTabImpl()->SetTabText(L"visible first");
+            last->_GetFocusedTabImpl()->SuppressAgentPrewarm();
+            last->_CreateNewTabFromPane(last->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *focused));
+            last->_GetFocusedTabImpl()->SetTabText(L"visible focused");
+            last->_GetFocusedTabImpl()->SuppressAgentPrewarm();
+            source->CloseWindow();
+            source->ShutdownPanes();
+            VERIFY_ARE_EQUAL(1u, source->_manager.KeptGroups().Size());
+            const auto preview = last->GetStartupRestoreLayout();
+            VERIFY_IS_NOT_NULL(preview);
+            last->CloseWindow();
+            const auto layout = last->GetStartupRestoreLayout();
+            const auto expected = WindowLayout::ToJson(layout);
+            VERIFY_ARE_EQUAL(WindowLayout::ToJson(preview), expected);
+            uint32_t tabs = 0;
+            uint32_t splits = 0;
+            bool foundBackground = false;
+            bool foundResume = false;
+            for (const auto& action : layout.TabLayout())
+            {
+                tabs += action.Action() == ShortcutAction::NewTab;
+                splits += action.Action() == ShortcutAction::SplitPane;
+                if (const auto rename = action.Args().try_as<RenameTabArgs>())
+                {
+                    foundBackground |= rename.Title() == L"older window background";
+                }
+                if (const auto args = _getTerminalArgs(action); args && args.SessionId() == split->SessionId())
+                {
+                    foundResume = args.Commandline() == winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(L"copilot", L"older-window-session") };
+                }
+            }
+            VERIFY_ARE_EQUAL(3u, tabs);
+            VERIFY_ARE_EQUAL(1u, splits);
+            VERIFY_IS_TRUE(foundBackground);
+            VERIFY_IS_TRUE(foundResume);
+            const auto actions = layout.TabLayout();
+            VERIFY_ARE_EQUAL(ShortcutAction::SwitchToTab, actions.GetAt(actions.Size() - 1).Action());
+            VERIFY_ARE_EQUAL(1u, actions.GetAt(actions.Size() - 1).Args().as<SwitchToTabArgs>().TabIndex());
+            VERIFY_ARE_EQUAL(size_t{ 4 }, Persistence::BufferFilesForLayout(layout, false).size());
+            source->_manager.DiscardAllKeptGroups();
+            last->ShutdownPanes();
+            VERIFY_IS_FALSE(source->_manager.HasKeptSessions());
+            VERIFY_ARE_EQUAL(expected, WindowLayout::ToJson(last->GetStartupRestoreLayout()));
+            Persistence::PersistLayouts(state, {}, { last->GetStartupRestoreLayout(), {} }, true);
+            const auto path = std::filesystem::path{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } } / L"state.json";
+            std::ifstream file{ path };
+            Json::Value saved;
+            std::string errors;
+            VERIFY_IS_TRUE(Json::parseFromStream(Json::CharReaderBuilder{}, file, &saved, &errors));
+            const auto restored = WindowLayout::FromJson(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, saved["persistedWindowLayouts"][0])));
+            VERIFY_ARE_EQUAL(expected, WindowLayout::ToJson(restored));
+        });
+    }
+
+    void TabTests::KeepRunningWindowCloseIncludesEarlierDetachedTabs()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto earlier = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1124}" }, State::Connected);
+        const auto visible = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1125}" }, State::Connected);
+        const auto attached = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1126}" }, State::Connected);
+        const auto page = _commonSetup();
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                page->_manager.DiscardAllKeptGroups();
+                page->ShutdownPanes();
+            });
+        });
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().FirstWindowPreference(FirstWindowPreference::PersistedLayout);
+            page->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+            const auto old = page->_GetFocusedTabImpl();
+            old->GetActiveTerminalControl().Connection(*earlier);
+            old->SetTabText(L"earlier detached");
+            old->SuppressAgentPrewarm();
+            page->SetTabKeepRunning(winrt::guid{ old->StableId() }, true);
+            page->_CreateNewTabFromPane(page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *visible));
+            page->_GetFocusedTabImpl()->SetTabText(L"ordinary visible");
+            page->_GetFocusedTabImpl()->SuppressAgentPrewarm();
+            VERIFY_IS_TRUE(page->_KeepTabRunning(old));
+            page->_CreateNewTabFromPane(page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *attached));
+            const auto current = page->_GetFocusedTabImpl();
+            current->SetTabText(L"attached kept");
+            current->SuppressAgentPrewarm();
+            page->SetTabKeepRunning(winrt::guid{ current->StableId() }, true);
+            page->CloseWindow();
+            VERIFY_ARE_EQUAL(2u, page->_manager.KeptGroups().Size());
+            const auto layout = page->GetStartupRestoreLayout();
+            uint32_t tabs = 0;
+            std::set<winrt::hstring> titles;
+            for (const auto& action : layout.TabLayout())
+            {
+                tabs += action.Action() == ShortcutAction::NewTab;
+                if (const auto rename = action.Args().try_as<RenameTabArgs>())
+                {
+                    titles.emplace(rename.Title());
+                }
+            }
+            VERIFY_ARE_EQUAL(3u, tabs);
+            VERIFY_ARE_EQUAL(size_t{ 3 }, titles.size());
+            VERIFY_IS_TRUE(titles.contains(L"earlier detached"));
+            VERIFY_IS_TRUE(titles.contains(L"ordinary visible"));
+            VERIFY_IS_TRUE(titles.contains(L"attached kept"));
+            const auto expected = WindowLayout::ToJson(layout);
+            page->_manager.DiscardAllKeptGroups();
+            page->ShutdownPanes();
+            VERIFY_ARE_EQUAL(expected, WindowLayout::ToJson(page->GetStartupRestoreLayout()));
+        });
+    }
+
+    void TabTests::StartupRestoreLayoutDeduplicatesVisibleAndClaimedTabs()
+    {
+        const auto page = _commonSetup();
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                page->_manager.DiscardAllKeptGroups();
+                page->ShutdownPanes();
+            });
+        });
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            tab->SuppressAgentPrewarm();
+            const winrt::guid id{ tab->StableId() };
+            page->SetTabKeepRunning(id, true);
+            const auto expected = ActionAndArgs::Serialize(page->GetWindowLayout().TabLayout());
+            page->_manager.KeepTab(*page, *tab);
+            VERIFY_ARE_EQUAL(expected, ActionAndArgs::Serialize(page->GetStartupRestoreLayout().TabLayout()));
+            page->_manager.BeginReattachKeptGroup(id);
+            VERIFY_ARE_EQUAL(expected, ActionAndArgs::Serialize(page->GetStartupRestoreLayout().TabLayout()));
+            VERIFY_ARE_EQUAL(0u, page->_manager.KeptPanes().Size());
+            page->_manager.CompleteKeptGroupReattach(id, true);
+        });
+    }
+
+    void TabTests::KeepRunningWindowCloseSavesDetachedOwnerContent()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        namespace Persistence = ::Microsoft::Terminal::WindowPersistence;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto background = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1127}" }, State::Connected);
+        const auto visible = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1128}" }, State::Connected);
+        const auto source = _commonSetup();
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> last;
+        std::filesystem::path path;
+        std::filesystem::path visiblePath;
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                source->_manager.DiscardAllKeptGroups();
+                source->ShutdownPanes();
+                if (last)
+                {
+                    last->ShutdownPanes();
+                }
+            });
+            if (!path.empty())
+            {
+                std::filesystem::remove(path);
+            }
+            if (!visiblePath.empty())
+            {
+                std::filesystem::remove(visiblePath);
+            }
+        });
+        TestOnUIThread([&]() {
+            source->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+            const auto tab = source->_GetFocusedTabImpl();
+            tab->SuppressAgentPrewarm();
+            tab->GetActiveTerminalControl().Connection(*background);
+            source->SetTabKeepRunning(winrt::guid{ tab->StableId() }, true);
+            last = _createStartupRestorePeer(source);
+            last->_CreateNewTabFromPane(last->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *visible));
+            last->_GetFocusedTabImpl()->SuppressAgentPrewarm();
+            last->_settings.GlobalSettings().FirstWindowPreference(FirstWindowPreference::PersistedLayoutAndContent);
+            source->CloseWindow();
+            source->ShutdownPanes();
+            const std::u16string_view output{ u"output received while headless" };
+            background->WriteInput({ output.data(), output.data() + output.size() });
+            VERIFY_ARE_EQUAL(1u, source->_manager.KeptPanes().Size());
+            last->CloseWindow();
+            const auto layout = last->GetStartupRestoreLayout();
+            const auto elevated = last->IsRunningElevated();
+            const std::filesystem::path directory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+            path = directory / Persistence::BufferFilename(background->SessionId(), elevated);
+            visiblePath = directory / Persistence::BufferFilename(visible->SessionId(), elevated);
+            const auto files = Persistence::BufferFilesForLayout(layout, elevated);
+            VERIFY_IS_TRUE(files.contains(path.filename().wstring()));
+            source->_manager.DiscardAllKeptGroups();
+            last->ShutdownPanes();
+            std::ifstream file{ path, std::ios::binary };
+            const auto bytes = std::filesystem::file_size(path);
+            std::wstring text(static_cast<size_t>(bytes / sizeof(wchar_t)), L'\0');
+            file.read(reinterpret_cast<char*>(text.data()), static_cast<std::streamsize>(bytes));
+            VERIFY_IS_TRUE(file.good());
+            VERIFY_IS_TRUE(text.find(L"output received while headless") != std::wstring::npos);
+        });
+    }
+
+    void TabTests::KeepRunningEmptyWindowClosePreservesDetachedTabs()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        const auto source = _commonSetup();
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> empty;
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                source->_manager.DiscardAllKeptGroups();
+                source->ShutdownPanes();
+                if (empty)
+                {
+                    empty->ShutdownPanes();
+                }
+            });
+        });
+        TestOnUIThread([&]() {
+            source->_settings.GlobalSettings().FirstWindowPreference(FirstWindowPreference::PersistedLayout);
+            source->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+            const auto tab = source->_GetFocusedTabImpl();
+            tab->SuppressAgentPrewarm();
+            tab->SetTabText(L"background without receiver tabs");
+            source->SetTabKeepRunning(winrt::guid{ tab->StableId() }, true);
+            empty = _createStartupRestorePeer(source);
+            empty->_startupState = winrt::TerminalApp::implementation::StartupState::NotInitialized;
+            empty->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Always);
+            source->CloseWindow();
+            source->ShutdownPanes();
+            empty->CloseWindow();
+            VERIFY_IS_TRUE(empty->_windowCloseAccepted);
+            const auto layout = empty->GetStartupRestoreLayout();
+            VERIFY_IS_NOT_NULL(layout);
+            VERIFY_ARE_EQUAL(ShortcutAction::NewTab, layout.TabLayout().GetAt(0).Action());
+            const auto expected = WindowLayout::ToJson(layout);
+            source->_manager.DiscardAllKeptGroups();
+            VERIFY_ARE_EQUAL(expected, WindowLayout::ToJson(empty->GetStartupRestoreLayout()));
         });
     }
 
