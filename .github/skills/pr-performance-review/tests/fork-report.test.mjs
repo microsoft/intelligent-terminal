@@ -151,6 +151,7 @@ test('inline preview captures only fixed summary output with fixed identity and 
         TRUSTED_REVIEW_RUNTIME: fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url)),
         PR_NUMBER: String(identity.prNumber), BASE_SHA: identity.baseSha, HEAD_SHA: identity.headSha,
     });
+
     try {
         const directory = fs.mkdtempSync(path.join(process.cwd(), '.performance-fork-summary-'));
         t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -169,6 +170,62 @@ test('inline preview captures only fixed summary output with fixed identity and 
         await assert.rejects(preview('{', markdown, directory), SyntaxError);
         assert.equal(runtime.readReviewSummary(directory), markdown, 'summary survives invalid JSON and identity failures');
         assert.doesNotMatch(script, /writeFile|exec|spawn|fetch\(/);
+    } finally {
+        for (const key of ['TRUSTED_REVIEW_RUNTIME', 'PR_NUMBER', 'BASE_SHA', 'HEAD_SHA']) {
+            if (prior[key] === undefined) delete process.env[key];
+            else process.env[key] = prior[key];
+        }
+    }
+});
+
+test('repair report tool rejects a missing second location and accepts correction before native handoff', async () => {
+    const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
+    const script = workflow.match(/    script: \|\n([\s\S]*?)\n\njobs:/)[1]
+        .split('\n').map(line => line.slice(6)).join('\n');
+    assert.doesNotMatch(script, /writeFile|readFile|exec|spawn|fetch\(/);
+    const inline = new (Object.getPrototypeOf(async function () {}).constructor)('report_json', script);
+    const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
+    const handler = compiled.match(/cat > "[^"]*\/validate_performance_report\.cjs" << '([^'\r\n]+)'\r?\n([\s\S]*?)\r?\n          \1/)[2];
+    const module = { exports: {} };
+    new Function('module', 'require', handler)(module, { main: null });
+    const validate = async report_json => {
+        const expected = await inline(report_json);
+        assert.deepEqual(await module.exports.execute({ report_json }), expected);
+        return expected;
+    };
+    assert.match(compiled, /--allow-tool mcpscripts --allow-tool safeoutputs/);
+    const prior = { ...process.env };
+    Object.assign(process.env, {
+        TRUSTED_REVIEW_RUNTIME: fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url)),
+        PR_NUMBER: String(identity.prNumber), BASE_SHA: identity.baseSha, HEAD_SHA: identity.headSha,
+    });
+    try {
+        const value = report();
+        value.mode = 'repair';
+        value.status = 'pending_validation';
+        value.validationPlan = { type: 'wta-unit', testFilter: 'tests::focused' };
+        value.findings[0].category = 'wta-runtime';
+        value.findings[0].location = 'tools/wta/src/lib.rs:1';
+        value.findings[0].fixDisposition = 'proposed';
+        value.findings.push({ ...structuredClone(value.findings[0]), id: 'PERF-SECOND-FINDING' });
+        delete value.findings[1].location;
+        await assert.rejects(validate(JSON.stringify(value)), /findings\[1\]\.location must be a non-empty string/);
+        await assert.rejects(module.exports.execute({ report_json: JSON.stringify(value) }),
+            /findings\[1\]\.location must be a non-empty string/);
+        value.findings[1].location = 'tools/wta/src/lib.rs:16';
+        assert.deepEqual(await validate(JSON.stringify(value)), { status: 'pending_validation', findings: 2 });
+        for (const mutate of [
+            r => { r.identity.prNumber++; },
+            r => { r.identity.baseSha = 'c'.repeat(40); },
+            r => { r.identity.headSha = 'c'.repeat(40); },
+            r => { r.mode = 'guide'; },
+            r => { r.findings[1].fixDisposition = 'fixed'; },
+        ]) {
+            const invalid = structuredClone(value);
+            mutate(invalid);
+            await assert.rejects(validate(JSON.stringify(invalid)));
+        }
+        await assert.rejects(validate('{'), SyntaxError);
     } finally {
         for (const key of ['TRUSTED_REVIEW_RUNTIME', 'PR_NUMBER', 'BASE_SHA', 'HEAD_SHA']) {
             if (prior[key] === undefined) delete process.env[key];

@@ -26,7 +26,9 @@ test('repair report validation belongs to trusted post-processing, not a model-s
     const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
     const agent = fs.readFileSync(new URL('../../../agents/ghaw-pr-performance.agent.md', import.meta.url), 'utf8');
     const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
-    assert.match(workflow, /Do not run an\s+agent-side validator or renderer/);
+    assert.match(workflow, /Do not run a shell validator or renderer/);
+    assert.match(workflow, /Submit the complete\s+JSON to `validate_performance_report`/);
+    assert.match(workflow, /After acceptance, write that exact JSON to/);
     assert.match(workflow, /Write the fixed report and summary through the permitted file-editing tool/);
     assert.match(agent, /repair caller validates the fixed JSON report in trusted post-processing before\s+native tests/);
     assert.match(compiled, /performance-trusted\.mjs\\" gate/);

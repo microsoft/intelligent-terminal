@@ -94,8 +94,15 @@ The model's table uses `Proposed repair`, never a premature `Fixed` claim.
 Actual validated/publication status comes separately from the trusted
 controller. Mechanical JSON remains necessary for proposal identity, scope,
 sealing, and publication; it is not the source of the human PR summary.
-The repair agent writes that JSON directly. Trusted post-processing validates
-it before sealing or native execution; the agent does not need to invoke a
+The repair agent first submits the complete JSON to the caller's scoped
+`validate_performance_report` tool. Field and immutable-identity errors are
+returned while the agent can correct them; after acceptance it writes the
+identical JSON to the fixed report path. The tool reuses the existing shared
+validator, reads no source, writes no files, and does not grant native success.
+This early feedback was added after the missing-location hosted failure; its
+local rejection/correction checks are not hosted execution proof.
+Trusted post-processing independently revalidates the actual persisted report
+before sealing or native execution. The agent does not need to invoke a
 duplicate shell validator or renderer. This removes the workflow's dependency
 on the failed agent-side PowerShell route without broadening permissions or
 claiming that the underlying CLI exception is fixed. Native formatting,

@@ -42,6 +42,28 @@ tools:
     - 'git show:*'
     - 'pwsh:*'
 
+mcp-scripts:
+  validate_performance_report:
+    description: 'Validate repair JSON against the fixed caller identity and return field errors before native handoff; never edits source, runs tests, or authorizes publication.'
+    inputs:
+      report_json:
+        type: string
+        required: true
+        description: 'Complete version-1 repair report as JSON, including location and all other required fields for every finding.'
+    env:
+      TRUSTED_REVIEW_RUNTIME: '${{ runner.temp }}/performance-trusted.mjs'
+      PR_NUMBER: ${{ github.event.inputs.pr_number }}
+      BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+      HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+    script: |
+      const { pathToFileURL } = await import('node:url');
+      const runtime = await import(pathToFileURL(process.env.TRUSTED_REVIEW_RUNTIME).href);
+      const report = runtime.validateReport(JSON.parse(report_json), {
+        mode: 'repair', prNumber: Number(process.env.PR_NUMBER),
+        baseSha: process.env.BASE_SHA, headSha: process.env.HEAD_SHA
+      });
+      return { status: report.status, findings: report.findings.length };
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -617,11 +639,17 @@ separate checks table; state "No actionable findings" without invented rows.
 These are review-time proposals: never claim `Fixed` before trusted publication.
 The Markdown summary is diagnostic only and cannot authorize repair or native success.
 
-Write `/tmp/gh-aw/performance-report.json` using the skill's mechanical contract.
-Trusted post-processing validates it with repair mode before sealing or
-allowing native validation; it rejects invalid reports. Do not run an
-agent-side validator or renderer: the human summary is already your explicit
-Markdown artifact, not reconstructed renderer output.
+Read the skill's complete Report contract before preparing the mechanical JSON;
+do not stop at a partial skill-file read. Every finding needs its own `location`
+and every other required field, not just the first finding. Submit the complete
+JSON to `validate_performance_report`. If it returns a field or identity error,
+correct the report and call that tool again; do not request native jobs or
+finish with an invalid report. After acceptance, write that exact JSON to
+`/tmp/gh-aw/performance-report.json`. Any subsequent report change requires
+another tool validation. This gives you correction feedback before handoff;
+trusted post-processing still independently validates the persisted report
+before sealing or native execution. Do not run a shell validator or renderer:
+the human summary is already your explicit Markdown artifact.
 Medium/low findings are advice only. Unresolved
 or unsafe HIGH findings are not edited. Edit only one or more original
 candidate files when the skill's HIGH repair eligibility is fully met, identify the

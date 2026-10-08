@@ -66,7 +66,8 @@ classification, report validation, card rendering, and publication gating.
    version-1 report. Repair writes the caller's fixed summary and report files;
    fork guidance submits its summary and structured report through the declared
    tool without general shell or file-writing access. Follow the caller's
-   mechanical validation contract: gh-aw repair uses trusted post-processing,
+   mechanical validation contract: gh-aw repair uses its scoped report tool
+   for early feedback and trusted post-processing for final authority,
    while fork guidance uses its scoped report tool. Request exactly the output
    allowed by the caller.
 
@@ -419,10 +420,18 @@ Use `pending_validation` for eligible HIGH proposals, `action_required` when unr
 `advisory` for only MEDIUM/LOW, `pass` for no findings, and `blocked` when a
 check errors.
 
-The gh-aw repair caller validates the fixed mechanical report in trusted
-post-processing before sealing, native validation, or publication. Write that
-report and the explicit Markdown summary through permitted file-editing tools,
-then request only the caller-allowed native jobs or noop. Do not require a
+Read this complete Report contract before authoring JSON. Every finding needs
+all required fields, including its own `location`; a valid first finding does
+not validate the others.
+
+The gh-aw repair caller exposes `validate_performance_report` for field and
+immutable-identity feedback while the agent can still correct its report.
+Submit the full JSON, correct any rejection, and write the identical accepted
+JSON to the fixed report path. Revalidate any later report change before
+requesting native jobs or noop. Keep the explicit Markdown summary independent.
+Trusted post-processing revalidates the persisted report before sealing,
+native validation, or publication; tool acceptance is not native authority.
+Do not require a
 duplicate agent-side shell validator or renderer, and never treat a shell error
 as proof that native source analysis is incomplete. The native report, source,
 test-selector, and publication gates remain mandatory.

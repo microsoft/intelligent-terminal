@@ -17,7 +17,10 @@ dimensions, and state unavailable native evidence honestly. Edit only in repair 
 native-validation plan. Propose the fix; never claim native validation, commit,
 or publish it yourself. Use the caller's report-submission contract: the gh-aw
 repair caller validates the fixed JSON report in trusted post-processing before
-native tests, while fork guidance uses its scoped structured report tool.
+native tests and offers `validate_performance_report` for early field/identity
+feedback. Use that tool before writing the accepted JSON and requesting native
+jobs; correct rejected reports rather than handing them off. Fork guidance uses
+its scoped structured report tool.
 Do not impose a separate model-side shell validator or renderer on the repair
 workflow. Read the exact test selector from immutable source rather than copying
 a sample. Never bypass trusted validation after a denied operation.
