@@ -139,15 +139,20 @@ try
     Check(GetCurrentPackageFullName(&length, nullptr) == APPMODEL_ERROR_NO_PACKAGE, "Run this test unpackaged");
 
     const auto dev = Protocol::details::AllowDevelopmentProxy;
-    if (dev)
+    const auto elevated = Protocol::details::IsProcessElevated();
+    std::printf("Actual process elevation: %s\n", elevated ? "yes" : "no");
+    if (dev || elevated)
     {
-        Check(Protocol::details::GetTrustedProxyPath() == Protocol::details::GetExecutableLocalProxyPath(), "Dev uses its own sibling path");
+        Check(Protocol::details::GetTrustedProxyPath() == Protocol::details::GetExecutableLocalProxyPath(), "Dev or elevated unpackaged process uses its own sibling path");
+        wil::unique_hmodule output;
+        THROW_IF_FAILED(Protocol::LoadAndVerifyLocalProxyDll(output));
+        Check(!!output, "Allowed unpackaged process loads its sibling DLL");
     }
     else
     {
         wil::unique_hmodule output{ LoadLibraryExW(L"version.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32) };
         THROW_LAST_ERROR_IF_NULL(output);
-        Check(Protocol::LoadAndVerifyLocalProxyDll(output) == HRESULT_FROM_WIN32(APPMODEL_ERROR_NO_PACKAGE), "Unpackaged production must fail before loading");
+        Check(Protocol::LoadAndVerifyLocalProxyDll(output) == HRESULT_FROM_WIN32(APPMODEL_ERROR_NO_PACKAGE), "Non-elevated unpackaged production must fail before loading");
         Check(!output, "Failure must clear the output handle");
     }
 
@@ -175,6 +180,8 @@ try
         PackageFixture::root = localProxy.substr(0, localProxy.find_last_of(L'\\'));
         PackageFixture::identityError = ERROR_BAD_ENVIRONMENT;
         verifyLoad(HRESULT_FROM_WIN32(ERROR_BAD_ENVIRONMENT));
+        PackageFixture::identityError = APPMODEL_ERROR_NO_PACKAGE;
+        verifyLoad(dev || elevated ? S_OK : HRESULT_FROM_WIN32(APPMODEL_ERROR_NO_PACKAGE));
         PackageFixture::identityError = ERROR_SUCCESS;
         PackageFixture::probeError = ERROR_INVALID_DATA;
         verifyLoad(HRESULT_FROM_WIN32(ERROR_INVALID_DATA));

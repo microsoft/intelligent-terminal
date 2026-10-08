@@ -88,9 +88,12 @@ publisher. External-location executables fail closed rather than borrowing a
 different package's proxy.
 
 Dev branding also allows unpackaged execution, but still loads only its own
-executable's sibling proxy. This compile-time exception does not apply to
-Release, Preview, or Canary processes, even when Dev is installed alongside them.
-No runtime environment variable enables it. Package-local files in a mutable
+executable's sibling proxy. Release, Preview, and Canary allow this only when
+the actual process token is elevated and the identity API returns
+`APPMODEL_ERROR_NO_PACKAGE`, as elevated shells can lack package identity.
+Other package API errors never enable sibling loading. Non-elevated unpackaged
+production processes still fail closed, even with Dev installed alongside them.
+No runtime environment variable enables either exception. Package-local files in a mutable
 Debug layout are not represented as tamper-proof.
 
 Both owned processes bind all interfaces implemented by this DLL, including

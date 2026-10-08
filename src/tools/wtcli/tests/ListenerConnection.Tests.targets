@@ -6,4 +6,7 @@
     <ClCompile Remove="main.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)ListenerConnection.Tests.cpp" />
   </ItemGroup>
+  <Target Name="CopyListenerConnectionTestProxy" AfterTargets="Build" Condition="'$(ProjectName)' == 'wtcli' and '$(Configuration)'!='Fuzzing'">
+    <Copy SourceFiles="$(OpenConsoleCommonOutDir)OpenConsoleProxy.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

@@ -56,11 +56,23 @@ namespace Microsoft::Terminal::Protocol
             return executablePath;
         }
 
+        [[nodiscard]] inline bool IsProcessElevated()
+        {
+            wil::unique_handle token;
+            THROW_IF_WIN32_BOOL_FALSE(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, token.put()));
+            TOKEN_ELEVATION elevation{};
+            DWORD returnedSize{};
+            THROW_IF_WIN32_BOOL_FALSE(GetTokenInformation(token.get(), TokenElevation, &elevation, sizeof(elevation), &returnedSize));
+            return elevation.TokenIsElevated != 0;
+        }
+
         [[nodiscard]] inline std::wstring GetTrustedProxyPath()
         {
             UINT32 length = 0;
             const auto identityResult = GetCurrentPackageFullName(&length, nullptr);
-            if (AllowDevelopmentProxy && identityResult == APPMODEL_ERROR_NO_PACKAGE)
+            // Elevated production clients can lack package identity. Only that
+            // specific result permits a sibling DLL; other API errors fail closed.
+            if (identityResult == APPMODEL_ERROR_NO_PACKAGE && (AllowDevelopmentProxy || IsProcessElevated()))
             {
                 return GetExecutableLocalProxyPath();
             }
@@ -182,8 +194,8 @@ namespace Microsoft::Terminal::Protocol
     }
 
     // Packaged execution uses the current package's DLL, not another publisher's
-    // or version's registration. Dev also permits an unpackaged sibling DLL.
-    // Neither mode falls back to registry/PATH or another package's proxy.
+    // or version's registration. Dev and actually elevated unpackaged processes
+    // also permit their own sibling DLL. No registry/PATH or other-package fallback.
     // On failure the output handle is empty and COM registration is unchanged.
     [[nodiscard]] inline HRESULT LoadAndVerifyLocalProxyDll(wil::unique_hmodule& proxyDll) noexcept
     try

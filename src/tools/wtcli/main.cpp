@@ -125,25 +125,35 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
     }
 
     winrt::com_ptr<ITerminalProtocol> server;
-    if (mode == TerminalConnectionMode::ExistingOnly)
-    {
+    const auto connectExisting = [&]() -> HRESULT {
         // Keep the returned factory instead of probing then activating: shutdown
         // can race either call, but must never launch a replacement Terminal.
         winrt::com_ptr<IUnknown> running;
-        hr = GetActiveObject(cls, nullptr, running.put());
-        if (SUCCEEDED(hr))
+        auto result = GetActiveObject(cls, nullptr, running.put());
+        if (SUCCEEDED(result))
         {
             winrt::com_ptr<IClassFactory> factory;
-            hr = running->QueryInterface(__uuidof(IClassFactory), factory.put_void());
-            if (SUCCEEDED(hr))
+            result = running->QueryInterface(__uuidof(IClassFactory), factory.put_void());
+            if (SUCCEEDED(result))
             {
-                hr = factory->CreateInstance(nullptr, __uuidof(ITerminalProtocol), server.put_void());
+                result = factory->CreateInstance(nullptr, __uuidof(ITerminalProtocol), server.put_void());
             }
         }
+        return result;
+    };
+    if (mode == TerminalConnectionMode::ExistingOnly)
+    {
+        hr = connectExisting();
     }
     else
     {
         hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
+        if (hr == REGDB_E_CLASSNOTREG)
+        {
+            // Elevated unpackaged shells cannot discover the packaged class,
+            // but can use an already-running factory at their integrity level.
+            hr = connectExisting();
+        }
     }
     if (FAILED(hr))
     {

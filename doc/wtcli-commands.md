@@ -80,7 +80,8 @@ scripts) are not counted.
 ## Listener regression tests
 
 Native mock tests compile the real CLI parser and connection code with mocked
-COM entry points. They verify default activation, existing-factory routing, and
+COM entry points. They verify default activation, class-unregistered recovery
+through the running factory, existing-factory routing, and
 failure without activation when the factory is absent or incompatible for
 `listen` and both `publish` input forms; no Terminal or agent is launched.
 From a razzle CMD session at the repository root:
@@ -90,7 +91,9 @@ MSBuild src\tools\wtcli\wtcli.vcxproj /nologo /m /v:minimal /p:Configuration=Deb
 bin\x64\Debug\wtcli\wtcli-listener-native-tests.exe
 ```
 
-The test build uses a separate executable name. Rebuild `wtcli.vcxproj` without
+The test build uses a separate executable name and copies the adjacent proxy DLL
+so the shared all-mode proxy initialization uses the built DLL in native tests.
+Rebuild `wtcli.vcxproj` without
 the test import to produce the normal product binary. WTA unit tests cover the
 managed argument contract, bounded retries, and transient listener recovery
 delivering a real mocked shell-error event to Autofix. The existing

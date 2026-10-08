@@ -22,6 +22,7 @@
   <ItemGroup>
     <ClInclude Include="Formatting.h" />
     <ClInclude Include="wtcli_functions.h" />
+    <ClInclude Include="..\..\cascadia\TerminalProtocol\ProtocolMarshaling.h" />
   </ItemGroup>
   <ItemDefinitionGroup>
     <ClCompile>
