@@ -105,6 +105,7 @@ pub enum RecommendedAction {
 /// Wraps a chosen recommendation with execution options (e.g. insert-only mode).
 #[derive(Debug, Clone)]
 pub struct ChoiceExecution {
+    pub run: Option<crate::telemetry::FixRunIdentity>,
     pub choice: RecommendationChoice,
     /// When true, Send actions paste text without a trailing Enter (insert-only).
     pub insert_only: bool,
@@ -298,6 +299,12 @@ pub async fn run_recommendation_executor(
 ) {
     while let Some(mut exec) = rx.recv().await {
         let delegate_agents = delegate_agents.lock().unwrap().clone();
+        if let Some(run) = exec.run {
+            // Emit both on the consumer: a successful send can wake this task
+            // before the UI finishes finalizing the confirmation.
+            crate::telemetry::log_error_fix_accepted(run.offer_id, run.source);
+            crate::telemetry::log_error_fix_run_started(run);
+        }
         let result =
             match bind_choice_target(&mut exec.choice, exec.context.target_pane_id.as_deref()) {
                 Ok(()) => {
@@ -313,6 +320,9 @@ pub async fn run_recommendation_executor(
                 Err(err) => Err(err),
             };
         let success = result.is_ok();
+        if let Some(run) = exec.run {
+            crate::telemetry::log_error_fix_run_result(run.offer_id, run.run_id, result.is_ok());
+        }
         match result {
             Ok(()) => {}
             Err(err) => {
@@ -1789,6 +1799,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingWtChannel {
         requests: Mutex<Vec<(String, serde_json::Value)>>,
+        fail_send: bool,
     }
 
     #[async_trait::async_trait]
@@ -1802,6 +1813,9 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((method.to_string(), params));
+            if self.fail_send && method == "send_input" {
+                anyhow::bail!("test dispatch failure");
+            }
             Ok(json!({}))
         }
 
@@ -1858,6 +1872,7 @@ mod tests {
                 Arc::new(Mutex::new(Vec::new())),
             ));
             tx.send(super::ChoiceExecution {
+                run: None,
                 choice: RecommendationChoice {
                     choice: 1,
                     title: "Insert".into(),
@@ -2027,6 +2042,100 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn run_telemetry_preserves_dispatch_and_never_claims_execution_success() {
+        use super::{run_recommendation_executor, AppEvent, ChoiceExecution, TurnContext};
+        use crate::telemetry::capture::{take, Event};
+
+        for (insert_only, observed, fail_send, source) in [
+            (false, true, false, "Manual"),
+            (false, true, false, "Detection"),
+            (false, true, false, "Unknown"),
+            (false, true, true, "Manual"),
+            (true, false, false, "Manual"),
+            (false, false, false, "Manual"),
+        ] {
+            take();
+            let channel = Arc::new(RecordingWtChannel {
+                fail_send,
+                ..Default::default()
+            });
+            let shell = Arc::new(
+                ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>),
+            );
+            let (tx, rx) = mpsc::unbounded_channel();
+            let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+            let run = crate::telemetry::FixRunIdentity {
+                offer_id: uuid::Uuid::new_v4(),
+                run_id: uuid::Uuid::new_v4(),
+                source,
+            };
+            let input = "cmd /c exit 17; cmd /c exit 0";
+            tx.send(ChoiceExecution {
+                run: observed.then_some(run),
+                choice: RecommendationChoice {
+                    choice: 1,
+                    title: "Run".into(),
+                    rationale: String::new(),
+                    actions: vec![RecommendedAction::Send {
+                        parent: "model-target".into(),
+                        input: input.into(),
+                    }],
+                },
+                insert_only,
+                context: TurnContext::with_target_pane("target-pane"),
+                completion: None,
+            })
+            .unwrap();
+            drop(tx);
+            // Drain the queued request without any producer-side continuation.
+            // Acceptance must already be carried by the request, not emitted
+            // after send by a separately scheduled UI task.
+            assert!(take().is_empty());
+            run_recommendation_executor(rx, event_tx, shell, Arc::new(Mutex::new(Vec::new())))
+                .await;
+
+            let payload = if insert_only {
+                input.to_string()
+            } else {
+                format!("{input}\r")
+            };
+            let mut expected = vec![(
+                "send_input".to_string(),
+                json!({"session_id": "target-pane", "text": payload}),
+            )];
+            if !fail_send {
+                expected.push(("focus_pane".into(), json!({"session_id": "target-pane"})));
+            }
+            assert_eq!(*channel.requests.lock().unwrap(), expected);
+            let expected_events = if observed {
+                vec![
+                    Event::ErrorFixAccepted(run.offer_id, run.source),
+                    Event::ErrorFixRunStarted(run.offer_id, run.run_id),
+                    Event::ErrorFixRunResult(
+                        run.offer_id,
+                        run.run_id,
+                        if fail_send {
+                            "dispatchFailed"
+                        } else {
+                            "unobservable"
+                        },
+                    ),
+                ]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(take(), expected_events);
+            let mut errors = 0;
+            while let Ok(event) = event_rx.try_recv() {
+                if matches!(event, AppEvent::SystemMessage(_)) {
+                    errors += 1;
+                }
+            }
+            assert_eq!(errors, usize::from(fail_send));
+        }
     }
 
     #[test]

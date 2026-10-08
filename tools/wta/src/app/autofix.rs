@@ -17,8 +17,9 @@ use super::*;
 /// active, and re-emits the active tab's snapshot on tab_changed.
 #[derive(Debug, Clone, Default)]
 pub struct TabAutofixState {
-    /// One concrete recommendation, not the Detected/Pending/Review projection.
+    /// Identity of the current analysis flow, retained when its card is regenerated.
     pub(super) offer: Option<ErrorFixOffer>,
+    pub(super) detected_offer: Option<(String, uuid::Uuid)>,
     /// Failing pane for an active analysis. Cleared when the user dismisses
     /// (Esc), the error resolves (exit 0 on the same pane), or the fix
     /// is executed.
@@ -53,6 +54,7 @@ pub struct TabAutofixState {
 #[derive(Debug, Clone)]
 pub(super) struct ErrorFixOffer {
     pub(super) id: uuid::Uuid,
+    pub(super) source: &'static str,
     pub(super) prompt_id: u64,
     pub(super) offered: bool,
     pub(super) accepted: bool,
@@ -132,24 +134,30 @@ impl App {
         };
         if tab.turn.prompt_id() == Some(offer.prompt_id) && !offer.offered {
             offer.offered = true;
-            crate::telemetry::log_error_fix_offered(offer.id);
+            crate::telemetry::log_error_fix_offered(offer.id, offer.source);
         }
     }
 
-    pub(super) fn log_error_fix_accepted(&mut self, session_id: &str) {
-        let tab = self.session_tab_mut(session_id);
+    pub(super) fn error_fix_run_identity(
+        &self,
+        session_id: &str,
+    ) -> Option<crate::telemetry::FixRunIdentity> {
+        let tab = self.session_tab(session_id);
         if !tab.turn.is_autofix()
             || tab.turn.recommendations().is_none()
             || tab.turn.autofix_generation() != Some(tab.autofix.generation)
         {
-            return;
+            return None;
         }
-        let Some(offer) = tab.autofix.offer.as_mut() else {
-            return;
-        };
+        let offer = tab.autofix.offer.as_ref()?;
         if tab.turn.prompt_id() == Some(offer.prompt_id) && offer.offered && !offer.accepted {
-            offer.accepted = true;
-            crate::telemetry::log_error_fix_accepted(offer.id);
+            Some(crate::telemetry::FixRunIdentity {
+                offer_id: offer.id,
+                run_id: uuid::Uuid::new_v4(),
+                source: offer.source,
+            })
+        } else {
+            None
         }
     }
 
@@ -477,6 +485,7 @@ impl App {
             if self
                 .recommendation_tx
                 .send(crate::coordinator::ChoiceExecution {
+                    run: None,
                     choice,
                     insert_only: false,
                     context: TurnContext::with_target_pane(armed_pane),
@@ -558,6 +567,9 @@ impl App {
     /// Store a fresh bar snapshot on the target tab and, if that tab is
     /// currently active, forward it to WT so the bottom bar updates.
     pub(super) fn set_bar_snapshot(&mut self, target_tab_id: &str, snapshot: AutofixBarSnapshot) {
+        if matches!(snapshot, AutofixBarSnapshot::Idle) {
+            self.tab_mut(target_tab_id).autofix.detected_offer = None;
+        }
         self.tab_mut(target_tab_id).autofix.bar_snapshot = snapshot.clone();
         if target_tab_id == self.active_tab_key() {
             send_bar_event(&snapshot, Some(target_tab_id));

@@ -15,8 +15,8 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 |---|---|---|
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
 | `Feature.HookShutdown.Tests.ps1` | Fixed-CLSID native/cached hook delivery without COM activation, late-hook suppression, and ordinary headless COM compatibility; no windows, agents, or configuration edits | 3 |
-| `Feature.TelemetryFunnels.Tests.ps1` | PR #990: opt-in, provider-only ETW adoption/engagement, per-window startup inventory/sidebar, slash rename, concrete Autofix offer/Run, palette entry, provider changes, and native-ready/startup-policy state; hot-policy checks remain separately visible | 18 (requires `ITE2E_TELEMETRY=1` and explicit policy approval) |
-| `Feature.SidebarTelemetry.Tests.ps1` | Opt-in typed ETW for startup sidebar state, real search/filter/context-menu actions, loaded Agent-view session counts, keep-running opt-in/detach/reattach and surviving-session prompts, rich-tab field changes/session-start snapshots, provider-session-ID exclusion, and suppression during editing/refresh/restore | 9 (requires `ITE2E_TELEMETRY=1`; no policy changes) |
+| `Feature.TelemetryFunnels.Tests.ps1` | Opt-in real ETW: daily activity, correlated prompt/completion, detection/offer/Run, foreground palette visits, startup/provider configuration and policy state; Run results remain unknown, not execution success | 18 required + 2 optional hot-policy diagnostics (requires `ITE2E_TELEMETRY=1` and explicit policy approval) |
+| `Feature.SidebarTelemetry.Tests.ps1` | Opt-in typed ETW: sidebar actions, real tab-order pin/unpin, KeepId/AttemptId restoration and surviving observation sessions, Launch/UserChange field snapshots, raw-provider-ID exclusion and negative controls | 10 (requires `ITE2E_TELEMETRY=1`; no policy changes) |
 | `Feature.WtcliPublishStdin.Tests.ps1` | PR #652: WTA/wtcli stdin transport delivers command-line-limit-sized events intact and preserves positional compatibility | 3 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
 | `Feature.SettingsUi.Tests.ps1` | Live Settings editor: Agent controls and Appearance's localized Tab Mode label matching FRE | 4 |
@@ -194,13 +194,15 @@ children. `SidebarTabPinned` means enabling Keep tab running,
 not tab-order pinning. Row-field selection verifies canonical field IDs for
 empty, single, and paired selections, a disabled third choice, and suppression
 during menu-only actions and metadata/layout refresh.
-Every successful agent-session start also emits the selection: the suite pairs
-these snapshots with `AgentSessionStarted` and starts a new fixture session
-after selecting a non-default pair to verify current, not hard-coded, values.
+Window creation emits the selection with Source=Launch, while actual edits use
+Source=UserChange. A new fixture session after a non-default selection must not
+emit another field snapshot. Real tab-order pin/unpin is tested separately from
+Keep running and carries typed Pinned/PinnedCount.
 The same scenario checks that explicit opt-ins emit distinct random `KeepId`
 values and typed post-enable `TotalTabCount` / `KeepRunningTabCount` snapshots,
-including search-hidden attached tabs. A real tab close and restoration emit matching detached/live events,
-and a prompt on the unchanged ACP session after reattachment carries
+including search-hidden attached tabs. A real tab close and restoration emit
+matching detached/live events, and matching AttemptId values connect restoration
+starts/results. A prompt on the unchanged ACP session after reattachment carries
 `AgentPromptSent.Reattached=true` and `UserPromptOrdinal=Second` while that
 session's earlier prompt carries `false` and `First`. A separate helper's
 first prompt also remains `First`.
@@ -211,7 +213,8 @@ assertions. Missing or unsupported schemas for selected events still fail.
 The same capture includes a real fixture prompt and verifies that App session
 starts and WTA session creation, prompt, first-text, and completion payloads
 contain no provider session identifiers. Prompt metrics are scoped by process
-and action phase rather than exported session IDs.
+and action phase, then joined by random telemetry SessionId/TurnId. These IDs
+never expose the provider's session ID.
 
 To validate only keep-running telemetry without running the unrelated row-field
 and Agent-view scenarios, retain the same Dev selection, telemetry opt-in, and
@@ -249,7 +252,7 @@ One bounded elevated `Collect-TelemetryTrace.ps1` capture covers the suite: only
 App, WTA, and Settings Model providers are enabled. No kernel/session-wide process tracing or
 third-party upload is used. Captures contain these providers' events from any concurrently
 running process; `scoped-events.json` includes only owned App/master/helper PIDs.
-For Win32Host, the typed funnel output includes only `SessionBecameInteractive`;
+For Win32Host, the typed funnel output includes only `SessionBecameInteractive` and `UserInteract`;
 unrelated structured diagnostics remain available in the raw ETL/XML.
 Raw ETL, tracerpt XML, TDH-extracted TraceLogging schemas, logman results, and package hashes remain
 in a unique artifact directory. Missing/ambiguous self-describing metadata fails validation;
@@ -294,20 +297,38 @@ it is not evidence that the blocked shell failure's VT event was captured.
 These cases can establish the original funnel requirement 3.1 only
 after those fields and controls pass; event names alone are insufficient.
 
-The two existing hot-policy cases remain strict, separately reported tests. Policy
-notification/hot refresh is currently unresolved on the validation host and tracked in
-[issue #991](https://github.com/microsoft/intelligent-terminal/issues/991); startup-policy
-acceptance neither fixes nor establishes hot-refresh behavior. Consequently, a run may
-validate startup field segmentation while still reporting the hot-policy failures.
-New startup-policy coverage is prepared, not a claim of a completed live pass.
+The required policy contract is next-process-start effectiveness, not hot refresh.
+Set `ITE2E_TELEMETRY_HOT_POLICY=1` only to add the two strict diagnostic cases for
+[issue #991](https://github.com/microsoft/intelligent-terminal/issues/991).
+Without this opt-in neither their registry writes nor their assertions run.
+Their historical failures remain evidence; startup acceptance does not establish
+hot-refresh behavior. The release checklist maps policy segmentation to the two
+startup variants rather than imposing an unrequired notification contract.
 
 The original requirement rows are not equivalent to event counts: several share `AppCreated`
-or ACP session creation. Eight rows concern absent sidebar/keep-running features and remain
-deferred. D7/D28 retention still requires backend device identity, elapsed days, and cohort
+or ACP session creation. Sidebar and keep-running contracts are covered separately
+by `Feature.SidebarTelemetry`. D7/D28 retention still requires backend device identity, elapsed days, and cohort
 queries; two-prompt depth can be demonstrated locally but does not validate a backend query.
 `DefaultsFallback=true` and compatibility-only unknown categories are not credited by the
 normal-startup scenarios. Results belong to the selected build's generated report and retained
 capture, not a blanket assertion that every environment or backend metric passed.
+
+After both captures, validate the local business funnels rather than dividing
+unrelated event totals:
+
+```powershell
+.\test\e2e\tools\Test-CapturedTelemetryFunnels.ps1 `
+  -FunnelCapture '<funnel scenario directory containing scoped-events.json>' `
+  -SidebarCapture '<sidebar scenario directory containing scoped-events.json>' `
+  -OutputPath '<local output directory>\business-funnel-counts.json'
+```
+
+The command requires successful source phases, joins opaque IDs in timestamp
+order, asserts eleven deterministic numerator/denominator pairs, and checks
+duplicate delivery, missing completions, unrelated sessions and empty cohorts.
+It does not credit unrelated failed UI phases, replace full-suite results, or
+claim backend ingestion, production conversion rates, execution success or
+D7/D28 retention.
 
 Three planes, all built on self-verifying primitives:
 

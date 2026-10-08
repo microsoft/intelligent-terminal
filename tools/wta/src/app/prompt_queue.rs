@@ -21,6 +21,7 @@ pub(super) struct QueuedRequest {
     pub queued_at: std::time::Instant,
     pub capturing: bool,
     pub needs_resubmission: bool,
+    detection_id: Option<uuid::Uuid>,
     restore_text: Option<String>,
     image_token_ranges: Vec<std::ops::Range<usize>>,
 }
@@ -462,6 +463,11 @@ impl App {
                     self.tab_sessions
                         .get(&tab_id)
                         .and_then(|tab| tab.reattached_session_id().map(str::to_string)),
+                )
+                .with_restore_identity(
+                    self.tab_sessions
+                        .get(&tab_id)
+                        .and_then(|tab| tab.restore_identity()),
                 );
             item.submission.submitted_at_unix_s = now_unix_s();
             if let Some(context) = item.submission.pane_context.as_mut() {
@@ -514,6 +520,15 @@ impl App {
             };
             self.turn_submit_prompt_for_tab_with_cancellation(&tab_id, submitted, cancellation);
             if failure_summary {
+                if let Some(offer) = self.tab_mut(&tab_id).autofix.offer.as_mut() {
+                    if let Some(id) = item.detection_id {
+                        offer.id = id;
+                        offer.source = "Detection";
+                    } else {
+                        offer.source = "Unknown";
+                        tracing::warn!(target: "telemetry", prompt_id, "autofix analysis has no matching detection identity");
+                    }
+                }
                 if let Some(pane) = source {
                     let tab = self.tab_mut(&tab_id);
                     tab.autofix.pane_id = Some(pane.clone());
@@ -593,6 +608,7 @@ impl App {
             queued_at: std::time::Instant::now(),
             capturing: kind == RequestKind::ManualFix,
             needs_resubmission: false,
+            detection_id: None,
             restore_text: (kind == RequestKind::ManualFix && !tab.input.is_empty())
                 .then(|| tab.input.clone()),
             image_token_ranges: tab.attachments.token_ranges().collect(),
@@ -690,6 +706,13 @@ impl App {
             queued_at: std::time::Instant::now(),
             capturing: true,
             needs_resubmission: false,
+            // A later failure can replace the tab's detection before this runs.
+            detection_id: self
+                .tab_sessions
+                .get(tab_id)
+                .and_then(|tab| tab.autofix.detected_offer.as_ref())
+                .filter(|(source, _)| source == pane)
+                .map(|(_, id)| *id),
             restore_text: None,
             image_token_ranges: Vec::new(),
         };
@@ -1933,6 +1956,27 @@ mod tests {
         assert_eq!(app.current_tab().prompt_queue.entries.len(), 3);
         assert!(tokens.iter().all(|token| !token.is_cancelled()));
         assert!(!has_cancelled_notice(&app, 2));
+    }
+
+    #[test]
+    fn queued_error_fix_retains_detection_identity_from_admission() {
+        let _locale = crate::test_support::lock_locale();
+        for forced in [false, true] {
+            let (mut app, mut rx) = app();
+            hold(&mut app);
+            let detection_id = uuid::Uuid::new_v4();
+            app.current_tab_mut().autofix.detected_offer = Some(("source".into(), detection_id));
+            app.enqueue_autofix("queue-tab", "source", "original failure", forced);
+            super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
+            app.current_tab_mut().autofix.detected_offer =
+                Some(("source".into(), uuid::Uuid::new_v4()));
+            release(&mut app);
+
+            assert_eq!(rx.try_recv().unwrap().text, "original failure");
+            let offer = app.current_tab().autofix.offer.as_ref().unwrap();
+            assert_eq!(offer.id, detection_id);
+            assert_eq!(offer.source, "Detection");
+        }
     }
 
     #[test]

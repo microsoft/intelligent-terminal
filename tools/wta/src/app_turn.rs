@@ -88,7 +88,13 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.pending_terminal_action_proposal = None;
-        tab.autofix.offer = None;
+        tab.autofix.offer = is_autofix.then(|| super::autofix::ErrorFixOffer {
+            id: uuid::Uuid::new_v4(),
+            source: "Manual",
+            prompt_id: prompt.id,
+            offered: false,
+            accepted: false,
+        });
         tab.active_direct_proposal_id = None;
         // Autofix prompts are synthesized by the system; they don't render
         // as a User bubble (the user already sees the error line in the
@@ -784,9 +790,15 @@ impl App {
             None
         };
         self.session_tab_mut(session_id).pending_queue_action = Some(prompt_id);
+        let run = if insert_only {
+            None
+        } else {
+            self.error_fix_run_identity(session_id)
+        };
         let dispatched = self
             .recommendation_tx
             .send(crate::coordinator::ChoiceExecution {
+                run,
                 choice,
                 insert_only,
                 context,
@@ -819,8 +831,10 @@ impl App {
             .and_then(|p| p.autofix.as_ref())
             .is_some()
         {
-            if dispatched && !insert_only {
-                self.log_error_fix_accepted(session_id);
+            if dispatched && run.is_some() {
+                if let Some(offer) = self.session_tab_mut(session_id).autofix.offer.as_mut() {
+                    offer.accepted = true;
+                }
             }
             self.emit_autofix_state_cleared(&target_tab);
         }
@@ -1182,12 +1196,6 @@ impl App {
         // bottom-bar / suggested-pane side effects — they key off a real
         // failing pane (the Review pill, the Ctrl+Alt+. hotkey target).
         let bar_pane = prompt.context.target_pane_id().map(str::to_string);
-        let offer = super::autofix::ErrorFixOffer {
-            id: uuid::Uuid::new_v4(),
-            prompt_id: prompt.id,
-            offered: false,
-            accepted: false,
-        };
         self.log_selection_phase_for(
             session_id,
             phase_name,
@@ -1213,7 +1221,6 @@ impl App {
         }
         let rec_idx = recommended_choice_index(&recommendations);
         let tab = self.session_tab_mut(session_id);
-        tab.autofix.offer = Some(offer);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         tab.selected_recommendation = rec_idx;
         tab.selected_button = 0;

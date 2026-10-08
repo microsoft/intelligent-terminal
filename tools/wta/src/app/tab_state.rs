@@ -689,6 +689,7 @@ pub struct TabSession {
     #[allow(dead_code)]
     pub session_id: Option<String>,
     pub(crate) reattached_session_id: Option<String>,
+    pub(crate) restore_identity: Option<crate::telemetry::RestoreIdentity>,
 
     /// Per-pane ACP model override, set by the `/model` picker.
     pub model_override: Option<String>,
@@ -729,6 +730,10 @@ impl TabSession {
 
     pub(crate) fn is_reattached_session(&self) -> bool {
         self.reattached_session_id().is_some()
+    }
+
+    pub(crate) fn restore_identity(&self) -> Option<crate::telemetry::RestoreIdentity> {
+        self.reattached_session_id().and(self.restore_identity)
     }
 
     pub(crate) fn reattached_session_id(&self) -> Option<&str> {

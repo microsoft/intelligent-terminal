@@ -93,6 +93,7 @@ pub(crate) fn prompt_timing_log(
 
 #[derive(Debug)]
 struct ActivePromptTiming {
+    telemetry: crate::telemetry::PromptIdentity,
     id: u64,
     preview: String,
     submitted_at_unix_s: f64,
@@ -132,6 +133,7 @@ struct ActivePromptTiming {
 pub(crate) struct PromptTimingState {
     active: Mutex<HashMap<String, ActivePromptTiming>>,
     user_prompt_ordinals: Mutex<HashMap<String, u8>>,
+    observation_ids: Mutex<HashMap<String, uuid::Uuid>>,
 }
 
 impl PromptTimingState {
@@ -156,6 +158,18 @@ impl PromptTimingState {
 
     pub(crate) fn forget_session(&self, session_id: &str) {
         self.user_prompt_ordinals.lock().unwrap().remove(session_id);
+        self.observation_ids.lock().unwrap().remove(session_id);
+    }
+
+    pub(crate) fn telemetry_identity(
+        &self,
+        session_id: &str,
+        is_autofix: bool,
+    ) -> Option<crate::telemetry::PromptIdentity> {
+        let mut active = self.active.lock().unwrap();
+        let timing = active.get_mut(session_id)?;
+        timing.telemetry.is_autofix = is_autofix;
+        Some(timing.telemetry)
     }
 
     pub(crate) fn activate(
@@ -169,10 +183,21 @@ impl PromptTimingState {
     ) {
         let now = now_unix_s();
         let preview = prompt_preview(prompt_text);
+        let observation_id = *self
+            .observation_ids
+            .lock()
+            .unwrap()
+            .entry(session_id.to_string())
+            .or_insert_with(uuid::Uuid::new_v4);
         let mut active = self.active.lock().unwrap();
         active.insert(
             session_id.to_string(),
             ActivePromptTiming {
+                telemetry: crate::telemetry::PromptIdentity {
+                    session_id: observation_id,
+                    turn_id: uuid::Uuid::new_v4(),
+                    is_autofix: false,
+                },
                 id: prompt_id,
                 preview: preview.clone(),
                 submitted_at_unix_s,
@@ -531,6 +556,7 @@ impl PromptTimingState {
                 success,
                 active_prompt.is_byok,
                 &active_prompt.agent_id,
+                active_prompt.telemetry,
             );
         }
 
@@ -554,6 +580,60 @@ fn acp_trace_content(msg: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn telemetry_identity_is_per_observation_and_turn() {
+        let timing = PromptTimingState::default();
+        timing.activate("private-agent-session", 1, "", 0.0, false, "copilot");
+        let first = timing
+            .telemetry_identity("private-agent-session", false)
+            .unwrap();
+        assert_eq!(
+            timing.record_user_prompt_dispatch("private-agent-session", false),
+            "First"
+        );
+        timing.mark_prompt_sent("private-agent-session");
+        timing.complete("private-agent-session", true, None);
+        assert!(timing
+            .telemetry_identity("private-agent-session", false)
+            .is_none());
+        timing.activate("private-agent-session", 2, "", 0.0, false, "copilot");
+        let second = timing
+            .telemetry_identity("private-agent-session", true)
+            .unwrap();
+        assert_eq!(first.session_id, second.session_id);
+        assert_ne!(first.turn_id, second.turn_id);
+        assert!(second.is_autofix);
+        assert_eq!(
+            timing.record_user_prompt_dispatch("private-agent-session", true),
+            "NotUserPrompt"
+        );
+        assert_eq!(
+            timing.record_user_prompt_dispatch("private-agent-session", false),
+            "Second"
+        );
+        timing.activate("other", 3, "", 0.0, false, "claude");
+        assert_ne!(
+            first.session_id,
+            timing
+                .telemetry_identity("other", false)
+                .unwrap()
+                .session_id
+        );
+        timing.forget_session("private-agent-session");
+        timing.activate("private-agent-session", 4, "", 0.0, false, "copilot");
+        assert_ne!(
+            first.session_id,
+            timing
+                .telemetry_identity("private-agent-session", false)
+                .unwrap()
+                .session_id
+        );
+        assert_eq!(
+            timing.record_user_prompt_dispatch("private-agent-session", false),
+            "First"
+        );
+    }
 
     #[test]
     fn user_prompt_ordinals_follow_dispatched_turns_per_session() {
