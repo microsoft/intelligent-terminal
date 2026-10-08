@@ -1434,7 +1434,7 @@ namespace winrt::TerminalApp::implementation
         return winrt::to_string(id).starts_with("custom:");
     }
 
-    static bool _IsBuiltinAgentProviderId(const std::string_view id)
+    bool TerminalPage::_IsBuiltinAgentProviderId(const std::string_view id)
     {
         return std::ranges::any_of(
             ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents,
@@ -1445,12 +1445,27 @@ namespace winrt::TerminalApp::implementation
             });
     }
 
-    static bool _ShouldUseIncomingAgentProvider(const std::string_view existingProviderId,
-                                                const std::string_view incomingProviderId)
+    bool TerminalPage::_ShouldUseIncomingAgentProvider(const std::string_view existingProviderId,
+                                                       const std::string_view incomingProviderId)
     {
         return incomingProviderId.empty() ||
                !_IsBuiltinAgentProviderId(existingProviderId) ||
                _IsBuiltinAgentProviderId(incomingProviderId);
+    }
+
+    bool TerminalPage::_ShouldReplaceReportedAgentState(const _RichTabAgentInfo& existing, const _RichTabAgentInfo& incoming)
+    {
+        if (!_ShouldUseIncomingAgentProvider(existing.providerId, incoming.providerId))
+        {
+            return false;
+        }
+        if (_IsBuiltinAgentProviderId(incoming.providerId) && !_IsBuiltinAgentProviderId(existing.providerId))
+        {
+            return true;
+        }
+        return !existing.lastActivityAtMs ||
+               !incoming.lastActivityAtMs ||
+               incoming.lastActivityAtMs >= existing.lastActivityAtMs;
     }
 
     using SelectedCustomModel = std::pair<
@@ -3564,10 +3579,10 @@ namespace winrt::TerminalApp::implementation
     }
 
     bool TerminalPage::_ApplyAgentSessionStatusDelta(const std::string_view sessionId,
-                                                      const std::string_view paneSessionId,
-                                                      const std::string_view providerId,
-                                                      const std::optional<uint64_t> lastActivityAtMs,
-                                                      const std::string_view status)
+                                                     const std::string_view paneSessionId,
+                                                     const std::string_view providerId,
+                                                     const std::optional<uint64_t> lastActivityAtMs,
+                                                     const std::string_view status)
     {
         if (sessionId.empty() ||
             (status != "Idle" &&
@@ -3584,33 +3599,27 @@ namespace winrt::TerminalApp::implementation
         const auto statusString = std::string{ status };
         const auto providerIdString = std::string{ providerId };
         const auto paneId = _TryParsePaneSessionId(paneSessionId);
+        const auto incoming = _RichTabAgentInfo{ sessionIdString, statusString, providerIdString, lastActivityAtMs, paneId };
         const auto rejectsIncoming = [&](const auto& info) {
             return info.sessionId == sessionId && info.paneSessionId == paneId &&
-                   !_ShouldUseIncomingAgentProvider(info.providerId, providerId);
+                   !_ShouldReplaceReportedAgentState(info, incoming);
         };
         if (const auto existing = _richTabAgentStatusBySessionId.find(sessionIdString);
             existing != _richTabAgentStatusBySessionId.end() && rejectsIncoming(existing->second))
         {
             return true;
         }
-        if (paneId)
-        {
-            if (const auto existing = _richTabAgentStatusByPaneId.find(*paneId);
-                existing != _richTabAgentStatusByPaneId.end() && rejectsIncoming(existing->second))
-            {
-                return true;
-            }
-        }
         const auto updateInfo = [&](auto& info) {
+            if (!info.sessionId.empty() && info.paneSessionId == paneId &&
+                !_ShouldReplaceReportedAgentState(info, incoming))
+            {
+                return;
+            }
             const auto sameSession = info.sessionId.empty() ||
                                      (info.sessionId == sessionId && info.paneSessionId == paneId);
             if (!sameSession)
             {
                 info = _RichTabAgentInfo{ sessionIdString, statusString, providerIdString, lastActivityAtMs, paneId };
-                return;
-            }
-            if (sameSession && !_ShouldUseIncomingAgentProvider(info.providerId, providerId))
-            {
                 return;
             }
             info.sessionId = sessionIdString;
@@ -11573,7 +11582,7 @@ namespace winrt::TerminalApp::implementation
                     const auto existing = statusesBySessionId.find(sessionId);
                     if (existing == statusesBySessionId.end() ||
                         existing->second.paneSessionId != paneId ||
-                        _ShouldUseIncomingAgentProvider(existing->second.providerId, providerId))
+                        _ShouldReplaceReportedAgentState(existing->second, incoming))
                     {
                         if (providerId.empty() && existing != statusesBySessionId.end() &&
                             existing->second.paneSessionId == paneId)
@@ -11585,20 +11594,13 @@ namespace winrt::TerminalApp::implementation
                 }
                 if (paneId)
                 {
-                    const auto rank = [](const std::string_view value) {
-                        return value == "Working" || value == "Attention" || value == "Error" || value == "Idle" ? 2 :
-                               value == "Ended" ? 1 :
-                                                  0;
-                    };
                     const auto rowSessionId = row.get("session_id", "").asString();
                     auto incoming = _RichTabAgentInfo{ rowSessionId, status, providerId, lastActivityAtMs, paneId };
                     const auto existing = statusesByPaneId.find(*paneId);
                     const auto sameSession = existing != statusesByPaneId.end() &&
                                              existing->second.sessionId == rowSessionId;
                     if (existing == statusesByPaneId.end() ||
-                        (sameSession ?
-                             _ShouldUseIncomingAgentProvider(existing->second.providerId, providerId) :
-                             rank(status) > rank(existing->second.status)))
+                        _ShouldReplaceReportedAgentState(existing->second, incoming))
                     {
                         if (providerId.empty() && sameSession)
                         {

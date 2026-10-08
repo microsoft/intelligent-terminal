@@ -985,6 +985,9 @@ namespace winrt::TerminalApp::implementation
             std::optional<uint64_t> lastActivityAtMs;
             std::optional<winrt::guid> paneSessionId;
         };
+        static bool _IsBuiltinAgentProviderId(std::string_view id);
+        static bool _ShouldUseIncomingAgentProvider(std::string_view existingProviderId, std::string_view incomingProviderId);
+        static bool _ShouldReplaceReportedAgentState(const _RichTabAgentInfo& existing, const _RichTabAgentInfo& incoming);
         std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
         winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& profileIcon);
         std::unordered_map<std::string, std::string> _BuildRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);

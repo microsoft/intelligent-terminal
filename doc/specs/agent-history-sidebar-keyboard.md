@@ -16,10 +16,17 @@ replaces the tab list. The one-time upgrade described below changes the initial
 `tabLayout`; subsequent user choices, horizontal agent-session behavior, and
 other agent/delegation shortcuts remain supported.
 
-Native CLI launch identities remain paired with their original launch commands
-when hooks report activity from another provider, including nested agents.
-Activity/session bindings still rebind without overwriting persisted launch
-metadata for either built-in or custom providers.
+Custom native CLI launch identities remain `custom:<name>` when their underlying
+CLI reports activity as a built-in provider. Activity/session bindings still
+update, and built-in native CLI panes retain provider rebinding.
+
+For reports attributed to the same pane, a built-in provider takes precedence
+over a custom provider. Among built-in reports, the newest activity timestamp
+wins, including when providers or session IDs differ. Equal or missing timestamps
+use the latest received report. Live updates and refreshed session snapshots use
+the same rule, and tab/pane icons follow the selected reported provider rather
+than remaining fixed to the agent originally launched. No nested-agent stack is
+inferred.
 
 ## One-time Sidebar upgrade and introduction
 

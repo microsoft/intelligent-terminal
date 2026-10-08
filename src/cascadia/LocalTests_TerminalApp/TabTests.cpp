@@ -373,6 +373,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryStatusText);
         TEST_METHOD(VerticalTabProgressPercentUsesLocaleFormatting);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
+        TEST_METHOD(LatestBuiltinAgentReportWinsForPane);
         TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
         TEST_METHOD(BottomBarSessionsButtonDispatchesExistingAction);
         TEST_METHOD(BottomBarSessionsButtonTracksVisibleView);
@@ -5643,7 +5644,8 @@ namespace TerminalAppLocalTests
                 "custom:claude-wrapper",
                 uint64_t{ 2345 },
                 "Error"));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Attention" }, item.Status());
+            // History rows are refreshed separately from these pane/session caches.
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, item.Status());
             VERIFY_ARE_EQUAL(
                 uint64_t{ 1234 },
                 page->_richTabAgentStatusBySessionId.at("session-a").lastActivityAtMs.value());
@@ -5674,7 +5676,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(
                 std::string{ "Attention" },
                 page->_richTabAgentStatusByPaneId.at(
-                    winrt::guid{ L"00000000-0000-0000-0000-000000000001" })
+                                                     winrt::guid{ L"00000000-0000-0000-0000-000000000001" })
                     .status);
             VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
                 "session-c",
@@ -5689,17 +5691,83 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(std::string{ "Working" }, reusedPaneInfo.status);
             VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
             const auto updated = page->_tabStrip.HistoryItems().GetAt(0);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Attention" }, updated.Status());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, updated.Status());
             VERIFY_ARE_EQUAL(metadata, updated.Subtitle());
-            VERIFY_ARE_EQUAL(winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText("Attention"), updated.StatusText());
-            VERIFY_IS_TRUE(updated.StatusTextStyle() != idleStyle);
-            VERIFY_IS_TRUE(
-                updated.StatusTextStyle() ==
-                page->_tabStrip.Resources().Lookup(winrt::box_value(L"HistoryAttentionTextStyle")).as<Style>());
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText("Idle"), updated.StatusText());
+            VERIFY_IS_TRUE(updated.StatusTextStyle() == idleStyle);
             VERIFY_IS_TRUE(updated.IsLive());
             VERIFY_IS_FALSE(updated.IsHistorical());
 
             VERIFY_IS_FALSE(page->_ApplyAgentSessionStatusDelta("session-a", "", "claude", std::nullopt, "FutureStatus"));
+        });
+    }
+
+    void TabTests::LatestBuiltinAgentReportWinsForPane()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_tabStrip.RichTabAgentStatusVisible(false);
+            for (const auto launchProvider : { L"copilot", L"custom:fixture" })
+            {
+                winrt::guid paneId;
+                VERIFY_SUCCEEDED(CoCreateGuid(reinterpret_cast<GUID*>(&paneId)));
+                const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+                NewTerminalArgs args;
+                args.NativeAgentProviderId(launchProvider);
+                const auto pane = page->_MakePane(args, nullptr, *connection);
+                VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                const auto tab = page->_GetFocusedTabImpl();
+                const auto control = pane->GetTerminalControl();
+                const auto paneIdString = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(paneId));
+                uint64_t activity = 1000;
+                for (const auto& [provider, status] : {
+                         std::pair{ "copilot", "Working" },
+                         std::pair{ "claude", "Attention" },
+                         std::pair{ "opencode", "Idle" },
+                         std::pair{ "codex", "Error" },
+                         std::pair{ "copilot", "Working" } })
+                {
+                    const auto sessionId = std::string{ provider } + "-" + std::to_string(activity);
+                    VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(sessionId, paneIdString, provider, activity, status));
+                    const auto info = page->_RichTabAgentInfoForControl(control);
+                    VERIFY_IS_TRUE(info.has_value());
+                    VERIFY_ARE_EQUAL(sessionId, info->sessionId);
+                    VERIFY_ARE_EQUAL(std::string{ provider }, info->providerId);
+                    VERIFY_ARE_EQUAL(std::string{ status }, info->status);
+                    VERIFY_ARE_EQUAL(
+                        winrt::hstring{ L"ms-appx:///AgentIcons/" } + winrt::to_hstring(provider) + L".svg",
+                        tab->Icon());
+                    activity += 100;
+                }
+                const auto latest = *page->_RichTabAgentInfoForControl(control);
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("custom-report", paneIdString, "custom:wrapper", 2000, "Error"));
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("claude-1100", paneIdString, "claude", 1200, "Ended"));
+                const auto retained = page->_RichTabAgentInfoForControl(control);
+                VERIFY_IS_TRUE(retained.has_value());
+                VERIFY_ARE_EQUAL(latest.sessionId, retained->sessionId);
+                VERIFY_ARE_EQUAL(latest.providerId, retained->providerId);
+                VERIFY_ARE_EQUAL(latest.status, retained->status);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/copilot.svg" }, tab->Icon());
+                VERIFY_ARE_EQUAL(
+                    std::string{ "Ended" },
+                    page->_richTabAgentStatusBySessionId.at("claude-1100").status);
+
+                auto candidate = latest;
+                candidate.providerId = "codex";
+                candidate.status = "Idle";
+                candidate.lastActivityAtMs = 1500;
+                VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(latest, candidate));
+                VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(candidate, latest));
+                candidate.lastActivityAtMs = latest.lastActivityAtMs;
+                VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(latest, candidate));
+                candidate.lastActivityAtMs = std::nullopt;
+                VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(latest, candidate));
+                candidate.providerId = "custom:wrapper";
+                candidate.lastActivityAtMs = 9999;
+                VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(latest, candidate));
+                VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(candidate, latest));
+            }
         });
     }
 
@@ -11682,10 +11750,6 @@ namespace TerminalAppLocalTests
                 auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
                 NewTerminalArgs args;
                 args.NativeAgentProviderId(provider);
-                if (std::wstring_view{ provider } == L"copilot")
-                {
-                    args.Commandline(L"copilot --resume native-launch-conversation");
-                }
                 const auto createdPane = page->_MakePane(args, nullptr, *connection);
                 VERIFY_IS_NOT_NULL(createdPane);
                 const auto contentId = createdPane->GetTerminalControl().ContentId();
@@ -11721,19 +11785,8 @@ namespace TerminalAppLocalTests
                     page->_manager.OnPaneAgentSessionChanged(started);
                     page->OnPaneAgentSessionChanged(started);
                     VERIFY_ARE_EQUAL(winrt::hstring{ L"real-conversation" }, page->_paneAgentSessions.at(paneId).sessionId);
-                    VERIFY_ARE_EQUAL(started, manager->AgentSessionEvent(contentId));
-                    VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, manager->NativeAgentProviderId(contentId));
-                    VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/copilot.svg" }, tab->Icon());
-                    const auto saved = pane->GetContent().GetNewTerminalArgs(BuildStartupKind::Persist).as<NewTerminalArgs>();
-                    VERIFY_ARE_EQUAL(args.Commandline(), saved.Commandline());
-                    VERIFY_ARE_EQUAL(args.NativeAgentProviderId(), saved.NativeAgentProviderId());
-                    const auto unknownActivity = _keepRunningHook(paneId, "agent.session.start", "unknown-activity", "not-a-provider");
-                    page->_manager.OnPaneAgentSessionChanged(unknownActivity);
-                    VERIFY_ARE_EQUAL(unknownActivity, manager->AgentSessionEvent(contentId));
-                    VERIFY_ARE_EQUAL(args.NativeAgentProviderId(), manager->NativeAgentProviderId(contentId));
-                    const auto savedAfterUnknown = pane->GetContent().GetNewTerminalArgs(BuildStartupKind::Persist).as<NewTerminalArgs>();
-                    VERIFY_ARE_EQUAL(saved.Commandline(), savedAfterUnknown.Commandline());
-                    VERIFY_ARE_EQUAL(saved.NativeAgentProviderId(), savedAfterUnknown.NativeAgentProviderId());
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, manager->NativeAgentProviderId(contentId));
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/claude.svg" }, tab->Icon());
                 }
                 else
                 {
