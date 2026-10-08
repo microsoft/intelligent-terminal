@@ -156,9 +156,9 @@ Notably, this method of building the Terminal package can't leverage the FastUpT
 
 The Terminal protocol uses classic COM interfaces marshaled by
 `OpenConsoleProxy.dll`. Normal processes use the packaged COM declarations.
-Elevated `WindowsTerminal.exe` and `wtcli.exe` additionally register the protocol
-and event-sink proxy/stub factory inside their own processes, without writing
-global COM registry entries. Keep `OpenConsoleProxy.dll` beside both executables;
+Elevated `WindowsTerminal.exe` and `wtcli.exe` additionally register the protocol,
+event-sink, and native-agent proxy/stub factory inside their own processes,
+without writing global COM registry entries. Keep `OpenConsoleProxy.dll` beside both executables;
 the elevated path loads the proxy from that absolute path and restricts
 dependency searches to its directory and system DLL directories.
 
@@ -173,7 +173,7 @@ initialization error from `wtcli` identifies a missing or unusable adjacent DLL;
 `E_NOINTERFACE` during connection indicates custom-interface marshaling failed.
 
 The `ProtocolMarshalingTests` unit tests launch isolated native probes to test
-both interface registrations and missing adjacent DLL failures without requiring
+all three interface registrations and missing adjacent DLL failures without requiring
 elevation. After building `TerminalApp.UnitTests.vcxproj`, run:
 
 ```powershell

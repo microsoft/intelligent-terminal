@@ -11,6 +11,7 @@ pub mod classify_claude;
 pub mod classify_codex;
 pub mod classify_copilot;
 pub mod classify_gemini;
+pub(crate) mod copilot_status;
 pub mod discover;
 
 use std::collections::HashMap;

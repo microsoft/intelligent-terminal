@@ -11,7 +11,7 @@ namespace TerminalAppUnitTests
     class ProtocolMarshalingTests
     {
         TEST_CLASS(ProtocolMarshalingTests);
-        TEST_METHOD(BothInterfacesUseExecutableAdjacentProxy);
+        TEST_METHOD(AllInterfacesUseExecutableAdjacentProxy);
         TEST_METHOD(MissingExecutableAdjacentProxyFails);
         TEST_METHOD(ProductionElevationGateMatchesProcessToken);
 
@@ -39,7 +39,7 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(0u, result.exitCode);
     }
 
-    void ProtocolMarshalingTests::BothInterfacesUseExecutableAdjacentProxy()
+    void ProtocolMarshalingTests::AllInterfacesUseExecutableAdjacentProxy()
     {
         _runProbe(false, L"");
     }

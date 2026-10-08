@@ -40,7 +40,9 @@ Describe 'Feature: pinned tab selection' -Tag @('Feature', 'PinnedTabSelection')
         $code = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:evidence.Replace("'", "''"))\acp.log'"
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($code))
         try {
-            $script:app = Start-Terminal -Package Dev -PassFre $true -Settings @{
+            $script:app = Start-Terminal -Package Dev -PassFre $true -State @{
+                sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+            } -Settings @{
                 language = 'en-US'; tabLayout = 'vertical'; startupActions = ''
                 firstWindowPreference = 'defaultProfile'; windowingBehavior = 'useNew'
                 'warning.confirmOnClose' = 'never'; autoErrorDetectionEnabled = $false

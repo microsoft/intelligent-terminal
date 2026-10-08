@@ -50,5 +50,10 @@ namespace Microsoft.Terminal.Settings.Model
 
         Boolean AgentFreCompleted;
         Boolean AgentWelcomeShown;
+
+        Boolean SidebarLayoutMigrationCompleted;
+        Boolean SidebarIntroductionShown;
+        UInt64 TryBeginSidebarIntroduction();
+        void EndSidebarIntroduction(UInt64 claim, Boolean shown);
     }
 }

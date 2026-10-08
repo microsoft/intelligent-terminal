@@ -32,9 +32,9 @@ int wmain(int argc, wchar_t** argv)
         TOKEN_ELEVATION elevation{};
         DWORD returnedSize{};
         CHECK_RESULT(GetTokenInformation(token.get(), TokenElevation, &elevation, sizeof(elevation), &returnedSize) ? S_OK : HRESULT_FROM_WIN32(GetLastError()));
-        const IID interfaces[]{ __uuidof(ITerminalProtocol), __uuidof(ITerminalProtocolEventSink) };
-        CLSID before[2]{};
-        HRESULT beforeResult[2]{};
+        const IID interfaces[]{ __uuidof(ITerminalProtocol), __uuidof(ITerminalProtocolEventSink), __uuidof(ITerminalProtocolNativeAgent) };
+        CLSID before[ARRAYSIZE(interfaces)]{};
+        HRESULT beforeResult[ARRAYSIZE(interfaces)]{};
         for (size_t i = 0; i < ARRAYSIZE(interfaces); ++i)
         {
             beforeResult[i] = CoGetPSClsid(interfaces[i], &before[i]);
@@ -58,7 +58,7 @@ int wmain(int argc, wchar_t** argv)
                 return 1;
             }
         }
-        std::puts("Normal production gate preserved both mappings without loading the missing proxy");
+        std::puts("Normal production gate preserved all mappings without loading the missing proxy");
         return 0;
     }
     if (argc == 2 && std::wcscmp(argv[1], L"--missing") == 0)
@@ -104,7 +104,7 @@ int wmain(int argc, wchar_t** argv)
         {
             return 1;
         }
-        for (const auto iid : { __uuidof(ITerminalProtocol), __uuidof(ITerminalProtocolEventSink) })
+        for (const auto iid : { __uuidof(ITerminalProtocol), __uuidof(ITerminalProtocolEventSink), __uuidof(ITerminalProtocolNativeAgent) })
         {
             CLSID actual{};
             CHECK_RESULT(CoGetPSClsid(iid, &actual));
@@ -127,6 +127,6 @@ int wmain(int argc, wchar_t** argv)
     // A COM object retained past cookie revocation must still have live code.
     wil::com_ptr<IRpcStubBuffer> stub;
     CHECK_RESULT(retainedFactory->CreateStub(__uuidof(ITerminalProtocolEventSink), nullptr, stub.put()));
-    std::puts("Both interface mappings, stubs, idempotency and retained factory verified");
+    std::puts("All interface mappings, stubs, idempotency and retained factory verified");
     return 0;
 }

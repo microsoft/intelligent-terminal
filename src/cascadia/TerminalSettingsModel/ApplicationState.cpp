@@ -119,6 +119,17 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         // This will ensure that we not just cancel the last outstanding timer,
         // but instead force it to run as soon as possible and wait for it to complete.
         _throttler.flush();
+        bool pendingIntroduction = false;
+        {
+            const std::scoped_lock guard{ _sidebarIntroductionMutex };
+            pendingIntroduction = _sidebarIntroductionLock && _sidebarIntroductionPresented;
+        }
+        if (pendingIntroduction)
+        {
+            // Also retry on graceful shutdown if the queued attempt already
+            // failed; borrowing our reservation avoids waiting on ourselves.
+            _write();
+        }
     }
 
     // Method Description:
@@ -195,9 +206,19 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     // * Errors are only logged.
     // * _state->_writeScheduled is set to false, signaling our
     //   setters that _synchronize() needs to be called again.
-    void ApplicationState::_write() const noexcept
+    void ApplicationState::_write() noexcept
     try
     {
+        const std::scoped_lock introductionGuard{ _sidebarIntroductionMutex };
+        // A pending presentation owns the cross-process lock. Our ordinary
+        // state writer may borrow it instead of waiting on its own reservation.
+        const auto sidebarLock = _sidebarIntroductionLock ? wil::unique_handle{} : LockSidebarState();
+        Json::Value previous{ Json::objectValue };
+        try
+        {
+            previous = _readSharedJson();
+        }
+        CATCH_LOG();
         Json::StreamWriterBuilder wbuilder;
 
         // When we're elevated, we've got to be tricky. We don't want to write
@@ -233,7 +254,9 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             }
             // Layer our shared properties on top of the blob from state.json,
             // and write it back out.
-            _writeSharedContents(Json::writeString(wbuilder, _toJsonWithBlob(root, FileSource::Shared)));
+            _toJsonWithBlob(root, FileSource::Shared);
+            _preserveSidebarFlags(root, previous);
+            _writeSharedContents(Json::writeString(wbuilder, root));
 
             // Finally, write our Local properties back to elevated-state.json
             _writeLocalContents(Json::writeString(wbuilder, ToJson(FileSource::Local)));
@@ -241,10 +264,150 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         else
         {
             // We're unelevated, this is easy. Just write everything back out.
-            _writeLocalContents(Json::writeString(wbuilder, ToJson(FileSource::Local | FileSource::Shared)));
+            auto root = ToJson(FileSource::Local | FileSource::Shared);
+            _preserveSidebarFlags(root, previous);
+            _writeLocalContents(Json::writeString(wbuilder, root));
+        }
+        if (_sidebarIntroductionLock && _sidebarIntroductionPresented)
+        {
+            // The shared write above included the shown flag. Only durable
+            // completion permits another process to acquire the reservation.
+            _sidebarIntroductionPresented = false;
+            _sidebarIntroductionLock.reset();
         }
     }
     CATCH_LOG()
+
+    wil::unique_handle ApplicationState::LockSidebarState(const bool wait) const
+    {
+        auto path = _sharedPath;
+        path += L".sidebar.lock";
+        // A file lock follows the settings directory's user/package isolation and
+        // is shared by elevated and unelevated processes, without a global mutex.
+        for (auto attempt = 0; attempt < (wait ? 1000 : 1); ++attempt)
+        {
+            wil::unique_handle handle{ CreateFileW(path.c_str(), GENERIC_READ, 0, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
+            if (handle)
+            {
+                return handle;
+            }
+            const auto error = GetLastError();
+            if (error != ERROR_SHARING_VIOLATION)
+            {
+                THROW_WIN32(error);
+            }
+            if (wait)
+            {
+                Sleep(10);
+            }
+        }
+        if (wait)
+        {
+            THROW_WIN32(ERROR_SHARING_VIOLATION);
+        }
+        return {};
+    }
+
+    Json::Value ApplicationState::_readSharedJson() const
+    {
+        Json::Value root{ Json::objectValue };
+        const auto contents = _readSharedContents();
+        if (!contents.empty())
+        {
+            std::string errors;
+            const std::unique_ptr<Json::CharReader> reader{ Json::CharReaderBuilder{}.newCharReader() };
+            THROW_HR_IF(WEB_E_INVALID_JSON_STRING, !reader->parse(contents.data(), contents.data() + contents.size(), &root, &errors) || !root.isObject());
+        }
+        return root;
+    }
+
+    void ApplicationState::_preserveSidebarFlags(Json::Value& root, const Json::Value& previous)
+    {
+        // A stale window (or the other elevation level) must never erase a
+        // completed once-only operation when it saves unrelated state.
+        for (const auto key : { "sidebarLayoutMigrationCompleted", "sidebarIntroductionShown" })
+        {
+            if (previous[key].isBool() && previous[key].asBool())
+            {
+                root[key] = true;
+            }
+        }
+    }
+
+    void ApplicationState::RefreshSidebarState() const
+    {
+        const auto root = _readSharedJson();
+        const auto state = _state.lock();
+        state->SidebarLayoutMigrationCompleted = JsonUtils::GetValueForKey<std::optional<bool>>(root, "sidebarLayoutMigrationCompleted");
+        state->SidebarIntroductionShown = JsonUtils::GetValueForKey<std::optional<bool>>(root, "sidebarIntroductionShown");
+    }
+
+    void ApplicationState::_persistSidebarFlag(const std::string_view key) const
+    {
+        auto root = _readSharedJson();
+        root[std::string{ key }] = true;
+        _writeSharedContents(Json::writeString(Json::StreamWriterBuilder{}, root));
+    }
+
+    bool ApplicationState::CompleteSidebarLayoutMigration() noexcept
+    try
+    {
+        _persistSidebarFlag("sidebarLayoutMigrationCompleted");
+        const auto state = _state.lock();
+        state->SidebarLayoutMigrationCompleted = true;
+        return true;
+    }
+    catch (...)
+    {
+        LOG_CAUGHT_EXCEPTION();
+        return false;
+    }
+
+    uint64_t ApplicationState::TryBeginSidebarIntroduction()
+    {
+        const std::scoped_lock guard{ _sidebarIntroductionMutex };
+        if (_sidebarIntroductionLock || SidebarIntroductionShown())
+        {
+            return 0;
+        }
+        auto lock = LockSidebarState(false);
+        if (!lock)
+        {
+            return 0;
+        }
+        RefreshSidebarState();
+        if (SidebarIntroductionShown())
+        {
+            return 0;
+        }
+        // Verify state is writable before presenting. Do not mark it shown yet.
+        const auto root = _readSharedJson();
+        _writeSharedContents(Json::writeString(Json::StreamWriterBuilder{}, root));
+        _sidebarIntroductionLock = std::move(lock);
+        return ++_sidebarIntroductionClaim;
+    }
+
+    void ApplicationState::EndSidebarIntroduction(const uint64_t claim, const bool shown)
+    {
+        const std::scoped_lock guard{ _sidebarIntroductionMutex };
+        if (!_sidebarIntroductionLock || claim != _sidebarIntroductionClaim)
+        {
+            return;
+        }
+        if (shown)
+        {
+            _sidebarIntroductionPresented = true;
+            SidebarIntroductionShown(true);
+        }
+        if (_sidebarIntroductionPresented)
+        {
+            // Keep exclusion on failure, including cancellation/window close
+            // after presentation. The page timer and ordinary writer can retry.
+            _persistSidebarFlag("sidebarIntroductionShown");
+        }
+        _sidebarIntroductionPresented = false;
+        _sidebarIntroductionLock.reset();
+    }
 
     // Returns the application-global ApplicationState object.
     Microsoft::Terminal::Settings::Model::ApplicationState ApplicationState::SharedInstance()

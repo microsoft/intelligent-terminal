@@ -40,7 +40,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <!--  Share the vector marks with History while retaining this bar's foreground.  -->
+                    <!--  Share agent artwork with History while retaining this bar's foreground.  -->
                     <Grid x:Name="AgentLogo"
                           Width="14"
                           Height="14">

@@ -84,6 +84,7 @@ namespace Microsoft::Terminal::Protocol
             RETURN_IF_FAILED(CoRegisterClassObject(*proxyClsid, factory.get(), CLSCTX_INPROC_SERVER, REGCLS_MULTIPLEUSE, registration.put()));
             RETURN_IF_FAILED(CoRegisterPSClsid(__uuidof(ITerminalProtocol), *proxyClsid));
             RETURN_IF_FAILED(CoRegisterPSClsid(__uuidof(ITerminalProtocolEventSink), *proxyClsid));
+            RETURN_IF_FAILED(CoRegisterPSClsid(__uuidof(ITerminalProtocolNativeAgent), *proxyClsid));
             _registration = std::move(registration);
             return S_OK;
         }
