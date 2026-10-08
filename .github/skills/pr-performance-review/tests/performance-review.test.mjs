@@ -62,7 +62,7 @@ test('Rust plan includes manifests and supporting Rust test changes without chan
         'tools/wta/Cargo.toml', 'tools/wta/Cargo.lock', 'tools/wta/build.rs']) {
         const plan = createAnalysisPlan([{ filename }]);
         assert.equal(plan.rust.required, true, filename);
-        assert.equal(plan.rust.alias, 'wta-perf-pr');
+        assert.equal(plan.rust.alias, 'wta-perf-extended');
         assert.equal(plan.rust.toolchain, '1.93.0');
         assert.match(plan.rust.scope, /Entire WTA/);
     }
@@ -152,14 +152,14 @@ test('Windows analysis reuses trusted normal profiles instead of embedding a sec
     const runner = fs.readFileSync(new URL('../scripts/run-native-performance-checks.ps1', import.meta.url), 'utf8');
     assert.match(runner, /\/getProperty:ClangTidyChecks/);
     assert.match(runner, /\/getItem:ClCompile/);
-    assert.match(runner, /\/p:PerformanceAnalysis=PullRequest/);
+    assert.match(runner, /\/p:PerformanceAnalysis=Extended/);
     assert.match(runner, /checks\.Replace\(',', '%2C'\)/);
     assert.match(runner, /\/t:Build;ClangTidy/);
     assert.match(runner, /Copy-Item -LiteralPath \$trustedConfig/);
-    assert.match(runner, /@\('\+1\.93\.0', 'wta-perf-pr'\)/);
+    assert.match(runner, /@\('\+1\.93\.0', 'wta-perf-extended'\)/);
     assert.doesNotMatch(runner, /performance-inefficient-vector-operation|clippy::needless_collect|clippy::large_futures/);
     const config = fs.readFileSync(new URL('../../../../.cargo/config.toml', import.meta.url), 'utf8');
-    assert.match(config, /wta-perf-pr = \["wta-perf", "-W", "clippy::needless_collect", "-W", "clippy::large_futures"\]/);
+    assert.match(config, /wta-perf-extended = \["wta-perf", "-W", "clippy::needless_collect", "-W", "clippy::large_futures"\]/);
 });
 
 function finding(overrides = {}) {

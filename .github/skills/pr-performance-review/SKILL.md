@@ -89,11 +89,12 @@ context is unavailable or blocked, not clean coverage. Do not replace a denied
 native operation with a Linux result. Tool warnings are leads: they do not
 establish HIGH severity, measured gain, or permission to apply a suggested fix.
 
-The shared C++ `PerformanceAnalysis=PullRequest` profile adds four selected
+The shared C++ `PerformanceAnalysis=Extended` profile adds four selected
 Clang-Tidy performance checks to the existing AuditMode build infrastructure.
 For WTA, `cargo wta-perf` is a normal developer entrypoint and
-`cargo wta-perf-pr` adds `needless_collect` and `large_futures` individually.
-Neither alias changes what ordinary `cargo build` runs. Do not enable whole
+`cargo wta-perf-extended` adds `needless_collect` and `large_futures` individually.
+These profiles are reusable outside PR review. Neither alias changes what
+ordinary `cargo build` runs. Do not enable whole
 nursery, pedantic, or restriction groups merely to increase the warning count.
 `await_holding_lock` is a suspicious lint and can warn after an explicit drop;
 `needless_collect` is nursery, and `large_futures` is pedantic. Judge the

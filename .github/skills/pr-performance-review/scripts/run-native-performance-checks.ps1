@@ -117,7 +117,7 @@ if ($Phase -eq 'Analysis') {
             $metadata.tools.rustc = Invoke-AnalysisCommand 'rust-version' 'rustc.exe' @('+1.93.0', '--version', '--verbose')
             $metadata.tools.clippy = Invoke-AnalysisCommand 'clippy-version' 'cargo.exe' @('+1.93.0', 'clippy', '--version')
             $null = Invoke-AnalysisCommand 'cargo-fetch' 'cargo.exe' @('+1.93.0', 'fetch', '--locked', '--target', 'x86_64-pc-windows-msvc', '--manifest-path', 'tools\wta\Cargo.toml')
-            $null = Invoke-AnalysisCommand 'rust-analysis' 'cargo.exe' @('+1.93.0', 'wta-perf-pr')
+            $null = Invoke-AnalysisCommand 'rust-analysis' 'cargo.exe' @('+1.93.0', 'wta-perf-extended')
             $metadata.analyzedScope.rust = $true
         }
         if ($scope.analysisPlan.cpp.required) {
@@ -127,7 +127,7 @@ if ($Phase -eq 'Analysis') {
             $metadata.tools.msbuild = Invoke-AnalysisCommand 'msbuild-version' $msbuild @('-version', '-nologo')
             $profileProject = Join-Path $TrustedRepositoryRoot $scope.analysisPlan.cpp.profileProject.Replace('/', '\')
             $checks = (Invoke-AnalysisCommand 'cpp-profile' $msbuild @($profileProject, '-nologo',
-                '/p:PerformanceAnalysis=PullRequest', "/p:SolutionDir=$($TrustedRepositoryRoot.TrimEnd('\'))\",
+                '/p:PerformanceAnalysis=Extended', "/p:SolutionDir=$($TrustedRepositoryRoot.TrimEnd('\'))\",
                 '/p:Configuration=AuditMode', '/p:Platform=x64', '/getProperty:ClangTidyChecks') $TrustedRepositoryRoot).Trim()
             if (-not $checks -or $checks -match '[\r\n]') { throw 'Trusted MSBuild profile query did not produce a single checks value.' }
             $metadata.tools.clangTidyChecks = $checks

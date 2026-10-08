@@ -74,7 +74,7 @@ export function createAnalysisPlan(files) {
     }
     return {
         version: 1, target: 'x86_64-pc-windows-msvc',
-        rust: { required: rustPaths.length > 0, paths: rustPaths, toolchain: '1.93.0', alias: 'wta-perf-pr',
+        rust: { required: rustPaths.length > 0, paths: rustPaths, toolchain: '1.93.0', alias: 'wta-perf-extended',
             configuration: '.cargo/config.toml', scope: 'Entire WTA crate and all targets, not edited lines.' },
         cpp: { required: projects.size > 0, projects: [...projects].sort(), candidatePaths,
             profile: 'PullRequest', configuration: 'AuditMode', platform: 'x64',

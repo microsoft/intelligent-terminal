@@ -27,8 +27,8 @@ The current three-Windows-job version has local validation only: it has not
 run end-to-end on GitHub.
 
 **Shared build profiles and base/head PR analysis are implemented locally;
-hosted execution remains unverified.** C++ developers can select the opt-in `PerformanceAnalysis=PullRequest`
-MSBuild profile; Rust developers can use `cargo wta-perf` and `cargo wta-perf-pr`
+hosted execution remains unverified.** C++ developers can select the opt-in `PerformanceAnalysis=Extended`
+MSBuild profile; Rust developers can use `cargo wta-perf` and `cargo wta-perf-extended`
 from the repository root. The ordinary Cargo build does not run Clippy.
 Normal CI already enables C++ AuditMode; availability of Clippy in its pinned
 MSRustup distribution remains unverified. Do not present these profiles as
@@ -92,10 +92,10 @@ metadata and raw diagnostic files as input, reviews candidates against
 base/head source and caller frequency, then writes its own result tables.
 No script reconstructs the PR report from those logs.
 
-| Profile | Existing baseline | Additional PR checks |
+| Profile | Existing baseline | Extended checks |
 | --- | --- | --- |
 | C++ | AuditMode with MSVC analysis and CppCoreCheck; already enabled in the checked normal CI pipeline. | Four explicit Clang-Tidy checks: inefficient vector operations, range-loop copies, unnecessary value parameters, and moves from const values. |
-| Rust | Normal builds/tests do not invoke Clippy. The shared `wta-perf` alias provides a developer analysis entrypoint. | `wta-perf-pr` adds `needless_collect` and `large_futures` individually, not entire nursery or pedantic groups. |
+| Rust | Normal builds/tests do not invoke Clippy. The shared `wta-perf` alias provides a developer analysis entrypoint. | `wta-perf-extended` adds `needless_collect` and `large_futures` individually, not entire nursery or pedantic groups. |
 | Architecture | Ordinary compilation cannot establish caller frequency, notification amplification, or intended ownership. | Five scoped skill rules cover repeated work, UI blocking, MVVM amplification, async contention, and owner lifetime. |
 
 C++ analysis selects provisional project recipes in renderer, buffer, VT,

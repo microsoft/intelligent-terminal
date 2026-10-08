@@ -26,7 +26,7 @@ From the repository root, with Clippy available for the active toolchain:
 
 ```powershell
 cargo wta-perf
-cargo wta-perf-pr
+cargo wta-perf-extended
 ```
 
 These standard Cargo aliases in `.cargo\config.toml` check all targets in the
@@ -38,11 +38,12 @@ warnings. `cargo build` itself does not run Clippy.
 
 `wta-perf` explicitly warns on `clippy::vec_init_then_push`,
 `clippy::slow_vector_initialization`, and `clippy::await_holding_lock`.
-The recursive `wta-perf-pr` alias additionally warns on the individual nursery
+The recursive `wta-perf-extended` alias additionally warns on the individual nursery
 check `clippy::needless_collect` and pedantic check `clippy::large_futures`,
 without enabling those entire lint groups. Extra alias arguments are after
 Clippy's existing `--`, so do not append Cargo options such as `--release`.
 Both aliases intentionally use the same fixed target and build profile.
+They can analyze local work, branches, or pull requests; neither is PR-specific.
 
 Diagnostics are advisory leads, not automatic HIGH-severity findings or safe
 fixes. Inspect the actual scopes and callers and compare base/head using the same
