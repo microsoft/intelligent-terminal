@@ -214,9 +214,10 @@ edit, dispatch another agent, submit reports, or emit safe outputs. The driver
 requires successful native diff/source/candidate reads and a structured
 `SOURCE_PASS` matching the immutable head and final patch digest before stamping
 source approval. Model-authored approval is rejected by report submission.
-For every proposed finding, successful bounded native head reads must cover its
-reported line interval. Native base reads must cover the corresponding original
-hunk/context, accounting for insertion and deletion offsets. For a pure deletion
+For every finding in a proposed repair, the fixed reviewer's successful bounded
+native head reads must cover its reported line interval. Native base reads must
+cover the corresponding original hunk/context, accounting for insertion and
+deletion offsets. For a pure deletion
 anchored to surviving head context, this includes the entire deleted base interval
 as well as the offset-mapped surviving context. Immutable native reads distinguish
 the following-line anchor from the preceding physical row at EOF; an empty head
@@ -240,7 +241,10 @@ its activity timer before each child launch, so the primary's accepted terminal
 Harness retries are disabled to avoid replaying a completed primary and
 exhausting its one-output capability.
 
-Guide mode uses the same driver without invoking a repair reviewer. Complete
+Guide mode uses the same driver without invoking a repair reviewer. It requires
+complete original-diff coverage and report validation, but does not apply the
+repair reviewer's independent finding-range or SOURCE_PASS gate. Its findings
+remain advisory hypotheses, not independently approved repairs. Complete
 native transcripts are checked in memory, not forwarded or retained in public
 driver logs. Public output contains a validated report-derived summary and
 bounded status/usage metadata, rather than raw tool results or model analysis.
@@ -295,11 +299,11 @@ The native report, repair patch and noop outputs remain available to trusted
 validation and publication. Conversational diagnostics are intentionally
 reduced; this is not a claim of unchanged detector visibility, universal secret
 detection, or a separate confidentiality boundary against the same process.
-Native `noop.message` is still free-form public output, retained by canonical
-JSONL and downstream staged summaries. Logger routing does not sanitize it:
-source/secret-bearing noop prose would be a separate output-validation gap.
-Completion messages must not include raw source or secrets. Canonical noop,
-report, patch, collector, and controller semantics remain unchanged.
+The upstream noop argument accepts free-form input, but this worker's verified
+preparation replaces it with the trusted fixed message before public JSONL
+persistence. Logger routing alone would not sanitize that input; canonical
+normalization and late queue validation are separate required controls.
+Public findings come from the validated report, not model-authored noop prose.
 
 Both workers clear the configured telemetry credential/composite variables
 `OTEL_EXPORTER_OTLP_HEADERS`, `GH_AW_OTLP_ENDPOINTS`, and
