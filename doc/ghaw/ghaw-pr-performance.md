@@ -21,24 +21,16 @@ and shared skill do the analysis; scripts enforce the report and publication
 rules.
 
 **We have not shown that this finds more performance defects than ordinary
-Copilot review.** The private synthetic WTA fixture proved an earlier
-review/test/publish path, not detection superiority or production speedup.
-The current architecture had a private hosted attempt:
-[controller](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37726650291)
-and [worker](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37726663401).
-Rust BASE/HEAD analysis and the agent-authored PR summary succeeded, but the
-controller failed with `action_required`. All three native validation phases
-were skipped; no repair was published. That Rust-only synthetic fixture
-provided no hosted C++ coverage or native repair-and-publication proof.
+Copilot review.** The current path passed a real hosted synthetic Rust trial:
+[controller](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37758597556)
+and [worker](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37758613236).
+All three independent Windows phases succeeded and the controller published
+the exact sealed repair tree. The HIGH refresh regression was fixed; the
+MEDIUM collection candidate remained advice-only and unchanged. This proves
+the workflow path, not detection superiority, production speedup, or hosted
+C++ coverage. Earlier failed trials remain documented below.
 
-**The corrected version also failed its hosted trial.**
-[Controller](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37751837734)
-and [worker](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37751853969)
-completed Rust BASE/HEAD analysis and delivered the agent's summary. The agent
-proposed a repair and requested all three native jobs, but its second finding
-omitted the required JSON `location`. Trusted validation rejected the report;
-all native phases were skipped and no repair was published. The private test
-workflows were disabled afterward, without retry. Shared build profiles and base/head
+Shared build profiles and base/head
 PR analysis are implemented. C++ developers can select the opt-in `PerformanceAnalysis=Extended`
 MSBuild profile; Rust developers can use `cargo wta-perf` and `cargo wta-perf-extended`
 from the repository root. The ordinary Cargo build does not run Clippy.
@@ -99,8 +91,9 @@ The repair agent first submits the complete JSON to the caller's scoped
 returned while the agent can correct them; after acceptance it writes the
 identical JSON to the fixed report path. The tool reuses the existing shared
 validator, reads no source, writes no files, and does not grant native success.
-This early feedback was added after the missing-location hosted failure; its
-local rejection/correction checks are not hosted execution proof.
+The successful hosted trial exercised this feedback: the agent's initial
+report claimed passing checks before native validation, the tool rejected it,
+and the agent corrected its JSON within the same run.
 Trusted post-processing independently validates the actual persisted report again
 before sealing or native execution. The agent does not need to invoke a
 duplicate shell validator or renderer. This removes the workflow's dependency
@@ -364,8 +357,8 @@ compiler fix/upgrade; it is not claimed as enforced here.
 Pending reports reject all model-authored `pass` checks, not just native claims.
 Not-run checks are honestly `unavailable`; the publisher appends native success
 independently from GitHub's recorded result. Guide-source checks and other
-statuses retain their existing contract. This round has local fixture evidence
-only; no additional hosted replay was authorized or performed.
+statuses retain their existing contract. These controls were first checked
+with local fixtures; the current hosted proof is recorded below.
 
 Authentication is unchanged from localization: `copilot-requests: write`
 uses the Actions token. No speculative `COPILOT_GITHUB_TOKEN` requirement.
@@ -398,10 +391,59 @@ is retained in the session's `performance-model-artifacts` directory.
 
 The controller suite also checks the actual compiled pre-agent steps and
 model CLI permissions against their Markdown sources. It reproduces the
-missing-output-variable failure and requires the permitted PowerShell route.
+missing-output-variable failure and checks the permitted shell and report-tool
+surfaces. Early report validation uses the scoped MCP tool, not model-side
+PowerShell.
 Pending proposals display an hourglass, not the green published-fix icon.
 
 ## Hosted evidence
+
+### Current three-phase path
+
+Private
+`yeelam-gordon/ghaw-pr-performance-private-20261004#5`
+ran the reviewed `4e732eb6dad02e45958df80c581511c0024ddc34` implementation.
+[Controller 37758597556](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37758597556)
+and [worker 37758613236](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37758613236)
+both succeeded.
+
+| Result | Evidence |
+| --- | --- |
+| Rust BASE/HEAD analysis | Successful version-2 records, public Rust/Clippy 1.93.0. No C++ projects were selected. |
+| Early report feedback | Initial model-authored passing checks were rejected; corrected pending-validation JSON was accepted within the same agent run. |
+| Original test identity | A separate Windows job listed the exact existing test without applying candidate changes. |
+| Focused candidate | A separate Windows job passed formatting and executed the exact selected test: one passed, zero failed. |
+| Complete fixture suite | A separate Windows job executed the full explicit-target suite: one passed, zero failed. |
+| HIGH refresh regression | Published as a one-file source-only repair; original inline tests remained unchanged. |
+| MEDIUM collection candidate | Advice-only, not edited; caller frequency and user-visible impact remain unmeasured. |
+| PR result delivery | Severity-ordered Markdown tables, both run links and the repair link appeared on the validated published head. |
+
+The published commit
+[`23c87098fd0e01c70abed0bb1d20edb1cb0ba68e`](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/commit/23c87098fd0e01c70abed0bb1d20edb1cb0ba68e)
+has the exact reviewed parent `703570a9644471ca4ca816efd1c02bf4c85e359c`
+and tree `f4467c00c94ea050c145a08caa19c7992a44129a`, identical to the sealed
+native-tested proposal. Only `tools/wta/src/lib.rs` changed, with three lines
+added and eight removed. Auto selected `gpt-5.6-luna`; main-agent usage was
+2.885152 AI credits and detection 0.57273, totaling 3.457882.
+
+The private copy changes only controller trigger selection to
+`ready_for_review`, preventing publication from starting another trial.
+The 500 main-agent and 100000 daily caps match the reviewed workflow.
+All private performance workflows were disabled after completion; no automatic
+workflow retry or production deployment occurred. This synthetic Rust fixture
+does not prove production performance or the separate MSRustup installation.
+
+### Earlier failed trials
+
+| Trial | Outcome |
+| --- | --- |
+| Controller 37726650291 / worker 37726663401 | Rust analysis and summary delivery succeeded; empty C++ coverage was mistaken for missing Rust analysis, so all native phases were skipped. |
+| Controller 37751837734 / worker 37751853969 | Rust analysis and summary delivery succeeded; the second finding omitted its JSON location, so trusted validation failed before native execution. |
+
+Their original artifacts remain preserved; they are not successful validation
+evidence for the current path.
+
+### Earlier successful path
 
 [Controller 37410853746](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37410853746)
 and [worker 37410869400](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37410869400)
@@ -426,8 +468,8 @@ event; its cost is not included above.
 
 Official PR review subsequently tightened fork confinement to the structured,
 shell-disabled route and required format checking plus the complete WTA test
-suite before repair publication. Those changes have local execution/compiled
-contract coverage, but are not represented as another hosted replay.
+suite before repair publication. The earlier trial predates the three-phase
+architecture; the current trial above provides the new hosted proof.
 
 ## Primary references
 
