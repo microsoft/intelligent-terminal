@@ -327,6 +327,7 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
         std::lock_guard lock{ _windowsMutex };
         _windows.emplace_back(host);
     }
+    _lastClosedWindow = {};
     // A window exists now, so this process owns the persisted layout and there
     // is nothing left to defer.
     _deferPersistedLayoutRestore = false;
@@ -1275,14 +1276,23 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                         // deterministic window count management.
                         const auto strong = *it;
 
-                        // Before destroying a named window, persist its full
-                        // tab/buffer state as a workspace so it can be restored later.
+                        // The last visible window remains the startup snapshot
+                        // while kept tabs or AllowHeadless keep the process alive.
                         try
                         {
                             const auto windowName = strong->Logic().WindowProperties().WindowName();
+                            const auto layout = strong->ClosingLayout() ? strong->ClosingLayout() : strong->Logic().GetWindowLayout();
+                            if (_windows.size() == 1 && globalSettings.ShouldUsePersistedLayout())
+                            {
+                                _lastClosedWindow = { layout, windowName };
+                            }
+                            if (strong->ClosingLayout() && globalSettings.FirstWindowPreference() == FirstWindowPreference::PersistedLayoutAndContent)
+                            {
+                                _needsPersistenceCleanup = true;
+                            }
                             if (!windowName.empty())
                             {
-                                if (const auto layout = strong->Logic().GetWindowLayout())
+                                if (layout)
                                 {
                                     ApplicationState::SharedInstance().SaveWorkspace(windowName, layout);
                                 }
@@ -1294,6 +1304,14 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                             std::lock_guard lock{ _windowsMutex };
                             _windows.erase(it);
                         }
+                        try
+                        {
+                            if (_windows.empty())
+                            {
+                                _persistState(ApplicationState::SharedInstance());
+                            }
+                        }
+                        CATCH_LOG();
                         try
                         {
                             strong->Close();
@@ -1528,23 +1546,17 @@ void WindowEmperor::_persistState(const ApplicationState& state) const
         return;
     }
 
-    // Calling an `ApplicationState` setter triggers a write to state.json.
-    // With this if condition we avoid an unnecessary write when persistence is disabled.
-    if (state.PersistedWindowLayouts())
-    {
-        state.PersistedWindowLayouts(nullptr);
-    }
-
-    if (_app.Logic().Settings().GlobalSettings().FirstWindowPreference() != FirstWindowPreference::DefaultProfile)
+    std::vector<::Microsoft::Terminal::WindowPersistence::Snapshot> windows;
+    const auto enabled = _app.Logic().Settings().GlobalSettings().ShouldUsePersistedLayout();
+    if (enabled)
     {
         for (const auto& w : _windows)
         {
-            w->Logic().PersistState();
+            const auto logic = w->Logic();
+            windows.push_back({ w->ClosingLayout() ? w->ClosingLayout() : logic.GetWindowLayout(), logic.WindowProperties().WindowName() });
         }
     }
-
-    // Ensure to write the state.json
-    state.Flush();
+    ::Microsoft::Terminal::WindowPersistence::PersistLayouts(state, windows, _lastClosedWindow, enabled);
 }
 
 void WindowEmperor::_finalizeSessionPersistence() const
@@ -1583,63 +1595,21 @@ void WindowEmperor::_finalizeSessionPersistence() const
     const auto admin = _app.Logic().IsRunningElevated();
     const auto filenamePrefix = admin ? L"elevated_"sv : L"buffer_"sv;
     const auto persistBuffers = firstWindowPreference == FirstWindowPreference::PersistedLayoutAndContent;
-    std::unordered_set<std::wstring, til::transparent_hstring_hash, til::transparent_hstring_equal_to> bufferFilenames;
+    ::Microsoft::Terminal::WindowPersistence::BufferFiles bufferFilenames;
 
     if (persistBuffers)
     {
-        // If the app is running elevated, we create files with a mandatory
-        // integrity label (ML) of "High" (HI) for reading and writing (NR, NW).
-        wil::unique_hlocal_security_descriptor sd;
-        SECURITY_ATTRIBUTES sa{};
-        if (admin)
+        if (_windows.empty())
         {
-            unsigned long cb;
-            THROW_IF_WIN32_BOOL_FALSE(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"S:(ML;;NRNW;;;HI)", SDDL_REVISION_1, wil::out_param_ptr<PSECURITY_DESCRIPTOR*>(sd), &cb));
-            sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-            sa.lpSecurityDescriptor = sd.get();
+            bufferFilenames = ::Microsoft::Terminal::WindowPersistence::BufferFilesForLayout(_lastClosedWindow.Layout, admin);
         }
 
         // Persist all terminal buffers to "buffer_{guid}.txt" files.
         // We remember the filenames so that we can clean up old ones later.
         for (const auto& w : _windows)
         {
-            const auto panes = w->Logic().Panes();
-            for (const auto pane : panes)
-            {
-                try
-                {
-                    const auto term = pane.try_as<winrt::TerminalApp::ITerminalPaneContent>();
-                    if (!term)
-                    {
-                        continue;
-                    }
-                    const auto control = term.GetTermControl();
-                    if (!control)
-                    {
-                        continue;
-                    }
-                    const auto connection = control.Connection();
-                    if (!connection)
-                    {
-                        continue;
-                    }
-                    const auto sessionId = connection.SessionId();
-                    if (sessionId == winrt::guid{})
-                    {
-                        continue;
-                    }
-
-                    auto filename = fmt::format(FMT_COMPILE(L"{}{}.txt"), filenamePrefix, sessionId);
-                    const auto path = settingsDirectory / filename;
-
-                    if (wil::unique_hfile file{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) })
-                    {
-                        control.PersistTo(reinterpret_cast<int64_t>(file.get()));
-                        bufferFilenames.emplace(std::move(filename));
-                    }
-                }
-                CATCH_LOG();
-            }
+            bufferFilenames.merge(::Microsoft::Terminal::WindowPersistence::BufferFilesForLayout(w->ClosingLayout(), admin));
+            bufferFilenames.merge(::Microsoft::Terminal::WindowPersistence::PersistBuffers(w->Logic().Panes(), settingsDirectory, admin));
         }
     }
 
