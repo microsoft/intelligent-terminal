@@ -253,6 +253,25 @@ test('repair detector stages the actual patch bytes under the pinned aw patch co
   }
 });
 
+test('analysis workers do not request unused check or security-event read scopes', () => {
+  for (const name of ['ghaw-pr-security', 'ghaw-pr-security-guide-fork']) {
+    for (const extension of ['md', 'lock.yml']) {
+      const text = readFileSync(new URL(`../../../workflows/${name}.${extension}`, import.meta.url), 'utf8');
+      if (extension === 'md') {
+        const permissions = text.match(/^permissions:\r?\n((?:  .*\r?\n)+)/m)?.[1];
+        assert(permissions, `${name}.${extension} permissions`);
+        assert(!/^\s+(?:checks|security-events):/m.test(permissions), `${name}.${extension} unused read scopes`);
+      } else {
+        assert.match(text, /^permissions: \{\}/m, 'compiled workflow defaults deny all');
+        const agent = text.split('\n  agent:')[1]?.split(/\r?\n  [a-z_]+:/)[0];
+        assert(agent, 'compiled agent job');
+        const agentPermissions = agent.match(/^    permissions:\r?\n((?:      .*\r?\n)+)/m)?.[1] ?? '';
+        assert(!/^\s+(?:checks|security-events):/m.test(agentPermissions), 'compiled analysis token');
+      }
+    }
+  }
+});
+
 test('all trusted materialization and reconstruction workflows disable ambient replacement refs', () => {
   for (const name of [
     'ghaw-pr-security.md', 'ghaw-pr-security-guide-fork.md',

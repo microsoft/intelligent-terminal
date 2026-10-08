@@ -42,8 +42,6 @@ permissions:
   contents: read
   pull-requests: read
   actions: read
-  checks: read
-  security-events: read
   copilot-requests: write
 
 env:
