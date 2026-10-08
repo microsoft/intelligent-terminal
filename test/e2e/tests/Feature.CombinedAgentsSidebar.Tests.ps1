@@ -595,7 +595,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         function Assert-CombinedBounds {
             $viewport = (Get-CombinedElement ItemsList).Current.BoundingRectangle
             $viewport.Height | Should -BeGreaterThan 40
-            Get-CombinedElement HistorySplitter | Should -BeNullOrEmpty -Because 'the divider requirement is retired'
+            Get-CombinedElement HistorySplitter | Should -BeNullOrEmpty -Because 'the section separator is visible but not resizable'
             Get-CombinedElement HistoryList | Should -BeNullOrEmpty -Because 'no independent history viewport may remain'
             $scrollPeers = @(Get-CombinedRawChildren (Get-CombinedElement ItemsList) | Where-Object {
                 $pattern = $null

@@ -106,6 +106,8 @@
             <DataTemplate x:Key="HistoryHeaderTemplate">
                 <Grid x:Name="HistorySection"
                       Background="Transparent"
+                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                      BorderThickness="0,1,0,0"
                       Loaded="OnHistorySectionLoaded"
                       Unloaded="OnHistorySectionUnloaded">
                     <Grid.RowDefinitions>

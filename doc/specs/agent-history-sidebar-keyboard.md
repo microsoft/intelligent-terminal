@@ -118,6 +118,8 @@ and focuses ordinary tab search on entry.
 - There is no draggable divider, section-height setting, keyboard section
   resizing, fixed split ratio, or independent section scrollbar. Window resizing
   changes the shared viewport while both sections remain reachable.
+  A theme-aware, noninteractive separator remains above the Recent Sessions
+  heading in both expanded and collapsed states.
 - Recent Sessions has a keyboard-accessible expand/collapse heading exposing its
   expanded state to UI Automation. It is initially expanded, preserving the
   existing visible-session behavior. Expanded session rows have no additional

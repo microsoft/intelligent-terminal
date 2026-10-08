@@ -41,11 +41,13 @@ Replace `<worktree>` with the active worktree's absolute path:
 cd /d "<worktree>"
 call tools\razzle.cmd
 set "P=/p:Configuration=Debug /p:Platform=x64 /p:WindowsTerminalBranding=Dev /p:BuildProjectReferences=false /v:minimal /nologo"
-msbuild src\cascadia\TerminalApp\TerminalAppLib.vcxproj /t:Build %P% "/p:SolutionDir=%CD%\\" && msbuild src\cascadia\TerminalApp\dll\TerminalApp.vcxproj /t:Build %P% "/p:SolutionDir=%CD%\\"
+msbuild src\cascadia\TerminalApp\TerminalAppLib.vcxproj /t:Build %P% "/p:SolutionDir=<worktree>\\" && msbuild src\cascadia\TerminalApp\dll\TerminalApp.vcxproj /t:Build %P% "/p:SolutionDir=<worktree>\\"
 ```
 
 Run these commands in one CMD session. Record the actual compiled files,
 elapsed time, exit code, and output hashes; do not claim an unmeasured speedup.
+Use the explicit worktree path when combining `cd` and a build in `cmd /c`;
+`%CD%` expands before `cd` executes in a compound command.
 
 ## Focused native tests
 

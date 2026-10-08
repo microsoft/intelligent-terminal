@@ -8110,6 +8110,9 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(secondButton.Parent() == second);
             for (const auto& button : { firstButton, secondButton })
             {
+                const auto section = button.Parent().as<Grid>();
+                VERIFY_ARE_EQUAL(1.0, section.BorderThickness().Top);
+                VERIFY_IS_NOT_NULL(section.BorderBrush());
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"HistoryHeaderButton" }, Automation::AutomationProperties::GetAutomationId(button));
                 const auto peer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(button);
                 VERIFY_IS_NOT_NULL(peer.try_as<Automation::Peers::ToggleButtonAutomationPeer>());
@@ -8118,9 +8121,12 @@ namespace TerminalAppLocalTests
                 provider.Collapse();
                 VERIFY_IS_FALSE(button.IsChecked().Value());
                 VERIFY_ARE_EQUAL(Automation::ExpandCollapseState::Collapsed, provider.ExpandCollapseState());
+                VERIFY_ARE_EQUAL(Visibility::Visible, section.Visibility());
+                VERIFY_ARE_EQUAL(1.0, section.BorderThickness().Top);
                 provider.Expand();
                 VERIFY_IS_TRUE(button.IsChecked().Value());
                 VERIFY_ARE_EQUAL(Automation::ExpandCollapseState::Expanded, provider.ExpandCollapseState());
+                VERIFY_ARE_EQUAL(1.0, section.BorderThickness().Top);
             }
             host.UpdateLayout();
             VERIFY_IS_FALSE(first.Parent() == second.Parent());
