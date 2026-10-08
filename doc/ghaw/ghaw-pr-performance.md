@@ -23,11 +23,17 @@ rules.
 **We have not shown that this finds more performance defects than ordinary
 Copilot review.** The private synthetic WTA fixture proved an earlier
 review/test/publish path, not detection superiority or production speedup.
-The current three-Windows-job version has local validation only: it has not
-run end-to-end on GitHub.
+The current architecture had a private hosted attempt:
+[controller](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37726650291)
+and [worker](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37726663401).
+Rust BASE/HEAD analysis and the agent-authored PR summary succeeded, but the
+controller failed with `action_required`. All three native validation phases
+were skipped; no repair was published. That Rust-only synthetic fixture
+provided no hosted C++ coverage or native repair-and-publication proof.
 
-**Shared build profiles and base/head PR analysis are implemented locally;
-hosted execution remains unverified.** C++ developers can select the opt-in `PerformanceAnalysis=Extended`
+**The coverage-contract and agent-side shell-dependency corrections pass
+local checks but have not been hosted.** Shared build profiles and base/head
+PR analysis are implemented. C++ developers can select the opt-in `PerformanceAnalysis=Extended`
 MSBuild profile; Rust developers can use `cargo wta-perf` and `cargo wta-perf-extended`
 from the repository root. The ordinary Cargo build does not run Clippy.
 Normal CI already enables C++ AuditMode; availability of Clippy in its pinned
