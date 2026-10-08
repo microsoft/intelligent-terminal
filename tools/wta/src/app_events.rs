@@ -2962,6 +2962,30 @@ impl App {
                         {
                             let tab = self.tab_mut(target_tab);
                             tab.reattached_session_id = tab.session_id.clone();
+                            tab.restore_identity = match (
+                                params.get("keep_id").and_then(|v| v.as_str()),
+                                params.get("attempt_id").and_then(|v| v.as_str()),
+                            ) {
+                                (Some(keep), Some(attempt)) => match (
+                                    uuid::Uuid::parse_str(keep),
+                                    uuid::Uuid::parse_str(attempt),
+                                ) {
+                                    (Ok(keep_id), Ok(attempt_id)) => {
+                                        Some(crate::telemetry::RestoreIdentity {
+                                            keep_id,
+                                            attempt_id,
+                                        })
+                                    }
+                                    _ => {
+                                        tracing::warn!(target: "telemetry", "invalid keep-running telemetry identity");
+                                        None
+                                    }
+                                },
+                                _ => {
+                                    tracing::debug!(target: "telemetry", "keep-running event has no correlation fields (older host)");
+                                    None
+                                }
+                            };
                         }
                     }
                     return;
@@ -3806,12 +3830,20 @@ impl App {
                         WtEventSeverity::Informational => None,
                     };
                     if let Some(severity_str) = severity_str {
+                        let offer_id = uuid::Uuid::new_v4();
+                        if method == "vt_sequence" {
+                            if let Some(target_tab) = notification.tab_id.as_deref() {
+                                self.tab_mut(target_tab).autofix.detected_offer =
+                                    Some((pane_id.clone(), offer_id));
+                            }
+                        }
                         crate::telemetry::log_error_detected(
                             severity_str,
                             &method,
                             &pane_id,
                             self.autofix_policy_state,
                             self.autofix_enabled,
+                            offer_id,
                         );
                     }
                 }

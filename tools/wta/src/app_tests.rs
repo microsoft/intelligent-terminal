@@ -2085,6 +2085,8 @@ fn kept_tab_reattachment_marks_only_the_owning_live_session() {
     app.owner_tab_id = Some("owned-tab".into());
     app.window_id = Some("owned-window".into());
     app.tab_mut("owned-tab").session_id = Some("original".into());
+    let keep_id = uuid::Uuid::new_v4();
+    let attempt_id = uuid::Uuid::new_v4();
 
     for (tab, window) in [("other-tab", "owned-window"), ("owned-tab", "other-window")] {
         app.handle_event(AppEvent::WtEvent {
@@ -2100,11 +2102,57 @@ fn kept_tab_reattachment_marks_only_the_owning_live_session() {
         method: "keep_running_reattached".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({"tab_id": "owned-tab", "window_id": "owned-window"}),
+        params: json!({"tab_id": "owned-tab", "window_id": "owned-window", "keep_id": keep_id.braced().to_string(), "attempt_id": attempt_id.braced().to_string()}),
     });
     let tab = app.tab_mut("owned-tab");
     assert_eq!(tab.reattached_session_id.as_deref(), Some("original"));
     assert!(tab.is_reattached_session());
+    assert_eq!(
+        tab.restore_identity(),
+        Some(crate::telemetry::RestoreIdentity {
+            keep_id,
+            attempt_id
+        })
+    );
+    let retry_id = uuid::Uuid::new_v4();
+    app.handle_event(AppEvent::WtEvent {
+        method: "keep_running_reattached".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({"tab_id": "owned-tab", "window_id": "owned-window", "keep_id": keep_id.braced().to_string(), "attempt_id": retry_id.braced().to_string()}),
+    });
+    assert_eq!(
+        app.tab_mut("owned-tab").restore_identity(),
+        Some(crate::telemetry::RestoreIdentity {
+            keep_id,
+            attempt_id: retry_id
+        })
+    );
+    for identity in [
+        json!({"keep_id": "invalid", "attempt_id": retry_id.to_string()}),
+        json!({"keep_id": keep_id.to_string(), "attempt_id": "invalid"}),
+        json!({}),
+    ] {
+        let mut params = identity;
+        params["tab_id"] = json!("owned-tab");
+        params["window_id"] = json!("owned-window");
+        app.handle_event(AppEvent::WtEvent {
+            method: "keep_running_reattached".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params,
+        });
+        let tab = app.tab_mut("owned-tab");
+        assert!(tab.is_reattached_session());
+        assert!(tab.restore_identity().is_none());
+    }
+    app.handle_event(AppEvent::WtEvent {
+        method: "keep_running_reattached".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({"tab_id": "owned-tab", "window_id": "owned-window", "keep_id": keep_id.to_string(), "attempt_id": retry_id.to_string()}),
+    });
+    assert!(app.tab_mut("owned-tab").restore_identity().is_some());
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "owned-tab".into(),
         session_id: "new-session".into(),
@@ -2113,6 +2161,7 @@ fn kept_tab_reattachment_marks_only_the_owning_live_session() {
         current_model_id: None,
     });
     assert!(!app.tab_mut("owned-tab").is_reattached_session());
+    assert!(app.tab_mut("owned-tab").restore_identity().is_none());
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "owned-tab".into(),
         session_id: "original".into(),
@@ -22226,14 +22275,19 @@ fn stage_error_fix_telemetry_proposal(
     app.state = ConnectionState::Connected;
     app.mode = AppMode::Chat;
     stage_proposal_session(app, "fix-telemetry");
-    submit_proposal_prompt(app, "fix-telemetry");
+    let generation = app.current_tab().autofix.generation;
+    app.turn_submit_prompt(
+        "fix-telemetry",
+        SubmittedPrompt {
+            id: 99,
+            text: "restart it".into(),
+            submitted_at_unix_s: 0.0,
+            context: TurnContext::with_target_pane("pane-9"),
+            autofix: is_autofix.then_some(AutofixContext { generation }),
+        },
+    );
     let tab = app.current_tab_mut();
     tab.pane_open = true;
-    if is_autofix {
-        tab.turn.prompt_mut().unwrap().autofix = Some(AutofixContext {
-            generation: tab.autofix.generation,
-        });
-    }
     let manager = Arc::new(ProposalChannelManager::new());
     app.set_proposal_channels(Arc::clone(&manager));
     let channel = manager
@@ -22289,8 +22343,14 @@ fn error_fix_telemetry_requires_display_then_run_and_deduplicates() {
     );
 
     app.turn_execute_card("fix-telemetry");
-    assert_eq!(take(), vec![Event::ErrorFixAccepted(offer_id)]);
-    assert!(!rx.try_recv().unwrap().insert_only);
+    assert!(take().is_empty(), "acceptance belongs to the executor");
+    let execution = rx.try_recv().unwrap();
+    assert!(!execution.insert_only);
+    let run = execution.run.unwrap();
+    assert_eq!(run.offer_id, offer_id);
+    assert_eq!(run.source, "Manual");
+    assert!(app.current_tab().autofix.offer.as_ref().unwrap().accepted);
+    assert!(app.error_fix_run_identity("fix-telemetry").is_none());
     assert_eq!(
         final_rx.try_recv().unwrap(),
         crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
@@ -22299,6 +22359,55 @@ fn error_fix_telemetry_requires_display_then_run_and_deduplicates() {
     flush_error_fix_telemetry_frame(&mut app, 100, 30);
     assert!(take().is_empty());
     assert!(rx.try_recv().is_err());
+}
+
+#[test]
+fn error_fix_telemetry_queues_source_once_and_rejects_stale_identity() {
+    use crate::telemetry::capture::take;
+
+    for source in ["Manual", "Detection", "Unknown"] {
+        take();
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        app.current_tab_mut().autofix.offer.as_mut().unwrap().source = source;
+        assert!(app.error_fix_run_identity("fix-telemetry").is_none());
+        flush_error_fix_telemetry_frame(&mut app, 100, 30);
+        take();
+
+        let generation = app.current_tab().autofix.generation;
+        app.current_tab_mut().autofix.generation += 1;
+        assert!(app.error_fix_run_identity("fix-telemetry").is_none());
+        app.current_tab_mut().autofix.generation = generation;
+        let offer = app.current_tab_mut().autofix.offer.as_mut().unwrap();
+        let prompt_id = offer.prompt_id;
+        offer.prompt_id += 1;
+        assert!(app.error_fix_run_identity("fix-telemetry").is_none());
+        app.current_tab_mut()
+            .autofix
+            .offer
+            .as_mut()
+            .unwrap()
+            .prompt_id = prompt_id;
+
+        app.turn_execute_card("fix-telemetry");
+        let run = rx.try_recv().unwrap().run.unwrap();
+        assert_eq!(run.source, source);
+        assert_eq!(
+            run.offer_id,
+            app.current_tab().autofix.offer.as_ref().unwrap().id
+        );
+        assert_ne!(run.run_id, uuid::Uuid::nil());
+        assert!(app.current_tab().autofix.offer.as_ref().unwrap().accepted);
+        assert!(take().is_empty(), "the producer must not emit acceptance");
+        app.turn_execute_card("fix-telemetry");
+        assert!(
+            rx.try_recv().is_err(),
+            "a confirmed offer must not be retried"
+        );
+    }
 }
 
 #[test]
@@ -22340,8 +22449,11 @@ fn error_fix_telemetry_nonoverlapping_autocomplete_allows_offer_and_enter_accept
     assert!(take().is_empty(), "redrawing must not offer twice");
 
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    assert_eq!(take(), vec![Event::ErrorFixAccepted(offer_id)]);
+    assert!(take().is_empty(), "acceptance belongs to the executor");
     let execution = rx.try_recv().unwrap();
+    let run = execution.run.unwrap();
+    assert_eq!(run.offer_id, offer_id);
+    assert_eq!(run.source, "Manual");
     assert!(!execution.insert_only);
     assert_eq!(execution.context.target_pane_id(), Some("pane-9"));
     assert!(matches!(
@@ -22417,11 +22529,13 @@ fn error_fix_telemetry_excludes_insert_cancel_and_failed_dispatch() {
     for action in ["insert", "cancel", "failed", "revoked"] {
         take();
         let mut app = test_app();
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        if action != "failed" {
-            app.recommendation_tx = tx;
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        let mut rx = Some(rx);
+        if action == "failed" {
+            drop(rx.take());
         }
-        let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+        let (proposal_id, mut final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
         assert!(app.commit_terminal_action_proposal(&proposal_id));
         flush_error_fix_telemetry_frame(&mut app, 100, 30);
         assert_eq!(take().len(), 1);
@@ -22444,6 +22558,23 @@ fn error_fix_telemetry_excludes_insert_cancel_and_failed_dispatch() {
             take().is_empty(),
             "{action} must not count as Run acceptance"
         );
+        if action == "insert" {
+            let execution = rx.as_mut().unwrap().try_recv().unwrap();
+            assert!(execution.insert_only);
+            assert!(execution.run.is_none());
+            assert_eq!(
+                final_rx.try_recv().unwrap(),
+                crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
+            );
+        } else if action == "failed" {
+            assert_eq!(
+                final_rx.try_recv().unwrap(),
+                crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Unavailable
+            );
+            assert!(app.recommendation_tx.is_closed());
+        } else {
+            assert!(rx.as_mut().unwrap().try_recv().is_err());
+        }
     }
 }
 
@@ -22461,10 +22592,10 @@ fn error_fix_telemetry_excludes_generic_actions_and_undisplayed_acceptance() {
             flush_error_fix_telemetry_frame(&mut app, 100, 30);
         }
         app.turn_execute_card("fix-telemetry");
-        assert!(
-            rx.try_recv().is_ok(),
-            "existing execution behavior preserved"
-        );
+        let execution = rx
+            .try_recv()
+            .expect("existing execution behavior preserved");
+        assert!(execution.run.is_none());
         assert!(take().is_empty());
     }
 }
@@ -22544,6 +22675,30 @@ fn error_fix_telemetry_policy_is_independent_of_effective_setting() {
         );
         assert!(!app.autofix_enabled);
     }
+}
+
+#[test]
+fn error_fix_telemetry_detection_flow_is_not_replaced_by_a_busy_detection() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.autofix_enabled = true;
+    stage_proposal_session(&mut app, "fix-telemetry");
+    let failure = || AppEvent::WtEvent {
+        method: "vt_sequence".into(),
+        pane_id: "pane-9".into(),
+        tab_id: Some(DEFAULT_TAB_ID.into()),
+        params: json!({"sequence": "osc:133;D;1"}),
+    };
+    app.handle_event(failure());
+    let tab = app.current_tab();
+    let detected = tab.autofix.detected_offer.as_ref().unwrap().1;
+    let flow = tab.autofix.offer.as_ref().unwrap();
+    assert_eq!(flow.id, detected);
+    assert_eq!(flow.source, "Detection");
+    app.handle_event(failure());
+    let tab = app.current_tab();
+    assert_ne!(tab.autofix.detected_offer.as_ref().unwrap().1, detected);
+    assert_eq!(tab.autofix.offer.as_ref().unwrap().id, detected);
 }
 
 fn stage_direct_proposal(

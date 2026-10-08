@@ -1003,6 +1003,29 @@ namespace winrt::TerminalApp::implementation
     bool TerminalPage::RestoreKeptGroup(const winrt::guid& groupId)
     {
         const auto keepAlive = get_strong();
+        const auto attemptId = ::Microsoft::Console::Utils::GuidToString(::Microsoft::Console::Utils::CreateGuid());
+        winrt::hstring keepId;
+        bool hasAgentPane = false;
+        bool hasAgentSession = false;
+        bool restored = false;
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "KeepRunningReattachStarted",
+            TraceLoggingWideString(attemptId.c_str(), "AttemptId"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        const auto logResult = wil::scope_exit([&]() noexcept {
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "KeepRunningReattached",
+                TraceLoggingWideString(attemptId.c_str(), "AttemptId"),
+                TraceLoggingWideString(keepId.c_str(), "KeepId"),
+                TraceLoggingString(restored ? "live" : "failed", "Outcome"),
+                TraceLoggingBool(hasAgentPane, "HasAgentPane"),
+                TraceLoggingBool(hasAgentSession, "HasAgentSession"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        });
         const auto owner = _manager.KeptGroupOwner(groupId);
         THROW_HR_IF(E_INVALIDARG, !owner);
         const auto sourceTab = _GetTabImpl(_manager.BeginReattachKeptGroup(groupId));
@@ -1013,18 +1036,10 @@ namespace winrt::TerminalApp::implementation
             }
             CATCH_LOG()
         });
-        const auto keepId = sourceTab->KeepRunningTelemetryId();
-        const auto hasAgentPane = !!sourceTab->FindAgentPaneContent();
-        const auto logReattach = [&](const char* outcome) {
-            TraceLoggingWrite(
-                g_hTerminalAppProvider,
-                "KeepRunningReattached",
-                TraceLoggingWideString(keepId.c_str(), "KeepId"),
-                TraceLoggingString(outcome, "Outcome"),
-                TraceLoggingBool(hasAgentPane, "HasAgentPane"),
-                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
-        };
+        keepId = sourceTab->KeepRunningTelemetryId();
+        const auto agentPane = sourceTab->FindAgentPaneContent();
+        hasAgentPane = !!agentPane;
+        hasAgentSession = agentPane && !agentPane.AgentSessionId().empty();
         bool attached = false;
         try
         {
@@ -1034,18 +1049,16 @@ namespace winrt::TerminalApp::implementation
         catch (...)
         {
             rollback.reset();
-            logReattach("failed");
             throw;
         }
         if (!attached)
         {
             rollback.reset();
-            logReattach("failed");
             return false;
         }
         _manager.CompleteKeptGroupReattach(groupId, true);
         rollback.release();
-        logReattach("live");
+        restored = true;
         const auto restoredTab = _GetFocusedTabImpl();
         if (hasAgentPane)
         {
@@ -1054,6 +1067,8 @@ namespace winrt::TerminalApp::implementation
                 Json::Value params;
                 params["tab_id"] = winrt::to_string(restoredTab->StableId());
                 params["window_id"] = std::to_string(_WindowProperties.WindowId());
+                params["keep_id"] = winrt::to_string(keepId);
+                params["attempt_id"] = winrt::to_string(winrt::hstring{ attemptId });
                 _RaiseProtocolEvent("keep_running_reattached", params);
             }
             CATCH_LOG()
@@ -2452,7 +2467,18 @@ namespace winrt::TerminalApp::implementation
             _pendingPinValue = pinned;
             return;
         }
+        const auto wasPinned = tab->IsPinned();
         _SetTabPinned(tab, pinned);
+        if (tab->IsPinned() != wasPinned)
+        {
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "TabPinChanged",
+                TraceLoggingBool(tab->IsPinned(), "Pinned"),
+                TraceLoggingUInt32(_PinnedTabCount(), "PinnedCount"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        }
     }
 
     void TerminalPage::_ApplyPendingPinRequest()

@@ -92,7 +92,7 @@ function Read-TestTelemetryTrace {
             if (-not $task) { throw "Named telemetry filtering requires an event task name: $guid" }
             if ($task.InnerText -cnotin $IncludeEventName) { continue }
         }
-        if ($guid -eq '56c06166-2e2e-5f4d-7ff3-74f4b78c87d6' -and $task -and $task.InnerText -cne 'SessionBecameInteractive') { continue }
+        if ($guid -eq '56c06166-2e2e-5f4d-7ff3-74f4b78c87d6' -and $task -and $task.InnerText -cnotin @('SessionBecameInteractive', 'UserInteract')) { continue }
         $tlg = Select-TestTelemetrySchema -Schemas $tlgSchemas -Provider $guid `
             -ProcessId ([int]$execution.GetAttribute('ProcessID')) -Name $task.InnerText `
             -FieldNames @($data | ForEach-Object { $_.GetAttribute('Name') })

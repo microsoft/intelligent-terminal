@@ -6122,7 +6122,12 @@ impl App {
         let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context))
             .with_byok(self.current_model_is_byok())
             .with_agent_id(self.current_agent_id.clone())
-            .with_reattached_session(reattached_session_id);
+            .with_reattached_session(reattached_session_id)
+            .with_restore_identity(
+                self.tab_sessions
+                    .get(&target_tab_id)
+                    .and_then(|tab| tab.restore_identity()),
+            );
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),
