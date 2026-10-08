@@ -41,7 +41,8 @@ Describe 'Windows Docker readiness (no real Docker or service mutation)' {
     }
 
     It 'starts only the known stopped Docker service and then waits for the API' {
-        Mock Get-Service { [pscustomobject]@{ Name = 'docker'; Status = 'Stopped' } }
+        $script:serviceStarted = $false
+        Mock Get-Service { [pscustomobject]@{ Name = 'docker'; Status = $(if ($script:serviceStarted) { 'Running' } else { 'Stopped' }) } }
         $script:probeCount = 0
         Mock Invoke-WindowsDockerPreflightProcess {
             if ($Arguments[0] -eq '--host') {
@@ -51,10 +52,45 @@ Describe 'Windows Docker readiness (no real Docker or service mutation)' {
             }
             [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($Arguments[-1])) |
                 Should -BeExactly 'Start-Service -Name docker -ErrorAction Stop'
+            $script:serviceStarted = $true
             return [pscustomobject]@{ ExitCode = 0; Output = '' }
         }
         (Wait-WindowsDocker -EvidenceDirectory $script:evidenceDirectory).OSType | Should -Be 'windows'
         Should -Invoke Invoke-WindowsDockerPreflightProcess -Times 3 -Exactly
+    }
+
+    It 'does not accept a successful pipe response while the installed service is stopped' {
+        $script:serviceStarted = $false
+        Mock Get-Service { [pscustomobject]@{ Name = 'docker'; Status = $(if ($script:serviceStarted) { 'Running' } else { 'Stopped' }) } }
+        Mock Invoke-WindowsDockerPreflightProcess {
+            if ($Arguments[0] -eq '--host') {
+                return [pscustomobject]@{ ExitCode = 0; Output = '{"OSType":"windows","DockerRootDir":"C:\\ProgramData\\docker"}' }
+            }
+            $script:serviceStarted = $true
+            return [pscustomobject]@{ ExitCode = 0; Output = '' }
+        }
+        (Wait-WindowsDocker -EvidenceDirectory $script:evidenceDirectory).OSType | Should -BeExactly 'windows'
+        Should -Invoke Invoke-WindowsDockerPreflightProcess -Times 3 -Exactly
+        $script:serviceStarted | Should -BeTrue
+    }
+
+    It 'waits for a StartPending service even when its pipe already responds successfully' {
+        $script:serviceReads = 0
+        Mock Get-Service {
+            $script:serviceReads++
+            [pscustomobject]@{ Name = 'docker'; Status = $(if ($script:serviceReads -gt 2) { 'Running' } else { 'StartPending' }) }
+        }
+        (Wait-WindowsDocker -EvidenceDirectory $script:evidenceDirectory).OSType | Should -BeExactly 'windows'
+        Should -Invoke Invoke-WindowsDockerPreflightProcess -Times 2 -Exactly
+    }
+
+    It 'does not accept a ready response when the service changes to an unsupported state' {
+        $script:serviceReads = 0
+        Mock Get-Service {
+            $script:serviceReads++
+            [pscustomobject]@{ Name = 'docker'; Status = $(if ($script:serviceReads -eq 1) { 'Running' } else { 'Paused' }) }
+        }
+        { Wait-WindowsDocker -EvidenceDirectory $script:evidenceDirectory } | Should -Throw '*unsupported status Paused*'
     }
 
     It 'handles Running while the API is transiently unavailable without restarting it' {

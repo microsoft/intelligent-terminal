@@ -334,7 +334,10 @@ Native Windows validation pins the Windows Docker pipe and clears inherited
 Docker context selection. Before dependency/image work, the trusted
 `build/scripts/Wait-WindowsDocker.ps1` helper verifies the installed Windows
 container feature, client and registered service, starts only a stopped Docker
-service, and waits for a Windows-engine response. Process operations and
+service, and accepts a Windows-engine response only after re-reading that
+service as Running. A successful pipe response while Stopped or StartPending
+cannot bypass service startup/readiness. This checks service state, not
+independent pipe-process ownership or daemon binary attestation. Process operations and
 readiness have explicit bounds and retain raw diagnostic output. A terminated
 Docker-info probe timeout is retryable only within the same readiness deadline:
 an exact child exiting between the timed wait and termination remains a

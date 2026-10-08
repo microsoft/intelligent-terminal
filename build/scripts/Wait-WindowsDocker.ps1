@@ -91,13 +91,13 @@ function Wait-WindowsDocker {
             continue
         }
         if ([DateTime]::UtcNow -ge $deadline) { break }
-        if ($result.ExitCode -eq 0) {
+        $service = Get-Service -Name docker -ErrorAction Stop
+        if ($result.ExitCode -eq 0 -and $service.Status -eq 'Running') {
             $info = $result.Output | ConvertFrom-Json -ErrorAction Stop
             if ($info.OSType -cne 'windows') { throw "Docker endpoint is not a Windows engine: OSType=$($info.OSType)." }
             if (-not [IO.Path]::IsPathFullyQualified($info.DockerRootDir)) { throw 'Windows Docker data root is unavailable.' }
             return $info
         }
-        $service = Get-Service -Name docker -ErrorAction Stop
         Write-Host "Docker API not ready: attempt=$attempt, exit=$($result.ExitCode), service=$($service.Status)."
         if (-not $started -and $service.Status -eq 'Stopped') {
             $started = $true
