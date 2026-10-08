@@ -3543,7 +3543,9 @@ impl HelperHandler {
                 })
             }))
         };
-        let browser_attempt = matches!(agent.resolved_agent_id.as_str(), "antigravity" | "gemini")
+        let browser_attempt =
+            (matches!(agent.resolved_agent_id.as_str(), "antigravity" | "gemini")
+                || agent.resolved_agent_id.starts_with("custom:"))
             .then_some(attempt_id)
             .flatten();
         tracing::info!(

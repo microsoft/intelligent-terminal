@@ -156,6 +156,10 @@ browser, and launch failure must not cancel otherwise valid authorization.
 Clear the link when the attempt ends. Exercise extension notifications through
 actual SDK wire dispatch, including its required extension method naming, rather
 than only calling the parser on a locally constructed notification.
+Custom ACP commands that use the same advertised Google authentication flow must
+receive the same private progress and fallback; a different canonical ID must not
+make shared in-protocol onboarding silently unusable. The same destination and
+ownership validation remains mandatory.
 
 External login adapters must construct native argument vectors for the selected
 source. A WSL provider must sign in inside its distro/default-user environment,
