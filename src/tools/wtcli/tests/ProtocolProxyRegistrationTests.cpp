@@ -7,7 +7,11 @@
 #include <appmodel.h>
 #include <objbase.h>
 #include <objidl.h>
+#define RPCPROXY_ENABLE_CPP_NO_CINTERFACE
+#include <rpcproxy.h>
+#include <algorithm>
 #include <string>
+#include <vector>
 #include <wil/stl.h>
 #include <wil/win32_helpers.h>
 #include <wil/resource.h>
@@ -71,18 +75,58 @@ namespace Protocol = Microsoft::Terminal::Protocol;
 
 static void Check(const bool condition, const char* message)
 {
+    if (!condition)
+    {
+        std::fprintf(stderr, "%s\n", message);
+    }
     THROW_HR_IF_MSG(E_UNEXPECTED, !condition, "%hs", message);
 }
 
-class TestSink final : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, ITerminalProtocolEventSink>
+static constexpr GUID TestSession{ 0x12345678, 0x9abc, 0x4def, { 0x81, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef } };
+
+static bool EqualBstr(BSTR value, const wchar_t* expected) noexcept
+{
+    return value && SysStringLen(value) == wcslen(expected) && wcscmp(value, expected) == 0;
+}
+
+class TestSink final : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, ITerminalProtocolEventSink, ITerminalProtocolNativeAgent>
 {
 public:
     std::atomic<bool> received{ false };
+    std::atomic<bool> tabReceived{ false };
+    std::atomic<bool> splitReceived{ false };
 
     HRESULT STDMETHODCALLTYPE OnEvent(BSTR text) noexcept override
     {
         received = text && wcscmp(text, L"package-local callback") == 0;
         return received ? S_OK : E_INVALIDARG;
+    }
+
+    HRESULT STDMETHODCALLTYPE CreateAgentCliTab(MIDL_uhyper windowId, BSTR profile, BSTR commandline, BSTR title, BSTR startingDirectory,
+                                               boolean suppressAppTitle, boolean background, BSTR providerId, BSTR* json) noexcept override
+    {
+        RETURN_HR_IF_NULL(E_POINTER, json);
+        *json = nullptr;
+        tabReceived = windowId == 0x123456789abcdef0ULL &&
+                      EqualBstr(profile, L"test profile") && EqualBstr(commandline, L"synthetic --argument \"two words\"") &&
+                      EqualBstr(title, L"Agent \u03a9") && EqualBstr(startingDirectory, L"C:\\synthetic directory") &&
+                      suppressAppTitle == 1 && background == 0 && EqualBstr(providerId, L"copilot");
+        RETURN_HR_IF(E_INVALIDARG, !tabReceived);
+        *json = SysAllocString(L"{\"synthetic\":\"tab\",\"id\":42}");
+        return *json ? S_OK : E_OUTOFMEMORY;
+    }
+
+    HRESULT STDMETHODCALLTYPE SplitAgentCliPane(GUID sessionId, BSTR direction, float size, BSTR profile, BSTR commandline,
+                                               boolean background, BSTR providerId, BSTR* json) noexcept override
+    {
+        RETURN_HR_IF_NULL(E_POINTER, json);
+        *json = nullptr;
+        splitReceived = sessionId == TestSession && EqualBstr(direction, L"right") && size == 0.375f &&
+                        EqualBstr(profile, L"test profile") && EqualBstr(commandline, L"synthetic --argument \"two words\"") &&
+                        background == 1 && EqualBstr(providerId, L"copilot");
+        RETURN_HR_IF(E_INVALIDARG, !splitReceived);
+        *json = SysAllocString(L"{\"synthetic\":\"pane\",\"id\":73}");
+        return *json ? S_OK : E_OUTOFMEMORY;
     }
 };
 
@@ -161,11 +205,46 @@ try
     const CLSID* clsid = nullptr;
     info(&files, &clsid);
     Check(files && clsid, "Proxy metadata exists");
+    std::vector<IID> metadataInterfaces;
+    for (auto file = files; *file; ++file)
+    {
+        Check((*file)->pStubVtblList != nullptr, "Proxy metadata contains stub headers");
+        for (unsigned short index = 0; index < (*file)->TableSize; ++index)
+        {
+            const auto stub = (*file)->pStubVtblList[index];
+            Check(stub != nullptr, "Proxy metadata contains a stub");
+            const auto header = RPCPROXY_GET_STUB_HEADER(stub);
+            Check(header->piid != nullptr, "Proxy stub header contains an IID");
+            const auto& iid = *header->piid;
+            Check(std::find(metadataInterfaces.begin(), metadataInterfaces.end(), iid) == metadataInterfaces.end(), "Proxy metadata IIDs are unique");
+            metadataInterfaces.push_back(iid);
+        }
+    }
+    Check(!metadataInterfaces.empty(), "Proxy metadata has interfaces");
+    // Process-local poison mappings prevent installed packages from masking an
+    // omitted production override. No factory is registered for this fresh CLSID.
+    CLSID sentinel{};
+    THROW_IF_FAILED(CoCreateGuid(&sentinel));
+    Check(sentinel != *clsid, "Sentinel differs from the loaded proxy factory");
+    for (const auto& iid : metadataInterfaces)
+    {
+        THROW_IF_FAILED(CoRegisterPSClsid(iid, sentinel));
+        CLSID actual{};
+        THROW_IF_FAILED(CoGetPSClsid(iid, &actual));
+        Check(actual == sentinel, "Each metadata IID starts with the sentinel mapping");
+    }
+    std::printf("Proxy metadata interfaces: %zu; production interfaces: %zu\n", metadataInterfaces.size(), Protocol::details::ProxyInterfaces.size());
+    Check(metadataInterfaces.size() == Protocol::details::ProxyInterfaces.size(), "Production IID set must exactly match loaded proxy metadata");
+    for (const auto& iid : metadataInterfaces)
+    {
+        Check(std::count(Protocol::details::ProxyInterfaces.begin(), Protocol::details::ProxyInterfaces.end(), iid) == 1,
+              "Each loaded proxy IID must occur exactly once in the production list");
+    }
     THROW_IF_FAILED(registration.Register(module.get()));
     const auto revoke = wil::scope_exit([&]() noexcept { LOG_IF_FAILED(registration.Unregister()); });
     THROW_IF_FAILED(registration.Register(module.get()));
 
-    for (const auto& iid : Protocol::details::ProxyInterfaces)
+    for (const auto& iid : metadataInterfaces)
     {
         CLSID actual{};
         THROW_IF_FAILED(CoGetPSClsid(iid, &actual));
@@ -176,8 +255,7 @@ try
     THROW_IF_FAILED(getFactory(*clsid, IID_PPV_ARGS(&directFactory)));
     THROW_IF_FAILED(CoGetClassObject(*clsid, CLSCTX_INPROC_SERVER, nullptr, IID_PPV_ARGS(&comFactory)));
     Check(directFactory.Get() == comFactory.Get(), "COM returned the factory from the loaded module");
-    Check(Protocol::details::ProxyInterfaces.size() == 7, "Protocol and legacy/current handoff coverage");
-    for (const auto& iid : Protocol::details::ProxyInterfaces)
+    for (const auto& iid : metadataInterfaces)
     {
         Microsoft::WRL::ComPtr<IRpcProxyBuffer> buffer;
         void* interfacePointer = nullptr;
@@ -189,7 +267,7 @@ try
     auto sink = Microsoft::WRL::Make<TestSink>();
     Check(!!sink, "Allocate callback sink");
     Microsoft::WRL::ComPtr<IStream> stream;
-    THROW_IF_FAILED(CoMarshalInterThreadInterfaceInStream(__uuidof(ITerminalProtocolEventSink), sink.Get(), &stream));
+    THROW_IF_FAILED(CoMarshalInterThreadInterfaceInStream(__uuidof(ITerminalProtocolEventSink), static_cast<ITerminalProtocolEventSink*>(sink.Get()), &stream));
     HRESULT callbackResult = E_PENDING;
     std::thread worker([marshaled = stream.Detach(), &callbackResult]() noexcept {
         try
@@ -199,7 +277,29 @@ try
             THROW_IF_FAILED(CoGetInterfaceAndReleaseStream(marshaled, IID_PPV_ARGS(&proxy)));
             wil::unique_bstr message{ SysAllocString(L"package-local callback") };
             THROW_IF_NULL_ALLOC(message);
-            callbackResult = proxy->OnEvent(message.get());
+            THROW_IF_FAILED(proxy->OnEvent(message.get()));
+            Microsoft::WRL::ComPtr<ITerminalProtocolNativeAgent> nativeAgent;
+            THROW_IF_FAILED(proxy.As(&nativeAgent));
+            const auto allocate = [](const wchar_t* value) {
+                wil::unique_bstr result{ SysAllocString(value) };
+                THROW_IF_NULL_ALLOC(result);
+                return result;
+            };
+            auto profile = allocate(L"test profile");
+            auto commandline = allocate(L"synthetic --argument \"two words\"");
+            auto title = allocate(L"Agent \u03a9");
+            auto directory = allocate(L"C:\\synthetic directory");
+            auto provider = allocate(L"copilot");
+            auto direction = allocate(L"right");
+            wil::unique_bstr tabJson;
+            THROW_IF_FAILED(nativeAgent->CreateAgentCliTab(0x123456789abcdef0ULL, profile.get(), commandline.get(), title.get(),
+                                                         directory.get(), 1, 0, provider.get(), tabJson.put()));
+            Check(EqualBstr(tabJson.get(), L"{\"synthetic\":\"tab\",\"id\":42}"), "Native agent tab JSON crossed apartments");
+            wil::unique_bstr splitJson;
+            THROW_IF_FAILED(nativeAgent->SplitAgentCliPane(TestSession, direction.get(), 0.375f, profile.get(), commandline.get(),
+                                                         1, provider.get(), splitJson.put()));
+            Check(EqualBstr(splitJson.get(), L"{\"synthetic\":\"pane\",\"id\":73}"), "Native agent pane JSON crossed apartments");
+            callbackResult = S_OK;
         }
         catch (...)
         {
@@ -209,9 +309,10 @@ try
     worker.join(); // The test runner imposes a process deadline.
     THROW_IF_FAILED(callbackResult);
     Check(sink->received, "Callback crossed apartments through the local proxy");
+    Check(sink->tabReceived && sink->splitReceived, "Both native agent calls crossed apartments with intact arguments");
     THROW_IF_FAILED(registration.Unregister());
     THROW_IF_FAILED(registration.Unregister());
-    std::puts("PASS: package policy, failure handling, local factory, IID mappings, callback marshaling");
+    std::puts("PASS: package policy, failure handling, local factory, exact metadata IID set, sentinel overrides, callback and native agent marshaling");
     return 0;
 }
 catch (...)

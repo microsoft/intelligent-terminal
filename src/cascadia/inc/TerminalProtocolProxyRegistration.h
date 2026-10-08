@@ -32,6 +32,7 @@ namespace Microsoft::Terminal::Protocol
         inline constexpr std::array ProxyInterfaces{
             __uuidof(ITerminalProtocol),
             __uuidof(ITerminalProtocolEventSink),
+            __uuidof(ITerminalProtocolNativeAgent),
             __uuidof(ITerminalHandoff),
             __uuidof(ITerminalHandoff2),
             __uuidof(ITerminalHandoff3),
