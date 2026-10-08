@@ -5,7 +5,9 @@
 #include "AgentUsage.h"
 
 #include <charconv>
+#include <cmath>
 #include <stdexcept>
+#include <winrt/Windows.Globalization.NumberFormatting.h>
 
 namespace
 {
@@ -262,7 +264,8 @@ namespace
     std::vector<TerminalApp::AgentUsage::PrimaryDisplayItem> buildPrimaryDisplayItems(
         const std::vector<TerminalApp::AgentUsage::Item>& items,
         const std::wstring_view tokensUnit,
-        const std::wstring_view contextWindowLabel)
+        const std::wstring_view contextWindowLabel,
+        const std::wstring_view languageTag = {})
     {
         using namespace TerminalApp::AgentUsage;
 
@@ -316,6 +319,37 @@ namespace
                 auto text = formatBillingAmount(item->valueDecimalText);
                 text += L" ";
                 text += til::u8u16(item->unitDisplayText);
+                if (!languageTag.empty() && item->source == "acp_standard")
+                {
+                    try
+                    {
+                        double amount{};
+                        const auto parsed = std::from_chars(item->valueDecimalText.data(), item->valueDecimalText.data() + item->valueDecimalText.size(), amount);
+                        THROW_HR_IF(E_INVALIDARG, parsed.ec != std::errc{} || parsed.ptr != item->valueDecimalText.data() + item->valueDecimalText.size() || !std::isfinite(amount));
+                        using namespace winrt::Windows::Globalization::NumberFormatting;
+                        CurrencyFormatter formatter{
+                            til::u8u16(item->unitId),
+                            winrt::single_threaded_vector<winrt::hstring>({ winrt::hstring{ languageTag } }),
+                            L"ZZ"
+                        };
+                        formatter.Mode(CurrencyFormatterMode::UseCurrencyCode);
+                        const auto fractionDigits = formatter.FractionDigits();
+                        formatter.FractionDigits(0);
+                        const auto localizedFullText = formatter.FormatDouble(amount);
+                        formatter.FractionDigits(fractionDigits);
+                        formatter.ApplyRoundingForCurrency(RoundingAlgorithm::RoundHalfUp);
+                        const auto threshold = std::pow(10.0, -static_cast<double>(fractionDigits));
+                        const auto localizedText = amount > 0 && amount < threshold ?
+                                                       winrt::hstring{ L"\u2066<" + std::wstring{ formatter.FormatDouble(threshold) } + L"\u2069" } :
+                                                       formatter.FormatDouble(amount);
+                        text = localizedText;
+                        fullText = localizedFullText;
+                    }
+                    catch (const winrt::hresult_error& error)
+                    {
+                        LOG_HR(error.code());
+                    }
+                }
                 displayItems.emplace_back(PrimaryDisplayItem{
                     .text = std::move(text),
                     .fullText = std::move(fullText),
@@ -463,7 +497,8 @@ namespace TerminalApp::AgentUsage
         const std::vector<Item>& items,
         const std::wstring_view tokensUnit,
         const bool showUsageAndCost,
-        const std::wstring_view contextWindowLabel)
+        const std::wstring_view contextWindowLabel,
+        const std::wstring_view languageTag)
     {
         if (!showUsageAndCost)
         {
@@ -473,7 +508,8 @@ namespace TerminalApp::AgentUsage
         auto displayItems = buildPrimaryDisplayItems(
             items,
             tokensUnit,
-            contextWindowLabel);
+            contextWindowLabel,
+            languageTag);
         const auto visible = !displayItems.empty();
         return PrimaryDisplay{
             .items = std::move(displayItems),

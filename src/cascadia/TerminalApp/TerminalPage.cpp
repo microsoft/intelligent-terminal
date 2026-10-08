@@ -4831,7 +4831,8 @@ namespace winrt::TerminalApp::implementation
                     impl->GetAgentUsage(),
                     RS_(L"Usage_TokensUnit"),
                     _settings && _settings.GlobalSettings().ShowTokenUsageAndCost(),
-                    RS_(L"Usage_ContextWindowLabel"));
+                    RS_(L"Usage_ContextWindowLabel"),
+                    _settings ? _ResolveEffectiveLanguage(_settings.GlobalSettings()) : winrt::hstring{});
                 usageVisible = display.visible;
                 for (const auto& item : display.items)
                 {

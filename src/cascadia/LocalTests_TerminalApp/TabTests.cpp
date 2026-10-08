@@ -17,6 +17,7 @@
 #include "../TerminalApp/TabStrip.h"
 #include "../TerminalApp/ShortcutActionDispatch.h"
 #include "../TerminalApp/AgentPaneContent.h"
+#include "../TerminalApp/AgentUsage.h"
 #include "../TerminalApp/AgentIconUtils.h"
 #include "../TerminalApp/AgentPaneDragStash.h"
 #include "../TerminalApp/Tab.h"
@@ -373,6 +374,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(RichTabMetadataFlyoutDismissalBehavior);
         TEST_METHOD(VerticalTabHistoryStatusText);
         TEST_METHOD(VerticalTabProgressPercentUsesLocaleFormatting);
+        TEST_METHOD(AgentBillingUsesLocaleCurrencyFormatting);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
         TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
         TEST_METHOD(BottomBarSessionsButtonDispatchesExistingAction);
@@ -5642,6 +5644,62 @@ namespace TerminalAppLocalTests
 
             VERIFY_ARE_EQUAL(expected, actual);
             VERIFY_ARE_NOT_EQUAL(winrt::hstring{ L"25%" }, actual);
+        });
+    }
+
+    void TabTests::AgentBillingUsesLocaleCurrencyFormatting()
+    {
+        TestOnUIThread([&]() {
+            using namespace winrt::Windows::Globalization::NumberFormatting;
+            for (const auto language : { L"en-US", L"fr-FR", L"ar-SA" })
+            {
+                for (const auto currency : { "USD", "JPY", "KWD" })
+                {
+                    CurrencyFormatter formatter{ til::u8u16(currency), winrt::single_threaded_vector<winrt::hstring>({ language }), L"ZZ" };
+                    formatter.Mode(CurrencyFormatterMode::UseCurrencyCode);
+                    const auto digits = formatter.FractionDigits();
+                    for (const auto value : { "1234.565", "0.004", "0" })
+                    {
+                        const std::vector<::TerminalApp::AgentUsage::Item> items{
+                            { .displayKind = ::TerminalApp::AgentUsage::DisplayKind::Billing,
+                              .valueDecimalText = value,
+                              .unitId = currency,
+                              .unitDisplayText = currency,
+                              .source = "acp_standard" }
+                        };
+                        const auto display = ::TerminalApp::AgentUsage::BuildPrimaryDisplay(items, L"tokens", true, L"Context Window", language);
+                        VERIFY_IS_TRUE(display.visible);
+                        VERIFY_ARE_EQUAL(size_t{ 1 }, display.items.size());
+                        const auto amount = std::stod(value);
+                        formatter.NumberRounder(nullptr);
+                        formatter.FractionDigits(0);
+                        VERIFY_ARE_EQUAL(std::wstring{ formatter.FormatDouble(amount) }, display.items[0].fullText);
+                        formatter.FractionDigits(digits);
+                        formatter.ApplyRoundingForCurrency(RoundingAlgorithm::RoundHalfUp);
+                        const auto threshold = std::pow(10.0, -static_cast<double>(digits));
+                        const auto expected = amount > 0 && amount < threshold ?
+                                                  L"\u2066<" + std::wstring{ formatter.FormatDouble(threshold) } + L"\u2069" :
+                                                  std::wstring{ formatter.FormatDouble(amount) };
+                        VERIFY_ARE_EQUAL(expected, display.items[0].text);
+                        if (amount > 0 && amount < threshold)
+                        {
+                            VERIFY_ARE_EQUAL(wchar_t{ L'<' }, display.items[0].text[1]);
+                            VERIFY_ARE_EQUAL(wchar_t{ 0x2066 }, display.items[0].text.front());
+                            VERIFY_ARE_EQUAL(wchar_t{ 0x2069 }, display.items[0].text.back());
+                        }
+                    }
+                }
+            }
+            const std::vector<::TerminalApp::AgentUsage::Item> unsupported{
+                { .displayKind = ::TerminalApp::AgentUsage::DisplayKind::Billing,
+                  .valueDecimalText = "0.004",
+                  .unitId = "EURO",
+                  .unitDisplayText = "EURO",
+                  .source = "acp_standard" }
+            };
+            const auto retained = ::TerminalApp::AgentUsage::BuildPrimaryDisplay(unsupported, L"tokens", true, L"Context Window", L"ar-SA");
+            VERIFY_ARE_EQUAL(std::wstring{ L"<0.01 EURO" }, retained.items[0].text);
+            VERIFY_ARE_EQUAL(std::wstring{ L"0.004 EURO" }, retained.items[0].fullText);
         });
     }
 
