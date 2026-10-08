@@ -39,10 +39,16 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             prompt,
             agent,
             delegate_agent,
+            delegate_agent_id,
             delegate_model,
             delegate_source,
             delegate_wsl_distro,
             cwd,
+            preserve_sidebar_view,
+            split_pane,
+            split_session,
+            split_direction,
+            split_size,
         } => {
             delegate::run(
                 prompt.as_deref(),
@@ -52,6 +58,12 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 delegate_source.as_deref(),
                 delegate_wsl_distro.as_deref(),
                 cwd.as_deref(),
+                preserve_sidebar_view,
+                split_pane.as_deref(),
+                split_session.as_deref(),
+                &split_direction,
+                split_size,
+                delegate_agent_id.as_deref(),
             )
             .await
         }

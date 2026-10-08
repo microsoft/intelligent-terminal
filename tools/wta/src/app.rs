@@ -493,6 +493,8 @@ pub struct AgentEventFacts {
     pub key: String,
     /// Whether a row already exists for `key`.
     pub session_known: bool,
+    /// An existing live session other than `key` owns the hook's pane.
+    pub pane_owned_by_other: bool,
 }
 
 /// What one `agent_event` implies.
@@ -562,6 +564,13 @@ pub fn plan_agent_event(
             | "agent.session.stopped"
             | "agent.session.end"
     ) && !facts.session_known;
+    if facts.pane_owned_by_other
+        && !matches!(event, "agent.session.started" | "agent.session.start")
+    {
+        // Nested CLI workers inherit the parent's pane. Activity, including
+        // pane-targeted errors, cannot claim or alter another live owner.
+        return plan;
+    }
     if needs_synthetic_start {
         plan.events.push(SessionEvent::SessionStarted {
             key: key.clone(),
@@ -864,7 +873,15 @@ where
 
     let facts = AgentEventFacts {
         key: key.clone(),
-        session_known: reg.has_session(&key),
+        session_known: reg
+            .get(&key)
+            .is_some_and(|row| row.cli_source == cli_source),
+        pane_owned_by_other: reg.key_for_pane(pane_session_id).is_some_and(|owner| {
+            reg.get(&owner).is_some_and(|row| {
+                row.liveness() == crate::agent_sessions::LivenessState::Live
+                    && (owner != key || row.cli_source != cli_source)
+            })
+        }),
     };
     let plan = plan_agent_event(event, &payload, pane_session_id, &cli_source, &facts);
 
@@ -2879,18 +2896,30 @@ impl App {
     /// `delegate_agent` / `delegate_model` are the new effective values
     /// (empty string = unset → fall back to deriving from the base agent
     /// cmd). No-op when no executor is wired (tests / manual runs).
-    fn apply_delegate_config(&self, delegate_agent: &str, delegate_model: &str) {
+    fn apply_delegate_config(
+        &self,
+        delegate_agent: &str,
+        delegate_model: &str,
+        delegate_agent_id: Option<&str>,
+    ) {
         let Some(shared) = &self.delegate_agents else {
             return;
         };
         // Treat whitespace-only values as unset so the fallback-to-derived
         // path kicks in (matches the acp_model handling in handle_event).
-        let runtimes = crate::coordinator::default_delegate_agent_runtimes(
+        let runtime = crate::coordinator::resolve_delegate_runtime_with_provider(
             Some(delegate_agent).filter(|s| !s.trim().is_empty()),
             Some(self.delegate_base_agent_cmd.as_str()),
             Some(delegate_model).filter(|s| !s.trim().is_empty()),
+            delegate_agent_id.filter(|id| !id.is_empty()),
         );
-        *shared.lock().unwrap() = runtimes;
+        *shared.lock().unwrap() = match runtime {
+            Ok(runtime) => vec![runtime],
+            Err(error) => {
+                tracing::error!(target: "coordinator", %error, "invalid delegate configuration");
+                Vec::new()
+            }
+        };
         tracing::info!(
             target: "autofix",
             delegate_agent,
@@ -3291,6 +3320,8 @@ impl App {
         let launch_commandline = format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
         let mut argv = vec![
             "new-tab".to_string(),
+            "--agent-provider".to_string(),
+            cli_id.to_string(),
             "--window-id".to_string(),
             window_id.to_string(),
             "-c".to_string(),
@@ -6122,7 +6153,12 @@ impl App {
         let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context))
             .with_byok(self.current_model_is_byok())
             .with_agent_id(self.current_agent_id.clone())
-            .with_reattached_session(reattached_session_id);
+            .with_reattached_session(reattached_session_id)
+            .with_restore_identity(
+                self.tab_sessions
+                    .get(&target_tab_id)
+                    .and_then(|tab| tab.restore_identity()),
+            );
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),

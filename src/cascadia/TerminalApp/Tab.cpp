@@ -3523,6 +3523,10 @@ namespace winrt::TerminalApp::implementation
             currentDictionary.Insert(winrt::box_value(L"TabViewItemHeaderForegroundSelected"), fontBrush);
             currentDictionary.Insert(winrt::box_value(L"TabViewItemHeaderForegroundPointerOver"), isHighContrast ? selectedTabBrush : fontBrush);
             currentDictionary.Insert(winrt::box_value(L"TabViewItemHeaderForegroundPressed"), fontBrush);
+            currentDictionary.Insert(winrt::box_value(L"TabViewItemIconForeground"), deselectedFontBrush);
+            currentDictionary.Insert(winrt::box_value(L"TabViewItemIconForegroundSelected"), fontBrush);
+            currentDictionary.Insert(winrt::box_value(L"TabViewItemIconForegroundPointerOver"), isHighContrast ? selectedTabBrush : fontBrush);
+            currentDictionary.Insert(winrt::box_value(L"TabViewItemIconForegroundPressed"), fontBrush);
 
             // TabViewItem.CloseButton.Foreground (aka X)
             currentDictionary.Insert(winrt::box_value(L"TabViewItemHeaderCloseButtonForeground"), deselectedFontBrush);
@@ -3579,6 +3583,10 @@ namespace winrt::TerminalApp::implementation
             L"TabViewItemHeaderForegroundSelected",
             L"TabViewItemHeaderForegroundPointerOver",
             L"TabViewItemHeaderForegroundPressed",
+            L"TabViewItemIconForeground",
+            L"TabViewItemIconForegroundSelected",
+            L"TabViewItemIconForegroundPointerOver",
+            L"TabViewItemIconForegroundPressed",
 
             // TabViewItem.CloseButton.Foreground (aka X)
             L"TabViewItemHeaderCloseButtonForeground",

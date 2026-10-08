@@ -256,5 +256,6 @@ namespace TerminalApp
         void SetTabKeepRunning(Guid tabId, Boolean enabled);
         Boolean RestoreKeptGroup(Guid groupId);
         void ShutdownPanes();
+        Windows.Foundation.IAsyncOperation<Boolean> GetProtocolPaneIsBackground(Guid paneSessionId);
     }
 }

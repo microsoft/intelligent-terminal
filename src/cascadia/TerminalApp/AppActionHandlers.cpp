@@ -289,6 +289,13 @@ namespace winrt::TerminalApp::implementation
             }
 
             const auto& activeTab{ _senderOrFocusedTab(sender) };
+            if (_tabStrip.HistoryActive() && realArgs.SplitMode() == SplitType::Duplicate)
+            {
+                _SplitAgentDelegate(activeTab, realArgs.SplitDirection(), realArgs.SplitSize());
+                args.Handled(true);
+                return;
+            }
+
             auto contentArgs = realArgs.ContentArgs();
             winrt::TerminalApp::Tab duplicateFromTab{ realArgs.SplitMode() == SplitType::Duplicate ? _GetFocusedTab() : nullptr };
             if (realArgs.SplitMode() == SplitType::Profile && activeTab)

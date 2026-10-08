@@ -130,14 +130,21 @@ windows, Settings, and other nonterminal tabs do not. The paired counts measure
 the tab share at enable time, not a per-agent-session mark rate. Disabling,
 startup, and repeated enable requests do not emit a snapshot.
 
-`App.KeepRunningDetached` records successful background retention; and
-`App.KeepRunningReattached` records committed (`live`) or rolled-back
-(`failed`) restoration. A random `KeepId` correlates those three tab-level
-events without publishing the tab routing ID. `HasAgentPane` distinguishes
+`App.KeepRunningDetached` records successful background retention.
+`App.KeepRunningReattachStarted` and `App.KeepRunningReattached` share a random
+`AttemptId` for each restoration, including pre-transfer failures. Results are
+`live` or `failed`; missing results remain unknown. A random `KeepId` correlates
+the opt-in, detach and resolved-target restore without publishing the tab routing ID.
+`HasAgentPane` distinguishes
 tabs containing an agent pane from shell-only tabs, but does not assert an
-active ACP session. After reattachment, `WTA.AgentPromptSent.Reattached`
+active ACP session. `HasAgentSession` records whether the pane has a bound session ID,
+not a guarantee of provider readiness. After reattachment, `WTA.AgentPromptSent.Reattached`
 is true only for prompts on the same ACP session that survived the transfer;
-it cannot be joined to `KeepId`. Process exit has no `gone` event.
+its `KeepId` and `AttemptId` join it to that restore. Process exit has no `gone` event.
+
+`App.TabPinChanged` separately records successful tab-order pin/unpin actions
+with `Pinned` and post-action `PinnedCount`. The older `SidebarTabPinned` event
+still means the Keep running menu action and is not tab-order pin telemetry.
 
 Focused coverage lives in `TabTests::KeepRunning*` in
 `src/cascadia/LocalTests_TerminalApp/TabTests.cpp`. The shared history/session

@@ -119,6 +119,7 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         custom_models: cli.custom_models,
         cloud_models: cli.cloud_models,
         delegate_agent: cli.delegate_agent,
+        delegate_agent_id: cli.delegate_agent_id,
         delegate_model: cli.delegate_model,
         no_autofix: cli.no_autofix,
         autofix_policy_state: cli

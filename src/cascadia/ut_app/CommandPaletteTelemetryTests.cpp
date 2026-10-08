@@ -3,6 +3,7 @@
 
 #include "precomp.h"
 #include "../TerminalApp/CommandPaletteTelemetry.h"
+#include "../inc/InteractionTelemetry.h"
 
 using namespace WEX::TestExecution;
 
@@ -15,7 +16,21 @@ namespace TerminalAppUnitTests
         TEST_METHOD(HiddenModeSelectionAndReopen);
         TEST_METHOD(LeavingAndReenteringMode);
         TEST_METHOD(ClosingBeforeModePreparation);
+        TEST_METHOD(DailyInteraction);
     };
+
+    void CommandPaletteTelemetryTests::DailyInteraction()
+    {
+        ::Microsoft::Terminal::Telemetry::DailyInteraction interaction;
+        VERIFY_IS_TRUE(interaction.Observe(100));
+        VERIFY_IS_FALSE(interaction.Observe(100));
+        VERIFY_IS_TRUE(interaction.Observe(101));
+        VERIFY_IS_FALSE(interaction.Observe(100));
+        VERIFY_IS_FALSE(interaction.Observe(101));
+        VERIFY_IS_TRUE(interaction.Observe(107));
+        ::Microsoft::Terminal::Telemetry::DailyInteraction otherProcess;
+        VERIFY_IS_TRUE(otherProcess.Observe(107));
+    }
 
     void CommandPaletteTelemetryTests::VisibleModeEntry()
     {

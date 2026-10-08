@@ -84,6 +84,23 @@ namespace SettingsModelUnitTests
         TEST_METHOD(EffectiveDelegateAgentBuiltInBlockedWhenMissingFromAllowlist);
         TEST_METHOD(EffectiveDelegateAgentCustomBlockedByCustomPolicy);
         TEST_METHOD(EffectiveDelegateAgentCustomIgnoresAllowedAgentsAllowlist);
+        TEST_METHOD(NativeAgentCreationPolicyUsesCurrentSnapshot);
+        void _NativeAgentCreationPolicyUsesCurrentSnapshot()
+        {
+            namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+            AgentPolicy::PolicySnapshot policy;
+            VERIFY_IS_TRUE(Registry::IsNativeAgentProviderAllowed(L"copilot", policy));
+            policy.allowedAgents.emplace();
+            VERIFY_IS_FALSE(Registry::IsNativeAgentProviderAllowed(L"copilot", policy));
+            VERIFY_IS_TRUE(Registry::IsNativeAgentProviderAllowed(L"custom:fixture", policy));
+            policy.allowedAgents->insert(L"copilot");
+            VERIFY_IS_TRUE(Registry::IsNativeAgentProviderAllowed(L"COPILOT", policy));
+            policy.customAgents = AgentPolicy::PolicyState::Blocked;
+            VERIFY_IS_FALSE(Registry::IsNativeAgentProviderAllowed(L"custom:fixture", policy));
+            policy.customAgents = AgentPolicy::PolicyState::Allowed;
+            VERIFY_IS_TRUE(Registry::IsNativeAgentProviderAllowed(L"custom:fixture", policy));
+            VERIFY_IS_FALSE(Registry::IsNativeAgentProviderAllowed(L"unknown", policy));
+        }
 
         // Lock-state mirroring
         TEST_METHOD(IsAgentPolicyLockedTracksAllowedAgents);
@@ -451,6 +468,11 @@ namespace SettingsModelUnitTests
         source.DefaultSplitProfile(L"{00000000-0000-0000-0000-000000000002}");
         source.Hidden(true);
         VERIFY_IS_TRUE(Splits::Resolve(settings, source, nullptr).unavailable);
+    }
+
+    void CustomAgentAndPolicyTests::NativeAgentCreationPolicyUsesCurrentSnapshot()
+    {
+        _NativeAgentCreationPolicyUsesCurrentSnapshot();
     }
 
     void CustomAgentAndPolicyTests::CustomAcpAgentRoundtrips()

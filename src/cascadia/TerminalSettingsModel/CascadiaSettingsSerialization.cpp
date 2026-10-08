@@ -1236,6 +1236,21 @@ winrt::com_ptr<ExtensionPackage> SettingsLoader::_registerFragment(const winrt::
 Model::CascadiaSettings CascadiaSettings::LoadAll()
 try
 {
+    const auto applicationState = winrt::get_self<ApplicationState>(ApplicationState::SharedInstance());
+    wil::unique_handle sidebarLock;
+    bool sidebarStateFailed = false;
+    try
+    {
+        sidebarLock = applicationState->LockSidebarState();
+        applicationState->RefreshSidebarState();
+    }
+    catch (...)
+    {
+        LOG_CAUGHT_EXCEPTION();
+        sidebarLock.reset();
+        sidebarStateFailed = true;
+    }
+
     FILETIME lastWriteTime{};
     auto settingsString = til::io::read_file_as_utf8_string_if_exists(_settingsPath(), false, &lastWriteTime);
     auto firstTimeSetup = settingsString.empty();
@@ -1316,15 +1331,26 @@ try
 
     // If we created the file, or found new dynamic profiles, write the user
     // settings string back to the file.
+    bool settingsSaved = false;
     if (mustWriteToDisk)
     {
-        settings->WriteSettingsToDisk();
+        settingsSaved = settings->WriteSettingsToDisk();
     }
     else
     {
         // lastWriteTime is only valid if mustWriteToDisk is false.
         // Additionally WriteSettingsToDisk() updates the _hash for us already.
         settings->_hash = _calculateHash(settingsString, lastWriteTime);
+    }
+
+    if (sidebarStateFailed)
+    {
+        settings->WarnSidebarPersistenceFailure();
+    }
+    else if (sidebarLock && (!mustWriteToDisk || settingsSaved) &&
+             !settings->MigrateSidebarLayout(*applicationState, [&]() { return settings->WriteSettingsToDisk(); }))
+    {
+        settings->WarnSidebarPersistenceFailure();
     }
 
     settings->_researchOnLoad();
@@ -1642,6 +1668,65 @@ bool CascadiaSettings::WriteSettingsToDisk()
         return false;
     }
     return true;
+}
+
+bool CascadiaSettings::MigrateSidebarLayout(ApplicationState& state, const std::function<bool()>& save)
+{
+    if (state.SidebarLayoutMigrationCompleted())
+    {
+        return true;
+    }
+    const auto hadLayout = _globals->HasTabLayout();
+    const auto previous = _globals->TabLayout();
+    // Persist even an inherited Sidebar default so this transaction also
+    // covers fresh users and records completion only after a successful save.
+    _globals->TabLayout(Model::TabLayout::Vertical);
+    bool saved = false;
+    try
+    {
+        saved = save();
+    }
+    CATCH_LOG();
+    if (saved && state.CompleteSidebarLayoutMigration())
+    {
+        return true;
+    }
+    WarnSidebarPersistenceFailure();
+    if (hadLayout)
+    {
+        _globals->TabLayout(previous);
+    }
+    else
+    {
+        _globals->ClearTabLayout();
+    }
+    // If state persistence failed after saving settings, restore the previous
+    // preference on disk as well. A later successful load may retry migration.
+    if (saved)
+    {
+        bool rolledBack = false;
+        try
+        {
+            rolledBack = save();
+        }
+        CATCH_LOG();
+        if (!rolledBack)
+        {
+            LOG_HR_MSG(E_FAIL, "Sidebar migration rollback failed; retaining the last successfully saved Sidebar setting in memory");
+            _globals->TabLayout(Model::TabLayout::Vertical);
+            WarnSidebarPersistenceFailure();
+        }
+    }
+    return false;
+}
+
+void CascadiaSettings::WarnSidebarPersistenceFailure()
+{
+    uint32_t index = 0;
+    if (!_warnings.IndexOf(SettingsLoadWarnings::FailedToWriteToSettings, index))
+    {
+        _warnings.Append(SettingsLoadWarnings::FailedToWriteToSettings);
+    }
 }
 
 void CascadiaSettings::_writeSettingsToDisk(std::string_view contents)

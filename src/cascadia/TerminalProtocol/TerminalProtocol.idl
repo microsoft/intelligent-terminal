@@ -43,6 +43,7 @@ namespace Microsoft.Terminal.Protocol
         // shell has not reported its identity.
         String Shell;
         String ShellVersion;
+        String NativeAgentProviderId;
     };
 
     struct PaneOutput

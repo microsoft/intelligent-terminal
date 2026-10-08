@@ -35,7 +35,8 @@ namespace winrt::TerminalApp::implementation
     {
         TerminalPaneContent(const winrt::Microsoft::Terminal::Settings::Model::Profile& profile,
                             const std::shared_ptr<TerminalSettingsCache>& cache,
-                            const winrt::Microsoft::Terminal::Control::TermControl& control);
+                            const winrt::Microsoft::Terminal::Control::TermControl& control,
+                            const winrt::TerminalApp::ContentManager& manager = nullptr);
 
         winrt::Windows::UI::Xaml::FrameworkElement GetRoot();
         winrt::Microsoft::Terminal::Control::TermControl GetTermControl();
@@ -74,6 +75,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Microsoft::Terminal::TerminalConnection::ConnectionState _connectionState{ winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::NotConnected };
         winrt::Microsoft::Terminal::Settings::Model::Profile _profile{ nullptr };
         std::shared_ptr<TerminalSettingsCache> _cache{};
+        winrt::TerminalApp::ContentManager _manager{ nullptr };
         bool _isDefTermSession{ false };
         bool _usesManagedAgentCommand{ false };
 

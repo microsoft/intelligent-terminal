@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "TerminalPaneContent.h"
+#include "ContentManager.h"
 
 #include <mmsystem.h>
 
@@ -23,10 +24,12 @@ namespace winrt::TerminalApp::implementation
 {
     TerminalPaneContent::TerminalPaneContent(const winrt::Microsoft::Terminal::Settings::Model::Profile& profile,
                                              const std::shared_ptr<TerminalSettingsCache>& cache,
-                                             const winrt::Microsoft::Terminal::Control::TermControl& control) :
+                                             const winrt::Microsoft::Terminal::Control::TermControl& control,
+                                             const winrt::TerminalApp::ContentManager& manager) :
         _control{ control },
         _cache{ cache },
-        _profile{ profile }
+        _profile{ profile },
+        _manager{ manager }
     {
         _usesManagedAgentCommand = ::Microsoft::Terminal::AgentProfiles::IsManaged(_profile) &&
                                    _control.Settings().Commandline() == ::Microsoft::Terminal::AgentProfiles::Command(_profile);
@@ -90,6 +93,10 @@ namespace winrt::TerminalApp::implementation
     INewContentArgs TerminalPaneContent::GetNewTerminalArgs(const BuildStartupKind kind) const
     {
         NewTerminalArgs args{};
+        if (_manager)
+        {
+            args.NativeAgentProviderId(winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(_control.ContentId()));
+        }
         const auto& controlSettings = _control.Settings();
 
         args.Profile(::Microsoft::Console::Utils::GuidToString(_profile.Guid()));

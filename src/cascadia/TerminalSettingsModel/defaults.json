@@ -20,7 +20,7 @@
     "showTabsInTitlebar": true,
     "showTerminalTitleInTitlebar": true,
     "tabWidthMode": "equal",
-    "tabLayout": "horizontal",
+    "tabLayout": "vertical",
     "tabLayoutVerticalWidth": 220,
     "tabSwitcherMode": "inOrder",
     "showAdminShield": true,

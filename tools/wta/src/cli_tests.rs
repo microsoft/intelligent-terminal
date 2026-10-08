@@ -466,6 +466,57 @@ fn delegate_command_source_and_distro_default_to_none() {
     }
 }
 
+#[test]
+fn delegate_command_preserves_sidebar_only_when_requested() {
+    for preserve in [false, true] {
+        let mut args = vec!["wta", "delegate", "--delegate-agent", "copilot"];
+        if preserve {
+            args.push("--preserve-sidebar-view");
+        }
+        match Cli::try_parse_from(args).expect("flags must parse").command {
+            Some(Command::Delegate {
+                prompt,
+                preserve_sidebar_view,
+                ..
+            }) => {
+                assert!(prompt.is_none());
+                assert_eq!(preserve_sidebar_view, preserve);
+            }
+            other => panic!("expected Command::Delegate, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn delegate_split_requires_paired_target_and_session_flags() {
+    assert!(Cli::try_parse_from(["wta", "delegate", "--split-pane", "pane"]).is_err());
+    assert!(Cli::try_parse_from(["wta", "delegate", "--split-session", "sid"]).is_err());
+    let cli = Cli::try_parse_from([
+        "wta",
+        "delegate",
+        "--delegate-agent",
+        "copilot",
+        "--split-pane",
+        "pane",
+        "--split-session",
+        "sid",
+    ])
+    .unwrap();
+    match cli.command {
+        Some(Command::Delegate {
+            prompt,
+            split_pane,
+            split_session,
+            ..
+        }) => {
+            assert!(prompt.is_none());
+            assert_eq!(split_pane.as_deref(), Some("pane"));
+            assert_eq!(split_session.as_deref(), Some("sid"));
+        }
+        other => panic!("expected delegate, got {other:?}"),
+    }
+}
+
 // ── HooksCliFilter::into_scope: CLI filter → installer scope ─────────────────
 
 #[test]

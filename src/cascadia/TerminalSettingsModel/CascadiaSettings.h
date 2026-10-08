@@ -25,6 +25,7 @@ Author(s):
 
 #include "GlobalAppSettings.h"
 #include "Profile.h"
+#include <functional>
 
 namespace winrt::Microsoft::Terminal::Settings::Model
 {
@@ -33,6 +34,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model
 
 namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 {
+    struct ApplicationState;
     std::string_view LoadStringResource(int resourceID);
     winrt::com_ptr<Profile> CreateChild(const winrt::com_ptr<Profile>& parent);
 
@@ -170,6 +172,9 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         void ResetApplicationState() const;
         void ResetToDefaultSettings();
         bool WriteSettingsToDisk();
+        // Called under ApplicationState::LockSidebarState, after a valid load.
+        bool MigrateSidebarLayout(ApplicationState& state, const std::function<bool()>& save);
+        void WarnSidebarPersistenceFailure();
         Json::Value ToJson() const;
         Model::Profile ProfileDefaults() const;
         Model::Profile CreateNewProfile();

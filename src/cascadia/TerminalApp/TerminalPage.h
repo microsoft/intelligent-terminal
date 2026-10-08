@@ -259,6 +259,7 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVector<Microsoft::Terminal::Protocol::PaneInfo>> GetProtocolPanes(uint32_t tabIdFilter);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneOutput> ReadProtocolPaneOutput(winrt::guid sessionId, hstring source, int32_t maxLines);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneContext> GetProtocolPaneContext(winrt::guid sourceSessionId, bool hasExplicitSource, int32_t maxLines, int32_t maxCharacters);
+        Windows::Foundation::IAsyncOperation<bool> GetProtocolPaneIsBackground(winrt::guid paneSessionId);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::ProcessStatus> GetProtocolProcessStatus(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::SessionVariable> GetProtocolSessionVariable(winrt::guid sessionId, hstring name);
         Windows::Foundation::IAsyncOperation<bool> SetProtocolSessionVariable(winrt::guid sessionId, hstring name, hstring value);
@@ -439,6 +440,18 @@ namespace winrt::TerminalApp::implementation
 
         winrt::Windows::UI::Xaml::Controls::Grid::LayoutUpdated_revoker _layoutUpdatedRevoker;
         StartupState _startupState{ StartupState::NotInitialized };
+        Windows::UI::Xaml::DispatcherTimer _sidebarIntroductionTimer{ nullptr };
+        uint64_t _sidebarIntroductionClaim{ 0 };
+        uint32_t _sidebarIntroductionPresentationAttempts{ 0 };
+        Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _sidebarIntroductionLayoutRevoker;
+        void _TryShowSidebarIntroduction();
+        void _OnSidebarIntroductionPresented();
+        void _OnSidebarIntroductionClosed(const Microsoft::UI::Xaml::Controls::TeachingTip& sender, const Windows::Foundation::IInspectable& args);
+        bool _ReleaseSidebarIntroduction(bool shown);
+        void _NotifySidebarPersistenceFailure();
+        bool _sidebarIntroductionPresented{ false };
+        bool _sidebarIntroductionWarningShown{ false };
+        bool _sidebarIntroductionShuttingDown{ false };
         uint64_t _startupTransferId{ 0 };
         bool _transferReceiverReady{ false };
         void _TryCompleteStartupTransfer();
@@ -569,6 +582,7 @@ namespace winrt::TerminalApp::implementation
         struct AgentRuntimeConfigSnapshot
         {
             std::wstring delegateAgent;
+            std::wstring delegateAgentId;
             std::wstring delegateModel;
             std::wstring customModelSelection;
             std::vector<::Microsoft::Terminal::CustomModels::CatalogEntry> customModels;
@@ -975,7 +989,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& profileIcon);
         std::unordered_map<std::string, std::string> _BuildRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
-        void _LogSidebarRowFieldsTelemetry() const;
+        void _LogSidebarRowFieldsTelemetry(const char* source) const;
         void _RefreshRichTabForTab(Tab& tab, bool activate, bool refreshPaneItems = true);
         void _ApplyRichTabUpdate(
             uintptr_t controlKey,
@@ -1025,7 +1039,7 @@ namespace winrt::TerminalApp::implementation
                                            std::string_view providerId,
                                            std::optional<uint64_t> lastActivityAtMs,
                                            std::string_view status);
-        static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs);
+        static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs, std::wstring_view languageTag = {});
         struct _SidebarHistorySnapshot
         {
             enum class State
@@ -1040,7 +1054,7 @@ namespace winrt::TerminalApp::implementation
             State state{ State::Error };
             std::vector<TerminalApp::TabStripHistoryItem> items;
         };
-        static _SidebarHistorySnapshot _ParseSidebarHistorySnapshot(const std::string& output);
+        static _SidebarHistorySnapshot _ParseSidebarHistorySnapshot(const std::string& output, uint64_t currentWindowId = 0);
         safe_void_coroutine _LoadSidebarHistory(uint64_t generation);
         void _CompleteSidebarHistoryRefresh(uint64_t generation, _SidebarHistorySnapshot snapshot);
         struct _SidebarHistoryActivationRequest
@@ -1332,8 +1346,12 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _DetectWtaPath() const;
         std::optional<uint32_t> _FindSourceOfAgentPaneId(const std::shared_ptr<Pane>& root);
         void _DelegatePromptToAgent(const winrt::hstring& prompt);
-        void _OpenBackgroundAgentTab();
-        void _LaunchDelegate(const std::optional<winrt::hstring>& prompt);
+        void _OpenDefaultNewTab();
+        std::optional<std::wstring> _BuildAgentSplitArguments(const winrt::com_ptr<Tab>& tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
+        safe_void_coroutine _SplitAgentDelegate(winrt::com_ptr<Tab> tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
+        safe_void_coroutine _RunSidebarDelegate(std::wstring wtaPath, std::wstring args);
+        void _OpenBackgroundAgentTab(bool preserveSidebarView = false);
+        void _LaunchDelegate(const std::optional<winrt::hstring>& prompt, bool preserveSidebarView = false);
 
         // Note (Phase 5): the per-pane wta-process watch + Job Object members
         // and their setup/teardown methods were removed when the legacy
@@ -1355,7 +1373,8 @@ namespace winrt::TerminalApp::implementation
         void _Find(const Tab& tab);
 
         winrt::Microsoft::Terminal::Control::TermControl _CreateNewControlAndContent(const winrt::Microsoft::Terminal::Settings::TerminalSettingsCreateResult& settings,
-                                                                                     const winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection& connection);
+                                                                                     const winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection& connection,
+                                                                                     const winrt::hstring& nativeAgentProviderId = {});
         winrt::Microsoft::Terminal::Control::TermControl _SetupControl(const winrt::Microsoft::Terminal::Control::TermControl& term);
         winrt::Microsoft::Terminal::Control::TermControl _AttachControlToContent(
             const uint64_t& contentGuid,

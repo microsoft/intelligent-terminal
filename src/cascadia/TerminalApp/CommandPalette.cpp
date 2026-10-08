@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "CommandPalette.h"
 #include "CommandPaletteItems.h"
+#include "../../types/inc/utils.hpp"
 
 #include "CommandPalette.g.cpp"
 
@@ -918,6 +919,7 @@ namespace winrt::TerminalApp::implementation
         TraceLoggingWrite(
             g_hTerminalAppProvider,
             "CommandPaletteDispatchedAgentPrompt",
+            TraceLoggingWideString(_currentMode == CommandPaletteMode::AgentForegroundMode ? _agentPromptEntryId.c_str() : L"", "EntryId"),
             TraceLoggingDescription("Event emitted when the user submits an agent prompt via the Command Palette"),
             TraceLoggingBoolean(_currentMode == CommandPaletteMode::AgentBackgroundMode, "IsBackgroundMode", "Whether this is a background agent task"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
@@ -1264,12 +1266,18 @@ namespace winrt::TerminalApp::implementation
     {
         if (_agentPromptEntry.Update(Visibility() == Visibility::Visible, _currentMode == CommandPaletteMode::AgentForegroundMode))
         {
+            _agentPromptEntryId = winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(::Microsoft::Console::Utils::CreateGuid()) };
             TraceLoggingWrite(
                 g_hTerminalAppProvider,
                 "CommandPaletteAgentPromptEntered",
+                TraceLoggingWideString(_agentPromptEntryId.c_str(), "EntryId"),
                 TraceLoggingDescription("Event emitted when the user enters the visible foreground agent prompt mode"),
                 TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                 TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        }
+        else if (!_agentPromptEntry.Active())
+        {
+            _agentPromptEntryId = {};
         }
     }
 

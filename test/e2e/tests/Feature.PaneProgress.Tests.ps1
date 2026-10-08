@@ -10,11 +10,14 @@ BeforeDiscovery {
 Describe 'Feature: pane progress user routes' -Tag @('Feature', 'PaneProgress') -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\TabHeaderContext.ps1')
         Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
         if (-not ('ItE2E.ItPaneProgressDpi' -as [type])) {
             Add-Type -Name ItPaneProgressDpi -Namespace ItE2E -MemberDefinition @'
 [System.Runtime.InteropServices.DllImport("user32.dll")]
 public static extern uint GetDpiForWindow(System.IntPtr hwnd);
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern bool IsWindow(System.IntPtr hwnd);
 [System.Runtime.InteropServices.DllImport("user32.dll")]
 public static extern System.IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
 [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -46,7 +49,9 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         $fixtureCode = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:evidence.Replace("'", "''"))\acp.log'"
         $fixtureCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureCode))
         try {
-            $script:app = Start-Terminal -Package Dev -PassFre $true -Settings @{
+            $script:app = Start-Terminal -Package Dev -PassFre $true -State @{
+                sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+            } -Settings @{
                 language = 'en-US'; tabLayout = 'vertical'; startupActions = ''
                 firstWindowPreference = 'defaultProfile'; windowingBehavior = 'useNew'
                 'warning.confirmOnClose' = 'never'; autoErrorDetectionEnabled = $false
@@ -83,11 +88,56 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
 
         function Get-OwnedElements {
             param([string]$Property, [string]$Value, $Parent)
-            if (-not $Parent) { $Parent = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd) }
-            $condition = [Windows.Automation.PropertyCondition]::new(
-                [Windows.Automation.AutomationElement]::"${Property}Property", $Value)
-            @($Parent.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) |
-                Where-Object { -not $_.Current.IsOffscreen -and $_.Current.ProcessId -eq $script:app.Pid })
+            $before = [ordered]@{ utc = [DateTimeOffset]::UtcNow.ToString('o'); hwnd = $script:app.Hwnd
+                pid = $script:app.Pid; property = $Property; value = $Value }
+            try {
+                $hwnd = [IntPtr][long]$script:app.Hwnd
+                $before.window_valid = [ItE2E.ItPaneProgressDpi]::IsWindow($hwnd)
+                $before.native_pid = [ItE2E.ItWtWin32Input]::GetWindowProcessId($hwnd)
+                $before.root_hwnd = [ItE2E.ItWtWin32Input]::GetAncestor($hwnd, 2).ToInt64()
+                $before.owned_process_exited = $script:app.OwnedProcess.HasExited
+                $before.owned_start_utc = $script:app.OwnedProcess.StartTime.ToUniversalTime().ToString('o')
+                if ($before.owned_process_exited) {
+                    $before.owned_exit_utc = $script:app.OwnedProcess.ExitTime.ToUniversalTime().ToString('o')
+                }
+                $current = Get-Process -Id $script:app.Pid -ErrorAction SilentlyContinue
+                $before.current_start_utc = if ($current) { $current.StartTime.ToUniversalTime().ToString('o') } else { $null }
+                $desktop = [ItE2E.ItPaneProgressDpi]::OpenInputDesktop(0, $false, 1)
+                $before.input_desktop_accessible = $desktop -ne [IntPtr]::Zero
+                if ($desktop -ne [IntPtr]::Zero) {
+                    try {
+                        $name = [Text.StringBuilder]::new(256); $needed = 0
+                        $before.input_desktop_name_read = [ItE2E.ItPaneProgressDpi]::GetUserObjectInformation(
+                            $desktop, 2, $name, 512, [ref]$needed)
+                        $before.input_desktop_name = $name.ToString()
+                    }
+                    finally { [void][ItE2E.ItPaneProgressDpi]::CloseDesktop($desktop) }
+                }
+            }
+            catch { $before.evidence_error = $_.Exception.ToString() }
+            try {
+                if (-not $Parent) { $Parent = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd) }
+                $condition = [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::"${Property}Property", $Value)
+                @($Parent.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) |
+                    Where-Object { -not $_.Current.IsOffscreen -and $_.Current.ProcessId -eq $script:app.Pid })
+            }
+            catch {
+                $failure = $_
+                try {
+                    $chain = @(); $exception = $failure.Exception
+                    while ($exception) {
+                        $chain += @{ type = $exception.GetType().FullName; message = $exception.Message
+                            hresult = $exception.HResult; stack = $exception.StackTrace }
+                        $exception = $exception.InnerException
+                    }
+                    @{ before_call = $before; failure_utc = [DateTimeOffset]::UtcNow.ToString('o')
+                        exceptions = $chain; script_stack = $failure.ScriptStackTrace } |
+                        ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $script:evidence 'uia-failure.json')
+                }
+                catch { Write-Warning "Unable to persist UIA failure evidence: $_" }
+                throw $failure
+            }
         }
         function Get-PaneRow {
             param([string]$Title)
@@ -98,21 +148,67 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         function Open-TabMenu {
             Set-WtWindowForeground -App $script:app | Should -BeTrue
             Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground -Repeat 2 | Out-Null
-            $tree = Get-UiTree -App $script:app -Depth 12
-            $pattern = '(?m)^(?<indent>[ \t]*)(?<selector>lbl-textview-\S+|TextView) Text "' + [regex]::Escape($script:titleA) + '"'
-            $matches = @([regex]::Matches($tree, $pattern))
-            $depth = ($matches | ForEach-Object { $_.Groups['indent'].Length } | Measure-Object -Minimum).Minimum
-            $matches = @($matches | Where-Object { $_.Groups['indent'].Length -eq $depth })
-            $matches | Should -HaveCount 1 -Because 'right-click must target the current parent tab title, not its child pane or a prefix-matching guard'
-            Invoke-UiClick -App $script:app -Selector $matches[0].Groups['selector'].Value -Right | Out-Null
+            Invoke-TestTabHeaderContextMenu -App $script:app -PaneSessionId $script:a.session_id -Title $script:titleA
             Wait-UiElement -App $script:app -Selector 'Move tab' | Out-Null
-            Save-CompositorFrame "context-$([guid]::NewGuid().ToString('N'))"
+            Save-CompositorFrame "context-$([guid]::NewGuid().ToString('N'))" -PreserveFlyout
         }
         function Switch-ContextLayout {
             param([ValidateSet('vertical', 'horizontal')][string]$Layout)
+            $hwnd = [IntPtr][long]$script:app.Hwnd
+            $ownedPid = $script:app.Pid
+            $runToken = $env:ITE2E_RUN_TOKEN
+            $processReceipt = $env:ITE2E_OWNED_PROCESS_RECEIPT
             Open-TabMenu
             $label = if ($Layout -eq 'vertical') { 'Switch to sidebar' } else { 'Switch to horizontal tabs' }
-            Invoke-UiElement -App $script:app -Selector $label | Out-Null
+            $ownedRoot = {
+                $current = Get-Process -Id $ownedPid -ErrorAction Stop
+                if ($script:app.Hwnd -ne $hwnd.ToInt64() -or $script:app.Pid -ne $ownedPid -or
+                    -not $script:app.Launched -or -not $script:app.OwnedProcess -or $script:app.OwnedProcess.HasExited -or
+                    $script:app.OwnedProcess.Id -ne $ownedPid -or $current.StartTime -ne $script:app.OwnedProcess.StartTime -or
+                    $current.Path -ne (Join-Path $script:app.InstallLocation 'WindowsTerminal.exe') -or
+                    [ItE2E.ItWtWin32Input]::GetAncestor($hwnd, 2) -ne $hwnd -or
+                    [ItE2E.ItWtWin32Input]::GetWindowProcessId($hwnd) -ne $ownedPid -or
+                    -not [ItE2E.ItWtWin32Input]::IsOwnedRootOrPopup(
+                        [ItE2E.ItWtWin32Input]::GetForegroundWindow(), $hwnd, [uint32]$ownedPid)) {
+                    throw 'Layout invocation requires the original owned root and process lease.'
+                }
+                if (-not $runToken -or -not $processReceipt -or $env:ITE2E_RUN_TOKEN -cne $runToken -or
+                    $env:ITE2E_OWNED_PROCESS_RECEIPT -cne $processReceipt) { throw 'Layout invocation run identity changed.' }
+                $records = @(Get-Content -LiteralPath $processReceipt -ErrorAction Stop | ForEach-Object { $_ | ConvertFrom-Json })
+                if (@($records | Where-Object { $_.pid -eq $ownedPid -and $_.path -eq $current.Path -and
+                    $_.run_token -ceq $runToken -and ([datetimeoffset]$_.start_utc).UtcDateTime.Ticks -eq
+                    $current.StartTime.ToUniversalTime().Ticks }).Count -ne 1) { throw 'Layout invocation requires its exact run receipt.' }
+                $root = [Windows.Automation.AutomationElement]::FromHandle($hwnd)
+                if ($root.Current.NativeWindowHandle -ne $hwnd.ToInt64() -or
+                    $root.Current.ProcessId -ne $ownedPid -or $root.Current.IsOffscreen) { throw 'Layout invocation root is foreign or hidden.' }
+                $root
+            }
+            $menuPeers = {
+                param($Root)
+                @(Get-OwnedElements Name $label -Parent $Root | Where-Object {
+                    $_.Current.ControlType -eq [Windows.Automation.ControlType]::MenuItem
+                })
+            }
+            $peers = @(& $menuPeers (& $ownedRoot))
+            if ($peers.Count -ne 1) { throw 'Layout invocation requires exactly one visible owned MenuItem.' }
+            $peer = $peers[0]
+            $runtimeId = @($peer.GetRuntimeId())
+            # MenuFlyoutItem currently exposes an empty ID; its captured value must still remain exact.
+            $automationId = $peer.Current.AutomationId
+            if (-not $runtimeId.Count) { throw 'Layout MenuItem has no runtime identity.' }
+            @{
+                label = $label; automationId = $automationId; runtimeId = $runtimeId
+                hwnd = $hwnd.ToInt64(); pid = $ownedPid; invocationMethod = 'UIA InvokePattern'
+            } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence ('layout-menu-' + [guid]::NewGuid().ToString('N') + '.json'))
+            $fresh = @(& $menuPeers (& $ownedRoot))
+            if ($fresh.Count -ne 1 -or (@($fresh[0].GetRuntimeId()) -join ',') -cne ($runtimeId -join ',') -or
+                $fresh[0].Current.AutomationId -cne $automationId -or $fresh[0].Current.Name -cne $label -or
+                $fresh[0].Current.ProcessId -ne $ownedPid -or $fresh[0].Current.IsOffscreen -or
+                -not $fresh[0].Current.IsEnabled -or $fresh[0].Current.BoundingRectangle.Width -le 0 -or
+                $fresh[0].Current.BoundingRectangle.Height -le 0) { throw 'Layout MenuItem is stale, foreign, hidden or ambiguous.' }
+            [void](& $ownedRoot)
+            $pattern = $fresh[0].GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
+            $pattern.Invoke()
             Wait-Until -TimeoutSec 10 -Because 'context layout switch persists' -Condition {
                 (Get-WtSetting -App $script:app -Key tabLayout) -eq $Layout
             } | Out-Null
@@ -132,8 +228,14 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                 Should -Be @(@($script:a.session_id, $script:b.session_id) | Sort-Object)
         }
         function Get-VisualDigest {
-            param($Bounds, [string]$Name, [switch]$Icon)
-            Set-WtWindowForeground -App $script:app | Should -BeTrue
+            param($Bounds, [string]$Name, [switch]$Icon, [switch]$PreserveFlyout)
+            if ($PreserveFlyout) {
+                # Re-activating the root dismisses the real flyout we are capturing.
+                [ItE2E.ItWtWin32Input]::IsOwnedRootOrPopup(
+                    [ItE2E.ItWtWin32Input]::GetForegroundWindow(),
+                    [IntPtr][long]$script:app.Hwnd, [uint32]$script:app.Pid) | Should -BeTrue
+            }
+            else { Set-WtWindowForeground -App $script:app | Should -BeTrue }
             $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd).Current.BoundingRectangle
             [ItE2E.ItWtWin32Input]::SetCursorPos([int]($window.Right - 30), [int]($window.Bottom - 30)) | Should -BeTrue
             Start-Sleep -Milliseconds 350
@@ -162,9 +264,9 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             finally { $graphics.Dispose(); $bitmap.Dispose() }
         }
         function Save-CompositorFrame {
-            param([string]$Name)
+            param([string]$Name, [switch]$PreserveFlyout)
             $bounds = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd).Current.BoundingRectangle
-            Get-VisualDigest -Bounds $bounds -Name $Name | Out-Null
+            Get-VisualDigest -Bounds $bounds -Name $Name -PreserveFlyout:$PreserveFlyout | Out-Null
         }
         function Assert-ProgressFrames {
             param([string]$Phase, [switch]$Horizontal)
@@ -303,6 +405,10 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         $script:siblingIcon = Get-ProfileIconDigest 'baseline-sibling' $script:titleB
     }
     AfterAll {
+        if ($script:evidence) {
+            @{ cleanup_entered_utc = [DateTimeOffset]::UtcNow.ToString('o'); pid = $script:app.Pid } |
+                ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence 'cleanup-entered.json')
+        }
         if ($script:cursor) { [void][ItE2E.ItWtWin32Input]::SetCursorPos($script:cursor[0], $script:cursor[1]) }
         if ($script:app) {
             Stop-Terminal -App $script:app

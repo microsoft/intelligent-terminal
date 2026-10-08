@@ -37,6 +37,13 @@ The default agent is Copilot; the agent and model come from Windows Terminal
 settings (`acpAgent` / `acpModel`) and are passed through to master via `--agent`
 / `--agent-id` / `--acp-model`.
 
+Delegate launches likewise receive a resolved `--delegate-agent` command and
+its separate canonical `--delegate-agent-id` (including `custom:<name>`).
+Helper bootstrap and hot settings updates preserve that pair with the delegate
+model. Recommendations and session MCP delegation mark new tabs and supported
+splits as native-agent content at creation, independently of task titles or
+session hooks; ordinary shell workspaces remain unclassified.
+
 When the agent pane is connected to Windows Terminal, the agent-facing contract is
 the local `wta` CLI: the agent shells out to commands like `wta active-pane --json`,
 `wta list-panes --json`, `wta capture-pane --json`, and
@@ -184,7 +191,35 @@ Each connection has one refresh in flight; history and title updates share its
 single response. Failed queries retain prior rows and back off up to 60 seconds.
 The opt-in JSON object contains `sessions` and `history_status` (`loading`, `ready`,
 or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
-ordinary `--json` output remains one session per line. The initial
+ordinary `--json` output remains one session per line.
+
+An activity hook cannot claim or alter a pane owned by another live session,
+even if its raw session ID exists in another provider or source. Nested CLI
+workers can inherit the parent's pane identity; their synthetic session starts
+and errors must not end, unbind, or change the parent's status. Explicit
+session-start hooks still replace a pane's session, and activity in an
+unowned pane retains its normal discovery behavior.
+
+Live rows may also include response-only `owner_window_id` and `background_tab`
+fields from the exact bound pane's context. `background_tab: true` means the
+pane belongs to a kept-running whole tab; activating it restores that entire
+tab. Only an explicit `false` with a different owning window enables the
+other-window action. Missing or malformed membership is unknown, not evidence
+that the pane is attached elsewhere. These fields are refreshed per response,
+not stored as registry ownership or lifecycle state.
+
+Historical/Ended native host Copilot rows may receive response-only activity
+from their exact default-universe SDK session directory. This requires a
+matching PID marker, a live native `copilot.exe` created before that marker,
+and an actively held `inuse.<pid>.hold` lease (observed with Copilot SDK
+1.0.80). A stale marker, released lease, inaccessible process, unknown phase,
+or nonmatching provider/source/universe leaves the original status unchanged.
+The existing turn classifier supplies activity; individual tool completion
+does not imply Idle. Reads use a bounded 4 MiB bootstrap tail and incremental
+cached appends under a two-second budget. This does not mutate registry state,
+infer a window/pane owner, or enable a running-location indicator.
+
+The initial
 discovery stays `loading` until all eligible host providers finish. Providers that
 do not support listing are skipped, while initialization or listing failures
 produce `error`. Later refreshes retain the last completed status until they finish.
@@ -221,9 +256,13 @@ This discovery covers built-in agents on the Windows host. It does not start WSL
 distributions or discover arbitrary custom commands; sessions already in the registry
 remain visible according to the requested origin filter.
 
-Host discovery runs only at master startup, after a confirmed host-agent
-installation, or on an explicit `wta sessions refresh` request. There is no periodic
-installation scan. `wta sessions refresh --json` schedules discovery and returns the
+Initial host discovery runs at master startup, after a confirmed host-agent
+installation, or on an explicit `wta sessions refresh` request. There is no unconditional
+periodic installation scan. Failed host-agent startup discoveries are retried through the
+same discovery worker, with delays of 5, 10, 20, 40, then at most 60 seconds after
+each failure (checked on the existing five-second history timer). Retries recheck
+installation and policy and do not restart healthy resident providers.
+`wta sessions refresh --json` bypasses this startup backoff, schedules discovery and returns the
 current snapshot with `history_status`; it does not wait for discovery to finish.
 The removed `--all-agents` flag is no longer accepted. F5 in a helper's session view
 explicitly refreshes that helper's bound connection without discovering other agents.
@@ -232,8 +271,8 @@ only in nonvertical layout; vertical layout uses the Sidebar fallback instead.
 Live layout changes and helper-ready runtime configuration update this selection per
 window without reconnecting ACP. Push updates remain immediate in either layout,
 and returning to nonvertical layout immediately refreshes an already-open helper view.
-ACP initialization retry behavior is unchanged; history-query retries do not restart
-or initialize agents.
+History-query retries do not restart or initialize agents; startup discovery retries
+are separate and retain the existing ACP initialization timeout.
 
 ### tmux-like CLI
 
@@ -394,6 +433,34 @@ Run or Insert. After the user chooses, history uses the localized
 a localized cancellation status on the same line, not on the conversation title.
 History has no suggestion counts, numbering, or recommendation checkmarks.
 
+## Interactive delegate tabs
+
+`wta delegate` without a prompt opens the configured interactive agent CLI in
+a fresh tab. The Agents sidebar's default `+` button uses this same delegation
+path, including provider, model, policy, and explicit host/WSL source selection;
+it does not open an assistant pane or resume a conversation. The normal Tabs
+`+`, explicit profile dropdown entries, and existing shortcuts are unchanged.
+
+The sidebar passes `--preserve-sidebar-view` to create the delegate tab in the
+background and then focus its returned pane through the existing protocol focus
+path. This preserves the selected sidebar page and search state. Other delegate
+calls retain ordinary foreground tab creation.
+
+In Agents, duplicate-split uses the target pane's live provider/session binding.
+`wta delegate --split-pane <pane> --split-session <current-session>
+--delegate-agent <provider>` validates that pair against one live master row
+and uses its exact host or WSL distro before launching a fresh interactive
+instance through the existing delegate builders. The old session ID is only a
+guard, never a resume argument. Missing, ambiguous, unknown-source, unavailable,
+and unsupported/custom targets fail rather than launching a default shell.
+Host splits carry the resolved project directory in an encoded PowerShell
+wrapper that starts the existing delegate command with an explicit native
+working directory; the split protocol itself has no cwd argument. The wrapper
+preserves native arguments and exit status, including paths with spaces and
+shell metacharacters. WSL retains its existing distro-specific `--cd` launch.
+Sidebar `+` and split launchers use bounded output capture and surface failures
+through the sidebar's existing error presentation.
+
 ## Debug Panel
 
 Press **F12** to open a side panel showing all JSON-RPC messages between WTA and Windows Terminal in real time.
@@ -421,7 +488,7 @@ packaged (or bare `%LOCALAPPDATA%\IntelligentTerminal\logs\` unpackaged):
 | `terminal-agent-pane.log` | Agent-pane chrome (C++ TerminalApp side) |
 | `wta-ensure-host.log` | Background host startup / COM connection / SharedWta lifecycle |
 | `wta-acp-debug.log` | ACP protocol debug trace |
-| `wta-delegate.<UTC-date>.log` | `?<prompt>` delegation flow |
+| `wta-delegate.<UTC-date>.log` | `?<prompt>` and interactive delegate creation |
 | `wta-probe.<UTC-date>.log` | Agent/model/session capability probes |
 | `wta-install-hooks.<UTC-date>.log` | Hook installation and upgrade diagnostics |
 | `wta-panic.<UTC-date>.log` | Synchronous panic backstop when the normal buffered record may not flush |
@@ -555,7 +622,45 @@ failure-time observations, not a history of how pane/source state changed.
 ## Architecture Notes
 
 - **ShellManager** owns local terminals and the active `WtChannel`
-- **CliChannel** shells out to `wtcli.exe` per call; `wtcli` does `CoCreateInstance` to reach WT's COM server. All methods, including `send_input` (via `wtcli send-keys`), go through this path.
+- **CliChannel** shells out to `wtcli.exe` per call; ordinary requests use `CoCreateInstance` to reach WT's COM server. All methods, including `send_input` (via `wtcli send-keys`), go through this path. Managed event listeners instead use `wtcli --json listen --existing-only`, obtaining the already-running class factory through the ROT without activating Terminal.
 - **Protocol discovery**: `WT_COM_CLSID` env var, inherited from the WT-spawned conpty
 - **CLI subcommands** call `CliChannel::connect()` directly; no ShellManager needed
 - **Pane identity** is discovered at startup via PID matching (list all panes, find ours)
+
+### Event listener startup and retry
+
+Managed listeners never create a Terminal server, on initial startup or retry.
+If the running factory is not yet published or has been revoked during shutdown,
+the listener reports a connection failure without falling back to COM activation.
+WTA retains its bounded backoff: eight consecutive unstable attempts stop retries;
+a subscription healthy for 30 seconds resets the count. A first post-subscription
+failure retries immediately, still with `--existing-only`. Readiness is reported
+only after `Subscribe` succeeds, and late recovery notifies the owning channel.
+Missing listener readiness does not block chat, Autofix, listing, or resume.
+Servers without a published running factory cannot support managed listeners;
+public `wtcli listen` without this flag retains activating/headless compatibility.
+
+### Managed notifications
+
+WTA's event publisher always invokes `wtcli publish --stdin --existing-only`.
+Passive notifications, including shutdown-time session-registry changes, reuse
+the already-running COM factory and never start a replacement Terminal.
+Missing or closing/incompatible factories produce the existing publication
+warning; there is no activation fallback or change to chat/session startup.
+Public `wtcli publish` without the flag retains normal activation. Ordinary
+managed read requests and explicit interactive creation remain unchanged.
+
+# Native interactive CLI creation
+
+Delegation and native session resumes pass the resolved provider ID through
+`wtcli --agent-provider`. Terminal stores that identity with the terminal content
+before displaying the tab or split, so the Agents view and provider icon do not
+wait for CLI startup hooks. This does not create a conversation ID, activity
+state, or history row. Older protocol servers reject this capability explicitly.
+Host-configured delegation carries the provider separately from its executable
+through `wta delegate --delegate-agent-id`. Custom commands require that explicit
+identity; their executable basename is not treated as a configured provider.
+Tabs, panes, Recent Sessions, and the agent picker share the six committed
+transparent PNG assets in `CascadiaPackage\AgentIcons\Masks` and the existing
+monochrome bitmap tint pipeline. `AgentIconResources.xaml` supplies fresh control
+instances for template consumers; it does not maintain separate vector artwork.
