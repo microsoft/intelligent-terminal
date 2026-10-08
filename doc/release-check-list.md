@@ -335,6 +335,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C359` `[new]` `[E2E]` **Session fallback follows vertical and horizontal layouts:** Real 60-second fallback reads use Sidebar in vertical layout and the open helper view in horizontal layout, including a live round trip without reconnecting ACP. _(E2E: `Feature.SessionRefresh`.)_
 - [ ] `C360` `[new]` `[E2E]` **Closed session views suppress fallback reads:** Closing the session view stops frontend polling while master continues synchronizing existing connections. _(E2E: `Feature.SessionRefresh`.)_
 - [ ] `C361` `[new]` `[E2E]` **Explicit history refresh preserves connection and updates visible rows:** Helper F5 updates the rendered list, the explicit CLI refresh returns a status snapshot, and the removed discovery flag is rejected without recreating the fixture connection. _(E2E: `Feature.SessionRefresh`.)_
+- [ ] `C374` `[new]` `[E2E]` **Sidebar Agents status updates preserve scroll:** A live session's status update leaves the history viewport unchanged when session order is unchanged; activity-time sorting and status filtering still work. _(UT: `VerticalTabHistoryStatusDeltaPreservesCollection`, `VerticalTabHistoryRefreshPreservesScroll`; E2E: `Feature.SidebarSessionScroll`.)_
 
 **Feature definition:** Session management lists known live and historical agent sessions, shows their state, and lets users focus or resume supported sessions.
 
