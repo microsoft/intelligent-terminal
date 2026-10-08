@@ -452,10 +452,6 @@ impl App {
             return;
         }
 
-        if self.handle_pending_queue_key(key) {
-            return;
-        }
-
         // Help is rendered above every other modal, so Esc must dismiss it
         // before interacting with the modal underneath.
         if self.help_overlay_visible && key.code == KeyCode::Esc {

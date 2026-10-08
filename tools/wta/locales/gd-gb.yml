@@ -132,7 +132,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. gus panail àidseant a shealltainn/fhalach
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Teachdaireachdan sa chiudha: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Teachdaireachdan sa chiudha: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Teachdaireachdan sa chiudha: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Tha an ciudha làn. Chaidh an t-ion-chur agad a ghleidheadh."
 queue.enqueued: "Chaidh an teachdaireachd a chur sa chiudha."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Chaidh %{count} teachdaireachd sa chiudha a chur dheth. Faodaidh tu teachdaireachd ùr a chur."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

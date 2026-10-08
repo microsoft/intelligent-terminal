@@ -145,7 +145,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. ஏஜெண்ட் பலகத்த�
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "வரிசையிலுள்ள செய்திகள்: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "வரிசையிலுள்ள செய்திகள்: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "வரிசையிலுள்ள செய்திகள்: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "வரிசை நிரம்பியுள்ளது. உங்கள் உள்ளீடு தக்கவைக்கப்பட்டுள்ளது."
 queue.enqueued: "செய்தி வரிசையில் சேர்க்கப்பட்டது."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "வரிசையிலுள்ள %{count} செய்திகள் ரத்து செய்யப்பட்டன. நீங்கள் புதிய செய்தியை அனுப்பலாம்."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

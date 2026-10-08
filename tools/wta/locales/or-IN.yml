@@ -145,7 +145,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. ଏଜେଣ୍ଟ ପେନ୍ ଦେଖ�
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "ଧାଡ଼ିରେ ଥିବା ବାର୍ତ୍ତାଗୁଡ଼ିକ: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "ଧାଡ଼ିରେ ଥିବା ବାର୍ତ୍ତାଗୁଡ଼ିକ: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "ଧାଡ଼ିରେ ଥିବା ବାର୍ତ୍ତାଗୁଡ଼ିକ: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "ଧାଡ଼ି ପୂର୍ଣ୍ଣ ହୋଇଛି। ଆପଣଙ୍କ ଇନପୁଟ୍ ସଂରକ୍ଷିତ ଅଛି।"
 queue.enqueued: "ବାର୍ତ୍ତା ଧାଡ଼ିରେ ଯୋଡ଼ାଯାଇଛି।"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "ଧାଡ଼ିରେ ଥିବା %{count} ବାର୍ତ୍ତା ବାତିଲ କରାଯାଇଛି। ଆପଣ ଏକ ନୂଆ ବାର୍ତ୍ତା ପଠାଇପାରିବେ।"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

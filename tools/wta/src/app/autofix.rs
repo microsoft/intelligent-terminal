@@ -74,7 +74,8 @@ pub enum AutofixBarSnapshot {
         summary: String,
         hotkey_hint: String,
     },
-    /// Analysis in progress ("Analyzing…"). Non-interactive.
+    /// Accepted fix waiting in the queue or being analyzed ("Analyzing…").
+    /// Non-interactive; accepting a diagnostic does not start a turn yet.
     Pending { pane_id: String, summary: String },
     /// Analysis finished; a result (a fix or an explanation) is waiting in
     /// the agent pane chat. Surfaced ONLY when the pane is not open — the
@@ -305,6 +306,30 @@ impl App {
         self.set_bar_snapshot(target_tab_id, snapshot);
     }
 
+    pub(super) fn restore_cancelled_queued_autofix(&mut self, tab_id: &str) {
+        let diagnostic = self.tab_sessions.get(tab_id).and_then(|tab| {
+            let request_id = tab.autofix.detected_request_id?;
+            if tab.turn.prompt_id() == Some(request_id)
+                || tab
+                    .prompt_queue
+                    .entries
+                    .iter()
+                    .any(|entry| entry.submission.id == request_id && !entry.needs_resubmission)
+            {
+                return None;
+            }
+            match &tab.autofix.bar_snapshot {
+                AutofixBarSnapshot::Pending { pane_id, summary } => {
+                    Some((pane_id.clone(), summary.clone()))
+                }
+                _ => None,
+            }
+        });
+        if let Some((pane, summary)) = diagnostic {
+            self.emit_autofix_state_detected(tab_id, &pane, &summary);
+        }
+    }
+
     /// User activated the Detected pill (click or hotkey). Read the
     /// active tab's cached snapshot, synthesize a `WtNotification` from
     /// it, and replay through `trigger_autofix_inner` with `forced=true`
@@ -331,6 +356,7 @@ impl App {
             );
             return;
         }
+        self.restore_cancelled_queued_autofix(&active_tab);
         let snapshot = self.current_tab().autofix.bar_snapshot.clone();
         let (pane_id, summary) = match snapshot {
             AutofixBarSnapshot::Detected {

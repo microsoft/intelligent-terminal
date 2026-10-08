@@ -132,7 +132,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. lai rādītu/paslēptu aģenta paneli • 
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Ziņojumi rindā: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Ziņojumi rindā: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Ziņojumi rindā: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Rinda ir pilna. Jūsu ievade ir saglabāta."
 queue.enqueued: "Ziņojums pievienots rindai."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Atceltie ziņojumi rindā: %{count}. Varat nosūtīt jaunu ziņojumu."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

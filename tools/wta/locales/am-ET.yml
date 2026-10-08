@@ -133,7 +133,8 @@ layout.welcome_hint: "(Ctrl+Shift+. የኤጅንት ገጽታ ማሳየት/መ�
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "በወረፋ ላይ ያሉ መልእክቶች፦ %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "በወረፋ ላይ ያሉ መልእክቶች፦ %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "በወረፋ ላይ ያሉ መልእክቶች፦ %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "ወረፋው ሞልቷል። ያስገቡት ጽሑፍ ተጠብቋል።"
 queue.enqueued: "መልእክቱ ወደ ወረፋ ተጨምሯል።"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "በወረፋ ላይ ያሉ %{count} መልእክቶች ተሰርዘዋል። አዲስ መልእክት መላክ ይችላሉ።"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

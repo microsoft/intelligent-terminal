@@ -132,7 +132,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. om het agentdeelvenster te tonen/verbergen
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Berichten in de wachtrij: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Berichten in de wachtrij: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Berichten in de wachtrij: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "De wachtrij is vol. Uw invoer is bewaard."
 queue.enqueued: "Bericht in de wachtrij geplaatst."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "%{count} berichten in de wachtrij geannuleerd. U kunt een nieuw bericht verzenden."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

@@ -132,7 +132,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. näyttää/piilottaa agenttipaneelin • C
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Jonossa olevat viestit: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Jonossa olevat viestit: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Jonossa olevat viestit: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Jono on täynnä. Syötteesi on säilytetty."
 queue.enqueued: "Viesti lisättiin jonoon."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Peruutettiin %{count} jonossa olevaa viestiä. Voit lähettää uuden viestin."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

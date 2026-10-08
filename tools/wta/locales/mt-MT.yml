@@ -132,7 +132,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. biex turi/taħbi l-pannell tal-aġent • 
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Messaġġi fil-kju: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Messaġġi fil-kju: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Messaġġi fil-kju: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Il-kju mimli. L-input tiegħek inżamm."
 queue.enqueued: "Il-messaġġ żdied mal-kju."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Ġew ikkanċellati %{count} messaġġi fil-kju. Tista' tibgħat messaġġ ġdid."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

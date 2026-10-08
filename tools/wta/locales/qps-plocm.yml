@@ -132,7 +132,8 @@ layout.welcome_hint: "[!!   (C_trl+Shift+. to show/hide agent pane • Ctrl+Shif
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "[!! \u202eQue_ued messages: \u202c%{count} !!]"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "[!! %{count}\u202e mes_sages queued\u202c !!]"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "[!! %{count}\u202e mes_sage queued\u202c !!]"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "[!! \u202eQue_ue is full. Your input has been kept.\u202c !!]"
 queue.enqueued: "[!! \u202eMes_sage queued.\u202c !!]"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "[!! \u202eCan_celled \u202c%{count}\u202e queued messages. You can send a new message.\u202c !!]"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

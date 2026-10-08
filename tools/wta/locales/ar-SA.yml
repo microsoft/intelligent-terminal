@@ -146,7 +146,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. لإظهار/إخفاء لوحة عامل 
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "الرسائل في قائمة الانتظار: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "الرسائل في قائمة الانتظار: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "الرسائل في قائمة الانتظار: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "قائمة الانتظار ممتلئة. تم الاحتفاظ بإدخالك."
 queue.enqueued: "تمت إضافة الرسالة إلى قائمة الانتظار."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "تم إلغاء %{count} من الرسائل في قائمة الانتظار. يمكنك إرسال رسالة جديدة."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

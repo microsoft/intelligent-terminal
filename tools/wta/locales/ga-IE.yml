@@ -132,7 +132,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. chun pána gníomhaire a thaispeáint/a ch
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Teachtaireachtaí sa scuaine: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Teachtaireachtaí sa scuaine: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Teachtaireachtaí sa scuaine: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Tá an scuaine lán. Coinníodh d'ionchur."
 queue.enqueued: "Cuireadh an teachtaireacht sa scuaine."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Cealaíodh %{count} teachtaireacht sa scuaine. Is féidir leat teachtaireacht nua a sheoladh."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

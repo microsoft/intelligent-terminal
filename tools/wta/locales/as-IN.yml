@@ -146,7 +146,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. এজেণ্ট পেন দেখু�
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "অপেক্ষা শাৰীত থকা বাৰ্তা: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "অপেক্ষা শাৰীত থকা বাৰ্তা: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "অপেক্ষা শাৰীত থকা বাৰ্তা: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "অপেক্ষা শাৰী পূৰ্ণ হৈছে। আপোনাৰ ইনপুট সংৰক্ষণ কৰা হৈছে।"
 queue.enqueued: "বাৰ্তাটো অপেক্ষা শাৰীত যোগ কৰা হৈছে।"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "অপেক্ষা শাৰীত থকা %{count}টা বাৰ্তা বাতিল কৰা হৈছে। আপুনি নতুন বাৰ্তা পঠিয়াব পাৰে।"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

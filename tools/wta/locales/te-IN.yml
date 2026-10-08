@@ -145,7 +145,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. ఏజెంట్ పేన్ చూప�
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "క్యూలోని సందేశాలు: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "క్యూలోని సందేశాలు: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "క్యూలోని సందేశాలు: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "క్యూ నిండిపోయింది. మీ ఇన్‌పుట్ భద్రపరచబడింది."
 queue.enqueued: "సందేశం క్యూలో చేర్చబడింది."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "క్యూలోని %{count} సందేశాలు రద్దు చేయబడ్డాయి. మీరు కొత్త సందేశాన్ని పంపవచ్చు."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

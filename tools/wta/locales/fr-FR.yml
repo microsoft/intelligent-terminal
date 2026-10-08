@@ -132,7 +132,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. pour afficher/masquer le volet de l'agent 
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Messages en attente : %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Messages en attente : %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Messages en attente : %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "La file d'attente est pleine. Votre saisie a été conservée."
 queue.enqueued: "Message ajouté à la file d'attente."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "%{count} messages en attente ont été annulés. Vous pouvez envoyer un nouveau message."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

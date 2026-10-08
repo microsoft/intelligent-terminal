@@ -132,7 +132,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. fir den Agent-Panell ze weisen/verstoppen 
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Messagen an der Waardeschlaang: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Messagen an der Waardeschlaang: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Messagen an der Waardeschlaang: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "D'Waardeschlaang ass voll. Är Agab gouf bäibehalen."
 queue.enqueued: "De Message gouf an d'Waardeschlaang gesat."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "%{count} Messagen an der Waardeschlaang goufen ofgebrach. Dir kënnt en neie Message schécken."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

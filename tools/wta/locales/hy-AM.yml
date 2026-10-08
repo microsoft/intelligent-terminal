@@ -157,7 +157,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. ագենտի վահանակը ցույց �
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Հերթում գտնվող հաղորդագրություններ՝ %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Հերթում գտնվող հաղորդագրություններ՝ %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Հերթում գտնվող հաղորդագրություններ՝ %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Հերթը լիքն է։ Ձեր մուտքագրածը պահպանվել է։"
 queue.enqueued: "Հաղորդագրությունն ավելացվել է հերթին։"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Չեղարկվել է հերթում գտնվող %{count} հաղորդագրություն։ Կարող եք նոր հաղորդագրություն ուղարկել։"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

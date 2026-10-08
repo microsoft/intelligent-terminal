@@ -145,7 +145,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. агент панелін көрсету/�
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Кезектегі хабарлар: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Кезектегі хабарлар: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Кезектегі хабарлар: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Кезек толы. Енгізген мәтініңіз сақталды."
 queue.enqueued: "Хабар кезекке қосылды."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Кезектегі %{count} хабардан бас тартылды. Жаңа хабар жібере аласыз."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

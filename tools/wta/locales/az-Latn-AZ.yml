@@ -146,7 +146,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. agent panelini göstər/gizlə • Ctrl+Sh
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Növbədəki mesajlar: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Növbədəki mesajlar: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Növbədəki mesajlar: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Növbə doludur. Daxil etdiyiniz mətn saxlanılıb."
 queue.enqueued: "Mesaj növbəyə əlavə edildi."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Növbədəki %{count} mesaj ləğv edildi. Yeni mesaj göndərə bilərsiniz."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

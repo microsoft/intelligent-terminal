@@ -132,7 +132,8 @@ layout.welcome_hint: "(Ctrl+Shift+. ສະແດງ/ເຊື່ອງແຜງ 
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "ຂໍ້ຄວາມໃນຄິວ: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "ຂໍ້ຄວາມໃນຄິວ: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "ຂໍ້ຄວາມໃນຄິວ: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "ຄິວເຕັມແລ້ວ. ຂໍ້ຄວາມທີ່ທ່ານປ້ອນໄດ້ຖືກເກັບໄວ້."
 queue.enqueued: "ເພີ່ມຂໍ້ຄວາມເຂົ້າຄິວແລ້ວ."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "ຍົກເລີກ %{count} ຂໍ້ຄວາມໃນຄິວແລ້ວ. ທ່ານສາມາດສົ່ງຂໍ້ຄວາມໃໝ່ໄດ້."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

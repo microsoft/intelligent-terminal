@@ -132,7 +132,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. ügynökpanel megjelenítése/elrejtése �
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Várólistán lévő üzenetek: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Várólistán lévő üzenetek: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Várólistán lévő üzenetek: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "A várólista megtelt. A bevitt szöveg megmaradt."
 queue.enqueued: "Az üzenet várólistára került."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "%{count} várólistán lévő üzenet küldése megszakítva. Küldhet új üzenetet."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

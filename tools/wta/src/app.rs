@@ -4784,7 +4784,7 @@ impl App {
                     self.apply_resize_if_needed(terminal, &event)?;
                     let should_redraw = self.event_requires_redraw(&event);
                     let handle_started = std::time::Instant::now();
-                    self.handle_event(event);
+                    self.handle_event_and_capture(event).await;
                     self.log_permission_snapshot();
                     ui_trace::log_slow("ui_event_handle", handle_started.elapsed(), || {
                         format!("event={} {}", event_name, self.trace_state())
@@ -4805,7 +4805,7 @@ impl App {
                     let mut processed = 0usize;
 
                     let mut should_redraw_now = self.event_requires_redraw(&event);
-                    self.handle_event(event);
+                    self.handle_event_and_capture(event).await;
                     processed += 1;
 
                     while processed < MAX_EVENTS_PER_FRAME {
@@ -4815,7 +4815,7 @@ impl App {
                                 if self.event_requires_redraw(&event) {
                                     should_redraw_now = true;
                                 }
-                                self.handle_event(event);
+                                self.handle_event_and_capture(event).await;
                                 processed += 1;
                             }
                             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,

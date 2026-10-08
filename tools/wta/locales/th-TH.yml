@@ -132,7 +132,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. แสดง/ซ่อนแผงเอ�
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "ข้อความในคิว: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "ข้อความในคิว: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "ข้อความในคิว: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "คิวเต็มแล้ว ระบบเก็บข้อมูลที่คุณป้อนไว้แล้ว"
 queue.enqueued: "เพิ่มข้อความเข้าคิวแล้ว"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "ยกเลิกข้อความในคิวแล้ว %{count} ข้อความ คุณสามารถส่งข้อความใหม่ได้"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

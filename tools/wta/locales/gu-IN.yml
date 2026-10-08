@@ -145,7 +145,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. એજન્ટ પેન બતાવો/
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "કતારમાં રહેલા સંદેશાઓ: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "કતારમાં રહેલા સંદેશાઓ: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "કતારમાં રહેલા સંદેશાઓ: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "કતાર ભરેલી છે. તમારું ઇનપુટ સાચવવામાં આવ્યું છે."
 queue.enqueued: "સંદેશ કતારમાં ઉમેરાયો છે."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "કતારમાં રહેલા %{count} સંદેશાઓ રદ કર્યા. તમે નવો સંદેશ મોકલી શકો છો."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

@@ -133,7 +133,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. zum Ein-/Ausblenden des Agentbereichs • 
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Nachrichten in der Warteschlange: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Nachrichten in der Warteschlange: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Nachrichten in der Warteschlange: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Die Warteschlange ist voll. Ihre Eingabe wurde beibehalten."
 queue.enqueued: "Nachricht zur Warteschlange hinzugefügt."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "%{count} Nachrichten in der Warteschlange wurden abgebrochen. Sie können eine neue Nachricht senden."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

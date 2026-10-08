@@ -134,7 +134,8 @@ layout.welcome_hint: "[(Ctrl+Shift+. ţö śĥöŵ/ĥïďé åğéñţ ṗåñé
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "[Qûéûéď ḿéśśåĝéś: %{count}!!!!]"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "[%{count} ḿéśśåĝéś qûéûéď!!!!]"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "[%{count} ḿéśśåĝé qûéûéď!!!!]"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "[Qûéûé ïś ƒûļļ. Ýöûŕ ïñṗûţ ĥåś ɓééñ ķéṗţ.!!!! !!!!]"
 queue.enqueued: "[Ḿéśśåĝé qûéûéď.!!!!]"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "[Çåñçéļļéď %{count} qûéûéď ḿéśśåĝéś. Ýöû çåñ śéñď å ñéŵ ḿéśśåĝé.!!!! !!!! !!!!]"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

@@ -133,7 +133,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. per mostrar/amagar el tauler d'agent • C
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Missatges a la cua: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Missatges a la cua: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Missatges a la cua: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "La cua és plena. S'ha conservat el text introduït."
 queue.enqueued: "S'ha afegit el missatge a la cua."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "S'han cancel·lat %{count} missatges de la cua. Podeu enviar un missatge nou."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

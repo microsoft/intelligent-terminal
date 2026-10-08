@@ -133,7 +133,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. for at vise/skjule agentpanelet • Ctrl+S
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Beskeder i kø: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Beskeder i kø: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Beskeder i kø: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Køen er fuld. Dit input er bevaret."
 queue.enqueued: "Beskeden er sat i kø."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "%{count} beskeder i køen er annulleret. Du kan sende en ny besked."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

@@ -133,7 +133,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. i ddangos/cuddio'r paen asiant • Ctrl+Sh
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Negeseuon yn y ciw: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Negeseuon yn y ciw: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Negeseuon yn y ciw: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Mae'r ciw yn llawn. Mae eich mewnbwn wedi'i gadw."
 queue.enqueued: "Ychwanegwyd y neges at y ciw."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Canslwyd %{count} o negeseuon yn y ciw. Gallwch anfon neges newydd."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

@@ -128,7 +128,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. 에이전트 창 표시/숨기기 • Ctrl
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "대기열의 메시지: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "대기열의 메시지: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "대기열의 메시지: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "대기열이 가득 찼습니다. 입력 내용은 유지되었습니다."
 queue.enqueued: "메시지가 대기열에 추가되었습니다."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "대기열의 메시지 %{count}개가 취소되었습니다. 새 메시지를 보낼 수 있습니다."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

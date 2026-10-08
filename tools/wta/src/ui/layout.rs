@@ -131,7 +131,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // permission/recommendation content between full and compact forms.
     let chat_content_width = main_area.width.saturating_sub(2); // h_chat 1+1 padding
     let chat_estimate = chat::estimated_block_height(app, chat_content_width, main_area.height);
-    let queued_previews: Vec<_> = app.pending_input_previews().collect();
+    let queued_count = app.pending_input_count();
     let recommendation_natural_height =
         app.current_tab()
             .turn
@@ -172,11 +172,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         available_rows: main_area.height,
         input_height,
         chat_natural_height: chat_estimate,
-        queued_prompt_height: pending_queue::natural_height(
-            app,
-            queued_previews.len(),
-            main_area.width.saturating_sub(2),
-        ),
+        queued_prompt_height: u16::from(queued_count > 0),
         hint_requested,
         activity_requested: chat::should_show_activity(app),
         recommendation_natural_height,
@@ -271,12 +267,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         );
     }
     chat::render_activity(frame, app, h_activity[1]);
-    pending_queue::render(
-        frame,
-        app,
-        &queued_previews,
-        chunks[7].inner(Margin::new(1, 0)),
-    );
+    pending_queue::render(frame, queued_count, chunks[7].inner(Margin::new(1, 0)));
     let input_area = chunks[8];
     app.input_dialog_area = Some(input_area);
     input::render(frame, app, input_area);

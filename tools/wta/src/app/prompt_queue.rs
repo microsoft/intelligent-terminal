@@ -374,6 +374,10 @@ impl App {
             .map(|(index, item)| item.preview(index))
     }
 
+    pub(crate) fn pending_input_count(&self) -> usize {
+        self.waiting_requests_for_tab(self.active_tab_key()).count()
+    }
+
     fn waiting_requests_for_tab(&self, tab_id: &str) -> impl Iterator<Item = &QueuedRequest> + '_ {
         let preparing = self.queue_dispatch_ready(tab_id)
             && self
@@ -435,6 +439,7 @@ impl App {
 
     pub(super) fn dispatch_prompt_queues(&mut self) {
         for tab_id in self.tab_sessions.keys().cloned().collect::<Vec<_>>() {
+            self.restore_cancelled_queued_autofix(&tab_id);
             if !self.queue_dispatch_ready(&tab_id) {
                 continue;
             }
@@ -572,11 +577,9 @@ impl App {
             history_text.clone()
         };
         let submission = match kind {
-            RequestKind::AgentCommand => {
-                PromptSubmission::new_agent_command(text, Some(context.clone()))
-            }
-            RequestKind::ManualFix => PromptSubmission::new_autofix(text, Some(context.clone())),
-            _ => PromptSubmission::new(text, Some(context.clone())),
+            RequestKind::AgentCommand => PromptSubmission::new_agent_command(text, Some(context)),
+            RequestKind::ManualFix => PromptSubmission::new_autofix(text, Some(context)),
+            _ => PromptSubmission::new(text, Some(context)),
         };
         let display_text = if kind == RequestKind::ManualFix {
             format!("/fix {}", submission.text)
@@ -607,17 +610,8 @@ impl App {
         item.submission = item.submission.with_images(tab.attachments.take_images());
         tab.record_input_history(&history_text);
         let request_id = item.submission.id;
-        let cancellation = item.submission.cancellation_token();
         tab.prompt_queue.insert(item);
         tab.discard_input();
-        if kind == RequestKind::ManualFix {
-            self.launch_autofix_capture(
-                request_id,
-                cancellation,
-                context,
-                crate::protocol::acp::client::AutofixTextKind::UserRequest,
-            );
-        }
         if self.show_welcome_hint {
             self.show_welcome_hint = false;
             set_welcome_shown_in_state();
@@ -630,7 +624,7 @@ impl App {
             let tab = self.current_tab_mut();
             tab.messages
                 .push(ChatMessage::info(if tab.prompt_queue.paused {
-                    t!("queue.enqueued_paused").into_owned()
+                    t!("queue.stopped").into_owned()
                 } else {
                     t!("queue.enqueued").into_owned()
                 }));
@@ -683,10 +677,8 @@ impl App {
             cwd: None,
             source_pane_id: Some(pane.to_owned()),
         };
-        let submission =
-            PromptSubmission::new_autofix_failure(summary.to_owned(), Some(context.clone()));
+        let submission = PromptSubmission::new_autofix_failure(summary.to_owned(), Some(context));
         let request_id = submission.id;
-        let cancellation = submission.cancellation_token();
         let item = QueuedRequest {
             submission,
             display_text: summary.to_owned(),
@@ -711,10 +703,13 @@ impl App {
             self.tab_mut(tab_id).autofix.detected_request_id = Some(request_id);
         }
         self.tab_mut(tab_id).prompt_queue.insert(item);
+        if forced {
+            self.emit_autofix_state_pending(tab_id, pane, summary);
+        }
         if forced && self.tab_mut(tab_id).prompt_queue.paused {
             let tab = self.tab_mut(tab_id);
             tab.messages
-                .push(ChatMessage::info(t!("queue.enqueued_paused").into_owned()));
+                .push(ChatMessage::info(t!("queue.stopped").into_owned()));
             tab.scroll_to_bottom();
         }
         if !forced {
@@ -726,34 +721,34 @@ impl App {
             self.tab_mut(tab_id).autofix.trigger_echo_pane = Some(pane.to_owned());
             self.emit_autofix_state_detected(tab_id, pane, summary);
         }
-        self.launch_autofix_capture(
-            request_id,
-            cancellation,
-            context,
-            crate::protocol::acp::client::AutofixTextKind::FailureSummary,
-        );
     }
 
-    fn launch_autofix_capture(
-        &self,
-        request_id: u64,
-        cancellation: tokio_util::sync::CancellationToken,
-        context: PaneContext,
-        text_kind: crate::protocol::acp::client::AutofixTextKind,
-    ) {
-        if let (Some(tx), Ok(runtime)) =
-            (self.event_tx.clone(), tokio::runtime::Handle::try_current())
+    pub(super) async fn capture_pending_autofix_snapshots(&mut self) {
+        while let Some(item) = self
+            .tab_sessions
+            .values()
+            .flat_map(|tab| &tab.prompt_queue.entries)
+            .find(|entry| entry.capturing)
         {
-            let shell = self.shell_mgr.clone();
-            runtime.spawn(async move {
-                let result = tokio::select! {
-                    _ = cancellation.cancelled() => return,
-                    result = crate::protocol::acp::client::capture_autofix_snapshot(&shell, &context, text_kind) => result,
-                };
-                let _ = tx.send(AppEvent::AutofixSnapshotReady { request_id, result });
-            });
-        } else {
-            tracing::warn!(target: "prompt_queue", request_id, "snapshot capture unavailable without runtime/event channel");
+            let request_id = item.submission.id;
+            let result = match (
+                item.submission.pane_context.as_ref(),
+                item.submission.autofix_text_kind,
+            ) {
+                (Some(context), Some(text_kind)) => {
+                    crate::protocol::acp::client::capture_autofix_snapshot(
+                        &self.shell_mgr,
+                        context,
+                        text_kind,
+                    )
+                    .await
+                }
+                _ => {
+                    tracing::error!(target: "prompt_queue", request_id, "Autofix capture missing request context");
+                    Err(t!("queue.snapshot_source_required").into_owned())
+                }
+            };
+            self.handle_event(AppEvent::AutofixSnapshotReady { request_id, result });
         }
     }
 
@@ -825,6 +820,7 @@ impl App {
                 } else {
                     tab.pause_pending_prompts();
                 }
+                self.restore_cancelled_queued_autofix(&tab_id);
             }
         }
     }
@@ -872,6 +868,239 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shell::ShellManager;
+    use std::sync::{atomic::AtomicUsize, Mutex};
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum AutofixTrigger {
+        Automatic,
+        Typed,
+        Detected,
+    }
+
+    struct AdmissionCaptureChannel {
+        response: Mutex<serde_json::Value>,
+        requests: AtomicUsize,
+        fail: bool,
+    }
+
+    impl AdmissionCaptureChannel {
+        fn new(fail: bool) -> Self {
+            Self {
+                response: Mutex::new(serde_json::json!({
+                    "pane": {
+                        "session_id": "source",
+                        "shell": "pwsh",
+                        "cwd": "C:\\failure",
+                        "is_agent_pane": false,
+                    },
+                    "content": "original-command\r\noriginal failure evidence",
+                    "output_source": "last_command",
+                    "fallback_reason": "",
+                    "line_count": 2,
+                    "truncated": false,
+                    "has_marks": true,
+                })),
+                requests: AtomicUsize::new(0),
+                fail,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for AdmissionCaptureChannel {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            assert_eq!(method, "get_pane_context");
+            assert_eq!(params["session_id"], "source");
+            assert_eq!(params["max_lines"], 30);
+            assert_eq!(params["max_chars"], 4000);
+            self.requests.fetch_add(1, Ordering::Relaxed);
+            tokio::task::yield_now().await;
+            if self.fail {
+                anyhow::bail!("capture unavailable");
+            }
+            Ok(self.response.lock().unwrap().clone())
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    fn admission_event(app: &mut App, kind: AutofixTrigger) -> AppEvent {
+        app.source_session_id = Some("source".into());
+        match kind {
+            AutofixTrigger::Automatic => {
+                app.autofix_enabled = true;
+                AppEvent::WtEvent {
+                    method: "vt_sequence".into(),
+                    pane_id: "source".into(),
+                    tab_id: Some("queue-tab".into()),
+                    params: serde_json::json!({"sequence": "osc:133;D;1"}),
+                }
+            }
+            AutofixTrigger::Typed => {
+                app.current_tab_mut().input = "/fix investigate".into();
+                app.current_tab_mut().cursor_pos = "/fix investigate".len();
+                AppEvent::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            }
+            AutofixTrigger::Detected => {
+                app.emit_autofix_state_detected("queue-tab", "source", "explicit failure");
+                AppEvent::WtEvent {
+                    method: "autofix_execute_from_detected".into(),
+                    pane_id: "source".into(),
+                    tab_id: Some("queue-tab".into()),
+                    params: serde_json::json!({}),
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn autofix_admission_awaits_capture_even_while_dispatch_is_blocked() {
+        let _locale = crate::test_support::lock_locale();
+        for kind in [
+            AutofixTrigger::Automatic,
+            AutofixTrigger::Typed,
+            AutofixTrigger::Detected,
+        ] {
+            for connecting in [false, true] {
+                let (mut app, mut rx) = app();
+                hold(&mut app);
+                if connecting {
+                    app.state = ConnectionState::Connecting("agent".into());
+                }
+                let channel = Arc::new(AdmissionCaptureChannel::new(false));
+                app.shell_mgr = Arc::new(ShellManager::new().with_wt_channel(channel.clone()));
+                let event = admission_event(&mut app, kind);
+                // Admission must not rely on a background completion event.
+                assert!(app.event_tx.is_none());
+                app.handle_event_and_capture(event).await;
+
+                let entry = &app.current_tab().prompt_queue.entries[0];
+                assert!(!entry.capturing);
+                assert!(entry.submission.autofix_snapshot.is_some());
+                assert!(rx.try_recv().is_err());
+                assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+
+                {
+                    let mut response = channel.response.lock().unwrap();
+                    response["pane"]["cwd"] = serde_json::json!("C:\\later");
+                    response["pane"]["shell"] = serde_json::json!("cmd.exe");
+                    response["content"] = serde_json::json!("later unrelated command");
+                }
+                app.state = ConnectionState::Connected;
+                release(&mut app);
+                let submission = rx.try_recv().unwrap();
+                let (prompt, _, _, source) =
+                    crate::protocol::acp::prompt_builder::build_prompt_text(
+                        submission.id,
+                        submission.submitted_at_unix_s,
+                        &submission.text,
+                        submission.autofix_text_kind,
+                        false,
+                        &app.shell_mgr,
+                        true,
+                        submission.pane_context.as_ref(),
+                        submission.autofix_snapshot.as_ref(),
+                        None,
+                    )
+                    .await;
+                assert_eq!(source.as_deref(), Some("source"));
+                assert!(prompt.contains("original-command"));
+                assert!(prompt.contains("original failure evidence"));
+                assert!(prompt.contains(r"C:\\failure"));
+                assert!(prompt.contains("pwsh"));
+                assert!(!prompt.contains("later unrelated command"));
+                assert!(!prompt.contains(r"C:\\later"));
+                assert!(!prompt.contains("cmd.exe"));
+                assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn autofix_admission_dispatches_ready_request_with_snapshot_in_same_event() {
+        let _locale = crate::test_support::lock_locale();
+        for kind in [
+            AutofixTrigger::Automatic,
+            AutofixTrigger::Typed,
+            AutofixTrigger::Detected,
+        ] {
+            let (mut app, mut rx) = app();
+            let channel = Arc::new(AdmissionCaptureChannel::new(false));
+            app.shell_mgr = Arc::new(ShellManager::new().with_wt_channel(channel.clone()));
+            let event = admission_event(&mut app, kind);
+            app.handle_event_and_capture(event).await;
+
+            let submission = rx.try_recv().unwrap();
+            assert_eq!(
+                submission
+                    .autofix_snapshot
+                    .as_ref()
+                    .unwrap()
+                    .source_pane_id(),
+                "source"
+            );
+            assert!(app.current_tab().prompt_queue.entries.is_empty());
+            assert!(rx.try_recv().is_err());
+            assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn autofix_admission_capture_failure_is_settled_before_next_event() {
+        let _locale = crate::test_support::lock_locale();
+        for kind in [
+            AutofixTrigger::Automatic,
+            AutofixTrigger::Typed,
+            AutofixTrigger::Detected,
+        ] {
+            let (mut app, mut rx) = app();
+            hold(&mut app);
+            enter(&mut app, "unrelated queued input");
+            let channel = Arc::new(AdmissionCaptureChannel::new(true));
+            app.shell_mgr = Arc::new(ShellManager::new().with_wt_channel(channel.clone()));
+            let event = admission_event(&mut app, kind);
+            app.handle_event_and_capture(event).await;
+
+            assert!(rx.try_recv().is_err());
+            assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+            assert!(app.current_tab().messages.iter().any(|message| {
+                matches!(
+                    message,
+                    ChatMessage::Notice {
+                        kind: NoticeKind::Warning,
+                        ..
+                    }
+                )
+            }));
+            let entries = &app.current_tab().prompt_queue.entries;
+            assert!(entries.iter().all(|entry| !entry.capturing));
+            assert!(entries
+                .iter()
+                .any(|entry| entry.submission.text == "unrelated queued input"));
+            if kind == AutofixTrigger::Automatic {
+                assert_eq!(entries.len(), 1);
+                release(&mut app);
+                assert_eq!(rx.try_recv().unwrap().text, "unrelated queued input");
+            } else {
+                assert_eq!(entries.len(), 2);
+                assert!(entries.iter().any(|entry| entry.needs_resubmission));
+                assert!(app.current_tab().prompt_queue.paused);
+                if kind == AutofixTrigger::Detected {
+                    assert!(matches!(
+                        app.current_tab().autofix.bar_snapshot,
+                        AutofixBarSnapshot::Detected { .. }
+                    ));
+                }
+            }
+        }
+    }
 
     fn app() -> (App, mpsc::UnboundedReceiver<PromptSubmission>) {
         let mut app = super::super::tests::test_app();
@@ -1608,7 +1837,7 @@ mod tests {
         enter(&mut app, "new explicit request");
         assert!(rx.try_recv().is_err());
         assert!(app.current_tab().messages.iter().any(|message| {
-            matches!(message, ChatMessage::Notice { text, .. } if text == t!("queue.enqueued_paused").as_ref())
+            matches!(message, ChatMessage::Notice { text, .. } if text == t!("queue.stopped").as_ref())
         }));
         app.resume_pending_inputs();
         assert_eq!(rx.try_recv().unwrap().text, "retain me");
@@ -1704,6 +1933,64 @@ mod tests {
         assert_eq!(app.current_tab().prompt_queue.entries.len(), 3);
         assert!(tokens.iter().all(|token| !token.is_cancelled()));
         assert!(!has_cancelled_notice(&app, 2));
+    }
+
+    #[test]
+    fn detected_fix_becomes_pending_on_admission_without_rearming_active_turn() {
+        let _locale = crate::test_support::lock_locale();
+        let (mut app, mut rx) = app();
+        enter(&mut app, "active user request");
+        let active_id = rx.try_recv().unwrap().id;
+        let generation = app.current_tab().autofix.generation;
+        let event = admission_event(&mut app, AutofixTrigger::Detected);
+        app.handle_event(event);
+
+        assert!(matches!(
+            &app.current_tab().autofix.bar_snapshot,
+            AutofixBarSnapshot::Pending { pane_id, summary }
+                if pane_id == "source" && summary == "explicit failure"
+        ));
+        assert_eq!(app.current_tab().turn.prompt_id(), Some(active_id));
+        assert_eq!(app.current_tab().autofix.generation, generation);
+        assert!(app.current_tab().autofix.pane_id.is_none());
+        assert!(app.current_tab().autofix.armed_at.is_none());
+        assert!(rx.try_recv().is_err());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
+        assert!(matches!(
+            app.current_tab().autofix.bar_snapshot,
+            AutofixBarSnapshot::Pending { .. }
+        ));
+        app.handle_event(AppEvent::WtEvent {
+            method: "autofix_execute_from_detected".into(),
+            pane_id: "source".into(),
+            tab_id: Some("queue-tab".into()),
+            params: serde_json::json!({}),
+        });
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+        end(&mut app);
+        assert_eq!(rx.try_recv().unwrap().text, "explicit failure");
+        assert_eq!(app.current_tab().autofix.pane_id.as_deref(), Some("source"));
+        assert!(app.current_tab().autofix.armed_at.is_some());
+    }
+
+    #[test]
+    fn rejected_detected_fix_keeps_detected_bar() {
+        let _locale = crate::test_support::lock_locale();
+        let (mut app, mut rx) = app();
+        hold(&mut app);
+        for _ in 0..MAX_REQUESTS {
+            enter(&mut app, "queued user input");
+        }
+        let event = admission_event(&mut app, AutofixTrigger::Detected);
+        app.handle_event(event);
+        assert!(matches!(
+            app.current_tab().autofix.bar_snapshot,
+            AutofixBarSnapshot::Detected { .. }
+        ));
+        assert!(app.current_tab().autofix.detected_request_id.is_none());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), MAX_REQUESTS);
+        assert!(rx.try_recv().is_err());
     }
 
     #[test]

@@ -142,7 +142,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. za prikaz/skrivanje panela agenta • Ctrl
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Poruke u redu čekanja: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Poruke u redu čekanja: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Poruke u redu čekanja: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Red čekanja je pun. Vaš unos je sačuvan."
 queue.enqueued: "Poruka je dodana u red čekanja."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Otkazane su poruke u redu čekanja: %{count}. Možete poslati novu poruku."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

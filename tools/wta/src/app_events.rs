@@ -449,6 +449,13 @@ impl App {
         }
     }
 
+    pub(super) async fn handle_event_and_capture(&mut self, event: AppEvent) {
+        self.handle_event(event);
+        // Freeze accepted Autofix evidence in this event's admission phase,
+        // before processing another helper event.
+        self.capture_pending_autofix_snapshots().await;
+    }
+
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         // Async cards can take and release draft ownership without a key/focus event.
         // Typing targets only the active tab; switching/renaming closes the affected groups.
@@ -562,7 +569,6 @@ impl App {
                     self.current_tab_mut().input_vertical_goal = None;
                 }
             }
-            AppEvent::Mouse(mouse) if self.handle_pending_queue_mouse(mouse) => {}
             AppEvent::Mouse(mouse) => match mouse.kind {
                 crossterm::event::MouseEventKind::ScrollUp
                 | crossterm::event::MouseEventKind::ScrollDown

@@ -145,7 +145,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. ഏജന്റ് പേന്‍ കാ�
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "ക്യൂവിലുള്ള സന്ദേശങ്ങൾ: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "ക്യൂവിലുള്ള സന്ദേശങ്ങൾ: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "ക്യൂവിലുള്ള സന്ദേശങ്ങൾ: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "ക്യൂ നിറഞ്ഞിരിക്കുന്നു. നിങ്ങളുടെ ഇൻപുട്ട് സൂക്ഷിച്ചിട്ടുണ്ട്."
 queue.enqueued: "സന്ദേശം ക്യൂവിൽ ചേർത്തു."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "ക്യൂവിലുള്ള %{count} സന്ദേശങ്ങൾ റദ്ദാക്കി. നിങ്ങൾക്ക് ഒരു പുതിയ സന്ദേശം അയയ്ക്കാം."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

@@ -128,7 +128,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. 显示/隐藏智能体窗格 • Ctrl+Shif
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "队列中的消息：%{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "%{count} 条消息排队中"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "%{count} 条消息排队中"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "队列已满。已保留你的输入。"
 queue.enqueued: "消息已加入队列。"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "已取消队列中的 %{count} 条消息。你可以发送新消息。"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

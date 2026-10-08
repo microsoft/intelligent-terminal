@@ -141,7 +141,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. прикажи/скриј панел на 
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Пораки во редицата: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Пораки во редицата: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Пораки во редицата: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Редицата е полна. Вашиот внес е зачуван."
 queue.enqueued: "Пораката е додадена во редицата."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Откажани се %{count} пораки во редицата. Можете да испратите нова порака."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

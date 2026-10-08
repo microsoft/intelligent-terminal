@@ -142,7 +142,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. zobrazit/skrýt panel agenta • Ctrl+Shif
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Zprávy ve frontě: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Zprávy ve frontě: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Zprávy ve frontě: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Fronta je plná. Váš vstup byl zachován."
 queue.enqueued: "Zpráva byla přidána do fronty."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Počet zrušených zpráv ve frontě: %{count}. Můžete odeslat novou zprávu."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

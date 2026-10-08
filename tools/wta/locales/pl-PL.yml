@@ -141,7 +141,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. pokaż/ukryj panel agenta • Ctrl+Shift+/
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Wiadomości w kolejce: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Wiadomości w kolejce: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Wiadomości w kolejce: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Kolejka jest pełna. Wprowadzony tekst został zachowany."
 queue.enqueued: "Wiadomość dodana do kolejki."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Anulowano wiadomości w kolejce: %{count}. Możesz wysłać nową wiadomość."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

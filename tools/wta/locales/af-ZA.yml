@@ -133,7 +133,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. om agentpaneel te wys/verberg • Ctrl+Shi
 
 # ── Prompt queue (agent pane) ───────────────────────────────────────────────
 # Pending input has not been sent to the AI agent.
-queue.header: "Boodskappe in die waglys: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.header: "Boodskappe in die waglys: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Boodskappe in die waglys: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
 queue.full: "Waglys is vol. Jou invoer is behou."
 queue.enqueued: "Boodskap by waglys gevoeg."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "%{count} boodskappe in die waglys gekanselleer. Jy kan 'n nuwe boodskap stuur."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset

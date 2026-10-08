@@ -8,326 +8,6 @@ pub(crate) enum QueueControl {
     Discard,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn enter(app: &mut App, text: &str) {
-        app.current_tab_mut().replace_input(text.into());
-        app.handle_event(AppEvent::Key(KeyEvent::new(
-            KeyCode::Enter,
-            KeyModifiers::NONE,
-        )));
-    }
-
-    fn queued_app(paused: bool) -> (App, mpsc::UnboundedReceiver<PromptSubmission>) {
-        let mut app = crate::app::tests::test_app();
-        app.state = ConnectionState::Connected;
-        app.show_welcome_hint = false;
-        let rx = app.test_prompt_rx.take().unwrap();
-        app.current_tab_mut().config_pending_id = Some("hold".into());
-        enter(&mut app, "first waiting");
-        enter(&mut app, "last waiting");
-        if paused {
-            app.current_tab_mut().pause_pending_prompts();
-        }
-        app.current_tab_mut().config_pending_id = None;
-        (app, rx)
-    }
-
-    fn key(app: &mut App, code: KeyCode) {
-        app.handle_event(AppEvent::Key(KeyEvent::new(code, KeyModifiers::ALT)));
-    }
-
-    fn mouse(app: &mut App, kind: MouseEventKind, x: u16, y: u16) {
-        app.handle_event(AppEvent::Mouse(MouseEvent {
-            kind,
-            column: x,
-            row: y,
-            modifiers: KeyModifiers::NONE,
-        }));
-    }
-
-    fn hit(app: &mut App, action: QueueControl) -> QueueControlHit {
-        crate::app::tests::render_to_buffer(app, 110, 22);
-        app.queue_control_hits
-            .iter()
-            .find(|hit| hit.action == action)
-            .unwrap()
-            .clone()
-    }
-
-    #[test]
-    fn alt_r_recalls_last_request_without_resending_the_original() {
-        let _locale = crate::test_support::lock_locale();
-        let (mut app, mut rx) = queued_app(true);
-        key(&mut app, KeyCode::Char('r'));
-        assert_eq!(app.current_tab().input, "last waiting");
-        assert_eq!(app.pending_input_previews().count(), 1);
-        assert!(rx.try_recv().is_err());
-        key(&mut app, KeyCode::Char('R'));
-        assert_eq!(app.current_tab().input, "last waiting");
-        assert_eq!(app.pending_input_previews().count(), 1);
-        assert!(
-            matches!(app.current_tab().messages.last(), Some(ChatMessage::Notice { text, .. })
-            if text == t!("queue.draft_busy").as_ref())
-        );
-    }
-
-    #[test]
-    fn alt_s_resumes_and_alt_d_discards_without_cancelling_active_turn() {
-        let _locale = crate::test_support::lock_locale();
-        let (mut app, mut rx) = queued_app(true);
-        key(&mut app, KeyCode::Char('s'));
-        let active = rx.try_recv().unwrap();
-        assert_eq!(active.text, "first waiting");
-        assert!(!app.pending_queue_paused());
-        assert!(rx.try_recv().is_err());
-        app.current_tab_mut().replace_input("keep draft".into());
-        key(&mut app, KeyCode::Char('d'));
-        assert!(app.pending_input_previews().next().is_none());
-        assert_eq!(app.current_tab().turn.prompt_id(), Some(active.id));
-        assert!(!active.cancellation_token().is_cancelled());
-        assert_eq!(app.current_tab().input, "keep draft");
-    }
-
-    #[test]
-    fn queue_buttons_require_matching_mouse_press_and_release() {
-        let _locale = crate::test_support::lock_locale();
-        let (mut app, mut rx) = queued_app(true);
-        let button = hit(&mut app, QueueControl::SendRemaining);
-        mouse(
-            &mut app,
-            MouseEventKind::Up(MouseButton::Left),
-            button.area.x,
-            button.area.y,
-        );
-        assert!(rx.try_recv().is_err());
-        mouse(
-            &mut app,
-            MouseEventKind::Down(MouseButton::Left),
-            button.area.x,
-            button.area.y,
-        );
-        assert!(rx.try_recv().is_err());
-        mouse(
-            &mut app,
-            MouseEventKind::Up(MouseButton::Left),
-            button.area.x,
-            button.area.y,
-        );
-        assert_eq!(rx.try_recv().unwrap().text, "first waiting");
-        assert!(rx.try_recv().is_err());
-    }
-
-    #[test]
-    fn queue_clicks_do_not_survive_drag_resize_or_queue_replacement() {
-        let _locale = crate::test_support::lock_locale();
-        for change in ["drag", "resize", "queue", "tab", "modal", "focus"] {
-            let (mut app, mut rx) = queued_app(true);
-            let button = hit(&mut app, QueueControl::Discard);
-            mouse(
-                &mut app,
-                MouseEventKind::Down(MouseButton::Left),
-                button.area.x,
-                button.area.y,
-            );
-            match change {
-                "drag" => mouse(
-                    &mut app,
-                    MouseEventKind::Drag(MouseButton::Left),
-                    button.area.x,
-                    button.area.y,
-                ),
-                "resize" => app.handle_event(AppEvent::Resize(80, 18)),
-                "queue" => enter(&mut app, "new request"),
-                "tab" => {
-                    app.tab_mut("other-tab");
-                    app.tab_id = Some("other-tab".into());
-                }
-                "modal" => app.help_overlay_visible = true,
-                _ => app.handle_event(AppEvent::FocusChanged(false)),
-            }
-            mouse(
-                &mut app,
-                MouseEventKind::Up(MouseButton::Left),
-                button.area.x,
-                button.area.y,
-            );
-            let original = &app.tab_sessions[DEFAULT_TAB_ID];
-            assert!(original.prompt_queue.entries.len() >= 2, "{change}");
-            assert!(rx.try_recv().is_err());
-        }
-    }
-
-    #[test]
-    fn paused_queue_controls_respect_connection_and_modal_gates() {
-        let _locale = crate::test_support::lock_locale();
-        let (mut app, mut rx) = queued_app(true);
-        app.state = ConnectionState::Failed("offline".into());
-        assert!(!hit(&mut app, QueueControl::SendRemaining).enabled);
-        key(&mut app, KeyCode::Char('s'));
-        assert!(app.pending_queue_paused());
-        assert!(rx.try_recv().is_err());
-        app.help_overlay_visible = true;
-        key(&mut app, KeyCode::Char('d'));
-        key(&mut app, KeyCode::Char('r'));
-        assert_eq!(app.pending_input_previews().count(), 2);
-        assert!(app.current_tab().input.is_empty());
-        assert!(hit(&mut app, QueueControl::Discard).enabled == false);
-    }
-
-    #[test]
-    fn controls_are_contextual_and_discard_is_available_while_running() {
-        let _locale = crate::test_support::lock_locale();
-        let mut idle = crate::app::tests::test_app();
-        let text = crate::app::tests::render_to_text(&mut idle, 90, 9);
-        assert!(idle.queue_control_hits.is_empty());
-        assert!(!text.contains("Alt+R") && !text.contains("Alt+S") && !text.contains("Alt+D"));
-
-        let (mut app, mut rx) = queued_app(false);
-        app.dispatch_prompt_queues();
-        let active = rx.try_recv().unwrap();
-        app.current_tab_mut().replace_input("keep draft".into());
-        let button = hit(&mut app, QueueControl::Discard);
-        assert!(button.enabled);
-        assert!(app
-            .queue_control_hits
-            .iter()
-            .any(|hit| hit.action == QueueControl::Recall));
-        assert!(!app
-            .queue_control_hits
-            .iter()
-            .any(|hit| hit.action == QueueControl::SendRemaining));
-        mouse(
-            &mut app,
-            MouseEventKind::Down(MouseButton::Left),
-            button.area.x,
-            button.area.y,
-        );
-        mouse(
-            &mut app,
-            MouseEventKind::Up(MouseButton::Left),
-            button.area.x,
-            button.area.y,
-        );
-        assert!(app.pending_input_previews().next().is_none());
-        assert_eq!(app.current_tab().input, "keep draft");
-        assert_eq!(app.current_tab().turn.prompt_id(), Some(active.id));
-        assert!(!active.cancellation_token().is_cancelled());
-        assert!(rx.try_recv().is_err());
-        crate::app::tests::render_to_buffer(&mut app, 90, 9);
-        assert!(app.queue_control_hits.is_empty());
-    }
-
-    #[test]
-    fn compact_queue_keeps_all_controls_before_previews() {
-        // Isolate the extended locale matrix from legacy render tests that do
-        // not all acquire the shared locale lock.
-        const CHILD: &str = "WTA_QUEUE_LOCALE_TEST_CHILD";
-        if std::env::var_os(CHILD).is_none() {
-            let output = std::process::Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--exact",
-                    "app::queue_controls::tests::compact_queue_keeps_all_controls_before_previews",
-                    "--nocapture",
-                ])
-                .env(CHILD, "1")
-                .output()
-                .expect("run isolated queue locale matrix");
-            assert!(
-                output.status.success(),
-                "{}\n{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
-            return;
-        }
-        let _locale = crate::test_support::lock_locale();
-        for locale in ["en-US", "zh-CN", "de-DE"] {
-            rust_i18n::set_locale(locale);
-            for width in [24, 48, 90] {
-                for height in [6, 7, 9] {
-                    let (mut app, mut rx) = queued_app(true);
-                    app.current_tab_mut().replace_input("draft\n".repeat(10));
-                    let text = crate::app::tests::render_to_text(&mut app, width, height);
-                    for action in [
-                        QueueControl::SendRemaining,
-                        QueueControl::Recall,
-                        QueueControl::Discard,
-                    ] {
-                        assert!(
-                            app.queue_control_hits
-                                .iter()
-                                .any(|hit| hit.action == action),
-                            "{locale} {width}x{height}: {action:?}\n{text}"
-                        );
-                    }
-                    assert!(app.input_dialog_area.unwrap().height >= 3);
-                    assert!(rx.try_recv().is_err());
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn paused_queue_explains_automatic_sending_and_compact_buttons_are_clickable() {
-        let _locale = crate::test_support::lock_locale();
-        let (mut app, mut rx) = queued_app(true);
-        let text = crate::app::tests::render_to_text(&mut app, 90, 9);
-        assert!(
-            text.contains(t!("queue.paused_header", count = 2).as_ref()),
-            "{text}"
-        );
-        let emergency = crate::app::tests::render_to_text(&mut app, 90, 5);
-        assert!(
-            emergency.contains(t!("queue.paused_header", count = 2).as_ref()),
-            "{emergency}"
-        );
-        assert_eq!(app.queue_control_hits.len(), 3, "{emergency}");
-        crate::app::tests::render_to_buffer(&mut app, 24, 6);
-        let button = app
-            .queue_control_hits
-            .iter()
-            .find(|hit| hit.action == QueueControl::SendRemaining)
-            .unwrap()
-            .clone();
-        mouse(
-            &mut app,
-            MouseEventKind::Down(MouseButton::Left),
-            button.area.x,
-            button.area.y,
-        );
-        mouse(
-            &mut app,
-            MouseEventKind::Up(MouseButton::Left),
-            button.area.x,
-            button.area.y,
-        );
-        assert_eq!(rx.try_recv().unwrap().text, "first waiting");
-        assert!(rx.try_recv().is_err());
-    }
-
-    #[test]
-    fn queue_controls_fit_narrow_layouts_and_clear_when_hidden() {
-        let _locale = crate::test_support::lock_locale();
-        for width in [1, 12, 24, 48, 100] {
-            for height in [3, 7, 14, 24] {
-                let (mut app, _) = queued_app(true);
-                let buffer = crate::app::tests::render_to_buffer(&mut app, width, height);
-                for hit in &app.queue_control_hits {
-                    assert!(hit.area.right() <= buffer.area.right());
-                    assert!(hit.area.bottom() <= buffer.area.bottom());
-                    assert!(hit.area.bottom() <= app.input_dialog_area.unwrap().y);
-                }
-                app.current_tab_mut().current_view = View::Agents;
-                crate::app::tests::render_to_buffer(&mut app, width, height);
-                assert!(app.queue_control_hits.is_empty());
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct QueueControlHit {
     pub area: Rect,
@@ -444,5 +124,170 @@ impl App {
             _ => {}
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn queued_app(paused: bool) -> (App, mpsc::UnboundedReceiver<PromptSubmission>) {
+        let mut app = crate::app::tests::test_app();
+        app.state = ConnectionState::Connected;
+        app.show_welcome_hint = false;
+        let rx = app.test_prompt_rx.take().unwrap();
+        app.current_tab_mut().config_pending_id = Some("hold".into());
+        for text in ["first waiting", "last waiting"] {
+            app.current_tab_mut().replace_input(text.into());
+            app.handle_event(AppEvent::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )));
+        }
+        if paused {
+            app.current_tab_mut().pause_pending_prompts();
+            app.current_tab_mut().config_pending_id = None;
+        }
+        (app, rx)
+    }
+
+    #[test]
+    fn queue_shortcuts_are_not_exposed_in_count_only_ui() {
+        let _locale = crate::test_support::lock_locale();
+        for paused in [false, true] {
+            let (mut app, mut rx) = queued_app(paused);
+            for key in ['r', 'R', 's', 'S', 'd', 'D'] {
+                app.handle_event(AppEvent::Key(KeyEvent::new(
+                    KeyCode::Char(key),
+                    KeyModifiers::ALT,
+                )));
+                assert_eq!(app.pending_input_count(), 2);
+                assert_eq!(app.pending_queue_paused(), paused);
+                assert!(app.current_tab().input.is_empty());
+                assert!(rx.try_recv().is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn queue_count_is_one_dim_noninteractive_row_in_running_and_paused_states() {
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        for paused in [false, true] {
+            for width in [24, 48, 90] {
+                for height in [5, 6, 9, 22] {
+                    let (mut app, mut rx) = queued_app(paused);
+                    let buffer = crate::app::tests::render_to_buffer(&mut app, width, height);
+                    let y = app.input_dialog_area.unwrap().y - 1;
+                    let label = "2 messages queued";
+                    let row: String = (0..width).map(|x| buffer[(x, y)].symbol()).collect();
+                    assert_eq!(row.trim(), label);
+                    for x in 1..=label.len() as u16 {
+                        assert_eq!(buffer[(x, y)].fg, ratatui::style::Color::DarkGray);
+                        assert!(!buffer[(x, y)]
+                            .modifier
+                            .contains(ratatui::style::Modifier::BOLD));
+                    }
+                    assert!(app.queue_control_hits.is_empty());
+                    for kind in [
+                        MouseEventKind::Down(MouseButton::Left),
+                        MouseEventKind::Up(MouseButton::Left),
+                    ] {
+                        app.handle_event(AppEvent::Mouse(MouseEvent {
+                            kind,
+                            column: 1,
+                            row: y,
+                            modifiers: KeyModifiers::NONE,
+                        }));
+                    }
+                    assert_eq!(app.pending_input_count(), 2);
+                    assert!(rx.try_recv().is_err());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn queue_count_tracks_admission_and_dispatch_in_the_owning_tab() {
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        let mut app = crate::app::tests::test_app();
+        app.state = ConnectionState::Connected;
+        app.show_welcome_hint = false;
+        app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+        app.session_to_tab
+            .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+        let mut rx = app.test_prompt_rx.take().unwrap();
+        for (text, count) in [("active", 0), ("waiting one", 1), ("waiting two", 2)] {
+            app.current_tab_mut().replace_input(text.into());
+            app.handle_event(AppEvent::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )));
+            assert_eq!(app.pending_input_count(), count);
+            assert_count_row(&mut app, count);
+        }
+        assert_eq!(rx.try_recv().unwrap().text, "active");
+        assert!(rx.try_recv().is_err());
+        app.tab_id = Some("other-tab".into());
+        app.tab_mut("other-tab");
+        assert_count_row(&mut app, 0);
+        app.tab_id = None;
+        assert_count_row(&mut app, 2);
+        for (text, count) in [("waiting one", 1), ("waiting two", 0)] {
+            app.handle_event(AppEvent::AgentMessageEnd {
+                session_id: DEFAULT_TAB_ID.into(),
+            });
+            assert_eq!(rx.try_recv().unwrap().text, text);
+            assert!(rx.try_recv().is_err());
+            assert_eq!(app.pending_input_count(), count);
+            assert_count_row(&mut app, count);
+        }
+    }
+
+    fn assert_count_row(app: &mut App, count: usize) {
+        let text = crate::app::tests::render_to_text(app, 90, 22);
+        let labels: Vec<_> = text
+            .lines()
+            .filter(|line| line.contains("queued"))
+            .collect();
+        let input_y = app.input_dialog_area.unwrap().y as usize;
+        if count == 0 {
+            assert!(!text.contains("message queued"));
+            assert!(!text.contains("messages queued"));
+        } else {
+            let expected = if count == 1 {
+                "1 message queued".into()
+            } else {
+                format!("{count} messages queued")
+            };
+            assert_eq!(text.lines().nth(input_y - 1).unwrap().trim(), expected);
+            assert_eq!(
+                labels
+                    .iter()
+                    .filter(|line| line.contains(&expected))
+                    .count(),
+                1
+            );
+        }
+        assert!(app.queue_control_hits.is_empty());
+    }
+
+    #[test]
+    fn retained_queue_actions_still_work_without_public_entry_points() {
+        let _locale = crate::test_support::lock_locale();
+        let (mut app, mut rx) = queued_app(true);
+        app.invoke_queue_control(QueueControl::Recall);
+        assert_eq!(app.current_tab().input, "last waiting");
+        assert_eq!(app.pending_input_count(), 1);
+        app.invoke_queue_control(QueueControl::SendRemaining);
+        let active = rx.try_recv().unwrap();
+        assert_eq!(active.text, "first waiting");
+        assert!(!active.cancellation_token().is_cancelled());
+        app.current_tab_mut().replace_input("third waiting".into());
+        app.enqueue_input(None);
+        app.invoke_queue_control(QueueControl::Discard);
+        assert_eq!(app.pending_input_count(), 0);
+        assert!(!active.cancellation_token().is_cancelled());
     }
 }
