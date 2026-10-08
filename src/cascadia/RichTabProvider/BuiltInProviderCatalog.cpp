@@ -20,7 +20,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         };
 
         const std::array builtInProviders{
-            BuiltInProvider{ LR"(RichTabProviders\GitStatus)", "com.microsoft.intelligent-terminal.git-status" },
+            BuiltInProvider{ std::filesystem::path{ L"RichTabProviders" } / L"GitStatus", "com.microsoft.intelligent-terminal.git-status" },
         };
 
         std::optional<std::string> _ReadManifest(

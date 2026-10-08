@@ -31,7 +31,8 @@ function Resolve-ItApp {
         Build the immutable app descriptor used by every primitive: package identity,
         binaries (wtcli/wta/WindowsTerminal), data files (settings/state), log root.
     .PARAMETER Package
-        'Store', 'Dev', or an explicit PackageFamilyName.
+        'Store', 'Dev', or an explicit Intelligent Terminal PackageFamilyName.
+        Ordinary Windows Terminal families are not test targets.
     .PARAMETER IfInstalled
         Return no descriptor when the explicitly selected package is not installed.
     #>
@@ -39,6 +40,9 @@ function Resolve-ItApp {
     param([Parameter(Mandatory)][string]$Package, [switch]$IfInstalled)
 
     if ($Package -eq 'Auto') { throw "'Auto' is not allowed for explicit package resolution." }
+    if ($Package -match '^Microsoft\.WindowsTerminal') {
+        throw 'The ordinary Windows Terminal package is not an Intelligent Terminal test target.'
+    }
 
     $candidates = switch ($Package) {
         'Store' { @($script:ItKnownFamilies.Store) }

@@ -59,6 +59,34 @@ Describe 'Wait-Until / Test-Until' -Tag 'Unit' {
 }
 
 Describe 'JSON helpers' -Tag 'Unit' {
+    It 'settings snapshot releases the read handle before parsing' {
+        $settingsPath = Join-Path $TestDrive 'atomic-settings.json'
+        $replacementPath = "$settingsPath.tmp"
+        [IO.File]::WriteAllText($settingsPath, '{"value":1}')
+        [IO.File]::WriteAllText($replacementPath, '{"value":2}')
+        InModuleScope ItE2E -Parameters @{ settingsPath = $settingsPath; replacementPath = $replacementPath } {
+            $originalParser = (Get-Command ConvertFrom-JsonC).ScriptBlock
+            $script:atomicSettingsPath = $settingsPath
+            $script:atomicReplacementPath = $replacementPath
+            try {
+                function script:ConvertFrom-JsonC {
+                    [CmdletBinding()] param([Parameter(ValueFromPipeline)][string]$Text)
+                    process {
+                        [IO.File]::Move($script:atomicReplacementPath, $script:atomicSettingsPath, $true)
+                        $Text | ConvertFrom-Json
+                    }
+                }
+                { Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-JsonC } | Should -Throw
+                (Get-WtSettingsObject -App ([pscustomobject]@{ SettingsPath = $settingsPath })).value | Should -Be 1
+                (Get-Content -LiteralPath $settingsPath -Raw) | Should -Be '{"value":2}'
+            }
+            finally {
+                Set-Item -Path function:script:ConvertFrom-JsonC -Value $originalParser
+                Remove-Variable atomicSettingsPath, atomicReplacementPath -Scope Script
+            }
+        }
+    }
+
     It 'ConvertFrom-JsonSafe returns $null on garbage' {
         ConvertFrom-JsonSafe -InputObject 'not json {' | Should -BeNullOrEmpty
         ConvertFrom-JsonSafe -InputObject '' | Should -BeNullOrEmpty
@@ -645,7 +673,7 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
         }
     }
 
-    It 'refuses an existing Dev window instead of closing it as a stale test process' {
+    It 'refuses shutdown without a registered Dev package identity' {
         InModuleScope ItE2E {
             $app = [pscustomobject]@{
                 Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
@@ -663,13 +691,13 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
             Mock Stop-Process
             Mock Write-ItLog
 
-            { Stop-StaleItInstances -App $app } | Should -Throw '*Refusing to close*'
+            { Stop-StaleItInstances -App $app } | Should -Throw '*Dev package identity*'
 
             Should -Invoke Stop-Process -Times 0
         }
     }
 
-    It 'refuses a remaining packaged helper before changing user configuration' {
+    It 'does not touch a remaining helper when the Dev descriptor lacks identity' {
         InModuleScope ItE2E {
             $app = [pscustomobject]@{
                 Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
@@ -685,7 +713,7 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
             Mock Backup-WtConfig
             Mock Write-ItLog
 
-            { Stop-StaleItInstances -App $app } | Should -Throw '*Refusing to close*'
+            { Stop-StaleItInstances -App $app } | Should -Throw '*Dev package identity*'
 
             Should -Invoke Stop-Process -Times 0
             Should -Invoke Backup-WtConfig -Times 0
@@ -693,7 +721,7 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
         }
     }
 
-    It 'rejects an active package before settings backup or process launch' {
+    It 'rejects an unverified Dev descriptor before settings backup or launch' {
         InModuleScope ItE2E {
             $app = [pscustomobject]@{
                 Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
@@ -710,7 +738,7 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
             Mock Stop-Process
             Mock Write-ItLog
 
-            { Start-Terminal -Package Dev } | Should -Throw '*Refusing to close*'
+            { Start-Terminal -Package Dev } | Should -Throw '*Dev package identity*'
 
             Should -Invoke Backup-WtConfig -Times 0
             Should -Invoke Start-Process -Times 0

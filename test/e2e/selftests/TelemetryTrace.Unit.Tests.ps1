@@ -39,21 +39,23 @@ Describe 'Telemetry typed decoding' -Tag Unit {
         }
         finally { Set-Content -LiteralPath $path -Value $original -NoNewline }
     }
-    It 'Includes the Win32Host interaction source used by retention' {
+    It 'Includes the Win32Host <EventName> interaction source' -ForEach @(
+        @{ EventName = 'SessionBecameInteractive' }, @{ EventName = 'UserInteract' }
+    ) {
         $eventsPath = Join-Path $script:directory 'events.xml'
         $schemaPath = Join-Path $script:directory 'schema.xml'
         $originalEvents = Get-Content -LiteralPath $eventsPath -Raw
         $originalSchema = Get-Content -LiteralPath $schemaPath -Raw
         try {
             @'
-<Events><Event><System><Provider Guid="{56c06166-2e2e-5f4d-7ff3-74f4b78c87d6}" /><EventID>0</EventID><Version>0</Version><Execution ProcessID="42"/><TimeCreated SystemTime="2026-09-23T00:00:00Z"/></System><EventData><Data Name="Branding">0</Data><Data Name="Distribution">2</Data></EventData></Event></Events>
-'@ | Set-Content -LiteralPath $eventsPath
+<Events><Event><System><Provider Guid="{56c06166-2e2e-5f4d-7ff3-74f4b78c87d6}" /><EventID>0</EventID><Version>0</Version><Execution ProcessID="42"/><TimeCreated SystemTime="2026-09-23T00:00:00Z"/></System><EventData><Data Name="Branding">0</Data><Data Name="Distribution">2</Data></EventData><RenderingInfo><Task>INTERACTION</Task></RenderingInfo></Event></Events>
+'@.Replace('INTERACTION', $EventName) | Set-Content -LiteralPath $eventsPath
             @'
 <instrumentationManifest><provider guid="{56c06166-2e2e-5f4d-7ff3-74f4b78c87d6}"><events><event value="0" version="0" symbol="SessionBecameInteractive" template="T1" /></events><templates><template tid="T1"><data name="Branding" inType="win:UInt8" /><data name="Distribution" inType="win:UInt8" /></template></templates></provider></instrumentationManifest>
-'@ | Set-Content -LiteralPath $schemaPath
+'@.Replace('SessionBecameInteractive', $EventName) | Set-Content -LiteralPath $schemaPath
             $records = @(Read-TestTelemetryTrace -Directory $script:directory -ProcessIds @(42))
             $records | Should -HaveCount 1
-            $records[0].Name | Should -Be 'SessionBecameInteractive'
+            $records[0].Name | Should -Be $EventName
             $records[0].Types.Branding | Should -Be 'win:UInt8'
             $records[0].Fields.Distribution | Should -Be '2'
         }

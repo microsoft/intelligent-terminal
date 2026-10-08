@@ -28,18 +28,11 @@ Describe 'Feature: agent pane working directory' -Tag 'Feature' -Skip:(-not $scr
         $script:requestLog = Join-Path $env:TEMP ("ite2e-agent-cwd-{0}.log" -f [guid]::NewGuid().ToString('N'))
         $command = "pwsh -NoProfile -File $script:fixture -LogPath $script:requestLog"
         $package = Get-ItTestPackage
-        $targetApp = Resolve-ItApp -Package $package
-        try {
-            $script:app = Start-Terminal -Package $package -PassFre $true -Settings @{
-                acpAgent = 'custom:cwd-fixture'
-                acpCustomCommand = $command
-                acpModel = ''
-            }
-        }
-        catch {
-            Stop-AppInstances -App $targetApp
-            Restore-WtConfig -App $targetApp
-            throw
+        $script:app = $null
+        $script:app = Start-Terminal -Package $package -PassFre $true -Settings @{
+            acpAgent = 'custom:cwd-fixture'
+            acpCustomCommand = $command
+            acpModel = ''
         }
 
         Wait-NewAgentPaneSession -App $script:app -TimeoutSec 30 | Out-Null

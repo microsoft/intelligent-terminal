@@ -460,10 +460,12 @@
     <value>ట్యాబ్‌లను శోధించండి</value>
   </data>
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ట్యాబ్‌లను ఫిల్టర్ చేయండి</value>
+    <value>సైడ్‌బార్ ప్రదర్శన ఎంపికలు</value>
+    <comment>Accessible name of the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ట్యాబ్‌లను ఫిల్టర్ చేయండి</value>
+    <value>సైడ్‌బార్ ప్రదర్శన ఎంపికలు</value>
+    <comment>Tooltip for the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
     <value>ఫిల్టర్ చేయండి</value>
@@ -524,6 +526,10 @@
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>ఏజెంట్‌లు</value>
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
+  </data>
+  <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
+    <value>ఇటీవలి సెషన్‌లు</value>
+    <comment>Collapsible noun heading below open agent tabs in the Agents sidebar. Includes prior agent sessions, kept-running background tabs, sessions in other tracked windows, and external sessions not represented by the current window's open agent panes. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>ఏజెంట్‌లు</value>
@@ -698,5 +704,79 @@
   <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
     <value>నేపథ్యంలో అమలవుతున్న అన్ని ట్యాబ్‌లను మూసివేయి</value>
     <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by Keep tab running and terminates their panes and processes. Does not close tabs still in a window or only turn off keep running.</comment>
+  </data>
+  <data name="PaneProgressStatusNormal" xml:space="preserve">
+    <value>పురోగతి</value>
+    <comment>Accessibility status for normal determinate OSC 9;4 progress. A localized percentage is appended.</comment>
+  </data>
+  <data name="PaneProgressStatusError" xml:space="preserve">
+    <value>ఎర్రర్</value>
+    <comment>Accessibility status for error OSC 9;4 progress. A localized percentage is appended.</comment>
+  </data>
+  <data name="PaneProgressStatusIndeterminate" xml:space="preserve">
+    <value>అనిర్దిష్ట పురోగతి</value>
+    <comment>Accessibility status for OSC 9;4 progress with an unknown percentage. No percentage is appended.</comment>
+  </data>
+  <data name="PaneProgressStatusPaused" xml:space="preserve">
+    <value>పాజ్ చేయబడింది</value>
+    <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
+  </data>
+  <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
+    <value>సక్రియ మరియు ఇటీవలి ఏజెంట్ సెషన్‌లను శోధించండి</value>
+    <comment>Shared search placeholder, tooltip, and accessible name in the Agents sidebar. Searches both open AI-agent tabs, including idle open sessions, and the Recent Sessions section. Active does not mean only currently working. Keep the separate Tabs view search labels unchanged.</comment>
+  </data>
+  <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
+    <value>{0} · మరో విండో</value>
+    <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
+  </data>
+  <data name="VerticalTabsHistoryRestoreBackgroundTab" xml:space="preserve">
+    <value>నేపథ్య ట్యాబ్‌ను పునరుద్ధరించు</value>
+    <comment>Action for a live agent session in a kept-running background tab. Restores the entire original tab, with all its panes, to the foreground. This does not resume a new conversation or focus another visible window.</comment>
+  </data>
+  <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
+    <value>మరో విండోకు మారు</value>
+    <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
+  </data>
+  <data name="TabColorChoose"><value>ట్యాబ్ రంగును మార్చండి</value></data>
+  <data name="RenameTabText"><value>ట్యాబ్ పేరును మార్చండి</value></data>
+  <data name="DuplicateTabText"><value>ట్యాబ్ నకలును సృష్టించండి</value></data>
+  <data name="SplitTabText"><value>ట్యాబ్‌ను విభజించండి</value></data>
+  <data name="TabMoveSubMenu"><value>ట్యాబ్‌ను తరలించండి</value></data>
+  <data name="ExportTabText"><value>పాఠ్యాన్ని ఎగుమతి చేయండి</value></data>
+  <data name="FindText"><value>శోధన</value></data>
+  <data name="RestartConnectionText"><value>సెషన్‌ను పునఃప్రారంభించండి</value></data>
+  <data name="TabCloseSubMenu"><value>మూసివేయండి</value></data>
+  <data name="TabClose"><value>ట్యాబ్‌ను మూసివేయండి</value></data>
+  <data name="MoveTabToNewWindowText"><value>ట్యాబ్‌ను కొత్త విండోకు తరలించండి</value></data>
+  <data name="TabMoveLeft"><value>ఎడమకు తరలించండి</value></data>
+  <data name="TabMoveRight"><value>కుడికి తరలించండి</value></data>
+  <data name="TabMoveUp"><value>పైకి తరలించండి</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>కిందికి తరలించండి</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>కుడివైపు ఉన్న ట్యాబ్‌లను మూసివేయండి</value></data>
+  <data name="TabCloseOther"><value>ఇతర ట్యాబ్‌లను మూసివేయండి</value></data>
+  <data name="ClosePaneText"><value>పేన్‌ను మూసివేయండి</value></data>
+  <data name="VerticalTabsSwitchToAgents" xml:space="preserve">
+    <value>ఏజెంట్‌లకు మారండి</value>
+    <comment>Tooltip and accessible action name of the sidebar header button while Tabs is selected. One click switches to the Agents view; it does not open a menu. Agents means AI agents, not people.</comment>
+  </data>
+  <data name="VerticalTabsSwitchToTabs" xml:space="preserve">
+    <value>ట్యాబ్‌లకు మారండి</value>
+    <comment>Tooltip and accessible action name of the sidebar header button while Agents is selected. One click switches to the Tabs view; it does not change between sidebar and horizontal tab layouts.</comment>
+  </data>
+  <data name="VerticalTabsExpandRecentSessions" xml:space="preserve">
+    <value>ఇటీవలి సెషన్‌లను విస్తరించండి</value>
+    <comment>Tooltip for expanding the Recent Sessions section inside the Agents sidebar. Expansion shows its session rows without leaving Agents or resuming a session.</comment>
+  </data>
+  <data name="VerticalTabsCollapseRecentSessions" xml:space="preserve">
+    <value>ఇటీవలి సెషన్‌లను కుదించండి</value>
+    <comment>Tooltip for collapsing the Recent Sessions section inside the Agents sidebar. Collapse hides its rows without closing agents or deleting sessions.</comment>
+  </data>
+  <data name="SidebarIntroductionTitle" xml:space="preserve">
+    <value>ట్యాబ్‌లను నిర్వహించడానికి మరింత తెలివైన మార్గం</value>
+    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+  </data>
+  <data name="SidebarIntroductionDescription" xml:space="preserve">
+    <value>మీ ట్యాబ్‌లు మరియు ఏజెంట్ సెషన్‌లు ఇప్పుడు సైడ్‌బార్‌లో ఉన్నాయి. ట్యాబ్ వివరాలను ఎంచుకోవడానికి సైడ్‌బార్ ప్రదర్శన ఎంపికలు ఉపయోగించండి. అడ్డంగా ఉండే ట్యాబ్‌లకు తిరిగి వెళ్లడానికి ట్యాబ్‌పై కుడి-క్లిక్ చేయండి.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
   </data>
 </root>

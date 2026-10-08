@@ -42,6 +42,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             std::chrono::milliseconds timeout) const;
 
         static std::optional<std::filesystem::path> ResolvePowerShell();
+        static std::optional<std::filesystem::path> ResolveGit();
         static bool ResolveEntrypoint(
             const Manifest& manifest,
             std::filesystem::path& resolved,

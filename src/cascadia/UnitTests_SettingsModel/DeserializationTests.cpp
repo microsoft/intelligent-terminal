@@ -390,7 +390,11 @@ namespace SettingsModelUnitTests
     void DeserializationTests::TabLayoutSetting()
     {
         static constexpr std::string_view inboxSettings{ R"({})" };
-        static constexpr std::string_view horizontalDefault{ R"({
+        static constexpr std::string_view sidebarDefault{ R"({
+            "profiles": [ { "guid": "{6239a42c-0000-49a3-80bd-e8fdd045185c}" } ]
+        })" };
+        static constexpr std::string_view horizontalExplicit{ R"({
+            "tabLayout": "horizontal",
             "profiles": [ { "guid": "{6239a42c-0000-49a3-80bd-e8fdd045185c}" } ]
         })" };
         static constexpr std::string_view verticalExplicit{ R"({
@@ -400,7 +404,11 @@ namespace SettingsModelUnitTests
         })" };
 
         {
-            const auto settings = winrt::make_self<implementation::CascadiaSettings>(horizontalDefault, inboxSettings);
+            const auto settings = winrt::make_self<implementation::CascadiaSettings>(sidebarDefault, inboxSettings);
+            VERIFY_ARE_EQUAL(TabLayout::Vertical, settings->GlobalSettings().TabLayout());
+        }
+        {
+            const auto settings = winrt::make_self<implementation::CascadiaSettings>(horizontalExplicit, inboxSettings);
             VERIFY_ARE_EQUAL(TabLayout::Horizontal, settings->GlobalSettings().TabLayout());
         }
         {
