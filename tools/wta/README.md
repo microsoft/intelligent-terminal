@@ -350,13 +350,29 @@ background and then focus its returned pane through the existing protocol focus
 path. This preserves the selected sidebar page and search state. Other delegate
 calls retain ordinary foreground tab creation.
 
-In Agents, duplicate-split uses the target pane's live provider/session binding.
-`wta delegate --split-pane <pane> --split-session <current-session>
---delegate-agent <provider>` validates that pair against one live master row
-and uses its exact host or WSL distro before launching a fresh interactive
-instance through the existing delegate builders. The old session ID is only a
-guard, never a resume argument. Missing, ambiguous, unknown-source, unavailable,
-and unsupported/custom targets fail rather than launching a default shell.
+In Agents only, duplicate-split selects the current tab's most recently active
+ordinary terminal from its pane MRU, excluding every AI assistant/helper pane.
+It reuses that terminal's live provider binding or explicit native provider
+intent, never the tab's assistant or global default provider. Missing or
+unsupported agent information falls back to ordinary terminal duplication in
+the same tab, preserving the source profile and working directory. Tabs-mode
+splitting is unchanged.
+
+`wta delegate --split-pane <pane> --delegate-agent <provider>` resolves the exact
+source pane and its current directory. An optional
+`--split-session <current-session>` validates a live master binding; otherwise
+the pane must carry matching native provider intent, allowing a split before
+session-start hooks arrive. A known WSL source retains its exact distro and Linux
+directory. Incomplete execution-source information requests ordinary fallback
+rather than guessing another source. The old session ID is only a guard, never
+a resume argument.
+
+Sidebar splits additionally pass `--preserve-sidebar-view`. Their successful
+stdout receipt is `{"split_fallback":false}` after creation, or
+`{"split_fallback":true}` when preparation failed before any creation request.
+Only the latter authorizes Terminal to create the ordinary fallback pane. A
+creation timeout, unknown result, missing created-pane identity, or subsequent
+focus failure must never trigger a second creation request.
 Host splits carry the resolved project directory in an encoded PowerShell
 wrapper that starts the existing delegate command with an explicit native
 working directory; the split protocol itself has no cwd argument. The wrapper

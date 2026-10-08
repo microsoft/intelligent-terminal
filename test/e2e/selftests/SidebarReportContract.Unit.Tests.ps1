@@ -14,7 +14,11 @@ BeforeAll {
         'Collapsing focused Recent Sessions preserves the active shell',
         'Agents live tab mutations reconcile rows without refreshing history',
         'Mixed Sidebar keyboard crosses the Recent Sessions boundary without activation',
-        'Sidebar header search and options show their actual action tooltips'
+        'Sidebar header search and options show their actual action tooltips',
+        'Agents split falls back to an ordinary terminal',
+        'Agents split falls back for an unsupported custom provider',
+        'Agents split excludes the assistant from its MRU source',
+        'Agents split reuses native provider intent before session startup'
     )
     $cases = $script:titles | ForEach-Object {
         '<test-case name="Synthetic report contract.' + [Security.SecurityElement]::Escape($_) +

@@ -488,9 +488,29 @@ fn delegate_command_preserves_sidebar_only_when_requested() {
 }
 
 #[test]
-fn delegate_split_requires_paired_target_and_session_flags() {
+fn delegate_split_requires_provider_and_accepts_an_optional_session_guard() {
     assert!(Cli::try_parse_from(["wta", "delegate", "--split-pane", "pane"]).is_err());
     assert!(Cli::try_parse_from(["wta", "delegate", "--split-session", "sid"]).is_err());
+    let native = Cli::try_parse_from([
+        "wta",
+        "delegate",
+        "--delegate-agent",
+        "copilot",
+        "--split-pane",
+        "pane",
+    ])
+    .unwrap();
+    match native.command {
+        Some(Command::Delegate {
+            split_pane,
+            split_session,
+            ..
+        }) => {
+            assert_eq!(split_pane.as_deref(), Some("pane"));
+            assert!(split_session.is_none());
+        }
+        other => panic!("expected native delegate split, got {other:?}"),
+    }
     let cli = Cli::try_parse_from([
         "wta",
         "delegate",

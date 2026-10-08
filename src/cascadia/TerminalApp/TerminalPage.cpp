@@ -1931,9 +1931,27 @@ namespace winrt::TerminalApp::implementation
         _LaunchDelegate(prompt);
     }
 
+    std::shared_ptr<Pane> TerminalPage::_SidebarSplitSourcePane(const winrt::com_ptr<Tab>& tab)
+    {
+        const auto root = tab ? tab->GetRootPane() : nullptr;
+        if (root)
+        {
+            for (const auto id : tab->GetMruPanes())
+            {
+                if (const auto pane = root->FindPane(id);
+                    pane && !pane->IsAgentPane() && !pane->IsHidden() &&
+                    pane->GetContent().try_as<TerminalApp::TerminalPaneContent>())
+                {
+                    return pane;
+                }
+            }
+        }
+        return nullptr;
+    }
+
     std::optional<std::wstring> TerminalPage::_BuildAgentSplitArguments(const winrt::com_ptr<Tab>& tab, SplitDirection direction, float size)
     {
-        const auto pane = tab ? tab->GetActivePane() : nullptr;
+        const auto pane = _SidebarSplitSourcePane(tab);
         if (!pane || !(size > 0 && size < 1))
         {
             return std::nullopt;
@@ -1942,24 +1960,18 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring provider;
         winrt::hstring session;
         if (const auto binding = _paneAgentSessions.find(paneId);
-            binding != _paneAgentSessions.end() && (pane->IsAgentPane() || _activeCliAgentPanes.contains(paneId)))
+            binding != _paneAgentSessions.end() && _activeCliAgentPanes.contains(paneId))
         {
             provider = binding->second.agent;
             session = binding->second.sessionId;
         }
-        else if (const auto agent = pane->GetContent().try_as<TerminalApp::AgentPaneContent>())
+        else
         {
-            const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agent);
-            session = agentImpl->AgentSessionId();
-            const auto identity = agentImpl->AgentSessionOwner();
-            if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(std::wstring_view{ identity }))
-            {
-                provider = winrt::hstring{ backend->agentId };
-            }
+            provider = winrt::get_self<ContentManager>(_manager)->NativeAgentProviderIdForPane(paneId);
         }
         namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
         const auto allowed = Registry::FilteredDelegateAgents();
-        if (session.empty() || provider.empty() || paneId == winrt::guid{} ||
+        if (provider.empty() || paneId == winrt::guid{} ||
             !std::any_of(allowed.begin(), allowed.end(), [&](const auto& entry) { return entry.id == std::wstring_view{ provider }; }))
         {
             return std::nullopt;
@@ -1971,7 +1983,10 @@ namespace winrt::TerminalApp::implementation
         };
         append(L"--delegate-agent", provider);
         append(L"--split-pane", winrt::to_hstring(paneId));
-        append(L"--split-session", session);
+        if (!session.empty())
+        {
+            append(L"--split-session", session);
+        }
         const auto directionName = direction == SplitDirection::Right ? L"right" :
                                    direction == SplitDirection::Left ? L"left" :
                                    direction == SplitDirection::Up ? L"up" :
@@ -1981,18 +1996,105 @@ namespace winrt::TerminalApp::implementation
         return args;
     }
 
+    bool TerminalPage::_PrepareSidebarSplitSource(const winrt::com_ptr<Tab>& tab, winrt::guid sourceSessionId)
+    {
+        uint32_t tabIndex{};
+        const auto root = tab ? tab->GetRootPane() : nullptr;
+        const auto sourcePane = root ? root->FindPaneBySessionId(sourceSessionId) : nullptr;
+        if (!tab || !_tabs.IndexOf(*tab, tabIndex) || !root || !sourcePane ||
+            sourcePane->IsAgentPane() || sourcePane->IsHidden() || !sourcePane->Id())
+        {
+            _agentPaneLog("sidebar split unavailable: source terminal no longer belongs to the target tab");
+            return false;
+        }
+
+        const auto preserveHistory = std::exchange(_preserveSidebarHistory, true);
+        const auto restoreHistory = wil::scope_exit([&]() { _preserveSidebarHistory = preserveHistory; });
+        const auto paneId = sourcePane->Id().value();
+        _SetFocusedTab(*tab);
+        _UnZoomIfNeeded();
+        _tabContent.UpdateLayout();
+        if (!tab->FocusPane(paneId))
+        {
+            _agentPaneLog("sidebar split unavailable: source terminal could not be focused");
+            return false;
+        }
+        _tabStrip.HistoryError(L"");
+        return true;
+    }
+
+    bool TerminalPage::_SplitSidebarTerminalPane(const winrt::com_ptr<Tab>& tab, winrt::guid sourceSessionId, SplitDirection direction, float size)
+    {
+        if (!_PrepareSidebarSplitSource(tab, sourceSessionId))
+        {
+            return false;
+        }
+        const auto preserveHistory = std::exchange(_preserveSidebarHistory, true);
+        const auto restoreHistory = wil::scope_exit([&]() { _preserveSidebarHistory = preserveHistory; });
+        const auto created = _SplitPane(tab, direction, size, _MakePane(NewTerminalArgs{}, *tab));
+        _agentPaneLog(created ? "sidebar split created an ordinary terminal pane" : "sidebar ordinary terminal split failed");
+        return created;
+    }
+
     safe_void_coroutine TerminalPage::_SplitAgentDelegate(winrt::com_ptr<Tab> tab, SplitDirection direction, float size)
     {
+        const auto sourcePane = _SidebarSplitSourcePane(tab);
+        // Splits replace leaf objects; keep the connection identity across the async launch.
+        const auto sourceId = sourcePane ? sourcePane->GetSessionId() : winrt::guid{};
         const auto args = _BuildAgentSplitArguments(tab, direction, size);
-        if (!args)
+        const auto wtaPath = args ? _DetectWtaPath() : winrt::hstring{};
+        if (!args || wtaPath.empty())
         {
-            _agentPaneLog("agent split rejected: missing live identity, unsupported provider, or policy");
-            _tabStrip.HistoryError(RS_(L"VerticalTabsHistoryActivationError"));
+            _agentPaneLog("sidebar split falling back: no reusable terminal agent or WTA is unavailable");
+            _SplitSidebarTerminalPane(tab, sourceId, direction, size);
             co_return;
         }
-        const auto wtaPath = _DetectWtaPath();
-        _RunSidebarDelegate(std::wstring{ wtaPath.c_str(), wtaPath.size() }, *args);
-        co_return;
+        if (!_PrepareSidebarSplitSource(tab, sourceId))
+        {
+            co_return;
+        }
+
+        const auto weakThis = get_weak();
+        const auto dispatcher = Dispatcher();
+        const std::wstring wtaExe{ wtaPath.c_str(), wtaPath.size() };
+        _tabStrip.HistoryError(L"");
+        co_await winrt::resume_background();
+        const auto result = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(wtaExe, *args, 30'000, nullptr, false);
+        co_await wil::resume_foreground(dispatcher);
+        if (const auto page = weakThis.get())
+        {
+            if (result.completed && result.exitCode == 0)
+            {
+                if (!result.output.empty())
+                {
+                    Json::Value response;
+                    Json::CharReaderBuilder builder;
+                    std::istringstream stream{ result.output };
+                    std::string errors;
+                    if (Json::parseFromStream(builder, stream, &response, &errors) &&
+                        response.isObject() && response["split_fallback"].isBool())
+                    {
+                        if (response["split_fallback"].asBool())
+                        {
+                            page->_SplitSidebarTerminalPane(tab, sourceId, direction, size);
+                        }
+                    }
+                    else
+                    {
+                        _agentPaneLog("invalid sidebar split response: " + result.output);
+                        page->_tabStrip.HistoryError(winrt::hresult_error{ E_FAIL }.message());
+                    }
+                }
+            }
+            else
+            {
+                // A missing receipt may follow successful creation. Never create a second pane.
+                _agentPaneLog("sidebar agent split failed: " + result.output);
+                page->_tabStrip.HistoryError(result.output.empty() ?
+                                                 winrt::hresult_error{ result.completed ? E_FAIL : HRESULT_FROM_WIN32(ERROR_TIMEOUT) }.message() :
+                                                 winrt::to_hstring(result.output));
+            }
+        }
     }
 
     safe_void_coroutine TerminalPage::_RunSidebarDelegate(std::wstring wtaPath, std::wstring args)
