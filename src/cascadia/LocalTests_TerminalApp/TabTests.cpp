@@ -11576,6 +11576,11 @@ namespace TerminalAppLocalTests
                 winrt::Microsoft::Terminal::Control::TermControl reattachedControl{ nullptr };
                 if (std::wstring_view{ provider } == L"copilot")
                 {
+                    const auto sameProvider = _keepRunningHook(paneId, "agent.session.start", "initial-conversation", "copilot");
+                    page->_manager.OnPaneAgentSessionChanged(sameProvider);
+                    page->OnPaneAgentSessionChanged(sameProvider);
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, manager->NativeAgentProviderId(contentId));
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/copilot.svg" }, tab->Icon());
                     const auto started = _keepRunningHook(paneId, "agent.session.start", "real-conversation", "claude");
                     page->_manager.OnPaneAgentSessionChanged(started);
                     page->OnPaneAgentSessionChanged(started);
@@ -11586,6 +11591,7 @@ namespace TerminalAppLocalTests
                 else
                 {
                     const auto control = pane->GetTerminalControl();
+                    VERIFY_IS_TRUE(tab->DetachRoot() == pane);
                     page->_manager.Detach(control);
                     reattachedControl = page->_AttachControlToContent(contentId);
                     VERIFY_IS_NOT_NULL(reattachedControl);
@@ -11595,8 +11601,38 @@ namespace TerminalAppLocalTests
                 connection->TransitionTo(State::Failed);
                 VERIFY_IS_FALSE(manager->NativeAgentProviderId(contentId).empty());
             }
-            const auto shell = page->_GetTabImpl(page->_tabs.GetAt(0))->GetActivePane()->GetTerminalControl();
+            winrt::guid customPaneId;
+            VERIFY_SUCCEEDED(CoCreateGuid(reinterpret_cast<GUID*>(&customPaneId)));
+            const auto customConnection = winrt::make_self<TestConnection>(customPaneId, State::Connected);
+            NewTerminalArgs customArgs;
+            customArgs.NativeAgentProviderId(L"custom:fixture");
+            const auto customPane = page->_MakePane(customArgs, nullptr, *customConnection);
+            VERIFY_IS_NOT_NULL(customPane);
+            const auto customContentId = customPane->GetTerminalControl().ContentId();
+            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(customPane));
+            const auto customTab = page->_GetFocusedTabImpl();
+            for (const auto activityProvider : { "copilot", "claude" })
+            {
+                const auto sessionId = std::string{ activityProvider } + "-conversation";
+                const auto started = _keepRunningHook(customPaneId, "agent.session.start", sessionId, activityProvider);
+                page->_manager.OnPaneAgentSessionChanged(started);
+                page->OnPaneAgentSessionChanged(started);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:fixture" }, manager->NativeAgentProviderId(customContentId));
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:fixture" }, manager->NativeAgentProviderIdForPane(customPaneId));
+                VERIFY_ARE_EQUAL(started, manager->AgentSessionEvent(customContentId));
+                VERIFY_ARE_EQUAL(winrt::to_hstring(sessionId), page->_paneAgentSessions.at(customPaneId).sessionId);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/generic.svg" }, customTab->Icon());
+                const auto saved = customPane->GetContent().GetNewTerminalArgs(BuildStartupKind::Persist).as<NewTerminalArgs>();
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:fixture" }, saved.NativeAgentProviderId());
+            }
+            const auto shellPane = page->_GetTabImpl(page->_tabs.GetAt(0))->GetActivePane();
+            const auto shell = shellPane->GetTerminalControl();
             VERIFY_IS_TRUE(manager->NativeAgentProviderId(shell.ContentId()).empty());
+            const auto shellActivity = _keepRunningHook(shellPane->GetSessionId(), "agent.session.start", "shell-conversation", "copilot");
+            page->_manager.OnPaneAgentSessionChanged(shellActivity);
+            page->OnPaneAgentSessionChanged(shellActivity);
+            VERIFY_IS_TRUE(manager->NativeAgentProviderId(shell.ContentId()).empty());
+            VERIFY_ARE_EQUAL(shellActivity, manager->AgentSessionEvent(shell.ContentId()));
         });
     }
 

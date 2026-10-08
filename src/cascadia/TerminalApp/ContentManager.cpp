@@ -182,7 +182,8 @@ namespace winrt::TerminalApp::implementation
             policy.eventJson = eventJson;
             std::lock_guard lock{ _mutex };
             if (const auto content = _content.find(contentId);
-                content != _content.end() && !content->second.nativeAgentProviderId.empty())
+                content != _content.end() && !content->second.nativeAgentProviderId.empty() &&
+                !std::wstring_view{ content->second.nativeAgentProviderId }.starts_with(L"custom:"))
             {
                 content->second.nativeAgentProviderId = agent;
             }

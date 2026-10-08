@@ -16,6 +16,10 @@ replaces the tab list. The one-time upgrade described below changes the initial
 `tabLayout`; subsequent user choices, horizontal agent-session behavior, and
 other agent/delegation shortcuts remain supported.
 
+Custom native CLI launch identities remain `custom:<name>` when their underlying
+CLI reports activity as a built-in provider. Activity/session bindings still
+update, and built-in native CLI panes retain provider rebinding.
+
 ## One-time Sidebar upgrade and introduction
 
 - Sidebar becomes the default tab layout for new users. On the first eligible
