@@ -408,6 +408,12 @@ automatic repair is
 blocked unless every complete-PR diff entry has Git status `M` and targets
 existing WTA Rust source. Additions, copies, deletions, renames, and type changes
 remain guidance-only.
+Immutable native tree reads also bind each changed entry's base/head mode and
+object type into the protected scope hash. Every complete-PR entry must be a
+regular `100644` blob in both revisions, even when the repair does not touch it.
+Mode-only executable changes and modifications to existing executable files or
+symlinks block automatic repair; missing or duplicate metadata cannot authorize
+a candidate. Read-only guidance may still describe those original changes.
 The native validator compares every reported patch path and patch digest with
 this trusted worktree and rejects symlinks, submodules, mode changes,
 CI/security policy, manifests, unrelated dependencies, and medium/low edits.

@@ -208,10 +208,18 @@ export function buildScope(baseSha, headSha, prNumber, relation, rawNameStatus, 
 export function readImmutableHunks(scope, workspace) {
   if (!SHA.test(scope?.baseSha ?? '') || !SHA.test(scope?.headSha ?? '') ||
       !Array.isArray(scope.changedFiles)) fail('immutable hunk inputs are invalid');
+  const treeEntry = (revision, path) => {
+    const entry = git(['ls-tree', '-z', revision, '--', path], workspace);
+    if (entry === '') return {};
+    const match = /^([0-7]{6}) (blob|tree|commit) [0-9a-f]{40}\t([^\0]+)\0$/.exec(entry);
+    if (!match || match[3] !== path) fail('immutable tree entry does not match the requested path');
+    return { mode: match[1], type: match[2] };
+  };
   return scope.changedFiles.map(file => {
     const path = normalizePath(file.path);
-    const entry = git(['ls-tree', scope.headSha, '--', path], workspace).trim();
-    const blob = /^[0-7]{6} blob [0-9a-f]{40}\t/.test(entry)
+    const baseEntry = treeEntry(scope.baseSha, normalizePath(file.oldPath ?? path));
+    const headEntry = treeEntry(scope.headSha, path);
+    const blob = headEntry.type === 'blob'
       ? git(['cat-file', 'blob', `${scope.headSha}:${path}`], workspace) : '';
     const headLineCount = blob.length === 0 ? 0 : blob.split('\n').length - (blob.endsWith('\n') ? 1 : 0);
     const diff = readSecurityDiff(scope, file.oldPath ? [file.oldPath, path] : [path], workspace);
@@ -245,7 +253,8 @@ export function readImmutableHunks(scope, workspace) {
       }
     }
     flush();
-    return { path, headLineCount, hunks };
+    return { path, headLineCount, hunks, baseMode: baseEntry.mode ?? null, baseType: baseEntry.type ?? null,
+      headMode: headEntry.mode ?? null, headType: headEntry.type ?? null };
   });
 }
 
@@ -923,6 +932,14 @@ export function validateRepairScope(scope) {
     .map(file => `${file.status ?? 'missing'}:${file.path}`);
   if (ineligible.length > 0) {
     fail(`automatic repair scope contains non-WTA-source paths or non-modification entries: ${ineligible.join(', ')}`);
+  }
+  if (!Array.isArray(scope.immutableHunks)) fail('automatic repair scope requires immutable regular 100644 base/head blobs');
+  for (const file of scope.changedFiles) {
+    const entries = scope.immutableHunks.filter(entry => entry?.path === file.path);
+    if (entries.length !== 1 || entries[0].baseMode !== '100644' ||
+        entries[0].headMode !== '100644' || entries[0].baseType !== 'blob' || entries[0].headType !== 'blob') {
+      fail(`automatic repair scope requires immutable regular 100644 base/head blobs: ${file.path}`);
+    }
   }
 }
 

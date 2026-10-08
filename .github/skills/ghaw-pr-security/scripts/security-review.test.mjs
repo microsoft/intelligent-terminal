@@ -20,6 +20,7 @@ const tmpdir = () => process.cwd();
 const HEAD = '2'.repeat(40);
 const PATCH_TEXT = 'diff --git a/tools/wta/src/master/mod.rs b/tools/wta/src/master/mod.rs\n--- a/tools/wta/src/master/mod.rs\n+++ b/tools/wta/src/master/mod.rs\n@@ -20 +20 @@\n-Changed source.\n+Bound owner.\n';
 const PATCH_SHA256 = createHash('sha256').update(PATCH_TEXT).digest('hex');
+const REGULAR_TREE_MODES = { baseMode: '100644', headMode: '100644', baseType: 'blob', headType: 'blob' };
 
 function publicationJobs(sameRepo) {
   return ['agent', 'detection', 'safe_outputs', 'publication_gate', ...(sameRepo ? ['finalize', 'validate_windows / validate'] : [])]
@@ -845,7 +846,7 @@ function repairScope() {
     BASE,
     'repair',
     ['tools/wta/src/master/mod.rs', 'tools/wta/src/logging.rs'].map(path => ({
-      path, headLineCount: 120, hunks: [{ baseStart: 20, baseCount: 5, headStart: 20, headCount: 5 }],
+      ...REGULAR_TREE_MODES, path, headLineCount: 120, hunks: [{ baseStart: 20, baseCount: 5, headStart: 20, headCount: 5 }],
     })),
   );
 }
@@ -859,6 +860,8 @@ function repairScopeWithStatus(status) {
     `${status}\0tools/wta/src/master/mod.rs\0`,
     BASE,
     'repair',
+    [{ ...REGULAR_TREE_MODES, path: 'tools/wta/src/master/mod.rs', headLineCount: 120,
+      hunks: [{ baseStart: 20, baseCount: 5, headStart: 20, headCount: 5 }] }],
   );
 }
 
@@ -889,7 +892,7 @@ const TEST_REPAIR_PATHS = [
 test('test target guard applies to candidate, proposal, final and actual patch, not complete PR scope', () => {
   for (const path of TEST_REPAIR_PATHS) {
     const current = buildScope(BASE, HEAD, 17, 'same-repo', `M\0${path}\0`, BASE, 'repair', [{
-      path, headLineCount: 1, hunks: [{ baseStart: 1, baseCount: 1, headStart: 1, headCount: 1 }],
+      ...REGULAR_TREE_MODES, path, headLineCount: 1, hunks: [{ baseStart: 1, baseCount: 1, headStart: 1, headCount: 1 }],
     }]);
     assert.doesNotThrow(() => validateRepairScope(current));
     assert.throws(() => validateRepairTargetPath(path), /test-only repair target/);
@@ -999,7 +1002,7 @@ function report(overrides = {}, relation = 'same-repo') {
 test('unrelated unchanged line cannot authorize an automatic repair', () => {
   const current = buildScope(BASE, HEAD, 17, 'same-repo', 'M\0tools/wta/src/master/mod.rs\0',
     BASE, 'repair', [{
-      path: 'tools/wta/src/master/mod.rs', headLineCount: 120,
+      ...REGULAR_TREE_MODES, path: 'tools/wta/src/master/mod.rs', headLineCount: 120,
       hunks: [{ baseStart: 10, baseCount: 1, headStart: 10, headCount: 1 }],
     }]);
   const candidate = {
@@ -1036,7 +1039,7 @@ test('unrelated unchanged line cannot authorize an automatic repair', () => {
   tampered.immutableHunks[0].hunks[0].headStart = 100;
   assert.throws(() => validateCandidate(candidate, tampered), /scope identity/);
   const legacy = buildScope(BASE, HEAD, 17, 'same-repo', 'M\0tools/wta/src/master/mod.rs\0', BASE, 'repair');
-  assert.throws(() => validateCandidate({ ...candidate, scopeSha256: legacy.scopeSha256 }, legacy), /immutable HEAD diff hunk/);
+  assert.throws(() => validateCandidate({ ...candidate, scopeSha256: legacy.scopeSha256 }, legacy), /immutable regular 100644/);
   const blocked = structuredClone(candidate);
   blocked.findings[0].startLine = blocked.findings[0].endLine = 100;
   blocked.findings[0].fixDisposition.state = 'blocked';
@@ -1060,7 +1063,7 @@ test('unrelated unchanged line cannot authorize an automatic repair', () => {
 test('actual segments use immutable HEAD coordinates rather than hunk overlap or candidate offsets', () => {
   const path = 'tools/wta/src/master/mod.rs';
   const current = buildScope(BASE, HEAD, 17, 'same-repo', `M\0${path}\0`, BASE, 'repair', [{
-    path, headLineCount: 120, hunks: [
+    ...REGULAR_TREE_MODES, path, headLineCount: 120, hunks: [
       { baseStart: 10, baseCount: 1, headStart: 10, headCount: 1 },
       { baseStart: 20, baseCount: 2, headStart: 20, headCount: 0 },
       { baseStart: 32, baseCount: 3, headStart: 30, headCount: 3 },
@@ -1101,7 +1104,7 @@ test('actual segments use immutable HEAD coordinates rather than hunk overlap or
 test('nonempty patch API requires explicit immutable authority even with a matching digest', () => {
   const path = 'tools/wta/src/master/mod.rs';
   const current = buildScope(BASE, HEAD, 17, 'same-repo', `M\0${path}\0`, BASE, 'repair', [{
-    path, headLineCount: 1000, hunks: [{ baseStart: 10, baseCount: 1, headStart: 10, headCount: 1 }],
+    ...REGULAR_TREE_MODES, path, headLineCount: 1000, hunks: [{ baseStart: 10, baseCount: 1, headStart: 10, headCount: 1 }],
   }]);
   const valid = `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -10 +10 @@\n-old\n+fixed\n`;
   const extra = valid + '@@ -1000 +1000 @@\n-unchanged\n+unrelated\n';
@@ -1228,7 +1231,7 @@ test('trusted Git scope binds exact changes, deletion mapping, renames, modes an
     assert.equal(cli.status, 0, cli.stderr);
     const current = JSON.parse(readFileSync(scopePath, 'utf8'));
     assert.deepEqual(current.immutableHunks, [{
-      path, headLineCount: 120, hunks: [{ baseStart: 10, baseCount: 1, headStart: 10, headCount: 1 }],
+      ...REGULAR_TREE_MODES, path, headLineCount: 120, hunks: [{ baseStart: 10, baseCount: 1, headStart: 10, headCount: 1 }],
     }]);
     const candidate = {
       ...createReportTemplate(current), summary: 'A localized repair candidate.',
@@ -1783,6 +1786,71 @@ test('automatic repair accepts only modifications to existing WTA Rust source', 
     )),
     /C100:tools\/wta\/src\/master\/mod.rs/,
   );
+});
+
+test('whole repair scope rejects missing, duplicate and non-regular immutable tree entries', () => {
+  for (const field of ['baseMode', 'headMode', 'baseType', 'headType']) {
+    const current = repairScope();
+    current.immutableHunks[1][field] = field.endsWith('Mode') ? '120000' : 'commit';
+    assert.throws(() => validateRepairScope(current), /immutable regular 100644/);
+  }
+  for (const variant of ['missing', 'duplicate']) {
+    const current = repairScope();
+    if (variant === 'missing') current.immutableHunks.pop();
+    else current.immutableHunks.push(structuredClone(current.immutableHunks[0]));
+    assert.throws(() => validateRepairScope(current), /immutable regular 100644/);
+  }
+});
+
+test('real Git mode-only and existing symlink/executable modifications block unrelated production repair before writes', () => {
+  const root = mkdtempSync(join(process.cwd(), '.scope-tree-modes-'));
+  const production = 'tools/wta/src/master/mod.rs';
+  const unrelated = 'tools/wta/src/logging.rs';
+  const git = (args, input) => execFileSync('git', args, { cwd: root, encoding: 'utf8', input, timeout: 30_000 }).trim();
+  try {
+    git(['init', '--quiet']);
+    git(['config', 'user.name', 'Local contract fixture']);
+    git(['config', 'user.email', 'fixture@example.invalid']);
+    git(['config', 'core.autocrlf', 'false']);
+    mkdirSync(join(root, 'tools', 'wta', 'src', 'master'), { recursive: true });
+    writeFileSync(join(root, production), 'workspace sentinel\n');
+    writeFileSync(join(root, unrelated), 'unrelated sentinel\n');
+    const stage = (path, mode, bytes) => {
+      const blob = git(['hash-object', '-w', '--stdin'], bytes);
+      git(['update-index', '--add', '--cacheinfo', mode, blob, path]);
+    };
+    for (const [baseMode, headMode, sameBytes] of [
+      ['100644', '100755', true], ['100755', '100755', false], ['120000', '120000', false],
+    ]) {
+      stage(production, '100644', 'base route\n');
+      stage(unrelated, baseMode, 'base target\n');
+      git(['commit', '--quiet', '-m', `Fixture base ${baseMode}`]);
+      const base = git(['rev-parse', 'HEAD']);
+      stage(production, '100644', 'changed route\n');
+      stage(unrelated, headMode, sameBytes ? 'base target\n' : 'changed target\n');
+      git(['commit', '--quiet', '-m', `Fixture head ${headMode}`]);
+      const head = git(['rev-parse', 'HEAD']);
+      const raw = execFileSync('git', ['diff', '--name-status', '-z', base, head], { cwd: root, encoding: 'utf8', timeout: 30_000 });
+      const inputs = buildScope(base, head, 17, 'same-repo', raw, base, 'repair');
+      assert(inputs.changedFiles.every(file => file.status === 'M'));
+      const metadata = readImmutableHunks(inputs, root);
+      const current = buildScope(base, head, 17, 'same-repo', raw, base, 'repair', metadata);
+      const changedMode = metadata.find(file => file.path === unrelated);
+      assert.equal(changedMode.baseMode, baseMode);
+      assert.equal(changedMode.headMode, headMode);
+      const originalIndex = readFileSync(join(root, '.git', 'index'));
+      const originalBytes = readFileSync(join(root, production));
+      assert.throws(() => validateRepairScope(current), /immutable regular 100644.*logging.rs/);
+      assert.throws(() => validateCandidate(repairCandidate(current, production), current), /immutable regular 100644/);
+      assert.throws(() => writeSecurityRepair(current, root, production, 'replacement\n'), /immutable regular 100644/);
+      assert.deepEqual(readFileSync(join(root, production)), originalBytes);
+      assert.deepEqual(readFileSync(join(root, '.git', 'index')), originalIndex);
+      const normalized = metadata.map(file => ({ ...file, ...REGULAR_TREE_MODES }));
+      assert.notEqual(buildScope(base, head, 17, 'same-repo', raw, base, 'repair', normalized).scopeSha256, current.scopeSha256);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('trusted repair staging rejects symlinks and mode changes', () => {
