@@ -1954,7 +1954,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnHistoryExpandedChanged(IInspectable const& sender, RoutedEventArgs const&)
     {
-        if (_syncingHistorySection)
+        if (_syncingHistorySection || !_historySection.get())
         {
             return;
         }
