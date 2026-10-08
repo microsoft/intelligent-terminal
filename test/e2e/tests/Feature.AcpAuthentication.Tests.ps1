@@ -149,9 +149,16 @@ Describe 'Feature: ACP first-login authentication' -Tag 'Feature', 'AcpAuthentic
             }
             $session.HelperProcessId | Should -Be $script:helper.Id
             $session.AcpSessionId | Should -Match "^authentication-fixture-$($script:fixturePid)-\d+$"
-            Wait-Until -TimeoutSec 15 -IntervalSec 0.2 -Because 'the confirmed fixture model in the normal pane title' -Condition {
-                (Get-UiValue -App $script:app -Selector AgentLabelText) -match 'Authentication Fixture Model'
-            } | Out-Null
+            # AgentLabelText is a TextBlock: its UIA Name is the rendered title, not an editable Value.
+            $label = Wait-Until -TimeoutSec 15 -IntervalSec 0.2 -Because 'the confirmed fixture model in the normal pane title' -Condition {
+                $element = Get-UiElement -App $script:app -Selector AgentLabelText
+                if ($element -and -not $element.isOffscreen -and $element.name -match 'Authentication Fixture Model') {
+                    $element
+                }
+            }
+            $label.name | Should -Match 'Authentication Fixture Model'
+            $label | Select-Object automationId, name, isOffscreen |
+                ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:caseDir 'authenticated-agent-label.json') -Encoding utf8
             @(Get-AuthenticationRecords | Where-Object { $_.method -eq 'session/new' -and $_.authenticated }) |
                 Should -HaveCount 1
             Assert-AuthenticationOwnedProcesses

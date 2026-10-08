@@ -84,12 +84,19 @@ try {
                     id = $request.id
                     result = @{
                         sessionId = "authentication-fixture-$PID-$sessionCounter"
-                        models = @{
-                            currentModelId = 'authentication-model'
-                            availableModels = @(
-                                @{ modelId = 'authentication-model'; name = 'Authentication Fixture Model' }
-                            )
-                        }
+                        # ACP 1.1 model discovery uses configOptions, not the removed models field.
+                        configOptions = @(
+                            @{
+                                id = 'model'
+                                name = 'Model'
+                                category = 'model'
+                                type = 'select'
+                                currentValue = 'authentication-model'
+                                options = @(
+                                    @{ value = 'authentication-model'; name = 'Authentication Fixture Model' }
+                                )
+                            }
+                        )
                     }
                 }
             }

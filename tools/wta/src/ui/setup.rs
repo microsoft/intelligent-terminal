@@ -50,7 +50,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                     if app.acp_authentication_pending() {
                         t!(
                             "auth.waiting_for_authorization",
-                            spinner = spinner_char.to_string()
+                            spinner = ""
                         )
                         .into_owned()
                     } else {
