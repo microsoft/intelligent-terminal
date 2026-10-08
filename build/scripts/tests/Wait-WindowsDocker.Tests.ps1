@@ -167,6 +167,53 @@ Describe 'Windows Docker readiness (no real Docker or service mutation)' {
 }
 
 Describe 'Owned preflight child process bounds' {
+    BeforeAll {
+        if (-not ('WindowsDockerTimeoutRaceTestProcess' -as [type])) {
+            Add-Type @'
+public sealed class WindowsDockerTimeoutRaceTestProcess
+{
+    public bool HasExited { get; set; } = true;
+    public int Id => 123;
+    public int WaitCount { get; private set; }
+    public bool WaitForExit(int milliseconds) => ++WaitCount > 1;
+    public void Kill() => throw new System.InvalidOperationException("Termination failed or process already exited.");
+}
+'@
+        }
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile("$PSScriptRoot\..\Wait-WindowsDocker.ps1", [ref]$tokens, [ref]$parseErrors)
+        if ($parseErrors.Count) { throw $parseErrors[0] }
+        $timeoutBranch = $ast.Find({
+            param($node)
+            $node -is [Management.Automation.Language.IfStatementAst] -and
+                $node.Extent.Text.StartsWith('if (-not $process.WaitForExit($waitMilliseconds))')
+        }, $true)
+        if (-not $timeoutBranch) { throw 'Production timeout branch not found.' }
+        $script:timeoutBranch = [scriptblock]::Create($timeoutBranch.Extent.Text)
+    }
+
+    It 'keeps an already-exited kill race retryable and retains timeout diagnostics' {
+        $process = [WindowsDockerTimeoutRaceTestProcess]::new()
+        $waitMilliseconds = 1
+        $DeadlineUtc = [DateTime]::UtcNow.AddSeconds(5)
+        $TimeoutSeconds = 1
+        $LogPrefix = Join-Path $script:evidenceDirectory 'exit-race'
+        $stdout = [IO.StringReader]::new('retained stdout').ReadToEndAsync()
+        $stderr = [IO.StringReader]::new('retained stderr').ReadToEndAsync()
+        { . $script:timeoutBranch } | Should -Throw '*preflight command timed out*' -ExceptionType ([TimeoutException])
+        Get-Content "$LogPrefix.stdout.log" | Should -BeExactly 'retained stdout'
+        Get-Content "$LogPrefix.stderr.log" | Should -BeExactly 'retained stderr'
+        $process.WaitCount | Should -Be 2
+    }
+
+    It 'does not suppress a kill failure while the exact child is still running' {
+        $process = [WindowsDockerTimeoutRaceTestProcess]::new()
+        $process.HasExited = $false
+        $waitMilliseconds = 1
+        { . $script:timeoutBranch } | Should -Throw '*Termination failed or process already exited*'
+    }
+
     It 'captures real stdout, stderr and exit code from a harmless child' {
         $result = Invoke-WindowsDockerPreflightProcess -FilePath (Join-Path $PSHOME 'pwsh.exe') -Arguments @('-NoProfile', '-NonInteractive', '-Command', '[Console]::Out.WriteLine("ready"); [Console]::Error.WriteLine("diagnostic"); exit 7') -TimeoutSeconds 30 -LogPrefix (Join-Path $script:evidenceDirectory 'dummy')
         $result.ExitCode | Should -Be 7

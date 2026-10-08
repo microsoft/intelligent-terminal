@@ -152,14 +152,15 @@ jobs:
             let run;
             for (let attempt = 0; !runId && attempt < 20; attempt++) {
               await new Promise(resolve => setTimeout(resolve, 3000));
-              const runs = await github.rest.actions.listWorkflowRuns({
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
                 ...context.repo,
                 workflow_id: process.env.WORKER,
                 event: "workflow_dispatch",
                 branch: pr.base.ref,
-                per_page: 50
+                created: `>=${new Date(startedAt).toISOString()}`,
+                per_page: 100
               });
-              run = runs.data.workflow_runs.find(candidate =>
+              run = runs.find(candidate =>
                 Date.parse(candidate.created_at) >= startedAt &&
                 candidate.display_title.includes(dispatchId));
               runId = run?.id;

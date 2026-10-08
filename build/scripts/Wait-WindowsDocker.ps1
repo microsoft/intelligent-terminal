@@ -22,7 +22,11 @@ function Invoke-WindowsDockerPreflightProcess {
         $stderr = $process.StandardError.ReadToEndAsync()
         if (-not $process.WaitForExit($waitMilliseconds)) {
             # Only this invocation's exact child PID is terminated, never the daemon.
-            $process.Kill()
+            try {
+                $process.Kill()
+            } catch [InvalidOperationException] {
+                if (-not $process.HasExited) { throw }
+            }
             $terminationMilliseconds = [int][Math]::Max(0.0, [Math]::Min(5000.0, ($DeadlineUtc - [DateTime]::UtcNow).TotalMilliseconds))
             if (-not $process.WaitForExit($terminationMilliseconds)) { throw "Cannot terminate preflight child PID=$($process.Id)." }
             [IO.File]::WriteAllText("$LogPrefix.stdout.log", $stdout.GetAwaiter().GetResult())

@@ -332,8 +332,10 @@ Docker context selection. Before dependency/image work, the trusted
 container feature, client and registered service, starts only a stopped Docker
 service, and waits for a Windows-engine response. Process operations and
 readiness have explicit bounds and retain raw diagnostic output. A terminated
-Docker-info probe timeout is retryable only within the same readiness deadline;
-service-start and child-termination failures remain fatal. Cleanup queries
+Docker-info probe timeout is retryable only within the same readiness deadline:
+an exact child exiting between the timed wait and termination remains a
+diagnosed retryable timeout, while termination errors for a live child propagate.
+Service-start and child-termination failures remain fatal. Cleanup queries
 Docker only when this run recorded a container-creation attempt and still
 checks exact name/labels before removal.
 
@@ -474,8 +476,10 @@ explicitly rejects a stale base before dispatch without replacing that SHA.
 Dispatch retains a documented branch reference, not an assumed raw-SHA ref,
 and does not create writable tags. This preflight is not atomic: a subsequent
 base update still fails the worker SHA guard and controller success gate,
-preventing publication rather than silently accepting a missing review. Their
-`workflow_dispatch` context deliberately omits gh-aw's `pull_request`
+preventing publication rather than silently accepting a missing review. The
+run-correlation fallback paginates the workflow's branch/event results with
+a dispatch-time lower bound and still requires the unique dispatch title.
+Workers' `workflow_dispatch` context deliberately omits gh-aw's `pull_request`
 `item_type`, so the generated generic `Checkout PR branch` step is ineligible.
 The repair worker's explicit checkout is pinned to the immutable head; fork
 guidance stays on the trusted workflow checkout and reads only fetched Git

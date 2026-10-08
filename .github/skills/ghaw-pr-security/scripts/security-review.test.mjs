@@ -174,6 +174,50 @@ test('controller rejects stale or unresolved exact base refs before dispatch wit
   assert(controller.includes('echo "::error::The internal security worker did not succeed."'));
 });
 
+test('controller correlates dispatched runs beyond the first page with the same immutable identity', async () => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  const script = controller.split('            const pr = context.payload.pull_request;')[1]
+    .split('\n      - name: Canonicalize worker')[0];
+  const execute = new (Object.getPrototypeOf(async function () {}).constructor)(
+    'github', 'context', 'core', 'process', 'setTimeout', `const pr = context.payload.pull_request;${script}`);
+  const context = { repo: { owner: 'owner', repo: 'repo' }, runId: 123, runAttempt: 1,
+    payload: { pull_request: { number: 17, base: { ref: 'release/nested' } } } };
+  const outputs = {};
+  let listed = false;
+  const github = {
+    rest: {
+      git: { getRef: async () => ({ data: { ref: 'refs/heads/release/nested', object: { type: 'commit', sha: BASE } } }) },
+      actions: {
+        listWorkflowRuns: () => { throw new Error('Unpaginated listing must not be used'); },
+        getWorkflowRun: async args => {
+          assert.equal(args.run_id, 321);
+          return { data: { status: 'completed', conclusion: 'success', html_url: 'https://example.invalid/run' } };
+        },
+      },
+    },
+    request: async () => ({ data: {} }),
+    paginate: async (endpoint, args) => {
+      assert.equal(endpoint, github.rest.actions.listWorkflowRuns);
+      assert.equal(args.workflow_id, 'ghaw-pr-security-guide-fork.lock.yml');
+      assert.equal(args.branch, 'release/nested');
+      assert.equal(args.event, 'workflow_dispatch');
+      assert.equal(args.per_page, 100);
+      assert.match(args.created, /^>=\d{4}-\d{2}-\d{2}T/);
+      listed = true;
+      return [
+        ...Array.from({ length: 100 }, () => ({ id: 999, created_at: new Date().toISOString(), display_title: 'unrelated' })),
+        { id: 321, created_at: new Date().toISOString(), display_title: `ghaw-pr-security-17-${HEAD}-123-1` },
+      ];
+    },
+  };
+  await execute(github, context, { setOutput: (key, value) => { outputs[key] = value; } },
+    { env: { EXPECTED_BASE_SHA: BASE, EXPECTED_HEAD_SHA: HEAD, COMPARISON_BASE_SHA: BASE,
+      WORKER: 'ghaw-pr-security-guide-fork.lock.yml' } }, resolve => resolve());
+  assert.equal(listed, true);
+  assert.equal(outputs.run_id, '321');
+  assert.equal(outputs.conclusion, 'success');
+});
+
 test('typed detector proof rejects warning, cancelled, missing and self-reported success', () => {
   for (const relation of ['same-repo', 'fork']) {
     const current = buildScope(BASE, HEAD, 17, relation, 'M\0tools/wta/src/master/mod.rs\0', BASE,
