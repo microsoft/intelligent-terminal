@@ -1307,7 +1307,6 @@ int wmain(int argc, wchar_t** argv)
     std::string listenReadyToken;
     bool listenExistingOnly = false;
     DWORD listenParentPid = 0;
-    bool listenExistingOnly = false;
     auto* listenCmd = app.add_subcommand("listen", "Stream real-time events from Windows Terminal");
     listenCmd->add_option("-t,--target", listenTarget, "Filter by session ID (GUID)");
     listenCmd->add_option("--event", listenEventFilter, "Filter by event type (supports trailing wildcard, e.g. agent.*)");
