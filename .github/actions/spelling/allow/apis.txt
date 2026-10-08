@@ -16,6 +16,7 @@ BUILDMSG
 BUILDNUMBER
 BYCOMMAND
 charconv
+CLASSNOTREG
 CLOSEAPP
 cmdletbinding
 colspan
@@ -136,6 +137,7 @@ pmr
 QUERYENDSESSION
 rcx
 REGCLS
+REGDB
 remotesigned
 RETURNCMD
 rfind

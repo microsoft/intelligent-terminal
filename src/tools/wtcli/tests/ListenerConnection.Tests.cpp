@@ -7,6 +7,9 @@
 #include "ITerminalProtocol.h"
 #include <stdexcept>
 
+// Load SDK/WIL declarations before mocking the CLI's COM activation calls.
+#include "..\..\..\cascadia\TerminalProtocol\ProtocolMarshaling.h"
+
 namespace NativeMock
 {
     HRESULT WINAPI GetActiveObject(REFCLSID, void*, IUnknown**);
@@ -26,6 +29,7 @@ namespace NativeMock
     unsigned activeCalls = 0;
     unsigned activationCalls = 0;
     unsigned factoryCalls = 0;
+    HRESULT activationResult = E_NOINTERFACE;
     bool registered = true;
     bool supportsFactory = true;
 
@@ -66,12 +70,13 @@ namespace NativeMock
     {
         ++activationCalls;
         *object = nullptr;
-        return E_NOINTERFACE;
+        return activationResult;
     }
 
     void Reset()
     {
         activeCalls = activationCalls = factoryCalls = 0;
+        activationResult = E_NOINTERFACE;
         registered = supportsFactory = true;
     }
 
@@ -126,6 +131,15 @@ int wmain()
         Require(Listen(false) == 1);
         Require(activationCalls == 1 && activeCalls == 0 && factoryCalls == 0);
 
+        for (const auto factoryRegistered : { false, true })
+        {
+            Reset();
+            activationResult = REGDB_E_CLASSNOTREG;
+            registered = factoryRegistered;
+            Require(Listen(false) == 1);
+            Require(activationCalls == 1 && activeCalls == 1 && factoryCalls == (factoryRegistered ? 1u : 0u));
+        }
+
         Reset();
         Require(Listen(true) == 1);
         Require(activationCalls == 0 && activeCalls == 1 && factoryCalls == 1);
@@ -145,6 +159,15 @@ int wmain()
             Reset();
             Require(Publish(false, fromStdin) == 1);
             Require(activationCalls == 1 && activeCalls == 0 && factoryCalls == 0);
+
+            for (const auto factoryRegistered : { false, true })
+            {
+                Reset();
+                activationResult = REGDB_E_CLASSNOTREG;
+                registered = factoryRegistered;
+                Require(Publish(false, fromStdin) == 1);
+                Require(activationCalls == 1 && activeCalls == 1 && factoryCalls == (factoryRegistered ? 1u : 0u));
+            }
 
             Reset();
             Require(Publish(true, fromStdin) == 1);
