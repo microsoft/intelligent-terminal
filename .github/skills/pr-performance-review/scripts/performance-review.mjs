@@ -5,13 +5,14 @@ import path from 'node:path';
 import process from 'node:process';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const MAX_REPAIR_FILES = 3;
 const MAX_REPAIR_LINES = 100;
 const MAX_REPAIR_DIFF_BYTES = 16 * 1024;
 const MAX_REPAIR_BLOB_BYTES = 256 * 1024;
+const MAX_SUMMARY_BYTES = 48 * 1024;
 const SOURCE_EXTENSIONS = new Set(['.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hlsl', '.idl', '.ixx', '.rs', '.xaml']);
 const LEVELS = ['high', 'medium', 'low'];
 const DIMENSIONS = ['application-performance', 'responsiveness', 'memory-growth', 'ci-runtime-cost'];
@@ -20,6 +21,7 @@ const STATUSES = ['pass', 'advisory', 'action_required', 'pending_validation', '
 const TARGET_ALIASES = ['item_number', 'pr', 'pr_number', 'issue', 'issue_number', 'repo', 'target',
     'target_repo', 'target-repo', 'comment_id', 'reply_to_id', 'discussion_id'];
 const CATEGORY_RULES = [
+    ['other', /^src\/(inc|til|types)\//i],
     ['rendering', /^(src\/renderer\/|src\/cascadia\/TerminalControl\/|src\/cascadia\/TerminalCore\/)/i],
     ['text-buffer', /^src\/buffer\//i],
     ['vt-parsing', /^src\/terminal\/(parser|adapter)\//i],
@@ -28,6 +30,92 @@ const CATEGORY_RULES = [
     ['wta-runtime', /^tools\/wta\/(src\/|Cargo\.toml$|Cargo\.lock$|build\.rs$)/i],
     ['session-log-enumeration', /^(tools\/wta\/src\/.*(session|log)|src\/cascadia\/TerminalApp\/.*(Session|Log))/i],
 ];
+
+const CPP_PROJECTS = [
+    ['src/renderer/atlas/', 'src/renderer/atlas/atlas.vcxproj'],
+    ['src/renderer/base/', 'src/renderer/base/lib/base.vcxproj'],
+    ['src/renderer/gdi/', 'src/renderer/gdi/lib/gdi.vcxproj'],
+    ['src/renderer/uia/', 'src/renderer/uia/lib/uia.vcxproj'],
+    ['src/renderer/wddmcon/', 'src/renderer/wddmcon/lib/wddmcon.vcxproj'],
+    ['src/buffer/out/', 'src/buffer/out/lib/bufferout.vcxproj'],
+    ['src/terminal/parser/', 'src/terminal/parser/lib/parser.vcxproj'],
+    ['src/terminal/adapter/', 'src/terminal/adapter/lib/adapter.vcxproj'],
+    ['src/cascadia/TerminalCore/', 'src/cascadia/TerminalCore/lib/terminalcore-lib.vcxproj'],
+    ['src/cascadia/TerminalControl/', 'src/cascadia/TerminalControl/TerminalControlLib.vcxproj'],
+    ['src/cascadia/TerminalApp/', 'src/cascadia/TerminalApp/TerminalAppLib.vcxproj'],
+    ['src/cascadia/WindowsTerminal/', 'src/cascadia/WindowsTerminal/WindowsTerminal.vcxproj'],
+    ['src/cascadia/TerminalSettingsEditor/', 'src/cascadia/TerminalSettingsEditor/Microsoft.Terminal.Settings.Editor.vcxproj'],
+    ['src/types/', 'src/types/lib/types.vcxproj'],
+];
+
+export function createAnalysisPlan(files) {
+    const projects = new Set();
+    const candidatePaths = [];
+    const manualScope = [];
+    const rustPaths = [];
+    for (const file of files) {
+        const filename = file.filename;
+        if (/^tools\/wta\/(?:src\/.*\.rs|Cargo\.(?:toml|lock)|build\.rs)$/.test(filename)) {
+            rustPaths.push(filename);
+            continue;
+        }
+
+        if (!/^src\//.test(filename) || !/\.(?:c|cc|cpp|cxx|h|hh|hpp|ixx|hlsl|idl|xaml)$/.test(filename)) continue;
+        const owner = CPP_PROJECTS.find(([prefix]) => filename.startsWith(prefix));
+        if (!owner || /\.(?:hlsl|idl|xaml)$/.test(filename)) {
+            manualScope.push({ path: filename, reason: owner ? 'Unsupported source kind; native C++ checks do not analyze this language.' :
+                'Shared or unmapped source; no bounded owning-project recipe. Inspect callers manually.' });
+            continue;
+        }
+        projects.add(owner[1]);
+        candidatePaths.push({ path: filename, project: owner[1] });
+        if (/\.(?:h|hh|hpp)$/.test(filename))
+            manualScope.push({ path: filename, reason: 'Owning project includes headers, but cross-project caller coverage requires manual tracing.' });
+    }
+    return {
+        version: 1, target: 'x86_64-pc-windows-msvc',
+        rust: { required: rustPaths.length > 0, paths: rustPaths, toolchain: '1.93.0', alias: 'wta-perf-pr',
+            configuration: '.cargo/config.toml', scope: 'Entire WTA crate and all targets, not edited lines.' },
+        cpp: { required: projects.size > 0, projects: [...projects].sort(), candidatePaths,
+            profile: 'PullRequest', configuration: 'AuditMode', platform: 'x64',
+            profileProject: 'src/types/lib/types.vcxproj',
+            scope: 'ClangTidy on entire selected projects with normal reference/generated-header builds; references are not promised analyzer coverage. No full-solution fallback.',
+            callerCoverage: 'Prefix recipes are provisional. Verify translation units with native evaluated ClCompile items; trace headers and callers manually.' },
+        manualScope, coverage: manualScope.length ? 'partial' : projects.size ? 'unverified-projects' : 'selected-projects',
+        authority: 'Diagnostic input only; never native repair validation or publication authority.',
+    };
+}
+
+export function analysisComparisonComplete(directory, expected) {
+    const records = ['BASE', 'HEAD'].map(revision => {
+        const record = readJson(path.join(directory, `performance-analysis-${revision}`, 'analysis-metadata.json'));
+        validateIdentity(record.identity, expected);
+        if (record.version !== 1 || record.revision !== revision ||
+            record.analyzedSha !== expected[revision === 'BASE' ? 'baseSha' : 'headSha'] ||
+            !['completed', 'not_applicable'].includes(record.status)) return null;
+        if (!record.plan || !Array.isArray(record.checks) || !Array.isArray(record.missingPrerequisites) ||
+            !Array.isArray(record.coveredPaths) || !Array.isArray(record.manualScope) ||
+            record.missingPrerequisites.length || record.manualScope.length || record.plan.manualScope?.length ||
+            (expected.analysisPlan && JSON.stringify(record.plan) !== JSON.stringify(expected.analysisPlan))) return null;
+        const completed = name => record.checks.some(check => check.name === name &&
+            check.exitCode === 0 && check.status === 'completed');
+        if (record.plan.rust.required && (!record.analyzedScope?.rust || !completed('rust-analysis'))) return null;
+        if (record.plan.cpp.projects.some((project, index) =>
+            !record.analyzedScope?.cppProjects?.includes(project) ||
+            !completed(`cpp-items-${index}`) || !completed(`cpp-analysis-${index}`))) return null;
+        if (!Array.isArray(record.plan.cpp.candidatePaths) || record.plan.cpp.candidatePaths
+            .filter(candidate => /\.(?:c|cc|cpp|cxx|ixx)$/.test(candidate.path))
+            .some(candidate => !record.coveredPaths.some(covered => covered.path === candidate.path &&
+                covered.project === candidate.project && covered.membership === 'MSBuild.ClCompile'))) return null;
+        if (record.status === 'not_applicable' && (record.plan.rust.required || record.plan.cpp.required)) return null;
+        return record;
+    });
+    if (records.some(record => !record)) return false;
+    const [base, head] = records;
+    return SHA_PATTERN.test(base.authoringSha ?? '') && base.authoringSha === head.authoringSha &&
+        JSON.stringify(base.plan) === JSON.stringify(head.plan) &&
+        JSON.stringify(base.tools) === JSON.stringify(head.tools);
+}
 
 function fail(message) {
     throw new Error(message);
@@ -101,6 +189,7 @@ export function classifyPullRequest(filesInput, identity) {
         version: 1, identity, applicable: candidates.length > 0, categories, dimensions: dimensions.sort(), candidates,
         supporting: files.filter(file => file.role === 'supporting'),
         excluded: files.filter(file => file.role === 'excluded'),
+        analysisPlan: createAnalysisPlan(files),
         totals: {
             files: files.length, candidates: candidates.length,
             additions: files.reduce((sum, file) => sum + (file.additions ?? 0), 0),
@@ -294,7 +383,62 @@ function withIndex(revision, action) {
     }
 }
 
-function sourceInventory(root, excludedRoot) {
+export function readReviewSummary(root) {
+    const directory = path.resolve(root);
+    const filename = path.join(directory, '.performance-summary.md');
+    for (const item of [directory, filename]) {
+        if (fs.lstatSync(item).isSymbolicLink() ||
+            (process.platform === 'win32' ? fs.realpathSync(item).toLowerCase() !== item.toLowerCase() :
+                fs.realpathSync(item) !== item))
+            fail('review summary path must not contain symlinks or reparse points');
+    }
+    const stat = fs.lstatSync(filename);
+    if (!stat.isFile() || stat.size < 1 || stat.size > MAX_SUMMARY_BYTES)
+        fail('review summary must be a regular UTF-8 file within 48 KiB');
+    const descriptor = fs.openSync(filename, 'r');
+    try {
+        const opened = fs.fstatSync(descriptor);
+        if (!opened.isFile() || opened.ino !== stat.ino || opened.dev !== stat.dev)
+            fail('review summary changed during collection');
+        const buffer = Buffer.alloc(MAX_SUMMARY_BYTES + 1);
+        let length = 0;
+        while (length < buffer.length) {
+            const count = fs.readSync(descriptor, buffer, length, buffer.length - length, null);
+            if (!count) break;
+            length += count;
+        }
+        if (length < 1 || length > MAX_SUMMARY_BYTES)
+            fail('review summary must be within 48 KiB');
+        const current = fs.lstatSync(filename);
+        if (current.isSymbolicLink() || current.ino !== opened.ino || current.dev !== opened.dev)
+            fail('review summary changed during collection');
+        return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer.subarray(0, length));
+    } finally {
+        fs.closeSync(descriptor);
+    }
+}
+
+export function captureReviewSummary(root, summaryMarkdown) {
+    if (typeof summaryMarkdown !== 'string' ||
+        Buffer.byteLength(summaryMarkdown, 'utf8') < 1 || Buffer.byteLength(summaryMarkdown, 'utf8') > MAX_SUMMARY_BYTES ||
+        new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(Buffer.from(summaryMarkdown)) !== summaryMarkdown)
+        fail('review summary must be valid UTF-8 Markdown within 48 KiB');
+    const directory = path.resolve(root);
+    if (fs.lstatSync(directory).isSymbolicLink() ||
+        (process.platform === 'win32' ? fs.realpathSync(directory).toLowerCase() !== directory.toLowerCase() :
+            fs.realpathSync(directory) !== directory))
+        fail('review summary directory must not contain symlinks or reparse points');
+    const filename = path.join(directory, '.performance-summary.md');
+    let exists = true;
+    try { fs.lstatSync(filename); } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        exists = false;
+    }
+    if (exists) readReviewSummary(directory);
+    fs.writeFileSync(filename, summaryMarkdown, 'utf8');
+}
+
+function sourceInventory(root, excludedRoot, summaryOutput = false) {
     const inventory = Object.create(null);
     const walk = (directory, prefix = '') => {
         for (const name of fs.readdirSync(directory).sort()) {
@@ -302,6 +446,10 @@ function sourceInventory(root, excludedRoot) {
             const filename = path.join(directory, name);
             if (excludedRoot && filename === excludedRoot) continue;
             const relative = prefix ? `${prefix}/${name}` : name;
+            if (summaryOutput && relative === '.performance-summary.md') {
+                readReviewSummary(root);
+                continue;
+            }
             classifyFile({ filename: relative });
             const stat = fs.lstatSync(filename);
             if (stat.isSymbolicLink()) {
@@ -345,7 +493,8 @@ export function prepareScope(expected, outputDirectory, baselinePath) {
         git(['diff', '--no-ext-diff', '--no-textconv', '--unified=5', expected.baseSha, expected.headSha, '--', ...candidates]) : '', 'utf8');
     if (baselinePath) {
         const root = git(['rev-parse', '--show-toplevel']).trim();
-        const inventory = sourceInventory(root);
+        const inventory = sourceInventory(root, undefined,
+            !git(['ls-tree', expected.headSha, '--', ':(literal).performance-summary.md']).trim());
         writeJson(baselinePath, { identity: scope.identity, treeSha: git(['rev-parse', `${expected.headSha}^{tree}`]).trim(), inventory });
     }
     return scope;
@@ -471,7 +620,8 @@ export function sealProposal(scope, report, baseline, expected) {
     validateIdentity(baseline?.identity, expected);
     if (!SHA_PATTERN.test(baseline?.treeSha ?? '')) fail('trusted preparation baseline is missing');
     const root = expected.agentWorktreeRoot ?? git(['rev-parse', '--show-toplevel']).trim();
-    const inventory = sourceInventory(root, repositoryRoot);
+    const inventory = sourceInventory(root, repositoryRoot,
+        !git(['ls-tree', expected.headSha, '--', ':(literal).performance-summary.md']).trim());
     const changedFiles = inventoryChanges(baseline.inventory, inventory);
     validateRepairFileCount(changedFiles);
     const files = changedFiles.map(filename => {
@@ -491,6 +641,117 @@ export function sealProposal(scope, report, baseline, expected) {
     return { proposal: validateProposal(proposal, expected), changedFiles };
 }
 
+export function processGuideSubmission(scope, queued, expected, runtime) {
+    if (expected.mode !== 'guide') throw new Error('guide submission requires guide mode');
+    let report = null;
+    let output = queued;
+    if (scope.applicable) {
+        if (queued?.items?.length !== 1 || queued.items[0]?.type !== 'add_comment' ||
+            typeof queued.items[0].body !== 'string')
+            throw new Error('applicable guide scope requires exactly one JSON add_comment');
+        try {
+            report = JSON.parse(queued.items[0].body);
+        } catch {
+            throw new Error('guidance comment body must be valid report JSON');
+        }
+        runtime.validateReport(report, expected);
+        // Preserve targeting aliases and envelope errors so the existing gate rejects them.
+        output = { ...queued, items: [{ ...queued.items[0], body: runtime.renderReport(report) }] };
+    }
+    runtime.gatePublication(scope, report, output, expected);
+    return {
+        report, queued: output,
+        verdict: { version: 1, identity: scope.identity, status: report?.status ?? 'pass' },
+    };
+}
+
+async function renderForkReport(args) {
+    if (args.length !== 0) throw new Error('guide submission accepts no command or path arguments');
+    const runtimePath = process.env.TRUSTED_REVIEW_RUNTIME;
+    if (!runtimePath || !path.isAbsolute(runtimePath)) throw new Error('trusted runtime must be an absolute environment path');
+    const runtime = await import(pathToFileURL(runtimePath).href);
+    const expected = {
+        mode: 'guide', prNumber: Number(process.env.PR_NUMBER),
+        baseSha: process.env.BASE_SHA, headSha: process.env.HEAD_SHA,
+    };
+    const queuePath = '/tmp/gh-aw/agent_output.json';
+    const stat = fs.lstatSync(queuePath);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size < 2 || stat.size > 2 * 1024 * 1024)
+        throw new Error('queued guidance must be a regular JSON file within the 2 MiB size limit');
+    const queued = JSON.parse(fs.readFileSync(queuePath, 'utf8'));
+    const resultDirectory = '/tmp/gh-aw/performance-result';
+    const scope = runtime.prepareScope(expected, resultDirectory);
+    const result = processGuideSubmission(scope, queued, expected, runtime);
+    const reportJson = `${JSON.stringify(result.report, null, 2)}\n`;
+    const queueJson = `${JSON.stringify(result.queued, null, 2)}\n`;
+    const verdictJson = `${JSON.stringify(result.verdict, null, 2)}\n`;
+    fs.writeFileSync('/tmp/gh-aw/performance-report.json', reportJson, 'utf8');
+    fs.writeFileSync(queuePath, queueJson, 'utf8');
+    fs.writeFileSync(`${resultDirectory}/performance-verdict.json`, verdictJson, 'utf8');
+}
+
+export function nativeValidationSucceeded(jobs) {
+    const phases = [
+        ['validate_performance_original_tests', 'List the exact test on original HEAD'],
+        ['validate_performance_focused_tests', 'Format and test the exact focused candidate'],
+        ['validate_performance_repair', 'Test the exact candidate full suite'],
+    ];
+    return phases.every(([name, stepName]) => {
+        const matches = jobs.filter(job => job.name === name);
+        const steps = matches[0]?.steps?.filter(step => step.name === stepName) ?? [];
+        return matches.length === 1 && matches[0].conclusion === 'success' &&
+            steps.length === 1 && steps[0].conclusion === 'success';
+    });
+}
+
+export async function publishRepair({ github, expected, proposalPath, workerRunId, staged = false }) {
+    if (!Number.isSafeInteger(workerRunId) || workerRunId < 1) throw new Error('A correlated worker run is required.');
+    const [owner, repo] = expected.repository.split('/');
+    const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+        owner, repo, run_id: workerRunId, per_page: 100,
+    });
+    if (!nativeValidationSucceeded(jobs)) throw new Error('GitHub did not record successful native validation.');
+    const stat = fs.lstatSync(proposalPath);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 2 * 1024 * 1024) {
+        throw new Error('Sealed proposal must be a bounded regular file.');
+    }
+    const proposal = validateProposal(JSON.parse(fs.readFileSync(proposalPath, 'utf8')), expected);
+    const reconstructed = reconstructTree(proposal.files, expected.headSha, expected.baseSha);
+    if (reconstructed !== proposal.treeSha) {
+        throw new Error('Publication blobs do not reconstruct the exact natively tested tree.');
+    }
+    const pr = (await github.rest.pulls.get({ owner, repo, pull_number: expected.prNumber })).data;
+    verifyPullRequest(pr, { ...expected, sameRepo: 'true' });
+    const card = renderReport(proposal.report, { publishedRunId: workerRunId });
+    if (staged) return { published: false, treeSha: reconstructed, staged: true };
+
+    // expectedHeadOid is the immutable reviewed head, never a freshly adopted remote head.
+    const result = await github.graphql(`
+      mutation($input: CreateCommitOnBranchInput!) {
+        createCommitOnBranch(input: $input) { commit { oid url tree { oid } } }
+      }`, {
+        input: {
+            branch: { repositoryNameWithOwner: expected.repository, branchName: expected.headRef },
+            expectedHeadOid: expected.headSha,
+            message: {
+                headline: 'Fix evidenced performance regression [performance-reviewer]',
+                body: 'Validated against the exact candidate tree on Windows.\n\nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>',
+            },
+            fileChanges: {
+                additions: proposal.files.map(file => ({ path: file.path, contents: file.contents })),
+            },
+        },
+    });
+    const commit = result?.createCommitOnBranch?.commit;
+    if (!commit?.oid || commit.tree?.oid !== reconstructed) {
+        throw new Error('GitHub did not confirm publication of the exact validated tree; do not retry automatically.');
+    }
+    return {
+        published: true, commitSha: commit.oid, url: commit.url, treeSha: reconstructed,
+        card,
+    };
+}
+
 function option(args, name, required = true) {
     const index = args.indexOf(name);
     if (index >= 0 && index + 1 < args.length) return args[index + 1];
@@ -502,8 +763,14 @@ function expectedFromArgs(args, requireMode = true) {
     return { prNumber: Number(option(args, '--pr')), baseSha: option(args, '--base').toLowerCase(), headSha: option(args, '--head').toLowerCase(), ...(mode ? { mode } : {}) };
 }
 
-function main() {
+async function main() {
     const [command, ...args] = process.argv.slice(2);
+    if (command === 'fork-report') return renderForkReport(args);
+    if (command === 'summary') {
+        const summary = readReviewSummary(option(args, '--root'));
+        captureReviewSummary(option(args, '--output-dir'), summary);
+        return;
+    }
     const expected = expectedFromArgs(args, ['validate', 'render', 'gate'].includes(command));
     switch (command) {
         case 'verify-pr':
@@ -566,10 +833,15 @@ function main() {
                 validateIdentity(baseline.identity, expected);
                 if (!SHA_PATTERN.test(baseline.treeSha ?? '')) fail('trusted preparation baseline is missing');
                 if (report?.findings?.some(finding => finding.fixDisposition === 'proposed')) {
+                    const analysisDirectory = option(args, '--analysis-input', false);
+                    if (analysisDirectory && (process.env.PERFORMANCE_ANALYSIS_JOB_RESULT !== 'success' ||
+                        !analysisComparisonComplete(analysisDirectory, { ...expected, analysisPlan: scope.analysisPlan })))
+                        fail('required base/head source analysis is incomplete; repair must remain manual');
                     sealed = sealProposal(scope, report, baseline, expected);
                     expected.changedFiles = sealed.changedFiles;
                 } else expected.changedFiles = inventoryChanges(baseline.inventory,
-                    sourceInventory(expected.agentWorktreeRoot, repositoryRoot));
+                    sourceInventory(expected.agentWorktreeRoot, repositoryRoot,
+                        !git(['ls-tree', expected.headSha, '--', ':(literal).performance-summary.md']).trim()));
             }
             gatePublication(scope, report, readJson(option(args, '--agent-output')), expected);
             if (sealed) writeJson(path.join(directory, 'performance-proposal.json'), sealed.proposal);
@@ -579,15 +851,13 @@ function main() {
             break;
         }
         default:
-            fail('usage: performance-review.mjs verify-pr|prepare|validate|render|gate|validate-proposal|apply-proposal|verdict ...');
+            fail('usage: performance-review.mjs verify-pr|prepare|validate|render|gate|validate-proposal|apply-proposal|verdict|fork-report|summary ...');
     }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    try {
-        main();
-    } catch (error) {
+    main().catch(error => {
         console.error(`performance-review: ${error.message}`);
         process.exitCode = 1;
-    }
+    });
 }

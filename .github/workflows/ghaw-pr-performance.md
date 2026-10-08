@@ -1,6 +1,6 @@
 ---
-description: 'Same-repository HIGH-only performance repair worker dispatched by ghaw-pr-performance-controller.yml.'
-intent: 'Apply only small, evidenced, behavior-preserving HIGH performance fixes and otherwise publish a job-summary card without commenting.'
+description: 'Evidence-based review of changed hot paths and callers, with native-tested repair only for eligible HIGH WTA regressions.'
+intent: 'Require base/head evidence for repeated work, UI blocking, growing session/log costs, and retained tasks/processes; repair only eligible HIGH WTA changes and otherwise publish a job-summary card without commenting.'
 
 on:
   workflow_dispatch:
@@ -74,15 +74,178 @@ jobs:
           HEAD_REF: ${{ github.event.inputs.head_ref }}
           BASE_REF: ${{ github.event.inputs.base_ref }}
           AW_CONTEXT: ${{ github.event.inputs.aw_context }}
-        run: ./.github/scripts/ghaw-pr-performance/prepare-worker.ps1
-  agent:
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ($env:PR_NUMBER -notmatch '^[1-9][0-9]*$') {
+              throw 'PR_NUMBER must be a positive decimal number.'
+          }
+          foreach ($name in @('BASE_SHA', 'HEAD_SHA', 'EXPECTED_BASE_SHA', 'WORKFLOW_SHA')) {
+              if ([Environment]::GetEnvironmentVariable($name) -notmatch '^[0-9a-f]{40}$') {
+                  throw "$name must be an immutable lowercase commit SHA."
+              }
+          }
+          if ($env:REPOSITORY -cne $env:GITHUB_REPOSITORY) {
+              throw 'Dispatch repository must match the workflow repository.'
+          }
+          if ($env:SAME_REPO -notin @('true', 'false')) {
+              throw 'SAME_REPO must be true or false.'
+          }
+
+          $metadataPath = Join-Path $env:RUNNER_TEMP 'performance-live-pr.json'
+          $metadata = & gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the live PR metadata.' }
+          [IO.File]::WriteAllText($metadataPath, ($metadata -join "`n"), [Text.UTF8Encoding]::new($false))
+          & node .github/skills/pr-performance-review/scripts/performance-review.mjs verify-pr `
+              --input $metadataPath --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA `
+              --expected-base $env:EXPECTED_BASE_SHA --repo $env:REPOSITORY `
+              --head-repo $env:HEAD_REPO --same-repo $env:SAME_REPO `
+              --head-ref $env:HEAD_REF --base-ref $env:BASE_REF
+          if ($LASTEXITCODE -ne 0) { throw 'PR metadata does not match the immutable dispatch.' }
+
+          $remoteRef = "refs/remotes/origin/performance-pr-$env:PR_NUMBER"
+          & git -c credential.helper= -c 'credential.helper=!gh auth git-credential' `
+              fetch --no-tags origin "refs/pull/$env:PR_NUMBER/head:$remoteRef"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not fetch the immutable PR head.' }
+          $head = & git rev-parse $remoteRef
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:HEAD_SHA) { throw 'The fetched PR head is stale.' }
+          $mergeBase = & git merge-base $env:EXPECTED_BASE_SHA $env:HEAD_SHA
+          if ($LASTEXITCODE -ne 0 -or $mergeBase -cne $env:BASE_SHA) {
+              throw 'The dispatched comparison base is not the merge base.'
+          }
+          $changeSummary = (& git diff --no-ext-diff --no-textconv --shortstat --no-renames $env:BASE_SHA $env:HEAD_SHA -- | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Could not summarize the immutable PR change size.' }
+          "change_summary=$changeSummary" >> $env:GITHUB_OUTPUT
+
+          if ($env:SAME_REPO -eq 'true') {
+              $context = $env:AW_CONTEXT | ConvertFrom-Json
+              if ($context.item_type -cne 'pull_request' -or $context.item_number -ne [int]$env:PR_NUMBER -or
+                  $context.repo -cne $env:REPOSITORY -or $context.head_sha -cne $env:HEAD_SHA) {
+                  throw 'Repair requires the controller-supplied native aw_context for this exact PR.'
+              }
+          }
+          "trusted_code_revision=$env:WORKFLOW_SHA" >> $env:GITHUB_OUTPUT
+  performance_analysis:
     needs: [prepare]
+    if: github.event.inputs.same_repo == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        revision: [BASE, HEAD]
+    steps:
+      - name: Initialize fixed diagnostic artifact before native prerequisites
+        shell: pwsh
+        env:
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+          HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          TRUSTED_SHA: ${{ github.workflow_sha }}
+          REVISION: ${{ matrix.revision }}
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP "performance-analysis-$env:REVISION"
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          $metadata = [ordered]@{
+            version = 1; revision = $env:REVISION; status = 'incomplete'
+            identity = @{ prNumber = [int]$env:PR_NUMBER; baseSha = $env:BASE_SHA; headSha = $env:HEAD_SHA }
+            authoringSha = $env:TRUSTED_SHA
+            missingPrerequisites = @('Native checkout or analysis preparation did not complete; inspect GitHub step results.')
+          }
+          [IO.File]::WriteAllText((Join-Path $output 'analysis-metadata.json'), ($metadata | ConvertTo-Json -Depth 10))
+      - name: Checkout trusted analysis code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.inputs.repo }}
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: trust
+      - name: Checkout immutable comparison objects
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.inputs.repo }}
+          ref: ${{ github.event.inputs.expected_head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: analysis
+      - name: Prepare identical HEAD-derived scope before selecting revision
+        id: scope
+        working-directory: analysis
+        shell: pwsh
+        env:
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
+          HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          BASE_TIP: ${{ github.event.inputs.expected_base_sha }}
+          REVISION: ${{ matrix.revision }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $env:RUNNER_TEMP "performance-analysis-$env:REVISION"
+          $mergeBase = & git merge-base $env:BASE_TIP $env:HEAD_SHA
+          if ($LASTEXITCODE -ne 0 -or $mergeBase -cne $env:BASE_SHA) { throw 'Comparison base must equal actual immutable merge base.' }
+          $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\pr-performance-review\scripts\performance-review.mjs'
+          & node $runtime prepare --output-dir $output --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Could not classify immutable comparison.' }
+          $scope = Get-Content (Join-Path $output 'performance-scope.json') -Raw | ConvertFrom-Json
+          "rust_required=$($scope.analysisPlan.rust.required.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          $sha = if ($env:REVISION -eq 'BASE') { $env:BASE_SHA } else { $env:HEAD_SHA }
+          & git checkout --detach $sha
+          if ($LASTEXITCODE -ne 0) { throw 'Could not checkout immutable analysis revision.' }
+      - name: Install explicit comparison Clippy toolchain
+        if: steps.scope.outputs.rust_required == 'true'
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.93.0 --profile minimal --component clippy
+          if ($LASTEXITCODE -ne 0) { throw 'Public Rust 1.93.0 Clippy is unavailable.' }
+      - name: Analyze immutable revision using trusted normal profiles
+        shell: pwsh
+        env:
+          REVISION: ${{ matrix.revision }}
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP "performance-analysis-$env:REVISION"
+          $trust = Join-Path $env:GITHUB_WORKSPACE 'trust'
+          & (Join-Path $trust '.github\skills\pr-performance-review\scripts\run-native-performance-checks.ps1') `
+            -Phase Analysis -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'analysis') `
+            -TrustedRuntimePath (Join-Path $trust '.github\skills\pr-performance-review\scripts\performance-review.mjs') `
+            -TrustedRepositoryRoot $trust -ScopePath (Join-Path $output 'performance-scope.json') `
+            -Revision $env:REVISION -OutputDirectory $output
+      - name: Upload fixed source-analysis diagnostics even after failure
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: performance-analysis-${{ matrix.revision }}
+          path: |
+            ${{ runner.temp }}/performance-analysis-${{ matrix.revision }}/analysis-metadata.json
+            ${{ runner.temp }}/performance-analysis-${{ matrix.revision }}/performance-scope.json
+            ${{ runner.temp }}/performance-analysis-${{ matrix.revision }}/*.log
+          if-no-files-found: warn
+          retention-days: 7
+  agent:
+    needs: [prepare, performance_analysis]
+    if: always() && needs.prepare.result == 'success'
   safe_outputs:
     if: needs.agent.result == 'success'
     permissions:
       pull-requests: read
 
 pre-agent-steps:
+  - name: Download immutable source-analysis inputs into protected runner storage
+    continue-on-error: true
+    uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+    with:
+      pattern: performance-analysis-*
+      path: ${{ runner.temp }}/gh-aw/performance-analysis
+  - name: Expose diagnostic input without granting native validation authority
+    shell: bash
+    run: |
+      set -euo pipefail
+      mkdir -p /tmp/gh-aw/performance-analysis
+      if [ -d "$RUNNER_TEMP/gh-aw/performance-analysis" ]; then
+        cp -R "$RUNNER_TEMP/gh-aw/performance-analysis/." /tmp/gh-aw/performance-analysis/
+      fi
   - name: Classify immutable performance scope
     shell: bash
     env:
@@ -154,7 +317,7 @@ safe-outputs:
             & node $runtime validate-proposal --input $proposal `
               --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
             if ($LASTEXITCODE -ne 0) { throw 'Invalid sealed native proposal.' }
-            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\scripts\ghaw-pr-performance\validate-native.ps1') `
+            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\pr-performance-review\scripts\run-native-performance-checks.ps1') `
               -Phase OriginalListing -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
               -TrustedRuntimePath $runtime
     validate-performance-focused-tests:
@@ -203,7 +366,7 @@ safe-outputs:
             & node $runtime validate-proposal --input $proposal `
               --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
             if ($LASTEXITCODE -ne 0) { throw 'Invalid sealed native proposal.' }
-            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\scripts\ghaw-pr-performance\validate-native.ps1') `
+            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\pr-performance-review\scripts\run-native-performance-checks.ps1') `
               -Phase Focused -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
               -TrustedRuntimePath $runtime
     validate-performance-repair:
@@ -252,7 +415,7 @@ safe-outputs:
             & node $runtime validate-proposal --input $proposal `
               --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
             if ($LASTEXITCODE -ne 0) { throw 'Invalid sealed native proposal.' }
-            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\scripts\ghaw-pr-performance\validate-native.ps1') `
+            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\pr-performance-review\scripts\run-native-performance-checks.ps1') `
               -Phase FullSuite -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
               -TrustedRuntimePath $runtime
 
@@ -273,6 +436,7 @@ post-steps:
       }
 
   - name: Require an absent post-agent trusted checkout
+    if: always()
     shell: bash
     run: |
       set -euo pipefail
@@ -280,6 +444,7 @@ post-steps:
       test ! -L "$GITHUB_WORKSPACE/.performance-trusted"
 
   - name: Checkout fresh post-agent trust context
+    if: always()
     uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     with:
       repository: ${{ github.event.inputs.repo }}
@@ -287,6 +452,27 @@ post-steps:
       fetch-depth: 0
       persist-credentials: false
       path: .performance-trusted
+
+  - name: Collect review-time Markdown summary independently of report validation
+    if: always()
+    shell: bash
+    run: |
+      set -euo pipefail
+      mkdir -p "$RUNNER_TEMP/performance-summary"
+      if ! node "$GITHUB_WORKSPACE/.performance-trusted/.github/skills/pr-performance-review/scripts/performance-review.mjs" summary \
+        --root "$GITHUB_WORKSPACE" --output-dir "$RUNNER_TEMP/performance-summary"; then
+        echo "::warning::Review summary missing or unreadable; see worker run."
+      fi
+
+  - name: Upload review-time Markdown summary
+    if: always()
+    uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+    with:
+      name: performance-summary-${{ github.event.inputs.pr_number }}-${{ github.event.inputs.expected_head_sha }}
+      path: ${{ runner.temp }}/performance-summary/.performance-summary.md
+      include-hidden-files: true
+      if-no-files-found: warn
+      retention-days: 7
 
   - name: Validate repair report and changed files
     id: repair_gate
@@ -296,6 +482,7 @@ post-steps:
       BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
       HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
       TRUSTED_SHA: ${{ github.workflow_sha }}
+      PERFORMANCE_ANALYSIS_JOB_RESULT: ${{ needs.performance_analysis.result }}
     run: |
       set -euo pipefail
       trusted_root="$GITHUB_WORKSPACE/.performance-trusted"
@@ -303,6 +490,7 @@ post-steps:
         "$RUNNER_TEMP/performance-trusted.mjs"
       status="$(node "$RUNNER_TEMP/performance-trusted.mjs" gate \
         --trusted-repository-root "$trusted_root" --agent-worktree-root "$GITHUB_WORKSPACE" \
+        --analysis-input "$RUNNER_TEMP/gh-aw/performance-analysis" \
         --output-dir /tmp/gh-aw/performance-result \
         --baseline "$RUNNER_TEMP/gh-aw/performance-baseline.json" \
         --report /tmp/gh-aw/performance-report.json \
@@ -346,6 +534,11 @@ concurrency:
 run-name: 'Performance repair ${{ github.event.inputs.dispatch_id }}'
 ---
 
+Focus on changed hot paths and callers for repeated work, UI blocking, growing
+session/log costs, and retained tasks/processes. Require base/head evidence,
+not speculative allocation cleanup. Only eligible HIGH WTA changes get
+native-tested repair.
+
 Use the imported performance reviewer and its
 `.github/skills/pr-performance-review/SKILL.md` procedure in `repair` mode.
 
@@ -358,6 +551,36 @@ Review PR #${{ github.event.inputs.pr_number }} from comparison base
 `${{ github.event.inputs.expected_head_sha }}`. Read
 `/tmp/gh-aw/performance-scope.json` first and inspect the complete exact patch
 and callers.
+
+Before this review, separate fresh Windows BASE and HEAD jobs ran the same
+HEAD-derived selected-project plan with trusted extra native profiles. Their
+GitHub job result is `${{ needs.performance_analysis.result }}`; the
+artifacts under `/tmp/gh-aw/performance-analysis` are diagnostic INPUT, never
+proof that a repair passed or permission to publish. Read both fixed
+`analysis-metadata.json` files and raw C++ logs / Cargo JSON diagnostic logs.
+Verify immutable revisions, authoring configuration, tool versions, scope,
+commands and missing prerequisites. Inspect actual metadata `coveredPaths`
+and `manualScope` for each revision.
+Plan `candidatePaths` use provisional prefix recipes, not coverage proof:
+native evaluated MSBuild `ClCompile` membership must establish the owning
+translation units, including imported/conditional exclusions. Added or removed
+source absent from either revision is explicitly partial, never analyzed there.
+Trace new or worsened warnings in source and affected callers; unchanged
+baseline debt, moved lines and intentional
+explicit lock drops are not automatic findings. Rank real impact and confidence
+using the skill's rule IDs, not warning counts. Record partial/unmapped header
+or unsupported source coverage and missing native context in the checks table.
+If either required analysis failed, is missing, partial, or has mismatched
+profiles, report Incomplete and keep all findings manual: do not edit or request
+native autofix jobs. The trusted sealing gate separately enforces this policy.
+Even complete source analysis never replaces the three native repair gates.
+
+First write `.performance-summary.md` at the repository root using the skill's
+human summary template: normal-prose summary, results tables ordered HIGH,
+MEDIUM, LOW and then proposed repair, manual handoff, advice-only. Include the
+separate checks table; state "No actionable findings" without invented rows.
+These are review-time proposals: never claim `Fixed` before trusted publication.
+The Markdown summary is diagnostic only and cannot authorize repair or native success.
 
 Write `/tmp/gh-aw/performance-report.json`, validate it with `--mode repair`,
 and render it for inspection. Medium/low findings are advice only. Unresolved

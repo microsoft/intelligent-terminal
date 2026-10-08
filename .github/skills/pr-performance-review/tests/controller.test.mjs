@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
 import process from 'node:process';
 import test from 'node:test';
 
-const workflow = fs.readFileSync(new URL('../../workflows/ghaw-pr-performance-controller.yml', import.meta.url), 'utf8');
+const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-controller.yml', import.meta.url), 'utf8');
 const match = workflow.match(/script: \|\r?\n((?: {12}.+(?:\r?\n|$)|\s*\r?\n)+)/);
 assert.ok(match, 'controller script must be extractable from the actual workflow');
 const source = match[1].split(/\r?\n/).map(line => line.slice(12)).join('\n');
@@ -86,7 +88,7 @@ test('actual controller isolates fork guide from native PR branch mutation conte
     const result = await simulate({ fork: true });
     assert.equal(result.error, undefined);
     const dispatch = result.calls[0][1];
-    assert.equal(dispatch.workflow_id, 'ghaw-pr-performance-guide-forkedrepo.lock.yml');
+    assert.equal(dispatch.workflow_id, 'ghaw-pr-performance-fork-guidance.lock.yml');
     assert.equal(JSON.parse(dispatch.inputs.aw_context).item_type, undefined);
 });
 
@@ -108,27 +110,104 @@ test('actual controller timeout cancels only its correlated run', async () => {
 
 const reportMatch = workflow.match(/name: Publish linked PR run report[\s\S]*?script: \|\r?\n((?: {12}.+(?:\r?\n|$)|\s*\r?\n)+)/);
 assert.ok(reportMatch, 'the actual PR report script must be extractable');
-const reportScript = new AsyncFunction('github', 'context', 'core', 'process',
+const reportScript = new AsyncFunction('github', 'context', 'core', 'process', 'require',
     reportMatch[1].split(/\r?\n/).map(line => line.slice(12)).join('\n'));
 
-async function reportRun(overrides = {}) {
+async function reportRun(overrides = {}, markdown) {
     const reports = [];
+    const warnings = [];
     let summary;
     const github = { rest: { checks: { async create(report) { reports.push(report); } } } };
-    const core = { summary: { addRaw(value) { summary = value; return this; }, async write() {} } };
-    await reportScript(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100, runAttempt: 1 }, core, {
-        env: {
-            RUN_OUTCOME: 'success', REVIEW_STATUS: 'pass', REVIEWED_HEAD_SHA: 'a'.repeat(40),
-            PUBLISHED_HEAD_SHA: '', PUBLISHED_COMMIT_URL: '',
-            CONTROLLER_RUN_URL: 'https://github.com/owner/repo/actions/runs/100',
-            WORKER_RUN_URL: 'https://github.com/owner/repo/actions/runs/101',
-            WORKER_CONCLUSION: 'success', ...overrides,
+    const core = { warning(value) { warnings.push(value); },
+        summary: { addRaw(value) { summary = value; return this; }, async write() {} } };
+    const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-summary-controller-'));
+    const nativeRequire = createRequire(import.meta.url);
+    const require = name => name === 'child_process' ? {
+        execFileSync(command, args) {
+            assert.equal(command, 'gh');
+            assert.equal(args[2], '101');
+            assert.equal(args[args.indexOf('--repo') + 1], 'owner/repo');
+            assert.equal(args[args.indexOf('--name') + 1], `performance-summary-42-${'a'.repeat(40)}`);
+            if (markdown === undefined) throw new Error('Artifact missing or wrong immutable identity');
+            const filename = path.join(args[args.indexOf('--dir') + 1], '.performance-summary.md');
+            if (typeof markdown === 'function') markdown(filename);
+            else fs.writeFileSync(filename, markdown);
         },
-    });
-    assert.equal(reports.length, 1);
-    assert.equal(summary, reports[0].output.summary);
-    return reports[0];
+    } : nativeRequire(name);
+    try {
+        await reportScript(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100, runAttempt: 1 }, core, {
+            env: {
+                GITHUB_WORKSPACE: process.cwd(), RUNNER_TEMP: root, PR_NUMBER: '42', WORKER_RUN_ID: '',
+                RUN_OUTCOME: 'success', REVIEW_STATUS: 'pass', REVIEWED_HEAD_SHA: 'a'.repeat(40),
+                PUBLISHED_HEAD_SHA: '', PUBLISHED_COMMIT_URL: '',
+                CONTROLLER_RUN_URL: 'https://github.com/owner/repo/actions/runs/100',
+                WORKER_RUN_URL: 'https://github.com/owner/repo/actions/runs/101',
+                WORKER_CONCLUSION: 'success', ...overrides,
+            },
+        }, require);
+        assert.equal(reports.length, 1);
+        assert.equal(summary, reports[0].output.summary);
+        return { ...reports[0], warnings };
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
 }
+
+test('failed correlated worker directly embeds review-time Markdown without granting model authority', async () => {
+    const markdown = 'A review-time proposal.\n\n| Severity | Finding |\n| HIGH | Fixed; all tests pass |\n';
+    const report = await reportRun({
+        WORKER_RUN_ID: '101', RUN_OUTCOME: 'failure', WORKER_CONCLUSION: 'failure', REVIEW_STATUS: '',
+    }, markdown);
+    assert.equal(report.conclusion, 'failure');
+    assert.equal(report.head_sha, 'a'.repeat(40));
+    assert.ok(report.output.summary.endsWith(markdown));
+    assert.ok(report.output.summary.indexOf('Run outcome: **failure**') < report.output.summary.indexOf(markdown));
+    assert.match(report.output.summary, /not native-validation or publication authority/);
+    assert.equal(report.warnings.length, 0);
+});
+
+test('missing or wrong-identity required summary makes an otherwise successful report non-success', async () => {
+    const report = await reportRun({ WORKER_RUN_ID: '101', RUN_OUTCOME: 'success' });
+    assert.equal(report.conclusion, 'action_required');
+    assert.match(report.output.summary, /Run outcome: \*\*success\*\*/);
+    assert.match(report.output.summary, /Summary delivery: \*\*missing or unreadable/);
+    assert.match(report.output.summary, /Review summary missing; see worker run/);
+    assert.match(report.warnings[0], /wrong immutable identity/);
+});
+
+test('missing summary preserves failure and cancellation rather than replacing native/run outcomes', async () => {
+    for (const outcome of ['failure', 'cancelled']) {
+        const report = await reportRun({ WORKER_RUN_ID: '101', RUN_OUTCOME: outcome });
+        assert.equal(report.conclusion, outcome);
+        assert.match(report.output.summary, /Review summary missing/);
+        assert.match(report.output.summary, /Controller run report/);
+    }
+});
+
+test('readable summary preserves a successful outcome without parsing Markdown claims', async () => {
+    const report = await reportRun({ WORKER_RUN_ID: '101' }, 'Plain human summary. No machine fields.\n');
+    assert.equal(report.conclusion, 'success');
+    assert.match(report.output.summary, /Summary delivery: \*\*completed\*\*/);
+});
+
+test('invalid UTF-8 or reparse summary cannot produce a successful delivery check', async () => {
+    const invalid = await reportRun({ WORKER_RUN_ID: '101' }, Buffer.from([0xff]));
+    assert.equal(invalid.conclusion, 'action_required');
+    const reparse = await reportRun({ WORKER_RUN_ID: '101' }, filename => {
+        const target = path.join(path.dirname(filename), 'target');
+        fs.mkdirSync(target);
+        fs.symlinkSync(target, filename, process.platform === 'win32' ? 'junction' : 'dir');
+    });
+    assert.equal(reparse.conclusion, 'action_required');
+    assert.match(reparse.warnings[0], /symlinks or reparse/);
+});
+
+test('invalid UTF-8 summary warns while preserving a failed check', async () => {
+    const report = await reportRun({ WORKER_RUN_ID: '101', RUN_OUTCOME: 'failure' }, Buffer.from([0xff]));
+    assert.equal(report.conclusion, 'failure');
+    assert.match(report.output.summary, /Review summary missing; see worker run/);
+    assert.equal(report.warnings.length, 1);
+});
 
 test('every applicable controller completion publishes a linked PR report using the existing check pattern', async () => {
     assert.match(workflow, /^  checks: write$/m);
@@ -137,7 +216,7 @@ test('every applicable controller completion publishes a linked PR report using 
     assert.equal(report.name, 'Performance review');
     assert.equal(report.head_sha, 'a'.repeat(40));
     assert.equal(report.status, 'completed');
-    assert.equal(report.conclusion, 'success');
+    assert.equal(report.conclusion, 'action_required');
     assert.equal(report.details_url, 'https://github.com/owner/repo/actions/runs/100');
     assert.match(report.output.summary, /\[Agentic worker report\]\(https:\/\/github\.com\/owner\/repo\/actions\/runs\/101\)/);
 });
@@ -148,6 +227,7 @@ test('a published repair keeps the run-report link on its new validated head', a
         PUBLISHED_COMMIT_URL: 'https://github.com/owner/repo/commit/' + 'b'.repeat(40),
     });
     assert.equal(report.head_sha, 'b'.repeat(40));
+    assert.equal(report.conclusion, 'action_required', 'missing summary must not undo already validated publication');
     assert.match(report.output.summary, /review result: \*\*fixed\*\*/);
     assert.match(report.output.summary, /Reviewed head: `a{40}`/);
     assert.match(report.output.summary, /\[Validated repair commit\]/);
@@ -178,10 +258,10 @@ test('a failed worker dispatch still leaves the applicable PR a controller repor
 
 for (const worker of [
     'ghaw-pr-performance',
-    'ghaw-pr-performance-guide-forkedrepo',
+    'ghaw-pr-performance-fork-guidance',
 ]) {
-    const markdown = fs.readFileSync(new URL(`../../workflows/${worker}.md`, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
-    const compiled = fs.readFileSync(new URL(`../../workflows/${worker}.lock.yml`, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+    const markdown = fs.readFileSync(new URL(`../../../workflows/${worker}.md`, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+    const compiled = fs.readFileSync(new URL(`../../../workflows/${worker}.lock.yml`, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
     const steps = compiled.split(/(?=^ {6}- )/m);
     const runtime = steps.find(step => step.includes('id: set-runtime-paths\n'));
     const classify = steps.find(step => step.includes('name: Classify immutable performance scope\n'));
@@ -190,8 +270,25 @@ for (const worker of [
     assert.ok(run, `${worker}: compiled classification script must be extractable`);
     const script = JSON.parse(run[1]);
 
+    test(`${worker}: compiled summary upload is independent of JSON gate failures`, () => {
+        const upload = steps.find(step => step.includes('name: Upload review-time Markdown summary\n'));
+        assert.ok(upload);
+        assert.match(upload, /if: always\(\)/);
+        assert.match(upload, /if-no-files-found: warn/);
+        assert.match(upload, /include-hidden-files: true/);
+        assert.match(upload, /name: performance-summary-\$\{\{ github\.event\.inputs\.pr_number \}\}-\$\{\{ github\.event\.inputs\.expected_head_sha \}\}/);
+        if (worker === 'ghaw-pr-performance') {
+            const collect = steps.find(step => step.includes('name: Collect review-time Markdown summary independently of report validation\n'));
+            assert.match(collect, /if: always\(\)/);
+            assert.match(JSON.parse(collect.match(/^ {8}run: (".*")$/m)[1]), /performance-review\.mjs" summary/);
+            assert.ok(compiled.indexOf(upload) < compiled.indexOf('name: Validate repair report and changed files'));
+        } else {
+            assert.ok(compiled.indexOf(upload) < compiled.indexOf('name: Validate guidance JSON and render exact comment'));
+        }
+    });
+
     test(`${worker}: compiled pre-agent step forwards runtime output before safe-output setup and inference`, () => {
-        const original = markdown.match(/pre-agent-steps:\n[\s\S]*?    run: \|\n((?: {6}.*\n)+)/);
+        const original = markdown.match(/pre-agent-steps:\n[\s\S]*?- name: Classify immutable performance scope\n[\s\S]*?    run: \|\n((?: {6}.*\n)+)/);
         assert.ok(original, 'actual source pre-agent script must be extractable');
         assert.equal(script, original[1].replace(/^ {6}/gm, ''), 'compiled pre-agent script must match its source');
         assert.match(runtime, /echo "GH_AW_SAFE_OUTPUTS=\$\{RUNNER_TEMP\}\/gh-aw\/safeoutputs\/outputs\.jsonl"/);

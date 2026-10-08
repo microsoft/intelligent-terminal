@@ -4,10 +4,39 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { captureReviewSummary, readReviewSummary } from '../scripts/performance-review.mjs';
 
-const runtime = fileURLToPath(new URL('../../skills/pr-performance-review/scripts/performance-review.mjs', import.meta.url));
+const runtime = fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url));
 
-function fixture(t) {
+test('compiled repair runs two read-only Windows analyses before inference but failed analysis cannot skip the reviewer', () => {
+    const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
+    const analysis = compiled.match(/^  performance_analysis:\r?\n([\s\S]*?)(?=^  [a-z_]+:)/m)?.[1];
+    assert.ok(analysis);
+    assert.match(analysis, /runs-on: windows-latest/);
+    assert.match(analysis, /timeout-minutes: 12/);
+    assert.match(analysis, /fail-fast: false/);
+    assert.match(analysis, /revision:\s+- BASE\s+- HEAD/);
+    assert.match(analysis, /if: github\.event\.inputs\.same_repo == 'true'/);
+    assert.match(analysis, /contents: read/);
+    assert.doesNotMatch(analysis, /secrets\.|actions\/cache|contents: write/);
+    const checkouts = [...analysis.matchAll(/uses: actions\/checkout@[^\n]+\r?\n([\s\S]*?)(?=      - |$)/g)];
+    assert.equal(checkouts.length, 2, 'compiler must not inject an authoring checkout at the workspace root');
+    assert.deepEqual(checkouts.map(match => match[1].match(/path: ([^\r\n]+)/)?.[1]), ['trust', 'analysis']);
+    assert.match(analysis, /performance-analysis-\$\{\{ matrix\.revision \}\}/);
+    assert.match(analysis, /if: always\(\)/);
+    assert.ok(analysis.indexOf('node $runtime prepare') < analysis.indexOf('git checkout --detach'));
+    const agent = compiled.match(/^  agent:\r?\n([\s\S]*?)(?=^  [a-z_]+:)/m)?.[1];
+    assert.match(agent, /needs:[\s\S]*?- performance_analysis[\s\S]*?- prepare/);
+    assert.match(agent, /always\(\) && needs\.prepare\.result == 'success'/);
+    assert.doesNotMatch(agent.match(/    if: >\r?\n([^\n]+)/)?.[1] ?? '', /performance_analysis\.result == 'success'/);
+    assert.match(agent, /pattern: performance-analysis-\*/);
+    assert.match(agent, /PERFORMANCE_ANALYSIS_JOB_RESULT: \$\{\{ needs\.performance_analysis\.result \}\}/);
+    assert.match(agent, /--analysis-input/);
+    const fork = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-fork-guidance.lock.yml', import.meta.url), 'utf8');
+    assert.doesNotMatch(fork, /performance_analysis:|Install explicit comparison Clippy|Phase Analysis/);
+});
+
+function fixture(t, trackedSummary = false) {
     const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-runtime-test-'));
     t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     const repo = path.join(root, 'repo');
@@ -32,6 +61,7 @@ function fixture(t) {
     };
     fs.writeFileSync(source, 'int render() { return 1; }\n');
     fs.writeFileSync(rustSource, 'pub fn render() -> usize { 1 }\n');
+    if (trackedSummary) fs.writeFileSync(path.join(repo, '.performance-summary.md'), 'Original tracked source.\n');
     const baseSha = commit();
     fs.writeFileSync(source, 'int render() { return 2; }\n');
     fs.writeFileSync(rustSource, 'pub fn render() -> usize { 2 }\n');
@@ -41,10 +71,10 @@ function fixture(t) {
     const output = path.join(root, 'output');
     const identity = ['--pr', '42', '--base', baseSha, '--head', headSha];
     const trustedScript = path.join(trust, runtimeRelative);
-    const run = args => spawnSync(process.execPath, [trustedScript, ...args,
+    const run = (args, env = {}) => spawnSync(process.execPath, [trustedScript, ...args,
         ...(args[0] === 'gate' && args.includes('repair') ?
             ['--trusted-repository-root', trust, '--agent-worktree-root', repo] : [])], {
-        cwd: repo, encoding: 'utf8', timeout: 15000,
+        cwd: repo, env: { ...process.env, ...env }, encoding: 'utf8', timeout: 15000,
     });
     return { root, repo, trust, script: trustedScript, runtimeRelative, source, rustSource, git, commit, output, identity, run, baseSha, headSha };
 }
@@ -75,10 +105,57 @@ test('actual repair gate rejects an uncommitted edit behind a noop queue', t => 
     assert.equal(f.run(['prepare', '--output-dir', f.output,
         '--baseline', path.join(f.root, 'baseline.json'), ...f.identity]).status, 0);
     assert.equal(f.run(args).status, 0);
+    captureReviewSummary(f.repo, 'Review-time findings, not repair authority.\n');
+    assert.equal(f.run(args).status, 0, 'only the exact regular summary output is exempt from source inventory');
+    fs.writeFileSync(path.join(f.repo, '.performance-summary-extra.md'), 'Not an allowed output');
+    assert.equal(f.run(args).status, 1, 'similarly named output remains an unauthorized edit');
+    fs.rmSync(path.join(f.repo, '.performance-summary-extra.md'));
     fs.writeFileSync(f.source, 'int render() { return 3; }\n');
     const dirty = f.run(args);
     assert.equal(dirty.status, 1);
     assert.match(dirty.stderr, /cannot discard/);
+});
+
+test('summary reader accepts bounded UTF-8 Markdown and rejects missing, oversized and invalid bytes', t => {
+    const directory = fs.mkdtempSync(path.join(process.cwd(), '.performance-summary-reader-'));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    assert.throws(() => readReviewSummary(directory), /ENOENT/);
+    captureReviewSummary(directory, 'Résumé — review-time proposal.\n');
+    assert.equal(readReviewSummary(directory), 'Résumé — review-time proposal.\n');
+    assert.throws(() => captureReviewSummary(directory, 'x'.repeat(48 * 1024 + 1)), /48 KiB/);
+    fs.writeFileSync(path.join(directory, '.performance-summary.md'), Buffer.from([0xff]));
+    assert.throws(() => readReviewSummary(directory), /encoded data/);
+});
+
+test('summary reader and writer reject reparse output paths rather than following them', t => {
+    const directory = fs.mkdtempSync(path.join(process.cwd(), '.performance-summary-reparse-'));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const target = path.join(directory, 'target');
+    fs.mkdirSync(target);
+    fs.symlinkSync(target, path.join(directory, '.performance-summary.md'),
+        process.platform === 'win32' ? 'junction' : 'dir');
+    assert.throws(() => readReviewSummary(directory), /symlinks or reparse/);
+    assert.throws(() => captureReviewSummary(directory, 'Not permitted'), /symlinks or reparse/);
+    assert.deepEqual(fs.readdirSync(target), []);
+});
+
+test('a tracked summary is still protected source, not an exempt output deletion', t => {
+    const f = fixture(t, true);
+    const baseline = path.join(f.root, 'baseline.json');
+    assert.equal(f.run(['prepare', '--output-dir', f.output, '--baseline', baseline, ...f.identity]).status, 0);
+    const report = path.join(f.root, 'report.json');
+    const queue = path.join(f.root, 'queue.json');
+    fs.writeFileSync(report, JSON.stringify({
+        version: 1, review: 'performance', mode: 'repair',
+        identity: { prNumber: 42, baseSha: f.baseSha, headSha: f.headSha },
+        status: 'pass', findings: [], checks: [],
+    }));
+    fs.writeFileSync(queue, JSON.stringify({ items: [{ type: 'noop' }] }));
+    fs.rmSync(path.join(f.repo, '.performance-summary.md'));
+    const result = f.run(['gate', '--output-dir', f.output, '--report', report,
+        '--agent-output', queue, '--mode', 'repair', ...f.identity, '--baseline', baseline]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /cannot discard unreported changes/);
 });
 
 test('trusted instruction restoration is preparation, not an unauthorized model edit', t => {
@@ -173,6 +250,15 @@ test('fresh trust seals raw bytes despite malicious clean filter, worktree redir
     }));
     const args = ['gate', '--output-dir', f.output, '--report', reportPath,
         '--agent-output', queuePath, '--mode', 'repair', ...f.identity, '--baseline', baseline];
+    const requiredAnalysis = [...args, '--analysis-input', path.join(f.root, 'missing-analysis')];
+    const failedAnalysis = f.run(requiredAnalysis, { PERFORMANCE_ANALYSIS_JOB_RESULT: 'failure' });
+    assert.equal(failedAnalysis.status, 1);
+    assert.match(failedAnalysis.stderr, /required base\/head source analysis is incomplete/);
+    assert.equal(fs.existsSync(path.join(f.output, 'performance-proposal.json')), false,
+        'a required failed analysis cannot seal native repair authority');
+    const missingAnalysis = f.run(requiredAnalysis, { PERFORMANCE_ANALYSIS_JOB_RESULT: 'success' });
+    assert.equal(missingAnalysis.status, 1, 'a successful job claim without bound diagnostic metadata is insufficient');
+    assert.equal(fs.existsSync(path.join(f.output, 'performance-proposal.json')), false);
     const result = f.run(args);
     assert.equal(result.status, 0, result.stderr);
     const proposal = JSON.parse(fs.readFileSync(path.join(f.output, 'performance-proposal.json')));
@@ -200,7 +286,7 @@ test('fresh trust seals raw bytes despite malicious clean filter, worktree redir
 
 test('actual compiled post-agent layout loads helper and Git context only from the fresh trusted checkout', t => {
     const f = fixture(t);
-    const workflow = fs.readFileSync(new URL('../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
+    const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
     const steps = workflow.replaceAll('\r\n', '\n').split(/(?=^ {6}- )/m);
     const absent = steps.find(step => step.includes('name: Require an absent post-agent trusted checkout\n'));
     const checkout = steps.find(step => step.includes('name: Checkout fresh post-agent trust context\n'));

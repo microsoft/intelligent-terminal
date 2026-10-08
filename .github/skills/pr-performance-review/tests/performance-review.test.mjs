@@ -17,6 +17,8 @@ import {
     validateProposal,
     reconstructTree,
     sealProposal,
+    createAnalysisPlan,
+    analysisComparisonComplete,
 } from '../scripts/performance-review.mjs';
 
 const identity = {
@@ -25,6 +27,140 @@ const identity = {
     headSha: 'b'.repeat(40),
     mode: 'guide',
 };
+
+test('native plan selects provisional projects and never silently drops shared headers or HLSL', () => {
+    const scope = classifyPullRequest([
+        { filename: 'src/renderer/atlas/AtlasEngine.cpp' },
+        { filename: 'src/renderer/atlas/AtlasEngine.h' },
+        { filename: 'src/buffer/out/textBuffer.cpp' },
+        { filename: 'src/terminal/parser/stateMachine.cpp' },
+        { filename: 'src/cascadia/TerminalCore/Terminal.cpp' },
+        { filename: 'src/inc/til.h' },
+        { filename: 'src/renderer/atlas/shader_ps.hlsl' },
+        { filename: 'tools/wta/build.rs' },
+    ], identity);
+    const plan = scope.analysisPlan;
+    assert.equal(scope.applicable, true);
+    assert.equal(plan.rust.required, true);
+    assert.equal(plan.coverage, 'partial');
+    assert.deepEqual(plan.cpp.projects, [
+        'src/buffer/out/lib/bufferout.vcxproj', 'src/cascadia/TerminalCore/lib/terminalcore-lib.vcxproj',
+        'src/renderer/atlas/atlas.vcxproj', 'src/terminal/parser/lib/parser.vcxproj',
+    ]);
+    for (const project of plan.cpp.projects) assert.ok(fs.existsSync(project));
+    assert.ok(plan.cpp.candidatePaths.some(candidate => candidate.path === 'src/terminal/parser/stateMachine.cpp'));
+    assert.equal(Object.hasOwn(plan.cpp, 'coveredPaths'), false, 'prefix selection cannot establish actual translation-unit coverage');
+    assert.deepEqual(plan.manualScope.map(entry => entry.path), [
+        'src/renderer/atlas/AtlasEngine.h', 'src/inc/til.h', 'src/renderer/atlas/shader_ps.hlsl',
+    ]);
+    assert.equal(classifyPullRequest([{ filename: 'src/til/collections.h' }], identity).applicable, true);
+    assert.deepEqual(createAnalysisPlan([{ filename: 'doc/example.md' }]).cpp.projects, []);
+});
+
+test('Rust plan includes manifests and supporting Rust test changes without changed-line linting', () => {
+    for (const filename of ['tools/wta/src/master/mod.rs', 'tools/wta/src/master/tests.rs',
+        'tools/wta/Cargo.toml', 'tools/wta/Cargo.lock', 'tools/wta/build.rs']) {
+        const plan = createAnalysisPlan([{ filename }]);
+        assert.equal(plan.rust.required, true, filename);
+        assert.equal(plan.rust.alias, 'wta-perf-pr');
+        assert.equal(plan.rust.toolchain, '1.93.0');
+        assert.match(plan.rust.scope, /Entire WTA/);
+    }
+});
+
+test('analysis comparison binds identity, revisions, same trusted plan and tool versions; partial is never complete', t => {
+    const directory = fs.mkdtempSync(path.join(process.cwd(), '.performance-analysis-metadata-'));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const plan = createAnalysisPlan([{ filename: 'tools/wta/src/main.rs' }]);
+    const records = ['BASE', 'HEAD'].map(revision => ({
+        version: 1, identity, revision, analyzedSha: identity[revision === 'BASE' ? 'baseSha' : 'headSha'],
+        authoringSha: 'c'.repeat(40), plan, tools: { clippy: '1.93.0', cargoConfigurationSha256: 'fixture' }, status: 'completed',
+        checks: [{ name: 'rust-analysis', status: 'completed', exitCode: 0 }],
+        analyzedScope: { rust: true, cppProjects: [] }, missingPrerequisites: [], coveredPaths: [], manualScope: [],
+    }));
+    const write = () => records.forEach(record => {
+        const root = path.join(directory, `performance-analysis-${record.revision}`);
+        fs.mkdirSync(root, { recursive: true });
+        fs.writeFileSync(path.join(root, 'analysis-metadata.json'), JSON.stringify(record));
+    });
+
+    write();
+    assert.equal(analysisComparisonComplete(directory, identity), true);
+    records[1].checks = []; write();
+    assert.equal(analysisComparisonComplete(directory, identity), false, 'source scope without actual executed commands is incomplete');
+    records[1].checks = records[0].checks; write();
+    assert.equal(analysisComparisonComplete(directory, { ...identity, analysisPlan: createAnalysisPlan([]) }), false);
+    for (const status of ['partial', 'incomplete', 'failed']) {
+        records[1].status = status; write();
+        assert.equal(analysisComparisonComplete(directory, identity), false);
+    }
+    records[1].status = 'completed';
+    records[1].tools = { clippy: '1.96.0' }; write();
+    assert.equal(analysisComparisonComplete(directory, identity), false);
+    records[1].tools = records[0].tools;
+    records[1].analyzedSha = identity.baseSha; write();
+    assert.equal(analysisComparisonComplete(directory, identity), false);
+    records[1].identity = { ...identity, headSha: 'd'.repeat(40) }; write();
+    assert.throws(() => analysisComparisonComplete(directory, identity), /immutable workflow input/);
+});
+
+test('library, unit/feature sibling and unlisted C++ paths are only provisional native membership candidates', () => {
+    const filenames = ['src/terminal/parser/stateMachine.cpp', 'src/terminal/parser/ut_parser/StateMachineTest.cpp',
+        'src/terminal/parser/ft_fuzzer/main.cpp', 'src/terminal/parser/unlisted.cpp'];
+    const plan = createAnalysisPlan(filenames.map(filename => ({ filename })));
+    assert.deepEqual(plan.cpp.projects, ['src/terminal/parser/lib/parser.vcxproj']);
+    assert.deepEqual(plan.cpp.candidatePaths.map(candidate => candidate.path), filenames);
+    assert.equal(plan.coverage, 'unverified-projects');
+    assert.equal(Object.hasOwn(plan.cpp, 'coveredPaths'), false);
+});
+
+test('successful C++ jobs without actual evaluated TU coverage cannot authorize a mixed WTA proposal', t => {
+    const directory = fs.mkdtempSync(path.join(process.cwd(), '.performance-native-membership-'));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const own = 'src/terminal/parser/stateMachine.cpp';
+    const project = 'src/terminal/parser/lib/parser.vcxproj';
+    const plan = createAnalysisPlan([{ filename: own }, { filename: 'tools/wta/src/main.rs' }]);
+    const records = ['BASE', 'HEAD'].map(revision => ({
+        version: 1, identity, revision, analyzedSha: identity[revision === 'BASE' ? 'baseSha' : 'headSha'],
+        authoringSha: 'c'.repeat(40), plan, status: 'completed', tools: { native: 'fixture' },
+        checks: ['rust-analysis', 'cpp-items-0', 'cpp-analysis-0'].map(name => ({ name, status: 'completed', exitCode: 0 })),
+        analyzedScope: { rust: true, cppProjects: [project] }, missingPrerequisites: [], manualScope: [],
+        coveredPaths: [{ path: own, project, membership: 'MSBuild.ClCompile' }],
+    }));
+    const write = () => records.forEach(record => {
+        const root = path.join(directory, `performance-analysis-${record.revision}`);
+        fs.mkdirSync(root, { recursive: true });
+        fs.writeFileSync(path.join(root, 'analysis-metadata.json'), JSON.stringify(record));
+    });
+    write();
+    assert.equal(analysisComparisonComplete(directory, { ...identity, analysisPlan: plan }), true);
+    records[1].coveredPaths = []; write();
+    assert.equal(analysisComparisonComplete(directory, identity), false, 'passing project checks cannot cover an unverified TU');
+    records[1].coveredPaths = records[0].coveredPaths;
+    records[1].checks = records[1].checks.filter(check => check.name !== 'cpp-items-0'); write();
+    assert.equal(analysisComparisonComplete(directory, identity), false, 'native item evaluation must actually complete');
+    records[1].checks = records[0].checks;
+    for (const filename of ['src/terminal/parser/ut_parser/StateMachineTest.cpp',
+        'src/terminal/parser/ft_fuzzer/main.cpp', 'src/terminal/parser/unlisted.cpp']) {
+        const mixed = createAnalysisPlan([{ filename: own }, { filename }, { filename: 'tools/wta/src/main.rs' }]);
+        records.forEach(record => { record.plan = mixed; }); write();
+        assert.equal(analysisComparisonComplete(directory, { ...identity, analysisPlan: mixed }), false, filename);
+    }
+});
+
+test('Windows analysis reuses trusted normal profiles instead of embedding a second rule list', () => {
+    const runner = fs.readFileSync(new URL('../scripts/run-native-performance-checks.ps1', import.meta.url), 'utf8');
+    assert.match(runner, /\/getProperty:ClangTidyChecks/);
+    assert.match(runner, /\/getItem:ClCompile/);
+    assert.match(runner, /\/p:PerformanceAnalysis=PullRequest/);
+    assert.match(runner, /checks\.Replace\(',', '%2C'\)/);
+    assert.match(runner, /\/t:Build;ClangTidy/);
+    assert.match(runner, /Copy-Item -LiteralPath \$trustedConfig/);
+    assert.match(runner, /@\('\+1\.93\.0', 'wta-perf-pr'\)/);
+    assert.doesNotMatch(runner, /performance-inefficient-vector-operation|clippy::needless_collect|clippy::large_futures/);
+    const config = fs.readFileSync(new URL('../../../../.cargo/config.toml', import.meta.url), 'utf8');
+    assert.match(config, /wta-perf-pr = \["wta-perf", "-W", "clippy::needless_collect", "-W", "clippy::large_futures"\]/);
+});
 
 function finding(overrides = {}) {
     return {

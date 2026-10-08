@@ -1,12 +1,13 @@
 [CmdletBinding()]
-param()
+param([switch]$AnalysisOnly)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 if (-not $IsWindows) { throw 'These native fixture tests require Windows.' }
-$validator = Join-Path $PSScriptRoot 'validate-native.ps1'
-$runtime = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\skills\pr-performance-review\scripts\performance-review.mjs'))
+$validator = Join-Path $PSScriptRoot '..\scripts\run-native-performance-checks.ps1'
+$runtime = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\scripts\performance-review.mjs'))
 $workspace = Join-Path (Get-Location).Path ('.native-validation-fixture-' + [guid]::NewGuid().ToString('N'))
+$analysisWorkspace = [IO.Path]::GetFullPath((Join-Path (Split-Path (Get-Location).Path -Parent) ('performance-analysis-fixture-' + [guid]::NewGuid().ToString('N'))))
 $fixture = Join-Path $workspace 'candidate'
 $targetParent = Join-Path $workspace 'targets'
 $utf8 = [Text.UTF8Encoding]::new($false)
@@ -22,6 +23,356 @@ function Format-Fixture {
     $messages = & cargo fmt --manifest-path (Join-Path $fixture 'tools\wta\Cargo.toml') 2>&1
     if ($LASTEXITCODE -ne 0) { throw "Fixture formatting failed: $messages" }
 }
+function Test-SourceAnalysis {
+    $workspace = $analysisWorkspace
+    $authoring = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\..'))
+    $sourceRoot = Join-Path $workspace 'analysis-source'
+    $null = [IO.Directory]::CreateDirectory((Join-Path $sourceRoot 'tools\wta\src'))
+    $rustSource = @'
+#![allow(dead_code)]
+pub mod positive {
+    pub fn needless(n: usize) -> usize { (0..n).collect::<Vec<_>>().len() }
+    pub async fn huge() {
+        let bytes = [0u8; 20000];
+        std::future::ready(()).await;
+        std::hint::black_box(bytes);
+    }
+    pub async fn large() { huge().await; }
+}
+pub mod negative {
+    pub fn direct_count(n: usize) -> usize { (0..n).count() }
+    pub fn retained(n: usize) -> Vec<usize> { (0..n).collect() }
+    pub async fn boxed() { Box::pin(super::positive::huge()).await; }
+    pub async fn lexical_drop() {
+        let mutex = std::sync::Mutex::new(0);
+        { let guard = mutex.lock().unwrap(); std::hint::black_box(&guard); }
+        std::future::ready(()).await;
+    }
+}
+pub mod intentional_false_positive {
+    pub async fn explicit_drop() {
+        let mutex = std::sync::Mutex::new(0);
+        let guard = mutex.lock().unwrap();
+        std::hint::black_box(&guard);
+        drop(guard);
+        std::future::ready(()).await;
+    }
+}
+'@
+    $source = Join-Path $sourceRoot 'tools\wta\src\lib.rs'
+    [IO.File]::WriteAllText($source, $rustSource, $utf8)
+    [IO.File]::WriteAllText((Join-Path $sourceRoot 'tools\wta\Cargo.toml'), $manifest, $utf8)
+    & cargo +1.93.0 generate-lockfile --manifest-path (Join-Path $sourceRoot 'tools\wta\Cargo.toml')
+    if ($LASTEXITCODE -ne 0) { throw 'Rust 1.93.0 fixture lock generation failed.' }
+    & git.exe -C $sourceRoot init --quiet
+    & git.exe -C $sourceRoot -c core.autocrlf=false add .
+    & git.exe -C $sourceRoot -c user.name=Fixture -c user.email=fixture@invalid -c core.hooksPath=NUL commit --quiet -m fixture
+    if ($LASTEXITCODE -ne 0) { throw 'Analysis fixture base commit failed.' }
+    $baseSha = (& git.exe -C $sourceRoot rev-parse HEAD).Trim()
+    [IO.File]::AppendAllText($source, "`n// Head differs without introducing a new diagnostic.`n", $utf8)
+    & git.exe -C $sourceRoot -c core.autocrlf=false add .
+    & git.exe -C $sourceRoot -c user.name=Fixture -c user.email=fixture@invalid -c core.hooksPath=NUL commit --quiet -m fixture
+    if ($LASTEXITCODE -ne 0) { throw 'Analysis fixture head commit failed.' }
+    $headSha = (& git.exe -C $sourceRoot rev-parse HEAD).Trim()
+    $scopeDirectory = Join-Path $workspace 'analysis-scope'
+    Push-Location $sourceRoot
+    try {
+        & node $runtime prepare --output-dir $scopeDirectory --pr 1 --base $baseSha --head $headSha
+        if ($LASTEXITCODE -ne 0) { throw 'Analysis fixture classification failed.' }
+    } finally { Pop-Location }
+    $scopePath = Join-Path $scopeDirectory 'performance-scope.json'
+    $records = @()
+    foreach ($revision in @('BASE', 'HEAD')) {
+        $checkout = Join-Path $workspace "analysis-$revision"
+        & git.exe clone --quiet --no-local $sourceRoot $checkout
+        if ($LASTEXITCODE -ne 0) { throw 'Fresh analysis clone failed.' }
+        $sha = if ($revision -eq 'BASE') { $baseSha } else { $headSha }
+        & git.exe -C $checkout checkout --quiet --detach $sha
+        $out = Join-Path $workspace "performance-analysis-$revision"
+        & pwsh -NoProfile -File $validator -Phase Analysis -RepositoryRoot $checkout -TrustedRuntimePath $runtime `
+            -TrustedRepositoryRoot $authoring -ScopePath $scopePath -Revision $revision -OutputDirectory $out
+        if ($LASTEXITCODE -ne 0) {
+            $failure = Get-Content (Join-Path $out 'analysis-metadata.json') -Raw
+            throw "Real Rust $revision analysis failed: $failure"
+        }
+        $record = Get-Content (Join-Path $out 'analysis-metadata.json') -Raw | ConvertFrom-Json
+        if ($record.status -cne 'completed' -or $record.analyzedSha -cne $sha -or -not $record.analyzedScope.rust) {
+            throw 'Real source-analysis metadata did not bind complete immutable scope.'
+        }
+        $records += $record
+        $diagnostics = @(Get-Content (Join-Path $out 'rust-analysis.stdout.log') | ForEach-Object {
+            if ($_.StartsWith('{')) {
+                $item = $_ | ConvertFrom-Json
+                if ($item.reason -eq 'compiler-message' -and $item.message.code) { $item.message }
+            }
+        })
+        foreach ($code in @('clippy::needless_collect', 'clippy::large_futures', 'clippy::await_holding_lock')) {
+            if (@($diagnostics | Where-Object { $_.code.code -eq $code }).Count -eq 0) { throw "Rust 1.93.0 did not emit required candidate $code" }
+        }
+        $negativeStart = $rustSource.Substring(0, $rustSource.IndexOf('pub mod negative')).Split("`n").Count
+        $negativeEnd = $rustSource.Substring(0, $rustSource.IndexOf('pub mod intentional_false_positive')).Split("`n").Count
+        foreach ($diagnostic in $diagnostics) {
+            foreach ($span in $diagnostic.spans | Where-Object { $_.is_primary }) {
+                if ($span.line_start -gt $negativeStart -and $span.line_start -lt $negativeEnd -and
+                    $diagnostic.code.code -in @('clippy::needless_collect', 'clippy::large_futures', 'clippy::await_holding_lock')) {
+                    throw 'Negative retained collection, boxed future or lexically released guard emitted an extra performance candidate.'
+                }
+            }
+        }
+        $falsePositive = @($diagnostics | Where-Object { $_.code.code -eq 'clippy::await_holding_lock' })
+        if (@($falsePositive.spans | Where-Object { $_.is_primary -and $_.line_start -gt $negativeEnd }).Count -eq 0) {
+            throw 'Explicit drop false-positive fixture did not exercise mandatory source triage.'
+        }
+        $script:count++
+        Write-Output "PASS Rust-1.93-$revision-extra-positive-negative-and-intentional-drop-triage"
+        if ($revision -eq 'BASE') {
+            Push-Location $checkout
+            $savedHome = $env:CARGO_HOME; $savedTarget = $env:CARGO_TARGET_DIR
+            try {
+                $env:CARGO_HOME = Join-Path $workspace 'normal-profile-home'
+                $env:CARGO_TARGET_DIR = Join-Path $workspace 'normal-profile-target'
+                $normal = & cargo +1.93.0 wta-perf 2>&1
+                if ($LASTEXITCODE -ne 0) { throw 'Normal shared profile fixture failed.' }
+                $normalText = $normal -join "`n"
+                if ($normalText -match '"code":"clippy::(needless_collect|large_futures)"') {
+                    throw 'Selected extra rules unexpectedly ran in baseline normal profile.'
+                }
+                if ($normalText -notmatch '"code":"clippy::await_holding_lock"') {
+                    throw 'Normal shared profile did not include its established lock rule.'
+                }
+            } finally {
+                Pop-Location
+                $env:CARGO_HOME = $savedHome; $env:CARGO_TARGET_DIR = $savedTarget
+            }
+            $script:count++
+            Write-Output 'PASS extra-Rust-rules-only-in-selected-normal-profile'
+        }
+    }
+    if (($records[0].plan | ConvertTo-Json -Depth 20 -Compress) -cne ($records[1].plan | ConvertTo-Json -Depth 20 -Compress) -or
+        ($records[0].tools | ConvertTo-Json -Depth 20 -Compress) -cne ($records[1].tools | ConvertTo-Json -Depth 20 -Compress)) {
+        throw 'Fresh BASE and HEAD did not run identical trusted profiles/tools.'
+    }
+    $script:count++
+    Write-Output 'PASS same-profile-fresh-BASE-HEAD-comparison'
+    $out = Join-Path $workspace 'analysis-failed'
+    $missing = & pwsh -NoProfile -File $validator -Phase Analysis -RepositoryRoot (Join-Path $workspace 'analysis-HEAD') `
+        -TrustedRuntimePath $runtime -TrustedRepositoryRoot (Join-Path $workspace 'missing-trust') `
+        -ScopePath $scopePath -Revision HEAD -OutputDirectory $out 2>&1
+    if ($LASTEXITCODE -eq 0 -or (Get-Content (Join-Path $out 'analysis-metadata.json') -Raw | ConvertFrom-Json).status -ne 'incomplete') {
+        throw "Missing trusted prerequisites did not capture fixed incomplete metadata: $missing"
+    }
+    $script:count++
+    Write-Output 'PASS failed-analysis-fixed-artifact'
+    $null = [IO.Directory]::CreateDirectory((Join-Path $workspace '.cargo'))
+    Copy-Item -LiteralPath (Join-Path $authoring '.cargo\config.toml') -Destination (Join-Path $workspace '.cargo\config.toml')
+    $ancestorOut = Join-Path $workspace 'analysis-ancestor-block'
+    $null = & pwsh -NoProfile -File $validator -Phase Analysis -RepositoryRoot (Join-Path $workspace 'analysis-HEAD') `
+        -TrustedRuntimePath $runtime -TrustedRepositoryRoot $authoring -ScopePath $scopePath -Revision HEAD -OutputDirectory $ancestorOut 2>&1
+    $ancestorRecord = Get-Content (Join-Path $ancestorOut 'analysis-metadata.json') -Raw | ConvertFrom-Json
+    if ($LASTEXITCODE -eq 0 -or $ancestorRecord.status -cne 'incomplete' -or
+        $ancestorRecord.missingPrerequisites -notmatch 'Inherited Cargo configuration' -or
+        (Test-Path -LiteralPath (Join-Path $ancestorOut 'rust-analysis.stdout.log'))) {
+        throw 'Identical ancestor array aliases were not blocked before Cargo could concatenate them.'
+    }
+    Remove-Item -LiteralPath (Join-Path $workspace '.cargo') -Recurse -Force
+    $script:count++
+    Write-Output 'PASS identical-ancestor-config-explicitly-blocked'
+    $scope = Get-Content $scopePath -Raw | ConvertFrom-Json
+    $scope.analysisPlan.rust.required = $false
+    $scope.analysisPlan.rust.paths = @()
+    $scope.analysisPlan | Add-Member -NotePropertyName fixtureScope -NotePropertyValue 'No native source is selected in this runner not-applicable boundary fixture.'
+    $emptyScope = Join-Path $workspace 'empty-analysis-scope.json'
+    [IO.File]::WriteAllText($emptyScope, ($scope | ConvertTo-Json -Depth 20), $utf8)
+    $emptyOutput = Join-Path $workspace 'empty-analysis-output'
+    & pwsh -NoProfile -File $validator -Phase Analysis -RepositoryRoot (Join-Path $workspace 'analysis-HEAD') `
+        -TrustedRuntimePath $runtime -TrustedRepositoryRoot $authoring -ScopePath $emptyScope -Revision HEAD -OutputDirectory $emptyOutput
+    if ($LASTEXITCODE -ne 0 -or (Get-Content (Join-Path $emptyOutput 'analysis-metadata.json') -Raw | ConvertFrom-Json).status -ne 'not_applicable') {
+        throw 'No C++/Rust scope required an unnecessary compiler.'
+    }
+    $script:count++
+    Write-Output 'PASS not-applicable-analysis-without-compiler'
+    $cppRoot = Join-Path $workspace 'cpp-source'
+    $cppDirectory = Join-Path $cppRoot 'src\types\lib'
+    $null = [IO.Directory]::CreateDirectory($cppDirectory)
+    $cppSource = @'
+#include <vector>
+std::vector<int> positive(const int count)
+{
+    std::vector<int> result;
+    for (int index = 0; index < count; ++index)
+    {
+        result.push_back(index);
+    }
+    return result;
+}
+std::vector<int> negative(const int count)
+{
+    std::vector<int> result;
+    result.reserve(static_cast<std::vector<int>::size_type>(count));
+    for (int index = 0; index < count; ++index)
+    {
+        result.push_back(index);
+    }
+    return result;
+}
+'@
+    $cppProject = @"
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ProjectGuid>{F5711003-89C5-46C4-BCA3-334BA721D58D}</ProjectGuid>
+    <ProjectName>PerformanceRuleProof</ProjectName>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <EnableHybridCRT>false</EnableHybridCRT>
+    <VcpkgEnabled>false</VcpkgEnabled>
+    <VcpkgEnableManifest>false</VcpkgEnableManifest>
+  </PropertyGroup>
+  <Import Project="$authoring\src\common.build.pre.props" />
+  <PropertyGroup>
+    <OutDir>`$(MSBuildThisFileDirectory)out\</OutDir>
+    <IntDir>`$(MSBuildThisFileDirectory)obj\</IntDir>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="`$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <TreatSpecificWarningsAsErrors />
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup><ClCompile Include="fixture.cpp" /></ItemGroup>
+  <Import Project="`$(MSBuildThisFileDirectory)fixture-compile-items.props" />
+  <Import Project="`$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
+"@
+    [IO.File]::WriteAllText((Join-Path $cppDirectory 'fixture.cpp'), $cppSource, $utf8)
+    [IO.File]::WriteAllText((Join-Path $cppDirectory 'types.vcxproj'), $cppProject, $utf8)
+    $compileItems = @'
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="imported.cpp" />
+    <ClCompile Include="conditional.cpp" Condition="'$(Configuration)'=='Debug'" />
+    <ClCompile Include="excluded.cpp"><ExcludedFromBuild Condition="'$(Configuration)'=='AuditMode'">true</ExcludedFromBuild></ClCompile>
+    <ClCompile Include="removed.cpp" Condition="Exists('$(MSBuildThisFileDirectory)removed.cpp')" />
+  </ItemGroup>
+</Project>
+'@
+    [IO.File]::WriteAllText((Join-Path $cppDirectory 'fixture-compile-items.props'), $compileItems, $utf8)
+    [IO.File]::WriteAllText((Join-Path $cppDirectory 'imported.cpp'), "int imported() noexcept { return 0; }`n", $utf8)
+    [IO.File]::WriteAllText((Join-Path $cppDirectory 'removed.cpp'), "int removed() noexcept { return 0; }`n", $utf8)
+    $uncompiled = @('unlisted.cpp', 'ut_sibling\case.cpp', 'ft_sibling\case.cpp', 'conditional.cpp', 'excluded.cpp')
+    foreach ($relative in $uncompiled) {
+        $localPath = Join-Path $cppDirectory $relative
+        $null = [IO.Directory]::CreateDirectory((Split-Path $localPath -Parent))
+        [IO.File]::WriteAllText($localPath, "#error This source is not compiled in the selected AuditMode project.`n", $utf8)
+    }
+    Copy-Item -LiteralPath (Join-Path $authoring 'src\StaticAnalysis.ruleset') -Destination (Join-Path $cppRoot 'src\StaticAnalysis.ruleset')
+    & git.exe -C $cppRoot init --quiet
+    & git.exe -C $cppRoot -c core.autocrlf=false add .
+    & git.exe -C $cppRoot -c user.name=Fixture -c user.email=fixture@invalid -c core.hooksPath=NUL commit --quiet -m fixture
+    if ($LASTEXITCODE -ne 0) { throw 'C++ fixture base commit failed.' }
+    $cppBase = (& git.exe -C $cppRoot rev-parse HEAD).Trim()
+    [IO.File]::AppendAllText((Join-Path $cppDirectory 'fixture.cpp'), "`n// Same warnings at immutable HEAD.`n", $utf8)
+    [IO.File]::AppendAllText((Join-Path $cppDirectory 'imported.cpp'), "`n// Imported TU remains compiled.`n", $utf8)
+    & git.exe -C $cppRoot -c core.autocrlf=false add .
+    & git.exe -C $cppRoot -c user.name=Fixture -c user.email=fixture@invalid -c core.hooksPath=NUL commit --quiet -m fixture
+    if ($LASTEXITCODE -ne 0) { throw 'C++ fixture head commit failed.' }
+    $cppHead = (& git.exe -C $cppRoot rev-parse HEAD).Trim()
+    $cppScope = Join-Path $workspace 'cpp-scope'
+    Push-Location $cppRoot
+    try {
+        & node $runtime prepare --output-dir $cppScope --pr 1 --base $cppBase --head $cppHead
+        if ($LASTEXITCODE -ne 0) { throw 'C++ fixture plan failed.' }
+    } finally { Pop-Location }
+    $cppRecords = @()
+    foreach ($revision in @('BASE', 'HEAD')) {
+        $checkout = Join-Path $workspace "cpp-$revision"
+        & git.exe clone --quiet --no-local $cppRoot $checkout
+        $sha = if ($revision -eq 'BASE') { $cppBase } else { $cppHead }
+        & git.exe -C $checkout checkout --quiet --detach $sha
+        $out = Join-Path $workspace "cpp-diagnostics-$revision"
+        & pwsh -NoProfile -File $validator -Phase Analysis -RepositoryRoot $checkout -TrustedRuntimePath $runtime `
+            -TrustedRepositoryRoot $authoring -ScopePath (Join-Path $cppScope 'performance-scope.json') -Revision $revision -OutputDirectory $out
+        if ($LASTEXITCODE -ne 0) {
+            $failure = @('cpp-analysis-0.stdout.log', 'cpp-analysis-0.stderr.log') | ForEach-Object {
+                $logPath = Join-Path $out $_
+                if (Test-Path -LiteralPath $logPath) { Get-Content -LiteralPath $logPath -Raw }
+            }
+            throw "Actual C++ source-analysis runner failed: $failure"
+        }
+        $record = Get-Content (Join-Path $out 'analysis-metadata.json') -Raw | ConvertFrom-Json
+        $cppRecords += $record
+        $log = Get-Content (Join-Path $out 'cpp-analysis-0.stdout.log') -Raw
+        $errorLog = Get-Content (Join-Path $out 'cpp-analysis-0.stderr.log') -Raw
+        $combined = $log + $errorLog
+        if ($record.status -ne 'completed' -or $record.analyzedSha -cne $sha -or
+            $record.analyzedScope.cppProjects -cnotcontains 'src/types/lib/types.vcxproj' -or
+            $record.coveredPaths.path -cnotcontains 'src/types/lib/fixture.cpp' -or
+            $record.coveredPaths.path -cnotcontains 'src/types/lib/imported.cpp' -or
+            $combined -notmatch 'fixture\.cpp:7:9: warning:.*\[performance-inefficient-vector-operation\]' -or
+            $combined -match 'fixture\.cpp:17:9: warning:.*\[performance-inefficient-vector-operation\]') {
+            throw 'C++ positive/negative fixture did not validate full project native diagnostics.'
+        }
+        $roundTrip = (Get-Content (Join-Path $out 'cpp-checks-0.stdout.log') -Raw).Trim()
+        if ($roundTrip -cne $record.tools.clangTidyChecks) { throw 'Native MSBuild percent-escaped comma checks changed in transit.' }
+        $script:count++
+        Write-Output "PASS C++-$revision-trusted-global-profile-vector-positive-reserve-negative"
+    }
+    if (($cppRecords[0].tools | ConvertTo-Json -Depth 20 -Compress) -cne ($cppRecords[1].tools | ConvertTo-Json -Depth 20 -Compress)) {
+        throw 'C++ BASE/HEAD tool versions and trusted queried checks differ.'
+    }
+    $script:count++
+    Write-Output 'PASS same-queried-C++-profile-and-tool-versions'
+    foreach ($relative in $uncompiled) {
+        [IO.File]::AppendAllText((Join-Path $cppDirectory $relative), "// Changed but still not compiled.`n", $utf8)
+    }
+    [IO.File]::WriteAllText((Join-Path $cppDirectory 'introduced.cpp'), "#error Newly introduced but unlisted source.`n", $utf8)
+    Remove-Item -LiteralPath (Join-Path $cppDirectory 'removed.cpp')
+    & git.exe -C $cppRoot -c core.autocrlf=false add .
+    & git.exe -C $cppRoot -c user.name=Fixture -c user.email=fixture@invalid -c core.hooksPath=NUL commit --quiet -m fixture
+    if ($LASTEXITCODE -ne 0) { throw 'C++ membership counterexample commit failed.' }
+    $uncoveredHead = (& git.exe -C $cppRoot rev-parse HEAD).Trim()
+    $uncoveredScope = Join-Path $workspace 'cpp-uncovered-scope'
+    Push-Location $cppRoot
+    try {
+        & node $runtime prepare --output-dir $uncoveredScope --pr 1 --base $cppHead --head $uncoveredHead
+        if ($LASTEXITCODE -ne 0) { throw 'C++ uncompiled-source plan failed.' }
+    } finally { Pop-Location }
+    foreach ($revision in @('BASE', 'HEAD')) {
+        $checkout = Join-Path $workspace "cpp-uncovered-$revision"
+        & git.exe clone --quiet --no-local $cppRoot $checkout
+        $sha = if ($revision -eq 'BASE') { $cppHead } else { $uncoveredHead }
+        & git.exe -C $checkout checkout --quiet --detach $sha
+        $out = Join-Path $workspace "cpp-uncovered-diagnostics-$revision"
+        & pwsh -NoProfile -File $validator -Phase Analysis -RepositoryRoot $checkout -TrustedRuntimePath $runtime `
+            -TrustedRepositoryRoot $authoring -ScopePath (Join-Path $uncoveredScope 'performance-scope.json') -Revision $revision -OutputDirectory $out
+        if ($LASTEXITCODE -ne 0) { throw 'Project analysis did not complete for intentionally uncompiled source counterexamples.' }
+        $record = Get-Content (Join-Path $out 'analysis-metadata.json') -Raw | ConvertFrom-Json
+        if ($record.status -cne 'partial') { throw 'Successful project analysis falsely claimed coverage for uncompiled paths.' }
+        foreach ($relative in $uncompiled + 'introduced.cpp') {
+            $path = 'src/types/lib/' + $relative.Replace('\', '/')
+            if (@($record.coveredPaths | Where-Object { $_.path -ceq $path }).Count -gt 0 -or
+                @($record.manualScope | Where-Object { $_.path -ceq $path }).Count -ne 1) {
+                throw "Native ClCompile membership did not mark $path as uncovered/manual at $revision."
+            }
+        }
+        $removed = @($record.coveredPaths | Where-Object { $_.path -ceq 'src/types/lib/removed.cpp' })
+        if ($revision -eq 'BASE' -and $removed.Count -ne 1) { throw 'Existing BASE removed TU lost its genuine native coverage.' }
+        if ($revision -eq 'HEAD' -and ($removed.Count -ne 0 -or
+            @($record.manualScope | Where-Object { $_.path -ceq 'src/types/lib/removed.cpp' -and $_.reason -match 'absent at HEAD' }).Count -ne 1)) {
+            throw 'HEAD falsely claimed the deleted translation unit was analyzed.'
+        }
+        if ($revision -eq 'BASE' -and @($record.manualScope | Where-Object {
+            $_.path -ceq 'src/types/lib/introduced.cpp' -and $_.reason -match 'absent at BASE' }).Count -ne 1) {
+            throw 'BASE falsely claimed newly introduced source was analyzed.'
+        }
+        $script:count++
+        Write-Output "PASS C++-$revision-native-imports-conditional-exclusions-sibling-unlisted-added-removed-coverage"
+    }
+}
+
 function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$ErrorPattern = '', [bool]$Unformatted = $false, [bool]$DirtyStart = $false, [scriptblock]$BeforeValidation = {}, [string]$Tampering = '') {
     $phase = if ($Name -eq 'full-suite-failure') { 'FullSuite' }
         elseif ($Name -match '^original-listing-|^ancestor-config-|^exact-unknown-function$|^generated-lock-') { 'OriginalListing' }
@@ -239,6 +590,8 @@ function Test-Case([string]$Name, [string]$Source, [string]$Filter, [string]$Err
 
 try {
     $null = [IO.Directory]::CreateDirectory((Join-Path $fixture 'tools\wta\src'))
+    Test-SourceAnalysis
+    if ($AnalysisOnly) { Write-Output "Passed $count source-analysis fixture cases."; return }
     [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\Cargo.toml'), $manifest, $utf8)
     [IO.File]::WriteAllText((Join-Path $fixture 'tools\wta\src\lib.rs'), $baseline, $utf8)
     [IO.File]::WriteAllText((Join-Path $fixture '.gitignore'), "/tools/wta/target/`n/.cargo/`n/fixture-fake-runner.cmd`n", $utf8)
@@ -560,4 +913,5 @@ fn main() {
     Write-Output "Passed $count native step fixture cases."
 } finally {
     if (Test-Path -LiteralPath $workspace) { Remove-Item -LiteralPath $workspace -Recurse -Force }
+    if (Test-Path -LiteralPath $analysisWorkspace) { Remove-Item -LiteralPath $analysisWorkspace -Recurse -Force }
 }

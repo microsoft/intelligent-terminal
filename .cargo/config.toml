@@ -10,3 +10,7 @@ rustflags = ["-C", "target-feature=+crt-static"]
 
 [target.aarch64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+[alias]
+wta-perf = ["clippy", "--target", "x86_64-pc-windows-msvc", "--manifest-path", "tools\\wta\\Cargo.toml", "--all-targets", "--frozen", "--message-format=json", "--", "-W", "clippy::vec_init_then_push", "-W", "clippy::slow_vector_initialization", "-W", "clippy::await_holding_lock"]
+wta-perf-pr = ["wta-perf", "-W", "clippy::needless_collect", "-W", "clippy::large_futures"]

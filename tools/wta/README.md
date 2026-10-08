@@ -20,6 +20,39 @@ The binary is output to
 target in this repo: the package project prefers that output over the host-target
 fallback.
 
+### Performance analysis
+
+From the repository root, with Clippy available for the active toolchain:
+
+```powershell
+cargo wta-perf
+cargo wta-perf-pr
+```
+
+These standard Cargo aliases in `.cargo\config.toml` check all targets in the
+WTA manifest for `x86_64-pc-windows-msvc` in the default debug profile, using
+`--frozen` and JSON diagnostics. Restore dependencies separately beforehand if
+they are not cached; frozen analysis does not download them or update the lockfile.
+The aliases retain the static-CRT target settings and normal compiler/Clippy
+warnings. `cargo build` itself does not run Clippy.
+
+`wta-perf` explicitly warns on `clippy::vec_init_then_push`,
+`clippy::slow_vector_initialization`, and `clippy::await_holding_lock`.
+The recursive `wta-perf-pr` alias additionally warns on the individual nursery
+check `clippy::needless_collect` and pedantic check `clippy::large_futures`,
+without enabling those entire lint groups. Extra alias arguments are after
+Clippy's existing `--`, so do not append Cargo options such as `--release`.
+Both aliases intentionally use the same fixed target and build profile.
+
+Diagnostics are advisory leads, not automatic HIGH-severity findings or safe
+fixes. Inspect the actual scopes and callers and compare base/head using the same
+toolchain, target, configuration, and scope. Unavailable checks or compilation
+failures are not clean coverage. Local Clippy availability does not establish
+availability on CI's `ms-prod-1.93` MSRustup toolchain: verify that pinned
+toolchain's Clippy component and these checks before enabling normal CI analysis.
+The corresponding opt-in C++ profile is documented in
+[the build guide](../../doc/building.md#opt-in-c-performance-analysis).
+
 ### How WTA runs
 
 WTA is normally launched **by Windows Terminal**, not by hand. WT spawns one

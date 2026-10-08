@@ -1,5 +1,5 @@
 ---
-description: 'Read-only performance guidance worker for fork pull requests, dispatched by ghaw-pr-performance-controller.yml.'
+description: 'Evidence-based read-only performance guidance for changed hot paths and callers in fork pull requests.'
 intent: 'Report evidenced performance findings from immutable fork data without executing or editing fork code.'
 
 on:
@@ -45,8 +45,12 @@ tools:
 
 mcp-scripts:
   validate_performance_report:
-    description: 'Read-only validation and deterministic preview of a guide report; does not submit or write files.'
+    description: 'Capture only the fixed review-summary output before validating and previewing guide JSON; never executes or mutates fork source or submits comments.'
     inputs:
+      summaryMarkdown:
+        type: string
+        required: true
+        description: 'Review-time Markdown using the skill summary template; captured only to the fixed summary artifact, never validation authority.'
       report_json:
         type: string
         required: true
@@ -59,6 +63,7 @@ mcp-scripts:
     script: |
       const { pathToFileURL } = await import('node:url');
       const runtime = await import(pathToFileURL(process.env.TRUSTED_REVIEW_RUNTIME).href);
+      runtime.captureReviewSummary('/tmp/gh-aw', summaryMarkdown);
       const report = runtime.validateReport(JSON.parse(report_json), {
         mode: 'guide', prNumber: Number(process.env.PR_NUMBER),
         baseSha: process.env.BASE_SHA, headSha: process.env.HEAD_SHA
@@ -96,7 +101,57 @@ jobs:
           SAME_REPO: ${{ github.event.inputs.same_repo }}
           HEAD_REF: ${{ github.event.inputs.head_ref }}
           BASE_REF: ${{ github.event.inputs.base_ref }}
-        run: ./.github/scripts/ghaw-pr-performance/prepare-worker.ps1
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ($env:PR_NUMBER -notmatch '^[1-9][0-9]*$') {
+              throw 'PR_NUMBER must be a positive decimal number.'
+          }
+          foreach ($name in @('BASE_SHA', 'HEAD_SHA', 'EXPECTED_BASE_SHA', 'WORKFLOW_SHA')) {
+              if ([Environment]::GetEnvironmentVariable($name) -notmatch '^[0-9a-f]{40}$') {
+                  throw "$name must be an immutable lowercase commit SHA."
+              }
+          }
+          if ($env:REPOSITORY -cne $env:GITHUB_REPOSITORY) {
+              throw 'Dispatch repository must match the workflow repository.'
+          }
+          if ($env:SAME_REPO -notin @('true', 'false')) {
+              throw 'SAME_REPO must be true or false.'
+          }
+
+          $metadataPath = Join-Path $env:RUNNER_TEMP 'performance-live-pr.json'
+          $metadata = & gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the live PR metadata.' }
+          [IO.File]::WriteAllText($metadataPath, ($metadata -join "`n"), [Text.UTF8Encoding]::new($false))
+          & node .github/skills/pr-performance-review/scripts/performance-review.mjs verify-pr `
+              --input $metadataPath --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA `
+              --expected-base $env:EXPECTED_BASE_SHA --repo $env:REPOSITORY `
+              --head-repo $env:HEAD_REPO --same-repo $env:SAME_REPO `
+              --head-ref $env:HEAD_REF --base-ref $env:BASE_REF
+          if ($LASTEXITCODE -ne 0) { throw 'PR metadata does not match the immutable dispatch.' }
+
+          $remoteRef = "refs/remotes/origin/performance-pr-$env:PR_NUMBER"
+          & git -c credential.helper= -c 'credential.helper=!gh auth git-credential' `
+              fetch --no-tags origin "refs/pull/$env:PR_NUMBER/head:$remoteRef"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not fetch the immutable PR head.' }
+          $head = & git rev-parse $remoteRef
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:HEAD_SHA) { throw 'The fetched PR head is stale.' }
+          $mergeBase = & git merge-base $env:EXPECTED_BASE_SHA $env:HEAD_SHA
+          if ($LASTEXITCODE -ne 0 -or $mergeBase -cne $env:BASE_SHA) {
+              throw 'The dispatched comparison base is not the merge base.'
+          }
+          $changeSummary = (& git diff --no-ext-diff --no-textconv --shortstat --no-renames $env:BASE_SHA $env:HEAD_SHA -- | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Could not summarize the immutable PR change size.' }
+          "change_summary=$changeSummary" >> $env:GITHUB_OUTPUT
+
+          if ($env:SAME_REPO -eq 'true') {
+              $context = $env:AW_CONTEXT | ConvertFrom-Json
+              if ($context.item_type -cne 'pull_request' -or $context.item_number -ne [int]$env:PR_NUMBER -or
+                  $context.repo -cne $env:REPOSITORY -or $context.head_sha -cne $env:HEAD_SHA) {
+                  throw 'Repair requires the controller-supplied native aw_context for this exact PR.'
+              }
+          }
+          "trusted_code_revision=$env:WORKFLOW_SHA" >> $env:GITHUB_OUTPUT
   agent:
     needs: [prepare]
   safe_outputs:
@@ -131,6 +186,16 @@ safe-outputs:
     hide-older-comments: true
 
 post-steps:
+  - name: Upload review-time Markdown summary
+    if: always()
+    uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+    with:
+      name: performance-summary-${{ github.event.inputs.pr_number }}-${{ github.event.inputs.expected_head_sha }}
+      path: /tmp/gh-aw/.performance-summary.md
+      include-hidden-files: true
+      if-no-files-found: warn
+      retention-days: 7
+
   - name: Reject stale guidance output
     shell: bash
     env:
@@ -158,9 +223,7 @@ post-steps:
       set -euo pipefail
       git show "${TRUSTED_SHA}:.github/skills/pr-performance-review/scripts/performance-review.mjs" \
         > "$RUNNER_TEMP/performance-trusted.mjs"
-      git show "${TRUSTED_SHA}:.github/scripts/ghaw-pr-performance/guide-report.mjs" \
-        > "$RUNNER_TEMP/performance-guide-report.mjs"
-      node "$RUNNER_TEMP/performance-guide-report.mjs"
+      node "$RUNNER_TEMP/performance-trusted.mjs" fork-report
 
   - name: Upload validated performance verdict
     uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -179,6 +242,10 @@ concurrency:
   cancel-in-progress: true
 run-name: 'Performance guidance ${{ github.event.inputs.dispatch_id }}'
 ---
+
+Focus read-only guidance on changed hot paths and callers for repeated work,
+UI blocking, growing session/log costs, and retained tasks/processes. Require
+base/head evidence, not speculative allocation cleanup; never repair fork code.
 
 Use the imported performance reviewer and its
 `.github/skills/pr-performance-review/SKILL.md` procedure in `guide` mode.
@@ -208,8 +275,16 @@ Use `pull_request_read` and `get_commit` for immutable change context, and
 verify discovered callers at the exact head/base SHA with `get_file_contents`.
 If immutable source cannot be retrieved, report the limitation honestly.
 
+Prepare the skill's human summary template as `summaryMarkdown`: normal-prose
+summary, findings tables ordered HIGH, MEDIUM, LOW and manual handoff before
+advice-only, plus the separate checks table. State "No actionable findings"
+without invented rows. Never claim `Fixed`; this is review-time guidance.
+The caller captures only this fixed output artifact before parsing report JSON;
+it never executes or mutates fork source. The summary is not validation authority.
+
 Construct the complete version-1 guide report as JSON data. First call
-`validate_performance_report` with `report_json` to validate and preview the
+`validate_performance_report` with `summaryMarkdown` and `report_json` to capture
+the human summary and validate and preview the
 deterministic card. Correct any validation errors before submission.
 Then request exactly one `add_comment` whose `body` is that exact report JSON
 string, NOT the rendered card. Trusted post-processing validates it again and
@@ -220,7 +295,7 @@ Omit all repository, PR/issue number, target, comment ID, and reply ID fields
 from the tool call: the trusted caller fixes the destination. The gate rejects
 these overrides even when the body is correct.
 
-Shell execution, CLI proxies, edits, and report file writes are disabled.
+Shell execution, CLI proxies, edits, and direct report file writes are disabled.
 Use only the read tool, read-only GitHub MCP, the read-only report validator,
 and the configured safe-output tools. These caller restrictions override any
 imported PowerShell, local Git, report-write, or repair instructions.

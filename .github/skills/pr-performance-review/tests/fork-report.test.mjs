@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import * as runtime from '../../skills/pr-performance-review/scripts/performance-review.mjs';
-import { processGuideSubmission } from './guide-report.mjs';
+import * as runtime from '../scripts/performance-review.mjs';
+import { processGuideSubmission } from '../scripts/performance-review.mjs';
 
 const identity = { prNumber: 42, baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40) };
 const expected = { ...identity, mode: 'guide' };
@@ -115,12 +116,12 @@ test('medium and low advice stays advisory, never claims a repair', () => {
 });
 
 test('CLI refuses command/path overrides before touching submission files', () => {
-    const script = fileURLToPath(new URL('./guide-report.mjs', import.meta.url));
-    const result = spawnSync(process.execPath, [script, '--report', 'untrusted.json'], { encoding: 'utf8' });
+    const script = fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url));
+    const result = spawnSync(process.execPath, [script, 'fork-report', '--report', 'untrusted.json'], { encoding: 'utf8' });
     assert.equal(result.status, 1);
     assert.equal(result.stdout, '');
     assert.match(result.stderr, /accepts no command or path arguments/);
-    const invalidRuntime = spawnSync(process.execPath, [script], {
+    const invalidRuntime = spawnSync(process.execPath, [script, 'fork-report'], {
         encoding: 'utf8', env: { ...process.env, TRUSTED_REVIEW_RUNTIME: 'relative.mjs' },
     });
     assert.equal(invalidRuntime.status, 1);
@@ -129,7 +130,7 @@ test('CLI refuses command/path overrides before touching submission files', () =
 });
 
 test('workflow exposes no model shell/edit route and only fixed read-only GitHub tools', () => {
-    const workflow = fs.readFileSync(new URL('../../workflows/ghaw-pr-performance-guide-forkedrepo.md', import.meta.url), 'utf8');
+    const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-fork-guidance.md', import.meta.url), 'utf8');
     const tools = workflow.match(/\ntools:\n([\s\S]*?)\nmcp-scripts:/)[1];
     assert.match(tools, /edit: false/);
     assert.match(tools, /bash: false/);
@@ -141,22 +142,32 @@ test('workflow exposes no model shell/edit route and only fixed read-only GitHub
     assert.doesNotMatch(workflow, /mcp-servers:/);
 });
 
-test('inline preview executes read-only with fixed identity and returns the same card', async () => {
-    const workflow = fs.readFileSync(new URL('../../workflows/ghaw-pr-performance-guide-forkedrepo.md', import.meta.url), 'utf8');
+test('inline preview captures only fixed summary output with fixed identity and returns the same card', async t => {
+    const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-fork-guidance.md', import.meta.url), 'utf8');
     const script = workflow.match(/    script: \|\n([\s\S]*?)\n\njobs:/)[1]
         .split('\n').map(line => line.slice(6)).join('\n');
     const prior = { ...process.env };
     Object.assign(process.env, {
-        TRUSTED_REVIEW_RUNTIME: fileURLToPath(new URL('../../skills/pr-performance-review/scripts/performance-review.mjs', import.meta.url)),
+        TRUSTED_REVIEW_RUNTIME: fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url)),
         PR_NUMBER: String(identity.prNumber), BASE_SHA: identity.baseSha, HEAD_SHA: identity.headSha,
     });
     try {
-        const preview = new (Object.getPrototypeOf(async function () {}).constructor)('report_json', script);
-        assert.deepEqual(await preview(JSON.stringify(report())), { renderedCard: runtime.renderReport(report()) });
+        const directory = fs.mkdtempSync(path.join(process.cwd(), '.performance-fork-summary-'));
+        t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+        assert.match(script, /runtime\.captureReviewSummary\('\/tmp\/gh-aw', summaryMarkdown\)/);
+        const preview = new (Object.getPrototypeOf(async function () {}).constructor)(
+            'report_json', 'summaryMarkdown', 'summaryDirectory',
+            script.replace("runtime.captureReviewSummary('/tmp/gh-aw', summaryMarkdown)",
+                'runtime.captureReviewSummary(summaryDirectory, summaryMarkdown)'));
+        const markdown = 'Read-only findings.\n\n| Severity | Finding |\n| LOW | Advice |\n';
+        assert.deepEqual(await preview(JSON.stringify(report()), markdown, directory),
+            { renderedCard: runtime.renderReport(report()) });
+        assert.equal(runtime.readReviewSummary(directory), markdown);
         const invalid = report();
         invalid.identity.prNumber++;
-        await assert.rejects(preview(JSON.stringify(invalid)), /triggering pull request/);
-        await assert.rejects(preview('{'), SyntaxError);
+        await assert.rejects(preview(JSON.stringify(invalid), markdown, directory), /triggering pull request/);
+        await assert.rejects(preview('{', markdown, directory), SyntaxError);
+        assert.equal(runtime.readReviewSummary(directory), markdown, 'summary survives invalid JSON and identity failures');
         assert.doesNotMatch(script, /writeFile|exec|spawn|fetch\(/);
     } finally {
         for (const key of ['TRUSTED_REVIEW_RUNTIME', 'PR_NUMBER', 'BASE_SHA', 'HEAD_SHA']) {

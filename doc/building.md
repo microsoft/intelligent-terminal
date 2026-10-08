@@ -60,6 +60,34 @@ Openconsole has three configuration types:
 
 AuditMode is an experimental mode that enables some additional static analysis from CppCoreCheck.
 
+### Opt-in C++ performance analysis
+
+After initializing the normal MSBuild environment, run from the repository root:
+
+```cmd
+msbuild src\types\lib\types.vcxproj /p:Configuration=AuditMode /p:Platform=x64 /p:PerformanceAnalysis=PullRequest /t:"Build;ClangTidy" /m
+```
+
+Substitute the existing project relevant to your change. `PerformanceAnalysis=PullRequest`
+is the only named profile; unknown nonempty values fail the build. Omitting it
+preserves the normal configuration, including AuditMode's CppCoreCheck/PREfast gate.
+The profile uses Visual Studio's standard ClangTidy imports and explicit target,
+not automatic fixes or a replacement compiler. Install the Visual Studio C++
+Clang tools before using it.
+
+The additional checks are `performance-inefficient-vector-operation`,
+`performance-for-range-copy`, `performance-unnecessary-value-param`, and
+`performance-move-const-arg`. The default header filter includes this repository's
+`src` headers, not dependency trees outside `src`; override `ClangTidyHeaderFilter`
+only when a different analyzed scope is needed.
+
+Warnings are advisory candidates for manual source inspection, not automatically
+HIGH-severity regressions or permission to apply fixes. Compare base/head with the
+same tool version, target, configuration, and scope; unchanged baseline warnings
+are not new defects. A failed or unavailable analyzer is not clean coverage.
+Verify the pinned CI toolchain's analyzer availability before enabling CI analysis.
+For the corresponding normal Rust commands, see [WTA's build instructions](../tools/wta/README.md#performance-analysis).
+
 ## Updating Nuget package references - Globally versioned
 Most Nuget package references in this project are centralized in a single configuration so that there is a single canonical version for everything.  This canonical version is restored before builds by the build pipeline, environment initialization scripts, or Visual Studio (as appropriate).
 

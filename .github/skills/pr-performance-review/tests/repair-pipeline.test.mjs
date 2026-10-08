@@ -4,11 +4,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { publishRepair } from './publish-repair.mjs';
+import { publishRepair } from '../scripts/performance-review.mjs';
 
-const runtime = fileURLToPath(new URL('../../skills/pr-performance-review/scripts/performance-review.mjs', import.meta.url));
-const validator = fileURLToPath(new URL('./validate-native.ps1', import.meta.url));
-const compiledWorkflow = fileURLToPath(new URL('../../workflows/ghaw-pr-performance.lock.yml', import.meta.url));
+const runtime = fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url));
+const validator = fileURLToPath(new URL('../scripts/run-native-performance-checks.ps1', import.meta.url));
+const compiledWorkflow = fileURLToPath(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url));
 
 test('sealed HIGH proposal runs real Windows tests and reaches staged CAS publication', async t => {
     assert.equal(process.platform, 'win32', 'this integration check needs the supported Windows environment');
@@ -190,7 +190,7 @@ exit /b 0
         fs.copyFileSync(path.join(nativeArtifacts, 'fake-helper.mjs'), path.join(freshDownloads, 'fake-helper.mjs'));
         for (const [source, destination] of [
             [runtime, path.join(freshRoot, 'trust', '.github', 'skills', 'pr-performance-review', 'scripts', 'performance-review.mjs')],
-            [validator, path.join(freshRoot, 'trust', '.github', 'scripts', 'ghaw-pr-performance', 'validate-native.ps1')],
+            [validator, path.join(freshRoot, 'trust', '.github', 'skills', 'pr-performance-review', 'scripts', 'run-native-performance-checks.ps1')],
         ]) {
             fs.mkdirSync(path.dirname(destination), { recursive: true });
             fs.copyFileSync(source, destination);

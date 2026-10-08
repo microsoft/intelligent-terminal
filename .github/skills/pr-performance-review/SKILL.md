@@ -5,7 +5,13 @@ description: 'Review and safely repair Intelligent Terminal PR performance regre
 
 # PR Performance Review
 
-Perform repository-specific performance review and tightly constrained repair.
+Investigate changes that can make typing, rendering, tab switching, WTA startup,
+or session refresh slower as work repeats or data grows. Trace changed code
+through its callers and lifecycle, compare base/head behavior, and require
+concrete impact rather than speculative allocation or async cleanup.
+Eligible small HIGH WTA regressions can proceed to native-tested repair;
+C++ findings remain manual. These instructions focus the review but do not
+establish that it detects more defects than ordinary Copilot review.
 
 ## Caller boundary
 
@@ -35,16 +41,94 @@ classification, report validation, card rendering, and publication gating.
    renderer/TerminalCore, text buffer, VT parser/adapter, UI thread, tab/pane
    lifecycle, WTA startup/process pooling, Rust tasks/awaits/locks/channels,
    session/log enumeration, allocations/copies, and event amplification.
-4. Inspect relevant existing evidence: `src/ConsolePerf.wprp`,
+4. Read caller-supplied BASE/HEAD analysis metadata and diagnostics when
+   available. Verify comparison revisions, tool versions, target, profile,
+   analyzed projects/crate, and coverage gaps before comparing candidates.
+   Same-repository workflow inputs live under
+   `/tmp/gh-aw/performance-analysis/performance-analysis-BASE` and
+   `/tmp/gh-aw/performance-analysis/performance-analysis-HEAD`.
+   Raw logs and Cargo JSON are review input, not a formatted PR result.
+   Inspect relevant existing evidence: `src/ConsolePerf.wprp`,
    `src/tools/ConsoleBench`, `test/e2e/Measure-PaneContext.ps1`,
    `build/scripts/Measure-AgentHookOverhead.ps1`, focused tests, and duration
    telemetry.
 5. Separate application performance, responsiveness, memory growth, and CI
    runtime/cost. Separate microbenchmark, end-to-end, and profile evidence.
-6. Prepare and validate the caller's version-1 report through its permitted
-   interface. Repair uses the fixed report file; fork guidance uses structured
-   report data without a shell or file-writing tool. Request exactly the output
-   allowed by the caller.
+6. Produce the human-readable summary below before preparing the mechanical
+   version-1 report. Repair writes the caller's fixed summary and report files;
+   fork guidance submits its summary and structured report through the declared
+   tool without general shell or file-writing access. Validate the mechanical
+   report through the permitted interface. Request exactly the output allowed
+   by the caller.
+
+## Scoped performance rules
+
+Apply the following checks only when their trigger is present in the immutable
+patch or its affected callers. Use the rule ID in the finding's evidence so
+the result can be traced to a concrete check, not a generic optimization opinion.
+Do not launch one reviewer per rule: group applicable checks by the affected
+subsystem when the caller permits delegation.
+
+| Rule | Trigger | Required investigation | Intentional cases to distinguish |
+| --- | --- | --- | --- |
+| `PERF-REPEATED-WORK` | A loop, lookup, copy, or enumeration changes on a repeated path. | Compare base/head work as input size grows; trace the caller's frequency and actual input bounds. Check nested scans and materialized collections used only for a count or membership test. | Small fixed bounds, one-time startup, required snapshots, and amortized work. |
+| `PERF-UI-BLOCKING` | A UI callback or dispatcher path gains synchronous work. | Trace the executing thread, I/O, waits, and traversal cost through callees. Identify the user interaction stalled and establish measurement or concrete blocking proof. | Already-background work, bounded cheap callbacks, and required thread-affine operations. |
+| `PERF-MVVM-AMPLIFICATION` | A property setter, binding, collection update, or event subscription changes. | Trace notifications to their consumers. Count expensive refreshes per logical change, including bulk updates and reentrant handlers; compare base/head behavior. | Required individual notifications, cheap consumers, and existing batching that already prevents repeated refresh. |
+| `PERF-ASYNC-CONTENTION` | Lock scope, awaits, channel usage, or synchronous work in an async task changes. | Establish what is held across suspension, who contends, and whether ordering can stall progress. Verify actual scopes rather than accepting a lint's diagnosis alone. | Async-aware locks, explicitly released guards, intentional backpressure, and operations that cannot suspend. |
+| `PERF-OWNER-LIFETIME` | Tabs, panes, tasks, subscriptions, helpers, or pooled processes are created or retained differently. | Trace repeated creation through teardown and cancellation. Show retained work or memory growing beyond its intended owner or lifetime. | Shared resident pools, pre-warmed helpers, stash/restore, and bounded tasks intentionally outliving their caller. |
+
+When the caller supplies analyzer results, inspect each diagnostic in the
+immutable source before adopting it. Require the rule/tool version, target,
+configuration, analyzed scope, and base/head results. Separate new or worsened
+PR-related diagnostics from unchanged baseline debt. A moved line alone is
+not a new defect; a shared-header or caller change can worsen an existing
+diagnostic outside the edited lines.
+
+An incomplete analysis, unsupported check, compile failure, or missing native
+context is unavailable or blocked, not clean coverage. Do not replace a denied
+native operation with a Linux result. Tool warnings are leads: they do not
+establish HIGH severity, measured gain, or permission to apply a suggested fix.
+
+The shared C++ `PerformanceAnalysis=PullRequest` profile adds four selected
+Clang-Tidy performance checks to the existing AuditMode build infrastructure.
+For WTA, `cargo wta-perf` is a normal developer entrypoint and
+`cargo wta-perf-pr` adds `needless_collect` and `large_futures` individually.
+Neither alias changes what ordinary `cargo build` runs. Do not enable whole
+nursery, pedantic, or restriction groups merely to increase the warning count.
+`await_holding_lock` is a suspicious lint and can warn after an explicit drop;
+`needless_collect` is nursery, and `large_futures` is pedantic. Judge the
+actual source and scenario, not the group name. Collecting values can have
+intentional iterator or clone side effects; a large future may be cold, and
+boxing it trades stack size for allocation.
+
+Declared C++ recipes do not cover every project or transitive caller.
+Directory-prefix candidates are provisional; actual coverage requires native
+MSBuild `ClCompile` membership and successful analysis. Unlisted or excluded
+translation units and revision-absent sources require manual scope. Never
+infer coverage from a successful build of a nearby library.
+Referenced prerequisite builds are not additional Clang-Tidy coverage.
+Unmapped/shared sources and HLSL, IDL, or XAML require a manual scope review.
+Fork callers do not run source builds: record native analysis as not run and
+continue permitted source/rule review without weakening the caller boundary.
+
+## Triage before repair
+
+Rank by demonstrated user/CI impact, execution frequency or data growth, and
+confidence in PR causality—not warning count or an analyzer's default level.
+Collapse duplicate diagnostics that describe the same underlying defect.
+
+| Result | Action |
+| --- | --- |
+| Proven HIGH regression, high confidence, and every repair gate satisfied | Propose the smallest behavior-preserving WTA repair for trusted native validation. |
+| Important defect, but redesign, ordering/lifetime uncertainty, or unsupported native validation | Report the evidence and manual handoff; do not edit. |
+| Plausible cost with uncertain impact or missing frequency/measurement | Report MEDIUM/LOW with the missing evidence and tradeoff; do not edit. |
+| Unchanged unrelated baseline debt, negligible bounded cost, intentional behavior, or false positive | Do not present it as a new performance defect. Record the reason in the review evidence or check detail rather than flooding the PR with suggestions. |
+
+Never run blanket analyzer auto-fix or treat a machine-applicable suggestion
+as proof of safety. For example, changing a C++ value parameter to a reference
+can affect ABI or coroutine lifetime; reserving capacity can increase retained
+memory. Evidence-based prioritization remains mandatory even when the tool's
+syntactic replacement is straightforward.
 
 ## Evidence and severity
 
@@ -71,7 +155,10 @@ Repair only when every condition holds:
 4. no broad threading, caching, architecture, dependency, generated-file,
    security-policy, or CI-policy change;
 5. a supported native backend can run an existing focused test on the exact final tree;
-6. the caller explicitly permits edits and branch push.
+6. the caller explicitly permits edits and branch push;
+7. any caller-required base/head analysis is complete, correctly bound, and
+   comparable. Missing, failed, partial, or mismatched required analysis
+   requires a manual handoff, even when a source finding looks repairable.
 
 If any condition fails, keep the finding unresolved with disposition
 `manual_required` or `unsafe`, and do not edit. A repair caller requests native
@@ -200,12 +287,53 @@ unedited with the relevant MSBuild/TAEF handoff. This limitation does not block
 eligible WTA fixes and must not be hidden by substituting a Linux timing or
 schema check.
 
+## Human-readable results template
+
+Produce one Markdown summary using this template. Keep the opening summary
+as an ordinary sentence; put findings and check results in tables.
+Repair writes `.performance-summary.md` before the mechanical report.
+Shell-disabled fork guidance supplies the same Markdown as `summaryMarkdown`
+to its declared report tool; only the caller captures the output artifact.
+Do not extract this summary from agent or build logs.
+
+```markdown
+## Performance review
+
+<One sentence describing the outcome and most important impact.>
+
+### Findings at review time
+
+| Severity | Rule / location | Finding and impact | Disposition | Validation |
+| --- | --- | --- | --- | --- |
+| HIGH / MEDIUM / LOW | <rule ID; path:line> | <specific scenario and evidenced cost> | Proposed repair / Manual handoff / Advice only | <performed check or missing proof> |
+
+### Checks performed
+
+| Check | Scope / command | Result | Missing evidence |
+| --- | --- | --- | --- |
+| <analyzer or architecture rule> | <actual scope and command/inspection> | Completed / Failed / Not run | <gap, or None> |
+```
+
+Order findings HIGH, MEDIUM, LOW; within a severity, put proposed repairs before
+manual handoffs, then advice-only results. Remove placeholder rows. If there
+are no actionable findings, replace the findings table with that plain statement.
+Do not turn absent or failed analysis into a clean review.
+`Completed` means a check ran, not that it found no candidates or proved a fix.
+Describe reviewed warnings and intentional cases in the result or evidence.
+
+The summary describes the review-time decision. Never label a proposed repair
+`Fixed`: only the trusted publisher can establish that status after native
+validation and publication. The PR check supplies actual job/publication status,
+reviewed SHA, and run links separately; the summary cannot override them.
+
 ## Report contract
 
 Produce the following report. Use the caller-provided file path in repair
 mode; in shell-disabled fork guidance, validate the JSON through the declared
-read-only checker and submit its unchanged JSON string as the safe-output
-body. Native post-processing owns file writes and final card rendering.
+scoped report tool and submit its unchanged JSON string as the safe-output
+body. That tool captures only the caller's fixed summary artifact; it does not
+permit general file writes or source execution. Native post-processing owns
+mechanical artifacts and final card rendering.
 
 ```json
 {
@@ -270,6 +398,9 @@ Pending proposal checks must not use `pass`, including source-only passes or
 claimed native/benchmark successes. Record not-run checks as `unavailable`
 with `exitCode: null`. The trusted publisher independently records
 GitHub-reported native success; model checks never become native authority.
+For a pending proposal, describe completed input analysis in the human summary
+and finding evidence; reserve its mechanical validation checks for the proposed
+repair. Do not falsely mark an analyzer that actually ran as unavailable.
 Use `pending_validation` for eligible HIGH proposals, `action_required` when unresolved HIGH remains,
 `advisory` for only MEDIUM/LOW, `pass` for no findings, and `blocked` when a
 check errors.
@@ -282,7 +413,7 @@ pwsh -NoProfile -Command "node '.github/skills/pr-performance-review/scripts/per
 ```
 
 The PowerShell examples above apply only to the repair caller. A shell-disabled
-fork caller must use its read-only MCP checker and GitHub read tools; it never
+fork caller must use its scoped MCP report tool and GitHub read tools; it never
 executes a shell or materializes fork source as executable code. If an
 operation is denied, use the declared interface instead of trying alternate
 executables or bypassing validation.

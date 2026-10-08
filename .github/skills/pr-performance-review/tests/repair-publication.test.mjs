@@ -3,8 +3,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { publishRepair } from './publish-repair.mjs';
-import { reconstructTree } from '../../skills/pr-performance-review/scripts/performance-review.mjs';
+import { publishRepair, reconstructTree } from '../scripts/performance-review.mjs';
 
 function fixture(t) {
     const root = fs.mkdtempSync(path.join(process.cwd(), 'performance-publisher-'));

@@ -1,16 +1,134 @@
 # Performance review workflow
 
-This separate gh-aw workflow reviews Intelligent Terminal hot paths and can
-repair small, strongly evidenced HIGH WTA regressions. The agent and reusable
-skill own the actual analysis; mechanical steps enforce scope and publication.
+Correct code can still make typing, rendering, tab switching, or session
+refresh slower. This workflow asks Copilot to investigate those performance
+scenarios specifically, rather than treating every allocation or async call
+as an optimization opportunity.
 
-**Previous architecture hosted status: passed on the controlled private WTA fixture.**
-After three failed worker trials and their contract corrections, the two
-additional authorized performance runs verified the controller, actual Copilot
-agent/skill, Windows test, and immutable-head publication. This is a scoped
-end-to-end proof, not a claim that every native performance scenario is covered.
-The fresh-three-VM architecture below has local compiled-pipeline evidence only;
-it has not received a new hosted trial.
+| Performance question | Required investigation |
+| --- | --- |
+| Does a small change multiply work? | Trace callers and event frequency; compare base/head loops, copies, and enumeration as buffers or session counts grow. |
+| Can the UI or another task be stalled? | Trace synchronous work, locks, awaits, and the thread that executes them. |
+| Does work or memory survive its owner? | Trace tab/pane, helper, task, and process creation through teardown. |
+| Is an apparent improvement real? | Use existing native tests and measurements; distinguish source proof, microbenchmarks, end-to-end results, and missing evidence. |
+
+**The added capability is an evidence-based review and repair process, not a
+proven better detector.** Findings identify the affected scenario, repeated
+path, base/head behavior, and concrete impact. Eligible small HIGH WTA fixes
+can be tested on Windows and published to the exact reviewed head; C++ fixes
+remain manual. Every applicable review gets a linked run report. The agent
+and shared skill do the analysis; scripts enforce the report and publication
+rules.
+
+**We have not shown that this finds more performance defects than ordinary
+Copilot review.** The private synthetic WTA fixture proved an earlier
+review/test/publish path, not detection superiority or production speedup.
+The current three-Windows-job version has local validation only: it has not
+run end-to-end on GitHub.
+
+**Shared build profiles and base/head PR analysis are implemented locally;
+hosted execution remains unverified.** C++ developers can select the opt-in `PerformanceAnalysis=PullRequest`
+MSBuild profile; Rust developers can use `cargo wta-perf` and `cargo wta-perf-pr`
+from the repository root. The ordinary Cargo build does not run Clippy.
+Normal CI already enables C++ AuditMode; availability of Clippy in its pinned
+MSRustup distribution remains unverified. Do not present these profiles as
+additional checks already running on every normal CI build or PR.
+
+## File layout and localization comparison
+
+Like localization, the workflow imports a thin agent and keeps reusable logic
+inside its skill. Runtime files live in `pr-performance-review/scripts`;
+fixtures live in `pr-performance-review/tests`, not alongside runtime helpers
+in another scripts directory.
+
+| Runtime file | Concrete responsibility |
+| --- | --- |
+| `performance-review.mjs` | Classify scope, validate/render evidence, seal/reconstruct the permitted patch, process fork reports, and publish only the GitHub-validated exact tree. |
+| `run-native-performance-checks.ps1` | Run scoped C++/Rust analysis, or the fixed original-test listing, focused candidate test, and full Windows WTA suite. |
+
+Short dispatch checks stay inline in the workflows. Fork report processing
+and publication reuse the shared helper rather than separate wrapper scripts.
+
+Localization uses one shared resource checker and built-in branch push;
+its checks do not execute edited native product code. This workflow executes
+WTA code, so the Windows test boundary and exact-tested-tree publisher serve
+different requirements. The extra files are not additional agents or
+performance detectors.
+
+## PR result summary
+
+The agent writes one explicit Markdown summary using the shared skill's
+template: an ordinary opening sentence, a findings table ordered HIGH,
+MEDIUM, LOW, and a separate checks-performed table. Findings include rule and
+source location, impact, review-time disposition, and validation or missing
+evidence. Within a severity, proposed repairs precede manual handoffs and
+advice-only results.
+
+Repair writes `.performance-summary.md` before its mechanical JSON report.
+Fork guidance supplies the Markdown through its existing scoped report tool;
+the caller captures only the fixed output artifact, without granting source
+edits or general filesystem access. Summary capture/upload is independent of
+JSON validation, so an invalid mechanical report does not erase the findings.
+
+The controller displays the bounded UTF-8 Markdown directly, after trusted
+job status, reviewed SHA, and run links. It does not extract the review from
+agent logs or parse the Markdown to decide whether publication is permitted.
+Missing or unreadable artifacts produce an explicit **Review summary missing**
+message and run link, and must prevent an otherwise-successful PR check from
+remaining green. JSON policy failures and failed native jobs remain
+failures; readable Markdown cannot turn them into passes.
+
+The model's table uses `Proposed repair`, never a premature `Fixed` claim.
+Actual validated/publication status comes separately from the trusted
+controller. Mechanical JSON remains necessary for proposal identity, scope,
+sealing, and publication; it is not the source of the human PR summary.
+
+## Additional rule coverage
+
+Before same-repository inference, two read-only Windows jobs analyze the
+comparison base and reviewed head. Both use the scope derived from the
+immutable head and the same trusted analysis profiles. The agent receives
+metadata and raw diagnostic files as input, reviews candidates against
+base/head source and caller frequency, then writes its own result tables.
+No script reconstructs the PR report from those logs.
+
+| Profile | Existing baseline | Additional PR checks |
+| --- | --- | --- |
+| C++ | AuditMode with MSVC analysis and CppCoreCheck; already enabled in the checked normal CI pipeline. | Four explicit Clang-Tidy checks: inefficient vector operations, range-loop copies, unnecessary value parameters, and moves from const values. |
+| Rust | Normal builds/tests do not invoke Clippy. The shared `wta-perf` alias provides a developer analysis entrypoint. | `wta-perf-pr` adds `needless_collect` and `large_futures` individually, not entire nursery or pedantic groups. |
+| Architecture | Ordinary compilation cannot establish caller frequency, notification amplification, or intended ownership. | Five scoped skill rules cover repeated work, UI blocking, MVVM amplification, async contention, and owner lifetime. |
+
+C++ analysis selects provisional project recipes in renderer, buffer, VT,
+TerminalCore, TerminalControl, TerminalApp, WindowsTerminal, settings editor,
+and shared types. Directory prefixes are not coverage proof. After restore,
+native MSBuild evaluates `ClCompile` membership, including imported items,
+conditions, and build exclusions. Only successfully analyzed translation units
+appear in actual coverage, and the sealing gate requires that coverage in both
+revisions. Unlisted files, unsupported owners, and revision-absent additions
+or deletions require manual scope rather than a false completion claim.
+Headers still require affected-caller tracing. Referenced
+projects receive normal prerequisite builds, not promised Clang-Tidy coverage.
+Unmapped/shared sources and HLSL, IDL, or XAML remain manual scope; they are
+not silently counted as analyzed.
+
+Rust analysis copies the trusted authoring revision's Cargo configuration
+only into disposable analysis checkouts to use identical profiles. Actual PR
+configuration changes remain visible in the immutable source review, and
+the native repair configuration guard is unchanged. Unexpected ancestor
+Cargo configurations block analysis: even identical arrays can concatenate
+and change alias arguments.
+
+The `performance_analysis` BASE/HEAD jobs retain 12-minute job bounds and a
+10-minute analysis deadline. Failed analysis does not skip inference or erase
+the human summary. Missing, partial, failed, or mismatched required analysis
+blocks proposal sealing. Diagnostics are review leads, not proof of impact
+or permission to apply analyzer fix-its.
+
+Isolated fixtures demonstrate added diagnostics and intentional/negative cases,
+including the known explicitly-dropped-lock false positive. They do not prove
+production speedup, complete project coverage, or better real-PR detection
+than ordinary Copilot review. Public Rust 1.93 fixtures passed; availability
+of Clippy in normal CI's pinned MSRustup distribution remains unverified.
 
 ## Flow
 
@@ -223,10 +341,11 @@ no custom model router or mid-run switching mechanism is introduced.
 ## Local checks
 
 ```powershell
-node --test .github\skills\pr-performance-review\tests\performance-review.test.mjs .github\scripts\ghaw-pr-performance\controller.test.mjs .github\scripts\ghaw-pr-performance\runtime.test.mjs .github\scripts\ghaw-pr-performance\publish-repair.test.mjs .github\scripts\ghaw-pr-performance\repair-pipeline.test.mjs .github\scripts\ghaw-pr-performance\guide-report.test.mjs
-pwsh -NoProfile -File .github\scripts\ghaw-pr-performance\NativeValidation.Tests.ps1
-gh aw compile ghaw-pr-performance ghaw-pr-performance-guide-forkedrepo --validate
-actionlint -shellcheck= -pyflakes= -ignore 'unknown permission scope "copilot-requests"' -ignore 'unexpected key "queue" for "concurrency" section' .github\workflows\ghaw-pr-performance.lock.yml .github\workflows\ghaw-pr-performance-guide-forkedrepo.lock.yml .github\workflows\ghaw-pr-performance-controller.yml
+node --test .github\skills\pr-performance-review\tests\*.test.mjs
+pwsh -NoProfile -File .github\skills\pr-performance-review\tests\RepairValidationPhase.Tests.ps1
+pwsh -NoProfile -File .github\skills\pr-performance-review\tests\RepairValidationPhase.Tests.ps1 -AnalysisOnly
+gh aw compile ghaw-pr-performance ghaw-pr-performance-fork-guidance --validate --no-check-update
+actionlint -shellcheck= -pyflakes= -ignore 'unknown permission scope "copilot-requests"' -ignore 'unexpected key "queue" for "concurrency" section' .github\workflows\ghaw-pr-performance.lock.yml .github\workflows\ghaw-pr-performance-fork-guidance.lock.yml .github\workflows\ghaw-pr-performance-controller.yml
 ```
 
 Use pinned actionlint 1.7.12. Only its two known field-schema gaps are ignored;

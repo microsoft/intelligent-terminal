@@ -82,7 +82,7 @@ jobs:
             const sameRepo = process.env.SAME_REPO === "true";
             const worker = sameRepo
               ? "ghaw-pr-performance.lock.yml"
-              : "ghaw-pr-performance-guide-forkedrepo.lock.yml";
+              : "ghaw-pr-performance-fork-guidance.lock.yml";
             const dispatchId =
               `ghaw-pr-performance-${pr.number}-${process.env.EXPECTED_HEAD_SHA}-${context.runId}-${context.runAttempt}`;
             const inputs = {
@@ -138,6 +138,9 @@ jobs:
                 candidate.display_title.includes(dispatchId));
             }
             if (!run) throw new Error(`Could not correlate ${worker} for ${dispatchId}.`);
+            core.setOutput("run_id", String(run.id));
+            core.setOutput("run_url", run.html_url ||
+              `${process.env.GITHUB_SERVER_URL || "https://github.com"}/${context.repo.owner}/${context.repo.repo}/actions/runs/${run.id}`);
             const deadline = Date.now() + 68 * 60 * 1000;
             while (Date.now() < deadline) {
               run = (await github.rest.actions.getWorkflowRun({
@@ -226,7 +229,7 @@ jobs:
             const path = require("path");
             const { pathToFileURL } = require("url");
             const { publishRepair } = await import(pathToFileURL(
-              path.join(process.env.GITHUB_WORKSPACE, ".github/scripts/ghaw-pr-performance/publish-repair.mjs")).href);
+              path.join(process.env.GITHUB_WORKSPACE, ".github/skills/pr-performance-review/scripts/performance-review.mjs")).href);
             const result = await publishRepair({
               github,
               proposalPath: path.join(process.env.RUNNER_TEMP, "performance-native-result/performance-proposal.json"),
@@ -258,25 +261,59 @@ jobs:
           CONTROLLER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WORKER_RUN_URL: ${{ steps.worker.outputs.run_url }}
           WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
+          WORKER_RUN_ID: ${{ steps.worker.outputs.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
         with:
           script: |
+            const fs = require("fs");
+            const path = require("path");
+            const { pathToFileURL } = require("url");
+            const { readReviewSummary } = await import(pathToFileURL(
+              path.join(process.env.GITHUB_WORKSPACE, ".github/skills/pr-performance-review/scripts/performance-review.mjs")).href);
+            let reviewSummary = "Review summary missing; see worker run";
+            let summaryDelivered = false;
+            if (process.env.WORKER_RUN_ID) {
+              try {
+                const { execFileSync } = require("child_process");
+                const directory = path.join(process.env.RUNNER_TEMP, "performance-check-summary");
+                fs.mkdirSync(directory);
+                execFileSync("gh", ["run", "download", process.env.WORKER_RUN_ID,
+                  "--repo", `${context.repo.owner}/${context.repo.repo}`,
+                  "--name", `performance-summary-${process.env.PR_NUMBER}-${process.env.REVIEWED_HEAD_SHA}`,
+                  "--dir", directory], {
+                    env: process.env, timeout: 30000, stdio: "pipe"
+                  });
+                reviewSummary = readReviewSummary(directory);
+                summaryDelivered = true;
+              } catch (error) {
+                core.warning(`Review summary missing or unreadable: ${error.message}; see worker run`);
+              }
+            } else {
+              core.warning("Review summary missing: no correlated worker run; see controller run");
+            }
             const head = process.env.PUBLISHED_HEAD_SHA || process.env.REVIEWED_HEAD_SHA;
+            const conclusion = process.env.RUN_OUTCOME === "success" && !summaryDelivered
+              ? "action_required" : process.env.RUN_OUTCOME;
             const result = process.env.PUBLISHED_HEAD_SHA ? "fixed" : process.env.REVIEW_STATUS || "see worker report";
             const summary = [
               `Run outcome: **${process.env.RUN_OUTCOME}**; review result: **${result}**`,
+              `Summary delivery: **${summaryDelivered ? "completed" : "missing or unreadable; action required"}**`,
               `Reviewed head: \`${process.env.REVIEWED_HEAD_SHA}\``,
               `[Controller run report](${process.env.CONTROLLER_RUN_URL})`,
               process.env.WORKER_RUN_URL
                 ? `[Agentic worker report](${process.env.WORKER_RUN_URL}) — ${process.env.WORKER_CONCLUSION}`
                 : "Agentic worker was not started or could not be correlated.",
-              process.env.PUBLISHED_COMMIT_URL ? `[Validated repair commit](${process.env.PUBLISHED_COMMIT_URL})` : ""
+              process.env.PUBLISHED_COMMIT_URL ? `[Validated repair commit](${process.env.PUBLISHED_COMMIT_URL})` : "",
+              "### Review-time agent summary (not native-validation or publication authority)",
+              reviewSummary
             ].filter(Boolean).join("\n\n");
             await github.rest.checks.create({
               ...context.repo,
               name: "Performance review",
               head_sha: head,
               status: "completed",
-              conclusion: process.env.RUN_OUTCOME,
+              conclusion,
               details_url: process.env.CONTROLLER_RUN_URL,
               external_id: `${context.runId}-${context.runAttempt}`,
               output: { title: "Performance review run report", summary }

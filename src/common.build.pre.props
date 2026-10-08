@@ -246,6 +246,16 @@
     </ClCompile>
   </ItemDefinitionGroup>
 
+  <!-- Explicit ClangTidy target; normal builds and AuditMode analysis stay unchanged. -->
+  <PropertyGroup Condition="'$(PerformanceAnalysis)'=='PullRequest'">
+    <ClangTidyChecks>-*,performance-inefficient-vector-operation,performance-for-range-copy,performance-unnecessary-value-param,performance-move-const-arg</ClangTidyChecks>
+    <ClangTidyHeaderFilter Condition="'$(ClangTidyHeaderFilter)'==''">$([System.Text.RegularExpressions.Regex]::Escape('$(SolutionDir)src').Replace('\\', '[/\\]'))[/\\]</ClangTidyHeaderFilter>
+  </PropertyGroup>
+  <Target Name="ValidatePerformanceAnalysis" BeforeTargets="PrepareForBuild;GetCompileCommands;ClangTidy"
+          Condition="'$(PerformanceAnalysis)'!='' and '$(PerformanceAnalysis)'!='PullRequest'">
+    <Error Text="Unknown PerformanceAnalysis profile '$(PerformanceAnalysis)'. Supported profile: PullRequest (or omit PerformanceAnalysis)." />
+  </Target>
+
   <PropertyGroup Condition="'$(Configuration)'=='Fuzzing'">
     <OCClangArchitectureName Condition="'$(Platform)'=='x64'">x86_64</OCClangArchitectureName>
     <OCClangArchitectureName Condition="'$(Platform)'=='Win32'">i386</OCClangArchitectureName>

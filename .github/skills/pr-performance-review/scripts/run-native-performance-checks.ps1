@@ -1,9 +1,13 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('OriginalListing', 'Focused', 'FullSuite')][string]$Phase,
-    [Parameter(Mandatory)][string]$ProposalPath,
+    [Parameter(Mandatory)][ValidateSet('Analysis', 'OriginalListing', 'Focused', 'FullSuite')][string]$Phase,
+    [string]$ProposalPath,
     [Parameter(Mandatory)][string]$RepositoryRoot,
-    [Parameter(Mandatory)][string]$TrustedRuntimePath
+    [Parameter(Mandatory)][string]$TrustedRuntimePath,
+    [string]$ScopePath,
+    [ValidateSet('BASE', 'HEAD')][string]$Revision,
+    [string]$TrustedRepositoryRoot,
+    [string]$OutputDirectory
 )
 
 $ErrorActionPreference = 'Stop'
@@ -13,6 +17,178 @@ if (-not $IsWindows -or $PSVersionTable.PSVersion.Major -lt 7) {
 }
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $root = [IO.Path]::GetFullPath($RepositoryRoot)
+if ($Phase -eq 'Analysis') {
+    $metadata = [ordered]@{
+        version = 1; revision = $Revision; status = 'incomplete'; identity = $null; analyzedSha = $null
+        authoringSha = $null; plan = $null; commands = @(); tools = [ordered]@{}; missingPrerequisites = @()
+        checks = @(); authority = 'Source diagnostics only, not repair validation or publication authority.'
+        analyzedScope = @{ rust = $false; cppProjects = @() }
+        coveredPaths = @(); manualScope = @()
+    }
+    $output = [IO.Path]::GetFullPath($OutputDirectory)
+    $null = [IO.Directory]::CreateDirectory($output)
+    $utf8 = [Text.UTF8Encoding]::new($false)
+    function Invoke-AnalysisCommand([string]$Name, [string]$Executable, [string[]]$Arguments, [string]$WorkingDirectory = $root) {
+        $metadata.commands += [pscustomobject]@{ name = $Name; executable = $Executable; arguments = $Arguments; workingDirectory = $WorkingDirectory }
+        $start = [Diagnostics.ProcessStartInfo]::new()
+        $start.FileName = $Executable
+        $start.WorkingDirectory = $WorkingDirectory
+        $start.UseShellExecute = $false
+        $start.RedirectStandardOutput = $true
+        $start.RedirectStandardError = $true
+        foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
+        foreach ($key in @($start.Environment.Keys)) {
+            if ($key -match '(?i)(TOKEN|SECRET|PASSWORD|CREDENTIAL|OTLP.*HEADERS|^GITHUB_(ENV|OUTPUT)$)') {
+                $null = $start.Environment.Remove($key)
+            }
+        }
+        if ($metadata.plan.rust.required) {
+            $start.Environment['CARGO_HOME'] = Join-Path $output 'cargo-home'
+            $start.Environment['CARGO_TARGET_DIR'] = Join-Path $output 'cargo-target'
+        }
+        $process = [Diagnostics.Process]::new()
+        $process.StartInfo = $start
+        $started = $false
+        try {
+            $remaining = [int][Math]::Max(0, 600000 - $clock.ElapsedMilliseconds)
+            if ($remaining -le 0) { throw 'Source analysis exceeded the total ten-minute deadline.' }
+            $null = $process.Start()
+            $started = $true
+            $stdout = $process.StandardOutput.ReadToEndAsync()
+            $stderr = $process.StandardError.ReadToEndAsync()
+            if (-not $process.WaitForExit($remaining)) { throw 'Source analysis exceeded the total ten-minute deadline.' }
+            $remaining = [int][Math]::Max(0, 600000 - $clock.ElapsedMilliseconds)
+            if (-not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdout, $stderr), $remaining)) {
+                throw 'Source analysis output capture exceeded the total ten-minute deadline.'
+            }
+            $text = $stdout.GetAwaiter().GetResult()
+            [IO.File]::WriteAllText((Join-Path $output "$Name.stdout.log"), $text, $utf8)
+            [IO.File]::WriteAllText((Join-Path $output "$Name.stderr.log"), $stderr.GetAwaiter().GetResult(), $utf8)
+            $metadata.checks += [pscustomobject]@{ name = $Name; exitCode = $process.ExitCode; status = if ($process.ExitCode -eq 0) { 'completed' } else { 'failed' } }
+            if ($process.ExitCode -ne 0) { throw "$Name exited $($process.ExitCode); inspect raw logs. Missing SDK, generated headers or failed compilation is not clean coverage." }
+            return $text
+        } finally {
+            if ($started -and -not $process.HasExited) {
+                $process.Kill($true)
+                $null = $process.WaitForExit(10000)
+            }
+            if ($started) {
+                $capturedOutput = if ($stdout.IsCompleted) { $stdout.GetAwaiter().GetResult() } else { 'Output capture incomplete after deadline; inspect GitHub job failure.' }
+                $capturedError = if ($stderr.IsCompleted) { $stderr.GetAwaiter().GetResult() } else { 'Error capture incomplete after deadline; inspect GitHub job failure.' }
+                [IO.File]::WriteAllText((Join-Path $output "$Name.stdout.log"), $capturedOutput, $utf8)
+                [IO.File]::WriteAllText((Join-Path $output "$Name.stderr.log"), $capturedError, $utf8)
+            }
+            $process.Dispose()
+        }
+    }
+    try {
+        $scope = Get-Content -LiteralPath $ScopePath -Raw | ConvertFrom-Json
+        $metadata.identity = $scope.identity
+        $metadata.plan = $scope.analysisPlan
+        $metadata.manualScope = @($scope.analysisPlan.manualScope)
+        $sha = if ($Revision -eq 'BASE') { $scope.identity.baseSha } else { $scope.identity.headSha }
+        $actual = & git.exe -C $root rev-parse HEAD
+        if ($LASTEXITCODE -ne 0 -or $actual -cne $sha) { throw 'Analysis checkout does not match the immutable comparison revision.' }
+        $metadata.analyzedSha = $actual
+        $metadata.authoringSha = & git.exe -C $TrustedRepositoryRoot rev-parse HEAD
+        if ($LASTEXITCODE -ne 0) { throw 'Missing trusted authoring revision.' }
+        $metadata.tools.node = (& node.exe --version) -join "`n"
+        if ($scope.analysisPlan.rust.required) {
+            $trustedConfig = Join-Path $TrustedRepositoryRoot '.cargo\config.toml'
+            $trustedConfigHash = (Get-FileHash -LiteralPath $trustedConfig).Hash
+            foreach ($relative in @('.cargo\config', 'tools\.cargo\config', 'tools\.cargo\config.toml',
+                'tools\wta\.cargo\config', 'tools\wta\.cargo\config.toml')) {
+                if (Test-Path -LiteralPath (Join-Path $root $relative)) { throw "Unsupported additional Cargo configuration: $relative" }
+            }
+            $ancestor = [IO.Directory]::GetParent($root)
+            while ($null -ne $ancestor) {
+                foreach ($name in @('config', 'config.toml')) {
+                    $ancestorConfig = Join-Path $ancestor.FullName ".cargo\$name"
+                    if (Test-Path -LiteralPath $ancestorConfig) {
+                        throw 'Inherited Cargo configuration prevents isolated profiles: identical array aliases would concatenate after freezing.'
+                    }
+                }
+                $ancestor = $ancestor.Parent
+            }
+            $null = [IO.Directory]::CreateDirectory((Join-Path $root '.cargo'))
+            Copy-Item -LiteralPath $trustedConfig -Destination (Join-Path $root '.cargo\config.toml') -Force
+            $metadata.tools.cargoConfigurationSha256 = $trustedConfigHash
+            $metadata.tools.cargoConfigurationSource = 'Trusted authoring revision; replaced only in disposable analysis checkout. Immutable PR configuration still requires source review.'
+            $metadata.tools.rustc = Invoke-AnalysisCommand 'rust-version' 'rustc.exe' @('+1.93.0', '--version', '--verbose')
+            $metadata.tools.clippy = Invoke-AnalysisCommand 'clippy-version' 'cargo.exe' @('+1.93.0', 'clippy', '--version')
+            $null = Invoke-AnalysisCommand 'cargo-fetch' 'cargo.exe' @('+1.93.0', 'fetch', '--locked', '--target', 'x86_64-pc-windows-msvc', '--manifest-path', 'tools\wta\Cargo.toml')
+            $null = Invoke-AnalysisCommand 'rust-analysis' 'cargo.exe' @('+1.93.0', 'wta-perf-pr')
+            $metadata.analyzedScope.rust = $true
+        }
+        if ($scope.analysisPlan.cpp.required) {
+            $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+            $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+            if (-not $msbuild) { throw 'Missing native Visual Studio MSBuild prerequisite.' }
+            $metadata.tools.msbuild = Invoke-AnalysisCommand 'msbuild-version' $msbuild @('-version', '-nologo')
+            $profileProject = Join-Path $TrustedRepositoryRoot $scope.analysisPlan.cpp.profileProject.Replace('/', '\')
+            $checks = (Invoke-AnalysisCommand 'cpp-profile' $msbuild @($profileProject, '-nologo',
+                '/p:PerformanceAnalysis=PullRequest', "/p:SolutionDir=$($TrustedRepositoryRoot.TrimEnd('\'))\",
+                '/p:Configuration=AuditMode', '/p:Platform=x64', '/getProperty:ClangTidyChecks') $TrustedRepositoryRoot).Trim()
+            if (-not $checks -or $checks -match '[\r\n]') { throw 'Trusted MSBuild profile query did not produce a single checks value.' }
+            $metadata.tools.clangTidyChecks = $checks
+            $clang = & $vswhere -latest -products '*' -find 'VC\Tools\Llvm\x64\bin\clang-tidy.exe' | Select-Object -First 1
+            if (-not $clang) { throw 'Missing native Visual Studio clang-tidy prerequisite.' }
+            $metadata.tools.clangTidy = Invoke-AnalysisCommand 'clang-tidy-version' $clang @('--version')
+            $escapedChecks = $checks.Replace(',', '%2C')
+            $headerFilter = [regex]::Escape((Join-Path $root 'src')).Replace('\\', '[/\\]') + '[/\\]'
+            $index = 0
+            foreach ($project in $scope.analysisPlan.cpp.projects) {
+                $projectPath = Join-Path $root $project.Replace('/', '\')
+                if (-not (Test-Path -LiteralPath $projectPath)) { throw "Selected owning project is unavailable at ${Revision}: $project" }
+                $common = @($projectPath, '-nologo', "/p:SolutionDir=$($root.TrimEnd('\'))\", '/p:Configuration=AuditMode',
+                    '/p:Platform=x64', "/p:ClangTidyChecks=$escapedChecks", "/p:ClangTidyHeaderFilter=$headerFilter")
+                $roundTrip = (Invoke-AnalysisCommand "cpp-checks-$index" $msbuild ($common + '/getProperty:ClangTidyChecks')).Trim()
+                if ($roundTrip -cne $checks) { throw 'MSBuild did not preserve the trusted comma-separated global checks property.' }
+                $null = Invoke-AnalysisCommand "cpp-restore-$index" $msbuild ($common + @('/t:Restore', '/p:RestorePackagesConfig=true'))
+                $items = (Invoke-AnalysisCommand "cpp-items-$index" $msbuild ($common + '/getItem:ClCompile')) | ConvertFrom-Json
+                $translationUnits = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+                foreach ($item in $items.Items.ClCompile) {
+                    $excluded = $item.PSObject.Properties['ExcludedFromBuild']
+                    if ($null -ne $excluded -and [string]$excluded.Value -ieq 'true') { continue }
+                    $fullPath = [IO.Path]::GetFullPath([string]$item.FullPath)
+                    if (Test-Path -LiteralPath $fullPath -PathType Leaf) { $null = $translationUnits.Add($fullPath) }
+                }
+                $verifiedPaths = @()
+                foreach ($candidate in $scope.analysisPlan.cpp.candidatePaths |
+                    Where-Object { $_.project -ceq $project -and $_.path -match '\.(c|cc|cpp|cxx|ixx)$' }) {
+                    $candidatePath = [IO.Path]::GetFullPath((Join-Path $root $candidate.path.Replace('/', '\')))
+                    if ($translationUnits.Contains($candidatePath)) {
+                        $verifiedPaths += [pscustomobject]@{ path = $candidate.path; project = $project; membership = 'MSBuild.ClCompile' }
+                    } else {
+                        $reason = if (-not (Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
+                            "Source is absent at ${Revision}; added/removed files are not claimed analyzed in both revisions."
+                        } else {
+                            'Not an active evaluated ClCompile translation unit in the selected project/configuration; actual owner requires manual review.'
+                        }
+                        $metadata.manualScope += [pscustomobject]@{ path = $candidate.path; reason = $reason; project = $project }
+                    }
+                }
+                $null = Invoke-AnalysisCommand "cpp-analysis-$index" $msbuild ($common + '/t:Build;ClangTidy')
+                $metadata.analyzedScope.cppProjects += $project
+                $metadata.coveredPaths += $verifiedPaths
+                $index++
+            }
+        }
+        $metadata.status = if (-not $scope.analysisPlan.rust.required -and -not $scope.analysisPlan.cpp.required) {
+            if ($metadata.manualScope.Count) { 'partial' } else { 'not_applicable' }
+        } elseif ($metadata.manualScope.Count) { 'partial' } else { 'completed' }
+    } catch {
+        $metadata.missingPrerequisites += $_.Exception.Message
+        $metadata.status = 'incomplete'
+        Write-Warning $_.Exception.Message
+    } finally {
+        $metadata.elapsedSeconds = $clock.Elapsed.TotalSeconds
+        [IO.File]::WriteAllText((Join-Path $output 'analysis-metadata.json'), ($metadata | ConvertTo-Json -Depth 30), $utf8)
+    }
+    if ($metadata.status -eq 'incomplete') { throw 'Source analysis incomplete; fixed metadata and available logs have been captured.' }
+    return
+}
+if (-not $ProposalPath) { throw 'Native repair phases require ProposalPath.' }
 $proposalPath = [IO.Path]::GetFullPath($ProposalPath)
 $runtimePath = [IO.Path]::GetFullPath($TrustedRuntimePath)
 $proposal = Get-Content -LiteralPath $proposalPath -Raw | ConvertFrom-Json
