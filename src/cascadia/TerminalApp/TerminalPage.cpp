@@ -1460,7 +1460,7 @@ namespace winrt::TerminalApp::implementation
         {
             return false;
         }
-        if (sameSession && _IsBuiltinAgentProviderId(incoming.providerId) && !_IsBuiltinAgentProviderId(existing.providerId))
+        if (sameSession && !existing.providerId.empty() && _IsBuiltinAgentProviderId(incoming.providerId) && !_IsBuiltinAgentProviderId(existing.providerId))
         {
             return true;
         }
@@ -1520,8 +1520,8 @@ namespace winrt::TerminalApp::implementation
         {
             const auto known = row.paneSessionId ? lastReceivedByPane.find(*row.paneSessionId) : lastReceivedByPane.end();
             const auto preferred = known != lastReceivedByPane.end() ? &known->second : nullptr;
-            auto& [identified, providerless] = sessionsByPane[row.paneSessionId][row.sessionId];
-            auto& selected = row.providerId.empty() ? providerless : identified;
+            auto& [identified, stateWithoutProvider] = sessionsByPane[row.paneSessionId][row.sessionId];
+            auto& selected = row.providerId.empty() ? stateWithoutProvider : identified;
             if (!selected || _ShouldReplaceSnapshotAgentState(*selected, row, preferred))
             {
                 selected = row;
@@ -1534,15 +1534,15 @@ namespace winrt::TerminalApp::implementation
             const auto preferred = known != lastReceivedByPane.end() ? &known->second : nullptr;
             for (const auto& [sessionId, reports] : sessions)
             {
-                const auto& [identified, providerless] = reports;
-                auto state = identified ? *identified : *providerless;
+                const auto& [identified, stateWithoutProvider] = reports;
+                auto state = identified ? *identified : *stateWithoutProvider;
                 if (!identified && preferred && preferred->sessionId == sessionId)
                 {
                     state.providerId = preferred->providerId;
                 }
-                if (identified && providerless)
+                if (identified && stateWithoutProvider)
                 {
-                    auto untyped = *providerless;
+                    auto untyped = *stateWithoutProvider;
                     untyped.providerId = identified->providerId;
                     if (_ShouldReplaceSnapshotAgentState(state, untyped, preferred))
                     {
@@ -3702,6 +3702,7 @@ namespace winrt::TerminalApp::implementation
         const auto incoming = _RichTabAgentInfo{ sessionIdString, statusString, providerIdString, lastActivityAtMs, paneId };
         const auto rejectsIncoming = [&](const auto& info) {
             return info.sessionId == sessionId && info.paneSessionId == paneId &&
+                   !(info.providerId.empty() && !providerId.empty()) &&
                    !_ShouldReplaceReportedAgentState(info, incoming);
         };
         if (const auto existing = _richTabAgentStatusBySessionId.find(sessionIdString);
@@ -3709,27 +3710,32 @@ namespace winrt::TerminalApp::implementation
         {
             return true;
         }
-        const auto updateInfo = [&](auto& info) {
-            if (!info.sessionId.empty() && info.paneSessionId == paneId &&
-                !_ShouldReplaceReportedAgentState(info, incoming))
+        const auto updateInfo = [&](auto& info, const _RichTabAgentInfo& report) {
+            if (info.sessionId == report.sessionId && info.paneSessionId == report.paneSessionId &&
+                info.providerId.empty() && !report.providerId.empty())
+            {
+                info.providerId = report.providerId;
+            }
+            if (!info.sessionId.empty() && info.paneSessionId == report.paneSessionId &&
+                !_ShouldReplaceReportedAgentState(info, report))
             {
                 return;
             }
             const auto sameSession = info.sessionId.empty() ||
-                                     (info.sessionId == sessionId && info.paneSessionId == paneId);
+                                     (info.sessionId == report.sessionId && info.paneSessionId == report.paneSessionId);
             if (!sameSession)
             {
-                info = _RichTabAgentInfo{ sessionIdString, statusString, providerIdString, lastActivityAtMs, paneId };
+                info = report;
                 return;
             }
-            info.sessionId = sessionIdString;
-            info.paneSessionId = paneId;
-            info.status = statusString;
-            if (!providerId.empty())
+            info.sessionId = report.sessionId;
+            info.paneSessionId = report.paneSessionId;
+            info.status = report.status;
+            if (!report.providerId.empty())
             {
-                info.providerId = providerIdString;
+                info.providerId = report.providerId;
             }
-            info.lastActivityAtMs = lastActivityAtMs;
+            info.lastActivityAtMs = report.lastActivityAtMs;
         };
         ++_richTabAgentStatusRequestGeneration;
         if (_richTabAgentStatusRefreshInFlight)
@@ -3737,11 +3743,11 @@ namespace winrt::TerminalApp::implementation
             _richTabAgentStatusRefreshPending = true;
         }
         auto& sessionInfo = _richTabAgentStatusBySessionId[sessionIdString];
-        updateInfo(sessionInfo);
+        updateInfo(sessionInfo, incoming);
         if (paneId)
         {
             auto& paneInfo = _richTabAgentStatusByPaneId[*paneId];
-            updateInfo(paneInfo);
+            updateInfo(paneInfo, sessionInfo);
         }
         for (const auto& runtimeTab : _RuntimeTabs())
         {

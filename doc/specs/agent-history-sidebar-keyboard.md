@@ -36,6 +36,8 @@ built-in report.
 Snapshot rows without a provider ID are aggregated separately, then applied as
 state updates to the resolved session provider. They must not inherit whichever
 provider happened to occur immediately before them in an unordered snapshot.
+An older live report may identify a previously unnamed provider without rolling
+back that session's newer status or activity timestamp.
 Live reports with equal or missing timestamps use receive order. Snapshot rows
 have no receive order, so a tied refresh preserves the known pane winner. With
 no known winner, timestamp/provider/session ordering provides a stable fallback

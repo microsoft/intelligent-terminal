@@ -5795,6 +5795,17 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(latest.sessionId, paneIdString, "copilot", 1600, "Ended"));
                 VERIFY_ARE_EQUAL(std::string{ "new-custom-session" }, page->_RichTabAgentInfoForControl(control)->sessionId);
                 VERIFY_ARE_EQUAL(std::string{ "Working" }, page->_RichTabAgentInfoForControl(control)->status);
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("identity-learning", paneIdString, "", 5000, "Working"));
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("identity-learning", paneIdString, "claude", 1000, "Idle"));
+                const auto learned = page->_RichTabAgentInfoForControl(control);
+                VERIFY_IS_TRUE(learned.has_value());
+                VERIFY_ARE_EQUAL(std::string{ "claude" }, learned->providerId);
+                VERIFY_ARE_EQUAL(std::string{ "Working" }, learned->status);
+                VERIFY_ARE_EQUAL(uint64_t{ 5000 }, learned->lastActivityAtMs.value());
+                const auto& learnedSession = page->_richTabAgentStatusBySessionId.at("identity-learning");
+                VERIFY_ARE_EQUAL(learned->providerId, learnedSession.providerId);
+                VERIFY_ARE_EQUAL(learned->status, learnedSession.status);
+                VERIFY_ARE_EQUAL(learned->lastActivityAtMs, learnedSession.lastActivityAtMs);
             }
         });
     }
@@ -5898,9 +5909,9 @@ namespace TerminalAppLocalTests
         } while (std::next_permutation(order.begin(), order.end()));
 
         rows[2].lastActivityAtMs = std::nullopt;
-        auto providerlessWinner = rows[2];
-        providerlessWinner.providerId = "copilot";
-        lastReceived = { { paneId, providerlessWinner } };
+        auto winnerWithoutProvider = rows[2];
+        winnerWithoutProvider.providerId = "copilot";
+        lastReceived = { { paneId, winnerWithoutProvider } };
         order = { 0, 1, 2, 3 };
         do
         {
