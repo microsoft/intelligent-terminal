@@ -758,16 +758,18 @@ class ValidationTests(unittest.TestCase):
 
     def test_agent_markdown_summary_is_not_parsed_as_a_verdict(self):
         summary = self.workspace / "summary.md"
-        summary.write_text("## Source review\n\n- No automatic repair requested.\n", encoding="utf-8")
-        MODULE.validate(self.root, self.head, self.head, True, self.prepared,
-                        self.report(), summary_path=summary)
+        for encoding in ("utf-8", "utf-8-sig"):
+            with self.subTest(encoding=encoding):
+                summary.write_text("## Source review\n\n- No automatic repair requested.\n", encoding=encoding)
+                MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                                self.report(), summary_path=summary)
 
     def test_agent_summary_must_be_present_nonempty_utf8_and_bounded(self):
         summary = self.workspace / "summary.md"
         with self.assertRaisesRegex(ValueError, "agent summary verification failed"):
             MODULE.validate(self.root, self.head, self.head, True, self.prepared,
                             self.report(), summary_path=summary)
-        for content in (b"", b" \n\t", b"\xff", b"x" * (32 * 1024 + 1)):
+        for content in (b"", b" \n\t", b"\xef\xbb\xbf", b"\xef\xbb\xbf \n", b"\xff", b"x" * (32 * 1024 + 1)):
             with self.subTest(content_length=len(content)):
                 summary.write_bytes(content)
                 with self.assertRaisesRegex(ValueError, "agent summary verification failed"):
@@ -1114,9 +1116,11 @@ vm.runInNewContext('(async () => {' + data.script + '\n})()', {
 
     def test_summary_format_variations_do_not_require_extraction(self):
         narrative = "# Review notes\n\n| State | Action |\n| --- | --- |\n| Advice | Inspect layout |\n\n```text\nsource evidence\n```\n"
-        result = self.report(summary=narrative)
-        self.assertEqual("success", result["calls"][0]["conclusion"])
-        self.assertIn(narrative, result["summary"])
+        for content in (narrative, b"\xef\xbb\xbf" + narrative.encode("utf-8")):
+            with self.subTest(has_byte_order_mark=isinstance(content, bytes)):
+                result = self.report(summary=content)
+                self.assertEqual("success", result["calls"][0]["conclusion"])
+                self.assertIn(narrative, result["summary"])
 
     def test_agent_success_claim_cannot_override_blocked_high_or_failed_native(self):
         narrative = "## Outcome\nPASS: all checks passed.\n"
@@ -1125,7 +1129,7 @@ vm.runInNewContext('(async () => {' + data.script + '\n})()', {
         self.assertEqual("failure", self.report(native="failure", summary=narrative)["calls"][0]["conclusion"])
 
     def test_missing_empty_invalid_or_oversized_agent_summary_is_failure(self):
-        for narrative in (None, "", " \n\t", b"\xff", "x" * (32 * 1024 + 1)):
+        for narrative in (None, "", " \n\t", b"\xef\xbb\xbf", b"\xef\xbb\xbf \n", b"\xff", "x" * (32 * 1024 + 1)):
             with self.subTest(summary_length=None if narrative is None else len(narrative)):
                 result = self.report(summary=narrative)
                 self.assertEqual("failure", result["calls"][0]["conclusion"])

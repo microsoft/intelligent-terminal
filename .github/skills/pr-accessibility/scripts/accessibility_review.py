@@ -633,7 +633,7 @@ def validate(
                 raise ValueError("summary must be a regular file, not a symlink")
             if not 0 < summary_path.stat().st_size <= 32 * 1024:
                 raise ValueError("summary must contain at most 32 KiB of UTF-8 Markdown")
-            if not summary_path.read_text(encoding="utf-8", errors="strict").strip():
+            if not summary_path.read_text(encoding="utf-8-sig", errors="strict").strip():
                 raise ValueError("summary must not be empty")
         except (OSError, UnicodeError, ValueError) as error:
             errors.append(f"agent summary verification failed: {error}")
