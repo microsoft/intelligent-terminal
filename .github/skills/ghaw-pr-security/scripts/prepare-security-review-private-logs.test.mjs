@@ -8,9 +8,53 @@ import { createInterface } from 'node:readline';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import { PRIVATE_LOG_ASSETS, prepareSecurityReviewPrivateLogs } from './prepare-security-review-private-logs.mjs';
-import { SECURITY_NOOP_MESSAGE, validateQueuedOutput } from './security-review.mjs';
+import { buildScope, createReportTemplate, SECURITY_NOOP_MESSAGE, validateCandidate, validateQueuedOutput, validateReport } from './security-review.mjs';
+import { projectSecurityReviewOutput } from './security-review-driver.mjs';
 
-export function assertNoPublicRawLogPayloads(collectedRoot) {
+const PUBLIC_DIAGNOSTIC_READERS = {
+  'mcp-logs/': 'empty-native-sinks',
+  'mcp-scripts/logs/': 'empty-native-sinks',
+  'sandbox/agent/logs/': 'trusted-two-event-projection',
+  'agent-stdio.log': 'trusted-projection-and-framework-diagnostics',
+};
+const PUBLIC_COLLECTOR_INVENTORY = [
+  'aw-prompts/prompt.txt', 'sandbox/agent/logs/', 'redacted-urls.log', 'mcp-logs/', 'mcp-scripts/logs/',
+  'agent_usage.json', 'agent-stdio.log', 'pre-agent-audit.txt', 'agent/', 'github_rate_limits.jsonl',
+  'otel.jsonl', 'otlp-export-errors.jsonl', 'safeoutputs.jsonl', 'agent_output.json', 'aw-*.patch',
+  'aw-*.bundle', 'awf-config.json', 'sandbox/firewall/logs/', 'sandbox/firewall/audit/', 'sandbox/firewall/awf-reflect.json',
+];
+const TRUSTED_FRAMEWORK_DIAGNOSTICS = [
+  '[security-review-driver] starting primary',
+  '[security-review-driver] starting fixed independent reviewer',
+  'security driver: failed; inspect metadata diagnostics and report status',
+  '[copilot-harness] attempt 1: process exit event exitCode=0',
+  '[copilot-harness] done: exitCode=0 totalDuration=1m 23s',
+  '[INFO] Executing agent command...',
+  '[SUCCESS] Command completed successfully',
+  'Process exiting with code: 0',
+];
+
+function trustedProjection({ report, scope, result }) {
+  if (scope.mode === 'repair') validateCandidate(report, scope);
+  else validateReport(report, scope);
+  const usage = {};
+  for (const key of ['inputTokens', 'outputTokens', 'totalTokens', 'input_tokens', 'output_tokens',
+    'total_tokens', 'premiumRequests', 'totalApiDurationMs']) {
+    const value = result.usage?.[key];
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) usage[key] = value;
+  }
+  return [
+    { type: 'assistant.message', data: { phase: 'final_answer', toolRequests: [], content: JSON.stringify({
+      summary: report.summary, headSha: report.headSha, reviewStatus: report.review.status,
+      findings: report.findings.map(({ rule, severity, confidence, file, startLine, endLine }) =>
+        ({ rule, severity, confidence, file, startLine, endLine })),
+      checks: report.checks.map(({ name, status }) => ({ name, status })),
+    }) } },
+    { type: 'result', exitCode: 0, sessionId: createHash('sha256').update(result.sessionId).digest('hex'), usage },
+  ].map(event => JSON.stringify(event));
+}
+
+export function assertNoPublicRawLogPayloads(collectedRoot, trusted) {
   const reject = () => { throw new Error('Public raw log payload or irregular node rejected'); };
   if (resolve(collectedRoot) !== realpathSync(collectedRoot) || !lstatSync(collectedRoot).isDirectory()) reject();
   let directories = 0;
@@ -32,6 +76,41 @@ export function assertNoPublicRawLogPayloads(collectedRoot) {
     }
     if (!absent) inspect(path);
   }
+  const expected = trusted ? trustedProjection(trusted) : null;
+  const regular = path => {
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink() || realpathSync(path) !== path) reject();
+    return stat;
+  };
+  let agentLogs = resolve(collectedRoot);
+  let absent = false;
+  for (const part of ['sandbox', 'agent', 'logs']) {
+    agentLogs = join(agentLogs, part);
+    try { if (!regular(agentLogs).isDirectory()) reject(); }
+    catch (error) { if (error.code === 'ENOENT') { absent = true; break; } throw error; }
+  }
+  if (!absent) {
+    const names = readdirSync(agentLogs);
+    if (names.length) {
+      if (!expected || names.length !== 1 || names[0] !== 'events.jsonl') reject();
+      const events = join(agentLogs, names[0]);
+      const stat = regular(events);
+      if (!stat.isFile() || stat.size > 1024 * 1024 || readFileSync(events, 'utf8') !== `${expected.join('\n')}\n`) reject();
+    }
+  }
+  const stdio = join(resolve(collectedRoot), 'agent-stdio.log');
+  try {
+    const stat = regular(stdio);
+    if (!stat.isFile() || stat.size > 1024 * 1024) reject();
+    const lines = readFileSync(stdio, 'utf8').split(/\r?\n/).filter(Boolean);
+    const projected = [];
+    for (const line of lines) {
+      if (TRUSTED_FRAMEWORK_DIAGNOSTICS.includes(line)) continue;
+      if (!expected || !expected.includes(line)) reject();
+      projected.push(line);
+    }
+    if (projected.length && JSON.stringify(projected) !== JSON.stringify(expected)) reject();
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
   return { publicRawLogFiles: 0, regularEmptyDirectories: directories };
 }
 
@@ -59,6 +138,174 @@ test('privacy test adapter permits only regular empty directory trees, never any
     symlinkSync(options.workspace, join(options.collectedRoot, 'mcp-scripts'), process.platform === 'win32' ? 'junction' : 'dir');
     assert.throws(() => assertNoPublicRawLogPayloads(options.collectedRoot));
   });
+});
+
+function projectionFixture(mode = 'repair') {
+  const base = '1'.repeat(40);
+  const head = '2'.repeat(40);
+  const path = 'tools/wta/src/master/mod.rs';
+  const scope = buildScope(base, head, 17, mode === 'repair' ? 'same-repo' : 'fork',
+    `M\0${path}\0`, base, mode, [{ path, headLineCount: 2,
+      hunks: [{ baseStart: 1, baseCount: 1, headStart: 1, headCount: 1 }] }]);
+  const report = { ...createReportTemplate(scope), summary: 'Changed source was reviewed; no automatic repair was attempted.' };
+  const result = { type: 'result', exitCode: 0, sessionId: 'DUMMY_PRIVATE_SESSION_IDENTIFIER',
+    usage: { premiumRequests: 0, totalApiDurationMs: 57430, inputTokens: 12, outputTokens: 3,
+      ignored: 'DUMMY_RAW_SOURCE_SENTINEL', totalTokens: -1, input_tokens: '12', output_tokens: Infinity } };
+  return { scope, report, result };
+}
+
+function writePublicProjection(options, trusted) {
+  const projection = projectSecurityReviewOutput({ events: [
+    { type: 'tool.execution_start', data: { arguments: 'DUMMY_RAW_SOURCE_SENTINEL' } },
+    { type: 'tool.execution_complete', data: { result: 'DUMMY_RAW_SOURCE_SENTINEL' } },
+    { type: 'assistant.message', data: { content: 'DUMMY_RAW_SOURCE_SENTINEL' } },
+    trusted.result,
+  ] }, trusted.report);
+  const directory = join(options.collectedRoot, 'sandbox', 'agent', 'logs');
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, 'events.jsonl'), projection);
+  writeFileSync(join(options.collectedRoot, 'agent-stdio.log'),
+    `${TRUSTED_FRAMEWORK_DIAGNOSTICS[0]}\n${projection}${TRUSTED_FRAMEWORK_DIAGNOSTICS[3]}\n`);
+  return projection;
+}
+
+for (const mode of ['repair', 'guide']) {
+  test(`${mode}: collector accepts report-derived public metadata, hashed session and numeric usage, not CLI source`, () => {
+    fixture(options => {
+      const trusted = projectionFixture(mode);
+      const projection = writePublicProjection(options, trusted);
+      const rows = projection.trim().split('\n').map(JSON.parse);
+      assert.equal(rows.length, 2);
+      assert.match(rows[1].sessionId, /^[a-f0-9]{64}$/);
+      assert.deepEqual(rows[1].usage, { inputTokens: 12, outputTokens: 3, premiumRequests: 0, totalApiDurationMs: 57430 });
+      assert(!projection.includes('DUMMY_RAW_SOURCE_SENTINEL'));
+      assert(!projection.includes(trusted.result.sessionId));
+      assert.deepEqual(assertNoPublicRawLogPayloads(options.collectedRoot, trusted),
+        { publicRawLogFiles: 0, regularEmptyDirectories: 0 });
+      assert.throws(() => assertNoPublicRawLogPayloads(options.collectedRoot));
+    });
+  });
+}
+
+for (const [namespace, reader] of Object.entries(PUBLIC_DIAGNOSTIC_READERS)) {
+  for (const marker of ['DUMMY_RAW_SOURCE_SENTINEL fn route_secret() {}',
+    'github_pat_DUMMY_CREDENTIAL_SENTINEL_12345678901234567890']) {
+    test(`${namespace}: ${reader} rejects injected ${marker.startsWith('github') ? 'credential' : 'source'} bytes`, () => {
+      fixture(options => {
+        const trusted = projectionFixture();
+        writePublicProjection(options, trusted);
+        assert.doesNotThrow(() => assertNoPublicRawLogPayloads(options.collectedRoot, trusted));
+        const path = namespace.endsWith('/')
+          ? join(options.collectedRoot, ...namespace.split('/').filter(Boolean), 'injected.log')
+          : join(options.collectedRoot, namespace);
+        mkdirSync(resolve(path, '..'), { recursive: true });
+        writeFileSync(path, marker, { flag: 'a' });
+        assert.throws(() => assertNoPublicRawLogPayloads(options.collectedRoot, trusted));
+      });
+    });
+  }
+}
+
+test('each raw MCP sink rejects even a zero-byte native payload', () => {
+  for (const namespace of ['mcp-logs', join('mcp-scripts', 'logs')]) fixture(options => {
+    const root = join(options.collectedRoot, namespace);
+    mkdirSync(root, { recursive: true });
+    assert.doesNotThrow(() => assertNoPublicRawLogPayloads(options.collectedRoot));
+    writeFileSync(join(root, 'server.log'), '');
+    assert.throws(() => assertNoPublicRawLogPayloads(options.collectedRoot));
+  });
+});
+
+test('approved report source descriptions remain public, while credential-like report text invalidates the authority', () => {
+  fixture(options => {
+    const trusted = projectionFixture();
+    trusted.report.summary = 'Reviewed fn resolve() and session_to_helper lookup; no regression found.';
+    const bytes = writePublicProjection(options, trusted);
+    assert(bytes.includes('fn resolve()'));
+    assert.doesNotThrow(() => assertNoPublicRawLogPayloads(options.collectedRoot, trusted));
+    trusted.report.summary = 'github_pat_DUMMY_CREDENTIAL_SENTINEL_12345678901234567890';
+    writePublicProjection(options, trusted);
+    assert.throws(() => assertNoPublicRawLogPayloads(options.collectedRoot, trusted));
+  });
+});
+
+test('regular empty agent log trees and fixed failure diagnostics are not mistaken for raw CLI evidence', () => {
+  fixture(options => {
+    mkdirSync(join(options.collectedRoot, 'sandbox', 'agent', 'logs'), { recursive: true });
+    writeFileSync(join(options.collectedRoot, 'agent-stdio.log'), `${TRUSTED_FRAMEWORK_DIAGNOSTICS[2]}\n`);
+    assert.doesNotThrow(() => assertNoPublicRawLogPayloads(options.collectedRoot));
+    writeFileSync(join(options.collectedRoot, 'agent-stdio.log'),
+      'fatal: DUMMY_RAW_SOURCE_SENTINEL\n', { flag: 'a' });
+    assert.throws(() => assertNoPublicRawLogPayloads(options.collectedRoot));
+  });
+});
+
+for (const [name, change] of [
+  ['tool request', rows => { rows[0].data.toolRequests.push({ name: 'read', arguments: 'DUMMY_RAW_SOURCE_SENTINEL' }); }],
+  ['call result', rows => { rows.splice(1, 0, { type: 'tool.execution_complete', data: { result: 'DUMMY_RAW_SOURCE_SENTINEL' } }); }],
+  ['unknown field', rows => { rows[1].source = 'DUMMY_RAW_SOURCE_SENTINEL'; }],
+  ['reserved prototype field', rows => { rows[1].usage = JSON.parse('{"__proto__":{"source":"DUMMY_RAW_SOURCE_SENTINEL"}}'); }],
+  ['constructor field', rows => { rows[1].constructor = 'DUMMY_RAW_SOURCE_SENTINEL'; }],
+  ['raw session identifier', rows => { rows[1].sessionId = 'DUMMY_PRIVATE_SESSION_IDENTIFIER'; }],
+  ['negative usage', rows => { rows[1].usage.inputTokens = -1; }],
+  ['string usage', rows => { rows[1].usage.inputTokens = '12'; }],
+  ['unknown usage', rows => { rows[1].usage.Core_User = 'DUMMY_RAW_SOURCE_SENTINEL'; }],
+  ['non-finite usage', rows => { rows[1].usage.inputTokens = Infinity; }],
+  ['duplicated result', rows => { rows.push(rows[1]); }],
+  ['out-of-order result', rows => { rows.reverse(); }],
+  ['summary not derived from report', rows => { rows[0].data.content = '{"summary":"DUMMY_RAW_SOURCE_SENTINEL"}'; }],
+]) {
+  for (const target of ['events', 'stdio']) test(`${target} rejects ${name} rather than treating it as findings`, () => {
+    fixture(options => {
+      const trusted = projectionFixture();
+      const rows = writePublicProjection(options, trusted).trim().split('\n').map(JSON.parse);
+      change(rows);
+      const path = target === 'events' ? join(options.collectedRoot, 'sandbox', 'agent', 'logs', 'events.jsonl')
+        : join(options.collectedRoot, 'agent-stdio.log');
+      writeFileSync(path, `${rows.map(row => JSON.stringify(row)).join('\n')}\n`);
+      assert.throws(() => assertNoPublicRawLogPayloads(options.collectedRoot, trusted));
+    });
+  });
+}
+
+test('framework prefixes are not an authorization to upload arbitrary diagnostics or source', () => {
+  for (const prefix of ['[INFO]', '[copilot-harness]', '[security-review-driver]', '[entrypoint]', 'Error:']) {
+    fixture(options => {
+      const trusted = projectionFixture();
+      writePublicProjection(options, trusted);
+      writeFileSync(join(options.collectedRoot, 'agent-stdio.log'), `${prefix} DUMMY_RAW_SOURCE_SENTINEL\n`, { flag: 'a' });
+      assert.throws(() => assertNoPublicRawLogPayloads(options.collectedRoot, trusted));
+    });
+  }
+});
+
+test('public agent diagnostic directories and stdio reject irregular ancestors and extra files', () => {
+  for (const namespace of ['sandbox', 'agent-stdio.log']) fixture(options => {
+    symlinkSync(options.workspace, join(options.collectedRoot, namespace), process.platform === 'win32' ? 'junction' : 'dir');
+    assert.throws(() => assertNoPublicRawLogPayloads(options.collectedRoot, projectionFixture()));
+  });
+  fixture(options => {
+    const trusted = projectionFixture();
+    writePublicProjection(options, trusted);
+    const log = join(options.collectedRoot, 'sandbox', 'agent', 'logs', 'events.jsonl');
+    rmSync(log);
+    symlinkSync(join(options.actionsDir, options.assets[0].name), log, 'file');
+    assert.throws(() => assertNoPublicRawLogPayloads(options.collectedRoot, trusted));
+  });
+});
+
+test('compiled collector inventory pins every uploaded namespace and all four diagnostic readers in both lanes', () => {
+  for (const name of ['ghaw-pr-security', 'ghaw-pr-security-guide-fork']) {
+    const lock = readFileSync(new URL(`../../../workflows/${name}.lock.yml`, import.meta.url), 'utf8');
+    const upload = lock.slice(lock.indexOf('- name: Upload agent artifacts'), lock.indexOf('\n  conclusion:'));
+    const paths = [...upload.matchAll(/^\s{12}\/tmp\/gh-aw\/([^\r\n]+)$/gm)].map(match => match[1]);
+    assert.deepEqual(paths, PUBLIC_COLLECTOR_INVENTORY, `${name}: new collector paths need an explicit reader classification`);
+    assert.deepEqual(paths.filter(path => Object.hasOwn(PUBLIC_DIAGNOSTIC_READERS, path)),
+      ['sandbox/agent/logs/', 'mcp-logs/', 'mcp-scripts/logs/', 'agent-stdio.log']);
+    assert(upload.includes('actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'));
+    assert(lock.includes('GH_AW_AWF_LOG_FILE=/tmp/gh-aw/agent-stdio.log'));
+    assert(lock.includes('--log-dir /tmp/gh-aw/sandbox/agent/logs/'));
+  }
 });
 
 function fixture(run) {

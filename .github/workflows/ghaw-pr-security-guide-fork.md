@@ -154,6 +154,17 @@ steps:
       cp "$binary" "$RUNNER_TEMP/gh-aw/bin/copilot"
       chmod 755 "$RUNNER_TEMP/gh-aw/bin/copilot"
 
+  - name: Install symlink-safe trusted guidance restoration
+    shell: bash
+    env:
+      TRUSTED_SHA: ${{ github.workflow_sha }}
+    run: |
+      set -euo pipefail
+      restore="$RUNNER_TEMP/gh-aw/restore-security-review-trusted-inputs.mjs"
+      git -c core.fsmonitor=false show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/restore-security-review-trusted-inputs.mjs" > "$restore"
+      node "$restore" install --workspace "$GITHUB_WORKSPACE" --trusted-sha "$TRUSTED_SHA" --actions-dir "$RUNNER_TEMP/gh-aw/actions"
+      bash "${RUNNER_TEMP}/gh-aw/actions/restore_base_github_folders.sh"
+
   - name: Fetch immutable fork head
     shell: bash
     env:
@@ -222,11 +233,8 @@ pre-agent-steps:
       TRUSTED_SHA: ${{ github.workflow_sha }}
     run: |
       set -euo pipefail
-      skill=.github/skills/ghaw-pr-security/SKILL.md
-      original="$RUNNER_TEMP/gh-aw/security-skill.original.md"
-      git -c core.fsmonitor=false show "$TRUSTED_SHA:$skill" > "$original"
-      cp "$original" "$GITHUB_WORKSPACE/$skill"
-      cmp "$original" "$GITHUB_WORKSPACE/$skill"
+      node "$RUNNER_TEMP/gh-aw/restore-security-review-trusted-inputs.mjs" restore \
+        --workspace "$GITHUB_WORKSPACE" --trusted-sha "$TRUSTED_SHA" --only skill
   - name: Record trusted fork workspace baseline
     shell: bash
     run: |

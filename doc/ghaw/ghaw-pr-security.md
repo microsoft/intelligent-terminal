@@ -45,6 +45,21 @@ findings use SHA-labelled idempotent guidance comments. A published repair never
 also produces a guidance comment. This preserves the existing non-noisy
 publication behavior while separating token authority.
 
+## Direct result artifact
+
+The agent submits one structured security report through the native report
+tool. Findings are not reconstructed from console logs or CLI transcripts.
+Trusted validation and canonical publication emit `security-summary.md` directly
+from that report, and the controller uses the file for the PR check and fork
+guidance.
+
+The artifact has a findings table with severity, fix status, location/rule,
+confidence and evidence/reason columns, followed by a separate validation table.
+Unresolved HIGH findings come first, followed by verified HIGH fixes and
+medium/low advice; ties have stable location/rule ordering. Empty findings still
+produce an explicit result row. Failed, blocked and skipped validation remain
+distinct. Only matching-head native validation can authorize a Fixed row.
+
 Before inference, the trusted script validates the immutable observed-base/head
 commits, resolves their merge base, normalizes changed paths, classifies
 affected trust boundaries, and records a scope hash. After inference, a fresh

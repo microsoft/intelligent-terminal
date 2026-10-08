@@ -914,7 +914,7 @@ export function validateRepairScope(scope) {
 
 function escapeMarkdown(value) {
   return value
-    .replace(/\r?\n/g, ' ')
+    .replace(/[\r\n\u2028\u2029]+/g, ' ')
     .replace(/[\\`*_{}[\]()#+\-.!|<>:/@~]/g, '\\$&');
 }
 
@@ -922,6 +922,14 @@ export function renderReport(report) {
   const fixed = report.findings.filter(finding => finding.fixDisposition.state === 'fixed');
   const highs = report.findings.filter(finding => finding.severity === 'high' && finding.fixDisposition.state !== 'fixed');
   const mediumLow = report.findings.filter(finding => finding.severity !== 'high');
+  const rank = finding => finding.severity === 'high'
+    ? (finding.fixDisposition.state === 'fixed' ? 1 : 0)
+    : (finding.severity === 'medium' ? 2 : 3);
+  const compareText = (left, right) => left < right ? -1 : left > right ? 1 : 0;
+  const findings = [...report.findings].sort((left, right) =>
+    rank(left) - rank(right) || compareText(left.file, right.file) ||
+    left.startLine - right.startLine || left.endLine - right.endLine ||
+    compareText(left.rule, right.rule) || compareText(left.id, right.id));
   const lines = [
     '## Intelligent Terminal security review',
     '',
@@ -933,37 +941,44 @@ export function renderReport(report) {
     `- Medium/Low (consider): **${mediumLow.length}**`,
     `- Mode: **${report.mode}**`,
     '',
+    '### Findings / results',
+    '',
+    '| Severity | Status/Fix | Finding | Location | Evidence/Validation/Reason | Confidence |',
+    '| --- | --- | --- | --- | --- | --- |',
+  ];
+  for (const finding of findings) {
+    const state = finding.fixDisposition.state;
+    const status = state === 'fixed' ? '**Fixed and validated**'
+      : state === 'proposed' ? '**Must fix / blocking** (proposed; validation pending)'
+        : state === 'blocked' ? '**Must fix / blocking** (blocked)' : 'Advice only';
+    const description = [
+      `\`${finding.id}\` · \`${finding.rule}\` · \`${finding.category}\``,
+      `**Observed:** ${escapeMarkdown(finding.observed)}`,
+      `**Expected:** ${escapeMarkdown(finding.expected)}`,
+      `**Impact:** ${escapeMarkdown(finding.impact)}`,
+      `**Proposed fix:** ${escapeMarkdown(finding.proposedFix)}`,
+    ].join('<br>');
+    const evidence = [
+      ...finding.evidence.map(item =>
+        `**${escapeMarkdown(item.kind)}:** ${escapeMarkdown(item.reference)} — ${escapeMarkdown(item.detail)}`),
+      `**Validation:** ${escapeMarkdown(finding.validation)}`,
+      `**Reason:** ${escapeMarkdown(finding.fixDisposition.reason)}`,
+    ].join('<br>');
+    lines.push(`| **${finding.severity.toUpperCase()}** | ${status} | ${description} | ${escapeMarkdown(finding.file)}:${finding.startLine}-${finding.endLine} | ${evidence} | ${finding.confidence} |`);
+  }
+  if (findings.length === 0) {
+    lines.push('| — | No findings | No introduced security regression found. | — | See validation results below; skipped checks are not passes. | — |');
+  }
+  lines.push(
+    '',
+    '### Validation',
+    '',
     '| Check | Status | Evidence |',
     '| --- | --- | --- |',
-    ...report.checks.map(check => `| ${check.name} | **${check.status}** | ${escapeMarkdown(check.evidence)} |`),
-  ];
-  for (const [title, findings] of [['Fixed', fixed], ['Must fix / blocking', highs], ['Consider', mediumLow]]) {
-    lines.push('', `### ${title}`);
-    if (findings.length === 0) {
-      lines.push('', 'None.');
-      continue;
-    }
-    for (const finding of findings) {
-      lines.push(
-        '',
-        `#### ${finding.id} — ${finding.severity.toUpperCase()} / ${finding.confidence} confidence`,
-        '',
-        `${escapeMarkdown(finding.file)}:${finding.startLine}-${finding.endLine} · \`${finding.category}\` · \`${finding.rule}\``,
-        '',
-        `**Observed:** ${escapeMarkdown(finding.observed)}`,
-        '',
-        `**Expected:** ${escapeMarkdown(finding.expected)}`,
-        '',
-        `**Impact:** ${escapeMarkdown(finding.impact)}`,
-        '',
-        `**Proposed fix:** ${escapeMarkdown(finding.proposedFix)}`,
-        '',
-        `**Validation:** ${escapeMarkdown(finding.validation)}`,
-        '',
-        `**Disposition:** ${finding.fixDisposition.state} — ${escapeMarkdown(finding.fixDisposition.reason)}`,
-      );
-    }
-  }
+    ...report.checks.map(check => `| ${check.name} | **${check.status}** | ${check.status === 'pass' ? `Head \`${check.headSha.slice(0, 12)}\` · ` : ''}${escapeMarkdown(check.evidence)} |`),
+    '',
+    `**Independent source review:** ${escapeMarkdown(report.review.status)} — ${escapeMarkdown(report.review.evidence)}`,
+  );
   return `${lines.join('\n')}\n`;
 }
 

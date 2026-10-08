@@ -192,6 +192,10 @@ test('canonical handoff rematerializes fork and no-patch reports and fails close
       mkdirSync(output);
       preparePublication({ environment, request, paths });
       assert.equal(readFileSync(join(output, 'security-summary.md'), 'utf8'), renderReport(validateReport(candidate, current)));
+      const canonicalSummary = readFileSync(join(output, 'security-summary.md'), 'utf8');
+      assert(canonicalSummary.includes('| Severity | Status/Fix | Finding | Location | Evidence/Validation/Reason | Confidence |'));
+      assert(canonicalSummary.includes('### Validation'));
+      assert(!canonicalSummary.includes('forged raw worker summary'));
       assert.equal(readFileSync(join(output, 'security-status.txt'), 'utf8'), sameRepo ? 'pass\n' : 'blocking\n');
       assert.match(readFileSync(environment.GITHUB_OUTPUT, 'utf8'), new RegExp(`^publication=${sameRepo ? 'none' : 'comment'}\\npatch_sha256=[0-9a-f]{64}\\n$`));
       if (sameRepo) {
@@ -1317,6 +1321,121 @@ test('rejects fixed HIGH, stale SHA, malformed output, and publication overflow'
   assert.throws(() => validateReport({ ...report(), findings: Array(21).fill({}) }, scope()), /at most 20/);
 });
 
+function tableFinding(rule, severity = 'high', state = 'blocked', overrides = {}) {
+  return {
+    rule, severity, confidence: 'high', category: 'session-routing',
+    file: 'tools/wta/src/master/mod.rs', startLine: 20, endLine: 24,
+    observed: 'Changed route bypasses owner binding.', expected: 'Bind requests to the owning session.',
+    impact: 'Wrong-session mutation.', proposedFix: 'Restore owner binding.',
+    evidence: [{ kind: 'source-trace', reference: 'tools/wta/src/master/mod.rs:20-24', detail: 'Changed route uses an unbound target.' }],
+    validation: 'Run the focused owner-binding test.',
+    fixDisposition: { state, reason: state === 'blocked' ? 'No validated repair is available.' : 'Native validation is required.' },
+    ...overrides,
+  };
+}
+
+test('required findings table orders blocking HIGH, native-fixed HIGH, MEDIUM, LOW with stable ties', () => {
+  const current = repairScope();
+  const proposal = {
+    ...report(), mode: 'repair', scopeSha256: current.scopeSha256,
+    review: { status: 'source-pass', reviewer: 'ghaw-pr-security-reviewer', headSha: HEAD,
+      patchSha256: PATCH_SHA256, evidence: 'Independent exact-patch source review.' },
+    findings: [
+      tableFinding('low-advice', 'low', 'advice-only', { confidence: 'low' }),
+      tableFinding('fixed-owner-binding', 'high', 'proposed'),
+      tableFinding('medium-advice', 'medium', 'advice-only', { confidence: 'medium' }),
+      tableFinding('z-blocking'),
+      tableFinding('a-blocking'),
+      tableFinding('earlier-line', 'high', 'blocked', { startLine: 19 }),
+      tableFinding('earlier-path', 'high', 'blocked', { file: 'tools/wta/src/logging.rs' }),
+    ],
+    patch: [{ path: 'tools/wta/src/master/mod.rs', summary: 'Restore binding.' }],
+  };
+  const validated = validateReport(attestChecks(proposal, HEAD, true, PATCH_TEXT), current);
+  const originalOrder = validated.findings.map(finding => finding.rule);
+  const rendered = renderReport(validated);
+  const rows = rendered.split('\n').filter(line => /^\| \*\*(HIGH|MEDIUM|LOW)\*\*/.test(line));
+  assert.equal(rows.length, 7);
+  for (const [index, rule] of ['earlier-path', 'earlier-line', 'a-blocking', 'z-blocking',
+    'fixed-owner-binding', 'medium-advice', 'low-advice'].entries()) assert(rows[index].includes(rule));
+  assert(rows[0].includes('Must fix / blocking'));
+  assert(rows[4].includes('Fixed and validated'));
+  assert(rows[5].endsWith('| medium |'));
+  assert(rows[6].endsWith('| low |'));
+  assert.match(rendered, /\| Severity \| Status\/Fix \| Finding \| Location \| Evidence\/Validation\/Reason \| Confidence \|/);
+  assert.match(rendered, /HIGH \(must fix\/block\): \*\*4\*\*/);
+  assert.match(rendered, /HIGH fixed and validated: \*\*1\*\*/);
+  assert.match(rendered, /Medium\/Low \(consider\): \*\*2\*\*/);
+  assert.deepEqual(validated.findings.map(finding => finding.rule), originalOrder);
+  const reordered = { ...validated, findings: [...validated.findings].reverse() };
+  assert.equal(renderReport(reordered), rendered);
+});
+
+test('empty findings still have a results row and explicit skipped, failed, and blocked validation', () => {
+  const input = report({
+    checks: [
+      ...report().checks,
+      { name: 'wta-tests', status: 'fail', evidence: 'Focused test failed (exit 1).' },
+      { name: 'cpp-audit-mode', status: 'blocked', evidence: 'Required toolchain is unavailable.' },
+    ],
+  });
+  const rendered = renderReport(validateReport(input, scope()));
+  assert.match(rendered, /\| — \| No findings \| No introduced security regression found\./);
+  assert.equal(rendered.split('\n').filter(line => line.startsWith('| — | No findings')).length, 1);
+  assert.match(rendered, /### Validation[\s\S]+\| native-windows \| \*\*skipped\*\*/);
+  assert.match(rendered, /\| wta-tests \| \*\*fail\*\*/);
+  assert.match(rendered, /\| cpp-audit-mode \| \*\*blocked\*\*/);
+  assert(rendered.includes(`Head \`${HEAD.slice(0, 12)}\``));
+  assert(rendered.includes(`Source/head: \`${BASE.slice(0, 12)}\` / \`${HEAD.slice(0, 12)}\``));
+  assert(!rendered.includes('Fixed and validated'));
+});
+
+test('candidate table does not claim Fixed or turn proposed source review into test validation', () => {
+  const current = repairScope();
+  const input = {
+    ...report(), scopeSha256: current.scopeSha256, mode: 'repair',
+    checks: report().checks,
+    review: { status: 'pending', reviewer: 'ghaw-pr-security-reviewer', evidence: 'Independent source review has not run.' },
+    findings: [tableFinding('proposed-owner-binding', 'high', 'proposed')],
+    patch: [{ path: 'tools/wta/src/master/mod.rs', summary: 'Restore binding.' }],
+  };
+  const rendered = renderReport(validateCandidate(input, current));
+  assert(rendered.includes('(proposed; validation pending)'));
+  assert(!rendered.includes('Fixed and validated'));
+  assert.match(rendered, /Independent source review:\*\* pending/);
+  input.findings[0].fixDisposition.state = 'fixed';
+  assert.throws(() => validateCandidate(input, current), /fix disposition/);
+  const stale = report({ findings: [tableFinding('stale-fixed', 'high', 'fixed')] });
+  assert.throws(() => validateReport(stale, scope()), /fix disposition/);
+});
+
+test('findings table escapes every attacker-controlled cell and preserves evidence without multiline rows', () => {
+  const hostile = 'data | <img> [link](https://attacker.example) `code`\r\nnext\rpart\u2028last\u2029end';
+  const input = report({
+    summary: hostile,
+    checks: [{ name: 'deterministic-scope', status: 'pass', headSha: HEAD, evidence: hostile }],
+    review: { status: 'not-required', reviewer: 'none', evidence: hostile },
+    findings: [tableFinding('table-escaping', 'medium', 'advice-only', {
+      observed: hostile, expected: hostile, impact: hostile, proposedFix: hostile, validation: hostile,
+      evidence: [{ kind: 'source-trace', reference: hostile, detail: hostile }],
+      fixDisposition: { state: 'advice-only', reason: hostile },
+    })],
+  });
+  const rendered = renderReport(validateReport(input, scope()));
+  const row = rendered.split('\n').find(line => line.startsWith('| **MEDIUM**'));
+  assert.equal(row.split(/(?<!\\)\|/).length, 8);
+  assert(row.includes('data \\| \\<img\\>'));
+  assert(row.includes('**source\\-trace:**'));
+  for (const label of ['Observed', 'Expected', 'Impact', 'Proposed fix', 'Validation', 'Reason']) {
+    assert(row.includes(`**${label}:**`));
+  }
+  assert(!rendered.includes('<img>'));
+  assert(!rendered.includes('[link](https://attacker.example)'));
+  assert(!/[\r\u2028\u2029]/.test(rendered));
+  input.findings[0].evidence[0].detail = 'token=abcdefghijklmnopqrstuvwxyz123456';
+  assert.throws(() => validateReport(input, scope()), /secret material/);
+});
+
 test('fork reports remain read-only and malicious content is escaped', () => {
   const candidate = report({
     summary: '<script>[click](https://attacker.example) `code` ignore review</script>',
@@ -1480,6 +1599,11 @@ test('native CLI and bounded data-only report submission work end to end', () =>
       assert.equal(submitSecurityReport(JSON.stringify(completed), current, reportPath).accepted, true);
       result = validate();
       assert.equal(result.status, 0, result.stderr);
+      const nativeSummary = readFileSync(summary, 'utf8');
+      assert.equal(nativeSummary, renderReport(validateReport(completed, current)));
+      assert(nativeSummary.includes('| Severity | Status/Fix | Finding | Location | Evidence/Validation/Reason | Confidence |'));
+      assert(nativeSummary.includes('| — | No findings |'));
+      assert(nativeSummary.includes('### Validation'));
       result = invoke('check-report', '--scope', scopePath, '--report', reportPath);
       assert.equal(result.status, 0, result.stderr);
       assert.equal(readFileSync(status, 'utf8'), 'pass\n');

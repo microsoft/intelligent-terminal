@@ -328,6 +328,33 @@ Private logger routing does not sanitize that body. Do not put raw source or
 secrets in the noop completion message; any such exposure is a separate output
 validation issue, not evidence that this logger route provides universal privacy.
 
+### Required public report presentation
+
+Supply structured `findings` and `checks` through `submit-security-report`, not
+free-form Markdown or CLI output. The native shared renderer projects this same
+strict JSON contract into **one `security-summary.md` artifact** at validation
+and final canonical publication handoff. JSON remains authoritative for immutable
+identity, independent source approval, native proof, and fix disposition; no
+second schema or Markdown reparsing is used. The controller reads that canonical
+file directly for the step summary and fork comment, not CLI JSONL or logs.
+
+The mandatory **Findings / results table** uses these columns:
+
+| Severity | Status/Fix | Finding | Location | Evidence/Validation/Reason | Confidence |
+| --- | --- | --- | --- | --- | --- |
+| HIGH, MEDIUM, or LOW | Blocked, proposed, fixed and validated, or advice only | Rule and observed/expected behavior, impact, proposed fix | Path and lines | Source evidence, validation, disposition reason | Independent confidence |
+
+Order HIGH blocking/proposed findings first, HIGH fixed and validated next,
+then MEDIUM advice and LOW advice. Break ties by path, start/end line, rule, and
+finding ID. Keep a literal **No findings** row when empty, source/head identity,
+severity counts, and a separate **Validation table** with every check's actual
+`pass`, `fail`, `skipped`, or `blocked` status and evidence. A skipped check is
+never a pass or a failure. Keep independent source review visible separately.
+Native post-validation alone promotes `proposed` to `fixed`; submission never
+authorizes a Fixed claim. Escape untrusted table text, including pipes and line
+breaks, and reject suspected secrets through the existing validator before
+rendering. A summary sentence or counts table cannot replace the findings rows.
+
 ### Required report limits and final self-check
 
 Keep `summary` to **800 characters maximum**; put traces in findings, not the
