@@ -75,8 +75,14 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         }
         function Set-SidebarHistory {
             param([bool]$Open)
-            $selector = if ($Open) { 'TabHistoryButton' } else { 'HistoryCloseButton' }
-            try { Invoke-UiElement -App $script:app -Selector $selector | Out-Null }
+            try {
+                $name = (Get-UiElement -App $script:app -Selector VerticalTabsHeader).name
+                $expected = if ($Open) { 'Agents' } else { 'Tabs' }
+                if ($name -ne $expected) { Invoke-UiElement -App $script:app -Selector VerticalTabsHeaderButton | Out-Null }
+                Wait-Until -TimeoutSec 10 -Condition {
+                    (Get-UiElement -App $script:app -Selector VerticalTabsHeader).name -eq $expected
+                } | Out-Null
+            }
             catch {
                 Get-UiTree -App $script:app -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'filter-error-ui.txt')
                 throw
@@ -118,10 +124,10 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         }
         function Wait-AgentViewLoaded {
             param([int]$Count)
-            Wait-UiElement -App $script:app -Selector HistorySearchTextBox | Out-Null
+            Wait-UiElement -App $script:app -Selector HistoryHeaderButton | Out-Null
             Wait-UiElement -App $script:app -Selector HistoryLoadingIndicator -Gone | Out-Null
             if ($Count) {
-                Wait-UiElement -App $script:app -Selector HistoryList | Out-Null
+                Wait-UiElement -App $script:app -Selector ItemsList | Out-Null
             }
             else {
                 Wait-UiElement -App $script:app -Selector 'No agent sessions found.' | Out-Null
@@ -129,6 +135,10 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         }
         function Set-SidebarQuery {
             param([string]$Text)
+            $search = Get-UiElement -App $script:app -Selector SearchTextBox
+            if (-not $search -or $search.isOffscreen -or $search.height -le 0) {
+                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            }
             Set-UiValue -App $script:app -Selector SearchTextBox -Value $Text | Out-Null
             (Get-UiValue -App $script:app -Selector SearchTextBox) | Should -Be $Text
         }
@@ -199,7 +209,9 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
 
         $trace = Start-TestTelemetryTrace -Directory (Join-Path $script:root 'capture')
         try {
-            $script:app = Start-Terminal -Package Dev -PassFre $true -Settings @{
+            $script:app = Start-Terminal -Package Dev -PassFre $true -State @{
+                sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+            } -Settings @{
                 language = 'en-US'; tabLayout = 'horizontal'; confirmOnClose = 'never'
                 firstWindowPreference = 'defaultProfile'; startupActions = ''; windowingBehavior = 'useNew'
                 acpAgent = 'custom:sidebar-fixture'; acpCustomCommand = "pwsh -NoProfile -EncodedCommand $encoded"
@@ -342,8 +354,8 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 }
                 Invoke-TelemetryPhase -Name filter-search-edit -Action {
                     $query = 'no-session-' + [guid]::NewGuid().ToString('N')
-                    Set-UiValue -App $script:app -Selector HistorySearchTextBox -Value $query | Out-Null
-                    (Get-UiValue -App $script:app -Selector HistorySearchTextBox) | Should -Be $query
+                    Set-SidebarQuery -Text $query
+                    (Get-UiValue -App $script:app -Selector SearchTextBox) | Should -Be $query
                     try {
                         Wait-Until -TimeoutSec 20 -Because 'the filtered agent view renders its empty-result message after refresh' -Condition {
                             (Get-UiTree -App $script:app -Depth 12) -match
