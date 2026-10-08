@@ -8,6 +8,20 @@ import { captureReviewSummary, readReviewSummary } from '../scripts/performance-
 
 const runtime = fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url));
 
+test('all fresh native repair jobs install and explicitly use Rust 1.93 with rustfmt', () => {
+    const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
+    const validator = fs.readFileSync(new URL('../scripts/run-native-performance-checks.ps1', import.meta.url), 'utf8');
+    const jobs = [...compiled.matchAll(/^  (validate_performance_original_tests|validate_performance_focused_tests|validate_performance_repair):\r?\n([\s\S]*?)(?=^  [a-z_]+:|(?![\s\S]))/gm)];
+    assert.equal(jobs.length, 3);
+    for (const [, name, job] of jobs) {
+        assert.match(job, /runs-on: windows-latest/, name);
+        assert.match(job, /rustup toolchain install 1\.93\.0 --profile minimal --component rustfmt/, name);
+        assert.match(job, /timeout-minutes: 10/, name);
+        assert.ok(job.indexOf('rustup toolchain install') < job.indexOf('-Phase '), name);
+    }
+    assert.match(validator, /\$start\.ArgumentList\.Add\('\+1\.93\.0'\)\s+foreach \(\$argument in \$Arguments\)/);
+});
+
 test('repair report validation belongs to trusted post-processing, not a model-side shell', () => {
     const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
     const agent = fs.readFileSync(new URL('../../../agents/ghaw-pr-performance.agent.md', import.meta.url), 'utf8');

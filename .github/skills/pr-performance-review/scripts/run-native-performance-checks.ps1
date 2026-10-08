@@ -355,7 +355,7 @@ function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireT
     }
     $null = [IO.Directory]::CreateDirectory($cargoHome)
     if ($Arguments[0] -eq 'test') { $null = [IO.Directory]::CreateDirectory($targetDirectory) }
-    Write-Output "${Stage}: cargo $($Arguments -join ' ')"
+    Write-Output "${Stage}: cargo +1.93.0 $($Arguments -join ' ')"
     Write-Output "${Stage}: CARGO_HOME=$cargoHome"
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = (Get-Command cargo -CommandType Application -ErrorAction Stop).Source
@@ -363,6 +363,7 @@ function Invoke-CargoStage([string]$Stage, [string[]]$Arguments, [bool]$RequireT
     $start.UseShellExecute = $false
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
+    $start.ArgumentList.Add('+1.93.0')
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     foreach ($key in @($start.Environment.Keys)) {
         if ($key -match '(?i)(TOKEN|SECRET|PASSWORD|CREDENTIAL|OTLP.*HEADERS|^GITHUB_(ENV|OUTPUT)$)') {

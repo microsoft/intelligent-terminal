@@ -302,6 +302,12 @@ safe-outputs:
           with:
             name: performance-result
             path: '${{ runner.temp }}\performance-proposal'
+        - name: Install explicit native Rust toolchain
+          timeout-minutes: 10
+          shell: pwsh
+          run: |
+            rustup toolchain install 1.93.0 --profile minimal --component rustfmt
+            if ($LASTEXITCODE -ne 0) { throw 'Public Rust 1.93.0 with rustfmt is unavailable.' }
         - name: List the exact test on original HEAD
           timeout-minutes: 32
           working-directory: candidate
@@ -351,6 +357,12 @@ safe-outputs:
           with:
             name: performance-result
             path: '${{ runner.temp }}\performance-proposal'
+        - name: Install explicit native Rust toolchain
+          timeout-minutes: 10
+          shell: pwsh
+          run: |
+            rustup toolchain install 1.93.0 --profile minimal --component rustfmt
+            if ($LASTEXITCODE -ne 0) { throw 'Public Rust 1.93.0 with rustfmt is unavailable.' }
         - name: Format and test the exact focused candidate
           timeout-minutes: 32
           working-directory: candidate
@@ -400,6 +412,12 @@ safe-outputs:
           with:
             name: performance-result
             path: '${{ runner.temp }}\performance-proposal'
+        - name: Install explicit native Rust toolchain
+          timeout-minutes: 10
+          shell: pwsh
+          run: |
+            rustup toolchain install 1.93.0 --profile minimal --component rustfmt
+            if ($LASTEXITCODE -ne 0) { throw 'Public Rust 1.93.0 with rustfmt is unavailable.' }
         - name: Test the exact candidate full suite
           timeout-minutes: 32
           working-directory: candidate

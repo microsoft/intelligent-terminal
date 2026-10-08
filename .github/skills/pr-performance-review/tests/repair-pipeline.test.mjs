@@ -24,6 +24,11 @@ test('sealed HIGH proposal runs real Windows tests and reaches staged CAS public
     fs.writeFileSync(path.join(root, '.gitignore'), '/tools/wta/target/\n');
     fs.writeFileSync(path.join(root, 'tools', 'wta', 'build.rs'), `
 fn main() {
+    let rustc = std::process::Command::new(std::env::var_os("RUSTC").unwrap())
+        .arg("--version").output().unwrap();
+    assert!(rustc.status.success());
+    assert!(String::from_utf8(rustc.stdout).unwrap().starts_with("rustc 1.93.0 "),
+        "native repair must not use the runner's active Rust version");
     if let Ok(phase_root) = std::env::var("PERFORMANCE_PHASE_ROOT") {
         let phase_root = std::path::Path::new(&phase_root);
         let marker = phase_root.join("toolchain-config-marker");
@@ -65,11 +70,11 @@ exit /b 0
             assert_eq!(super::work(1000), 1000);
         } }\n`;
     fs.writeFileSync(sourcePath, baselineSource);
-    const formatFixture = () => execFileSync('cargo', ['fmt', '--manifest-path', path.join(root, 'tools', 'wta', 'Cargo.toml')], {
+    const formatFixture = () => execFileSync('cargo', ['+1.93.0', 'fmt', '--manifest-path', path.join(root, 'tools', 'wta', 'Cargo.toml')], {
         encoding: 'utf8', timeout: 15000,
     });
     formatFixture();
-    execFileSync('cargo', ['generate-lockfile', '--manifest-path', path.join(root, 'tools', 'wta', 'Cargo.toml')], {
+    execFileSync('cargo', ['+1.93.0', 'generate-lockfile', '--manifest-path', path.join(root, 'tools', 'wta', 'Cargo.toml')], {
         encoding: 'utf8', timeout: 15000,
     });
     baselineSource = fs.readFileSync(sourcePath, 'utf8');
@@ -236,11 +241,11 @@ exit /b 0
             phase === 'Focused' ? ['format-check', 'focused-tests'] : ['full-suite']);
     }
     const native = { stdout: nativeOutputs.join('\n') };
-    assert.match(native.stdout, /original-test-listing: cargo test --locked --target x86_64-pc-windows-msvc --manifest-path tools\\wta\\Cargo.toml -- --list/);
+    assert.match(native.stdout, /original-test-listing: cargo \+1\.93\.0 test --locked --target x86_64-pc-windows-msvc --manifest-path tools\\wta\\Cargo.toml -- --list/);
     assert.match(native.stdout, /original HEAD contains tests::work_is_linear: test \(listing only, not a passing test claim\)/);
     assert.ok(native.stdout.indexOf('original-test-listing: cargo') < native.stdout.indexOf('format-check: cargo'));
-    assert.match(native.stdout, /format-check: cargo fmt .* -- --check/);
-    assert.match(native.stdout, /focused-tests: cargo test .* tests::work_is_linear -- --exact\r?$/m);
+    assert.match(native.stdout, /format-check: cargo \+1\.93\.0 fmt .* -- --check/);
+    assert.match(native.stdout, /focused-tests: cargo \+1\.93\.0 test .* tests::work_is_linear -- --exact\r?$/m);
     assert.match(native.stdout, /^test tests::work_is_linear \.\.\. ok\r?$/m);
     assert.match(native.stdout, /focused-tests: 1 native test\(s\) passed/);
     assert.match(native.stdout, /full-suite: 1 native test\(s\) passed/);

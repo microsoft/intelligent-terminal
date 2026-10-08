@@ -236,7 +236,11 @@ changing the sealed proposal in the focused phase. Three parallel read-only
 run the exact focused candidate test, and run the full explicit-target candidate
 suite. Each job checks out immutable HEAD, loads trusted validation code and
 downloads the original sealed artifact independently on a fresh hosted VM
-and installed toolchain. Never import toolchains, caches, native artifacts or
+and installed public Rust 1.93.0 toolchain with rustfmt. Every native Cargo
+command explicitly selects `+1.93.0`, regardless of the runner's active
+toolchain, to preserve the CI language/library version requirement. This
+checks public Rust compatibility, not equivalence to the MSRustup distribution.
+Never import toolchains, caches, native artifacts or
 process state from another phase. Job-end platform cleanup removes descendants;
 directory changes alone are not isolation. Native validation must resolve the exact qualified test in the original
 immutable head and execute it with exact matching; passing an unrelated

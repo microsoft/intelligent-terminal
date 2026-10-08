@@ -94,6 +94,10 @@ duplicate shell validator or renderer. This removes the workflow's dependency
 on the failed agent-side PowerShell route without broadening permissions or
 claiming that the underlying CLI exception is fixed. Native formatting,
 original-test, focused/full-suite and publication checks remain mandatory.
+Each native job independently installs public Rust 1.93.0 with rustfmt and
+explicitly selects it for every Cargo command; the hosted image's active
+toolchain cannot silently raise the repair's language/library requirement.
+This is not proof of equivalence to CI's MSRustup distribution.
 
 ## Additional rule coverage
 
