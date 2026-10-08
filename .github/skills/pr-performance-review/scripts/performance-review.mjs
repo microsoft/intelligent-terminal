@@ -77,7 +77,7 @@ export function createAnalysisPlan(files) {
         rust: { required: rustPaths.length > 0, paths: rustPaths, toolchain: '1.93.0', alias: 'wta-perf-extended',
             configuration: '.cargo/config.toml', scope: 'Entire WTA crate and all targets, not edited lines.' },
         cpp: { required: projects.size > 0, projects: [...projects].sort(), candidatePaths,
-            profile: 'PullRequest', configuration: 'AuditMode', platform: 'x64',
+            profile: 'Extended', configuration: 'AuditMode', platform: 'x64',
             profileProject: 'src/types/lib/types.vcxproj',
             scope: 'ClangTidy on entire selected projects with normal reference/generated-header builds; references are not promised analyzer coverage. No full-solution fallback.',
             callerCoverage: 'Prefix recipes are provisional. Verify translation units with native evaluated ClCompile items; trace headers and callers manually.' },
@@ -90,22 +90,22 @@ export function analysisComparisonComplete(directory, expected) {
     const records = ['BASE', 'HEAD'].map(revision => {
         const record = readJson(path.join(directory, `performance-analysis-${revision}`, 'analysis-metadata.json'));
         validateIdentity(record.identity, expected);
-        if (record.version !== 1 || record.revision !== revision ||
+        if (record.version !== 2 || record.revision !== revision ||
             record.analyzedSha !== expected[revision === 'BASE' ? 'baseSha' : 'headSha'] ||
             !['completed', 'not_applicable'].includes(record.status)) return null;
         if (!record.plan || !Array.isArray(record.checks) || !Array.isArray(record.missingPrerequisites) ||
-            !Array.isArray(record.coveredPaths) || !Array.isArray(record.manualScope) ||
+            !Array.isArray(record.analyzedCppTranslationUnits) || !Array.isArray(record.manualScope) ||
             record.missingPrerequisites.length || record.manualScope.length || record.plan.manualScope?.length ||
             (expected.analysisPlan && JSON.stringify(record.plan) !== JSON.stringify(expected.analysisPlan))) return null;
         const completed = name => record.checks.some(check => check.name === name &&
             check.exitCode === 0 && check.status === 'completed');
-        if (record.plan.rust.required && (!record.analyzedScope?.rust || !completed('rust-analysis'))) return null;
+        if (record.plan.rust.required && (!record.analyzedScope?.wtaRustCrate || !completed('rust-analysis'))) return null;
         if (record.plan.cpp.projects.some((project, index) =>
             !record.analyzedScope?.cppProjects?.includes(project) ||
             !completed(`cpp-items-${index}`) || !completed(`cpp-analysis-${index}`))) return null;
         if (!Array.isArray(record.plan.cpp.candidatePaths) || record.plan.cpp.candidatePaths
             .filter(candidate => /\.(?:c|cc|cpp|cxx|ixx)$/.test(candidate.path))
-            .some(candidate => !record.coveredPaths.some(covered => covered.path === candidate.path &&
+            .some(candidate => !record.analyzedCppTranslationUnits.some(covered => covered.path === candidate.path &&
                 covered.project === candidate.project && covered.membership === 'MSBuild.ClCompile'))) return null;
         if (record.status === 'not_applicable' && (record.plan.rust.required || record.plan.cpp.required)) return null;
         return record;

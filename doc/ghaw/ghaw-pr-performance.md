@@ -124,6 +124,13 @@ the human summary. Missing, partial, failed, or mismatched required analysis
 blocks proposal sealing. Diagnostics are review leads, not proof of impact
 or permission to apply analyzer fix-its.
 
+Coverage metadata is language-specific. Version 2 uses
+`analyzedScope.wtaRustCrate` with a completed zero-exit `rust-analysis` check
+for Rust, and `analyzedCppTranslationUnits` for actual C++ membership.
+An empty C++ list is normal when no C++ project is required; it does not
+indicate missing Rust coverage. Version-1 metadata is rejected rather than
+silently interpreted under the new contract.
+
 Isolated fixtures demonstrate added diagnostics and intentional/negative cases,
 including the known explicitly-dropped-lock false positive. They do not prove
 production speedup, complete project coverage, or better real-PR detection

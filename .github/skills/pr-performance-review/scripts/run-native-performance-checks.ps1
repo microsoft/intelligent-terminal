@@ -19,11 +19,11 @@ $clock = [Diagnostics.Stopwatch]::StartNew()
 $root = [IO.Path]::GetFullPath($RepositoryRoot)
 if ($Phase -eq 'Analysis') {
     $metadata = [ordered]@{
-        version = 1; revision = $Revision; status = 'incomplete'; identity = $null; analyzedSha = $null
+        version = 2; revision = $Revision; status = 'incomplete'; identity = $null; analyzedSha = $null
         authoringSha = $null; plan = $null; commands = @(); tools = [ordered]@{}; missingPrerequisites = @()
         checks = @(); authority = 'Source diagnostics only, not repair validation or publication authority.'
-        analyzedScope = @{ rust = $false; cppProjects = @() }
-        coveredPaths = @(); manualScope = @()
+        analyzedScope = @{ wtaRustCrate = $false; cppProjects = @() }
+        analyzedCppTranslationUnits = @(); manualScope = @()
     }
     $output = [IO.Path]::GetFullPath($OutputDirectory)
     $null = [IO.Directory]::CreateDirectory($output)
@@ -118,7 +118,7 @@ if ($Phase -eq 'Analysis') {
             $metadata.tools.clippy = Invoke-AnalysisCommand 'clippy-version' 'cargo.exe' @('+1.93.0', 'clippy', '--version')
             $null = Invoke-AnalysisCommand 'cargo-fetch' 'cargo.exe' @('+1.93.0', 'fetch', '--locked', '--target', 'x86_64-pc-windows-msvc', '--manifest-path', 'tools\wta\Cargo.toml')
             $null = Invoke-AnalysisCommand 'rust-analysis' 'cargo.exe' @('+1.93.0', 'wta-perf-extended')
-            $metadata.analyzedScope.rust = $true
+            $metadata.analyzedScope.wtaRustCrate = $true
         }
         if ($scope.analysisPlan.cpp.required) {
             $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -170,7 +170,7 @@ if ($Phase -eq 'Analysis') {
                 }
                 $null = Invoke-AnalysisCommand "cpp-analysis-$index" $msbuild ($common + '/t:Build;ClangTidy')
                 $metadata.analyzedScope.cppProjects += $project
-                $metadata.coveredPaths += $verifiedPaths
+                $metadata.analyzedCppTranslationUnits += $verifiedPaths
                 $index++
             }
         }

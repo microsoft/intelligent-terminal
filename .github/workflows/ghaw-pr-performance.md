@@ -149,7 +149,7 @@ jobs:
           $output = Join-Path $env:RUNNER_TEMP "performance-analysis-$env:REVISION"
           New-Item -ItemType Directory -Path $output -Force | Out-Null
           $metadata = [ordered]@{
-            version = 1; revision = $env:REVISION; status = 'incomplete'
+            version = 2; revision = $env:REVISION; status = 'incomplete'
             identity = @{ prNumber = [int]$env:PR_NUMBER; baseSha = $env:BASE_SHA; headSha = $env:HEAD_SHA }
             authoringSha = $env:TRUSTED_SHA
             missingPrerequisites = @('Native checkout or analysis preparation did not complete; inspect GitHub step results.')
@@ -559,12 +559,29 @@ artifacts under `/tmp/gh-aw/performance-analysis` are diagnostic INPUT, never
 proof that a repair passed or permission to publish. Read both fixed
 `analysis-metadata.json` files and raw C++ logs / Cargo JSON diagnostic logs.
 Verify immutable revisions, authoring configuration, tool versions, scope,
-commands and missing prerequisites. Inspect actual metadata `coveredPaths`
-and `manualScope` for each revision.
-Plan `candidatePaths` use provisional prefix recipes, not coverage proof:
-native evaluated MSBuild `ClCompile` membership must establish the owning
-translation units, including imported/conditional exclusions. Added or removed
-source absent from either revision is explicitly partial, never analyzed there.
+commands and missing prerequisites. Require analysis metadata schema version 2;
+an unsupported version is incomplete, never assumed compatible.
+Apply the language-specific scope criteria, not a generic source-file list:
+
+- Rust: when `plan.rust.required` is true, completed crate analysis is recorded
+  by `analyzedScope.wtaRustCrate: true` and a `rust-analysis` check with
+  `status: completed` and `exitCode: 0` in BOTH bound BASE/HEAD records.
+  The trusted Cargo alias analyzes the WTA crate and all targets; it does not
+  enumerate Rust files as C++ translation units.
+- C++: when `plan.cpp.required` is true, inspect metadata
+  `analyzedCppTranslationUnits` and `manualScope`. Plan `candidatePaths` use
+  provisional prefix recipes, not coverage proof: evaluated MSBuild `ClCompile`
+  membership must establish the owning translation units, including imported/
+  conditional exclusions. Source absent from either revision is explicitly
+  partial, never analyzed there.
+- For a Rust-only plan, `plan.cpp.required` is false and the C++ projects,
+  candidate paths and `analyzedCppTranslationUnits` lists are EXPECTED empty.
+  An empty C++ list never blocks a Rust-only repair. Do not apply C++ membership
+  requirements to Rust; use the completed Rust crate/check criteria above.
+
+Require matching revisions/profiles/tools, completed required checks and empty
+`missingPrerequisites`/`manualScope` for both records before considering source
+analysis complete. This establishes input availability only, not repair safety.
 Trace new or worsened warnings in source and affected callers; unchanged
 baseline debt, moved lines and intentional
 explicit lock drops are not automatic findings. Rank real impact and confidence

@@ -73,10 +73,10 @@ test('analysis comparison binds identity, revisions, same trusted plan and tool 
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
     const plan = createAnalysisPlan([{ filename: 'tools/wta/src/main.rs' }]);
     const records = ['BASE', 'HEAD'].map(revision => ({
-        version: 1, identity, revision, analyzedSha: identity[revision === 'BASE' ? 'baseSha' : 'headSha'],
+        version: 2, identity, revision, analyzedSha: identity[revision === 'BASE' ? 'baseSha' : 'headSha'],
         authoringSha: 'c'.repeat(40), plan, tools: { clippy: '1.93.0', cargoConfigurationSha256: 'fixture' }, status: 'completed',
         checks: [{ name: 'rust-analysis', status: 'completed', exitCode: 0 }],
-        analyzedScope: { rust: true, cppProjects: [] }, missingPrerequisites: [], coveredPaths: [], manualScope: [],
+        analyzedScope: { wtaRustCrate: true, cppProjects: [] }, missingPrerequisites: [], analyzedCppTranslationUnits: [], manualScope: [],
     }));
     const write = () => records.forEach(record => {
         const root = path.join(directory, `performance-analysis-${record.revision}`);
@@ -104,6 +104,49 @@ test('analysis comparison binds identity, revisions, same trusted plan and tool 
     assert.throws(() => analysisComparisonComplete(directory, identity), /immutable workflow input/);
 });
 
+test('completed Rust-only crate analysis accepts expected empty C++ units and rejects failed Rust or old metadata', t => {
+    const directory = fs.mkdtempSync(path.join(process.cwd(), '.performance-rust-only-language-scope-'));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const plan = createAnalysisPlan([{ filename: 'tools/wta/src/lib.rs' }]);
+    assert.equal(plan.cpp.required, false);
+    assert.deepEqual(plan.cpp.projects, []);
+    assert.deepEqual(plan.cpp.candidatePaths, []);
+    assert.equal(plan.cpp.profile, 'Extended');
+    const records = ['BASE', 'HEAD'].map(revision => ({
+        version: 2, identity, revision, analyzedSha: identity[revision === 'BASE' ? 'baseSha' : 'headSha'],
+        authoringSha: 'c'.repeat(40), status: 'completed', plan, tools: { clippy: '1.93.0', trustedConfiguration: 'same' },
+        checks: [{ name: 'rust-analysis', status: 'completed', exitCode: 0 }],
+        analyzedScope: { wtaRustCrate: true, cppProjects: [] }, analyzedCppTranslationUnits: [],
+        missingPrerequisites: [], manualScope: [],
+    }));
+    const write = () => records.forEach(record => {
+        const root = path.join(directory, `performance-analysis-${record.revision}`);
+        fs.mkdirSync(root, { recursive: true });
+        fs.writeFileSync(path.join(root, 'analysis-metadata.json'), JSON.stringify(record));
+    });
+    write();
+    const expected = { ...identity, analysisPlan: plan };
+    assert.equal(analysisComparisonComplete(directory, expected), true, 'Rust crate scope is not a C++ file list');
+    for (const record of records) {
+        record.analyzedScope.wtaRustCrate = false; write();
+        assert.equal(analysisComparisonComplete(directory, expected), false);
+        record.analyzedScope.wtaRustCrate = true;
+        record.checks[0] = { name: 'rust-analysis', status: 'failed', exitCode: 101 }; write();
+        assert.equal(analysisComparisonComplete(directory, expected), false);
+        record.checks[0] = { name: 'rust-analysis', status: 'completed', exitCode: 0 };
+        record.version = 1; write();
+        assert.equal(analysisComparisonComplete(directory, expected), false, 'version 1 language-ambiguous metadata is not silently upgraded');
+        record.version = 2;
+    }
+    write();
+    assert.equal(analysisComparisonComplete(directory, expected), true);
+    const prompt = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
+    assert.match(prompt, /analyzedScope\.wtaRustCrate: true/);
+    assert.match(prompt, /analyzedCppTranslationUnits/);
+    assert.match(prompt, /An empty C\+\+ list never blocks a Rust-only repair/);
+    assert.match(prompt, /schema version 2/);
+});
+
 test('library, unit/feature sibling and unlisted C++ paths are only provisional native membership candidates', () => {
     const filenames = ['src/terminal/parser/stateMachine.cpp', 'src/terminal/parser/ut_parser/StateMachineTest.cpp',
         'src/terminal/parser/ft_fuzzer/main.cpp', 'src/terminal/parser/unlisted.cpp'];
@@ -121,11 +164,11 @@ test('successful C++ jobs without actual evaluated TU coverage cannot authorize 
     const project = 'src/terminal/parser/lib/parser.vcxproj';
     const plan = createAnalysisPlan([{ filename: own }, { filename: 'tools/wta/src/main.rs' }]);
     const records = ['BASE', 'HEAD'].map(revision => ({
-        version: 1, identity, revision, analyzedSha: identity[revision === 'BASE' ? 'baseSha' : 'headSha'],
+        version: 2, identity, revision, analyzedSha: identity[revision === 'BASE' ? 'baseSha' : 'headSha'],
         authoringSha: 'c'.repeat(40), plan, status: 'completed', tools: { native: 'fixture' },
         checks: ['rust-analysis', 'cpp-items-0', 'cpp-analysis-0'].map(name => ({ name, status: 'completed', exitCode: 0 })),
-        analyzedScope: { rust: true, cppProjects: [project] }, missingPrerequisites: [], manualScope: [],
-        coveredPaths: [{ path: own, project, membership: 'MSBuild.ClCompile' }],
+        analyzedScope: { wtaRustCrate: true, cppProjects: [project] }, missingPrerequisites: [], manualScope: [],
+        analyzedCppTranslationUnits: [{ path: own, project, membership: 'MSBuild.ClCompile' }],
     }));
     const write = () => records.forEach(record => {
         const root = path.join(directory, `performance-analysis-${record.revision}`);
@@ -134,9 +177,9 @@ test('successful C++ jobs without actual evaluated TU coverage cannot authorize 
     });
     write();
     assert.equal(analysisComparisonComplete(directory, { ...identity, analysisPlan: plan }), true);
-    records[1].coveredPaths = []; write();
+    records[1].analyzedCppTranslationUnits = []; write();
     assert.equal(analysisComparisonComplete(directory, identity), false, 'passing project checks cannot cover an unverified TU');
-    records[1].coveredPaths = records[0].coveredPaths;
+    records[1].analyzedCppTranslationUnits = records[0].analyzedCppTranslationUnits;
     records[1].checks = records[1].checks.filter(check => check.name !== 'cpp-items-0'); write();
     assert.equal(analysisComparisonComplete(directory, identity), false, 'native item evaluation must actually complete');
     records[1].checks = records[0].checks;

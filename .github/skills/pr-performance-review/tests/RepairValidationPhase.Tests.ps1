@@ -96,7 +96,8 @@ pub mod intentional_false_positive {
             throw "Real Rust $revision analysis failed: $failure"
         }
         $record = Get-Content (Join-Path $out 'analysis-metadata.json') -Raw | ConvertFrom-Json
-        if ($record.status -cne 'completed' -or $record.analyzedSha -cne $sha -or -not $record.analyzedScope.rust) {
+        if ($record.version -ne 2 -or $record.status -cne 'completed' -or $record.analyzedSha -cne $sha -or
+            -not $record.analyzedScope.wtaRustCrate -or $record.analyzedCppTranslationUnits.Count -ne 0) {
             throw 'Real source-analysis metadata did not bind complete immutable scope.'
         }
         $records += $record
@@ -309,8 +310,8 @@ std::vector<int> negative(const int count)
         $combined = $log + $errorLog
         if ($record.status -ne 'completed' -or $record.analyzedSha -cne $sha -or
             $record.analyzedScope.cppProjects -cnotcontains 'src/types/lib/types.vcxproj' -or
-            $record.coveredPaths.path -cnotcontains 'src/types/lib/fixture.cpp' -or
-            $record.coveredPaths.path -cnotcontains 'src/types/lib/imported.cpp' -or
+            $record.analyzedCppTranslationUnits.path -cnotcontains 'src/types/lib/fixture.cpp' -or
+            $record.analyzedCppTranslationUnits.path -cnotcontains 'src/types/lib/imported.cpp' -or
             $combined -notmatch 'fixture\.cpp:7:9: warning:.*\[performance-inefficient-vector-operation\]' -or
             $combined -match 'fixture\.cpp:17:9: warning:.*\[performance-inefficient-vector-operation\]') {
             throw 'C++ positive/negative fixture did not validate full project native diagnostics.'
@@ -353,12 +354,12 @@ std::vector<int> negative(const int count)
         if ($record.status -cne 'partial') { throw 'Successful project analysis falsely claimed coverage for uncompiled paths.' }
         foreach ($relative in $uncompiled + 'introduced.cpp') {
             $path = 'src/types/lib/' + $relative.Replace('\', '/')
-            if (@($record.coveredPaths | Where-Object { $_.path -ceq $path }).Count -gt 0 -or
+            if (@($record.analyzedCppTranslationUnits | Where-Object { $_.path -ceq $path }).Count -gt 0 -or
                 @($record.manualScope | Where-Object { $_.path -ceq $path }).Count -ne 1) {
                 throw "Native ClCompile membership did not mark $path as uncovered/manual at $revision."
             }
         }
-        $removed = @($record.coveredPaths | Where-Object { $_.path -ceq 'src/types/lib/removed.cpp' })
+        $removed = @($record.analyzedCppTranslationUnits | Where-Object { $_.path -ceq 'src/types/lib/removed.cpp' })
         if ($revision -eq 'BASE' -and $removed.Count -ne 1) { throw 'Existing BASE removed TU lost its genuine native coverage.' }
         if ($revision -eq 'HEAD' -and ($removed.Count -ne 0 -or
             @($record.manualScope | Where-Object { $_.path -ceq 'src/types/lib/removed.cpp' -and $_.reason -match 'absent at HEAD' }).Count -ne 1)) {

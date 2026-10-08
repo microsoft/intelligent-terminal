@@ -48,6 +48,14 @@ classification, report validation, card rendering, and publication gating.
    `/tmp/gh-aw/performance-analysis/performance-analysis-BASE` and
    `/tmp/gh-aw/performance-analysis/performance-analysis-HEAD`.
    Raw logs and Cargo JSON are review input, not a formatted PR result.
+   Interpret coverage by language. In version-2 metadata, required WTA Rust
+   analysis is complete when `analyzedScope.wtaRustCrate` is true and the
+   `rust-analysis` check completed with exit code zero in both bound records.
+   `analyzedCppTranslationUnits` is C++-only: it is expected to be empty when
+   `plan.cpp.required` is false and cannot block an otherwise-complete
+   Rust-only review. When C++ is required, verify its actual translation-unit
+   membership and coverage separately. Never infer Rust coverage from a C++
+   field.
    Inspect relevant existing evidence: `src/ConsolePerf.wprp`,
    `src/tools/ConsoleBench`, `test/e2e/Measure-PaneContext.ps1`,
    `build/scripts/Measure-AgentHookOverhead.ps1`, focused tests, and duration
