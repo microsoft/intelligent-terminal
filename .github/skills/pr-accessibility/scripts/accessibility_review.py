@@ -428,6 +428,12 @@ def _validate_signal_coverage(prepared: dict[str, Any], report: dict[str, Any], 
         signal = prepared_by_id.get(stable_id)
         if signal and (item.get("file") != signal.get("file") or item.get("line") != signal.get("line")):
             errors.append(f"{stable_id}: reported signal location must match its prepared source location")
+        if signal and signal.get("severity") == "HIGH" and item.get("severity") != "HIGH":
+            errors.append(
+                f"{stable_id}: prepared HIGH signal requires HIGH severity or an explicit explained dismissal"
+            )
+        if signal and "rule" in item and item["rule"] != signal.get("rule"):
+            errors.append(f"{stable_id}: reported rule must match its prepared signal")
         finding_ids.add(stable_id)
 
     dismissals = report.get("dismissed_signals", [])

@@ -88,6 +88,8 @@ jobs:
             throw 'The test host recipe contains no framework dependencies.'
           }
           Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $expectedFrameworks = @('Microsoft.UI.Xaml.2.8', 'Microsoft.VCLibs.140.00.Debug')
+          $expectedPublisher = 'CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US'
           foreach ($dependency in $dependencies) {
             $archive = [IO.Compression.ZipFile]::OpenRead($dependency.FullName)
             try {
@@ -97,6 +99,12 @@ jobs:
               try { [xml]$framework = $reader.ReadToEnd() } finally { $reader.Dispose() }
             } finally { $archive.Dispose() }
             $identity = $framework.Package.Identity
+            if ($identity.Name -notin $expectedFrameworks -or
+                $identity.Publisher -ne $expectedPublisher -or
+                $identity.ProcessorArchitecture -ne 'x64' -or
+                -not [Xml.XmlConvert]::ToBoolean([string]$framework.Package.Properties.Framework)) {
+              throw "Recipe dependency is not an expected Microsoft x64 test host framework: $dependency"
+            }
             $installed = @(Get-AppxPackage -Name $identity.Name | Where-Object {
               $_.Architecture -eq $identity.ProcessorArchitecture -and
               [version]$_.Version -ge [version]$identity.Version -and

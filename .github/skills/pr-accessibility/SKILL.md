@@ -158,7 +158,10 @@ not invent severities or dispositions outside the caller's enum.
 Every prepared signal must be accounted for: preserve its stable ID in an
 actual finding, or explain its dismissal separately in `dismissed_signals`
 with specific repository `reason` and `evidence`. No duplicate, unknown,
-unexplained, or silently omitted signal is permitted. The trusted gate checks
+unexplained, or silently omitted signal is permitted. Do not downgrade a prepared
+HIGH under its original ID: explain a false-positive dismissal explicitly, then
+use a distinct ID for any independent lower-severity finding. Confidence remains
+independent of severity. The trusted gate checks
 coverage, not the semantic truth of a model's dismissal. Put only
 actually executed checks in `validation`, using the caller's required object
 shape; describe unavailable checks in `runtime_checks`, never as validation

@@ -78,6 +78,9 @@ Every prepared static signal is also accounted for by stable ID: an actual
 finding or a separately explained false positive in `dismissed_signals`.
 Coverage is deterministic; dismissal reasoning remains model/domain judgment,
 not a new script engine or proof that the source has no accessibility defect.
+Prepared HIGH signals cannot be silently downgraded under their original ID.
+False positives require an explained dismissal; independent advice uses its
+own ID. Confidence remains independent from severity.
 A separate post-step queries the
 current PR head immediately before safe-output publication. Workflow
 concurrency and that freshness check narrow, but cannot eliminate, the
@@ -245,8 +248,11 @@ rather than accepting successful step exit codes alone. The build and scan
 still share a runner: this is smoke evidence, not tamper-resistant attestation
 against hostile candidate build code. It must never authorize a runtime repair.
 
-The native job installs the framework packages listed in the generated
-TestHostApp appx recipe using the existing build helper and Windows PowerShell.
+The native job resolves the generated TestHostApp appx recipe using the existing
+build helper and Windows PowerShell. Before installation, it checks Microsoft
+publisher identity, x64 architecture, framework type, and the expected WinUI
+2.8/VCLibs Debug package names. This constrains the harness's package selection;
+it does not sandbox the preceding candidate-controlled build.
 The harness checks required x64 package identities/versions for the activating
 user, input-desktop access, and matching host/scanner user sessions. These are
 fail-closed prerequisites, not evidence that every hosted Windows image provides

@@ -361,6 +361,34 @@ class PrepareIntegrationTests(unittest.TestCase):
 
 
 class ValidationTests(unittest.TestCase):
+    def test_prepared_high_signal_cannot_be_silently_downgraded(self):
+        for severity, disposition in (("MEDIUM", "advice"), ("LOW", "skipped")):
+            with self.subTest(severity=severity):
+                with self.assertRaisesRegex(ValueError, "prepared HIGH signal requires HIGH severity"):
+                    MODULE.validate(
+                        self.root, self.head, self.head, True, self.prepared,
+                        self.report([self.finding(severity=severity, disposition=disposition)]),
+                    )
+
+    def test_false_positive_high_dismissal_allows_independent_advice(self):
+        dismissal = [{
+            "stable_id": "AX-HIGH-1",
+            "reason": "The original raw-view signal concerns a decorative duplicate, not the accessible primary operation.",
+            "evidence": "The inspected companion control exposes the same operation and preserves keyboard activation.",
+        }]
+        MODULE.validate(
+            self.root, self.head, self.head, True, self.prepared,
+            self.report([self.finding(stable_id="AX-ADVICE-1", severity="MEDIUM", disposition="advice")],
+                        dismissed_signals=dismissal),
+        )
+
+    def test_prepared_signal_rule_cannot_be_rewritten(self):
+        with self.assertRaisesRegex(ValueError, "reported rule must match"):
+            MODULE.validate(
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding(disposition="remaining", rule="AXSTATIC002")]),
+            )
+
     def test_prepared_signal_id_cannot_be_reused_at_an_unrelated_location(self):
         with self.assertRaisesRegex(ValueError, "reported signal location must match"):
             MODULE.validate(
@@ -980,7 +1008,9 @@ class ValidationTests(unittest.TestCase):
         summary = io.StringIO()
         with contextlib.redirect_stdout(summary):
             MODULE.validate(
-                self.root, self.head, self.head, True, self.prepared, self.report([finding])
+                self.root, self.head, self.head, True, self.prepared,
+                self.report([self.finding(disposition="remaining"),
+                             {**finding, "stable_id": "AX-ADVICE-1"}])
             )
         for detail in ("Advisory findings", finding["file"], finding["observed"], finding["expected"],
                        finding["evidence"], finding["proposed_fix"]):
