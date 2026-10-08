@@ -1,10 +1,10 @@
-//! Windows clipboard image reader for the agent-pane **Alt+V** image paste
+//! Windows clipboard image reader for agent-pane paste, including **Alt+V**
 //! (issue #211).
 //!
 //! `wta-helper` is a real Win32 process hosted in a conpty pane, so it can read
 //! the OS clipboard directly. crossterm only ever delivers *text* paste events,
 //! so the image path is handled out-of-band here, on demand, when the user
-//! presses Alt+V.
+//! pastes into the agent pane.
 //!
 //! The result is an encoded image ready to drop into an ACP
 //! `ContentBlock::Image` (`data` = standard base64, `mime_type` = IANA type).
@@ -167,7 +167,12 @@ pub(crate) fn image_from_path(path: &std::path::Path) -> Option<PastedImage> {
 #[cfg(windows)]
 unsafe fn read_clipboard_image_win() -> Option<PastedImage> {
     let _guard = ClipboardGuard::open()?;
+    read_image_from_open_clipboard()
+}
 
+/// The caller must hold the clipboard open until this read completes.
+#[cfg(windows)]
+pub(crate) unsafe fn read_image_from_open_clipboard() -> Option<PastedImage> {
     // 1. A copied image *file* (CF_HDROP).
     if let Some(path) = crate::win32::clipboard_file_path_from_open_clipboard() {
         if let Some(img) = image_from_path(&path) {

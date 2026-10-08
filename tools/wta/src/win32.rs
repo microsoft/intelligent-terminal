@@ -4,6 +4,33 @@
 #[cfg(windows)]
 use std::io;
 
+#[derive(Debug)]
+pub(crate) enum ClipboardPaste {
+    Text(String),
+    Image(crate::clipboard_image::PastedImage),
+}
+
+/// Prefer an image attachment, falling back to ordinary text or a file path.
+#[cfg(windows)]
+pub(crate) fn read_agent_paste_from_clipboard() -> io::Result<ClipboardPaste> {
+    let _guard = ClipboardGuard::open()?;
+    // Both reads share one clipboard lock so the payload cannot change between formats.
+    unsafe {
+        if let Some(image) = crate::clipboard_image::read_image_from_open_clipboard() {
+            return Ok(ClipboardPaste::Image(image));
+        }
+        Ok(ClipboardPaste::Text(read_paste_string_from_open_clipboard()))
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn read_agent_paste_from_clipboard() -> std::io::Result<ClipboardPaste> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "clipboard is only supported on Windows",
+    ))
+}
+
 #[cfg(windows)]
 struct ClipboardGuard;
 
@@ -89,15 +116,20 @@ pub(crate) fn copy_text_to_clipboard(_text: &str) -> std::io::Result<()> {
 }
 
 /// Read text suitable for paste from the Windows clipboard.
-#[cfg(windows)]
+#[cfg(all(test, windows))]
 pub(crate) fn read_paste_string_from_clipboard() -> io::Result<String> {
+    let _guard = ClipboardGuard::open()?;
+    Ok(unsafe { read_paste_string_from_open_clipboard() })
+}
+
+#[cfg(windows)]
+unsafe fn read_paste_string_from_open_clipboard() -> String {
     use windows_sys::Win32::System::DataExchange::{GetClipboardData, IsClipboardFormatAvailable};
     use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
 
     const CF_UNICODETEXT: u32 = 13;
     const MAX_CLIPBOARD_TEXT_BYTES: usize = 4 * 1024 * 1024;
 
-    let _guard = ClipboardGuard::open()?;
     unsafe {
         if IsClipboardFormatAvailable(CF_UNICODETEXT) != 0 {
             let handle = GetClipboardData(CF_UNICODETEXT);
@@ -115,21 +147,21 @@ pub(crate) fn read_paste_string_from_clipboard() -> io::Result<String> {
                         let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
                         let text = String::from_utf16_lossy(&units[..end]);
                         GlobalUnlock(handle);
-                        return Ok(text);
+                        return text;
                     }
                 }
             }
         }
 
         if let Some(path) = clipboard_file_path_from_open_clipboard() {
-            return Ok(path.to_string_lossy().into_owned());
+            return path.to_string_lossy().into_owned();
         }
 
-        Ok(String::new())
+        String::new()
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(all(test, not(windows)))]
 pub(crate) fn read_paste_string_from_clipboard() -> std::io::Result<String> {
     Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,

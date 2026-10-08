@@ -287,6 +287,9 @@ the view clamps to surviving content.
 |-----|--------|
 | Type + Enter | Send prompt to agent |
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
+| Ctrl+V / configured Paste shortcut | Paste text or attach a clipboard image to the chat draft |
+| Right-click | Copy selected text; otherwise paste text or a clipboard image |
+| Alt+V | Attach a clipboard image to the chat draft |
 | Ctrl+Z | Undo the latest edit in the focused chat draft |
 | Ctrl+Y | Redo an undone edit in the focused chat draft |
 | Up / Down | Browse prompt input history |
@@ -302,6 +305,12 @@ the view clamps to surviving content.
 | Shift+PageUp/Down | Scroll debug panel |
 | Y / N | Quick allow/reject on permission dialog |
 | Up / Down / Enter | Navigate permission options |
+
+Image paste accepts screenshots and copied image files. Images appear as inline
+attachment tokens and are sent with the next prompt, not immediately. The agent
+must advertise image support; otherwise the pane shows a warning and leaves the
+draft unchanged. Ordinary text and non-image file paths retain their paste
+behavior. Alt+V remains an image-only shortcut.
 
 Draft undo groups contiguous typing; paste, cut, selection replacement, deletion,
 and idle draft clearing are separate edits. Cursor, selection, focus, and view

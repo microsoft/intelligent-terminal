@@ -390,7 +390,7 @@ fn agent_paste_text_inserts_into_owner_chat_input_without_submitting() {
     let pasted = format!("{}\r\n{}", "alpha", "beta");
     let expected = ["alpha", "beta"].join("\n");
 
-    app.insert_agent_paste_text("tab-a", 0, &pasted);
+    app.insert_agent_paste("tab-a", 0, ClipboardPaste::Text(pasted));
 
     let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
     assert_eq!(tab.input, expected);
@@ -415,12 +415,196 @@ fn agent_paste_text_inserts_at_cursor() {
         tab.paste_pending = true;
     }
 
-    app.insert_agent_paste_text("tab-a", 0, "X\nY");
+    app.insert_agent_paste("tab-a", 0, ClipboardPaste::Text("X\nY".into()));
 
     let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
     assert_eq!(tab.input, "aX\nYb");
     assert_eq!(tab.cursor_pos, "aX\nY".len());
     assert!(!tab.paste_pending);
+}
+
+#[cfg(windows)]
+#[tokio::test(flavor = "current_thread")]
+async fn agent_paste_screenshot_attaches_image_through_default_paste_request() {
+    let _locale = crate::test_support::lock_locale();
+    let _clipboard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let dib = crate::clipboard_image::sample_screenshot_dib();
+    assert!(
+        unsafe { crate::clipboard_image::set_clipboard_dib(&dib) },
+        "the live clipboard must be available to prove image paste"
+    );
+    let expected = crate::clipboard_image::read_clipboard_image().unwrap();
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut app = test_app();
+            app.window_id = Some("w1".into());
+            app.owner_tab_id = Some("tab-a".into());
+            app.tab_id = Some("tab-a".into());
+            app.pane_id = Some("pane-a".into());
+            app.agent_supports_image = true;
+            app.state = ConnectionState::Connected;
+            app.tab_mut("tab-a").pane_open = true;
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            app.event_tx = Some(tx);
+            let (prompt_tx, mut prompts) = tokio::sync::mpsc::unbounded_channel();
+            app.prompt_tx = prompt_tx;
+
+            app.handle_event(AppEvent::WtEvent {
+                method: "agent_paste_text".into(),
+                pane_id: String::new(),
+                tab_id: Some("tab-a".into()),
+                params: agent_paste_params("w1", "tab-a"),
+            });
+            assert!(app.current_tab().paste_pending);
+            let completion = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+                .await
+                .expect("clipboard read must finish")
+                .expect("clipboard read must publish its result");
+            app.handle_event(completion);
+
+            let tab = app.current_tab();
+            assert!(!tab.paste_pending);
+            assert_eq!(tab.input, "[image: image-1.png]");
+            assert!(
+                prompts.try_recv().is_err(),
+                "paste must not submit a prompt"
+            );
+            app.current_tab_mut().insert_input_str("describe this");
+            app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            let prompt = prompts
+                .try_recv()
+                .expect("Enter must submit the attachment");
+            assert_eq!(prompt.text, "describe this");
+            assert_eq!(prompt.images, vec![expected]);
+            assert!(app.current_tab().input.is_empty());
+            assert!(app.current_tab().attachments.is_empty());
+        })
+        .await;
+}
+
+#[test]
+fn agent_paste_image_replaces_selection_and_supports_undo_redo() {
+    let mut app = test_app();
+    app.agent_supports_image = true;
+    let tab = app.tab_mut("tab-a");
+    tab.pane_open = true;
+    tab.insert_input_str("replace me");
+    tab.select_all_input();
+    tab.paste_pending = true;
+    tab.paste_generation = 1;
+    let image = crate::clipboard_image::PastedImage {
+        data_base64: "AAA=".into(),
+        mime_type: "image/png".into(),
+        label: "screenshot".into(),
+    };
+
+    app.handle_event(AppEvent::AgentPasteReady {
+        tab_id: "tab-a".into(),
+        generation: 1,
+        content: ClipboardPaste::Image(image.clone()),
+    });
+
+    let tab = app.tab_mut("tab-a");
+    assert_eq!(tab.input, "[image: image-1.png]");
+    assert_eq!(tab.attachments.images().collect::<Vec<_>>(), vec![&image]);
+    assert!(!tab.paste_pending);
+    tab.undo_input();
+    assert_eq!(tab.input, "replace me");
+    assert!(tab.input_all_selected);
+    assert!(tab.attachments.is_empty());
+    tab.redo_input();
+    assert_eq!(tab.input, "[image: image-1.png]");
+    assert_eq!(tab.attachments.images().collect::<Vec<_>>(), vec![&image]);
+}
+
+#[test]
+fn agent_paste_image_without_capability_warns_without_changing_draft() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.agent_supports_image = false;
+    let tab = app.tab_mut("tab-a");
+    tab.pane_open = true;
+    tab.insert_input_str("keep me");
+    tab.select_all_input();
+    tab.paste_pending = true;
+
+    app.handle_event(AppEvent::AgentPasteReady {
+        tab_id: "tab-a".into(),
+        generation: 0,
+        content: ClipboardPaste::Image(crate::clipboard_image::PastedImage {
+            data_base64: "AAA=".into(),
+            mime_type: "image/png".into(),
+            label: "screenshot".into(),
+        }),
+    });
+
+    let tab = app.tab_sessions.get("tab-a").unwrap();
+    assert_eq!(tab.input, "keep me");
+    assert!(tab.input_all_selected);
+    assert!(tab.attachments.is_empty());
+    assert!(!tab.paste_pending);
+    let warning = t!("system.image_not_supported").into_owned();
+    assert!(tab.messages.iter().any(|message| matches!(
+        message,
+        ChatMessage::Notice { kind: NoticeKind::Warning, text } if *text == warning
+    )));
+}
+
+#[test]
+fn agent_paste_image_respects_generation_mode_pane_and_input_focus() {
+    for blocked_by in ["stale", "auth", "stashed", "agents", "picker"] {
+        let mut app = test_app();
+        app.agent_supports_image = true;
+        let tab = app.tab_mut("tab-a");
+        tab.pane_open = blocked_by != "stashed";
+        tab.paste_generation = 2;
+        tab.paste_pending = true;
+        tab.current_view = if blocked_by == "agents" {
+            View::Agents
+        } else {
+            View::Chat
+        };
+        tab.model_picker_open = blocked_by == "picker";
+        if blocked_by == "auth" {
+            app.mode = AppMode::Auth;
+        }
+
+        app.handle_event(AppEvent::AgentPasteReady {
+            tab_id: "tab-a".into(),
+            generation: if blocked_by == "stale" { 1 } else { 2 },
+            content: ClipboardPaste::Image(crate::clipboard_image::PastedImage {
+                data_base64: "AAA=".into(),
+                mime_type: "image/png".into(),
+                label: "screenshot".into(),
+            }),
+        });
+
+        let tab = app.tab_sessions.get("tab-a").unwrap();
+        assert!(tab.input.is_empty(), "{blocked_by}");
+        assert!(tab.attachments.is_empty(), "{blocked_by}");
+        assert_eq!(tab.paste_pending, blocked_by == "stale", "{blocked_by}");
+        assert!(
+            app.current_tab().attachments.is_empty(),
+            "must not paste into a different tab"
+        );
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn agent_paste_clipboard_reader_preserves_ordinary_text() {
+    let _clipboard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let text = "alpha\r\nbeta\t\u{4e2d}";
+    crate::win32::copy_text_to_clipboard(text).expect("clipboard must be writable");
+    match crate::win32::read_agent_paste_from_clipboard().expect("clipboard must be readable") {
+        ClipboardPaste::Text(pasted) => assert_eq!(pasted, text),
+        ClipboardPaste::Image(_) => panic!("ordinary text must not become an image attachment"),
+    }
 }
 
 #[test]
@@ -500,7 +684,7 @@ fn agent_paste_text_ignores_non_chat_or_non_live_input() {
     app.tab_mut("tab-a").pane_open = true;
     app.tab_mut("tab-a").current_view = View::Agents;
 
-    app.insert_agent_paste_text("tab-a", 0, "hidden");
+    app.insert_agent_paste("tab-a", 0, ClipboardPaste::Text("hidden".into()));
     assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
 
     app.tab_mut("tab-a").current_view = View::Chat;
@@ -512,7 +696,7 @@ fn agent_paste_text_ignores_non_chat_or_non_live_input() {
     });
     app.tab_mut("tab-a").selected_completed_turn_idx = Some(0);
 
-    app.insert_agent_paste_text("tab-a", 0, "locked");
+    app.insert_agent_paste("tab-a", 0, ClipboardPaste::Text("locked".into()));
     assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
 }
 
@@ -561,7 +745,7 @@ fn agent_paste_failure_clears_pending_state() {
     app.tab_mut("tab-a").paste_pending = true;
     app.tab_mut("tab-a").paste_generation = 1;
 
-    app.handle_event(AppEvent::AgentPasteTextFailed {
+    app.handle_event(AppEvent::AgentPasteFailed {
         tab_id: "tab-a".into(),
         generation: 1,
         error: "clipboard busy".into(),
@@ -577,10 +761,10 @@ fn stale_agent_paste_completion_is_ignored() {
     app.tab_mut("tab-a").paste_pending = true;
     app.tab_mut("tab-a").paste_generation = 2;
 
-    app.handle_event(AppEvent::AgentPasteTextReady {
+    app.handle_event(AppEvent::AgentPasteReady {
         tab_id: "tab-a".into(),
         generation: 1,
-        text: "stale".into(),
+        content: ClipboardPaste::Text("stale".into()),
     });
 
     let tab = app.tab_sessions.get("tab-a").unwrap();
@@ -614,10 +798,10 @@ fn agent_paste_completion_is_ignored_after_pane_is_stashed() {
     assert!(!tab.paste_pending);
     assert_eq!(tab.paste_generation, 2);
 
-    app.handle_event(AppEvent::AgentPasteTextReady {
+    app.handle_event(AppEvent::AgentPasteReady {
         tab_id: "tab-a".into(),
         generation: 1,
-        text: "hidden".into(),
+        content: ClipboardPaste::Text("hidden".into()),
     });
 
     let tab = app.tab_sessions.get("tab-a").unwrap();
@@ -640,10 +824,10 @@ fn tab_rename_invalidates_pending_agent_paste() {
     assert!(!tab.paste_pending);
     assert_eq!(tab.paste_generation, 8);
 
-    app.handle_event(AppEvent::AgentPasteTextReady {
+    app.handle_event(AppEvent::AgentPasteReady {
         tab_id: "AAAA".into(),
         generation: 7,
-        text: "stale".into(),
+        content: ClipboardPaste::Text("stale".into()),
     });
     assert!(app.tab_sessions.get("BBBB").unwrap().input.is_empty());
 }
@@ -15119,7 +15303,11 @@ mod input_undo_tests {
         let mut app = test_app();
         app.current_tab_mut().pane_open = true;
         app.current_tab_mut().paste_pending = true;
-        app.insert_agent_paste_text(DEFAULT_TAB_ID, 0, concat!("\u{4e2d}", "\r\n", "caf\u{e9}"));
+        app.insert_agent_paste(
+            DEFAULT_TAB_ID,
+            0,
+            ClipboardPaste::Text(concat!("\u{4e2d}", "\r\n", "caf\u{e9}").into()),
+        );
         let expected = concat!("\u{4e2d}", "\n", "caf\u{e9}");
         assert_eq!(app.current_tab().input, expected);
         undo(&mut app);
@@ -15139,7 +15327,7 @@ mod input_undo_tests {
         type_text(&mut app, "draft");
         app.current_tab_mut().pane_open = true;
         app.current_tab_mut().paste_generation = 2;
-        app.insert_agent_paste_text(DEFAULT_TAB_ID, 1, "stale");
+        app.insert_agent_paste(DEFAULT_TAB_ID, 1, ClipboardPaste::Text("stale".into()));
         undo(&mut app);
         assert!(app.current_tab().input.is_empty());
         redo(&mut app);
@@ -15675,7 +15863,11 @@ fn input_selection_paste_replaces_draft_without_submitting() {
         KeyModifiers::CONTROL,
     )));
     app.current_tab_mut().paste_pending = true;
-    app.insert_agent_paste_text(DEFAULT_TAB_ID, 0, "new\r\n\u{4e2d}");
+    app.insert_agent_paste(
+        DEFAULT_TAB_ID,
+        0,
+        ClipboardPaste::Text("new\r\n\u{4e2d}".into()),
+    );
     assert_eq!(app.current_tab().input, "new\n\u{4e2d}");
     assert_eq!(app.current_tab().cursor_pos, app.current_tab().input.len());
     assert!(app.current_tab().turn.is_idle());

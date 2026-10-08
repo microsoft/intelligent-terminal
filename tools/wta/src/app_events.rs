@@ -764,14 +764,14 @@ impl App {
                     self.text_selection.handle_mouse(mouse);
                 }
             },
-            AppEvent::AgentPasteTextReady {
+            AppEvent::AgentPasteReady {
                 tab_id,
                 generation,
-                text,
+                content,
             } => {
-                self.insert_agent_paste_text(&tab_id, generation, &text);
+                self.insert_agent_paste(&tab_id, generation, content);
             }
-            AppEvent::AgentPasteTextFailed {
+            AppEvent::AgentPasteFailed {
                 tab_id,
                 generation,
                 error,
@@ -786,7 +786,7 @@ impl App {
                     target: "agent_paste",
                     tab_id = %tab_id,
                     error = %error,
-                    "failed to read text from clipboard"
+                    "failed to read agent paste from clipboard"
                 );
             }
             AppEvent::Tick => {
@@ -2949,7 +2949,7 @@ impl App {
                 }
 
                 if method == "agent_paste_text" {
-                    self.handle_agent_paste_text(&params);
+                    self.handle_agent_paste_request(&params);
                     return;
                 }
 
