@@ -154,7 +154,7 @@ disposition. Preserve prepared deterministic IDs when they apply. Derive new IDs
 from rule, normalized path, line, and normalized evidence.
 
 Emit only actual findings. Do not serialize false positives as findings and do
-not invent severities or dispositions outside the caller's enum. Put only
+not invent severities or dispositions outside the caller's enum.
 Every prepared signal must be accounted for: preserve its stable ID in an
 actual finding, or explain its dismissal separately in `dismissed_signals`
 with specific repository `reason` and `evidence`. No duplicate, unknown,
@@ -165,6 +165,13 @@ shape; describe unavailable checks in `runtime_checks`, never as validation
 strings. For a proposed trusted static repair, leave `validation` empty. The
 native gate rejects model-authored PASS claims, verifies the complete candidate
 against its recipe, and adds the trusted attestation itself.
+
+When the caller requests a human-readable Markdown summary, write it directly
+using its template. Keep the outcome in prose and actual results in a table:
+HIGH before MEDIUM before LOW, unresolved HIGH before fixed HIGH. Explain each
+blocker and the specific change, decision, or runtime check needed from a human.
+Keep it consistent with the structured report; do not claim publication or
+native-job success that the source agent cannot observe.
 
 Keep runtime prerequisites separate from findings. Do not turn unavailable
 native evidence into success. Make reruns idempotent and avoid duplicate

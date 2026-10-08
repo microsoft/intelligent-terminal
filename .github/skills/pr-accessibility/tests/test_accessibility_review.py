@@ -756,6 +756,38 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual("PASS", validation[0]["result"])
         self.assertEqual("exact-candidate", validation[0]["scope"])
 
+    def test_agent_markdown_summary_is_not_parsed_as_a_verdict(self):
+        summary = self.workspace / "summary.md"
+        summary.write_text("## Source review\n\n- No automatic repair requested.\n", encoding="utf-8")
+        MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                        self.report(), summary_path=summary)
+
+    def test_agent_summary_must_be_present_nonempty_utf8_and_bounded(self):
+        summary = self.workspace / "summary.md"
+        with self.assertRaisesRegex(ValueError, "agent summary verification failed"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                            self.report(), summary_path=summary)
+        for content in (b"", b" \n\t", b"\xff", b"x" * (32 * 1024 + 1)):
+            with self.subTest(content_length=len(content)):
+                summary.write_bytes(content)
+                with self.assertRaisesRegex(ValueError, "agent summary verification failed"):
+                    MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                                    self.report(), summary_path=summary)
+
+    def test_agent_summary_symlink_is_rejected(self):
+        target = self.workspace / "narrative.md"
+        target.write_text("## Outcome\nReview complete.\n", encoding="utf-8")
+        summary = self.workspace / "summary.md"
+        try:
+            summary.symlink_to(target)
+        except OSError as error:
+            if os.name == "nt" and getattr(error, "winerror", None) == 1314:
+                self.skipTest("Windows symlink creation privilege is unavailable")
+            raise
+        with self.assertRaisesRegex(ValueError, "summary must be a regular file"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                            self.report(), summary_path=summary)
+
     def test_fabricated_validation_command_is_rejected(self):
         path = self.root / "src/cascadia/TerminalApp/Test.xaml"
         path.write_text('<Button Content="Open" />\n', encoding="utf-8")
@@ -968,7 +1000,9 @@ class RunReportTests(unittest.TestCase):
 
     def report(self, *, findings=None, report_sha=None, current_sha=None, published_sha="",
                agent="success", detection="success", publication="success", native="success",
-               artifact="success", push_failures="0", fail_api=False):
+               artifact="success", push_failures="0", fail_api=False,
+               summary="## Outcome\nSource review completed.\n\n## Human action\nNone.\n",
+               summary_symlink=False):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         job = workflow.split("\n  accessibility-report:\n", 1)[1].split("\n  native-runtime:\n", 1)[0]
@@ -980,6 +1014,20 @@ class RunReportTests(unittest.TestCase):
                 "version": 1, "source_sha": report_sha or self.reviewed_sha,
                 "findings": findings or [],
             }), encoding="utf-8")
+            if summary is not None:
+                summary_path = report_dir / "summary.md"
+                content = summary if isinstance(summary, bytes) else summary.encode("utf-8")
+                if summary_symlink:
+                    target = Path(directory) / "narrative.md"
+                    target.write_bytes(content)
+                    try:
+                        summary_path.symlink_to(target)
+                    except OSError as error:
+                        if os.name == "nt" and getattr(error, "winerror", None) == 1314:
+                            self.skipTest("Windows symlink creation privilege is unavailable")
+                        raise
+                else:
+                    summary_path.write_bytes(content)
             data = {
                 "script": script, "currentSha": current_sha or self.reviewed_sha, "failApi": fail_api,
                 "env": {
@@ -1047,6 +1095,47 @@ vm.runInNewContext('(async () => {' + data.script + '\n})()', {
         result = self.report(findings=[{"severity": "HIGH", "disposition": "blocked"}])
         self.assertEqual("action_required", result["calls"][0]["conclusion"])
 
+    def test_agent_handoff_markdown_is_returned_verbatim_to_pr_check(self):
+        narrative = (
+            "## Outcome\nHuman action needed.\n\n"
+            "## Results\n"
+            "| Severity | Disposition | File:line | Finding and user impact | Repair or blocker | Required human action |\n"
+            "| --- | --- | --- | --- | --- | --- |\n"
+            "| HIGH | blocked | src/cascadia/TerminalApp/Test.xaml:7 | Keyboard users cannot activate the control | No trusted recipe | Repair focus and test keyboard activation |\n"
+            "| MEDIUM | advice | src/cascadia/TerminalApp/Test.xaml:9 | Text may clip | Runtime confirmation needed | Inspect scaling |\n\n"
+            "## Human action\nRepair the focus handler and verify keyboard activation on Windows.\n\n"
+            "## Evidence and limits\nSource handler inspected; interactive keyboard test unavailable.\n"
+        )
+        result = self.report(findings=[{"severity": "MEDIUM", "disposition": "advice"},
+                                      {"severity": "HIGH", "disposition": "blocked"}], summary=narrative)
+        self.assertEqual("action_required", result["calls"][0]["conclusion"])
+        self.assertIn(narrative, result["calls"][0]["output"]["summary"])
+        self.assertIn("Agent-authored narrative", result["summary"])
+
+    def test_summary_format_variations_do_not_require_extraction(self):
+        narrative = "# Review notes\n\n| State | Action |\n| --- | --- |\n| Advice | Inspect layout |\n\n```text\nsource evidence\n```\n"
+        result = self.report(summary=narrative)
+        self.assertEqual("success", result["calls"][0]["conclusion"])
+        self.assertIn(narrative, result["summary"])
+
+    def test_agent_success_claim_cannot_override_blocked_high_or_failed_native(self):
+        narrative = "## Outcome\nPASS: all checks passed.\n"
+        result = self.report(findings=[{"severity": "HIGH", "disposition": "blocked"}], summary=narrative)
+        self.assertEqual("action_required", result["calls"][0]["conclusion"])
+        self.assertEqual("failure", self.report(native="failure", summary=narrative)["calls"][0]["conclusion"])
+
+    def test_missing_empty_invalid_or_oversized_agent_summary_is_failure(self):
+        for narrative in (None, "", " \n\t", b"\xff", "x" * (32 * 1024 + 1)):
+            with self.subTest(summary_length=None if narrative is None else len(narrative)):
+                result = self.report(summary=narrative)
+                self.assertEqual("failure", result["calls"][0]["conclusion"])
+                self.assertTrue(result["errors"])
+
+    def test_symlink_agent_summary_is_failure(self):
+        result = self.report(summary_symlink=True)
+        self.assertEqual("failure", result["calls"][0]["conclusion"])
+        self.assertIn("regular Markdown file", result["summary"])
+
     def test_missing_validated_artifact_is_failure_not_empty_success(self):
         result = self.report(artifact="failure")
         self.assertEqual("failure", result["calls"][0]["conclusion"])
@@ -1062,6 +1151,8 @@ vm.runInNewContext('(async () => {' + data.script + '\n})()', {
         result = self.report(agent="failure", artifact="skipped")
         self.assertEqual("failure", result["calls"][0]["conclusion"])
         self.assertIn("no source-review PASS is inferred", result["summary"])
+        self.assertIn("Workflow action required", result["summary"])
+        self.assertIn("before retrying", result["summary"])
 
     def test_skipped_stages_are_not_inferred_successful(self):
         result = self.report(agent="skipped", detection="skipped", publication="skipped",
@@ -1105,6 +1196,19 @@ vm.runInNewContext('(async () => {' + data.script + '\n})()', {
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_agent_summary_is_requested_validated_uploaded_and_rendered_without_parsing(self):
+        root = Path(__file__).parents[4]
+        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        self.assertIn("--summary /tmp/gh-aw/accessibility/summary.md", workflow)
+        self.assertIn("        /tmp/gh-aw/accessibility/summary.md", workflow)
+        self.assertIn("## Human action", workflow)
+        self.assertIn("| Severity | Disposition | File:line | Finding and user impact | Repair or blocker | Required human action |", workflow)
+        self.assertIn("ordered HIGH, MEDIUM, LOW", workflow)
+        self.assertIn("put `remaining`/`blocked` before `fixed`", workflow)
+        self.assertIn("summary.push('', '## Source review summary'", workflow)
+        self.assertIn("'', sourceSummary", workflow)
+        self.assertNotIn("JSON.parse(sourceSummary)", workflow)
+
     def test_linked_report_runs_after_validation_publication_and_native(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
@@ -1203,7 +1307,9 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertLess(workflow.index("name: Validate final findings"), workflow.index("name: Upload validated accessibility report"))
-        self.assertIn("path: /tmp/gh-aw/accessibility/final.json", workflow)
+        upload = workflow.split("name: Upload validated accessibility report", 1)[1].split("\n---", 1)[0]
+        self.assertIn("/tmp/gh-aw/accessibility/final.json", upload)
+        self.assertIn("/tmp/gh-aw/accessibility/summary.md", upload)
 
     def test_skill_is_staged_from_trusted_base_before_head_checkout(self):
         root = Path(__file__).parents[4]

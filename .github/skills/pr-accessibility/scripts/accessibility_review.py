@@ -622,10 +622,21 @@ def validate(
     report_path: Path,
     safe_output_queue: Path | None = None,
     transport_root: Path | None = None,
+    summary_path: Path | None = None,
 ) -> None:
     prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
     report = json.loads(report_path.read_text(encoding="utf-8"))
     errors: list[str] = []
+    if summary_path is not None:
+        try:
+            if summary_path.is_symlink() or not summary_path.is_file():
+                raise ValueError("summary must be a regular file, not a symlink")
+            if not 0 < summary_path.stat().st_size <= 32 * 1024:
+                raise ValueError("summary must contain at most 32 KiB of UTF-8 Markdown")
+            if not summary_path.read_text(encoding="utf-8", errors="strict").strip():
+                raise ValueError("summary must not be empty")
+        except (OSError, UnicodeError, ValueError) as error:
+            errors.append(f"agent summary verification failed: {error}")
     if str(prepared.get("source_sha", "")).lower() != expected_head.lower():
         errors.append("prepared evidence does not match the immutable reviewed head")
     if report.get("version") != 1:
@@ -762,6 +773,7 @@ def main() -> int:
     validate_parser.add_argument("--report", type=Path, required=True)
     validate_parser.add_argument("--safe-output-queue", type=Path)
     validate_parser.add_argument("--transport-root", type=Path)
+    validate_parser.add_argument("--summary", type=Path)
     args = parser.parse_args()
     try:
         if args.command == "prepare":
@@ -780,6 +792,7 @@ def main() -> int:
                 args.report,
                 args.safe_output_queue,
                 args.transport_root,
+                args.summary,
             )
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
         print(f"accessibility review contract failed: {error}", file=sys.stderr)

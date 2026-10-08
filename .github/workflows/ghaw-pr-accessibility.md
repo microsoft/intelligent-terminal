@@ -125,6 +125,7 @@ jobs:
             ];
             const reasons = [];
             let findings;
+            let sourceSummary;
             let fixedCount = 0;
             let conclusion = 'success';
             if (stages.some(([, result]) => result === 'failure')) {
@@ -155,6 +156,14 @@ jobs:
                       !['fixed', 'remaining', 'blocked', 'advice', 'skipped'].includes(finding.disposition))) {
                   throw new Error('Validated source findings have inconsistent revision or shape.');
                 }
+                const summaryPath = path.join(process.env.RUNNER_TEMP, 'accessibility-run-report', 'summary.md');
+                const summaryStat = fs.lstatSync(summaryPath);
+                if (!summaryStat.isFile() || summaryStat.size > 32 * 1024) {
+                  throw new Error('Agent summary must be a regular Markdown file within 32 KiB.');
+                }
+                sourceSummary = new (require('util').TextDecoder)('utf-8', { fatal: true })
+                  .decode(fs.readFileSync(summaryPath));
+                if (!sourceSummary.trim()) throw new Error('Agent summary is empty.');
                 findings = report.findings;
                 fixedCount = findings.filter(finding => finding.disposition === 'fixed').length;
                 if (fixedCount > 0 && !/^[0-9a-f]{40}$/i.test(publishedSha)) {
@@ -206,6 +215,16 @@ jobs:
                 'Native smoke covers the original reviewed revision, not this new repair commit.');
             }
             if (reasons.length) summary.push('', ...reasons.map(reason => `- ${reason}`));
+            if (conclusion !== 'success' && conclusion !== 'neutral') {
+              summary.push('', '## Workflow action required',
+                'Review the failed or blocked stages in the linked run before retrying. ' +
+                'Missing source findings are not evidence of a clean accessibility review.');
+            }
+            if (sourceSummary) {
+              summary.push('', '## Source review summary',
+                'Agent-authored narrative; the trusted stage outcomes above determine this check result.',
+                '', sourceSummary);
+            }
             summary.push('', `[Findings, native evidence and logs](${runUrl}#artifacts).`,
               'Runtime-dependent repairs remain blocked; native smoke is not full accessibility certification.');
             const titles = {
@@ -267,7 +286,7 @@ steps:
         --publication-repository "$REPOSITORY" \
         --publication-pr-number "$PR_NUMBER" \
         --output "$TRUSTED_ACCESSIBILITY/prepared.json"
-      rm -f /tmp/gh-aw/accessibility/final.json
+      rm -f /tmp/gh-aw/accessibility/final.json /tmp/gh-aw/accessibility/summary.md
       git check-ref-format --branch "$HEAD_REF"
       git checkout -B "$HEAD_REF" "$HEAD_SHA"
 
@@ -325,6 +344,7 @@ post-steps:
         --same-repo "$SAME_REPO" \
         --prepared "$TRUSTED_ACCESSIBILITY/prepared.json" \
         --report /tmp/gh-aw/accessibility/final.json \
+        --summary /tmp/gh-aw/accessibility/summary.md \
         --safe-output-queue "$GH_AW_SAFE_OUTPUTS" \
         --transport-root /tmp/gh-aw \
         | tee -a "$GITHUB_STEP_SUMMARY"
@@ -333,7 +353,9 @@ post-steps:
     uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
     with:
       name: validated-accessibility-${{ github.event.pull_request.head.sha }}
-      path: /tmp/gh-aw/accessibility/final.json
+      path: |
+        /tmp/gh-aw/accessibility/final.json
+        /tmp/gh-aw/accessibility/summary.md
       if-no-files-found: error
       retention-days: 14
 ---
@@ -354,7 +376,8 @@ Resolve that directory once using the permitted
 JSON and skill with the read tool. Do not guess the runner's temporary path.
 
 Read that evidence first. If `relevant` is false, write a valid empty final
-report and call `noop`. Otherwise inspect every classified changed file and its
+report and the requested Markdown summary explaining that no applicable UI
+changes were found, then call `noop`. Otherwise inspect every classified changed file and its
 necessary local context with the allowed read-only Git commands. Inspect
 companion XAML/C++ headers, styles, `x:Uid` source resources, AutomationPeer
 implementations, and focused UIA tests when needed. Do not infer a defect merely
@@ -423,6 +446,40 @@ companion to a branch commit: gh-aw cancels remaining non-code outputs if a
 code push fails, and the two operations are not one transaction.
 
 ## Output
+
+Write `/tmp/gh-aw/accessibility/summary.md` as the human-readable PR summary,
+using the template below. The reporting job displays it directly; it does not
+extract a verdict from your chat, parse these headings, or reconstruct findings
+into prose. Keep it non-empty UTF-8 Markdown within 32 KiB.
+
+```markdown
+## Outcome
+State whether source review found no issues, prepared an eligible static repair,
+or requires human action. Do not claim that publication or native smoke passed.
+
+## Results
+| Severity | Disposition | File:line | Finding and user impact | Repair or blocker | Required human action |
+| --- | --- | --- | --- | --- | --- |
+| <severity> | <disposition> | <path:line> | <observed behavior and impact> | <prepared repair or why it cannot be fixed> | <specific action, or None> |
+
+## Human action
+For every remaining/blocked HIGH finding, specify the required human change,
+decision, localization work, or runtime validation. Say "None" if not required.
+
+## Evidence and limits
+Cite source evidence and checks actually performed. State unavailable runtime
+checks explicitly; do not substitute source analysis for native validation.
+```
+
+Replace the instructions in that template with the actual review. Keep the
+summary consistent with `final.json`; never silently omit unresolved HIGH
+findings. If advice is too large, summarize it and refer to the full report.
+Use the results table for actual findings, ordered HIGH, MEDIUM, LOW. Within
+HIGH, put `remaining`/`blocked` before `fixed`; use file/line order within each
+group. Keep the outcome sentence outside the table. Remove the placeholder row;
+if there are no findings, say "No findings" rather than inventing a result.
+Keep table cells concise and escape literal pipes; put longer evidence below.
+This summary is not another safe-output request or a PR conversation comment.
 
 Write `/tmp/gh-aw/accessibility/final.json` exactly once at the end:
 

@@ -94,6 +94,19 @@ summary shows stage outcomes, validated finding counts, reviewed/current SHAs,
 and links to findings, native evidence, and logs. Failed, blocked, and skipped
 stages remain visible rather than being inferred as PASS.
 
+The accessibility agent also writes `summary.md` using an explicit template:
+an outcome sentence, a results table, required human action, and evidence/limits.
+The table lists severity, disposition, file/line, impact, repair/blocker, and
+required human action. It orders HIGH before MEDIUM before LOW, with unresolved
+HIGH findings before prepared fixes.
+The PR check displays that Markdown directly, without extracting narrative from
+chat or parsing its headings. The trusted gate only checks that the summary is
+non-empty regular UTF-8 Markdown within 32 KiB; JSON still supplies the
+independently validated repair contract and trusted check conclusion.
+An agent-authored claim of success cannot override failed stages or blocked HIGH
+findings. If the agent fails before producing validated output, the check shows
+the failed stages, run link, and a request to investigate before retrying.
+
 The report is a trusted final job, not an agent-authored comment or safe output.
 It never posts PR comments or edits the PR description, so repair runs still
 have only one code-publication mode. If a verified static repair was published,
