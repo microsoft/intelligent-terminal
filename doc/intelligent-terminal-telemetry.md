@@ -4,6 +4,8 @@ This is the complete catalog of Intelligent Terminal's **AI/Agent telemetry**:
 each current event, its trigger, typed business fields, and measurement
 meaning. It describes implemented source behavior, not proposed events,
 test results, or deployment history.
+Implemented source behavior does not imply that the PR has merged or that
+backend ingestion and production funnel queries have been verified.
 
 The scope is **38 event definitions**: 16 App, 18 WTA, 1 Settings Model,
 and 3 Settings Editor. This includes the existing `AppCreated` event,
