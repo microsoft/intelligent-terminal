@@ -298,6 +298,9 @@ pub async fn run_recommendation_executor(
     while let Some(mut exec) = rx.recv().await {
         let delegate_agents = delegate_agents.lock().unwrap().clone();
         if let Some(run) = exec.run {
+            // Emit both on the consumer: a successful send can wake this task
+            // before the UI finishes finalizing the confirmation.
+            crate::telemetry::log_error_fix_accepted(run.offer_id, run.source);
             crate::telemetry::log_error_fix_run_started(run);
         }
         let result =
@@ -1948,11 +1951,13 @@ mod tests {
         use super::{run_recommendation_executor, AppEvent, ChoiceExecution, TurnContext};
         use crate::telemetry::capture::{take, Event};
 
-        for (insert_only, observed, fail_send) in [
-            (false, true, false),
-            (false, true, true),
-            (true, false, false),
-            (false, false, false),
+        for (insert_only, observed, fail_send, source) in [
+            (false, true, false, "Manual"),
+            (false, true, false, "Detection"),
+            (false, true, false, "Unknown"),
+            (false, true, true, "Manual"),
+            (true, false, false, "Manual"),
+            (false, false, false, "Manual"),
         ] {
             take();
             let channel = Arc::new(RecordingWtChannel {
@@ -1967,6 +1972,7 @@ mod tests {
             let run = crate::telemetry::FixRunIdentity {
                 offer_id: uuid::Uuid::new_v4(),
                 run_id: uuid::Uuid::new_v4(),
+                source,
             };
             let input = "cmd /c exit 17; cmd /c exit 0";
             tx.send(ChoiceExecution {
@@ -1985,6 +1991,10 @@ mod tests {
             })
             .unwrap();
             drop(tx);
+            // Drain the queued request without any producer-side continuation.
+            // Acceptance must already be carried by the request, not emitted
+            // after send by a separately scheduled UI task.
+            assert!(take().is_empty());
             run_recommendation_executor(rx, event_tx, shell, Arc::new(Mutex::new(Vec::new())))
                 .await;
 
@@ -2003,6 +2013,7 @@ mod tests {
             assert_eq!(*channel.requests.lock().unwrap(), expected);
             let expected_events = if observed {
                 vec![
+                    Event::ErrorFixAccepted(run.offer_id, run.source),
                     Event::ErrorFixRunStarted(run.offer_id, run.run_id),
                     Event::ErrorFixRunResult(
                         run.offer_id,

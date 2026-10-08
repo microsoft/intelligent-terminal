@@ -801,7 +801,10 @@ must not be assigned to an existing in-flight analysis.
 
 **Trigger:** the user confirms **Run** for a previously presented autofix
 offer, the confirmation claim remains valid, and the execution request is
-successfully queued.
+successfully queued. Acceptance is emitted when the executor dequeues that
+request, immediately before `ErrorFixRunStarted`, so a fast executor cannot
+report Run events before acceptance. A queued request lost during shutdown
+before dequeue emits neither acceptance nor Run events.
 
 | Field | Type | Meaning / values |
 |---|---|---|

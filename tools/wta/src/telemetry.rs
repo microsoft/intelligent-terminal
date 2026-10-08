@@ -222,6 +222,7 @@ pub struct RestoreIdentity {
 pub struct FixRunIdentity {
     pub offer_id: uuid::Uuid,
     pub run_id: uuid::Uuid,
+    pub source: &'static str,
 }
 
 /// Emitted when WTA dispatches a prompt over the ACP stream to an agent.
@@ -416,10 +417,11 @@ pub fn log_error_fix_run_result(offer_id: uuid::Uuid, run_id: uuid::Uuid, dispat
 }
 
 /// Emitted once when the user confirms Run for a previously displayed autofix
-/// card and its execution request is queued. Not Insert, analysis, or success.
+/// card and the executor dequeues its request, before RunStarted.
+/// Not Insert, analysis, or success.
 pub fn log_error_fix_accepted(offer_id: uuid::Uuid, source: &'static str) {
     #[cfg(test)]
-    capture::record(capture::Event::ErrorFixAccepted(offer_id));
+    capture::record(capture::Event::ErrorFixAccepted(offer_id, source));
     tlg::write_event!(
         AGENT_PROVIDER,
         "ErrorFixAccepted",
@@ -576,7 +578,7 @@ pub(crate) mod capture {
     pub(crate) enum Event {
         AgentSlashCommandUsed(&'static str),
         ErrorFixOffered(uuid::Uuid),
-        ErrorFixAccepted(uuid::Uuid),
+        ErrorFixAccepted(uuid::Uuid, &'static str),
         ErrorFixRunStarted(uuid::Uuid, uuid::Uuid),
         ErrorFixRunResult(uuid::Uuid, uuid::Uuid, &'static str),
         ErrorDetected {

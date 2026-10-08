@@ -22343,8 +22343,14 @@ fn error_fix_telemetry_requires_display_then_run_and_deduplicates() {
     );
 
     app.turn_execute_card("fix-telemetry");
-    assert_eq!(take(), vec![Event::ErrorFixAccepted(offer_id)]);
-    assert!(!rx.try_recv().unwrap().insert_only);
+    assert!(take().is_empty(), "acceptance belongs to the executor");
+    let execution = rx.try_recv().unwrap();
+    assert!(!execution.insert_only);
+    let run = execution.run.unwrap();
+    assert_eq!(run.offer_id, offer_id);
+    assert_eq!(run.source, "Manual");
+    assert!(app.current_tab().autofix.offer.as_ref().unwrap().accepted);
+    assert!(app.error_fix_run_identity("fix-telemetry").is_none());
     assert_eq!(
         final_rx.try_recv().unwrap(),
         crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
@@ -22353,6 +22359,55 @@ fn error_fix_telemetry_requires_display_then_run_and_deduplicates() {
     flush_error_fix_telemetry_frame(&mut app, 100, 30);
     assert!(take().is_empty());
     assert!(rx.try_recv().is_err());
+}
+
+#[test]
+fn error_fix_telemetry_queues_source_once_and_rejects_stale_identity() {
+    use crate::telemetry::capture::take;
+
+    for source in ["Manual", "Detection", "Unknown"] {
+        take();
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        app.current_tab_mut().autofix.offer.as_mut().unwrap().source = source;
+        assert!(app.error_fix_run_identity("fix-telemetry").is_none());
+        flush_error_fix_telemetry_frame(&mut app, 100, 30);
+        take();
+
+        let generation = app.current_tab().autofix.generation;
+        app.current_tab_mut().autofix.generation += 1;
+        assert!(app.error_fix_run_identity("fix-telemetry").is_none());
+        app.current_tab_mut().autofix.generation = generation;
+        let offer = app.current_tab_mut().autofix.offer.as_mut().unwrap();
+        let prompt_id = offer.prompt_id;
+        offer.prompt_id += 1;
+        assert!(app.error_fix_run_identity("fix-telemetry").is_none());
+        app.current_tab_mut()
+            .autofix
+            .offer
+            .as_mut()
+            .unwrap()
+            .prompt_id = prompt_id;
+
+        app.turn_execute_card("fix-telemetry");
+        let run = rx.try_recv().unwrap().run.unwrap();
+        assert_eq!(run.source, source);
+        assert_eq!(
+            run.offer_id,
+            app.current_tab().autofix.offer.as_ref().unwrap().id
+        );
+        assert_ne!(run.run_id, uuid::Uuid::nil());
+        assert!(app.current_tab().autofix.offer.as_ref().unwrap().accepted);
+        assert!(take().is_empty(), "the producer must not emit acceptance");
+        app.turn_execute_card("fix-telemetry");
+        assert!(
+            rx.try_recv().is_err(),
+            "a confirmed offer must not be retried"
+        );
+    }
 }
 
 #[test]
@@ -22394,8 +22449,11 @@ fn error_fix_telemetry_nonoverlapping_autocomplete_allows_offer_and_enter_accept
     assert!(take().is_empty(), "redrawing must not offer twice");
 
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    assert_eq!(take(), vec![Event::ErrorFixAccepted(offer_id)]);
+    assert!(take().is_empty(), "acceptance belongs to the executor");
     let execution = rx.try_recv().unwrap();
+    let run = execution.run.unwrap();
+    assert_eq!(run.offer_id, offer_id);
+    assert_eq!(run.source, "Manual");
     assert!(!execution.insert_only);
     assert_eq!(execution.context.target_pane_id(), Some("pane-9"));
     assert!(matches!(
@@ -22471,11 +22529,13 @@ fn error_fix_telemetry_excludes_insert_cancel_and_failed_dispatch() {
     for action in ["insert", "cancel", "failed", "revoked"] {
         take();
         let mut app = test_app();
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        if action != "failed" {
-            app.recommendation_tx = tx;
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        let mut rx = Some(rx);
+        if action == "failed" {
+            drop(rx.take());
         }
-        let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
+        let (proposal_id, mut final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
         assert!(app.commit_terminal_action_proposal(&proposal_id));
         flush_error_fix_telemetry_frame(&mut app, 100, 30);
         assert_eq!(take().len(), 1);
@@ -22498,6 +22558,23 @@ fn error_fix_telemetry_excludes_insert_cancel_and_failed_dispatch() {
             take().is_empty(),
             "{action} must not count as Run acceptance"
         );
+        if action == "insert" {
+            let execution = rx.as_mut().unwrap().try_recv().unwrap();
+            assert!(execution.insert_only);
+            assert!(execution.run.is_none());
+            assert_eq!(
+                final_rx.try_recv().unwrap(),
+                crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
+            );
+        } else if action == "failed" {
+            assert_eq!(
+                final_rx.try_recv().unwrap(),
+                crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Unavailable
+            );
+            assert!(app.recommendation_tx.is_closed());
+        } else {
+            assert!(rx.as_mut().unwrap().try_recv().is_err());
+        }
     }
 }
 
@@ -22515,10 +22592,10 @@ fn error_fix_telemetry_excludes_generic_actions_and_undisplayed_acceptance() {
             flush_error_fix_telemetry_frame(&mut app, 100, 30);
         }
         app.turn_execute_card("fix-telemetry");
-        assert!(
-            rx.try_recv().is_ok(),
-            "existing execution behavior preserved"
-        );
+        let execution = rx
+            .try_recv()
+            .expect("existing execution behavior preserved");
+        assert!(execution.run.is_none());
         assert!(take().is_empty());
     }
 }

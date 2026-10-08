@@ -787,19 +787,15 @@ impl App {
         } else {
             None
         };
+        let run = if insert_only {
+            None
+        } else {
+            self.error_fix_run_identity(session_id)
+        };
         let dispatched = self
             .recommendation_tx
             .send(crate::coordinator::ChoiceExecution {
-                run: self
-                    .session_tab(session_id)
-                    .autofix
-                    .offer
-                    .as_ref()
-                    .filter(|offer| offer.offered && !insert_only)
-                    .map(|offer| crate::telemetry::FixRunIdentity {
-                        offer_id: offer.id,
-                        run_id: uuid::Uuid::new_v4(),
-                    }),
+                run,
                 choice,
                 insert_only,
                 context,
@@ -824,8 +820,10 @@ impl App {
             .and_then(|p| p.autofix.as_ref())
             .is_some()
         {
-            if dispatched && !insert_only {
-                self.log_error_fix_accepted(session_id);
+            if dispatched && run.is_some() {
+                if let Some(offer) = self.session_tab_mut(session_id).autofix.offer.as_mut() {
+                    offer.accepted = true;
+                }
             }
             self.emit_autofix_state_cleared(&target_tab);
         }

@@ -135,20 +135,26 @@ impl App {
         }
     }
 
-    pub(super) fn log_error_fix_accepted(&mut self, session_id: &str) {
-        let tab = self.session_tab_mut(session_id);
+    pub(super) fn error_fix_run_identity(
+        &self,
+        session_id: &str,
+    ) -> Option<crate::telemetry::FixRunIdentity> {
+        let tab = self.session_tab(session_id);
         if !tab.turn.is_autofix()
             || tab.turn.recommendations().is_none()
             || tab.turn.autofix_generation() != Some(tab.autofix.generation)
         {
-            return;
+            return None;
         }
-        let Some(offer) = tab.autofix.offer.as_mut() else {
-            return;
-        };
+        let offer = tab.autofix.offer.as_ref()?;
         if tab.turn.prompt_id() == Some(offer.prompt_id) && offer.offered && !offer.accepted {
-            offer.accepted = true;
-            crate::telemetry::log_error_fix_accepted(offer.id, offer.source);
+            Some(crate::telemetry::FixRunIdentity {
+                offer_id: offer.id,
+                run_id: uuid::Uuid::new_v4(),
+                source: offer.source,
+            })
+        } else {
+            None
         }
     }
 
