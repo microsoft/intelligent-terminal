@@ -125,6 +125,10 @@ and focuses ordinary tab search on entry.
   Collapsing this section does not leave Agents, clear shared search, delete
   sessions, or close agent tabs. Its action tooltip says **Expand recent sessions**
   or **Collapse recent sessions**, matching the current expanded state.
+  Its custom automation peer derives from `ToggleButtonAutomationPeer`, matching
+  the heading's `ToggleButton` base. XAML requires that peer interface when
+  `IsChecked` changes with UI Automation property listeners active, including
+  during template realization.
 - Preserve virtualized row realization, keyboard navigation, focused-row
   visibility, and existing live-tab/group/pane interactions with the shared
   scroll surface; do not obtain one scrollbar by introducing unbounded nested

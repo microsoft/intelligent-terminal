@@ -8112,6 +8112,7 @@ namespace TerminalAppLocalTests
             {
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"HistoryHeaderButton" }, Automation::AutomationProperties::GetAutomationId(button));
                 const auto peer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(button);
+                VERIFY_IS_NOT_NULL(peer.try_as<Automation::Peers::ToggleButtonAutomationPeer>());
                 const auto provider = peer.GetPattern(Automation::Peers::PatternInterface::ExpandCollapse)
                                           .as<Automation::Provider::IExpandCollapseProvider>();
                 provider.Collapse();

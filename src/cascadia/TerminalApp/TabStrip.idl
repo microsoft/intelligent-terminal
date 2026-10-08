@@ -22,7 +22,7 @@ namespace TerminalApp
         TabStripHistoryHeader();
     };
     [default_interface] runtimeclass TabStripHistoryHeaderAutomationPeer :
-        Windows.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer,
+        Windows.UI.Xaml.Automation.Peers.ToggleButtonAutomationPeer,
         Windows.UI.Xaml.Automation.Provider.IExpandCollapseProvider
     {
         TabStripHistoryHeaderAutomationPeer(TabStripHistoryHeader owner);
