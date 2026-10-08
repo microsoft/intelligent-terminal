@@ -101,7 +101,7 @@ identical JSON to the fixed report path. The tool reuses the existing shared
 validator, reads no source, writes no files, and does not grant native success.
 This early feedback was added after the missing-location hosted failure; its
 local rejection/correction checks are not hosted execution proof.
-Trusted post-processing independently revalidates the actual persisted report
+Trusted post-processing independently validates the actual persisted report again
 before sealing or native execution. The agent does not need to invoke a
 duplicate shell validator or renderer. This removes the workflow's dependency
 on the failed agent-side PowerShell route without broadening permissions or
@@ -262,9 +262,13 @@ Fork guidance names the reviewed head and uses best-effort freshness checking.
 The exact WTA build script, manifest and lockfile receive CI-runtime review,
 while automatic Rust replacements remain confined to eligible `src` files.
 Unavailable checks always use a null exit code and render as not run.
-The controller keeps a 68-minute worker deadline inside a 90-minute job
-budget, reserving bounded headroom for preparation, dispatch correlation,
-publication and the linked completion report.
+The controller keeps a 150-minute worker deadline inside a 175-minute job
+budget. The actual compiled critical-phase bounds total 132 minutes: preparation
+5, analysis 12, agent job 60, detection 10, and the longest parallel output/native
+path 45. The 15-minute model step is not the agent job's timeout. The worker
+deadline includes 18 minutes of orchestration headroom; the controller reserves
+25 more for preparation, dispatch correlation, publication and the linked report.
+Queue and setup delays can still exhaust these explicit bounds.
 
 Native autofix uses fixed conservative limits, not model-routing settings:
 at most **three replacement files**, **100 total added plus deleted lines**,
@@ -352,8 +356,9 @@ agent/detection dependencies with matching output-type conditions. Its actual
 schema rejects `timeout-minutes` inside custom safe jobs despite the pinned
 reference documenting it; root job timeout overrides are not emitted for these
 jobs. No generated lock edits or unsupported overrides are used. Native steps
-retain 32-minute limits, and the controller cancels workers after 68 minutes
-inside its 90-minute budget. A 35-minute per-native-job timeout requires a
+retain 32-minute limits after a separately bounded 10-minute toolchain install,
+and the controller cancels workers after 150 minutes inside its 175-minute
+budget. A 35-minute per-native-job timeout requires a
 compiler fix/upgrade; it is not claimed as enforced here.
 
 Pending reports reject all model-authored `pass` checks, not just native claims.

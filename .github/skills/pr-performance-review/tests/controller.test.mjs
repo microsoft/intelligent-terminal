@@ -12,6 +12,22 @@ assert.ok(match, 'controller script must be extractable from the actual workflow
 const source = match[1].split(/\r?\n/).map(line => line.slice(12)).join('\n');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const execute = new AsyncFunction('github', 'context', 'core', 'process', 'Date', 'setTimeout', source);
+const compiledWorker = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
+
+function workerPhaseMinutes() {
+    const job = name => {
+        const match = compiledWorker.match(new RegExp(`^  ${name}:\\r?\\n([\\s\\S]*?)(?=^  [a-z_]+:|(?![\\s\\S]))`, 'm'));
+        assert.ok(match, `compiled ${name} job is missing`);
+        return match[1];
+    };
+    const jobMinutes = name => Number(job(name).match(/^    timeout-minutes:\s*(\d+)/m)?.[1]);
+    const nativeMinutes = Math.max(...['validate_performance_original_tests',
+        'validate_performance_focused_tests', 'validate_performance_repair'].map(name =>
+        [...job(name).matchAll(/^        timeout-minutes:\s*(\d+)/gm)]
+            .reduce((total, match) => total + Number(match[1]), 0)));
+    return jobMinutes('prepare') + jobMinutes('performance_analysis') + jobMinutes('agent') +
+        jobMinutes('detection') + Math.max(jobMinutes('safe_outputs'), nativeMinutes);
+}
 
 test('the controller run name preserves the PR identity instead of starting a YAML comment', () => {
     assert.match(workflow, /^run-name: 'Performance Review for PR #\$\{\{ github\.event\.pull_request\.number \}\}'$/m);
@@ -24,12 +40,14 @@ test('repair publication uses the repository Actions token, not a recursion-trig
 test('controller job leaves bounded preparation and reporting headroom beyond its worker deadline', () => {
     const jobMinutes = Number(workflow.match(/timeout-minutes:\s*(\d+)/)?.[1]);
     const workerMinutes = Number(source.match(/const deadline = Date\.now\(\) \+ (\d+) \* 60 \* 1000/)?.[1]);
-    assert.equal(jobMinutes, 90);
-    assert.equal(workerMinutes, 68);
+    assert.equal(jobMinutes, 175);
+    assert.equal(workerMinutes, 150);
+    assert.equal(workerPhaseMinutes(), 132);
+    assert.ok(workerMinutes - workerPhaseMinutes() >= 10, 'deadline must cover actual compiled phase bounds plus orchestration');
     assert.ok(jobMinutes - workerMinutes >= 20);
 });
 
-async function simulate({ fork = false, conclusion = 'success', agent = true, timeout = false } = {}) {
+async function simulate({ fork = false, conclusion = 'success', agent = true, timeout = false, completeAfterMinutes = 0 } = {}) {
     const calls = [];
     const outputs = {};
     let clock = 100000;
@@ -43,7 +61,7 @@ async function simulate({ fork = false, conclusion = 'success', agent = true, ti
                 }] } };
             },
             async getWorkflowRun() {
-                return { data: { id: 123, status: timeout ? 'in_progress' : 'completed',
+                return { data: { id: 123, status: timeout || clock - 100000 < completeAfterMinutes * 60 * 1000 ? 'in_progress' : 'completed',
                     conclusion, html_url: 'https://example.invalid/run/123' } };
             },
             async cancelWorkflowRun(value) { calls.push(['cancel', value]); },
@@ -100,9 +118,16 @@ test('actual controller rejects failed worker conclusion', async () => {
     assert.match((await simulate({ conclusion: 'failure' })).error.message, /concluded failure/);
 });
 
+test('actual controller allows the compiled phase budget plus orchestration to finish', async () => {
+    const result = await simulate({ completeAfterMinutes: workerPhaseMinutes() + 5 });
+    assert.equal(result.error, undefined);
+    assert.equal(result.outputs.conclusion, 'success');
+    assert.equal(result.calls.some(([kind]) => kind === 'cancel'), false);
+});
+
 test('actual controller timeout cancels only its correlated run', async () => {
     const result = await simulate({ timeout: true });
-    assert.match(result.error.message, /exceeded 68 minutes/);
+    assert.match(result.error.message, /exceeded 150 minutes/);
     assert.deepEqual(result.calls.find(([kind]) => kind === 'cancel')[1], {
         owner: 'owner', repo: 'repo', run_id: 123,
     });

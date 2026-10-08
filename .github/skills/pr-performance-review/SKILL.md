@@ -429,7 +429,7 @@ immutable-identity feedback while the agent can still correct its report.
 Submit the full JSON, correct any rejection, and write the identical accepted
 JSON to the fixed report path. Revalidate any later report change before
 requesting native jobs or noop. Keep the explicit Markdown summary independent.
-Trusted post-processing revalidates the persisted report before sealing,
+Trusted post-processing validates the persisted report again before sealing,
 native validation, or publication; tool acceptance is not native authority.
 Do not require a
 duplicate agent-side shell validator or renderer, and never treat a shell error
