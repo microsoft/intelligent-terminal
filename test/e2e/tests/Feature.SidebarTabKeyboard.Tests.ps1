@@ -114,7 +114,7 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
         $script:evidenceDir = Join-Path ([IO.Path]::GetFullPath($artifactRoot)) "sidebar-tab-keyboard-$([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Force -Path $script:evidenceDir | Out-Null
-        Wait-UiElement -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
+        Wait-UiElement -App $script:app -Selector VerticalTabsHeader | Out-Null
         $initialTabs = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId))
         if ($initialTabs.Count -ne 1) { throw "Expected one initial terminal tab, found $($initialTabs.Count)." }
 

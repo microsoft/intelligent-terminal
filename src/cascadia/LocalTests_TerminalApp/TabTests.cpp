@@ -4499,10 +4499,30 @@ namespace TerminalAppLocalTests
         const auto connection = winrt::make_self<TestConnection>(
             winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
-        const auto page = _commonSetup(*connection);
+        const auto page = _commonSetup(nullptr);
 
         TestOnUIThread([&]() {
+            page->_GetFocusedTabImpl()->SuppressAgentPrewarm();
+            page->_GetActiveControl().Connection(*connection);
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
             VERIFY_IS_FALSE(page->_isVerticalLayout);
+            page->_settings = CascadiaSettings{
+                LR"({
+                    "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                    "profiles": [{
+                        "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                        "name": "profile0",
+                        "closeOnExit": "never"
+                    }]
+                })",
+                LR"({
+                    "actions": [
+                        { "command": "toggleSidebarAgentsOnly", "id": "Terminal.ToggleSidebarAgentsOnly", "keys": "ctrl+shift+g" },
+                        { "command": "toggleSidebarRecentAgentSessions", "id": "Terminal.ToggleSidebarRecentAgentSessions", "keys": "ctrl+shift+r" }
+                    ]
+                })"
+            };
             const auto actionMap = page->_settings.ActionMap();
             const auto initial = KeyChordSerialization::FromString(L"ctrl+shift+s");
             const auto rebound = KeyChordSerialization::FromString(L"ctrl+shift+y");
@@ -4516,6 +4536,16 @@ namespace TerminalAppLocalTests
             const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
             const auto button = row->VerticalTitleBarContent().as<Grid>().Children().GetAt(0).as<Button>();
             const auto reference = ToolTipService::GetToolTip(page->AgentToggleButton()).as<ToolTip>().Content().as<StackPanel>();
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto verifyFilterHints = [&](const winrt::hstring& agents, const winrt::hstring& recent) {
+                const auto verify = [](const ToggleMenuFlyoutItem& item, const winrt::hstring& expected) {
+                    VERIFY_IS_NOT_NULL(item);
+                    VERIFY_ARE_EQUAL(expected, item.KeyboardAcceleratorTextOverride());
+                    VERIFY_ARE_EQUAL(expected, Automation::AutomationProperties::GetAcceleratorKey(item));
+                };
+                verify(strip->AgentsOnlyFilterMenuItem(), agents);
+                verify(strip->RecentAgentSessionsFilterMenuItem(), recent);
+            };
             const auto verifyHint = [&](const winrt::hstring& chord) {
                 const auto label = Automation::AutomationProperties::GetName(button);
                 VERIFY_IS_FALSE(label.empty());
@@ -4540,8 +4570,10 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(chord.empty() ? Visibility::Collapsed : Visibility::Visible, shortcut.Visibility());
             };
             verifyHint(L"Ctrl+Shift+S");
+            verifyFilterHints(L"Ctrl+Shift+G", L"Ctrl+Shift+R");
             page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
             verifyHint(L"Ctrl+Shift+S");
+            verifyFilterHints(L"Ctrl+Shift+G", L"Ctrl+Shift+R");
 
             actionMap.RebindKeys(initial, rebound);
             page->_RefreshUIForSettingsReload();
@@ -4559,6 +4591,46 @@ namespace TerminalAppLocalTests
             verifyHint({});
             page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
             verifyHint({});
+
+            actionMap.AddKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+j"), L"Terminal.ToggleSidebarAgentsOnly");
+            actionMap.AddKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+k"), L"Terminal.ToggleSidebarRecentAgentSessions");
+            page->_RefreshUIForSettingsReload();
+            verifyFilterHints(L"Ctrl+Shift+J", L"Ctrl+Shift+K");
+
+            actionMap.DeleteKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+g"));
+            actionMap.DeleteKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+r"));
+            page->_RefreshUIForSettingsReload();
+            verifyFilterHints(L"Ctrl+Shift+J", L"Ctrl+Shift+K");
+            actionMap.DeleteKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+j"));
+            actionMap.DeleteKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+k"));
+            page->_RefreshUIForSettingsReload();
+            verifyFilterHints({}, {});
+
+            actionMap.RegisterKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+g"), ActionAndArgs{ ShortcutAction::CopyText, nullptr });
+            actionMap.RegisterKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+r"), ActionAndArgs{ ShortcutAction::CopyText, nullptr });
+            page->_RefreshUIForSettingsReload();
+            verifyFilterHints({}, {});
+
+            const auto agentsAlias = Command::NewUserCommand();
+            agentsAlias.ActionAndArgs(ActionAndArgs{ ShortcutAction::ToggleSidebarAgentsOnly, nullptr });
+            agentsAlias.GenerateID();
+            actionMap.AddAction(agentsAlias, KeyChordSerialization::FromString(L"ctrl+shift+u"));
+            const auto recentAlias = Command::NewUserCommand();
+            recentAlias.ActionAndArgs(ActionAndArgs{ ShortcutAction::ToggleSidebarRecentAgentSessions, nullptr });
+            recentAlias.GenerateID();
+            actionMap.AddAction(recentAlias, KeyChordSerialization::FromString(L"ctrl+shift+v"));
+            page->_RefreshUIForSettingsReload();
+            verifyFilterHints(L"Ctrl+Shift+U", L"Ctrl+Shift+V");
+            actionMap.AddKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+g"), L"Terminal.ToggleSidebarAgentsOnly");
+            actionMap.AddKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+r"), L"Terminal.ToggleSidebarRecentAgentSessions");
+            page->_RefreshUIForSettingsReload();
+            verifyFilterHints(L"Ctrl+Shift+U", L"Ctrl+Shift+V");
+            actionMap.AddKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+w"), agentsAlias.ID());
+            actionMap.AddKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+x"), recentAlias.ID());
+            actionMap.DeleteKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+u"));
+            actionMap.DeleteKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+v"));
+            page->_RefreshUIForSettingsReload();
+            verifyFilterHints(L"Ctrl+Shift+W", L"Ctrl+Shift+X");
         });
     }
 
@@ -4761,69 +4833,71 @@ namespace TerminalAppLocalTests
 
     void TabTests::SidebarFiltersViewModelCombinationsAndNotifications()
     {
-        for (const auto agentsOnly : { false, true })
-        {
-            for (const auto recentSessions : { false, true })
+        TestOnUIThread([&]() {
+            for (const auto agentsOnly : { false, true })
             {
-                const auto filters = winrt::make<winrt::TerminalApp::implementation::SidebarFiltersViewModel>();
-                VERIFY_IS_FALSE(filters.ShowAgentsOnly());
-                VERIFY_IS_FALSE(filters.ShowRecentAgentSessions());
-                VERIFY_IS_FALSE(filters.HasSearchQuery());
-                VERIFY_IS_FALSE(filters.AgentsOnlyEffective());
-                VERIFY_IS_FALSE(filters.RecentAgentSessionsVisible());
-                filters.ShowAgentsOnly(agentsOnly);
-                filters.ShowRecentAgentSessions(recentSessions);
-                const auto verifyValues = [&]() {
-                    VERIFY_ARE_EQUAL(!filters.SearchQuery().empty(), filters.HasSearchQuery());
-                    VERIFY_ARE_EQUAL(filters.ShowAgentsOnly() && !filters.HasSearchQuery(), filters.AgentsOnlyEffective());
-                    VERIFY_ARE_EQUAL(filters.ShowRecentAgentSessions() || filters.HasSearchQuery(), filters.RecentAgentSessionsVisible());
-                };
-                std::vector<winrt::hstring> notifications;
-                const auto changed = filters.PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
-                    notifications.emplace_back(args.PropertyName());
-                    verifyValues();
-                });
-                const auto verifyNotifications = [&](std::initializer_list<const wchar_t*> names) {
-                    VERIFY_ARE_EQUAL(names.size(), notifications.size());
-                    for (const auto name : names)
-                    {
-                        VERIFY_IS_TRUE(std::ranges::find(notifications, winrt::hstring{ name }) != notifications.end());
-                    }
-                    notifications.clear();
-                    verifyValues();
-                };
+                for (const auto recentSessions : { false, true })
+                {
+                    const auto filters = winrt::make<winrt::TerminalApp::implementation::SidebarFiltersViewModel>();
+                    VERIFY_IS_FALSE(filters.ShowAgentsOnly());
+                    VERIFY_IS_FALSE(filters.ShowRecentAgentSessions());
+                    VERIFY_IS_FALSE(filters.HasSearchQuery());
+                    VERIFY_IS_FALSE(filters.AgentsOnlyEffective());
+                    VERIFY_IS_FALSE(filters.RecentAgentSessionsVisible());
+                    filters.ShowAgentsOnly(agentsOnly);
+                    filters.ShowRecentAgentSessions(recentSessions);
+                    const auto verifyValues = [&]() {
+                        VERIFY_ARE_EQUAL(!filters.SearchQuery().empty(), filters.HasSearchQuery());
+                        VERIFY_ARE_EQUAL(filters.ShowAgentsOnly() && !filters.HasSearchQuery(), filters.AgentsOnlyEffective());
+                        VERIFY_ARE_EQUAL(filters.ShowRecentAgentSessions() || filters.HasSearchQuery(), filters.RecentAgentSessionsVisible());
+                    };
+                    std::vector<winrt::hstring> notifications;
+                    const auto changed = filters.PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                        notifications.emplace_back(args.PropertyName());
+                        verifyValues();
+                    });
+                    const auto verifyNotifications = [&](std::initializer_list<const wchar_t*> names) {
+                        VERIFY_ARE_EQUAL(names.size(), notifications.size());
+                        for (const auto name : names)
+                        {
+                            VERIFY_IS_TRUE(std::ranges::find(notifications, winrt::hstring{ name }) != notifications.end());
+                        }
+                        notifications.clear();
+                        verifyValues();
+                    };
 
-                verifyValues();
-                VERIFY_ARE_EQUAL(agentsOnly, filters.AgentsOnlyEffective());
-                VERIFY_ARE_EQUAL(recentSessions, filters.RecentAgentSessionsVisible());
-                filters.SearchQuery(L"global query");
-                verifyNotifications({ L"SearchQuery", L"HasSearchQuery", L"AgentsOnlyEffective", L"RecentAgentSessionsVisible" });
-                VERIFY_ARE_EQUAL(agentsOnly, filters.ShowAgentsOnly());
-                VERIFY_ARE_EQUAL(recentSessions, filters.ShowRecentAgentSessions());
-                VERIFY_IS_FALSE(filters.AgentsOnlyEffective());
-                VERIFY_IS_TRUE(filters.RecentAgentSessionsVisible());
-                filters.SearchQuery(L"global query");
-                verifyNotifications({});
-                filters.SearchQuery(L"another query");
-                verifyNotifications({ L"SearchQuery", L"HasSearchQuery", L"AgentsOnlyEffective", L"RecentAgentSessionsVisible" });
-                filters.ShowAgentsOnly(!agentsOnly);
-                verifyNotifications({ L"ShowAgentsOnly", L"AgentsOnlyEffective" });
-                VERIFY_ARE_EQUAL(recentSessions, filters.ShowRecentAgentSessions());
-                filters.ShowRecentAgentSessions(!recentSessions);
-                verifyNotifications({ L"ShowRecentAgentSessions", L"RecentAgentSessionsVisible" });
-                VERIFY_IS_FALSE(filters.AgentsOnlyEffective());
-                VERIFY_IS_TRUE(filters.RecentAgentSessionsVisible());
-                filters.ShowAgentsOnly(!agentsOnly);
-                filters.ShowRecentAgentSessions(!recentSessions);
-                verifyNotifications({});
-                filters.SearchQuery(L"");
-                verifyNotifications({ L"SearchQuery", L"HasSearchQuery", L"AgentsOnlyEffective", L"RecentAgentSessionsVisible" });
-                VERIFY_ARE_EQUAL(!agentsOnly, filters.AgentsOnlyEffective());
-                VERIFY_ARE_EQUAL(!recentSessions, filters.RecentAgentSessionsVisible());
-                filters.SearchQuery(L"");
-                verifyNotifications({});
+                    verifyValues();
+                    VERIFY_ARE_EQUAL(agentsOnly, filters.AgentsOnlyEffective());
+                    VERIFY_ARE_EQUAL(recentSessions, filters.RecentAgentSessionsVisible());
+                    filters.SearchQuery(L"global query");
+                    verifyNotifications({ L"SearchQuery", L"HasSearchQuery", L"AgentsOnlyEffective", L"RecentAgentSessionsVisible" });
+                    VERIFY_ARE_EQUAL(agentsOnly, filters.ShowAgentsOnly());
+                    VERIFY_ARE_EQUAL(recentSessions, filters.ShowRecentAgentSessions());
+                    VERIFY_IS_FALSE(filters.AgentsOnlyEffective());
+                    VERIFY_IS_TRUE(filters.RecentAgentSessionsVisible());
+                    filters.SearchQuery(L"global query");
+                    verifyNotifications({});
+                    filters.SearchQuery(L"another query");
+                    verifyNotifications({ L"SearchQuery", L"HasSearchQuery", L"AgentsOnlyEffective", L"RecentAgentSessionsVisible" });
+                    filters.ShowAgentsOnly(!agentsOnly);
+                    verifyNotifications({ L"ShowAgentsOnly", L"AgentsOnlyEffective" });
+                    VERIFY_ARE_EQUAL(recentSessions, filters.ShowRecentAgentSessions());
+                    filters.ShowRecentAgentSessions(!recentSessions);
+                    verifyNotifications({ L"ShowRecentAgentSessions", L"RecentAgentSessionsVisible" });
+                    VERIFY_IS_FALSE(filters.AgentsOnlyEffective());
+                    VERIFY_IS_TRUE(filters.RecentAgentSessionsVisible());
+                    filters.ShowAgentsOnly(!agentsOnly);
+                    filters.ShowRecentAgentSessions(!recentSessions);
+                    verifyNotifications({});
+                    filters.SearchQuery(L"");
+                    verifyNotifications({ L"SearchQuery", L"HasSearchQuery", L"AgentsOnlyEffective", L"RecentAgentSessionsVisible" });
+                    VERIFY_ARE_EQUAL(!agentsOnly, filters.AgentsOnlyEffective());
+                    VERIFY_ARE_EQUAL(!recentSessions, filters.RecentAgentSessionsVisible());
+                    filters.SearchQuery(L"");
+                    verifyNotifications({});
+                }
             }
-        }
+        });
     }
 
     void TabTests::SidebarGlobalSearchRestoresIndependentPreferences()
@@ -4832,45 +4906,64 @@ namespace TerminalAppLocalTests
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
         const auto connection = winrt::make_self<TestConnection>(
             winrt::guid{ L"{6239a42c-eeee-49a3-80bd-e8fdd045185c}" }, State::Connected);
+        const auto agentConnection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-eeee-49a3-80bd-e8fdd045189c}" }, State::Connected);
         const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> shell, agent;
+        winrt::com_ptr<winrt::TerminalApp::implementation::TabStrip> strip;
+        winrt::TerminalApp::SidebarFiltersViewModel filters{ nullptr };
+        winrt::TerminalApp::TabStripDisplayItem shellDisplay{ nullptr }, agentDisplay{ nullptr };
+        winrt::TerminalApp::TabStripHistoryItem history{ nullptr }, unrelated{ nullptr };
+        winrt::guid paneId{};
         TestOnUIThread([&]() {
+            // This fixture supplies its own history snapshot rather than launching a WTA refresh.
+            page->_historyRefreshInFlight = true;
             page->Width(1200);
             page->Height(600);
             page->UpdateLayout();
-            const auto shell = page->_GetFocusedTabImpl();
+            shell = page->_GetFocusedTabImpl();
             shell->SuppressAgentPrewarm();
             shell->GetActiveTerminalControl().Connection(*connection);
             shell->SetTabText(L"Global marker shell");
-            VERIFY_SUCCEEDED(page->_OpenNewTab(NewTerminalArgs{ 1 }));
-            const auto agent = page->_GetFocusedTabImpl();
+            const auto agentPane = page->_MakeTerminalPane(NewTerminalArgs{ 1 }, nullptr, *agentConnection);
+            VERIFY_IS_NOT_NULL(agentPane);
+            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(agentPane));
+            agent = page->_GetFocusedTabImpl();
             agent->SuppressAgentPrewarm();
             agent->SetTabText(L"Global marker agent");
-            const auto paneId = agent->GetActivePane()->GetSessionId();
+            paneId = agent->GetActivePane()->GetSessionId();
+            VERIFY_ARE_EQUAL(agentConnection->SessionId(), paneId);
             page->_paneAgentSessions.insert_or_assign(paneId, Page::_PaneAgentSession{ L"represented-global", L"copilot", L"" });
+            VERIFY_IS_TRUE(page->_MatchesTabScope(agent));
             page->_ApplyTabListProjection();
-            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
-            const auto filters = page->_tabStrip.SidebarFilters();
-            const auto shellDisplay = strip->DisplayItemForTab(shell->TabViewItem());
-            const auto agentDisplay = strip->DisplayItemForTab(agent->TabViewItem());
+            strip.copy_from(winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip));
+            filters = page->_tabStrip.SidebarFilters();
+            shellDisplay = strip->DisplayItemForTab(shell->TabViewItem());
+            agentDisplay = strip->DisplayItemForTab(agent->TabViewItem());
             VERIFY_IS_NOT_NULL(shellDisplay);
             VERIFY_IS_NOT_NULL(agentDisplay);
-            const auto history = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            history = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             history.SessionId(L"unattached-global");
             history.AgentId(L"copilot");
             history.Title(L"Global marker history");
             history.Status(L"Historical");
             history.IsHistorical(true);
-            const auto unrelated = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            unrelated = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             unrelated.SessionId(L"unrelated-global");
             unrelated.AgentId(L"claude");
             unrelated.Title(L"Unrelated history");
             unrelated.Status(L"Historical");
             unrelated.IsHistorical(true);
+        });
 
-            for (const auto agentsOnly : { false, true })
+        for (const auto agentsOnly : { false, true })
+        {
+            for (const auto recentSessions : { false, true })
             {
-                for (const auto recentSessions : { false, true })
-                {
+                TestOnUIThread([&]() {
+                    VERIFY_ARE_EQUAL(agentConnection->SessionId(), agent->GetActivePane()->GetSessionId());
+                    VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+                    VERIFY_IS_TRUE(page->_MatchesTabScope(agent));
                     filters.ShowAgentsOnly(agentsOnly);
                     filters.ShowRecentAgentSessions(recentSessions);
                     strip->CommitHistorySnapshot({ history, unrelated });
@@ -4898,6 +4991,15 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_TRUE(page->_IsTabVisibleInProjection(agent, agentDisplay));
                     VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
                     VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == history);
+                });
+                _waitForContentTransferReviewUI([&]() {
+                    page->UpdateLayout();
+                    return strip->HistorySection() != nullptr;
+                });
+                TestOnUIThread([&]() {
+                    VERIFY_ARE_EQUAL(agentConnection->SessionId(), agent->GetActivePane()->GetSessionId());
+                    VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+                    VERIFY_IS_TRUE(page->_MatchesTabScope(agent));
                     VERIFY_IS_NOT_NULL(strip->HistorySection());
                     VERIFY_IS_TRUE(strip->HistoryHeaderButton().IsChecked().Value());
                     VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>().Visibility());
@@ -4925,9 +5027,11 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(recentSessions, filters.ShowRecentAgentSessions());
                     VERIFY_ARE_EQUAL(!agentsOnly, page->_IsTabVisibleInProjection(shell, shellDisplay));
                     VERIFY_ARE_EQUAL(recentSessions, strip->HistorySection() != nullptr);
-                }
+                });
             }
+        }
 
+        TestOnUIThread([&]() {
             const auto secondaryConnection = winrt::make_self<TestConnection>(
                 winrt::guid{ L"{6239a42c-eeee-49a3-80bd-e8fdd045186c}" }, State::Connected);
             const auto secondaryPane = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *secondaryConnection);
@@ -4942,6 +5046,10 @@ namespace TerminalAppLocalTests
             const auto secondaryContentId = secondaryNode->ContentId().value();
             VERIFY_IS_FALSE(secondaryNode->IsAgentPane());
             VERIFY_IS_FALSE(page->_paneAgentSessions.contains(secondaryConnection->SessionId()));
+            const auto agentSourceNode = agent->GetRootPane()->FindPaneBySessionId(paneId);
+            VERIFY_IS_NOT_NULL(agentSourceNode);
+            VERIFY_IS_TRUE(agentSourceNode->Id().has_value());
+            VERIFY_IS_TRUE(agent->FocusPane(agentSourceNode->Id().value()));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Global marker agent" }, agent->Title());
             VERIFY_ARE_NOT_EQUAL(winrt::hstring{ L"Secondary shell search needle" }, agent->GetActiveTerminalControl().Title());
 
@@ -4981,6 +5089,54 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_IsTabVisibleInProjection(shell, shellDisplay));
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.ContainerFromIndex(1).as<ListViewItem>().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>().Visibility());
+
+            // Inject mock content so the Duplicate action tests routing without spawning a CLI.
+            const auto duplicateShell = [&](const wchar_t* sessionId) {
+                const auto duplicateConnection = winrt::make_self<TestConnection>(winrt::guid{ sessionId }, State::Connected);
+                const auto mockSettings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+                const auto content = _contentManager->CreateCore(*mockSettings, *mockSettings, *duplicateConnection);
+                // ContentId attaches an existing core and requires its renderer to be initialized.
+                VERIFY_IS_TRUE(content.Core().Initialize(600.0f, 400.0f, 1.0f));
+                content.Initialize();
+                NewTerminalArgs terminalArgs;
+                terminalArgs.ContentId(content.Id());
+                SplitPaneArgs splitArgs{ SplitType::Duplicate, SplitDirection::Right, 0.5f, terminalArgs };
+                const auto paneCount = shell->GetLeafPaneCount();
+                const auto profile = shell->GetFocusedProfile().Guid();
+                ActionEventArgs eventArgs{ splitArgs };
+                page->_HandleSplitPane(nullptr, eventArgs);
+                page->UpdateLayout();
+                VERIFY_IS_TRUE(eventArgs.Handled());
+                VERIFY_ARE_EQUAL(paneCount + 1, shell->GetLeafPaneCount());
+                const auto duplicated = shell->GetRootPane()->FindPaneBySessionId(duplicateConnection->SessionId());
+                VERIFY_IS_NOT_NULL(duplicated);
+                VERIFY_IS_FALSE(duplicated->IsAgentPane());
+                VERIFY_IS_NOT_NULL(duplicated->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>());
+                VERIFY_IS_NULL(shell->FindAgentPaneContent());
+                VERIFY_IS_FALSE(page->_MatchesTabScope(shell));
+                VERIFY_ARE_EQUAL(profile, shell->GetFocusedProfile().Guid());
+            };
+
+            page->_tabStrip.SearchQuery(L"Global marker shell");
+            page->_SelectTab(0);
+            page->UpdateLayout();
+            VERIFY_IS_TRUE(filters.ShowAgentsOnly());
+            VERIFY_IS_FALSE(page->_IsAgentScopeEffective());
+            VERIFY_IS_TRUE(page->_IsTabVisibleInProjection(shell, shellDisplay));
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>().Visibility());
+            duplicateShell(L"{6239a42c-eeee-49a3-80bd-e8fdd045187c}");
+
+            page->_tabStrip.SearchQuery(L"");
+            VERIFY_IS_TRUE(page->_IsAgentScopeEffective());
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
+            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+            VERIFY_IS_FALSE(page->_isVerticalLayout);
+            VERIFY_IS_TRUE(filters.ShowAgentsOnly());
+            VERIFY_IS_FALSE(page->_IsAgentScopeEffective());
+            page->_SelectTab(0);
+            duplicateShell(L"{6239a42c-eeee-49a3-80bd-e8fdd045188c}");
+            page->_StopSidebarHistoryRefreshTimer();
+            page->_historyRefreshInFlight = false;
         });
     }
 
@@ -6053,15 +6209,25 @@ namespace TerminalAppLocalTests
     void TabTests::VerticalTabStaticHeaderAndIndependentFilterMenu()
     {
         HistoryTestView view;
+        winrt::hstring title, tabsPlaceholder, tabsSearchName, tabsButtonName, tabsTooltip;
+        bool historyRequested = false;
+        bool historyClosed = false;
+        winrt::event_token requested{}, closed{};
+        const auto revoke = wil::scope_exit([&]() {
+            LOG_IF_FAILED(RunOnUIThread([&]() {
+                view.strip.HistoryRequested(requested);
+                view.strip.HistoryClosed(closed);
+            }));
+        });
         TestOnUIThread([&]() {
             const auto strip = view.strip;
             strip.HistoryActive(false);
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
-            const auto title = stripImpl->VerticalTabsHeader().Text();
-            const auto tabsPlaceholder = stripImpl->SearchTextBox().PlaceholderText();
-            const auto tabsSearchName = Automation::AutomationProperties::GetName(stripImpl->SearchTextBox());
-            const auto tabsButtonName = Automation::AutomationProperties::GetName(stripImpl->SearchTabsButton());
-            const auto tabsTooltip = winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(stripImpl->SearchTabsButton()));
+            title = stripImpl->VerticalTabsHeader().Text();
+            tabsPlaceholder = stripImpl->SearchTextBox().PlaceholderText();
+            tabsSearchName = Automation::AutomationProperties::GetName(stripImpl->SearchTextBox());
+            tabsButtonName = Automation::AutomationProperties::GetName(stripImpl->SearchTabsButton());
+            tabsTooltip = winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(stripImpl->SearchTabsButton()));
             const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
                                        .MainResourceMap().GetSubtree(L"TerminalApp/Resources");
             const auto header = strip.FindName(L"VerticalTabsHeader").as<TextBlock>();
@@ -6091,29 +6257,28 @@ namespace TerminalAppLocalTests
             const auto recent = stripImpl->RecentAgentSessionsFilterMenuItem();
             VERIFY_IS_NOT_NULL(agents.try_as<ToggleMenuFlyoutItem>());
             VERIFY_IS_NOT_NULL(recent.try_as<ToggleMenuFlyoutItem>());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"AgentsOnlyFilterMenuItem" }, Automation::AutomationProperties::GetAutomationId(agents));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"RecentAgentSessionsFilterMenuItem" }, Automation::AutomationProperties::GetAutomationId(recent));
-            VERIFY_IS_FALSE(Automation::AutomationProperties::GetName(agents).empty());
-            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsSessionHistoryHeader/Text").ValueAsString(),
-                             Automation::AutomationProperties::GetName(recent));
             const Automation::Peers::ToggleMenuFlyoutItemAutomationPeer agentsPeer{ agents };
             const Automation::Peers::ToggleMenuFlyoutItemAutomationPeer recentPeer{ recent };
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"AgentsOnlyFilterMenuItem" }, agentsPeer.GetAutomationId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"RecentAgentSessionsFilterMenuItem" }, recentPeer.GetAutomationId());
+            VERIFY_IS_FALSE(agentsPeer.GetName().empty());
+            VERIFY_IS_FALSE(recentPeer.GetName().empty());
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsFilterAgentsOnly/Text").ValueAsString(), agentsPeer.GetName());
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsSessionHistoryHeader/Text").ValueAsString(), recentPeer.GetName());
+            VERIFY_ARE_EQUAL(Automation::Peers::AutomationControlType::MenuItem, agentsPeer.GetAutomationControlType());
+            VERIFY_ARE_EQUAL(Automation::Peers::AutomationControlType::MenuItem, recentPeer.GetAutomationControlType());
             const auto agentsToggle = agentsPeer.GetPattern(Automation::Peers::PatternInterface::Toggle).as<Automation::Provider::IToggleProvider>();
             const auto recentToggle = recentPeer.GetPattern(Automation::Peers::PatternInterface::Toggle).as<Automation::Provider::IToggleProvider>();
+            VERIFY_IS_NOT_NULL(agentsToggle);
+            VERIFY_IS_NOT_NULL(recentToggle);
             VERIFY_ARE_EQUAL(Automation::ToggleState::Off, agentsToggle.ToggleState());
             VERIFY_ARE_EQUAL(Automation::ToggleState::Off, recentToggle.ToggleState());
-            bool historyRequested = false;
-            bool historyClosed = false;
-            const auto requested = strip.HistoryRequested([&](auto&&, auto&&) {
+            requested = strip.HistoryRequested([&](auto&&, auto&&) {
                 historyRequested = true;
             });
-            const auto closed = strip.HistoryClosed([&](auto&&, auto&&) {
+            closed = strip.HistoryClosed([&, strip](auto&&, auto&&) {
                 historyClosed = true;
                 strip.HistoryActive(false);
-            });
-            const auto revoke = wil::scope_exit([&]() {
-                strip.HistoryRequested(requested);
-                strip.HistoryClosed(closed);
             });
 
             strip.IsRailCollapsed(true);
@@ -6165,6 +6330,17 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, strip.SearchQuery());
             VERIFY_IS_TRUE(stripImpl->SearchTextBox().Focus(FocusState::Programmatic));
             strip.UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            view.strip.UpdateLayout();
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(view.strip);
+            return stripImpl->HistorySection() != nullptr && stripImpl->HistoryHeader() != nullptr;
+        });
+        TestOnUIThread([&]() {
+            const auto strip = view.strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            VERIFY_IS_NOT_NULL(stripImpl->HistorySection());
+            VERIFY_IS_NOT_NULL(stripImpl->HistoryHeader());
             VERIFY_IS_FALSE(stripImpl->HistoryHeader().Text().empty());
             VERIFY_IS_FALSE(stripImpl->HistoryHeader().Text() == stripImpl->VerticalTabsHeader().Text());
             VERIFY_ARE_EQUAL(winrt::TerminalApp::TabStripFilterMode::AllTabs, strip.FilterMode());
@@ -6184,7 +6360,14 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->FilterStatusBar().Visibility());
 
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->TabsToolbar().Visibility());
-            stripImpl->SearchTextBox().Text(L"agent query");
+        });
+        view.Search(L"agent query");
+        TestOnUIThread([&]() {
+            const auto strip = view.strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto filters = strip.SidebarFilters();
+            const auto agents = stripImpl->AgentsOnlyFilterMenuItem();
+            const auto recent = stripImpl->RecentAgentSessionsFilterMenuItem();
             stripImpl->ProjectionControlsEnabled(false);
             VERIFY_IS_FALSE(historyClosed);
             VERIFY_IS_TRUE(strip.HistoryActive());
@@ -7797,7 +7980,7 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_FALSE(page->_CompleteSidebarHistoryActivation(serial, false, L"Stale reopened failure"));
                 VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
 
-                // Prepare the native retry without launching WTA: the receipt must be queried, not redispatched.
+                // Prepare the native retry without launching WTA: query the receipt instead of dispatching the request again.
                 const auto retry = page->_PrepareSidebarHistoryActivation(item);
                 VERIFY_IS_TRUE(retry.statusOnly);
                 VERIFY_ARE_EQUAL(request.id, retry.id);

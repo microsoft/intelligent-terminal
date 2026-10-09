@@ -12,6 +12,7 @@
 Describe 'Feature: Sidebar compact relative time' -Tag @('Feature', 'SidebarRelativeTime') {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\SidebarExpansionEvents.ps1')
         . (Join-Path $PSScriptRoot 'helpers\TestTerminalCleanup.ps1')
         . (Join-Path $PSScriptRoot '..\fixtures\SidebarRelativeTimeOracle.ps1')
         Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
@@ -107,7 +108,7 @@ Describe 'Feature: Sidebar compact relative time' -Tag @('Feature', 'SidebarRela
             Open-AgentPane -App $script:app -TimeoutSec 30 | Out-Null
             Wait-AgentReady -App $script:app -TimeoutSec 30 | Should -BeTrue
             Stop-AgentPane -App $script:app | Out-Null
-            Invoke-UiClick -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
+            Set-TestSidebarScope -App $script:app -Recent $true
             Wait-Until -TimeoutSec 30 -Condition { $list = Get-AgeElement HistoryHeaderButton; $list -and -not $list.Current.IsOffscreen } | Out-Null
             Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
             Set-UiValue -App $script:app -Selector SearchTextBox -Value $marker | Out-Null

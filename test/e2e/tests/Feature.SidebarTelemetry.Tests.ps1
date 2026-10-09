@@ -6,6 +6,7 @@ param([switch]$KeepRunningOnly)
 Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelemetry' -Skip:($env:ITE2E_TELEMETRY -ne '1') {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\SidebarExpansionEvents.ps1')
         . (Join-Path $PSScriptRoot 'helpers\TelemetryTrace.ps1')
         . (Join-Path $PSScriptRoot 'helpers\TelemetryFunnels.Scenarios.ps1')
         $script:app = $null
@@ -76,11 +77,9 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         function Set-SidebarHistory {
             param([bool]$Open)
             try {
-                $name = (Get-UiElement -App $script:app -Selector VerticalTabsHeader).name
-                $expected = if ($Open) { 'Agents' } else { 'Tabs' }
-                if ($name -ne $expected) { Invoke-UiElement -App $script:app -Selector VerticalTabsHeaderButton | Out-Null }
+                Set-TestSidebarScope -App $script:app -AgentsOnly $Open -Recent $Open
                 Wait-Until -TimeoutSec 10 -Condition {
-                    (Get-UiElement -App $script:app -Selector VerticalTabsHeader).name -eq $expected
+                    (Get-UiElement -App $script:app -Selector VerticalTabsHeader).name -eq 'Tabs'
                 } | Out-Null
             }
             catch {

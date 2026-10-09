@@ -5,6 +5,7 @@
 Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\SidebarExpansionEvents.ps1')
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
         $cleanupTokens = $null
@@ -216,14 +217,9 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         }
         function Set-ActionView {
             param([bool]$Agents)
-            $header = Get-ActionElement VerticalTabsHeader
-            if (($header.Current.Name -eq 'Agents') -ne $Agents) {
-                Invoke-UiClick -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
-            }
-            $expected = if ($Agents) { 'Agents' } else { 'Tabs' }
-            Wait-Until -TimeoutSec 10 -Because 'requested sidebar page renders' -Condition {
-                (Get-ActionElement VerticalTabsHeader).Current.Name -eq $expected
-            } | Out-Null
+            Set-TestSidebarScope -App $script:app -AgentsOnly $Agents -Recent $Agents
+            $script:actionAgentsOnly = $Agents
+            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         }
         function Get-ActionLaunches {
             if (Test-Path -LiteralPath $script:launchLog) {
@@ -245,7 +241,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         }
         function Invoke-ActionPlus {
             $before = @(Get-ActionTabs).tab_id
-            $label = if ((Get-ActionElement VerticalTabsHeader).Current.Name -eq 'Agents') {
+            $label = if ($script:actionAgentsOnly) {
                 'Open background agent in a new tab'
             } else { 'New tab' }
             Invoke-UiClick -App $script:app -Selector $label | Out-Null
@@ -274,7 +270,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                     $message.Current.BoundingRectangle.Height -le 0 -or
                     $message.Current.BoundingRectangle.Width -le 0
             } | Out-Null
-            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         }
         function Save-ActionUiEvidence {
             param([string]$Phase)
@@ -366,7 +362,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         Get-WtCapture -App $script:app -SessionId $one.pane_session_id -MaxLines 30 |
             Should -Match ([regex]::Escape("ITE2E-INTERACTIVE-DELEGATE $script:runId $($one.session_id)"))
         Assert-ActionRetryClearsError $retryError
-        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         $second = Invoke-ActionPlus
         Wait-Until -TimeoutSec 20 -Because 'second plus launches a fresh CLI' -Condition {
             @(Get-ActionLaunches).Count -eq 2
@@ -379,7 +375,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $two.cwd | Should -Be $one.cwd
         $two.source | Should -Be $one.source
         @($two.args).Count | Should -Be 0
-        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Wait-Until -TimeoutSec 10 -Because 'second delegate renders its unique interactive banner' -Condition {
             (Get-WtCapture -App $script:app -SessionId $two.pane_session_id -MaxLines 30) -match
                 [regex]::Escape("ITE2E-INTERACTIVE-DELEGATE $script:runId $($two.session_id)")
@@ -447,7 +443,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             @($rowsDuring | Where-Object pane_session_id -EQ $receipt.pane_session_id).Count |
                 Should -Be 1 -Because 'only the exact pinned native conversation belongs to this pane; new stashed ACP helpers have different pane GUIDs'
             Assert-ActionPriorSessionsPreserved -Before $rowsBefore -During $rowsDuring
-            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
             $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
             $visibleTitle = @($window.FindAll([Windows.Automation.TreeScope]::Descendants,
                 [Windows.Automation.PropertyCondition]::new(
@@ -498,7 +494,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             @($rowsDuring | Where-Object pane_session_id -EQ $receipt.pane_session_id).Count | Should -Be 0
             @($rowsDuring | Where-Object session_id -EQ $sid).Count | Should -Be 0
             Assert-ActionPriorSessionsPreserved -Before $rowsBefore -During $rowsDuring
-            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
             $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
             @($window.FindAll([Windows.Automation.TreeScope]::Descendants,
                 [Windows.Automation.PropertyCondition]::new(
@@ -554,7 +550,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $retryError = Invoke-ActionRejectedSplit
         @(Get-CanonicalLaunches).Count | Should -Be ($beforeCount + 1)
         Set-WtPaneFocus -App $script:app -SessionId $tab.session_id | Out-Null
-        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         (Get-ActionElement HistoryMessage).Current.Name | Should -Be $retryError
         Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
         Wait-Until -TimeoutSec 30 -Because 'UI same-provider split launches the canonical native shim' -Condition {
@@ -575,7 +571,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $panes = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId))
         @($panes | Where-Object session_id -In @($tab.session_id, $fresh.pane_session_id)).Count | Should -Be 2
         (Get-ActionTabs | Where-Object tab_id -EQ $tab.tab_id) | Should -Not -BeNullOrEmpty
-        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Wait-Until -TimeoutSec 20 -Because 'both fresh and original canonical identities remain live' -Condition {
             $rows = @(Get-ActionSessions | Where-Object session_id -In @($sid, $fresh.session_id))
             $rows.Count -eq 2 -and @($rows | Where-Object provider_id -NE 'copilot').Count -eq 0
