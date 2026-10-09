@@ -90,6 +90,7 @@ if (-not $sourceManifest.StartsWith($sourcePrefix, [StringComparison]::OrdinalIg
     throw "Recipe manifest source is missing or outside the source worktree: $sourceManifest"
 }
 $sourceIdentity = Get-ManifestIdentity ([xml](Get-Content -LiteralPath $sourceManifest -Raw))
+$sourceManifestHash = (Get-FileHash -LiteralPath $sourceManifest -Algorithm SHA256).Hash
 $installedIdentity = Get-ManifestIdentity ([xml](Get-Content -LiteralPath $registeredManifest -Raw))
 
 Add-Type -AssemblyName System.IO.Compression
@@ -124,6 +125,9 @@ try {
         throw 'Recipe, MSIX and installed package identities disagree.'
     }
     $msixManifestHash = Get-ArchiveHash $manifestEntry
+    if ($sourceManifestHash -ne $msixManifestHash) {
+        throw "The MSIX manifest differs from the recipe source: recipe=$sourceManifestHash msix=$msixManifestHash"
+    }
     $installedManifestHash = (Get-FileHash -LiteralPath $registeredManifest -Algorithm SHA256).Hash
     if ($msixManifestHash -ne $installedManifestHash) {
         throw "The registered manifest differs from the MSIX: installed=$($installedIdentity.Version) msix=$($msixIdentity.Version)"
@@ -180,6 +184,7 @@ if (-not $items.Count) { throw "Package recipe has no payloads: $recipe" }
     InstalledLayout = $layout
     RecipeSha256 = (Get-FileHash -LiteralPath $recipe -Algorithm SHA256).Hash
     MsixSha256 = (Get-FileHash -LiteralPath $msix -Algorithm SHA256).Hash
+    RecipeManifestSha256 = $sourceManifestHash
     RegisteredManifestSha256 = $installedManifestHash
     RecipeEntryCount = $items.Count
     MsixEntryCount = @($items | Where-Object IncludedInMsix).Count

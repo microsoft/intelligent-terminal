@@ -8,6 +8,7 @@ BeforeAll {
             [switch]$WrongArchive,
             [switch]$WrongInstalled,
             [switch]$DifferentManifest,
+            [switch]$StaleManifest,
             [switch]$OmitArchiveDll,
             [switch]$TraversalPath,
             [switch]$WrongFamily
@@ -23,6 +24,9 @@ BeforeAll {
         $installedDll = Join-Path $installed 'TerminalApp.dll'
         $sourceIcon = Join-Path $sourceRoot 'ProfileIcons\icon.scale-100.png'
         $manifestText = '<Package><Identity Name="IntelligentTerminal" Publisher="CN=Test" Version="0.8.0.2"/></Package>'
+        $staleManifestText = if ($StaleManifest) {
+            $manifestText.Replace('</Package>', '<Capabilities><Capability Name="privateNetworkClientServer"/></Capabilities></Package>')
+        } else { $manifestText }
         'current-binary' | Set-Content -LiteralPath $sourceDll -NoNewline
         Copy-Item -LiteralPath $sourceDll -Destination $installedDll
         if ($WrongInstalled) { 'previous-binary' | Set-Content -LiteralPath $installedDll -NoNewline }
@@ -33,7 +37,7 @@ BeforeAll {
         $(if ($DifferentManifest) {
             $manifestText.Replace('0.8.0.2', '0.8.0.3')
         } else {
-            $manifestText
+            $staleManifestText
         }) | Set-Content -LiteralPath (Join-Path $installed 'AppxManifest.xml') -NoNewline
 
         $recipe = Join-Path $sourceRoot 'CascadiaPackage.build.appxrecipe'
@@ -53,7 +57,7 @@ BeforeAll {
         $zip = [IO.Compression.ZipFile]::Open($msix, [IO.Compression.ZipArchiveMode]::Create)
         try {
             foreach ($item in @(
-                @{ Path = 'AppxManifest.xml'; Text = $manifestText },
+                @{ Path = 'AppxManifest.xml'; Text = $staleManifestText },
                 @{ Path = 'TerminalApp.dll'; Text = $(if ($WrongArchive) { 'stale-binary' } else { 'current-binary' }) }
             )) {
                 if ($item.Path -eq 'TerminalApp.dll' -and $OmitArchiveDll) { continue }
@@ -103,6 +107,7 @@ Describe 'Offline package provenance' -Tag 'Unit' {
         $proof.RecipeEntryCount | Should -Be 2
         $proof.MsixEntryCount | Should -Be 1
         $proof.OmittedScaleAssets | Should -Be @('ProfileIcons\icon.scale-100.png')
+        $proof.RecipeManifestSha256 | Should -Be $proof.RegisteredManifestSha256
         (Get-FileHash -LiteralPath $f.InstalledDll -Algorithm SHA256).Hash | Should -Be $prior
     }
 
@@ -140,6 +145,13 @@ Describe 'Offline package provenance' -Tag 'Unit' {
         { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
                 -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
             Should -Throw '*manifest*'
+    }
+
+    It 'rejects an MSIX and installed manifest with stale capabilities but the same identity' {
+        $f = New-ProvenanceFixture -StaleManifest
+        { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
+                -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
+            Should -Throw '*MSIX manifest differs from the recipe source*'
     }
 
     It 'rejects a non-icon recipe payload omitted from the MSIX' {

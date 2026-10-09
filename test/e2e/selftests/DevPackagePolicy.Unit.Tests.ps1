@@ -152,6 +152,20 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
             Should -Invoke Stop-Process -Times 0
         }
 
+        It 'preserves a headless non-Dev package helper before a cold start' {
+            $script:app.Package = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe'
+            $script:process = New-FakeTerminalProcess -Name wta -Root 'C:\StorePackage\AppX'
+            $script:process.MainWindowHandle = [IntPtr]::Zero
+            Mock Get-WtProcessesForApp {
+                if ($IncludePackageExecutables -and -not $script:process.HasExited) { $script:process }
+            }
+
+            { Stop-StaleItInstances -App $script:app } | Should -Throw '*protected*'
+            $script:process.HasExited | Should -BeFalse
+            Should -Invoke Stop-Process -Times 0
+            Should -Invoke Get-WtProcessesForApp -Times 1 -ParameterFilter { $IncludePackageExecutables }
+        }
+
         It 'never treats an unverified Dev alias as the authorized family' {
             $script:app.Package = 'Dev'
             { Stop-StaleItInstances -App $script:app } | Should -Throw '*protected*'

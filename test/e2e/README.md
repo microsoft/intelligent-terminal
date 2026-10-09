@@ -408,7 +408,8 @@ the build receipt's `ITE2E_EXPECTED_WTA_SHA256` and `ITE2E_EXPECTED_APP_SHA256`
 (`TerminalApp.dll`), explicit UAC approval, and permission for temporary HKCU policy
 changes (`ITE2E_TELEMETRY_POLICY_APPROVED=1`). Its preflight closes existing
 verified Dev processes before the policy transaction; other installed Intelligent
-Terminal packages must remain inactive because HKCU policy affects them too.
+Terminal packages (including headless helpers) must remain inactive because HKCU
+policy affects them too.
 Set `ITE2E_TELEMETRY=1` and
 `ITE2E_PACKAGE=Dev`, then pass the suite to `Invoke-ItE2EReport.ps1`.
 
@@ -580,8 +581,9 @@ pwsh -File test\e2e\Invoke-ItE2EReport.ps1 `
 ```
 
 The read-only `Verify-PackageProvenance.ps1` preflight checks the clean Git HEAD,
-recipe and MSIX identities, every recipe source/MSIX/installed payload hash, and
-the registered manifest. A missing or stale payload stops the run **before Pester**.
+the full recipe/MSIX/registered manifest hashes, every recipe source/MSIX/installed
+payload hash, and package identity. A missing or stale payload stops the run
+**before Pester**.
 Only scale-qualified profile icons may be absent from the MSIX; they still must
 match the recipe in the installed layout. Keep build-time source/command evidence
 separately: matching hashes do not themselves prove which source the compiler

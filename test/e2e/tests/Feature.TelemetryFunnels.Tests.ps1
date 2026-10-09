@@ -37,7 +37,8 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             $_.Name -like '*IntelligentTerminal*' -and $_.PackageFamilyName -ne $script:target.Package
         })) {
             $other = Resolve-ItApp -Package $package.PackageFamilyName
-            @(Get-WtProcessesForApp -App $other) | Should -HaveCount 0 -Because 'HKCU policy changes must not affect another running Intelligent Terminal package'
+            @(Get-WtProcessesForApp -App $other -IncludePackageExecutables) |
+                Should -HaveCount 0 -Because 'HKCU policy changes must not affect another running Intelligent Terminal package'
         }
         $script:policyTransaction = Initialize-TelemetryPolicyTransaction -Directory $script:root
         $script:requestLog = Join-Path $script:root 'fixture.log'
@@ -247,7 +248,7 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         try {
             if ($script:app -and $script:app.Launched) { Stop-TelemetryOwnedTerminal -App $script:app }
             if ($script:target -and $script:originalHashes) {
-                if (@(Get-WtProcessesForApp -App $script:target).Count) {
+                if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
                     throw 'Selected package remains active; configuration backups retained rather than mutating a live user window.'
                 }
                 Restore-WtConfig -App $script:target
