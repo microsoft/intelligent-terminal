@@ -721,13 +721,14 @@ namespace winrt::TerminalApp::implementation
             if (const auto page = weakThis.get())
             {
                 const auto wasSearchActive = page->_tabSearchActive;
+                const auto wasAgentScopeEffective = page->_IsAgentScopeEffective();
                 page->_tabSearchActive = sender.SearchActive();
                 page->_tabSearchQuery = sender.SearchQuery();
                 if (wasSearchActive != page->_tabSearchActive)
                 {
                     page->_sidebarHotkeyReturnControl = {};
                 }
-                page->_ApplyTabListProjection(nullptr, false);
+                page->_ApplyTabListProjection(nullptr, wasAgentScopeEffective != page->_IsAgentScopeEffective());
                 page->_UpdateRecentAgentSessionsVisibility();
                 page->_suppressTabFocusRequests = false;
                 if (!wasSearchActive && page->_IsTabSearchEffective())
@@ -6733,6 +6734,7 @@ namespace winrt::TerminalApp::implementation
             if (_tabStrip)
             {
                 _tabStrip.HistoryLoading(false);
+                _tabStrip.HistoryActivating(false);
             }
         }
     }
