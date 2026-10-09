@@ -15906,6 +15906,7 @@ namespace winrt::TerminalApp::implementation
         // Create the SUI pane content
         auto settingsContent{ winrt::make_self<SettingsPaneContent>(_settings) };
         auto sui = settingsContent->SettingsUI();
+        sui.FlowDirection(_isRightToLeft ? FlowDirection::RightToLeft : FlowDirection::LeftToRight);
         _settingsMainPage = sui;
 
         sui.InitShellIntegrationRequested({ get_weak(), &TerminalPage::_OnSettingsInitShellIntegration });
