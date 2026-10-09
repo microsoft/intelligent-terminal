@@ -110,8 +110,9 @@ Every replacement has a corresponding proposed finding at its actual
 `path:line`. C++ findings cannot authorize unrelated WTA edits.
 
 Original tests remain unchanged. A conservative lexical suffix guard can
-overblock comments, early attributes/modules and custom test arrangements;
-that requires a manual handoff. It is not a Rust parser or a semantic
+reject otherwise valid repairs involving comments, early attributes/modules
+or custom test arrangements; those require a manual handoff.
+It is not a Rust parser or a semantic
 equivalence proof. Source replacements are read and decoded before candidate
 code runs; later mutable proposal/helper files cannot authorize other bytes.
 
