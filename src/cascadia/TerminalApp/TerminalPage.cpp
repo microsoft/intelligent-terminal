@@ -6518,6 +6518,47 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    static KeyChord _GetEffectiveKeyBindingForAction(const ActionMap& actionMap, const ShortcutAction action)
+    {
+        Command selectedCommand{ nullptr };
+        KeyChord selectedChord{ nullptr };
+        for (const auto& command : actionMap.AllCommands())
+        {
+            if (!command || !command.ActionAndArgs() || command.ActionAndArgs().Action() != action)
+            {
+                continue;
+            }
+            auto chord = actionMap.GetKeyBindingForAction(command.ID());
+            const auto resolved = chord ? actionMap.GetActionByKeyChord(chord) : nullptr;
+            if (!resolved || resolved.ID() != command.ID())
+            {
+                chord = nullptr;
+                for (const auto& candidate : actionMap.AllKeyBindingsForAction(command.ID()))
+                {
+                    const auto effective = actionMap.GetActionByKeyChord(candidate);
+                    if (effective && effective.ID() == command.ID() &&
+                        (!chord || KeyChordSerialization::ToString(candidate) < KeyChordSerialization::ToString(chord)))
+                    {
+                        chord = candidate;
+                    }
+                }
+            }
+            if (!chord)
+            {
+                continue;
+            }
+            const auto isUserCommand = command.Origin() == OriginTag::User;
+            const auto selectedIsUserCommand = selectedCommand && selectedCommand.Origin() == OriginTag::User;
+            if (!selectedCommand || (isUserCommand && !selectedIsUserCommand) ||
+                (isUserCommand == selectedIsUserCommand && command.ID() < selectedCommand.ID()))
+            {
+                selectedCommand = command;
+                selectedChord = chord;
+            }
+        }
+        return selectedChord;
+    }
+
     void TerminalPage::_SetVerticalRailVisibility(const bool visible)
     {
         if (!_isVerticalLayout)
@@ -6549,13 +6590,13 @@ namespace winrt::TerminalApp::implementation
         const bool expanded = visible && !_isVerticalRailCollapsed;
         const auto width = visible ? (_isVerticalRailCollapsed ? railCollapsedWidth : _verticalRailWidth) : 0.0;
         const auto actionMap = _settings.ActionMap();
-        for (const auto& [elementName, actionId] : {
-                 std::pair{ L"AgentsOnlyFilterMenuItem", L"Terminal.ToggleSidebarAgentsOnly" },
-                 std::pair{ L"RecentAgentSessionsFilterMenuItem", L"Terminal.ToggleSidebarRecentAgentSessions" } })
+        for (const auto& [elementName, action] : {
+                 std::pair{ L"AgentsOnlyFilterMenuItem", ShortcutAction::ToggleSidebarAgentsOnly },
+                 std::pair{ L"RecentAgentSessionsFilterMenuItem", ShortcutAction::ToggleSidebarRecentAgentSessions } })
         {
             if (const auto item = _tabStrip.FindName(elementName).try_as<WUX::Controls::ToggleMenuFlyoutItem>())
             {
-                const auto chord = actionMap.GetKeyBindingForAction(actionId);
+                const auto chord = _GetEffectiveKeyBindingForAction(actionMap, action);
                 winrt::hstring shortcut;
                 if (chord)
                 {
@@ -6569,43 +6610,7 @@ namespace winrt::TerminalApp::implementation
                 Automation::AutomationProperties::SetAcceleratorKey(item, shortcut);
             }
         }
-        Command sidebarCommand{ nullptr };
-        KeyChord sidebarChord{ nullptr };
-        for (const auto& command : actionMap.AllCommands())
-        {
-            if (!command || !command.ActionAndArgs() ||
-                command.ActionAndArgs().Action() != ShortcutAction::ToggleSidebar)
-            {
-                continue;
-            }
-            auto chord = actionMap.GetKeyBindingForAction(command.ID());
-            const auto resolved = chord ? actionMap.GetActionByKeyChord(chord) : nullptr;
-            if (!resolved || resolved.ID() != command.ID())
-            {
-                chord = nullptr;
-                for (const auto& candidate : actionMap.AllKeyBindingsForAction(command.ID()))
-                {
-                    const auto effective = actionMap.GetActionByKeyChord(candidate);
-                    if (effective && effective.ID() == command.ID() &&
-                        (!chord || KeyChordSerialization::ToString(candidate) < KeyChordSerialization::ToString(chord)))
-                    {
-                        chord = candidate;
-                    }
-                }
-            }
-            if (!chord)
-            {
-                continue;
-            }
-            const auto isUserCommand = command.Origin() == OriginTag::User;
-            const auto selectedIsUserCommand = sidebarCommand && sidebarCommand.Origin() == OriginTag::User;
-            if (!sidebarCommand || (isUserCommand && !selectedIsUserCommand) ||
-                (isUserCommand == selectedIsUserCommand && command.ID() < sidebarCommand.ID()))
-            {
-                sidebarCommand = command;
-                sidebarChord = chord;
-            }
-        }
+        const auto sidebarChord = _GetEffectiveKeyBindingForAction(actionMap, ShortcutAction::ToggleSidebar);
         const auto sidebarKeyChordText = sidebarChord ?
                                              KeyChordSerialization::ToString(sidebarChord) :
                                              winrt::hstring{};

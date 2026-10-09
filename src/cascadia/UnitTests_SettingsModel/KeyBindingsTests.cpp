@@ -802,6 +802,8 @@ namespace SettingsModelUnitTests
         verifyBinding(L"alt+shift+b", L"Terminal.OpenBackgroundAgent");
         verifyBinding(L"alt+shift+/", L"Terminal.OpenAgentDelegation");
         verifyBinding(L"ctrl+shift+s", L"Terminal.ToggleSidebar");
+        verifyBinding(L"ctrl+shift+g", L"Terminal.ToggleSidebarAgentsOnly");
+        verifyBinding(L"ctrl+shift+r", L"Terminal.ToggleSidebarRecentAgentSessions");
     }
 
     void KeyBindingsTests::AgentActionsParse()
@@ -849,17 +851,33 @@ namespace SettingsModelUnitTests
     void KeyBindingsTests::SidebarActionRoundTrip()
     {
         VERIFY_ARE_EQUAL(101, static_cast<int32_t>(ShortcutAction::SaveSnippet), L"Existing action ABI values must not move");
-        for (const auto& json : { Json::Value{ "toggleSidebar" }, VerifyParseSucceeded(R"({ "action": "toggleSidebar" })") })
+        struct testCase
         {
-            std::vector<SettingsLoadWarnings> warnings;
-            const auto action = implementation::ActionAndArgs::FromJson(json, warnings);
-            VERIFY_IS_NOT_NULL(action, L"toggleSidebar must parse as a normal configurable action");
-            VERIFY_ARE_EQUAL(ShortcutAction::ToggleSidebar, action->Action());
-            VERIFY_IS_TRUE(warnings.empty());
-            VERIFY_IS_NULL(action->Args());
-            VERIFY_ARE_EQUAL(std::string{ "toggleSidebar" }, implementation::ActionAndArgs::ToJson(*action).asString());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"User.toggleSidebar" }, action->GenerateID());
-            VERIFY_IS_FALSE(action->GenerateName().empty(), L"The sidebar action must have a localized command name");
+            const char* command;
+            ShortcutAction action;
+            const wchar_t* generatedId;
+        };
+        const std::array cases{
+            testCase{ "toggleSidebar", ShortcutAction::ToggleSidebar, L"User.toggleSidebar" },
+            testCase{ "toggleSidebarAgentsOnly", ShortcutAction::ToggleSidebarAgentsOnly, L"User.toggleSidebarAgentsOnly" },
+            testCase{ "toggleSidebarRecentAgentSessions", ShortcutAction::ToggleSidebarRecentAgentSessions, L"User.toggleSidebarRecentAgentSessions" },
+        };
+        for (const auto& test : cases)
+        {
+            Json::Value objectJson{ Json::objectValue };
+            objectJson["action"] = test.command;
+            for (const auto& json : { Json::Value{ test.command }, objectJson })
+            {
+                std::vector<SettingsLoadWarnings> warnings;
+                const auto action = implementation::ActionAndArgs::FromJson(json, warnings);
+                VERIFY_IS_NOT_NULL(action, L"Sidebar commands must parse as normal configurable actions");
+                VERIFY_ARE_EQUAL(test.action, action->Action());
+                VERIFY_IS_TRUE(warnings.empty());
+                VERIFY_IS_NULL(action->Args());
+                VERIFY_ARE_EQUAL(std::string{ test.command }, implementation::ActionAndArgs::ToJson(*action).asString());
+                VERIFY_ARE_EQUAL(winrt::hstring{ test.generatedId }, action->GenerateID());
+                VERIFY_IS_FALSE(action->GenerateName().empty(), L"The sidebar action must have a localized command name");
+            }
         }
     }
 

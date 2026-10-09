@@ -290,7 +290,7 @@ namespace winrt::TerminalApp::implementation
             const auto& duplicateFromTab{ realArgs.SplitMode() == SplitType::Duplicate ? _GetFocusedTab() : nullptr };
 
             const auto& activeTab{ _senderOrFocusedTab(sender) };
-            if (_tabStrip.SidebarFilters().ShowAgentsOnly() && realArgs.SplitMode() == SplitType::Duplicate)
+            if (_IsAgentScopeEffective() && realArgs.SplitMode() == SplitType::Duplicate)
             {
                 _SplitAgentDelegate(activeTab, realArgs.SplitDirection(), realArgs.SplitSize());
                 args.Handled(true);
