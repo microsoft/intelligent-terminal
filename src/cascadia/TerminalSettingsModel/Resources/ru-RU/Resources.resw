@@ -992,6 +992,7 @@
   </data>
   <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
     <value>Показать/скрыть панель</value>
+
   </data>
   <data name="ToggleSidebarCommandKey" xml:space="preserve">
     <value>Показать/скрыть боковую панель</value>
@@ -1007,12 +1008,15 @@
   </data>
   <data name="OpenAgentPaneCommandKey" xml:space="preserve">
     <value>Показать/скрыть ИИ-агента</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FocusAgentPaneCommandKey" xml:space="preserve">
     <value>Переместить фокус на панель ИИ-агента</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
     <value>Открыть список сеансов ИИ-агента</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="TriggerAutofixCommandKey" xml:space="preserve">
     <value>Запустить автоисправление</value>
@@ -1022,8 +1026,12 @@
   </data>
   <data name="BugReportCommandKey" xml:space="preserve">
     <value>Сообщить об ошибке (собрать журналы)</value>
+    <comment>Command palette entry that collects diagnostic log files into a zip archive on the user's Desktop, for attaching to a bug report.</comment>
   </data>
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>Открыть фонового агента в новой вкладке</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
+    <value>Включить или отключить палитру команд в режиме делегирования агенту</value>
+  </data>
 </root>

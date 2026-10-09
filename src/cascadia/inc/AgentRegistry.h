@@ -18,8 +18,7 @@
 // Keep the two lists here so all consumers stay in sync. Custom agents
 // configured by the user are appended separately by each consumer.
 //
-// Display names are English fallbacks; UI consumers should prefer
-// localized names from .resw resources (e.g. "AgentName_Copilot").
+// Display names are invariant product names shared by all consumers.
 // GPO-filtered variants are available via FilteredAcpAgents() /
 // FilteredDelegateAgents() — always prefer these over the raw arrays.
 namespace Microsoft::Terminal::Settings::Model::AgentRegistry
@@ -40,8 +39,6 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
     struct BuiltinAgent
     {
         std::wstring_view id;
-        // Fallback display name (English). UI consumers should prefer the
-        // localized name from .resw resources (e.g. "AgentName_Copilot").
         std::wstring_view displayName;
         // Describes whether and how the agent consumes the shared BYOK
         // provider selected in settings.

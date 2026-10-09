@@ -502,7 +502,7 @@
   </data>
   <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
     <value>Toggle pane visibility</value>
-  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  </data>
   <data name="ToggleSidebarCommandKey" xml:space="preserve">
     <value>Toggle sidebar</value>
     <comment>A command that shows or collapses the vertical tabs sidebar.</comment>
@@ -784,7 +784,7 @@
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="TriggerAutofixCommandKey" xml:space="preserve">
     <value>Trigger autofix</value>
-  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  </data>
   <data name="WorkspacesCommandKey" xml:space="preserve">
     <value>Workspaces...</value>
   </data>

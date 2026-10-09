@@ -992,6 +992,7 @@
   </data>
   <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
     <value>창 표시 여부 전환</value>
+
   </data>
   <data name="ToggleSidebarCommandKey" xml:space="preserve">
     <value>사이드바 전환</value>
@@ -1007,12 +1008,15 @@
   </data>
   <data name="OpenAgentPaneCommandKey" xml:space="preserve">
     <value>AI 에이전트 표시/숨기기</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FocusAgentPaneCommandKey" xml:space="preserve">
     <value>AI 에이전트 창으로 포커스 이동</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
     <value>AI 에이전트 세션 목록 열기</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="TriggerAutofixCommandKey" xml:space="preserve">
     <value>자동 수정 실행</value>
@@ -1022,8 +1026,12 @@
   </data>
   <data name="BugReportCommandKey" xml:space="preserve">
     <value>버그 보고(로그 수집)</value>
+    <comment>Command palette entry that collects diagnostic log files into a zip archive on the user's Desktop, for attaching to a bug report.</comment>
   </data>
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>새 탭에서 백그라운드 에이전트 열기</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
+    <value>에이전트 위임 모드에서 명령 팔레트 설정/해제</value>
+  </data>
 </root>

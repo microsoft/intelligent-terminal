@@ -1,17 +1,17 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
-  <!-- 
-    Microsoft ResX Schema 
-    
+  <!--
+    Microsoft ResX Schema
+
     Version 2.0
-    
-    The primary goals of this format is to allow a simple XML format 
-    that is mostly human readable. The generation and parsing of the 
-    various data types are done through the TypeConverter classes 
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
     associated with the data types.
-    
+
     Example:
-    
+
     ... ado.net/XML headers & schema ...
     <resheader name="resmimetype">text/microsoft-resx</resheader>
     <resheader name="version">2.0</resheader>
@@ -26,36 +26,36 @@
         <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
         <comment>This is a comment</comment>
     </data>
-                
-    There are any number of "resheader" rows that contain simple 
+
+    There are any number of "resheader" rows that contain simple
     name/value pairs.
-    
-    Each data row contains a name, and value. The row also contains a 
-    type or mimetype. Type corresponds to a .NET class that support 
-    text/value conversion through the TypeConverter architecture. 
-    Classes that don't support this are serialized and stored with the 
+
+    Each data row contains a name, and value. The row also contains a
+    type or mimetype. Type corresponds to a .NET class that support
+    text/value conversion through the TypeConverter architecture.
+    Classes that don't support this are serialized and stored with the
     mimetype set.
-    
-    The mimetype is used for serialized objects, and tells the 
-    ResXResourceReader how to depersist the object. This is currently not 
+
+    The mimetype is used for serialized objects, and tells the
+    ResXResourceReader how to depersist the object. This is currently not
     extensible. For a given mimetype the value must be set accordingly:
-    
-    Note - application/x-microsoft.net.object.binary.base64 is the format 
-    that the ResXResourceWriter will generate, however the reader can 
+
+    Note - application/x-microsoft.net.object.binary.base64 is the format
+    that the ResXResourceWriter will generate, however the reader can
     read any of the formats listed below.
-    
+
     mimetype: application/x-microsoft.net.object.binary.base64
-    value   : The object must be serialized with 
+    value   : The object must be serialized with
             : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
             : and then encoded with base64 encoding.
-    
+
     mimetype: application/x-microsoft.net.object.soap.base64
-    value   : The object must be serialized with 
+    value   : The object must be serialized with
             : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
             : and then encoded with base64 encoding.
 
     mimetype: application/x-microsoft.net.object.bytearray.base64
-    value   : The object must be serialized into a byte array 
+    value   : The object must be serialized into a byte array
             : using a System.ComponentModel.TypeConverter
             : and then encoded with base64 encoding.
     -->
@@ -118,451 +118,473 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="SetColorSchemeParentCommandName" xml:space="preserve">
-    <value>選取彩色配置...</value>
+    <value>اختيار نظام الألوان...</value>
   </data>
   <data name="NewTabParentCommandName" xml:space="preserve">
-    <value>新索引標籤...</value>
+    <value>علامة تبويب جديدة...</value>
   </data>
   <data name="SplitPaneParentCommandName" xml:space="preserve">
-    <value>分割窗格...</value>
+    <value>تقسيم اللوحة...</value>
   </data>
   <data name="SnippetsPaneCommandName" xml:space="preserve">
-    <value>開啟程式碼片段窗格</value>
+    <value>فتح لوحة المقتطفات</value>
     <comment>This will open a pane with a list of the users's saved commands ("snippets") in it</comment>
   </data>
   <data name="ApplicationDisplayNamePortable" xml:space="preserve">
-    <value>終端機 (可攜式)</value>
+    <value>الوحدة الطرفية (محمولة)</value>
     <comment>This display name is used when the Terminal application is running in a "portable" mode, where settings are not stored in a shared location.</comment>
   </data>
   <data name="ApplicationDisplayNameUnpackaged" xml:space="preserve">
-    <value>終端機 (未封裝)</value>
+    <value>الوحدة الطرفية (غير معبأة)</value>
     <comment>This display name is used when the application's name cannot be determined</comment>
   </data>
   <data name="ApplicationVersionUnknown" xml:space="preserve">
-    <value>未知</value>
+    <value>غير معروف</value>
     <comment>This is displayed when the version of the application cannot be determined</comment>
   </data>
   <data name="AdjustFontSizeCommandKey" xml:space="preserve">
-    <value>調整字型大小</value>
+    <value>ضبط حجم الخط</value>
   </data>
   <data name="CloseOtherTabsCommandKey" xml:space="preserve">
-    <value>關閉索引 {0} 以外的索引標籤</value>
+    <value>إغلاق علامات التبويب باستثناء العلامة ذات الفهرس {0}</value>
     <comment>{0} will be replaced with a number</comment>
   </data>
   <data name="CloseOtherTabsDefaultCommandKey" xml:space="preserve">
-    <value>關閉其他全部索引標籤</value>
+    <value>إغلاق جميع علامات التبويب الأخرى</value>
   </data>
   <data name="ClosePaneCommandKey" xml:space="preserve">
-    <value>關閉窗格</value>
+    <value>إغلاق اللوحة</value>
   </data>
   <data name="CloseTabAtIndexCommandKey" xml:space="preserve">
-    <value>關閉索引 {0} 的分頁</value>
+    <value>إغلاق علامة التبويب ذات الفهرس {0}</value>
     <comment>{0} will be replaced with a number</comment>
   </data>
   <data name="CloseTabCommandKey" xml:space="preserve">
-    <value>關閉索引標籤</value>
+    <value>إغلاق علامة التبويب</value>
   </data>
   <data name="CloseTabsAfterCommandKey" xml:space="preserve">
-    <value>關閉索引 {0} 之後的索引標籤</value>
+    <value>إغلاق علامات التبويب بعد الفهرس {0}</value>
     <comment>{0} will be replaced with a number</comment>
   </data>
   <data name="CopySuffix" xml:space="preserve">
-    <value>複製</value>
+    <value>نسخة</value>
     <comment>The suffix we add to the name of a duplicated profile.</comment>
   </data>
   <data name="MoveTabCommandKey" xml:space="preserve">
-    <value>移動索引標籤 {0}</value>
+    <value>نقل علامة التبويب {0}</value>
     <comment>{0} will be replaced with a "forward (right)" / "backward (left)"</comment>
   </data>
   <data name="MoveTabToWindowCommandKey" xml:space="preserve">
-    <value>將索引標籤移至視窗「{0}」</value>
+    <value>نقل علامة التبويب إلى النافذة "{0}"</value>
     <comment>{0} will be replaced with a user-specified name of a window</comment>
   </data>
   <data name="MoveTabToNewWindowCommandKey" xml:space="preserve">
-    <value>將索引標籤移至新視窗</value>
+    <value>نقل علامة التبويب إلى نافذة جديدة</value>
   </data>
   <data name="MoveTabDirectionForward" xml:space="preserve">
-    <value>向前 (右)</value>
+    <value>إلى الأمام (يمينًا)</value>
   </data>
   <data name="MoveTabDirectionBackward" xml:space="preserve">
-    <value>倒退 (左)</value>
+    <value>إلى الخلف (يسارًا)</value>
   </data>
   <data name="CloseTabsAfterDefaultCommandKey" xml:space="preserve">
-    <value>關閉目前索引標籤之後的全部索引標籤</value>
+    <value>إغلاق جميع علامات التبويب بعد علامة التبويب الحالية</value>
   </data>
   <data name="CloseWindowCommandKey" xml:space="preserve">
-    <value>關閉視窗</value>
+    <value>إغلاق النافذة</value>
   </data>
   <data name="OpenSystemMenuCommandKey" xml:space="preserve">
-    <value>開啟系統功能表</value>
+    <value>فتح قائمة النظام</value>
   </data>
   <data name="CommandPromptDisplayName" xml:space="preserve">
-    <value>命令提示字元</value>
+    <value>موجه الأوامر</value>
     <comment>This is the name of "Command Prompt", as localized in Windows. The localization here should match the one in the Windows product for "Command Prompt"</comment>
   </data>
   <data name="CopyTextAsSingleLineCommandKey" xml:space="preserve">
-    <value>將文字複製為單行</value>
+    <value>نسخ النص كسطر واحد</value>
   </data>
   <data name="CopyTextCommandKey" xml:space="preserve">
-    <value>複製文字</value>
+    <value>نسخ النص</value>
   </data>
   <data name="DecreaseFontSizeCommandKey" xml:space="preserve">
-    <value>減少字型大小</value>
+    <value>تصغير حجم الخط</value>
   </data>
   <data name="DecreaseFontSizeWithAmountCommandKey" xml:space="preserve">
-    <value>減少字型大小、數量: {0}</value>
+    <value>تصغير حجم الخط بمقدار: {0}</value>
     <comment>{0} will be replaced with a positive number</comment>
   </data>
   <data name="DirectionDown" xml:space="preserve">
-    <value>向下</value>
+    <value>لأسفل</value>
   </data>
   <data name="DirectionLeft" xml:space="preserve">
-    <value>左</value>
+    <value>لليسار</value>
   </data>
   <data name="DirectionRight" xml:space="preserve">
-    <value>右</value>
+    <value>لليمين</value>
   </data>
   <data name="DirectionUp" xml:space="preserve">
-    <value>向上</value>
+    <value>لأعلى</value>
   </data>
   <data name="DirectionPrevious" xml:space="preserve">
-    <value>上一步</value>
+    <value>السابق</value>
   </data>
   <data name="DuplicatePaneCommandKey" xml:space="preserve">
-    <value>複製窗格</value>
+    <value>تكرار اللوحة</value>
   </data>
   <data name="DuplicateTabCommandKey" xml:space="preserve">
-    <value>複製索引標籤</value>
+    <value>تكرار علامة التبويب</value>
   </data>
   <data name="ExecuteCommandlineCommandKey" xml:space="preserve">
-    <value>在此視窗中執行命令列「{0}」</value>
+    <value>تشغيل سطر الأوامر "{0}" في هذه النافذة</value>
     <comment>{0} will be replaced with a user-defined commandline</comment>
   </data>
   <data name="FindCommandKey" xml:space="preserve">
-    <value>尋找</value>
+    <value>بحث</value>
   </data>
   <data name="FindNextCommandKey" xml:space="preserve">
-    <value>尋找下一個相符的搜尋</value>
+    <value>البحث عن التطابق التالي</value>
   </data>
   <data name="FindPrevCommandKey" xml:space="preserve">
-    <value>尋找上一個相符的搜尋</value>
+    <value>البحث عن التطابق السابق</value>
   </data>
   <data name="IncreaseFontSizeCommandKey" xml:space="preserve">
-    <value>增加字型大小</value>
+    <value>تكبير حجم الخط</value>
   </data>
   <data name="IncreaseFontSizeWithAmountCommandKey" xml:space="preserve">
-    <value>增加字型大小、數量: {0}</value>
+    <value>تكبير حجم الخط بمقدار: {0}</value>
     <comment>{0} will be replaced with a positive number</comment>
   </data>
   <data name="MoveFocusCommandKey" xml:space="preserve">
-    <value>移動焦點</value>
+    <value>نقل التركيز</value>
   </data>
   <data name="MoveFocusWithArgCommandKey" xml:space="preserve">
-    <value>移動焦點 {0}</value>
+    <value>نقل التركيز {0}</value>
     <comment>{0} will be replaced with one of the four directions "DirectionLeft", "DirectionRight", "DirectionUp", "DirectionDown"</comment>
   </data>
   <data name="MoveFocusToLastUsedPane" xml:space="preserve">
-    <value>將焦點移至上次使用的窗格</value>
+    <value>نقل التركيز إلى آخر لوحة مستخدمة</value>
   </data>
   <data name="MoveFocusNextInOrder" xml:space="preserve">
-    <value>依順序將焦點移動至下一個窗格</value>
+    <value>نقل التركيز إلى اللوحة التالية بالترتيب</value>
   </data>
   <data name="MoveFocusPreviousInOrder" xml:space="preserve">
-    <value>依順序將焦點移動至上一個窗格</value>
+    <value>نقل التركيز إلى اللوحة السابقة بالترتيب</value>
   </data>
   <data name="MoveFocusFirstPane" xml:space="preserve">
-    <value>將焦點移動至第一個窗格</value>
+    <value>نقل التركيز إلى اللوحة الأولى</value>
   </data>
   <data name="MoveFocusParentPane" xml:space="preserve">
-    <value>將焦點移至父窗格</value>
+    <value>نقل التركيز إلى اللوحة الأصل</value>
   </data>
   <data name="MoveFocusChildPane" xml:space="preserve">
-    <value>將焦點移至子窗格</value>
+    <value>نقل التركيز إلى اللوحة الفرعية</value>
   </data>
   <data name="SwapPaneCommandKey" xml:space="preserve">
-    <value>交換窗格</value>
+    <value>تبديل اللوحة</value>
   </data>
   <data name="SwapPaneWithArgCommandKey" xml:space="preserve">
-    <value>交換窗格 {0}</value>
+    <value>تبديل اللوحة {0}</value>
     <comment>{0} will be replaced with one of the four directions "DirectionLeft", "DirectionRight", "DirectionUp", "DirectionDown"</comment>
   </data>
   <data name="SwapPaneToLastUsedPane" xml:space="preserve">
-    <value>與上次使用的窗格交換窗格</value>
+    <value>تبديل اللوحة بآخر لوحة مستخدمة</value>
   </data>
   <data name="SwapPaneNextInOrder" xml:space="preserve">
-    <value>依順序將窗格與下一個窗格交換</value>
+    <value>تبديل اللوحة باللوحة التالية بالترتيب</value>
   </data>
   <data name="SwapPanePreviousInOrder" xml:space="preserve">
-    <value>依順序將窗格與上一窗格交換</value>
+    <value>تبديل اللوحة باللوحة السابقة بالترتيب</value>
   </data>
   <data name="SwapPaneFirstPane" xml:space="preserve">
-    <value>使用第一個窗格交換窗格</value>
+    <value>تبديل اللوحة باللوحة الأولى</value>
   </data>
   <data name="NewTabCommandKey" xml:space="preserve">
-    <value>新索引標籤</value>
+    <value>علامة تبويب جديدة</value>
   </data>
   <data name="NewWindowCommandKey" xml:space="preserve">
-    <value>新視窗</value>
+    <value>نافذة جديدة</value>
   </data>
   <data name="IdentifyWindowCommandKey" xml:space="preserve">
-    <value>識別視窗</value>
+    <value>تحديد هوية النافذة</value>
   </data>
   <data name="IdentifyWindowsCommandKey" xml:space="preserve">
-    <value>識別視窗</value>
+    <value>تحديد هويات النوافذ</value>
   </data>
   <data name="NextTabCommandKey" xml:space="preserve">
-    <value>下一個索引標籤</value>
+    <value>علامة التبويب التالية</value>
   </data>
   <data name="OpenBothSettingsFilesCommandKey" xml:space="preserve">
-    <value>同時開啟設定和預設設定檔案 (JSON)</value>
+    <value>فتح ملفي الإعدادات والإعدادات الافتراضية (JSON)</value>
     <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>
   </data>
   <data name="OpenDefaultSettingsCommandKey" xml:space="preserve">
-    <value>開啟預設的設定檔 (JSON)</value>
+    <value>فتح ملف الإعدادات الافتراضية (JSON)</value>
     <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>
   </data>
   <data name="OpenNewTabDropdownCommandKey" xml:space="preserve">
-    <value>開啟 新增索引標籤下拉式功能表</value>
+    <value>فتح القائمة المنسدلة لعلامة تبويب جديدة</value>
   </data>
   <data name="OpenSettingsCommandKey" xml:space="preserve">
-    <value>開啟設定檔案 (JSON)</value>
+    <value>فتح ملف الإعدادات (JSON)</value>
     <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>
   </data>
   <data name="SettingsFileOpenInExplorerCommandKey" xml:space="preserve">
-    <value>開啟設定檔案目錄</value>
+    <value>فتح مجلد ملف الإعدادات</value>
   </data>
   <data name="OpenTabColorPickerCommandKey" xml:space="preserve">
-    <value>設定索引標籤色彩...</value>
+    <value>تعيين لون علامة التبويب...</value>
   </data>
   <data name="PasteTextCommandKey" xml:space="preserve">
-    <value>貼上</value>
+    <value>لصق</value>
   </data>
   <data name="PrevTabCommandKey" xml:space="preserve">
-    <value>上一個索引標籤</value>
+    <value>علامة التبويب السابقة</value>
   </data>
   <data name="RenameTabCommandKey" xml:space="preserve">
-    <value>將索引標籤重新命名為 “ {0}“</value>
+    <value>إعادة تسمية علامة التبويب إلى "{0}"</value>
     <comment>{0} will be replaced with a user-defined string</comment>
   </data>
   <data name="ResetFontSizeCommandKey" xml:space="preserve">
-    <value>重設字型大小</value>
+    <value>إعادة تعيين حجم الخط</value>
   </data>
   <data name="ResetTabColorCommandKey" xml:space="preserve">
-    <value>重設索引標籤色彩</value>
+    <value>إعادة تعيين لون علامة التبويب</value>
   </data>
   <data name="ResetTabNameCommandKey" xml:space="preserve">
-    <value>重設索引標籤標題</value>
+    <value>إعادة تعيين عنوان علامة التبويب</value>
   </data>
   <data name="OpenTabRenamerCommandKey" xml:space="preserve">
-    <value>重新命名索引標籤</value>
+    <value>إعادة تسمية علامة التبويب</value>
   </data>
   <data name="ResizePaneCommandKey" xml:space="preserve">
-    <value>調整頁面大小</value>
+    <value>تغيير حجم اللوحة</value>
   </data>
   <data name="ResizePaneWithArgCommandKey" xml:space="preserve">
-    <value>調整頁面大小 {0}</value>
+    <value>تغيير حجم اللوحة {0}</value>
     <comment>{0} will be replaced with one of the four directions "DirectionLeft", "DirectionRight", "DirectionUp", or "DirectionDown"</comment>
   </data>
   <data name="ScrollDownCommandKey" xml:space="preserve">
-    <value>向下捲動</value>
+    <value>تمرير لأسفل</value>
   </data>
   <data name="ScrollDownSeveralRowsCommandKey" xml:space="preserve">
-    <value>向下捲動 {0} 行</value>
+    <value>تمرير لأسفل بمقدار {0} سطر</value>
     <comment>{0} will be replaced with the number of lines to scroll"</comment>
   </data>
   <data name="ScrollDownPageCommandKey" xml:space="preserve">
-    <value>向下滾動一頁</value>
+    <value>تمرير صفحة واحدة لأسفل</value>
   </data>
   <data name="ScrollUpCommandKey" xml:space="preserve">
-    <value>向上捲動</value>
+    <value>تمرير لأعلى</value>
   </data>
   <data name="ScrollUpSeveralRowsCommandKey" xml:space="preserve">
-    <value>向上捲動 {0} 行</value>
+    <value>تمرير لأعلى بمقدار {0} سطر</value>
     <comment>{0} will be replaced with the number of lines to scroll"</comment>
   </data>
   <data name="ScrollUpPageCommandKey" xml:space="preserve">
-    <value>向上滾動一頁</value>
+    <value>تمرير صفحة واحدة لأعلى</value>
   </data>
   <data name="ScrollToTopCommandKey" xml:space="preserve">
-    <value>捲動到歷程記錄的頂端</value>
+    <value>تمرير إلى بداية السجل</value>
   </data>
   <data name="ScrollToBottomCommandKey" xml:space="preserve">
-    <value>捲動到歷程記錄的底部</value>
+    <value>تمرير إلى نهاية السجل</value>
   </data>
   <data name="ScrollToPreviousMarkCommandKey" xml:space="preserve">
-    <value>捲動至上一個標記</value>
+    <value>تمرير إلى العلامة السابقة</value>
   </data>
   <data name="ScrollToNextMarkCommandKey" xml:space="preserve">
-    <value>捲動至下一個標記</value>
+    <value>تمرير إلى العلامة التالية</value>
   </data>
   <data name="ScrollToFirstMarkCommandKey" xml:space="preserve">
-    <value>捲動至第一個標記</value>
+    <value>تمرير إلى العلامة الأولى</value>
   </data>
   <data name="ScrollToLastMarkCommandKey" xml:space="preserve">
-    <value>捲動至最後一個標記</value>
+    <value>تمرير إلى العلامة الأخيرة</value>
   </data>
   <data name="AddMarkCommandKey" xml:space="preserve">
-    <value>新增捲動標記</value>
+    <value>إضافة علامة تمرير</value>
   </data>
   <data name="AddMarkWithColorCommandKey" xml:space="preserve">
-    <value>新增捲動標記，color:{0}</value>
+    <value>إضافة علامة تمرير، color:{0}</value>
     <comment>{Locked="color"}. "color" is a literal parameter name that shouldn't be translated. {0} will be replaced with a color in hexadecimal format, like `#123456`</comment>
   </data>
   <data name="ClearMarkCommandKey" xml:space="preserve">
-    <value>清除標記</value>
+    <value>مسح العلامة</value>
   </data>
   <data name="ClearAllMarksCommandKey" xml:space="preserve">
-    <value>清除所有標記</value>
+    <value>مسح جميع العلامات</value>
   </data>
   <data name="SendInputCommandKey" xml:space="preserve">
-    <value>傳送輸入: "{0}"</value>
+    <value>إرسال الإدخال: "{0}"</value>
     <comment>{0} will be replaced with a string of input as defined by the user</comment>
   </data>
   <data name="SetColorSchemeCommandKey" xml:space="preserve">
-    <value>將色彩配置設定為 {0}</value>
+    <value>تعيين نظام الألوان إلى {0}</value>
     <comment>{0} will be replaced with the name of a color scheme as defined by the user.</comment>
   </data>
   <data name="SetTabColorCommandKey" xml:space="preserve">
-    <value>將索引標籤色彩設定為 {0}</value>
+    <value>تعيين لون علامة التبويب إلى {0}</value>
     <comment>{0} will be replaced with a color, displayed in hexadecimal (#RRGGBB) notation.</comment>
   </data>
   <data name="SplitHorizontalCommandKey" xml:space="preserve">
-    <value>水平分割窗格</value>
+    <value>تقسيم اللوحة أفقيًا</value>
   </data>
   <data name="MovePaneCommandKey" xml:space="preserve">
-    <value>移動窗格</value>
+    <value>نقل اللوحة</value>
   </data>
   <data name="MovePaneToNewWindowCommandKey" xml:space="preserve">
-    <value>將窗格移至新視窗</value>
+    <value>نقل اللوحة إلى نافذة جديدة</value>
   </data>
   <data name="SplitPaneCommandKey" xml:space="preserve">
-    <value>分割窗格</value>
+    <value>تقسيم اللوحة</value>
   </data>
   <data name="SplitVerticalCommandKey" xml:space="preserve">
-    <value>垂直分割窗格</value>
+    <value>تقسيم اللوحة عموديًا</value>
   </data>
   <data name="SwitchToTabCommandKey" xml:space="preserve">
-    <value>切換至索引標籤</value>
+    <value>التبديل إلى علامة تبويب</value>
   </data>
   <data name="SwitchToLastTabCommandKey" xml:space="preserve">
-    <value>切換到最後一個索引標籤</value>
+    <value>التبديل إلى علامة التبويب الأخيرة</value>
   </data>
   <data name="TabSearchCommandKey" xml:space="preserve">
-    <value>搜尋索引標籤...</value>
+    <value>البحث عن علامة تبويب...</value>
   </data>
   <data name="ToggleAlwaysOnTopCommandKey" xml:space="preserve">
-    <value>啟用 [最上層顯示] 模式</value>
+    <value>تبديل وضع البقاء في المقدمة دائمًا</value>
   </data>
   <data name="ToggleCommandPaletteCommandKey" xml:space="preserve">
-    <value>切換命令選擇區</value>
+    <value>إظهار لوحة الأوامر أو إخفاؤها</value>
+  </data>
+  <data name="ShowProtocolInfoCommandKey" xml:space="preserve">
+    <value>إظهار معلومات Terminal Protocol</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
   </data>
   <data name="SuggestionsCommandKey" xml:space="preserve">
-    <value>開啟建議</value>
+    <value>فتح الاقتراحات</value>
   </data>
   <data name="ToggleCommandPaletteCommandLineModeCommandKey" xml:space="preserve">
-    <value>在命令列模式中切換命令選擇區</value>
+    <value>إظهار لوحة الأوامر أو إخفاؤها في وضع سطر الأوامر</value>
+  </data>
+  <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
+    <value>إظهار لوحة الأوامر أو إخفاؤها في وضع تفويض الوكيل</value>
   </data>
   <data name="ToggleFocusModeCommandKey" xml:space="preserve">
-    <value>切換焦點模式</value>
+    <value>تبديل وضع التركيز</value>
     <comment>"Focus mode" is a mode with minimal UI elements, for a distraction-free experience</comment>
   </data>
   <data name="EnableFocusModeCommandKey" xml:space="preserve">
-    <value>啟用焦點模式</value>
+    <value>تمكين وضع التركيز</value>
   </data>
   <data name="DisableFocusModeCommandKey" xml:space="preserve">
-    <value>停用焦點模式</value>
+    <value>تعطيل وضع التركيز</value>
   </data>
   <data name="ToggleFullscreenCommandKey" xml:space="preserve">
-    <value>切換全螢幕</value>
+    <value>تبديل وضع ملء الشاشة</value>
   </data>
   <data name="EnableFullScreenCommandKey" xml:space="preserve">
-    <value>啟用全螢幕</value>
+    <value>تمكين وضع ملء الشاشة</value>
   </data>
   <data name="DisableFullScreenCommandKey" xml:space="preserve">
-    <value>停用全螢幕</value>
+    <value>تعطيل وضع ملء الشاشة</value>
   </data>
   <data name="EnableMaximizedCommandKey" xml:space="preserve">
-    <value>視窗最大化</value>
+    <value>تكبير النافذة</value>
   </data>
   <data name="DisableMaximizedCommandKey" xml:space="preserve">
-    <value>還原最大化視窗</value>
+    <value>استعادة النافذة المكبرة</value>
   </data>
   <data name="ToggleSplitOrientationCommandKey" xml:space="preserve">
-    <value>切換窗格分割方向</value>
+    <value>تبديل اتجاه تقسيم اللوحة</value>
   </data>
   <data name="TogglePaneZoomCommandKey" xml:space="preserve">
-    <value>切換窗格縮放</value>
+    <value>تبديل تكبير اللوحة</value>
+  </data>
+  <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
+    <value>إظهار اللوحة أو إخفاؤها</value>
+  </data>
+  <data name="ToggleSidebarCommandKey" xml:space="preserve">
+    <value>إظهار الشريط الجانبي أو إخفاؤه</value>
+    <comment>A command that shows or collapses the vertical tabs sidebar.</comment>
+  </data>
+  <data name="ToggleSidebarAgentsOnlyCommandKey" xml:space="preserve">
+    <value>تبديل تصفية الشريط الجانبي لعرض الوكلاء فقط</value>
+    <comment>Command that toggles whether the sidebar shows only open AI-agent tabs. It does not change the independent Recent agent sessions option. Global sidebar search includes all tabs regardless of this preference.</comment>
+  </data>
+  <data name="ToggleSidebarRecentAgentSessionsCommandKey" xml:space="preserve">
+    <value>إظهار جلسات الوكلاء الأخيرة في الشريط الجانبي أو إخفاؤها</value>
+    <comment>Command that toggles the Recent agent sessions section in the sidebar without changing the independent Agents only filter. Recent sessions are also included while a global search query is present.</comment>
   </data>
   <data name="TogglePaneReadOnlyCommandKey" xml:space="preserve">
-    <value>切換窗格唯讀模式</value>
+    <value>تبديل وضع القراءة فقط للوحة</value>
   </data>
   <data name="EnablePaneReadOnlyCommandKey" xml:space="preserve">
-    <value>啟用窗格唯讀模式</value>
+    <value>تمكين وضع القراءة فقط للوحة</value>
   </data>
   <data name="DisablePaneReadOnlyCommandKey" xml:space="preserve">
-    <value>停用窗格唯讀模式</value>
+    <value>تعطيل وضع القراءة فقط للوحة</value>
   </data>
   <data name="ToggleShaderEffectsCommandKey" xml:space="preserve">
-    <value>切換終端視覺效果</value>
+    <value>تبديل التأثيرات المرئية للوحدة الطرفية</value>
   </data>
   <data name="BreakIntoDebuggerCommandKey" xml:space="preserve">
-    <value>在偵錯工具中中斷</value>
+    <value>التوقف في مصحح الأخطاء</value>
   </data>
   <data name="OpenSettingsUICommandKey" xml:space="preserve">
-    <value>開啟設定</value>
+    <value>فتح الإعدادات</value>
   </data>
   <data name="RenameWindowCommandKey" xml:space="preserve">
-    <value>將視窗重新命名為「{0}」</value>
+    <value>إعادة تسمية النافذة إلى "{0}"</value>
     <comment>{0} will be replaced with a user-defined string</comment>
   </data>
   <data name="ResetWindowNameCommandKey" xml:space="preserve">
-    <value>重設視窗名稱</value>
+    <value>إعادة تعيين اسم النافذة</value>
   </data>
   <data name="OpenWorkspaceCommandKey" xml:space="preserve">
-    <value>開啟工作區「{0}」</value>
+    <value>فتح مساحة العمل "{0}"</value>
     <comment>{0} will be replaced with the workspace name</comment>
   </data>
   <data name="OpenWorkspaceDefaultCommandKey" xml:space="preserve">
-    <value>開啟工作區</value>
+    <value>فتح مساحة العمل</value>
   </data>
   <data name="OpenWindowRenamerCommandKey" xml:space="preserve">
-    <value>重新命名視窗...</value>
+    <value>إعادة تسمية النافذة...</value>
   </data>
   <data name="DisplayWorkingDirectoryCommandKey" xml:space="preserve">
-    <value>顯示終端機目前的工作目錄</value>
+    <value>عرض مجلد العمل الحالي للوحدة الطرفية</value>
   </data>
   <data name="GlobalSummonCommandKey" xml:space="preserve">
-    <value>顯示/隱藏終端機視窗</value>
+    <value>إظهار نافذة الوحدة الطرفية أو إخفاؤها</value>
   </data>
   <data name="QuakeModeCommandKey" xml:space="preserve">
-    <value>顯示/隱藏 Quake 視窗</value>
+    <value>إظهار نافذة Quake أو إخفاؤها</value>
     <comment>Quake is a well-known computer game and isn't related to earthquakes, etc. See https://en.wikipedia.org/wiki/Quake_(video_game)</comment>
   </data>
   <data name="FocusPaneCommandKey" xml:space="preserve">
-    <value>聚焦窗格 {0}</value>
+    <value>التركيز على اللوحة {0}</value>
     <comment>{0} will be replaced with a user-specified number</comment>
   </data>
   <data name="ExportBufferToPathCommandKey" xml:space="preserve">
-    <value>匯出文字至 {0}</value>
+    <value>تصدير النص إلى {0}</value>
     <comment>{0} will be replaced with a user-specified file path</comment>
   </data>
   <data name="ExportBufferCommandKey" xml:space="preserve">
-    <value>匯出文字</value>
+    <value>تصدير النص</value>
   </data>
   <data name="ClearAllCommandKey" xml:space="preserve">
-    <value>清除緩衝區</value>
+    <value>مسح المخزن المؤقت</value>
     <comment>A command to clear the entirety of the Terminal output buffer</comment>
   </data>
   <data name="ClearViewportCommandKey" xml:space="preserve">
-    <value>清除檢視區</value>
+    <value>مسح منطقة العرض</value>
     <comment>A command to clear the active viewport of the Terminal</comment>
   </data>
   <data name="ClearScrollbackCommandKey" xml:space="preserve">
-    <value>清除捲動</value>
+    <value>مسح سجل التمرير</value>
     <comment>A command to clear the part of the buffer above the viewport</comment>
   </data>
   <data name="DefaultWindowsConsoleName" xml:space="preserve">
-    <value>讓 Windows 決定</value>
+    <value>السماح لـ Windows بالاختيار</value>
     <comment>This is the default option if a user doesn't choose to override Microsoft's choice of a Terminal.</comment>
   </data>
   <data name="InboxWindowsConsoleAuthor" xml:space="preserve">
@@ -570,443 +592,442 @@
     <comment>Paired with `InboxWindowsConsoleName`, this is the application author... which is us: Microsoft.</comment>
   </data>
   <data name="InboxWindowsConsoleName" xml:space="preserve">
-    <value>Windows 主控台主機</value>
+    <value>مضيف وحدة تحكم Windows</value>
     <comment>Name describing the usage of the classic windows console as the terminal UI. (`conhost.exe`)</comment>
   </data>
   <data name="QuitCommandKey" xml:space="preserve">
-    <value>結束 [終端機]</value>
+    <value>إنهاء الوحدة الطرفية</value>
   </data>
   <data name="SetOpacityParentCommandName" xml:space="preserve">
-    <value>設定背景不透明度...</value>
+    <value>تعيين تعتيم الخلفية...</value>
   </data>
   <data name="IncreaseOpacityCommandKey" xml:space="preserve">
-    <value>增加背景不透明度為 {0}%</value>
+    <value>زيادة تعتيم الخلفية بنسبة {0}%</value>
     <comment>A command to change how transparent the background of the window is</comment>
   </data>
   <data name="DecreaseOpacityCommandKey" xml:space="preserve">
-    <value>減少背景不透明度為 {0}%</value>
+    <value>تقليل تعتيم الخلفية بنسبة {0}%</value>
     <comment>A command to change how transparent the background of the window is</comment>
   </data>
   <data name="AdjustOpacityCommandKey" xml:space="preserve">
-    <value>將背景不透明度設為 {0}%</value>
+    <value>تعيين تعتيم الخلفية إلى {0}%</value>
     <comment>A command to change how transparent the background of the window is</comment>
   </data>
   <data name="RestoreLastClosedCommandKey" xml:space="preserve">
-    <value>還原上一個關閉的窗格或索引標籤</value>
+    <value>استعادة آخر لوحة أو علامة تبويب مغلقة</value>
   </data>
   <data name="SelectAllCommandKey" xml:space="preserve">
-    <value>選取所有文字</value>
+    <value>تحديد النص بالكامل</value>
   </data>
   <data name="MarkModeCommandKey" xml:space="preserve">
-    <value>切換標記模式</value>
+    <value>تبديل وضع التحديد</value>
     <comment>A command that will toggle "mark mode". This is a mode in the application where the user can mark the text by selecting portions of the text.</comment>
   </data>
   <data name="ToggleBlockSelectionCommandKey" xml:space="preserve">
-    <value>切換區塊選取</value>
+    <value>تبديل التحديد الكتلي</value>
   </data>
   <data name="SwitchSelectionEndpointCommandKey" xml:space="preserve">
-    <value>切換選取範圍端點</value>
+    <value>تبديل نقطة نهاية التحديد</value>
   </data>
   <data name="ColorSelection_allMatches" xml:space="preserve">
-    <value>所有相符項目</value>
+    <value>جميع التطابقات</value>
     <comment>This is used in the description of an action which changes the color of selected text, to indicate that not only the selected text will be colored, but also all matching text.</comment>
   </data>
   <data name="ColorSelection_fg_action" xml:space="preserve">
-    <value>色彩選取，前景: {0}{1}</value>
+    <value>تلوين التحديد، لون المقدمة: {0}{1}</value>
     <comment>This is the description of an action which changes the color of selected text. {0}: the color. {1}: empty string OR a clause indicating that all matching text will be colored (ColorSelection_allMatches).</comment>
   </data>
   <data name="ColorSelection_bg_action" xml:space="preserve">
-    <value>色彩選取，背景: {0}{1}</value>
+    <value>تلوين التحديد، لون الخلفية: {0}{1}</value>
     <comment>This is the description of an action which changes the background color of selected text. {0}: the color. {1}: empty string OR a clause indicating that all matching text will be colored (ColorSelection_allMatches).</comment>
   </data>
   <data name="ColorSelection_fg_bg_action" xml:space="preserve">
-    <value>色彩選取，前景: {0}，背景: {1}{2}</value>
+    <value>تلوين التحديد، لون المقدمة: {0}، لون الخلفية: {1}{2}</value>
     <comment>This is the description of an action which changes the color of selected text and the background. {0}: the foreground color. {1}: the background color. {2}: empty string OR a clause indicating that all matching text will be colored (ColorSelection_allMatches).</comment>
   </data>
   <data name="ColorSelection_default_action" xml:space="preserve">
-    <value>色彩選取，(預設前景/背景){0}</value>
+    <value>تلوين التحديد، (ألوان المقدمة والخلفية الافتراضية){0}</value>
     <comment>This is the description of an action which changes the color of selected text and the background to the default colors. {0}: empty string OR a clause indicating that all matching text will be colored (ColorSelection_allMatches).</comment>
   </data>
   <data name="ColorSelection_defaultColor" xml:space="preserve">
-    <value>[預設]</value>
+    <value>[افتراضي]</value>
     <comment>This is used in the description of an action which changes the color of selected text, as a placeholder for a color, to indicate that the default (foreground or background) color will be used.</comment>
   </data>
   <data name="ColorSelection_Black" xml:space="preserve">
-    <value>黑色</value>
+    <value>أسود</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_Red" xml:space="preserve">
-    <value>紅色</value>
+    <value>أحمر</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_Green" xml:space="preserve">
-    <value>綠色</value>
+    <value>أخضر</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_Yellow" xml:space="preserve">
-    <value>黃色</value>
+    <value>أصفر</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_Blue" xml:space="preserve">
-    <value>藍色</value>
+    <value>أزرق</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_Purple" xml:space="preserve">
-    <value>紫色</value>
+    <value>أرجواني</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_Cyan" xml:space="preserve">
-    <value>青色</value>
+    <value>سماوي</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_White" xml:space="preserve">
-    <value>白色</value>
+    <value>أبيض</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_BrightBlack" xml:space="preserve">
-    <value>亮黑色</value>
+    <value>أسود ساطع</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_BrightRed" xml:space="preserve">
-    <value>亮紅色</value>
+    <value>أحمر ساطع</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_BrightGreen" xml:space="preserve">
-    <value>亮綠色</value>
+    <value>أخضر ساطع</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_BrightYellow" xml:space="preserve">
-    <value>亮黃色</value>
+    <value>أصفر ساطع</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_BrightBlue" xml:space="preserve">
-    <value>亮藍色</value>
+    <value>أزرق ساطع</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_BrightPurple" xml:space="preserve">
-    <value>亮紫色</value>
+    <value>أرجواني ساطع</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_BrightCyan" xml:space="preserve">
-    <value>亮青色</value>
+    <value>سماوي ساطع</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ColorSelection_BrightWhite" xml:space="preserve">
-    <value>亮白色</value>
+    <value>أبيض ساطع</value>
     <comment>A color used in the "ColorSelection" action.</comment>
   </data>
   <data name="ExpandSelectionToWordCommandKey" xml:space="preserve">
-    <value>擴大選取範圍至文字</value>
+    <value>توسيع التحديد ليشمل الكلمة</value>
   </data>
   <data name="ShowContextMenuCommandKey" xml:space="preserve">
-    <value>顯示操作功能表</value>
+    <value>إظهار قائمة السياق</value>
   </data>
   <data name="CloseOtherPanesCommandKey" xml:space="preserve">
-    <value>關閉其他全部窗格</value>
+    <value>إغلاق جميع اللوحات الأخرى</value>
   </data>
   <data name="ToggleBroadcastInputCommandKey" xml:space="preserve">
-    <value>將廣播輸入切換至所有窗格</value>
+    <value>تبديل بث الإدخال إلى جميع اللوحات</value>
     <comment>When enabled, input will go to all panes in this tab simultaneously</comment>
   </data>
   <data name="RestartConnectionKey" xml:space="preserve">
-    <value>重新啟動工作模式</value>
+    <value>إعادة تشغيل الجلسة</value>
   </data>
   <data name="OpenScratchpadKey" xml:space="preserve">
-    <value>開啟聽寫面板</value>
+    <value>فتح دفتر الملاحظات</value>
   </data>
   <data name="SelectOutputNextCommandKey" xml:space="preserve">
-    <value>選取下一個命令輸出</value>
+    <value>تحديد إخراج الأمر التالي</value>
   </data>
   <data name="SelectOutputPreviousCommandKey" xml:space="preserve">
-    <value>選取上一個命令輸出</value>
+    <value>تحديد إخراج الأمر السابق</value>
   </data>
   <data name="SelectCommandNextCommandKey" xml:space="preserve">
-    <value>選取下一個命令</value>
+    <value>تحديد الأمر التالي</value>
   </data>
   <data name="SelectCommandPreviousCommandKey" xml:space="preserve">
-    <value>選取上一個命令</value>
+    <value>تحديد الأمر السابق</value>
   </data>
   <data name="SearchForTextCommandKey" xml:space="preserve">
-    <value>搜尋 {0}</value>
+    <value>البحث في {0}</value>
     <comment>{0} will be replaced with a user-specified URL to a web page</comment>
   </data>
   <data name="SearchWebCommandKey" xml:space="preserve">
-    <value>在網頁上搜尋選取的文字</value>
+    <value>البحث في الويب عن النص المحدد</value>
     <comment>This will open a web browser to search for some user-selected text</comment>
   </data>
   <data name="OpenAboutCommandKey" xml:space="preserve">
-    <value>開啟 [關於] 對話方塊</value>
+    <value>فتح مربع الحوار «حول»</value>
     <comment>This will open the "about" dialog, to display version info and other documentation</comment>
   </data>
+  <data name="BugReportCommandKey" xml:space="preserve">
+    <value>الإبلاغ عن خطأ (جمع السجلات)</value>
+    <comment>Command palette entry that collects diagnostic log files into a zip archive on the user's Desktop, for attaching to a bug report.</comment>
+  </data>
   <data name="SaveSnippetNamePrefix" xml:space="preserve">
-    <value>儲存程式碼片段</value>
+    <value>حفظ المقتطف</value>
   </data>
   <data name="QuickFixCommandKey" xml:space="preserve">
-    <value>開啟快速修正功能表</value>
+    <value>فتح قائمة الإصلاح السريع</value>
   </data>
   <data name="OpenCWDCommandKey" xml:space="preserve">
-    <value>開啟目前的工作目錄</value>
+    <value>فتح مجلد العمل الحالي</value>
+  </data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve">
+    <value>إظهار مساعد الذكاء الاصطناعي أو إخفاؤه</value>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve">
+    <value>التركيز على لوحة مساعد الذكاء الاصطناعي</value>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
+    <value>فتح قائمة جلسات مساعد الذكاء الاصطناعي</value>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="TriggerAutofixCommandKey" xml:space="preserve">
+    <value>بدء الإصلاح التلقائي</value>
   </data>
   <data name="WorkspacesCommandKey" xml:space="preserve">
-    <value>工作區...</value>
+    <value>مساحات العمل...</value>
   </data>
   <data name="CloseTab" xml:space="preserve">
-    <value>關閉索引標籤</value>
+    <value>إغلاق علامة التبويب</value>
   </data>
   <data name="SendInput" xml:space="preserve">
-    <value>傳送輸入</value>
+    <value>إرسال الإدخال</value>
   </data>
   <data name="SetFocusMode" xml:space="preserve">
-    <value>設定焦點模式</value>
+    <value>تعيين وضع التركيز</value>
   </data>
   <data name="SetFullScreen" xml:space="preserve">
-    <value>設定全螢幕</value>
+    <value>تعيين وضع ملء الشاشة</value>
   </data>
   <data name="SetMaximized" xml:space="preserve">
-    <value>設定已最大化</value>
+    <value>تعيين وضع التكبير</value>
   </data>
   <data name="SetColorScheme" xml:space="preserve">
-    <value>設定色彩配置</value>
+    <value>تعيين نظام الألوان</value>
   </data>
   <data name="CloseOtherTabs" xml:space="preserve">
-    <value>關閉其他索引標籤</value>
+    <value>إغلاق علامات التبويب الأخرى</value>
   </data>
   <data name="CloseTabsAfter" xml:space="preserve">
-    <value>於以下之後關閉索引標籤</value>
+    <value>إغلاق علامات التبويب التالية</value>
   </data>
   <data name="MoveTab" xml:space="preserve">
-    <value>移動索引標籤</value>
+    <value>نقل علامة التبويب</value>
   </data>
   <data name="FindMatch" xml:space="preserve">
-    <value>尋找相符項目</value>
+    <value>البحث عن تطابق</value>
   </data>
   <data name="SearchForText" xml:space="preserve">
-    <value>搜尋文字</value>
+    <value>البحث عن نص</value>
   </data>
   <data name="FocusPane" xml:space="preserve">
-    <value>焦點窗格</value>
+    <value>التركيز على اللوحة</value>
   </data>
   <data name="ExportBuffer" xml:space="preserve">
-    <value>匯出緩衝區</value>
+    <value>تصدير المخزن المؤقت</value>
   </data>
   <data name="ClearBuffer" xml:space="preserve">
-    <value>清除緩衝區</value>
+    <value>مسح المخزن المؤقت</value>
   </data>
   <data name="MultipleActions" xml:space="preserve">
-    <value>多重動作</value>
+    <value>إجراءات متعددة</value>
   </data>
   <data name="AdjustOpacity" xml:space="preserve">
-    <value>調整不透明度</value>
+    <value>ضبط التعتيم</value>
   </data>
   <data name="SelectCommand" xml:space="preserve">
-    <value>選取命令</value>
+    <value>تحديد الأمر</value>
   </data>
   <data name="SelectOutput" xml:space="preserve">
-    <value>選取輸出</value>
+    <value>تحديد الإخراج</value>
   </data>
   <data name="Suggestions" xml:space="preserve">
-    <value>建議</value>
+    <value>الاقتراحات</value>
   </data>
   <data name="ColorSelection" xml:space="preserve">
-    <value>色彩選取範圍</value>
+    <value>تلوين التحديد</value>
   </data>
   <data name="WslDistroGeneratorDisplayName" xml:space="preserve">
-    <value>WSL 發佈版設定檔產生器</value>
+    <value>مولّد ملفات تعريف توزيعات WSL</value>
     <comment>The display name of a dynamic profile generator for WSL distros</comment>
   </data>
   <data name="PowershellCoreProfileGeneratorDisplayName" xml:space="preserve">
-    <value>PowerShell 設定檔產生器</value>
+    <value>مولّد ملفات تعريف PowerShell</value>
     <comment>The display name of a dynamic profile generator for PowerShell</comment>
   </data>
   <data name="AzureCloudShellGeneratorDisplayName" xml:space="preserve">
-    <value>Azure Cloud Shell 設定檔產生器</value>
+    <value>مولّد ملفات تعريف Azure Cloud Shell</value>
     <comment>The display name of a dynamic profile generator for Azure Cloud Shell</comment>
   </data>
   <data name="VisualStudioGeneratorDisplayName" xml:space="preserve">
-    <value>Visual Studio 設定檔產生器</value>
+    <value>مولّد ملفات تعريف Visual Studio</value>
     <comment>The display name of a dynamic profile generator for Visual Studio</comment>
   </data>
   <data name="SshHostGeneratorDisplayName" xml:space="preserve">
-    <value>SSH 主機設定檔產生器</value>
+    <value>مولّد ملفات تعريف مضيفي SSH</value>
     <comment>The display name of a dynamic profile generator for SSH hosts</comment>
   </data>
   <data name="DismissSelectionActionArgumentLocalized" xml:space="preserve">
-    <value>關閉選取範圍</value>
+    <value>إلغاء التحديد</value>
   </data>
   <data name="SingleLineActionArgumentLocalized" xml:space="preserve">
-    <value>單線</value>
+    <value>سطر واحد</value>
   </data>
   <data name="WithControlSequencesActionArgumentLocalized" xml:space="preserve">
-    <value>使用控制項順序</value>
+    <value>مع تسلسلات التحكم</value>
   </data>
   <data name="CopyFormattingActionArgumentLocalized" xml:space="preserve">
-    <value>複製格式設定</value>
+    <value>نسخ التنسيق</value>
   </data>
   <data name="TabIndexActionArgumentLocalized" xml:space="preserve">
-    <value>標籤索引</value>
+    <value>فهرس علامة التبويب</value>
   </data>
   <data name="WindowActionArgumentLocalized" xml:space="preserve">
-    <value>視窗</value>
+    <value>النافذة</value>
   </data>
   <data name="ResizeDirectionActionArgumentLocalized" xml:space="preserve">
-    <value>調整大小方向</value>
+    <value>اتجاه تغيير الحجم</value>
   </data>
   <data name="FocusDirectionActionArgumentLocalized" xml:space="preserve">
-    <value>焦點方向</value>
+    <value>اتجاه التركيز</value>
   </data>
   <data name="DirectionActionArgumentLocalized" xml:space="preserve">
-    <value>方向</value>
+    <value>الاتجاه</value>
   </data>
   <data name="DeltaActionArgumentLocalized" xml:space="preserve">
-    <value>Delta</value>
+    <value>مقدار التغيير</value>
   </data>
   <data name="InputActionArgumentLocalized" xml:space="preserve">
-    <value>輸入</value>
+    <value>الإدخال</value>
   </data>
   <data name="TargetActionArgumentLocalized" xml:space="preserve">
-    <value>目標</value>
+    <value>الهدف</value>
   </data>
   <data name="IsFocusModeActionArgumentLocalized" xml:space="preserve">
-    <value>為焦點模式</value>
+    <value>وضع التركيز مفعّل</value>
   </data>
   <data name="IsMaximizedActionArgumentLocalized" xml:space="preserve">
-    <value>已最大化</value>
+    <value>النافذة مكبرة</value>
   </data>
   <data name="IsFullScreenActionArgumentLocalized" xml:space="preserve">
-    <value>為全螢幕</value>
+    <value>وضع ملء الشاشة مفعّل</value>
   </data>
   <data name="SchemeNameActionArgumentLocalized" xml:space="preserve">
-    <value>配置名稱</value>
+    <value>اسم نظام الألوان</value>
   </data>
   <data name="TabColorActionArgumentLocalized" xml:space="preserve">
-    <value>索引標籤色彩</value>
+    <value>لون علامة التبويب</value>
   </data>
   <data name="TitleActionArgumentLocalized" xml:space="preserve">
-    <value>標題</value>
+    <value>العنوان</value>
   </data>
   <data name="CommandlineActionArgumentLocalized" xml:space="preserve">
-    <value>命令列</value>
+    <value>سطر الأوامر</value>
   </data>
   <data name="IndexActionArgumentLocalized" xml:space="preserve">
-    <value>索引</value>
+    <value>الفهرس</value>
   </data>
   <data name="RowsToScrollActionArgumentLocalized" xml:space="preserve">
-    <value>要捲動的資料列</value>
+    <value>عدد الصفوف للتمرير</value>
   </data>
   <data name="ColorActionArgumentLocalized" xml:space="preserve">
-    <value>顏色</value>
+    <value>اللون</value>
   </data>
   <data name="LaunchModeActionArgumentLocalized" xml:space="preserve">
-    <value>啟動模式</value>
+    <value>وضع التشغيل</value>
   </data>
   <data name="NameActionArgumentLocalized" xml:space="preserve">
-    <value>名稱</value>
+    <value>الاسم</value>
   </data>
   <data name="KeyChordActionArgumentLocalized" xml:space="preserve">
-    <value>按鍵同步選取</value>
+    <value>مجموعة المفاتيح</value>
   </data>
   <data name="SourceActionArgumentLocalized" xml:space="preserve">
-    <value>來源</value>
+    <value>المصدر</value>
   </data>
   <data name="UseCommandlineActionArgumentLocalized" xml:space="preserve">
-    <value>使用命令列</value>
+    <value>استخدام سطر الأوامر</value>
   </data>
   <data name="SwitcherModeActionArgumentLocalized" xml:space="preserve">
-    <value>切換器模式</value>
+    <value>وضع مبدّل علامات التبويب</value>
   </data>
   <data name="QueryUrlActionArgumentLocalized" xml:space="preserve">
-    <value>查詢 URL</value>
+    <value>عنوان URL للاستعلام</value>
   </data>
   <data name="DesktopActionArgumentLocalized" xml:space="preserve">
-    <value>桌面</value>
+    <value>سطح المكتب</value>
   </data>
   <data name="MonitorActionArgumentLocalized" xml:space="preserve">
-    <value>監視</value>
+    <value>جهاز العرض</value>
   </data>
   <data name="ToggleVisibilityActionArgumentLocalized" xml:space="preserve">
-    <value>切換可見性</value>
+    <value>تبديل الظهور</value>
   </data>
   <data name="DropdownDurationActionArgumentLocalized" xml:space="preserve">
-    <value>下拉式清單持續時間</value>
+    <value>مدة الانسدال</value>
   </data>
   <data name="IdActionArgumentLocalized" xml:space="preserve">
-    <value>識別碼</value>
+    <value>المعرّف</value>
   </data>
   <data name="PathActionArgumentLocalized" xml:space="preserve">
-    <value>路徑</value>
+    <value>المسار</value>
   </data>
   <data name="ClearActionArgumentLocalized" xml:space="preserve">
-    <value>晴朗</value>
+    <value>مسح</value>
   </data>
   <data name="OpacityActionArgumentLocalized" xml:space="preserve">
-    <value>不透明度</value>
+    <value>التعتيم</value>
   </data>
   <data name="RelativeActionArgumentLocalized" xml:space="preserve">
-    <value>相對</value>
+    <value>نسبي</value>
   </data>
   <data name="ForegroundActionArgumentLocalized" xml:space="preserve">
-    <value>前景</value>
+    <value>المقدمة</value>
   </data>
   <data name="BackgroundActionArgumentLocalized" xml:space="preserve">
-    <value>背景</value>
+    <value>الخلفية</value>
   </data>
   <data name="MatchModeActionArgumentLocalized" xml:space="preserve">
-    <value>比對模式</value>
+    <value>وضع المطابقة</value>
   </data>
   <data name="StartingDirectoryActionArgumentLocalized" xml:space="preserve">
-    <value>起始目錄</value>
+    <value>مجلد البدء</value>
   </data>
   <data name="TabTitleActionArgumentLocalized" xml:space="preserve">
-    <value>索引標籤標題</value>
+    <value>عنوان علامة التبويب</value>
   </data>
   <data name="ProfileIndexActionArgumentLocalized" xml:space="preserve">
-    <value>設定檔索引</value>
+    <value>فهرس ملف التعريف</value>
   </data>
   <data name="ProfileActionArgumentLocalized" xml:space="preserve">
-    <value>設定檔</value>
+    <value>ملف التعريف</value>
   </data>
   <data name="SuppressApplicationTitleActionArgumentLocalized" xml:space="preserve">
-    <value>隱藏應用程式標題</value>
+    <value>إخفاء عنوان التطبيق</value>
   </data>
   <data name="ColorSchemeActionArgumentLocalized" xml:space="preserve">
-    <value>色彩配置</value>
+    <value>نظام الألوان</value>
   </data>
   <data name="ElevateActionArgumentLocalized" xml:space="preserve">
-    <value>提升</value>
+    <value>التشغيل كمسؤول</value>
   </data>
   <data name="ReloadEnvironmentVariablesActionArgumentLocalized" xml:space="preserve">
-    <value>重新載入環境變數</value>
+    <value>إعادة تحميل متغيرات البيئة</value>
   </data>
   <data name="SplitDirectionActionArgumentLocalized" xml:space="preserve">
-    <value>分割方向</value>
+    <value>اتجاه التقسيم</value>
   </data>
   <data name="SplitModeActionArgumentLocalized" xml:space="preserve">
-    <value>分割模式</value>
+    <value>وضع التقسيم</value>
   </data>
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
-    <value>分割大小</value>
+    <value>حجم التقسيم</value>
   </data>
-  <data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>顯示 Terminal Protocol 資訊</value><comment>{Locked="Terminal Protocol"}</comment></data>
-  <data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>切換窗格可見性</value></data>
-  <data name="ToggleSidebarCommandKey" xml:space="preserve"><value>切換側邊欄</value><comment>A command that shows or collapses the vertical tabs sidebar.</comment></data>
-  <data name="ToggleSidebarAgentsOnlyCommandKey" xml:space="preserve">
-    <value>切換側邊欄的僅限智能體篩選</value>
-    <comment>Command that toggles whether the sidebar shows only open AI-agent tabs. It does not change the independent Recent agent sessions option. Global sidebar search includes all tabs regardless of this preference.</comment>
+  <data name="PromptActionArgumentLocalized" xml:space="preserve">
+    <value>الطلب</value>
   </data>
-  <data name="ToggleSidebarRecentAgentSessionsCommandKey" xml:space="preserve">
-    <value>切換側邊欄中最近的智能體工作階段的顯示</value>
-    <comment>Command that toggles the Recent agent sessions section in the sidebar without changing the independent Agents only filter. Recent sessions are also included while a global search query is present.</comment>
-  </data>
-  <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>切換 AI 代理</value><comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
-  <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>將焦點移至 AI 代理窗格</value><comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
-  <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>開啟 AI 代理工作階段清單</value><comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
-  <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>觸發自動修正</value></data>
-  <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>提示</value></data>
-  <data name="BugReportCommandKey" xml:space="preserve"><value>回報問題（收集記錄）</value><comment>Command palette entry that collects diagnostic log files into a zip archive on the user's Desktop, for attaching to a bug report.</comment></data>
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
-    <value>在新索引標籤中開啟背景代理</value>
+    <value>فتح وكيل يعمل في الخلفية في علامة تبويب جديدة</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
-  <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
-    <value>在智能體委派模式中切換命令選擇區</value>
-  </data>
 </root>
