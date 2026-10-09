@@ -19,7 +19,9 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         . (Join-Path $PSScriptRoot 'helpers\TestTerminalCleanup.ps1')
+        . (Join-Path $PSScriptRoot 'helpers\TestWindowKeyboardLayout.ps1')
         $script:app = $null
+        $script:keyboardLayout = $null
         $script:target = $null
         $script:launchStarted = $null
         $script:clipboardSaved = $false
@@ -35,6 +37,10 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
         if ($env:ITE2E_EXPECTED_WTA_SHA256) {
             $binaryHash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256 -Because 'the selected package must contain the intended source build'
         }
+        if ($env:ITE2E_EXPECTED_APP_SHA256) {
+            (Get-FileHash -LiteralPath (Join-Path $script:target.InstallLocation 'TerminalApp.dll')).Hash |
+                Should -Be $env:ITE2E_EXPECTED_APP_SHA256 -Because 'native paste routing must match the intended source build'
+        }
         $script:originalClipboard = Get-ClipboardSnapshot
         $script:clipboardSaved = $true
         Add-Type -AssemblyName System.Windows.Forms
@@ -46,7 +52,7 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
         $fixture = Join-Path $script:fixtureDir 'Mock ACP Chat Agent.ps1'
         Copy-Item -LiteralPath $fixtureSource -Destination $fixture
         $script:fixtureLog = Join-Path $script:fixtureDir 'fixture.log'
-        $fixtureInvocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))'"
+        $fixtureInvocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))' -SupportsImages"
         $encodedInvocation = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureInvocation))
         $command = "pwsh -NoProfile -EncodedCommand $encodedInvocation"
         $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
@@ -58,12 +64,32 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             acpAgent = 'custom:paste-fixture'
             acpCustomCommand = $command
+            language = 'en-US'
+            copyOnSelect = $false
         }
         $shell = Get-ActivePane -App $script:app
         $script:ownerTabId = Resolve-AgentOwnerTabId -App $script:app -OwnerPaneSessionId $shell.session_id
         Open-AgentPane -App $script:app | Out-Null
         $script:agentPane = (Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $shell.session_id -TimeoutSec 30).PaneSessionId
-        Wait-AgentReady -App $script:app -PaneSessionId $script:agentPane -TimeoutSec 60 | Out-Null
+        Wait-AgentReady -App $script:app -PaneSessionId $script:agentPane -TimeoutSec 60 |
+            Should -BeTrue -Because 'the fixture must show its connected editable draft before paste checks'
+        $script:keyboardLayout = Enable-TestWindowEnglishKeyboardLayout -App $script:app
+        $script:countSubmittedFixturePrompts = {
+            if (Test-Path -LiteralPath $script:fixtureLog) {
+                @(Get-Content -LiteralPath $script:fixtureLog -ErrorAction Stop |
+                    Where-Object { $_ -match '\|prompt\|' }).Count
+            }
+            else { 0 }
+        }
+        $script:setPasteContextMenu = {
+            param([bool]$Enabled)
+            $profiles = (Get-WtSettingsObject -App $script:app).profiles
+            if (-not $profiles.defaults) {
+                $profiles | Add-Member -NotePropertyName defaults -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            $profiles.defaults | Add-Member -NotePropertyName rightClickContextMenu -NotePropertyValue $Enabled -Force
+            Set-WtSetting -App $script:app -Key profiles -Value $profiles | Out-Null
+        }
         $script:sendPasteKey = {
             param([switch]$Shift, [switch]$PreserveFocus)
 
@@ -122,7 +148,14 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
     AfterAll {
         $fixtureArchived = $false
         try {
-            Stop-TestTerminal -App $script:app -Target $script:target -LaunchStarted $script:launchStarted
+            try {
+                if ($script:keyboardLayout) {
+                    Restore-TestWindowKeyboardLayout -App $script:app -Context $script:keyboardLayout
+                }
+            }
+            finally {
+                Stop-TestTerminal -App $script:app -Target $script:target -LaunchStarted $script:launchStarted
+            }
         }
         finally {
             try {
@@ -146,6 +179,68 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
                     }
                 }
             }
+        }
+    }
+
+    It 'Agent image paste follows configured paste actions' -Tag 'PasteImages' {
+        (Test-WtWindowKeyFocusable -App $script:app) |
+            Should -BeTrue -Because 'physical paste requires the test-owned foreground window'
+        $promptCountBefore = & $script:countSubmittedFixturePrompts
+        try {
+            foreach ($trigger in @('Ctrl+V', 'Right-click paste', 'Right-click menu', 'Alt+V')) {
+                & $script:clearPasteDraft
+                Invoke-WtCli -App $script:app -Arguments @('focus-pane', '-t', $script:agentPane) | Out-Null
+                $listener = Start-WtEventListener -App $script:app -WaitForReady
+                try {
+                    $menuEnabled = $trigger -eq 'Right-click menu'
+                    & $script:setPasteContextMenu -Enabled $menuEnabled
+                    Set-WtSetting -App $script:app -Key copyOnSelect -Value $menuEnabled | Out-Null
+                    $settingsEvent = Wait-WtEvent -Listener $listener -TimeoutSec 10 -Predicate {
+                        $_.method -eq 'set_agent_state' -and
+                        "$($_.params.tab_id)".Trim('{}') -eq "$($script:ownerTabId)".Trim('{}') -and
+                        $_.params.copy_on_select -eq $menuEnabled
+                    }
+                    $settingsEvent | Should -Not -BeNullOrEmpty -Because 'settings reload must reach the owning helper'
+                    Set-ClipboardImage -Width 2 -Height 2
+                    switch ($trigger) {
+                        'Ctrl+V' {
+                            Send-WtWindowKey -App $script:app -Vk 0x56 -Ctrl -RequireForeground | Out-Null
+                        }
+                        'Alt+V' {
+                            Send-WtWindowKey -App $script:app -Vk 0x56 -Alt -RequireForeground | Out-Null
+                        }
+                        default {
+                            Invoke-UiClick -App $script:app -Selector 'Agent Pane' -Right | Out-Null
+                            if ($menuEnabled) {
+                                $menuText = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 30
+                                $menuText | Should -Not -Match '\[image:\s+image-\d+\.png\]' -Because 'opening the native menu must not also paste'
+                                Invoke-UiElement -App $script:app -Selector PasteCommandButton -TimeoutSec 10 | Out-Null
+                            }
+                        }
+                    }
+                    if ($trigger -ne 'Alt+V') {
+                        $pasteEvent = Wait-WtEvent -Listener $listener -TimeoutSec 5 -Predicate {
+                            $_.method -eq 'agent_paste_text' -and
+                            "$($_.params.tab_id)".Trim('{}') -eq "$($script:ownerTabId)".Trim('{}') -and
+                            "$($_.params.pane_id)".Trim('{}') -eq "$($script:agentPane)".Trim('{}') -and
+                            "$($_.params.window_id)" -eq "$($script:app.WindowId)"
+                        }
+                        $pasteEvent | Should -Not -BeNullOrEmpty -Because "$trigger must use the owner-scoped normal paste path"
+                    }
+                    Test-Until -TimeoutSec 10 -IntervalSec 0.2 -Condition {
+                        $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 30
+                        ([regex]::Matches((& $script:getInputSegment -Text $text), '\[image:\s+image-\d+\.png\]')).Count -eq 1
+                    } | Should -BeTrue -Because "$trigger must attach exactly one real clipboard screenshot to the draft"
+                    (& $script:countSubmittedFixturePrompts) |
+                        Should -Be $promptCountBefore -Because 'image paste must not submit the draft'
+                }
+                finally { Stop-WtEventListener -Listener $listener }
+            }
+        }
+        finally {
+            & $script:clearPasteDraft
+            & $script:setPasteContextMenu -Enabled $false
+            Set-WtSetting -App $script:app -Key copyOnSelect -Value $false | Out-Null
         }
     }
 
