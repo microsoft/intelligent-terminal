@@ -414,9 +414,9 @@ pub(crate) enum Command {
         #[arg(long)]
         preserve_sidebar_view: bool,
         /// Launch a fresh delegate in a split of this exact pane
-        #[arg(long, requires = "split_session")]
+        #[arg(long, requires = "delegate_agent")]
         split_pane: Option<String>,
-        /// Current session identity used only to validate the split target
+        /// Optional current session guard; native provider intent also supports pre-hook splits
         #[arg(long, requires = "split_pane")]
         split_session: Option<String>,
         #[arg(long, default_value = "auto", value_parser = ["auto", "right", "left", "up", "down"])]

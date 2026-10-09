@@ -254,27 +254,34 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             } | Out-Null
             @(Get-ActionTabs | Where-Object tab_id -NotIn $before)[0]
         }
-        function Invoke-ActionRejectedSplit {
+        function Invoke-ActionOrdinarySplit {
+            param($Source)
+            $tabsBefore = @(Get-ActionTabs).Count
+            $before = @(Get-WtPanes -App $script:app -TabId ([string]$Source.tab_id) -WindowId ([string]$script:app.WindowId))
             Initialize-LogOffsets -App $script:app | Out-Null
             Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
-            Wait-Until -TimeoutSec 10 -Because 'unidentified split reports a visible failure before retry' -Condition {
-                $message = Get-ActionElement HistoryMessage
-                $message -and -not $message.Current.IsOffscreen -and $message.Current.Name -and
-                    (Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart) -match
-                        'agent split rejected: missing live identity, unsupported provider, or policy'
+            Wait-Until -TimeoutSec 15 -Because 'Agent view fallback creates exactly one ordinary same-tab pane' -Condition {
+                @(Get-WtPanes -App $script:app -TabId ([string]$Source.tab_id) -WindowId ([string]$script:app.WindowId) |
+                    Where-Object session_id -NotIn $before.session_id).Count -eq 1
             } | Out-Null
-            Save-ActionUiEvidence "retry-failure-$script:caseIndex"
-            (Get-ActionElement HistoryMessage).Current.Name
-        }
-        function Assert-ActionRetryClearsError {
-            param([string]$PreviousError)
-            Wait-Until -TimeoutSec 10 -Because 'successful retry removes the old error without closing Agents' -Condition {
-                $message = Get-ActionElement HistoryMessage
-                -not $message -or $message.Current.IsOffscreen -or
-                    $message.Current.BoundingRectangle.Height -le 0 -or
-                    $message.Current.BoundingRectangle.Width -le 0
-            } | Out-Null
+            $after = @(Get-WtPanes -App $script:app -TabId ([string]$Source.tab_id) -WindowId ([string]$script:app.WindowId))
+            $after.Count | Should -Be ($before.Count + 1)
+            $fresh = @($after | Where-Object session_id -NotIn $before.session_id)[0]
+            $fresh.is_agent_pane | Should -BeFalse
+            $fresh.native_agent_provider_id | Should -BeNullOrEmpty
+            $fresh.profile | Should -Be $Source.profile
+            $fresh.cwd | Should -Be $Source.cwd
+            $fresh.tab_id | Should -Be $Source.tab_id
+            @(Get-ActionTabs).Count | Should -Be $tabsBefore
+            (Get-ActivePane -App $script:app).session_id | Should -Be $fresh.session_id
             (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+            $message = Get-ActionElement HistoryMessage
+            if ($message -and -not $message.Current.IsOffscreen) {
+                $message.Current.Name | Should -Not -Be 'Unable to activate the selected session.'
+            }
+            (Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart) |
+                Should -Match 'sidebar split created an ordinary terminal pane'
+            return $fresh
         }
         function Save-ActionUiEvidence {
             param([string]$Phase)
@@ -343,9 +350,6 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
     It 'Agents plus creates a fresh interactive delegate' {
         Set-ActionView $true
         $original = Get-ActivePane -App $script:app
-        $tabsBeforeFailure = @(Get-ActionTabs).Count
-        $retryError = Invoke-ActionRejectedSplit
-        @(Get-ActionTabs).Count | Should -Be $tabsBeforeFailure
         @(Get-ActionLaunches).Count | Should -Be 0
         $first = Invoke-ActionPlus
         Wait-Until -TimeoutSec 20 -Because 'interactive CLI logs its own launch' -Condition {
@@ -365,7 +369,6 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $process.CommandLine | Should -Match ([regex]::Escape($fixture))
         Get-WtCapture -App $script:app -SessionId $one.pane_session_id -MaxLines 30 |
             Should -Match ([regex]::Escape("ITE2E-INTERACTIVE-DELEGATE $script:runId $($one.session_id)"))
-        Assert-ActionRetryClearsError $retryError
         (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
         $second = Invoke-ActionPlus
         Wait-Until -TimeoutSec 20 -Because 'second plus launches a fresh CLI' -Condition {
@@ -549,13 +552,9 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             $rows.Count -eq 1 -and $rows[0].pane_session_id -eq $tab.session_id -and
                 $rows[0].provider_id -eq 'copilot' -and $rows[0].location -eq 'host'
         } | Out-Null
-        Set-WtPaneFocus -App $script:app -SessionId $probe.session_id | Out-Null
-        Set-ActionView $true
-        $retryError = Invoke-ActionRejectedSplit
-        @(Get-CanonicalLaunches).Count | Should -Be ($beforeCount + 1)
         Set-WtPaneFocus -App $script:app -SessionId $tab.session_id | Out-Null
+        Set-ActionView $true
         (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
-        (Get-ActionElement HistoryMessage).Current.Name | Should -Be $retryError
         Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
         Wait-Until -TimeoutSec 30 -Because 'UI same-provider split launches the canonical native shim' -Condition {
             @(Get-CanonicalLaunches).Count -eq $beforeCount + 2
@@ -584,7 +583,6 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $originalProcess.HasExited | Should -BeFalse
         Get-WtCapture -App $script:app -SessionId $fresh.pane_session_id -MaxLines 30 |
             Should -Match ([regex]::Escape("ITE2E-INTERACTIVE-DELEGATE $script:runId $($fresh.session_id)"))
-        Assert-ActionRetryClearsError $retryError
         Send-WtInput -App $script:app -SessionId $tab.session_id -Text "split-alive-$script:runId"
         Send-WtKeys -App $script:app -SessionId $tab.session_id -Keys Enter
         Wait-Until -TimeoutSec 10 -Because 'original CLI remains responsive with unchanged session identity' -Condition {
@@ -593,59 +591,122 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         } | Out-Null
     }
 
-    It 'Agents split rejects an unidentified terminal without fallback' {
+    It 'Agents split falls back to an ordinary terminal' {
         Set-ActionView $false
         $normalTab = New-WtTab -App $script:app -Command "`"$pwsh`" -NoLogo -NoProfile -NoExit" -Cwd $script:evidence
         Set-WtPaneFocus -App $script:app -SessionId $normalTab.session_id | Out-Null
+        $source = Get-ActivePane -App $script:app
         Set-ActionView $true
-        $before = @(Get-WtPanes -App $script:app -TabId ([string]$normalTab.tab_id) -WindowId ([string]$script:app.WindowId)).session_id
-        $count = @(Get-ActionLaunches).Count
-        Initialize-LogOffsets -App $script:app | Out-Null
-        Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
-        Wait-Until -TimeoutSec 10 -Because 'product explicitly rejects missing live agent identity' -Condition {
-            (Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart) -match
-                'agent split rejected: missing live identity, unsupported provider, or policy'
-        } | Out-Null
-        $error = Get-ActionElement HistoryMessage
-        $error | Should -Not -BeNullOrEmpty
-        $error.Current.IsOffscreen | Should -BeFalse
-        $error.Current.Name | Should -Not -BeNullOrEmpty
-        Start-Sleep -Seconds 2
-        $after = @(Get-WtPanes -App $script:app -TabId ([string]$normalTab.tab_id) -WindowId ([string]$script:app.WindowId)).session_id
-        @($after | Where-Object { $_ -notin $before }).Count | Should -Be 0
-        $after.Count | Should -Be $before.Count
-        @(Get-ActionLaunches).Count | Should -Be $count
+        $count = @(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count
+        $fresh = Invoke-ActionOrdinarySplit -Source $source
+        (@(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count) | Should -Be $count
+        Invoke-RunCommand -App $script:app -SessionId $fresh.session_id -Command "Write-Output 'FALLBACK-ALIVE-$script:runId'" -SettleSec 1 | Out-Null
+        Get-WtCapture -App $script:app -SessionId $fresh.session_id -MaxLines 30 |
+            Should -Match "FALLBACK-ALIVE-$script:runId"
         Invoke-RunCommand -App $script:app -SessionId $normalTab.session_id -Command "Write-Output 'ORIGINAL-ALIVE-$script:runId'" -SettleSec 1 | Out-Null
         Get-WtCapture -App $script:app -SessionId $normalTab.session_id -MaxLines 30 |
             Should -Match "ORIGINAL-ALIVE-$script:runId"
     }
 
-    It 'Agents split rejects an unsupported custom provider without fallback' {
+    It 'Agents split falls back for an unsupported custom provider' {
+        Set-ActionView $true
+        $before = @(Get-ActionLaunches).Count
+        $tab = Invoke-ActionPlus
+        Wait-Until -TimeoutSec 20 -Because 'the configured custom CLI has started before its fallback split' -Condition {
+            @(Get-ActionLaunches).Count -eq $before + 1
+        } | Out-Null
+        $original = @(Get-ActionLaunches)[-1]
+        $source = Get-ActivePane -App $script:app
+        $source.native_agent_provider_id | Should -BeLike 'custom:*'
+        $source.is_agent_pane | Should -BeFalse
+        $count = @(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count
+        $fresh = Invoke-ActionOrdinarySplit -Source $source
+        (@(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count) | Should -Be $count
+        Invoke-RunCommand -App $script:app -SessionId $fresh.session_id -Command "Write-Output 'CUSTOM-FALLBACK-$script:runId'" -SettleSec 1 | Out-Null
+        Get-WtCapture -App $script:app -SessionId $fresh.session_id -MaxLines 30 |
+            Should -Match "CUSTOM-FALLBACK-$script:runId"
+        Send-WtInput -App $script:app -SessionId $original.pane_session_id -Text "custom-alive-$script:runId"
+        Send-WtKeys -App $script:app -SessionId $original.pane_session_id -Keys Enter
+        Wait-Until -TimeoutSec 10 -Because 'fallback leaves the original custom CLI responsive' -Condition {
+            (Get-WtCapture -App $script:app -SessionId $original.pane_session_id -MaxLines 30) -match
+                [regex]::Escape("ITE2E-DELEGATE-ALIVE $($original.session_id) custom-alive-$script:runId")
+        } | Out-Null
+    }
+
+    It 'Agents split excludes the assistant from its MRU source' {
         Set-ActionView $false
         $tab = New-WtTab -App $script:app -Command "`"$pwsh`" -NoLogo -NoProfile -NoExit" -Cwd $script:evidence
-        Set-WtPaneFocus -App $script:app -SessionId $tab.session_id | Out-Null
+        $second = Split-WtPane -App $script:app -SessionId $tab.session_id -Direction right -Command "`"$pwsh`" -NoLogo -NoProfile -NoExit"
+        $cwd = Join-Path $script:evidence 'recent source'
+        New-Item -ItemType Directory -Path $cwd | Out-Null
+        Invoke-RunCommand -App $script:app -SessionId $second.session_id -Command "Set-Location '$($cwd.Replace("'", "''"))'" -SettleSec 1 | Out-Null
+        Set-WtPaneFocus -App $script:app -SessionId $second.session_id | Out-Null
+        Wait-Until -TimeoutSec 10 -Because 'the recent source reports its changed project directory' -Condition {
+            (Get-ActivePane -App $script:app).cwd -eq $cwd
+        } | Out-Null
+        $source = Get-ActivePane -App $script:app
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 30 | Should -BeTrue
         $helper = Get-AgentPaneSession -App $script:app
         $helper.AcpSessionId | Should -Match '^chat-fixture-'
         Set-AgentPaneFocus -App $script:app | Out-Null
         Set-ActionView $true
-        $before = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId)).session_id
         $count = @(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count
-        Initialize-LogOffsets -App $script:app | Out-Null
-        Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
-        Wait-Until -TimeoutSec 10 -Because 'custom provider split fails visibly instead of launching a different agent' -Condition {
-            (Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart) -match
-                'agent split rejected: missing live identity, unsupported provider, or policy'
-        } | Out-Null
-        $message = Get-ActionElement HistoryMessage
-        $message | Should -Not -BeNullOrEmpty
-        $message.Current.IsOffscreen | Should -BeFalse
-        $message.Current.Name | Should -Not -BeNullOrEmpty
-        $after = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId)).session_id
-        @($after | Where-Object { $_ -notin $before }).Count | Should -Be 0
-        $after.Count | Should -Be $before.Count
+        $fresh = Invoke-ActionOrdinarySplit -Source $source
+        $fresh.cwd | Should -Be $cwd
         (@(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count) | Should -Be $count
         (Get-AgentPaneSession -App $script:app).AcpSessionId | Should -Be $helper.AcpSessionId
+        Invoke-RunCommand -App $script:app -SessionId $fresh.session_id -Command "Write-Output 'MRU-SPLIT-$script:runId'" -SettleSec 1 | Out-Null
+        Get-WtCapture -App $script:app -SessionId $fresh.session_id -MaxLines 30 |
+            Should -Match "MRU-SPLIT-$script:runId"
+    }
+
+    It 'Agents split reuses native provider intent before session startup' {
+        Set-ActionView $true
+        Install-ActionCanonicalResolver
+        $gate = $shimConfig.ITE2E_SHIM_SESSION_START_GATE
+        if (Test-Path -LiteralPath $gate) { Remove-Item -LiteralPath $gate }
+        $prior = Get-WtSetting -App $script:app -Key delegateAgent
+        $before = @(Get-ChildItem -LiteralPath $script:evidence -Filter 'release-session-start.waiting-*.json').FullName
+        try {
+            Set-WtDelegateAgent -App $script:app -Agent copilot | Out-Null
+            $tab = Invoke-ActionPlus
+            Wait-Until -TimeoutSec 20 -Because 'the original native CLI is held before its first hook' -Condition {
+                @(Get-ChildItem -LiteralPath $script:evidence -Filter 'release-session-start.waiting-*.json' |
+                    Where-Object FullName -NotIn $before).Count -eq 1
+            } | Out-Null
+            $original = Get-Content -LiteralPath @(Get-ChildItem -LiteralPath $script:evidence -Filter 'release-session-start.waiting-*.json' |
+                Where-Object FullName -NotIn $before)[0].FullName -Raw | ConvertFrom-Json
+            $source = Get-ActivePane -App $script:app
+            $source.native_agent_provider_id | Should -Be 'copilot'
+            $source.is_agent_pane | Should -BeFalse
+            $tabsBefore = @(Get-ActionTabs).Count
+            Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
+            Wait-Until -TimeoutSec 30 -Because 'native intent produces a fresh same-provider split before either hook' -Condition {
+                @(Get-ChildItem -LiteralPath $script:evidence -Filter 'release-session-start.waiting-*.json' |
+                    Where-Object FullName -NotIn $before).Count -eq 2
+            } | Out-Null
+            $receipts = @(Get-ChildItem -LiteralPath $script:evidence -Filter 'release-session-start.waiting-*.json' |
+                Where-Object FullName -NotIn $before | ForEach-Object {
+                    Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+                })
+            $fresh = @($receipts | Where-Object pane_session_id -NE $original.pane_session_id)
+            $fresh.Count | Should -Be 1
+            $fresh[0].session_id | Should -Not -Be $original.session_id
+            $panes = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId))
+            @($panes | Where-Object session_id -In $receipts.pane_session_id).Count | Should -Be 2
+            @($panes | Where-Object session_id -In $receipts.pane_session_id | Where-Object native_agent_provider_id -NE 'copilot').Count |
+                Should -Be 0
+            ($panes | Where-Object session_id -EQ $fresh[0].pane_session_id).cwd | Should -Be $source.cwd
+            @(Get-ActionTabs).Count | Should -Be $tabsBefore
+            foreach ($receipt in $receipts) {
+                Test-Path -LiteralPath "$gate.emitted-$($receipt.session_id).json" | Should -BeFalse
+            }
+            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        }
+        finally {
+            Set-Content -LiteralPath $gate -Value 'released'
+            Set-WtDelegateAgent -App $script:app -Agent $prior | Out-Null
+        }
     }
 }

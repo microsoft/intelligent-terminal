@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::sync::Arc;
 
 use crate::agent_source::AgentSource;
@@ -35,10 +35,9 @@ pub(crate) async fn run(
     );
     tracing::trace!(target: "delegate.content", prompt = ?prompt, "run_delegate prompt");
 
-    let mut requested_source = parse_delegate_source(delegate_source, delegate_wsl_distro)?;
+    let requested_source = parse_delegate_source(delegate_source, delegate_wsl_distro)?;
     require_delegate_agent_for_explicit_source(delegate_source, delegate_agent_cmd)?;
-    let mut split_cwd = None;
-    if let Some(pane) = split_pane {
+    if split_pane.is_some() {
         anyhow::ensure!(
             prompt.is_none(),
             "an agent split cannot carry a startup prompt"
@@ -50,26 +49,6 @@ pub(crate) async fn run(
             crate::agent_registry::is_known_id(provider),
             "unsupported split provider"
         );
-        let local = tokio::task::LocalSet::new();
-        let snapshot = local
-            .run_until(super::sessions::fetch_from_master(None, false))
-            .await?;
-        let row = resolve_split_session(
-            &snapshot.sessions,
-            pane,
-            split_session.unwrap_or(""),
-            provider,
-        )?;
-        requested_source = match &row.location {
-            crate::agent_sessions::SessionLocation::Host => AgentSource::Host,
-            crate::agent_sessions::SessionLocation::Wsl { distro } if !distro.trim().is_empty() => {
-                AgentSource::Wsl {
-                    distro: distro.clone(),
-                }
-            }
-            _ => anyhow::bail!("split target has no known execution source"),
-        };
-        split_cwd = Some(row.cwd.to_string_lossy().into_owned());
     }
 
     let (debug_tx, _) = tokio::sync::mpsc::unbounded_channel::<crate::app::DebugMessage>();
@@ -83,36 +62,185 @@ pub(crate) async fn run(
         }
         Err(e) => {
             tracing::warn!(error = %e, "WT protocol connection FAILED");
+            if sidebar_split_can_fallback(&e, preserve_sidebar_view, split_pane) {
+                println!("{}", serde_json::json!({ "split_fallback": true }));
+                return Ok(());
+            }
             return Err(e);
         }
     };
     let shell_mgr = ShellManager::new().with_wt_channel(Arc::new(channel) as Arc<dyn WtChannel>);
 
-    match delegate_with_context(
-        &shell_mgr,
-        prompt,
-        agent_cmd,
-        delegate_agent_cmd,
-        delegate_model,
-        &requested_source,
-        split_cwd.as_deref().or(cwd),
-        preserve_sidebar_view,
-        split_pane,
-        split_direction,
-        split_size,
-        delegate_agent_id,
-    )
-    .await
-    {
+    let result = async {
+        let mut requested_source = requested_source;
+        let mut split_cwd = None;
+        if let Some(pane) = split_pane {
+            let context = shell_mgr.wt_get_pane_context(Some(pane), 0, 0).await?;
+            let target = split_target_pane(&context, pane)?;
+            let provider = delegate_agent_cmd.context("split requires an exact delegate provider")?;
+            if let Some(session) = split_session.filter(|session| !session.is_empty()) {
+                let local = tokio::task::LocalSet::new();
+                let snapshot = local
+                    .run_until(super::sessions::fetch_from_master(None, false))
+                    .await?;
+                let row = resolve_split_session(&snapshot.sessions, pane, session, provider)?;
+                requested_source = match &row.location {
+                    crate::agent_sessions::SessionLocation::Host => AgentSource::Host,
+                    crate::agent_sessions::SessionLocation::Wsl { distro } => AgentSource::Wsl {
+                        distro: distro.clone(),
+                    },
+                    _ => anyhow::bail!("split target has no known execution source"),
+                };
+                if let Some(distro) = target["shell"].as_str().and_then(|shell| shell.strip_prefix("wsl:")) {
+                    anyhow::ensure!(
+                        matches!(&requested_source, AgentSource::Wsl { distro: expected } if expected == distro),
+                        "split target execution source changed"
+                    );
+                }
+                split_cwd = Some(resolve_split_delegate_cwd(
+                    &requested_source,
+                    target["cwd"].as_str(),
+                    &row.cwd.to_string_lossy(),
+                )?);
+            } else {
+                let (source, cwd) = resolve_native_split_source(target, provider)?;
+                requested_source = source;
+                split_cwd = Some(cwd);
+            }
+        }
+        delegate_with_context(
+            &shell_mgr,
+            prompt,
+            agent_cmd,
+            delegate_agent_cmd,
+            delegate_model,
+            &requested_source,
+            split_cwd.as_deref().or(cwd),
+            preserve_sidebar_view,
+            split_pane,
+            split_direction,
+            split_size,
+            delegate_agent_id,
+        )
+        .await
+    }
+    .await;
+    match result {
         Ok(()) => {
             tracing::info!("delegate OK");
+            if preserve_sidebar_view && split_pane.is_some() {
+                println!("{}", serde_json::json!({ "split_fallback": false }));
+            }
+            Ok(())
+        }
+        Err(e) if sidebar_split_can_fallback(&e, preserve_sidebar_view, split_pane) => {
+            tracing::warn!(target: "delegate", error = %e, "sidebar split preparation failed; requesting an ordinary terminal");
+            // Only preparation failures authorize the host to create a fallback pane.
+            println!("{}", serde_json::json!({ "split_fallback": true }));
             Ok(())
         }
         Err(e) => {
-            tracing::warn!(error = %e, "delegate FAILED");
+            tracing::warn!(error = ?e, "delegate FAILED");
             Err(e)
         }
     }
+}
+
+#[derive(Debug)]
+struct DelegateCreationDispatched;
+
+impl std::fmt::Display for DelegateCreationDispatched {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("delegate pane creation was dispatched")
+    }
+}
+
+impl std::error::Error for DelegateCreationDispatched {}
+
+fn sidebar_split_can_fallback(
+    error: &anyhow::Error,
+    preserve_sidebar_view: bool,
+    split_pane: Option<&str>,
+) -> bool {
+    preserve_sidebar_view && split_pane.is_some() && !error.is::<DelegateCreationDispatched>()
+}
+
+fn split_target_pane<'a>(
+    context: &'a serde_json::Value,
+    pane: &str,
+) -> Result<&'a serde_json::Value> {
+    let target = &context["pane"];
+    anyhow::ensure!(
+        target["session_id"].as_str().is_some_and(|id| {
+            !id.is_empty()
+                && id
+                    .trim_matches(['{', '}'])
+                    .eq_ignore_ascii_case(pane.trim_matches(['{', '}']))
+        }) && target["is_agent_pane"].as_bool() == Some(false),
+        "split target is not the requested ordinary terminal"
+    );
+    Ok(target)
+}
+
+fn resolve_native_split_source(
+    target: &serde_json::Value,
+    provider: &str,
+) -> Result<(AgentSource, String)> {
+    anyhow::ensure!(
+        target["native_agent_provider_id"].as_str() == Some(provider),
+        "split target has no matching native provider intent"
+    );
+    let cwd = target["cwd"]
+        .as_str()
+        .filter(|cwd| !cwd.is_empty())
+        .context("split target has no working directory")?;
+    let shell = target["shell"].as_str().unwrap_or("");
+    let source = if let Some(distro) = shell.strip_prefix("wsl:") {
+        anyhow::ensure!(
+            !distro.trim().is_empty(),
+            "split target has incomplete WSL context"
+        );
+        AgentSource::Wsl {
+            distro: distro.to_string(),
+        }
+    } else {
+        anyhow::ensure!(
+            std::path::Path::new(cwd).is_absolute(),
+            "split target has no known host working directory"
+        );
+        let pid = target["pid"]
+            .as_u64()
+            .and_then(|pid| u32::try_from(pid).ok())
+            .context("split target has no native process identity")?;
+        let executable = crate::protocol::acp::prompt_context::process_image_name(pid)
+            .context("split target execution source is unavailable")?;
+        anyhow::ensure!(
+            !executable.eq_ignore_ascii_case("wsl.exe"),
+            "split target WSL distro is not yet available"
+        );
+        AgentSource::Host
+    };
+    let cwd = match &source {
+        AgentSource::Wsl { .. } => select_wsl_delegate_cwd(Some(cwd), None)
+            .context("split target has no usable WSL working directory")?,
+        AgentSource::Host => cwd,
+    };
+    Ok((source, cwd.to_string()))
+}
+
+fn resolve_split_delegate_cwd(
+    source: &AgentSource,
+    current_cwd: Option<&str>,
+    row_cwd: &str,
+) -> Result<String> {
+    let cwd = match source {
+        AgentSource::Host => current_cwd
+            .filter(|cwd| std::path::Path::new(cwd).is_absolute())
+            .unwrap_or(row_cwd),
+        AgentSource::Wsl { .. } => select_wsl_delegate_cwd(current_cwd, Some(row_cwd))
+            .context("split target has no usable WSL working directory")?,
+    };
+    Ok(cwd.to_string())
 }
 
 fn resolve_split_session<'a>(
@@ -470,6 +598,10 @@ async fn delegate_with_context(
             .and_then(|pane| pane.get("cwd"))
             .and_then(|v| v.as_str());
         let wsl_cwd = select_wsl_delegate_cwd(active_pane_cwd, cwd);
+        anyhow::ensure!(
+            split_pane.is_none() || wsl_cwd.is_some(),
+            "split target has no usable WSL working directory"
+        );
         let wsl_commandline = match wsl_cwd {
             Some(cwd) => {
                 format!("wsl -d {distro_arg} --cd \"{cwd}\" -- {login_invocation}")
@@ -591,7 +723,8 @@ async fn create_delegate_target(
                 None,
                 Some(provider_id),
             )
-            .await?
+            .await
+            .context(DelegateCreationDispatched)?
     } else {
         shell_mgr
             .wt_create_tab_with_background(
@@ -602,15 +735,20 @@ async fn create_delegate_target(
                 preserve_sidebar_view,
                 Some(provider_id),
             )
-            .await?
+            .await
+            .context(DelegateCreationDispatched)?
     };
     if preserve_sidebar_view || split_pane.is_some() {
         let pane = created
             .get("session_id")
             .and_then(serde_json::Value::as_str)
             .filter(|pane| !pane.is_empty())
-            .ok_or_else(|| anyhow::anyhow!("delegate tab creation returned no pane identity"))?;
-        shell_mgr.wt_focus_pane(pane).await?;
+            .ok_or_else(|| anyhow::anyhow!("delegate tab creation returned no pane identity"))
+            .context(DelegateCreationDispatched)?;
+        shell_mgr
+            .wt_focus_pane(pane)
+            .await
+            .context(DelegateCreationDispatched)?;
     }
     Ok(created)
 }
@@ -619,6 +757,197 @@ async fn create_delegate_target(
 mod tests {
     use super::cap_delegate_context;
     use crate::agent_source::AgentSource;
+
+    #[test]
+    fn native_split_uses_provider_intent_and_current_cwd_without_a_session() {
+        let context = serde_json::json!({
+            "pane": {
+                "session_id": "{PANE}", "is_agent_pane": false,
+                "native_agent_provider_id": "copilot",
+                "cwd": "C:\\current project", "shell": "",
+                "pid": std::process::id(),
+            }
+        });
+        let pane = super::split_target_pane(&context, "pane").unwrap();
+        assert_eq!(
+            super::resolve_native_split_source(pane, "copilot").unwrap(),
+            (AgentSource::Host, "C:\\current project".into())
+        );
+        assert!(super::resolve_native_split_source(pane, "claude").is_err());
+        assert!(super::split_target_pane(&context, "different-pane").is_err());
+        let mut assistant = context.clone();
+        assistant["pane"]["is_agent_pane"] = true.into();
+        assert!(super::split_target_pane(&assistant, "pane").is_err());
+        let mut ordinary = context;
+        ordinary["pane"]["native_agent_provider_id"] = "".into();
+        assert!(super::resolve_native_split_source(&ordinary["pane"], "copilot").is_err());
+    }
+
+    #[test]
+    fn native_split_preserves_exact_wsl_distro_and_linux_cwd() {
+        let mut pane = serde_json::json!({
+            "native_agent_provider_id": "codex",
+            "cwd": "/home/user/current project", "shell": "wsl:Ubuntu",
+        });
+        assert_eq!(
+            super::resolve_native_split_source(&pane, "codex").unwrap(),
+            (
+                AgentSource::Wsl {
+                    distro: "Ubuntu".into()
+                },
+                "/home/user/current project".into(),
+            )
+        );
+        pane["cwd"] = "C:\\unrelated host directory".into();
+        assert!(super::resolve_native_split_source(&pane, "codex").is_err());
+        pane["cwd"] = "/project".into();
+        pane["shell"] = "wsl:".into();
+        assert!(super::resolve_native_split_source(&pane, "codex").is_err());
+        pane["shell"] = "".into();
+        assert!(super::resolve_native_split_source(&pane, "codex").is_err());
+    }
+
+    #[test]
+    fn live_wsl_split_selects_only_usable_cwd_candidates() {
+        let source = AgentSource::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        for (current, row, expected) in [
+            (Some("/current"), "/row", "/current"),
+            (Some("/current"), "/row/\"quoted\"", "/current"),
+            (Some("/current/\"quoted\""), "/row", "/row"),
+            (Some(""), "/row", "/row"),
+            (None, "/row", "/row"),
+            (Some("  /current  "), "  /row  ", "/current"),
+            (Some(" \t "), "  /row  ", "/row"),
+            (Some("C:\\host"), "/row", "/row"),
+        ] {
+            assert_eq!(
+                super::resolve_split_delegate_cwd(&source, current, row).unwrap(),
+                expected
+            );
+        }
+        for (current, row) in [
+            (Some("/current/\"quoted\""), "/row/\"quoted\""),
+            (Some("C:\\host"), "D:\\row"),
+            (Some(""), ""),
+            (None, ""),
+            (Some(" \t "), " \n "),
+        ] {
+            let error = super::resolve_split_delegate_cwd(&source, current, row).unwrap_err();
+            assert!(super::sidebar_split_can_fallback(
+                &error,
+                true,
+                Some("pane")
+            ));
+            assert!(!error.is::<super::DelegateCreationDispatched>());
+        }
+    }
+
+    #[test]
+    fn native_wsl_split_normalizes_cwd_and_rejects_unusable_paths() {
+        let mut pane = serde_json::json!({
+            "native_agent_provider_id": "copilot",
+            "cwd": "  /home/user/current project  ", "shell": "wsl:Ubuntu",
+        });
+        assert_eq!(
+            super::resolve_native_split_source(&pane, "copilot").unwrap(),
+            (
+                AgentSource::Wsl {
+                    distro: "Ubuntu".into()
+                },
+                "/home/user/current project".into(),
+            )
+        );
+        for cwd in ["/home/\"quoted\"", "C:\\host", "", " \t "] {
+            pane["cwd"] = cwd.into();
+            let error = super::resolve_native_split_source(&pane, "copilot").unwrap_err();
+            assert!(super::sidebar_split_can_fallback(
+                &error,
+                true,
+                Some("pane")
+            ));
+        }
+    }
+
+    #[test]
+    fn native_split_does_not_trust_a_shell_label_without_process_provenance() {
+        let pane = serde_json::json!({
+            "native_agent_provider_id": "copilot",
+            "cwd": "C:\\project", "shell": "pwsh.exe", "pid": 0,
+        });
+        assert!(super::resolve_native_split_source(&pane, "copilot").is_err());
+    }
+
+    #[test]
+    fn sidebar_split_fallback_is_limited_to_pre_creation_failures() {
+        let preparation = anyhow::anyhow!("provider is unavailable");
+        assert!(super::sidebar_split_can_fallback(
+            &preparation,
+            true,
+            Some("pane")
+        ));
+        assert!(!super::sidebar_split_can_fallback(
+            &preparation,
+            false,
+            Some("pane")
+        ));
+        assert!(!super::sidebar_split_can_fallback(&preparation, true, None));
+        let dispatched = preparation.context(super::DelegateCreationDispatched);
+        assert!(!super::sidebar_split_can_fallback(
+            &dispatched,
+            true,
+            Some("pane")
+        ));
+        let wrapped = dispatched.context("outer caller");
+        assert!(!super::sidebar_split_can_fallback(
+            &wrapped,
+            true,
+            Some("pane")
+        ));
+    }
+
+    #[tokio::test]
+    async fn sidebar_split_does_not_fallback_after_creation_or_focus_failure() {
+        for (response, fail_focus) in [
+            (serde_json::json!({}), false),
+            (serde_json::json!({"session_id": "fresh-pane"}), true),
+        ] {
+            let channel = std::sync::Arc::new(RecordingChannel {
+                requests: Default::default(),
+                response,
+                fail_focus,
+            });
+            let shell = crate::shell::ShellManager::new().with_wt_channel(channel.clone());
+            let error = super::create_delegate_target(
+                &shell,
+                "copilot",
+                "copilot",
+                None,
+                true,
+                Some("original-pane"),
+                "right",
+                0.4,
+            )
+            .await
+            .unwrap_err();
+            assert!(!super::sidebar_split_can_fallback(
+                &error,
+                true,
+                Some("original-pane")
+            ));
+            assert_eq!(
+                channel
+                    .requests
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|(method, _)| method == "split_pane")
+                    .count(),
+                1
+            );
+        }
+    }
 
     struct RecordingChannel {
         requests: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
@@ -677,6 +1006,44 @@ mod tests {
         assert_eq!(requests[0].1["native_agent_provider_id"], "copilot");
         assert_eq!(requests[1].0, "focus_pane");
         assert_eq!(requests[1].1["session_id"], "fresh-pane");
+    }
+
+    #[tokio::test]
+    async fn wsl_split_serialization_retains_validated_cwd() {
+        let channel = std::sync::Arc::new(RecordingChannel {
+            requests: Default::default(),
+            response: serde_json::json!({"session_id": "fresh-pane"}),
+            fail_focus: false,
+        });
+        let shell = crate::shell::ShellManager::new().with_wt_channel(channel.clone());
+        let cwd = super::resolve_split_delegate_cwd(
+            &AgentSource::Wsl {
+                distro: "Ubuntu".into(),
+            },
+            Some("/current/\"quoted\""),
+            "  /home/user/current project  ",
+        )
+        .unwrap();
+        let commandline = format!("wsl -d Ubuntu --cd \"{cwd}\" -- bash -lc copilot");
+        super::create_delegate_target(
+            &shell,
+            "copilot",
+            &commandline,
+            None,
+            true,
+            Some("original-pane"),
+            "right",
+            0.4,
+        )
+        .await
+        .unwrap();
+        let requests = channel.requests.lock().unwrap();
+        assert_eq!(requests[0].0, "split_pane");
+        assert_eq!(requests[0].1["commandline"], commandline);
+        assert!(requests[0].1["commandline"]
+            .as_str()
+            .unwrap()
+            .contains("--cd \"/home/user/current project\""));
     }
 
     #[test]

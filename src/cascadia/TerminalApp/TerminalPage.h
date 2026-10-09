@@ -1352,6 +1352,11 @@ namespace winrt::TerminalApp::implementation
         void _DelegatePromptToAgent(const winrt::hstring& prompt);
         void _OpenDefaultNewTab();
         std::optional<std::wstring> _BuildAgentSplitArguments(const winrt::com_ptr<Tab>& tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
+        static std::shared_ptr<Pane> _SidebarSplitSourcePane(const winrt::com_ptr<Tab>& tab);
+        bool _PrepareSidebarSplitSource(const winrt::com_ptr<Tab>& tab, winrt::guid sourceSessionId);
+        Microsoft::Terminal::Settings::Model::NewTerminalArgs _BuildSidebarTerminalSplitArgs(const winrt::com_ptr<Tab>& tab, winrt::guid sourceSessionId) const;
+        bool _SplitSidebarTerminalPane(const winrt::com_ptr<Tab>& tab, winrt::guid sourceSessionId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
+        void _CompleteSidebarAgentSplit(const winrt::com_ptr<Tab>& tab, winrt::guid sourceSessionId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, bool completed, uint32_t exitCode, const std::string& output);
         safe_void_coroutine _SplitAgentDelegate(winrt::com_ptr<Tab> tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
         safe_void_coroutine _RunSidebarDelegate(std::wstring wtaPath, std::wstring args);
         void _OpenBackgroundAgentTab(bool preserveSidebarView = false);

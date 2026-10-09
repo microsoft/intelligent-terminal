@@ -214,7 +214,7 @@ fn process_image_path(_pid: u32) -> Option<String> {
 /// *name* (which the user can rename), this is the actual running process, so
 /// the agent can reliably pick shell syntax. Returns the file name only;
 /// `None` on any failure (or off Windows).
-fn process_image_name(pid: u32) -> Option<String> {
+pub(crate) fn process_image_name(pid: u32) -> Option<String> {
     process_image_path(pid).and_then(|full| {
         full.rsplit(['\\', '/'])
             .next()
