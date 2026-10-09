@@ -331,13 +331,6 @@ namespace winrt::TerminalApp::implementation
         // we'll attach the terminal's Xaml control to the Xaml root.
         if (!openInBackground)
         {
-            // Explicit new-tab actions leave History, but protocol activation
-            // changes the focused content without changing the sidebar view.
-            const auto historyWasActive = _tabStrip && _tabStrip.HistoryActive();
-            if (historyWasActive && !_preserveSidebarHistory)
-            {
-                _CloseSidebarHistory(false);
-            }
             _selectedTabItem(tabViewItem);
         }
         else

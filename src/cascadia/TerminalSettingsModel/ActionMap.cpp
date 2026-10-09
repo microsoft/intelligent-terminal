@@ -171,6 +171,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 { ShortcutAction::TogglePaneZoom, USES_RESOURCE(L"TogglePaneZoomCommandKey") },
                 { ShortcutAction::ToggleShaderEffects, USES_RESOURCE(L"ToggleShaderEffectsCommandKey") },
                 { ShortcutAction::ToggleSidebar, USES_RESOURCE(L"ToggleSidebarCommandKey") },
+                { ShortcutAction::ToggleSidebarAgentsOnly, USES_RESOURCE(L"ToggleSidebarAgentsOnlyCommandKey") },
+                { ShortcutAction::ToggleSidebarRecentAgentSessions, USES_RESOURCE(L"ToggleSidebarRecentAgentSessionsCommandKey") },
                 { ShortcutAction::ToggleSplitOrientation, USES_RESOURCE(L"ToggleSplitOrientationCommandKey") },
                 { ShortcutAction::Workspaces, USES_RESOURCE(L"WorkspacesCommandKey") },
             };

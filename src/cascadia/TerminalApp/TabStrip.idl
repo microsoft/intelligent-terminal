@@ -40,6 +40,17 @@ namespace TerminalApp
         AgentsOnly = 1,
     };
 
+    [default_interface] runtimeclass SidebarFiltersViewModel : Windows.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        SidebarFiltersViewModel();
+        Boolean ShowAgentsOnly;
+        Boolean ShowRecentAgentSessions;
+        String SearchQuery;
+        Boolean HasSearchQuery { get; };
+        Boolean AgentsOnlyEffective { get; };
+        Boolean RecentAgentSessionsVisible { get; };
+    };
+
     [default_interface] runtimeclass TabStripHistoryItem : Windows.UI.Xaml.Data.INotifyPropertyChanged
     {
         String SessionId;
@@ -222,5 +233,6 @@ namespace TerminalApp
         Boolean RichTabWorkingDirectoryVisible;
         event Windows.Foundation.TypedEventHandler<TabStrip, Object> VisibleFieldsChanged;
         Boolean RichTabGitAvailable;
+        SidebarFiltersViewModel SidebarFilters { get; };
     };
 }
