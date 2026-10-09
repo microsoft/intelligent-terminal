@@ -389,6 +389,16 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentsDelegateProtocolCreationPreservesSearchOff);
         TEST_METHOD(AgentsSplitUsesTargetLiveBindingWithoutResume);
         TEST_METHOD(AgentsSplitFallsBackToOrdinaryTerminal);
+        TEST_METHOD(AgentsSplitFallbackPreservesWslDirectory);
+        TEST_METHOD(AgentsSplitFallbackPreservesWindowsDirectory);
+        TEST_METHOD(AgentsSplitFallbackKeepsProfileDirectoryWhenUnusable);
+        TEST_METHOD(AgentsSplitFallbackClearsEffectiveAgentLaunchIntent);
+        TEST_METHOD(AgentsSplitReceiptUnknownReportsErrorWithoutFallback);
+        TEST_METHOD(AgentsSplitReceiptFalseAcknowledgesWithoutFallback);
+        TEST_METHOD(AgentsSplitReceiptTrueSplitsOnlyOriginalTab);
+        TEST_METHOD(AgentsSplitReceiptTrueRejectsRemovedSource);
+        TEST_METHOD(AgentsSplitReceiptTrueRejectsClosedTab);
+        TEST_METHOD(AgentsSplitLocalFallbackFailureReportsError);
         TEST_METHOD(AgentsSplitExcludesAssistantFromMru);
         TEST_METHOD(AgentsSplitUsesNativeProviderBeforeSessionStartup);
         TEST_METHOD(TabsDuplicateSplitIgnoresNativeAgentIntent);
@@ -6354,6 +6364,283 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager)->NativeAgentProviderIdForPane(fresh->GetSessionId()).empty());
             VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
             VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+        });
+    }
+
+    void TabTests::AgentsSplitFallbackPreservesWslDirectory()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto connection = winrt::make_self<TestConnection>(winrt::guid{ L"{77631111-2222-3333-4444-555555555555}" }, State::Connected);
+        auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto control = page->_GetActiveControl();
+            VERIFY_IS_TRUE(page->_manager.TryLookupCore(control.ContentId()).Core().Initialize(270, 380, 1.0f));
+        });
+        _emitOsc(connection, u"\x1b]9;9;/home/user/project\x07");
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto sourceId = connection->SessionId();
+            const auto profile = tab->GetActivePane()->GetContent().as<winrt::TerminalApp::TerminalPaneContent>().GetProfile();
+            profile.Commandline(L"wsl.exe -d Ubuntu");
+            profile.StartingDirectory(L"/home/user/default");
+            const auto args = page->_BuildSidebarTerminalSplitArgs(tab, sourceId);
+            VERIFY_IS_NOT_NULL(args);
+            VERIFY_ARE_EQUAL(profile.Guid(), page->_settings.GetProfileForArgs(args).Guid());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"/home/user/project" }, args.StartingDirectory());
+            const auto freshConnection = winrt::make_self<TestConnection>(winrt::guid{ L"{77651111-2222-3333-4444-555555555555}" }, State::Connected);
+            const auto fresh = page->_MakePane(args, nullptr, *freshConnection);
+            VERIFY_ARE_EQUAL(profile.Commandline(), fresh->GetTerminalControl().Settings().Commandline());
+            VERIFY_ARE_EQUAL(args.StartingDirectory(), fresh->GetTerminalControl().Settings().StartingDirectory());
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
+            VERIFY_IS_NOT_NULL(tab->GetRootPane()->FindPaneBySessionId(sourceId));
+            VERIFY_ARE_NOT_EQUAL(sourceId, fresh->GetSessionId());
+            VERIFY_IS_NULL(page->_BuildSidebarTerminalSplitArgs(tab, winrt::guid{}));
+            fresh->Shutdown();
+        });
+    }
+
+    void TabTests::AgentsSplitFallbackPreservesWindowsDirectory()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto connection = winrt::make_self<TestConnection>(winrt::guid{ L"{77661111-2222-3333-4444-555555555555}" }, State::Connected);
+        auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto control = page->_GetActiveControl();
+            VERIFY_IS_TRUE(page->_manager.TryLookupCore(control.ContentId()).Core().Initialize(270, 380, 1.0f));
+        });
+        wchar_t directory[MAX_PATH]{};
+        VERIFY_IS_TRUE(GetWindowsDirectoryW(directory, ARRAYSIZE(directory)) > 0);
+        const auto osc = std::wstring{ L"\x1b]9;9;" } + directory + L"\x07";
+        _emitOsc(connection, std::u16string_view{ reinterpret_cast<const char16_t*>(osc.data()), osc.size() });
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto profile = tab->GetActivePane()->GetContent().as<winrt::TerminalApp::TerminalPaneContent>().GetProfile();
+            profile.Commandline(L"cmd.exe");
+            const auto args = page->_BuildSidebarTerminalSplitArgs(tab, connection->SessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ directory }, args.StartingDirectory());
+            const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithNewTerminalArgs(page->_settings, args);
+            VERIFY_ARE_EQUAL(winrt::hstring{ directory }, settings.DefaultSettings()->StartingDirectory());
+        });
+    }
+
+    void TabTests::AgentsSplitFallbackKeepsProfileDirectoryWhenUnusable()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto connection = winrt::make_self<TestConnection>(winrt::guid{ L"{77671111-2222-3333-4444-555555555555}" }, State::Connected);
+        auto page = _commonSetup(*connection);
+        TestOnUIThread([&]() {
+            const auto control = page->_GetActiveControl();
+            VERIFY_IS_TRUE(page->_manager.TryLookupCore(control.ContentId()).Core().Initialize(270, 380, 1.0f));
+        });
+        _emitOsc(connection, u"\x1b]9;9;/home/user/project\x07");
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto profile = tab->GetActivePane()->GetContent().as<winrt::TerminalApp::TerminalPaneContent>().GetProfile();
+            profile.StartingDirectory(L"C:\\profile-default");
+            for (const auto commandline : { L"cmd.exe", L"wsl.exe --cd /home/user/explicit" })
+            {
+                profile.Commandline(commandline);
+                const auto args = page->_BuildSidebarTerminalSplitArgs(tab, connection->SessionId());
+                VERIFY_IS_TRUE(args.StartingDirectory().empty());
+                const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithNewTerminalArgs(page->_settings, args);
+                VERIFY_ARE_EQUAL(profile.StartingDirectory(), settings.DefaultSettings()->StartingDirectory());
+                VERIFY_ARE_EQUAL(profile.Commandline(), settings.DefaultSettings()->Commandline());
+            }
+        });
+    }
+
+    void TabTests::AgentsSplitFallbackClearsEffectiveAgentLaunchIntent()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto baseline = winrt::make_self<TestConnection>(winrt::guid{ L"{77701111-2222-3333-4444-555555555555}" }, State::Connected);
+        auto page = _commonSetup(*baseline, nullptr, std::nullopt, true);
+        const auto connection = winrt::make_self<TestConnection>(winrt::guid{ L"{77681111-2222-3333-4444-555555555555}" }, State::Connected);
+        TestOnUIThread([&]() {
+            const auto profile = page->_settings.AllProfiles().GetAt(0);
+            profile.Commandline(L"wsl.exe -d Ubuntu");
+            NewTerminalArgs sourceArgs{};
+            sourceArgs.Profile(::Microsoft::Console::Utils::GuidToString(profile.Guid()));
+            sourceArgs.Commandline(L"copilot --resume original-session");
+            sourceArgs.NativeAgentProviderId(L"copilot");
+            const auto source = page->_MakePane(sourceArgs, nullptr, *connection);
+            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(source));
+            VERIFY_ARE_EQUAL(sourceArgs.Commandline(), source->GetTerminalControl().Settings().Commandline());
+            VERIFY_IS_TRUE(page->_manager.TryLookupCore(source->GetTerminalControl().ContentId()).Core().Initialize(270, 380, 1.0f));
+        });
+        _emitOsc(connection, u"\x1b]9;9;/home/user/project\x07");
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto args = page->_BuildSidebarTerminalSplitArgs(tab, connection->SessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"/home/user/project" }, args.StartingDirectory());
+            VERIFY_IS_TRUE(args.Commandline().empty());
+            VERIFY_IS_TRUE(args.NativeAgentProviderId().empty());
+            VERIFY_IS_TRUE(args.Type().empty());
+            VERIFY_ARE_EQUAL(winrt::guid{}, args.SessionId());
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, args.ContentId());
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, args.AgentPaneTransferId());
+            VERIFY_IS_FALSE(args.AppendCommandLine());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot --resume original-session" }, tab->GetActiveTerminalControl().Settings().Commandline());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager)->NativeAgentProviderIdForPane(connection->SessionId()));
+            const auto freshConnection = winrt::make_self<TestConnection>(winrt::guid{ L"{77691111-2222-3333-4444-555555555555}" }, State::Connected);
+            const auto fresh = page->_MakePane(args, nullptr, *freshConnection);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl.exe -d Ubuntu" }, fresh->GetTerminalControl().Settings().Commandline());
+            VERIFY_ARE_NOT_EQUAL(connection->SessionId(), fresh->GetSessionId());
+            VERIFY_ARE_NOT_EQUAL(tab->GetActiveTerminalControl().ContentId(), fresh->GetTerminalControl().ContentId());
+            VERIFY_IS_TRUE(winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager)->NativeAgentProviderIdForPane(fresh->GetSessionId()).empty());
+            fresh->Shutdown();
+        });
+    }
+
+    void TabTests::AgentsSplitReceiptUnknownReportsErrorWithoutFallback()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto sourceId = tab->GetActivePane()->GetSessionId();
+            page->_tabStrip.HistoryActive(true);
+            for (const auto receipt : { "", " \t\r\n", "not json", "{}", "[]", "{\"split_fallback\":null}", "{\"split_fallback\":0}", "{\"split_fallback\":\"true\"}", "{\"split_fallback\":true} trailing" })
+            {
+                page->_tabStrip.HistoryError(L"prior error");
+                page->_CompleteSidebarAgentSplit(tab, sourceId, SplitDirection::Right, 0.5f, true, 0, receipt);
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+                VERIFY_ARE_EQUAL(winrt::hresult_error{ E_FAIL }.message(), page->_tabStrip.HistoryError());
+                VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+                VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
+                VERIFY_ARE_EQUAL(sourceId, tab->GetActivePane()->GetSessionId());
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+            }
+            for (const auto completed : { true, false })
+            {
+                for (const auto receipt : { "", "{\"split_fallback\":true}" })
+                {
+                    page->_tabStrip.HistoryError(L"");
+                    page->_CompleteSidebarAgentSplit(tab, sourceId, SplitDirection::Right, 0.5f, completed, completed ? 1u : 0u, receipt);
+                    VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+                    VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+                    VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
+                    VERIFY_ARE_EQUAL(sourceId, tab->GetActivePane()->GetSessionId());
+                    VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+                }
+            }
+        });
+    }
+
+    void TabTests::AgentsSplitReceiptFalseAcknowledgesWithoutFallback()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto sourceId = tab->GetActivePane()->GetSessionId();
+            page->_tabStrip.HistoryActive(true);
+            page->_tabStrip.HistoryError(L"prior error");
+            page->_CompleteSidebarAgentSplit(tab, sourceId, SplitDirection::Right, 0.5f, true, 0, "{\"split_fallback\":false}");
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
+            VERIFY_ARE_EQUAL(sourceId, tab->GetActivePane()->GetSessionId());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+        });
+    }
+
+    void TabTests::AgentsSplitReceiptTrueSplitsOnlyOriginalTab()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto sourceId = tab->GetActivePane()->GetSessionId();
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Down, 0.5f, page->_MakePane(NewTerminalArgs{ 1 }, nullptr)));
+            VERIFY_ARE_NOT_EQUAL(sourceId, tab->GetActivePane()->GetSessionId());
+            VERIFY_SUCCEEDED(page->_OpenNewTab(NewTerminalArgs{ 1 }));
+            const auto other = page->_GetFocusedTabImpl();
+            VERIFY_IS_TRUE(other != tab);
+            page->_tabStrip.HistoryActive(true);
+            page->_tabStrip.HistoryError(L"prior error");
+            page->_CompleteSidebarAgentSplit(tab, sourceId, SplitDirection::Right, 0.5f, true, 0, "{\"split_fallback\":true}");
+            VERIFY_ARE_EQUAL(2u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(3, tab->GetLeafPaneCount());
+            VERIFY_ARE_EQUAL(1, other->GetLeafPaneCount());
+            VERIFY_IS_NOT_NULL(tab->GetRootPane()->FindPaneBySessionId(sourceId));
+            const auto fresh = tab->GetActivePane();
+            VERIFY_ARE_NOT_EQUAL(sourceId, fresh->GetSessionId());
+            VERIFY_IS_FALSE(fresh->IsAgentPane());
+            VERIFY_IS_TRUE(winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager)->NativeAgentProviderIdForPane(fresh->GetSessionId()).empty());
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == tab);
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+        });
+    }
+
+    void TabTests::AgentsSplitReceiptTrueRejectsRemovedSource()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto sourceId = tab->GetActivePane()->GetSessionId();
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, page->_MakePane(NewTerminalArgs{ 1 }, nullptr)));
+            const auto source = tab->GetRootPane()->FindPaneBySessionId(sourceId);
+            const auto detached = tab->DetachPane(source);
+            VERIFY_IS_NOT_NULL(detached);
+            detached->Shutdown();
+            VERIFY_IS_NULL(tab->GetRootPane()->FindPaneBySessionId(sourceId));
+            const auto survivorId = tab->GetActivePane()->GetSessionId();
+            page->_tabStrip.HistoryActive(true);
+            page->_CompleteSidebarAgentSplit(tab, sourceId, SplitDirection::Right, 0.5f, true, 0, "{\"split_fallback\":true}");
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
+            VERIFY_ARE_EQUAL(survivorId, tab->GetActivePane()->GetSessionId());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+        });
+    }
+
+    void TabTests::AgentsSplitReceiptTrueRejectsClosedTab()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto sourceId = tab->GetActivePane()->GetSessionId();
+            VERIFY_SUCCEEDED(page->_OpenNewTab(NewTerminalArgs{ 1 }));
+            const auto survivor = page->_GetFocusedTabImpl();
+            page->_RemoveTab(*tab);
+            page->_tabStrip.HistoryActive(true);
+            page->_CompleteSidebarAgentSplit(tab, sourceId, SplitDirection::Right, 0.5f, true, 0, "{\"split_fallback\":true}");
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(1, survivor->GetLeafPaneCount());
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == survivor);
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+            page->_tabStrip.HistoryError(L"");
+            VERIFY_IS_FALSE(page->_SplitSidebarTerminalPane(tab, sourceId, SplitDirection::Right, 0.5f));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(1, survivor->GetLeafPaneCount());
+        });
+    }
+
+    void TabTests::AgentsSplitLocalFallbackFailureReportsError()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto sourceId = tab->GetActivePane()->GetSessionId();
+            page->_tabStrip.HistoryActive(true);
+            VERIFY_IS_FALSE(page->_SplitSidebarTerminalPane(tab, sourceId, SplitDirection::Right, 0.000001f));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
+            page->_tabStrip.HistoryError(L"");
+            page->_CompleteSidebarAgentSplit(tab, sourceId, SplitDirection::Right, 0.000001f, true, 0, "{\"split_fallback\":true}");
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
         });
     }
 
