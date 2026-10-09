@@ -1361,8 +1361,6 @@ namespace winrt::TerminalApp::implementation
         std::optional<uint32_t> _FindSourceOfAgentPaneId(const std::shared_ptr<Pane>& root);
         void _DelegatePromptToAgent(const winrt::hstring& prompt);
         void _OpenDefaultNewTab();
-        std::optional<std::wstring> _BuildAgentSplitArguments(const winrt::com_ptr<Tab>& tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
-        safe_void_coroutine _SplitAgentDelegate(winrt::com_ptr<Tab> tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
         safe_void_coroutine _RunSidebarDelegate(std::wstring wtaPath, std::wstring args);
         void _OpenBackgroundAgentTab(bool preserveSidebarView = false);
         void _LaunchDelegate(const std::optional<winrt::hstring>& prompt, bool preserveSidebarView = false);

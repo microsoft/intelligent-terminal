@@ -350,7 +350,12 @@ background and then focus its returned pane through the existing protocol focus
 path. This preserves the selected sidebar page and search state. Other delegate
 calls retain ordinary foreground tab creation.
 
-In Agents, duplicate-split uses the target pane's live provider/session binding.
+Split Pane and Duplicate Pane retain the original terminal behavior in both
+Tabs and Agents views. They use the ordinary split direction, size, and profile
+rules without inspecting agent/session identity or invoking WTA delegation.
+AI assistant panes remain fixed panels and cannot themselves be split.
+
+Explicit CLI delegation can still split a live agent terminal:
 `wta delegate --split-pane <pane> --split-session <current-session>
 --delegate-agent <provider>` validates that pair against one live master row
 and uses its exact host or WSL distro before launching a fresh interactive
@@ -362,7 +367,7 @@ wrapper that starts the existing delegate command with an explicit native
 working directory; the split protocol itself has no cwd argument. The wrapper
 preserves native arguments and exit status, including paths with spaces and
 shell metacharacters. WSL retains its existing distro-specific `--cd` launch.
-Sidebar `+` and split launchers use bounded output capture and surface failures
+The sidebar `+` launcher uses bounded output capture and surfaces failures
 through the sidebar's existing error presentation.
 
 ## Debug Panel
