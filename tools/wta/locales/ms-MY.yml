@@ -126,6 +126,8 @@ agents.status.active: "Aktif"
 agents.status.waiting_for_input: "Menunggu input"
 agents.status.error: "Ralat"
 agents.status.idle: "Menganggur"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Sedang digunakan"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. untuk tunjuk/sembunyikan anak tetingkap ejen AI • Ctrl+Shift+/ untuk tunjuk/sembunyikan sesi ejen AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

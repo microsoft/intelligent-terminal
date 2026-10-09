@@ -120,6 +120,8 @@ pub enum AgentStatus {
     Error,
     Ended,
     Historical,
+    /// Response-only evidence of use without a live IT registration.
+    InUse,
 }
 
 /// 2D session-state model — **activity** dimension.
@@ -138,6 +140,8 @@ pub enum AgentStatus {
 /// variants imply liveness vs. activity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ActivityState {
+    /// The session is in use, but IT does not track its activity.
+    Unknown,
     /// Sitting waiting for input.
     Idle,
     /// Running an autonomous tool.
@@ -165,6 +169,8 @@ pub enum LivenessState {
     Ended,
     /// Reconstructed from on-disk history; no live pane.
     Historical,
+    /// In use without a live IT registration or an authoritative pane binding.
+    InUse,
 }
 
 /// Where this session was first created from, used purely as UX metadata
@@ -318,12 +324,14 @@ impl AgentSession {
     /// Derive the [`ActivityState`] dimension from the legacy
     /// one-dimensional `status` field.
     ///
-    /// For non-Live rows (`Ended`/`Historical`) this returns
+    /// For `InUse` rows this returns [`ActivityState::Unknown`].
+    /// For other non-Live rows (`Ended`/`Historical`) this returns
     /// [`ActivityState::Idle`] — the caller should consult
     /// [`Self::liveness`] first and only read `activity` when
     /// liveness is `Live`.
     pub fn activity(&self) -> ActivityState {
         match self.status {
+            AgentStatus::InUse => ActivityState::Unknown,
             AgentStatus::Working => ActivityState::Working,
             AgentStatus::Attention => ActivityState::Attention,
             AgentStatus::Error => ActivityState::Error,
@@ -341,6 +349,7 @@ impl AgentSession {
             | AgentStatus::Error => LivenessState::Live,
             AgentStatus::Ended => LivenessState::Ended,
             AgentStatus::Historical => LivenessState::Historical,
+            AgentStatus::InUse => LivenessState::InUse,
         }
     }
 }
@@ -653,7 +662,10 @@ impl AgentSessionRegistry {
                 if is_new_entry
                     || matches!(
                         entry.status,
-                        AgentStatus::Ended | AgentStatus::Error | AgentStatus::Historical
+                        AgentStatus::Ended
+                            | AgentStatus::Error
+                            | AgentStatus::Historical
+                            | AgentStatus::InUse
                     )
                 {
                     entry.status = AgentStatus::Idle;
@@ -1287,7 +1299,7 @@ impl AgentSessionRegistry {
                         "alive snapshot bound pane to Live-without-pane row",
                     );
                 }
-                LivenessState::Historical => {
+                LivenessState::Historical | LivenessState::InUse => {
                     entry.status = AgentStatus::Idle;
                     entry.last_activity_at = now;
                     entry.current_tool = None;
@@ -2940,6 +2952,11 @@ mod tests {
                 AgentStatus::Historical,
                 ActivityState::Idle,
                 LivenessState::Historical,
+            ),
+            (
+                AgentStatus::InUse,
+                ActivityState::Unknown,
+                LivenessState::InUse,
             ),
         ];
         for (st, want_act, want_live) in cases {

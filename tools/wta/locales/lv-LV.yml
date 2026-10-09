@@ -126,6 +126,8 @@ agents.status.active: "Aktīvs"
 agents.status.waiting_for_input: "Gaida ievadi"
 agents.status.error: "Kļūda"
 agents.status.idle: "Dīkstāvē"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Lietošanā"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. lai rādītu/paslēptu aģenta paneli • Ctrl+Shift+/ lai rādītu/paslēptu aģenta sesiju)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

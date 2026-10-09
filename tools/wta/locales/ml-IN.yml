@@ -139,6 +139,8 @@ agents.status.active: "സജീവം"
 agents.status.waiting_for_input: "ഇന്‍പുട്ടിനായി കാത്തിരിക്കുന്നു"
 agents.status.error: "പിശക്"
 agents.status.idle: "നിഷ്ക്രിയം"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "ഉപയോഗത്തിലാണ്"
 
 # ── ലേഔട്ട് സ്വാഗത സൂചന (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ഏജന്റ് പേന്‍ കാണിക്കുക/മറയ്ക്കുക • Ctrl+Shift+/ ഏജന്റ് സെഷന്‍ കാണിക്കുക/മറയ്ക്കുക)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

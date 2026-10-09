@@ -146,6 +146,8 @@ agents.status.waiting_for_input: "كىرگۈزۈش كۈتۈلۈۋاتىدۇ"
 agents.status.error: "خاتالىق"
 # Status badge when agent session has no active work
 agents.status.idle: "بوش"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "ئىشلىتىلىۋاتىدۇ"
 
 # ── Layout welcome hint (src/ui/layout.rs) ────────────────────────────────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. AI ئاگېنتى تاختىسىنى كۆرسەت/يوشۇرۇش • Ctrl+Shift+/ AI ئاگېنتى ئوتتۇرىسىنى كۆرسەت/يوشۇرۇش)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

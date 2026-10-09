@@ -3575,6 +3575,7 @@ namespace winrt::TerminalApp::implementation
              status != "Working" &&
              status != "Attention" &&
              status != "Error" &&
+             status != "InUse" &&
              status != "Ended" &&
              status != "Historical"))
         {
@@ -6774,6 +6775,10 @@ namespace winrt::TerminalApp::implementation
         {
             return RS_(L"VerticalTabsHistoryStatusIdle");
         }
+        if (status == "InUse")
+        {
+            return RS_(L"VerticalTabsHistoryStatusInUse");
+        }
         if (status == "Working")
         {
             return RS_(L"VerticalTabsHistoryStatusWorking");
@@ -7118,7 +7123,7 @@ namespace winrt::TerminalApp::implementation
             item.WslDistro(winrt::to_hstring(wslDistro));
             item.SessionUniverse(winrt::to_hstring(row.get("session_universe", "").asString()));
             item.Status(winrt::to_hstring(status));
-            item.IsLive(isLive);
+            item.IsLive(isLive || status == "InUse");
             item.IsHistorical(isHistorical);
             item.IsAgentPane(isAgentPane);
             const auto nativeItem = winrt::get_self<TerminalApp::implementation::TabStripHistoryItem>(item);

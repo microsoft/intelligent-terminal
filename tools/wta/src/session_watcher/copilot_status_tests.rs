@@ -1,5 +1,4 @@
 use super::*;
-use std::io::Write;
 use std::os::windows::fs::OpenOptionsExt;
 
 struct Fixture {
@@ -7,7 +6,6 @@ struct Fixture {
     directory: PathBuf,
     row: SessionInfo,
     hold: Option<std::fs::File>,
-    cache: Cache,
 }
 
 impl Fixture {
@@ -39,7 +37,6 @@ impl Fixture {
             directory,
             row,
             hold: Some(hold),
-            cache: Cache::default(),
         }
     }
 
@@ -47,11 +44,10 @@ impl Fixture {
         std::fs::write(self.directory.join("events.jsonl"), text).unwrap();
     }
 
-    fn read(&mut self) -> Option<AgentStatus> {
+    fn read(&self) -> Option<AgentStatus> {
         status(
             &self.row,
             &self.root,
-            &mut self.cache,
             &|pid| {
                 (pid == 42).then_some(Process {
                     created: SystemTime::UNIX_EPOCH,
@@ -71,28 +67,41 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn working_idle_cached_append_and_response_copy_preserve_identity() {
-    let mut fixture = Fixture::new();
-    fixture.write("{\"type\":\"assistant.turn_start\"}\n");
+fn external_in_use_does_not_read_transcripts_or_infer_activity() {
+    let fixture = Fixture::new();
     let original = fixture.row.clone();
-    assert_eq!(fixture.read(), Some(AgentStatus::Working));
-    let offset = fixture.cache.0.values().next().unwrap().offset;
-    assert_eq!(fixture.read(), Some(AgentStatus::Working));
-    assert_eq!(fixture.cache.0.values().next().unwrap().offset, offset);
-    let mut file = std::fs::OpenOptions::new()
-        .append(true)
+    assert_eq!(
+        fixture.read(),
+        Some(AgentStatus::InUse),
+        "no transcript is required"
+    );
+    for transcript in [
+        "{\"type\":\"assistant.turn_start\"}\n",
+        "{\"type\":\"assistant.turn_end\"}\n",
+        "{\"type\":\"permission.requested\"}\n",
+        "malformed or incomplete",
+    ] {
+        fixture.write(transcript);
+        assert_eq!(fixture.read(), Some(AgentStatus::InUse));
+    }
+    let _unreadable_transcript = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
         .open(fixture.directory.join("events.jsonl"))
         .unwrap();
-    writeln!(file, "{{\"type\":\"tool.execution_complete\"}}").unwrap();
-    assert_eq!(fixture.read(), Some(AgentStatus::Working));
-    writeln!(file, "{{\"type\":\"assistant.turn_end\"}}").unwrap();
-    assert_eq!(fixture.read(), Some(AgentStatus::Idle));
+    assert_eq!(fixture.read(), Some(AgentStatus::InUse));
     assert_eq!(
         fixture.row, original,
         "the registry input remains historical and unbound"
     );
     assert!(fixture.row.pane_session_id.is_none());
     assert!(fixture.row.owner_window_id.is_none());
+    let mut response = fixture.row.clone();
+    response.status = fixture.read();
+    let json = serde_json::to_value(response).unwrap();
+    assert_eq!(json["status"], "InUse");
+    assert!(json["pane_session_id"].is_null());
+    assert!(json.get("owner_window_id").is_none());
 }
 
 #[test]
@@ -127,23 +136,47 @@ fn malformed_dead_reused_wrong_executable_markers_are_not_live() {
 #[test]
 fn released_session_lease_cannot_promote_old_sid_even_with_live_pid() {
     let mut fixture = Fixture::new();
-    fixture.write("{\"type\":\"assistant.turn_start\"}\n");
-    assert_eq!(fixture.read(), Some(AgentStatus::Working));
+    assert_eq!(fixture.read(), Some(AgentStatus::InUse));
     fixture.hold.take();
     assert!(
         fixture.read().is_none(),
         "stale lock/hold filenames do not prove an active lease"
-    );
-    assert!(
-        fixture.cache.0.is_empty(),
-        "released leases invalidate cached activity"
     );
     std::fs::remove_file(fixture.directory.join("inuse.42.hold")).unwrap();
     assert!(fixture.read().is_none());
 }
 
 #[test]
-fn qualified_scope_live_hook_status_and_unknown_phase_are_preserved() {
+fn live_it_registration_keeps_every_detailed_status() {
+    let mut fixture = Fixture::new();
+    for activity in [
+        AgentStatus::Idle,
+        AgentStatus::Working,
+        AgentStatus::Attention,
+        AgentStatus::Error,
+    ] {
+        fixture.row.status = Some(activity.clone());
+        fixture.write("{\"type\":\"assistant.turn_start\"}\n");
+        assert!(
+            fixture.read().is_none(),
+            "live IT registration is not enriched"
+        );
+        assert_eq!(fixture.row.status, Some(activity));
+    }
+}
+
+#[test]
+fn history_rows_are_not_live_it_registrations() {
+    let mut fixture = Fixture::new();
+    for history in [AgentStatus::Historical, AgentStatus::Ended] {
+        fixture.row.status = Some(history.clone());
+        assert_eq!(fixture.read(), Some(AgentStatus::InUse));
+        assert_eq!(fixture.row.status, Some(history));
+    }
+}
+
+#[test]
+fn qualified_scope_is_preserved() {
     let mut fixture = Fixture::new();
     fixture.write("{\"type\":\"assistant.turn_start\"}\n");
     let original = fixture.row.clone();
@@ -163,29 +196,42 @@ fn qualified_scope_live_hook_status_and_unknown_phase_are_preserved() {
         }
         assert!(fixture.read().is_none());
     }
-    fixture.row = original;
-    fixture.write("{\"type\":\"tool.execution_complete\"}\n");
-    assert!(fixture.read().is_none());
-    fixture.write("{\"type\":\"assistant.turn_start\"}\n{\"type\":");
-    assert!(fixture.read().is_none());
-    fixture.write("{\"type\":\"assistant.turn_start\"}\nmalformed\n");
-    assert!(fixture.read().is_none());
 }
 
 #[test]
-fn bounded_bootstrap_reads_long_log_suffix_and_requires_complete_records() {
-    let mut fixture = Fixture::new();
-    let mut bytes = vec![b'x'; MAX_TAIL as usize + 256];
-    bytes.extend_from_slice(b"\n{\"type\":\"assistant.turn_start\"}\n");
-    std::fs::write(fixture.directory.join("events.jsonl"), bytes).unwrap();
-    assert_eq!(fixture.read(), Some(AgentStatus::Working));
-    assert!(fixture.cache.0.values().next().unwrap().offset > MAX_TAIL);
-    fixture.write("{\"type\":\"assistant.turn_start\"}\n");
-    assert_eq!(
-        fixture.read(),
-        Some(AgentStatus::Working),
-        "truncation resets the tail"
-    );
+fn missing_dead_ambiguous_or_expired_evidence_is_not_in_use() {
+    let fixture = Fixture::new();
+    assert!(status(
+        &fixture.row,
+        &fixture.root,
+        &|_| None,
+        Instant::now() + Duration::from_secs(2),
+    )
+    .is_none());
+    let process = |pid| {
+        Some(Process {
+            created: SystemTime::UNIX_EPOCH,
+            image: PathBuf::from("C:\\native\\copilot.exe"),
+        })
+        .filter(|_| matches!(pid, 42 | 43))
+    };
+    assert!(status(&fixture.row, &fixture.root, &process, Instant::now()).is_none());
+    std::fs::write(fixture.directory.join("inuse.43.lock"), b"43\n").unwrap();
+    std::fs::write(fixture.directory.join("inuse.43.hold"), b"").unwrap();
+    let _other_owner = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(fixture.directory.join("inuse.43.hold"))
+        .unwrap();
+    assert!(status(
+        &fixture.row,
+        &fixture.root,
+        &process,
+        Instant::now() + Duration::from_secs(2),
+    )
+    .is_none());
+    std::fs::remove_file(fixture.directory.join("inuse.42.lock")).unwrap();
+    assert!(fixture.read().is_none());
 }
 
 #[test]
@@ -203,12 +249,11 @@ fn current_native_session_read_only_probe() {
     let result = status(
         &row,
         &session_root().unwrap(),
-        &mut Cache::default(),
         &native_process,
         Instant::now() + Duration::from_secs(2),
     );
-    println!("validated_native_provider_phase={result:?}");
-    assert!(result.is_some());
+    println!("validated_native_provider_status={result:?}");
+    assert_eq!(result, Some(AgentStatus::InUse));
     assert_eq!(row.status, Some(AgentStatus::Historical));
     assert!(row.pane_session_id.is_none());
 }

@@ -6182,6 +6182,7 @@ namespace TerminalAppLocalTests
                                        .GetSubtree(L"TerminalApp/Resources");
             const std::pair<std::string_view, winrt::hstring> cases[]{
                 { "Idle", L"VerticalTabsHistoryStatusIdle" },
+                { "InUse", L"VerticalTabsHistoryStatusInUse" },
                 { "Working", L"VerticalTabsHistoryStatusWorking" },
                 { "Attention", L"VerticalTabsHistoryStatusAttention" },
                 { "Error", L"VerticalTabsHistoryStatusError" },
@@ -6711,7 +6712,7 @@ namespace TerminalAppLocalTests
         const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::TerminalApp::TabStripHistoryItem> visibleItems{ nullptr };
         winrt::TerminalApp::TabStripHistoryItem ended{ nullptr }, idle{ nullptr }, historical{ nullptr }, working{ nullptr },
-            attention{ nullptr }, error{ nullptr }, unknown{ nullptr }, oldest{ nullptr };
+            attention{ nullptr }, error{ nullptr }, inUse{ nullptr }, unknown{ nullptr }, oldest{ nullptr };
         const auto verifyOrder = [&](const std::initializer_list<const wchar_t*> expected) {
             VERIFY_ARE_EQUAL(expected.size(), static_cast<size_t>(visibleItems.Size()));
             uint32_t index = 0;
@@ -6730,7 +6731,8 @@ namespace TerminalAppLocalTests
                 item.IsLive(std::wstring_view{ status } == L"Idle" ||
                             std::wstring_view{ status } == L"Working" ||
                             std::wstring_view{ status } == L"Attention" ||
-                            std::wstring_view{ status } == L"Error");
+                            std::wstring_view{ status } == L"Error" ||
+                            std::wstring_view{ status } == L"InUse");
                 return item;
             };
             ended = makeItem(L"ended-newest", L"Ended");
@@ -6739,15 +6741,16 @@ namespace TerminalAppLocalTests
             working = makeItem(L"working", L"Working");
             attention = makeItem(L"attention", L"Attention");
             error = makeItem(L"error", L"Error");
+            inUse = makeItem(L"in-use", L"InUse");
             unknown = makeItem(L"unknown", L"");
             oldest = makeItem(L"historical-oldest", L"Historical");
 
-            stripImpl->CommitHistorySnapshot({ ended, idle, historical, working, attention, error, unknown, oldest });
-            verifyOrder({ L"idle", L"working", L"attention", L"error", L"unknown", L"ended-newest", L"historical-newer", L"historical-oldest" });
+            stripImpl->CommitHistorySnapshot({ ended, idle, historical, working, attention, error, inUse, unknown, oldest });
+            verifyOrder({ L"idle", L"working", L"attention", L"error", L"in-use", L"unknown", L"ended-newest", L"historical-newer", L"historical-oldest" });
         });
         view.Search(L"session");
         TestOnUIThread([&]() {
-            verifyOrder({ L"idle", L"working", L"attention", L"error", L"unknown", L"ended-newest", L"historical-newer", L"historical-oldest" });
+            verifyOrder({ L"idle", L"working", L"attention", L"error", L"in-use", L"unknown", L"ended-newest", L"historical-newer", L"historical-oldest" });
         });
         view.Search(L"historical");
         TestOnUIThread([&]() {
@@ -6757,13 +6760,13 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             working.Status(L"Ended");
             working.IsLive(false);
-            stripImpl->CommitHistorySnapshot({ working, ended, idle, historical, attention, error, unknown, oldest });
-            verifyOrder({ L"idle", L"attention", L"error", L"unknown", L"working", L"ended-newest", L"historical-newer", L"historical-oldest" });
+            stripImpl->CommitHistorySnapshot({ working, ended, idle, historical, attention, error, inUse, unknown, oldest });
+            verifyOrder({ L"idle", L"attention", L"error", L"in-use", L"unknown", L"working", L"ended-newest", L"historical-newer", L"historical-oldest" });
 
             oldest.Status(L"Idle");
             oldest.IsLive(true);
-            stripImpl->CommitHistorySnapshot({ oldest, working, ended, idle, historical, attention, error, unknown });
-            verifyOrder({ L"historical-oldest", L"idle", L"attention", L"error", L"unknown", L"working", L"ended-newest", L"historical-newer" });
+            stripImpl->CommitHistorySnapshot({ oldest, working, ended, idle, historical, attention, error, inUse, unknown });
+            verifyOrder({ L"historical-oldest", L"idle", L"attention", L"error", L"in-use", L"unknown", L"working", L"ended-newest", L"historical-newer" });
             VERIFY_ARE_EQUAL(winrt::get_abi(visibleItems), winrt::get_abi(strip.HistoryItems()));
         });
     }
@@ -6781,7 +6784,7 @@ namespace TerminalAppLocalTests
             const auto activeStyle = strip.Resources().Lookup(winrt::box_value(L"HistoryActiveTextStyle")).as<Style>();
             const auto errorStyle = strip.Resources().Lookup(winrt::box_value(L"HistoryErrorTextStyle")).as<Style>();
             const auto subtitleStyle = strip.Resources().Lookup(winrt::box_value(L"HistorySubtitleTextStyle")).as<Style>();
-            for (const auto status : { L"Attention", L"Working", L"Idle", L"Error", L"Ended", L"Historical", L"" })
+            for (const auto status : { L"Attention", L"Working", L"Idle", L"Error", L"InUse", L"Ended", L"Historical", L"" })
             {
                 auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
                 item.Status(status);
@@ -7560,6 +7563,17 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Working"), collision.items[1].StatusText());
             VERIFY_IS_FALSE(winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(collision.items[0])->OtherWindow());
             VERIFY_IS_TRUE(winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(collision.items[1])->OtherWindow());
+            const auto external = Page::_ParseSidebarHistorySnapshot(
+                R"({"history_status":"ready","sessions":[
+                    {"session_id":"external","provider_id":"copilot","location":"Host","status":"InUse","owner_window_id":2,"background_tab":true}]})",
+                1);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, external.items.size());
+            VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("InUse"), external.items.front().StatusText());
+            VERIFY_IS_TRUE(external.items.front().IsLive());
+            VERIFY_IS_FALSE(external.items.front().IsHistorical());
+            const auto nativeExternal = winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(external.items.front());
+            VERIFY_IS_FALSE(nativeExternal->BackgroundTab());
+            VERIFY_IS_FALSE(nativeExternal->OtherWindow());
             for (const auto location : { R"("Unknown")", "null" })
             {
                 const auto response = std::string{ R"({"history_status":"ready","sessions":[
@@ -7858,6 +7872,21 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(changes.empty());
             VERIFY_IS_TRUE(items.GetAt(0) == projected);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, projected.Status());
+            VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"live-session", L"", L"InUse", L"In use"));
+            VERIFY_IS_TRUE(changes.empty());
+            VERIFY_IS_TRUE(items.GetAt(0) == projected);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"InUse" }, projected.Status());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"In use" }, projected.StatusText());
+            VERIFY_IS_TRUE(projected.PaneSessionId().empty());
+            VERIFY_IS_TRUE(projected.IsLive());
+            VERIFY_IS_FALSE(projected.IsHistorical());
+            VERIFY_IS_TRUE(projected.StatusTextStyle() == strip.Resources().Lookup(winrt::box_value(L"HistorySubtitleTextStyle")).as<Style>());
+        });
+        view.Search(L"In use");
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(1u, items.Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"live-session" }, items.GetAt(0).SessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"InUse" }, items.GetAt(0).Status());
         });
     }
 

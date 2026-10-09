@@ -122,6 +122,8 @@ agents.status.active: "活动"
 agents.status.waiting_for_input: "等待输入"
 agents.status.error: "错误"
 agents.status.idle: "空闲"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "使用中"
 
 # ── 布局欢迎提示 (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. 显示/隐藏智能体窗格 • Ctrl+Shift+/ 显示/隐藏智能体会话)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

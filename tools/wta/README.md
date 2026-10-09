@@ -112,15 +112,18 @@ other-window action. Missing or malformed membership is unknown, not evidence
 that the pane is attached elsewhere. These fields are refreshed per response,
 not stored as registry ownership or lifecycle state.
 
-Historical/Ended native host Copilot rows may receive response-only activity
-from their exact default-universe SDK session directory. This requires a
+Sessions registered as live in master keep their detailed Idle, Active,
+Waiting for input, or Error status. Historical/Ended native host Copilot rows
+are not live IT registrations; they may instead receive the response-only
+`InUse` status, displayed as **In use**, from their exact default-universe SDK
+session directory. This requires a
 matching PID marker, a live native `copilot.exe` created before that marker,
 and an actively held `inuse.<pid>.hold` lease (observed with Copilot SDK
-1.0.80). A stale marker, released lease, inaccessible process, unknown phase,
+1.0.80). A stale marker, released lease, inaccessible process,
 or nonmatching provider/source/universe leaves the original status unchanged.
-The existing turn classifier supplies activity; individual tool completion
-does not imply Idle. Reads use a bounded 4 MiB bootstrap tail and incremental
-cached appends under a two-second budget. This does not mutate registry state,
+External sessions do not expose detailed activity: this probe does not read
+`events.jsonl` or infer Idle/Active from turns. Marker and lease reads have a
+two-second budget. This does not mutate registry state,
 infer a window/pane owner, or enable a running-location indicator.
 
 The initial

@@ -1,35 +1,16 @@
-//! Response-only activity evidence for native Copilot sessions without a local pane.
+//! Response-only in-use evidence for native Copilot sessions without a live IT registration.
 
-use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation, SessionOrigin};
+use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
 use crate::session_registry::SessionInfo;
-use std::collections::HashMap;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
-
-const MAX_TAIL: u64 = 4 * 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Process {
     created: SystemTime,
     image: PathBuf,
 }
-
-#[derive(Clone)]
-struct Tail {
-    pid: u32,
-    process_created: SystemTime,
-    file_created: SystemTime,
-    modified: SystemTime,
-    lease_modified: SystemTime,
-    marker_modified: SystemTime,
-    offset: u64,
-    phase: Option<AgentStatus>,
-}
-
-#[derive(Default)]
-struct Cache(HashMap<PathBuf, Tail>);
 
 fn session_root() -> Option<PathBuf> {
     let home = std::env::var_os("COPILOT_HOME")
@@ -119,6 +100,8 @@ fn eligible(row: &SessionInfo) -> bool {
         && row.location == SessionLocation::Host
         && row.session_universe.is_none()
         && row.origin != Some(SessionOrigin::AgentPane)
+        // Only history rows are probed. Live master registrations already
+        // carry authoritative activity and must keep it unchanged.
         && matches!(
             row.status,
             Some(AgentStatus::Historical | AgentStatus::Ended)
@@ -148,7 +131,6 @@ fn held_lease(path: &Path, created: SystemTime) -> Option<SystemTime> {
 fn status(
     row: &SessionInfo,
     root: &Path,
-    cache: &mut Cache,
     lookup: &impl Fn(u32) -> Option<Process>,
     deadline: Instant,
 ) -> Option<AgentStatus> {
@@ -182,109 +164,27 @@ fn status(
         let modified = metadata.modified().ok()?;
         (&mut marker).take(64).read_to_end(&mut bytes).ok()?;
         if let Some((pid, process)) = marker_process(name, &bytes, modified, lookup) {
-            let Some(lease) = held_lease(
+            if held_lease(
                 &directory.join(format!("inuse.{pid}.hold")),
                 process.created,
-            ) else {
+            )
+            .is_none()
+            {
                 continue;
-            };
-            if owner.replace((pid, process, modified, lease)).is_some() {
+            }
+            if owner.replace(pid).is_some() {
                 return None;
             }
         }
     }
-    let Some((pid, process, marker_modified, lease_modified)) = owner else {
-        cache.0.remove(&directory);
-        return None;
-    };
-    let path = directory.join("events.jsonl");
-    let mut file = std::fs::File::open(&path).ok()?;
-    let metadata = file.metadata().ok()?;
-    let (length, created, modified) = (
-        metadata.len(),
-        metadata.created().ok()?,
-        metadata.modified().ok()?,
-    );
-    let prior = cache.0.remove(&directory);
-    let prior = prior.filter(|tail| {
-        tail.pid == pid
-            && tail.process_created == process.created
-            && tail.file_created == created
-            && tail.marker_modified == marker_modified
-            && tail.lease_modified == lease_modified
-            && length >= tail.offset
-            && length - tail.offset <= MAX_TAIL
-            && (length != tail.offset || modified == tail.modified)
-    });
-    let bootstrap = prior.is_none();
-    let mut tail = prior.unwrap_or(Tail {
-        pid,
-        process_created: process.created,
-        file_created: created,
-        modified,
-        marker_modified,
-        lease_modified,
-        offset: length.saturating_sub(MAX_TAIL),
-        phase: None,
-    });
-    let from = tail.offset;
-    file.seek(SeekFrom::Start(from)).ok()?;
-    let mut bytes = Vec::new();
-    file.take(length - from).read_to_end(&mut bytes).ok()?;
-    let start = if bootstrap && from != 0 {
-        bytes.iter().position(|byte| *byte == b'\n')? + 1
-    } else {
-        0
-    };
-    let text = std::str::from_utf8(&bytes[start..]).ok()?;
-    // An incomplete record cannot establish a current phase.
-    if !text.is_empty() && !text.ends_with('\n') {
-        return None;
-    }
-    for line in text.lines().filter(|line| !line.trim().is_empty()) {
-        if Instant::now() >= deadline {
-            return None;
-        }
-        let record: serde_json::Value = serde_json::from_str(line).ok()?;
-        let kind = record
-            .get("type")
-            .and_then(|value| value.as_str())
-            .unwrap_or("");
-        for event in super::classify_copilot::classify(&record, &row.session_id.to_string()) {
-            match event {
-                SessionEvent::ToolStarting { .. }
-                    if tail.phase.is_some() || kind == "assistant.turn_start" =>
-                {
-                    tail.phase = Some(AgentStatus::Working)
-                }
-                SessionEvent::ToolCompleted { .. } => tail.phase = Some(AgentStatus::Idle),
-                SessionEvent::Notification { .. } => tail.phase = Some(AgentStatus::Attention),
-                _ => {}
-            }
-        }
-    }
-    tail.offset = length;
-    tail.modified = modified;
-    let phase = tail.phase.clone();
-    if cache.0.len() >= 256 {
-        cache.0.clear();
-    }
-    cache.0.insert(directory, tail);
-    phase
+    owner.map(|_| AgentStatus::InUse)
 }
 
 pub(crate) async fn enrich_snapshot(rows: &mut Vec<SessionInfo>) {
-    static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
     let Some(root) = session_root() else { return };
     let snapshot = rows.clone();
     let task = tokio::task::spawn_blocking(move || {
         let mut rows = snapshot;
-        let Ok(mut cache) = CACHE
-            .get_or_init(|| Mutex::new(Cache::default()))
-            .try_lock()
-        else {
-            return rows;
-        };
         let deadline = Instant::now() + Duration::from_secs(2);
         let mut order: Vec<_> = (0..rows.len())
             .filter(|index| eligible(&rows[*index]))
@@ -292,14 +192,20 @@ pub(crate) async fn enrich_snapshot(rows: &mut Vec<SessionInfo>) {
         order.sort_by_key(|index| std::cmp::Reverse(rows[*index].last_activity_at_ms));
         for index in order {
             let row = &mut rows[index];
-            if let Some(phase) = status(row, &root, &mut cache, &native_process, deadline) {
-                row.status = Some(phase);
+            if let Some(in_use) = status(row, &root, &native_process, deadline) {
+                row.status = Some(in_use);
             }
         }
         rows
     });
-    if let Ok(Ok(snapshot)) = tokio::time::timeout(Duration::from_secs(2), task).await {
-        *rows = snapshot;
+    match tokio::time::timeout(Duration::from_secs(2), task).await {
+        Ok(Ok(snapshot)) => *rows = snapshot,
+        Ok(Err(error)) => {
+            tracing::warn!(target: "copilot_status", %error, "in-use probe failed; retaining original statuses");
+        }
+        Err(_) => {
+            tracing::debug!(target: "copilot_status", "in-use probe timed out; retaining original statuses");
+        }
     }
 }
 

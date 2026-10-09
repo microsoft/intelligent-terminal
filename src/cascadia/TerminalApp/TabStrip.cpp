@@ -1416,7 +1416,8 @@ namespace winrt::TerminalApp::implementation
             item.IsLive(status == L"Idle" ||
                         status == L"Working" ||
                         status == L"Attention" ||
-                        status == L"Error");
+                        status == L"Error" ||
+                        status == L"InUse");
             item.IsHistorical(status == L"Ended" || status == L"Historical");
         };
         for (size_t index = 0; index < _historySnapshot.size(); ++index)

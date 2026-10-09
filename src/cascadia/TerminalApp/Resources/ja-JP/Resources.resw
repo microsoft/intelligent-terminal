@@ -1588,6 +1588,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>アイドル</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
+    <value>使用中</value>
+    <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
     <value>アクティブ</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>

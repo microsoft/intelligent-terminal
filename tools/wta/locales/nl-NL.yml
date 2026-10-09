@@ -126,6 +126,8 @@ agents.status.active: "Actief"
 agents.status.waiting_for_input: "Wachten op invoer"
 agents.status.error: "Fout"
 agents.status.idle: "Inactief"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "In gebruik"
 
 # ── Welkomsthint voor indeling (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. om het agentdeelvenster te tonen/verbergen • Ctrl+Shift+/ om de agentsessie te tonen/verbergen)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

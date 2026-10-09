@@ -139,6 +139,8 @@ agents.status.active: "פעיל"
 agents.status.waiting_for_input: "ממתין לקלט"
 agents.status.error: "שגיאה"
 agents.status.idle: "לא פעיל"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "בשימוש"
 
 # ── רמז ברכה בפריסה (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. להצגה/הסתרה של חלונית הסוכן • Ctrl+Shift+/ להצגה/הסתרה של הפעלת הסוכן)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

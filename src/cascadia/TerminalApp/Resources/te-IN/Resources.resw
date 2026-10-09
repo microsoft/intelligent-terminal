@@ -649,6 +649,10 @@
     <value>నిష్క్రియం</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
+    <value>వినియోగంలో</value>
+    <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
     <value>సక్రియం</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>

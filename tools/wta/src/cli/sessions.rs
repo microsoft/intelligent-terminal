@@ -521,6 +521,25 @@ mod tests {
     }
 
     #[test]
+    fn external_in_use_json_and_table_do_not_expose_detailed_activity() {
+        let mut row = crate::session_registry::SessionInfo::new(
+            acp::schema::v1::SessionId::new("external"),
+            std::path::PathBuf::from("C:\\repo"),
+        );
+        row.status = Some(crate::agent_sessions::AgentStatus::InUse);
+        row.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
+        let output = format_json_lines(std::slice::from_ref(&row)).unwrap();
+        let value: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
+        assert_eq!(value["status"], "InUse");
+        assert!(value["pane_session_id"].is_null());
+        assert!(value["current_tool"].is_null());
+        let table = format_table(&[row]);
+        assert!(table.contains("InUse"));
+        assert!(!table.contains("Working"));
+        assert!(!table.contains("Idle"));
+    }
+
+    #[test]
     fn table_prints_header_and_rows() {
         let mut row = crate::session_registry::SessionInfo::new(
             acp::schema::v1::SessionId::new("sid-table"),

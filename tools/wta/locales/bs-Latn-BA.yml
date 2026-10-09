@@ -136,6 +136,8 @@ agents.status.active: "Aktivan"
 agents.status.waiting_for_input: "Čeka na unos"
 agents.status.error: "Greška"
 agents.status.idle: "Neaktivan"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "U upotrebi"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. za prikaz/skrivanje panela agenta • Ctrl+Shift+/ za prikaz/skrivanje sesije agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

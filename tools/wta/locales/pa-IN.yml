@@ -139,6 +139,8 @@ agents.status.active: "ਸਰਗਰਮ"
 agents.status.waiting_for_input: "ਇਨਪੁਟ ਦੀ ਉਡੀਕ"
 agents.status.error: "ਗਲਤੀ"
 agents.status.idle: "ਵਿਹਲਾ"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "ਵਰਤੋਂ ਵਿੱਚ"
 
 # ── ਲੇਆਉਟ ਸੁਆਗਤ ਸੰਕੇਤ (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ਏਜੰਟ ਪੈਨ ਦਿਖਾਓ/ਲੁਕਾਓ • Ctrl+Shift+/ ਏਜੰਟ ਸੈਸ਼ਨ ਦਿਖਾਓ/ਲੁਕਾਓ)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

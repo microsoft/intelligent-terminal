@@ -126,6 +126,8 @@ agents.status.active: "Hohe"
 agents.status.waiting_for_input: "E tatari ana mo te tauuru"
 agents.status.error: "Hapa"
 agents.status.idle: "Noho noa"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Kei te whakamahia"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ki te whakaatu/huna i te papa agent • Ctrl+Shift+/ ki te whakaatu/huna i te wahanga agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
