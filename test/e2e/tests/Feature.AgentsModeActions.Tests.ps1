@@ -231,6 +231,29 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             Set-TestSidebarScope -App $script:app -AgentsOnly $Agents -Recent $Agents
             (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         }
+        function Assert-ActionFilterState {
+            param([bool]$AgentsOnly, [bool]$Recent)
+            Invoke-UiClick -App $script:app -Selector FilterTabsButton | Out-Null
+            try {
+                foreach ($entry in @(
+                    @{ Id = 'AgentsOnlyFilterMenuItem'; Expected = $AgentsOnly },
+                    @{ Id = 'RecentAgentSessionsFilterMenuItem'; Expected = $Recent }
+                )) {
+                    $item = Wait-Until -TimeoutSec 10 -Because "$($entry.Id) is visible in the owned filter flyout" -Condition {
+                        $peer = Get-ActionElement $entry.Id
+                        if ($peer -and -not $peer.Current.IsOffscreen) { $peer }
+                    }
+                    $item.Current.ProcessId | Should -Be $script:app.Pid
+                    $item.Current.ControlType | Should -Be ([Windows.Automation.ControlType]::MenuItem)
+                    $expected = if ($entry.Expected) {
+                        [Windows.Automation.ToggleState]::On
+                    } else { [Windows.Automation.ToggleState]::Off }
+                    $item.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState |
+                        Should -Be $expected -Because "$($entry.Id) must retain the requested scope independently of the query"
+                }
+            }
+            finally { Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null }
+        }
         function Get-ActionLaunches {
             if (Test-Path -LiteralPath $script:launchLog) {
                 @(Get-Content -LiteralPath $script:launchLog | ForEach-Object { $_ | ConvertFrom-Json })
@@ -360,6 +383,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                         }
                         Set-UiValue -App $script:app -Selector SearchTextBox -Value $query | Out-Null
                         foreach ($layout in @('vertical', 'horizontal')) {
+                            Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
                             Set-WtSetting -App $script:app -Key tabLayout -Value $layout | Out-Null
                             Wait-Until -TimeoutSec 10 -Because 'the requested layout is realized before plus' -Condition {
                                 $peer = Get-ActionElement $(if ($layout -eq 'vertical') { 'ItemsList' } else { 'TabView' })
@@ -397,6 +421,16 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                             }
                             $created += $pane.session_id
                             Save-ActionUiEvidence "plus-$agentsOnly-$recent-$($query.Length)-$layout"
+                            # Horizontal hides the filter flyout; inspect its retained checks
+                            # after restoring Sidebar, without reapplying either preference.
+                            if ($layout -eq 'horizontal') {
+                                Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+                                Wait-Until -TimeoutSec 10 -Because 'Sidebar exposes the actual retained filter menu after horizontal plus' -Condition {
+                                    $button = Get-ActionElement FilterTabsButton
+                                    $button -and -not $button.Current.IsOffscreen
+                                } | Out-Null
+                            }
+                            Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
                             Close-WtPane -App $script:app -SessionId $pane.session_id
                             Close-WtPane -App $script:app -SessionId $original.session_id
                         }
@@ -405,6 +439,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                             $box = Get-ActionElement SearchTextBox
                             $box -and -not $box.Current.IsOffscreen
                         } | Out-Null
+                        Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
                         Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $query
                     }
                 }

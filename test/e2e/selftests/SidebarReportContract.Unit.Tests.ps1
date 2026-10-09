@@ -32,6 +32,46 @@ BeforeAll {
 }
 AfterAll { Remove-Item -LiteralPath $script:root -Recurse -Force }
 Describe 'Sidebar release-report contracts without product activation' {
+    It 'checks both real filter preferences around each plus and the layout round trip without resetting them' {
+        $tokens = $null
+        $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PSScriptRoot '..\tests\Feature.AgentsModeActions.Tests.ps1'),
+            [ref]$tokens, [ref]$errors)
+        $errors | Should -BeNullOrEmpty
+        $helper = $ast.Find({
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+                $node.Name -eq 'Assert-ActionFilterState'
+        }, $true)
+        foreach ($pattern in @('AgentsOnlyFilterMenuItem', 'RecentAgentSessionsFilterMenuItem',
+            'TogglePattern', 'Current.ToggleState', 'Should -Be \$expected', 'Current.ProcessId')) {
+            $helper.Extent.Text | Should -Match $pattern
+        }
+        $helper.Extent.Text | Should -Not -Match 'Set-TestSidebarScope|Set-WtSetting|\.Toggle\(\)|\.Invoke\(\)'
+        $case = $ast.Find({
+            param($node)
+            $node -is [Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'It' -and
+                $node.CommandElements[1].Value -eq 'Sidebar plus always creates the default profile'
+        }, $true)
+        $commands = @($case.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.CommandAst]
+        }, $true))
+        $checks = @($commands | Where-Object { $_.GetCommandName() -eq 'Assert-ActionFilterState' })
+        $checks | Should -HaveCount 3
+        foreach ($check in $checks) {
+            $check.Extent.Text | Should -Match '-AgentsOnly \$agentsOnly -Recent \$recent'
+        }
+        $plus = @($commands | Where-Object { $_.GetCommandName() -eq 'Invoke-ActionPlus' })[0]
+        $checks[0].Extent.StartOffset | Should -BeLessThan $plus.Extent.StartOffset
+        $checks[1].Extent.StartOffset | Should -BeGreaterThan $plus.Extent.EndOffset
+        $checks[2].Extent.StartOffset | Should -BeGreaterThan $checks[1].Extent.EndOffset
+        $setters = @($commands | Where-Object { $_.GetCommandName() -eq 'Set-TestSidebarScope' })
+        $setters | Should -HaveCount 1
+        $setters[0].Extent.EndOffset | Should -BeLessThan $checks[0].Extent.StartOffset
+    }
     It 'keeps normal plus and explicit provider creation in separate real action cases' {
         $tokens = $null
         $errors = $null
