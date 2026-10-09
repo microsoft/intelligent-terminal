@@ -7122,6 +7122,7 @@ namespace winrt::TerminalApp::implementation
             item.IsHistorical(isHistorical);
             item.IsAgentPane(isAgentPane);
             const auto nativeItem = winrt::get_self<TerminalApp::implementation::TabStripHistoryItem>(item);
+            nativeItem->LastActivityAtMs(lastActivityAtMs);
             nativeItem->BackgroundTab(background);
             nativeItem->OtherWindow(otherWindow);
             snapshot.items.emplace_back(std::move(item));
