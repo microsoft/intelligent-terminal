@@ -88,6 +88,9 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
                 $profiles | Add-Member -NotePropertyName defaults -NotePropertyValue ([pscustomobject]@{}) -Force
             }
             $profiles.defaults | Add-Member -NotePropertyName rightClickContextMenu -NotePropertyValue $Enabled -Force
+            foreach ($profile in @($profiles.list)) {
+                if ($profile) { $profile | Add-Member -NotePropertyName rightClickContextMenu -NotePropertyValue $Enabled -Force }
+            }
             Set-WtSetting -App $script:app -Key profiles -Value $profiles | Out-Null
         }
         $script:sendPasteKey = {

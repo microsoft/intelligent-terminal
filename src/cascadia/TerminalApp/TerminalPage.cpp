@@ -15361,13 +15361,6 @@ namespace winrt::TerminalApp::implementation
             {
                 // Let the tab know that there are new settings. It's up to each content to decide what to do with them.
                 tabImpl->UpdateSettings(_settings);
-                if (tabImpl->HasStashedAgentPane())
-                {
-                    if (const auto content = tabImpl->FindAgentPaneContent())
-                    {
-                        winrt::get_self<implementation::AgentPaneContent>(content)->UpdateSettings(_settings);
-                    }
-                }
                 if (tabImpl->FindAgentPane())
                 {
                     _RequestAgentStateForTab(tabImpl, std::nullopt, std::nullopt);
