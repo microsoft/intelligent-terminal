@@ -283,3 +283,47 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
         }
     }
 }
+
+Describe 'Feature suites honor Dev-only cold start policy' -Tag Unit {
+    It '<Suite> enters shared cleanup before its own setup' -ForEach @(
+        @{ Suite = 'Feature.AgentInputMouseCursor.Tests.ps1' }
+        @{ Suite = 'Feature.AgentInputUndoRedo.Tests.ps1' }
+        @{ Suite = 'Feature.AgentMouse.Tests.ps1' }
+        @{ Suite = 'Feature.AgentPaneLifetime.Tests.ps1' }
+        @{ Suite = 'Feature.AgentsModeActions.Tests.ps1' }
+        @{ Suite = 'Feature.CombinedAgentsSidebar.Tests.ps1' }
+        @{ Suite = 'Feature.FreFlow.Tests.ps1' }
+        @{ Suite = 'Feature.McpDelegatedAgentIdentity.Tests.ps1' }
+        @{ Suite = 'Feature.PaneProgress.Tests.ps1' }
+        @{ Suite = 'Feature.Paste.Tests.ps1' }
+        @{ Suite = 'Feature.PinnedTabSelection.Tests.ps1' }
+        @{ Suite = 'Feature.SessionRefresh.Tests.ps1' }
+        @{ Suite = 'Feature.SidebarProviderAppearance.Tests.ps1' }
+        @{ Suite = 'Feature.SidebarRelativeTime.Tests.ps1' }
+        @{ Suite = 'Feature.SidebarSessionScroll.Tests.ps1' }
+        @{ Suite = 'Feature.SidebarTelemetry.Tests.ps1' }
+        @{ Suite = 'Feature.SidebarUpgrade.Tests.ps1' }
+        @{ Suite = 'Feature.TelemetryFunnels.Tests.ps1' }
+        @{ Suite = 'Feature.YoloMode.Tests.ps1' }
+    ) {
+        $path = Join-Path $PSScriptRoot "..\tests\$Suite"
+        $tokens = $null
+        $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)
+        @($errors) | Should -HaveCount 0
+        $calls = @($ast.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'Stop-StaleItInstances'
+        }, $true))
+        $startupCalls = @($calls | Where-Object {
+            $parent = $_.Parent
+            while ($parent -and -not ($parent -is [Management.Automation.Language.CommandAst] -and
+                $parent.GetCommandName() -in @('BeforeAll', 'BeforeEach', 'AfterAll', 'AfterEach', 'It'))) {
+                $parent = $parent.Parent
+            }
+            $parent -and $parent.GetCommandName() -in @('BeforeAll', 'BeforeEach')
+        })
+        $startupCalls.Count | Should -BeGreaterThan 0
+    }
+}

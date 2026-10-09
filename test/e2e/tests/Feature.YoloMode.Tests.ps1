@@ -50,7 +50,7 @@ Describe 'Feature custom-provider permission baseline' -ForEach $script:PackageC
         if ($env:ITE2E_EXPECTED_WTA_SHA256) {
             (Get-FileHash -LiteralPath $target.WtaPath -Algorithm SHA256).Hash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256
         }
-        @(Get-WtProcessesForApp -App $target).Count | Should -Be 0 -Because 'physical permission checks must not replace a user-owned window'
+        Stop-StaleItInstances -App $target
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpPermissionAgent.ps1')).Path
         $fixtureInvocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))'"
         $encodedInvocation = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureInvocation))

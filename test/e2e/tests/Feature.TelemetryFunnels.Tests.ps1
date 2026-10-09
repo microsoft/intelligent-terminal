@@ -21,7 +21,7 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             throw 'Supply WTA and TerminalApp.dll SHA256 values from the exact-source build receipt.'
         }
         $script:target = Resolve-ItApp -Package Dev
-        @(Get-WtProcessesForApp -App $script:target) | Should -HaveCount 0 -Because 'user-owned Dev windows must not be stopped or adopted'
+        Stop-StaleItInstances -App $script:target
         (Get-FileHash -LiteralPath $script:target.WtaPath).Hash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256
         (Get-FileHash -LiteralPath (Join-Path $script:target.InstallLocation 'TerminalApp.dll')).Hash |
             Should -Be $env:ITE2E_EXPECTED_APP_SHA256
@@ -50,7 +50,7 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         $script:slashFailure = $null
         $trace = Start-TestTelemetryTrace -Directory (Join-Path $script:root 'capture')
         try {
-            @(Get-WtProcessesForApp -App $script:target) | Should -HaveCount 0
+            Stop-StaleItInstances -App $script:target
             foreach ($name in @('AllowAutoFix', 'AllowedAgents', 'AllowCustomAgents')) {
                 Set-TelemetryPolicy -Transaction $script:policyTransaction -Name $name -Value $null
             }

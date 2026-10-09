@@ -9,9 +9,7 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
         Add-Type -AssemblyName UIAutomationTypes
         if ((Get-ItTestPackage) -ne 'Dev') { throw 'This PR validation requires an explicitly selected Dev build.' }
         $script:target = Resolve-ItApp -Package Dev
-        if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
-            throw 'Refusing to close an existing Dev instance for session-refresh tests.'
-        }
+        Stop-StaleItInstances -App $script:target
         if (-not $env:ITE2E_EXPECTED_WTA_SHA256 -or -not $env:ITE2E_EXPECTED_APP_SHA256) {
             throw 'Supply WTA and TerminalApp hashes from the intended feature build.'
         }
@@ -182,9 +180,7 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
             $list = if ($profiles.PSObject.Properties.Name -contains 'list') { @($profiles.list) } else { @() }
             $profiles | Add-Member -NotePropertyName list -NotePropertyValue @($list + $profile) -Force
         }
-        if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
-            throw 'Dev was opened during preparation; refusing to close it.'
-        }
+        Stop-StaleItInstances -App $script:target
         $script:ownsConfig = $true
         $script:app = Start-Terminal -Package Dev -CleanSettings $false -PassFre $true -State @{
             sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true

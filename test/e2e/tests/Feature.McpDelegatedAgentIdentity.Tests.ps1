@@ -18,9 +18,7 @@ Describe 'Feature: MCP delegated agent identity' -Tag @('Feature', 'McpDelegated
         $script:ownsConfig = $false
         if ($env:ITE2E_PACKAGE -ne 'Dev') { throw 'MCP delegated identity requires explicit Dev selection.' }
         $script:target = Resolve-ItApp -Package Dev
-        if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
-            throw 'Refusing to adopt or close existing Dev processes.'
-        }
+        Stop-StaleItInstances -App $script:target
         $head = (& git -C (Join-Path $PSScriptRoot '..\..\..') rev-parse HEAD).Trim()
         if ($LASTEXITCODE -ne 0 -or -not $head -or -not $env:ITE2E_SOURCE_COMMIT -or
             -not $env:ITE2E_SOURCE_COMMIT.StartsWith($head, [StringComparison]::Ordinal)) {
