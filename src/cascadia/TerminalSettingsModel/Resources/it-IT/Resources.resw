@@ -997,13 +997,16 @@
     <value>Mostra/nascondi le sessioni recenti degli agenti nella barra laterale</value>
     <comment>Command that toggles the Recent agent sessions section in the sidebar without changing the independent Agents only filter. Recent sessions are also included while a global search query is present.</comment>
   </data>
-  <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Mostra/nascondi agente AI</value></data>
-  <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Passa al riquadro dell'agente AI</value></data>
-  <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Apri elenco sessioni dell'agente AI</value></data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Mostra/nascondi agente AI</value><comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Passa al riquadro dell'agente AI</value><comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Apri elenco sessioni dell'agente AI</value><comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>Esegui correzione automatica</value></data>
   <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>Prompt</value></data>
-  <data name="BugReportCommandKey" xml:space="preserve"><value>Segnala un bug (raccogli i log)</value></data>
+  <data name="BugReportCommandKey" xml:space="preserve"><value>Segnala un bug (raccogli i log)</value><comment>Command palette entry that collects diagnostic log files into a zip archive on the user's Desktop, for attaching to a bug report.</comment></data>
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>Apri agente in background in una nuova scheda</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
+    <value>Attiva/disattiva riquadro dei comandi in modalità delega all&apos;agente</value>
+  </data>
 </root>
