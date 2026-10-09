@@ -13310,7 +13310,10 @@ fn show_copilot_auth_screen_sets_expected_state() {
         subtitle: "sub".into(),
     });
 
-    app.show_copilot_auth_screen();
+    app.show_copilot_auth_screen_with_invocation(Ok(crate::agent_check::LoginInvocation {
+        program: r"C:\Agent Tools\copilot.exe".into(),
+        args: vec!["login".into()],
+    }));
 
     assert_eq!(app.mode, AppMode::Auth);
     assert!(
@@ -13321,9 +13324,30 @@ fn show_copilot_auth_screen_sets_expected_state() {
     let auth = app.auth.as_ref().expect("copilot auth state");
     assert_eq!(auth.agent_id, "copilot");
     assert_eq!(auth.agent_name, "GitHub Copilot");
-    assert!(auth.login_command.contains("copilot"));
+    assert_eq!(auth.login_command, r#""C:\Agent Tools\copilot.exe" login"#);
     assert!(!auth.checking);
     assert!(auth.status_message.is_empty());
+}
+
+#[test]
+fn show_copilot_auth_screen_with_missing_cli_preserves_diagnostic_setup() {
+    let mut app = test_app();
+    let source = app.current_agent_source.clone();
+    let error = "Agent executable was not found on Windows PATH".to_string();
+
+    app.show_copilot_auth_screen_with_invocation(Err(error.clone()));
+
+    assert_eq!(app.mode, AppMode::Setup);
+    assert!(app.auth.is_none());
+    assert_eq!(app.current_agent_source, source);
+    assert_eq!(app.setup.as_ref().unwrap().reason, SetupReason::AgentError);
+    assert!(matches!(
+        &app.setup.as_ref().unwrap().phase,
+        SetupPhase::Failed {
+            kind: SetupFailureKind::Connection,
+            message,
+        } if message == &error
+    ));
 }
 
 #[test]

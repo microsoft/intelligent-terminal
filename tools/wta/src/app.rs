@@ -4730,6 +4730,15 @@ impl App {
     }
 
     pub(crate) fn show_copilot_auth_screen(&mut self) {
+        let invocation =
+            crate::agent_check::build_login_invocation("copilot", &self.current_agent_source, None);
+        self.show_copilot_auth_screen_with_invocation(invocation);
+    }
+
+    fn show_copilot_auth_screen_with_invocation(
+        &mut self,
+        invocation: Result<crate::agent_check::LoginInvocation, String>,
+    ) {
         self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
         let agent_id = "copilot";
         let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
@@ -4737,11 +4746,7 @@ impl App {
         self.current_agent_id = agent_id.to_string();
         self.mode = AppMode::Auth;
         self.setup = None;
-        let login_command = match crate::agent_check::build_login_invocation(
-            agent_id,
-            &self.current_agent_source,
-            None,
-        ) {
+        let login_command = match invocation {
             Ok(invocation) => std::iter::once(invocation.program.as_str())
                 .chain(invocation.args.iter().map(String::as_str))
                 .map(crate::coordinator::quote_windows_commandline_arg)
