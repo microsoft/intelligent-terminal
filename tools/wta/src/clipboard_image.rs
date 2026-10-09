@@ -19,6 +19,7 @@
 //!      raw BMP), via the `image` crate.
 
 use crate::osc52::base64_encode;
+use std::io::Read;
 
 /// An image captured from the clipboard, encoded for an ACP image content
 /// block.
@@ -44,11 +45,10 @@ const CF_DIBV5: u32 = 17;
 const BI_BITFIELDS: u32 = 3;
 
 /// Upper bound on a single clipboard payload we will copy into memory. A
-/// corrupted or hostile `GlobalSize` could otherwise drive an unbounded
-/// allocation (OOM) in the helper just from an Alt+V keypress. 256 MiB is far
+/// corrupted or hostile `GlobalSize` or copied file could otherwise drive an
+/// unbounded allocation (OOM) in the helper just from an Alt+V keypress. 256 MiB is far
 /// above any realistic screenshot DIB (a 4K 32-bpp frame is ~33 MiB) yet bounds
 /// the worst case. Oversized payloads are rejected (too large to paste).
-#[cfg(windows)]
 const MAX_CLIPBOARD_BYTES: usize = 256 * 1024 * 1024;
 
 /// Read an image from the Windows clipboard, if one is present.
@@ -139,10 +139,22 @@ pub(crate) fn mime_for_extension(ext: &str) -> Option<&'static str> {
 ///
 /// Already-compressed formats (png/jpeg/gif/webp) are sent raw to preserve
 /// fidelity; BMP is re-encoded to PNG because LLM image inputs reject BMP.
+/// Files larger than [`MAX_CLIPBOARD_BYTES`] are rejected before encoding.
 pub(crate) fn image_from_path(path: &std::path::Path) -> Option<PastedImage> {
     let ext = path.extension()?.to_str()?;
     let mime = mime_for_extension(ext)?;
-    let bytes = std::fs::read(path).ok()?;
+    let file = std::fs::File::open(path).ok()?;
+    if file.metadata().ok()?.len() > MAX_CLIPBOARD_BYTES as u64 {
+        return None;
+    }
+    // Bound the read even if the file grows after the metadata check.
+    let mut bytes = Vec::new();
+    file.take((MAX_CLIPBOARD_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if bytes.len() > MAX_CLIPBOARD_BYTES {
+        return None;
+    }
     let label = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -359,6 +371,59 @@ pub(crate) unsafe fn set_clipboard_dib(dib: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct TestImageFile(std::path::PathBuf);
+
+    impl TestImageFile {
+        fn create() -> (Self, std::fs::File) {
+            static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let path = std::env::current_dir().unwrap().join(format!(
+                "wta-clipboard-image-test-{}-{id}.png",
+                std::process::id()
+            ));
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .unwrap();
+            (Self(path), file)
+        }
+    }
+
+    impl Drop for TestImageFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    #[test]
+    fn image_from_path_preserves_png_contents_and_mime() {
+        use std::io::Write;
+
+        let png = bmp_to_png(&dib_to_bmp(&sample_screenshot_dib()).unwrap()).unwrap();
+        let (path, mut file) = TestImageFile::create();
+        file.write_all(&png).unwrap();
+        drop(file);
+
+        let pasted = image_from_path(&path.0).expect("small valid PNG must be accepted");
+        assert_eq!(pasted.data_base64, base64_encode(&png));
+        assert_eq!(pasted.mime_type, "image/png");
+        assert_eq!(pasted.label, path.0.file_name().unwrap().to_str().unwrap());
+    }
+
+    #[test]
+    fn image_from_path_rejects_one_byte_over_clipboard_limit() {
+        let (path, file) = TestImageFile::create();
+        file.set_len((MAX_CLIPBOARD_BYTES + 1) as u64).unwrap();
+        drop(file);
+
+        assert_eq!(
+            std::fs::metadata(&path.0).unwrap().len(),
+            MAX_CLIPBOARD_BYTES as u64 + 1
+        );
+        assert!(image_from_path(&path.0).is_none());
+    }
 
     /// Build a minimal 2×2 24-bpp top-down DIB (BITMAPINFOHEADER) and confirm
     /// the BMP wrapper + PNG re-encode round-trips to a decodable 2×2 image.
