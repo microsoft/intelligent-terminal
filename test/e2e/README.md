@@ -584,8 +584,10 @@ The read-only `Verify-PackageProvenance.ps1` preflight checks the clean Git HEAD
 the full recipe/MSIX/registered manifest hashes, every recipe source/MSIX/installed
 payload hash, and package identity. A missing or stale payload stops the run
 **before Pester**.
-Only scale-qualified profile icons may be absent from the MSIX; they still must
-match the recipe in the installed layout. Keep build-time source/command evidence
+Only documented MSIX metadata may appear beyond the recipe payloads. Archive
+paths are URI-decoded before matching (packaging can encode braces in icon names);
+scale-qualified profile icons may be absent, but must still match the recipe in
+the installed layout. Keep build-time source/command evidence
 separately: matching hashes do not themselves prove which source the compiler
 used. These options are not required for an explicitly requested Store baseline.
 

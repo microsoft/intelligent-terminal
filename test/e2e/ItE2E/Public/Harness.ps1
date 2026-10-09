@@ -218,6 +218,7 @@ function Assert-ItDevProcessesNotChat {
     param([Parameter(Mandatory)][object[]]$Processes)
     $ancestors = [Collections.Generic.HashSet[int]]::new()
     $oldestObserved = $null
+    $childStart = $null
     $id = [int]$PID
     while ($id -gt 0) {
         if (-not $ancestors.Add($id)) {
@@ -236,10 +237,15 @@ function Assert-ItDevProcessesNotChat {
             }
             break
         }
-        if ($current.CreationDate) {
-            $start = $current.CreationDate.ToUniversalTime()
-            if (-not $oldestObserved -or $start -lt $oldestObserved) { $oldestObserved = $start }
+        if ([int]$current.ProcessId -ne $id -or -not $current.CreationDate) {
+            throw "Cannot establish current chat ancestry: missing or changed process identity at pid=$id."
         }
+        $start = $current.CreationDate.ToUniversalTime()
+        if ($childStart -and $start -gt $childStart) {
+            throw "Cannot establish current chat ancestry: parent pid=$id was reused after its child started."
+        }
+        $childStart = $start
+        if (-not $oldestObserved -or $start -lt $oldestObserved) { $oldestObserved = $start }
         $parent = [int]$current.ParentProcessId
         if ($parent -eq $id) {
             throw "Cannot establish current chat ancestry: self-parented pid=$id."

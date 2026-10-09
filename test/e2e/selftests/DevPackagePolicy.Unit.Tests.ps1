@@ -48,7 +48,11 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
             }
             Mock Get-ItCreatedProcessPackage { $script:app.PackageFullName }
             Mock Get-CimInstance {
-                [pscustomobject]@{ ProcessId = $PID; ParentProcessId = 0 }
+                [pscustomobject]@{
+                    ProcessId = $PID
+                    ParentProcessId = 0
+                    CreationDate = [datetime]'2026-09-28T00:00:00Z'
+                }
             }
             Mock Test-Until { & $Condition }
             Mock Start-Sleep {}
@@ -204,9 +208,55 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
 
         It 'refuses an ambiguous chat ancestry instead of guessing it is safe' {
             Mock Get-CimInstance {
-                [pscustomobject]@{ ProcessId = $PID; ParentProcessId = $PID }
+                [pscustomobject]@{
+                    ProcessId = $PID
+                    ParentProcessId = $PID
+                    CreationDate = [datetime]'2026-09-28T00:00:00Z'
+                }
             }
             { Stop-StaleItInstances -App $script:app } | Should -Throw '*chat ancestry*'
+            $script:process.Closed | Should -BeFalse
+            Should -Invoke Stop-Process -Times 0
+        }
+
+        It 'rejects a reused parent PID that started after the current chat process' {
+            Mock Get-CimInstance {
+                if ($Filter -eq "ProcessId=$PID") {
+                    [pscustomobject]@{
+                        ProcessId = $PID
+                        ParentProcessId = 51002
+                        CreationDate = [datetime]'2026-09-28T00:00:00Z'
+                    }
+                }
+                elseif ($Filter -eq 'ProcessId=51002') {
+                    [pscustomobject]@{
+                        ProcessId = 51002
+                        ParentProcessId = 0
+                        CreationDate = [datetime]'2026-10-08T00:00:00Z'
+                    }
+                }
+            }
+
+            { Stop-StaleItInstances -App $script:app } | Should -Throw '*parent pid=51002 was reused*'
+            $script:process.Closed | Should -BeFalse
+            Should -Invoke Stop-Process -Times 0
+        }
+
+        It 'refuses a parent whose process creation time cannot be verified' {
+            Mock Get-CimInstance {
+                if ($Filter -eq "ProcessId=$PID") {
+                    [pscustomobject]@{
+                        ProcessId = $PID
+                        ParentProcessId = 51002
+                        CreationDate = [datetime]'2026-09-28T00:00:00Z'
+                    }
+                }
+                elseif ($Filter -eq 'ProcessId=51002') {
+                    [pscustomobject]@{ ProcessId = 51002; ParentProcessId = 0; CreationDate = $null }
+                }
+            }
+
+            { Stop-StaleItInstances -App $script:app } | Should -Throw '*missing or changed process identity*'
             $script:process.Closed | Should -BeFalse
             Should -Invoke Stop-Process -Times 0
         }
@@ -352,14 +402,39 @@ Describe 'Feature suites honor Dev-only cold start policy' -Tag Unit {
             $node -is [Management.Automation.Language.CommandAst] -and
                 $node.GetCommandName() -eq 'Stop-StaleItInstances'
         }, $true))
-        $startupCalls = @($calls | Where-Object {
-            $parent = $_.Parent
-            while ($parent -and -not ($parent -is [Management.Automation.Language.CommandAst] -and
-                $parent.GetCommandName() -in @('BeforeAll', 'BeforeEach', 'AfterAll', 'AfterEach', 'It'))) {
-                $parent = $parent.Parent
+        $entryFor = {
+            param($command)
+            for ($parent = $command.Parent; $parent; $parent = $parent.Parent) {
+                if ($parent -is [Management.Automation.Language.FunctionDefinitionAst]) { return }
+                if ($parent -is [Management.Automation.Language.CommandAst] -and
+                    $parent.GetCommandName() -in @('BeforeAll', 'BeforeEach', 'AfterAll', 'AfterEach', 'It')) {
+                    return $parent
+                }
             }
-            $parent -and $parent.GetCommandName() -in @('BeforeAll', 'BeforeEach')
+        }
+        $startupCalls = @($calls | Where-Object {
+            $entry = & $entryFor $_
+            $entry -and $entry.GetCommandName() -in @('BeforeAll', 'BeforeEach')
         })
         $startupCalls.Count | Should -BeGreaterThan 0
+        $setupCalls = @($ast.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -in @(
+                'Backup-WtConfig', 'Clear-WtConfig', 'Set-WtSettings', 'Set-WtSetting',
+                'Set-WtState', 'Invoke-FrePass', 'Start-Terminal', 'Start-TerminalFre',
+                'Initialize-TelemetryPolicyTransaction')
+        }, $true))
+        foreach ($cleanup in $startupCalls) {
+            $entry = & $entryFor $cleanup
+            if (@($startupCalls | Where-Object {
+                (& $entryFor $_) -eq $entry -and $_.Extent.StartOffset -lt $cleanup.Extent.StartOffset
+            }).Count) { continue }
+            foreach ($setup in $setupCalls) {
+                if ((& $entryFor $setup) -eq $entry) {
+                    $cleanup.Extent.StartOffset | Should -BeLessThan $setup.Extent.StartOffset `
+                        -Because "$Suite must close Dev before $($setup.GetCommandName())"
+                }
+            }
+        }
     }
 }

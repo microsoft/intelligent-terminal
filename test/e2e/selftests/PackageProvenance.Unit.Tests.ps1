@@ -9,6 +9,9 @@ BeforeAll {
             [switch]$WrongInstalled,
             [switch]$DifferentManifest,
             [switch]$StaleManifest,
+            [switch]$ExtraArchiveDll,
+            [switch]$IncludeEncodedIcon,
+            [switch]$WithMetadata,
             [switch]$OmitArchiveDll,
             [switch]$TraversalPath,
             [switch]$WrongFamily
@@ -22,7 +25,9 @@ BeforeAll {
 
         $sourceDll = Join-Path $sourceRoot 'TerminalApp.dll'
         $installedDll = Join-Path $installed 'TerminalApp.dll'
-        $sourceIcon = Join-Path $sourceRoot 'ProfileIcons\icon.scale-100.png'
+        $iconName = if ($IncludeEncodedIcon) { '{fixture}.scale-100.png' } else { 'icon.scale-100.png' }
+        $iconPackagePath = "ProfileIcons\$iconName"
+        $sourceIcon = Join-Path $sourceRoot $iconPackagePath
         $manifestText = '<Package><Identity Name="IntelligentTerminal" Publisher="CN=Test" Version="0.8.0.2"/></Package>'
         $staleManifestText = if ($StaleManifest) {
             $manifestText.Replace('</Package>', '<Capabilities><Capability Name="privateNetworkClientServer"/></Capabilities></Package>')
@@ -31,7 +36,7 @@ BeforeAll {
         Copy-Item -LiteralPath $sourceDll -Destination $installedDll
         if ($WrongInstalled) { 'previous-binary' | Set-Content -LiteralPath $installedDll -NoNewline }
         'scale-icon' | Set-Content -LiteralPath $sourceIcon -NoNewline
-        Copy-Item -LiteralPath $sourceIcon -Destination (Join-Path $installed 'ProfileIcons\icon.scale-100.png')
+        Copy-Item -LiteralPath $sourceIcon -Destination (Join-Path $installed $iconPackagePath)
         $sourceManifest = Join-Path $sourceRoot 'AppxManifest.xml'
         $manifestText | Set-Content -LiteralPath $sourceManifest -NoNewline
         $(if ($DifferentManifest) {
@@ -47,7 +52,7 @@ BeforeAll {
   <ItemGroup>
     <AppXManifest Include="$sourceManifest"><PackagePath>AppxManifest.xml</PackagePath></AppXManifest>
     <AppxPackagedFile Include="$sourceDll"><PackagePath>$dllPackagePath</PackagePath></AppxPackagedFile>
-    <AppxPackagedFile Include="$sourceIcon"><PackagePath>ProfileIcons\icon.scale-100.png</PackagePath></AppxPackagedFile>
+    <AppxPackagedFile Include="$sourceIcon"><PackagePath>$iconPackagePath</PackagePath></AppxPackagedFile>
   </ItemGroup>
 </Project>
 "@ | Set-Content -LiteralPath $recipe
@@ -56,10 +61,23 @@ BeforeAll {
         $msix = Join-Path $sourceRoot 'CascadiaPackage.msix'
         $zip = [IO.Compression.ZipFile]::Open($msix, [IO.Compression.ZipArchiveMode]::Create)
         try {
-            foreach ($item in @(
+            $archiveItems = @(
                 @{ Path = 'AppxManifest.xml'; Text = $staleManifestText },
                 @{ Path = 'TerminalApp.dll'; Text = $(if ($WrongArchive) { 'stale-binary' } else { 'current-binary' }) }
-            )) {
+            )
+            if ($ExtraArchiveDll) { $archiveItems += @{ Path = 'old.dll'; Text = 'stale-binary' } }
+            if ($IncludeEncodedIcon) {
+                $archiveItems += @{ Path = 'ProfileIcons/%7Bfixture%7D.scale-100.png'; Text = 'scale-icon' }
+            }
+            if ($WithMetadata) {
+                $archiveItems += @(
+                    @{ Path = 'AppxBlockMap.xml'; Text = 'block-map' },
+                    @{ Path = '[Content_Types].xml'; Text = 'content-types' },
+                    @{ Path = 'AppxSignature.p7x'; Text = 'signature' },
+                    @{ Path = 'AppxMetadata/CodeIntegrity.cat'; Text = 'catalog' }
+                )
+            }
+            foreach ($item in $archiveItems) {
                 if ($item.Path -eq 'TerminalApp.dll' -and $OmitArchiveDll) { continue }
                 $stream = $zip.CreateEntry($item.Path).Open()
                 try {
@@ -152,6 +170,31 @@ Describe 'Offline package provenance' -Tag 'Unit' {
         { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
                 -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
             Should -Throw '*MSIX manifest differs from the recipe source*'
+    }
+
+    It 'rejects an extra stale DLL in the MSIX even when all recipe files match' {
+        $f = New-ProvenanceFixture -ExtraArchiveDll
+        { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
+                -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
+            Should -Throw '*Unexpected MSIX payload*old.dll*'
+    }
+
+    It 'matches percent-encoded profile icons to their recipe source' {
+        $f = New-ProvenanceFixture -IncludeEncodedIcon
+        $proof = & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
+            -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package
+        $proof.MsixEntryCount | Should -Be 2
+        $proof.OmittedScaleAssets | Should -BeNullOrEmpty
+        ($proof.Entries | Where-Object PackagePath -eq 'ProfileIcons\{fixture}.scale-100.png').IncludedInMsix |
+            Should -BeTrue
+    }
+
+    It 'allows only the documented MSIX packaging metadata beyond recipe files' {
+        $f = New-ProvenanceFixture -WithMetadata
+        $proof = & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
+            -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package
+        $proof.RecipeEntryCount | Should -Be 2
+        $proof.MsixEntryCount | Should -Be 1
     }
 
     It 'rejects a non-icon recipe payload omitted from the MSIX' {

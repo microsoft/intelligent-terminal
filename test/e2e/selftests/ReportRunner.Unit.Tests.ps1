@@ -45,7 +45,7 @@ BeforeAll {
             ExitCode = $exitCode
             Output = Get-Content -LiteralPath $log -Raw
             Html = if (Test-Path -LiteralPath $html) { Get-Content -LiteralPath $html -Raw } else { '' }
-            ReleaseReport = if (Test-Path -LiteralPath (Join-Path $out 'release-report.md')) {
+            ReleaseReport = if (Test-Path -LiteralPath (Join-Path $out 'release-report.md') -PathType Leaf) {
                 Get-Content -LiteralPath (Join-Path $out 'release-report.md') -Raw
             } else { '' }
         }

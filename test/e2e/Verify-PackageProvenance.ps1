@@ -100,7 +100,11 @@ try {
         [StringComparer]::OrdinalIgnoreCase)
     foreach ($entry in $archive.Entries) {
         if (-not $entry.Name) { continue }
-        $name = $entry.FullName.Replace('/', '\')
+        $name = [Uri]::UnescapeDataString($entry.FullName).Replace('/', '\')
+        if ([IO.Path]::IsPathRooted($name) -or $name.Contains(':') -or
+            $name -match '(^|[\\/])\.\.([\\/]|$)') {
+            throw "MSIX contains invalid package path: $($entry.FullName)"
+        }
         if (-not $archiveEntries.TryAdd($name, $entry)) {
             throw "MSIX contains duplicate package path: $name"
         }
@@ -174,6 +178,15 @@ try {
             [pscustomobject]@{ PackagePath = $relative; IncludedInMsix = $included; Sha256 = $sourceHash }
         }
     )
+    $metadata = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($path in @('[Content_Types].xml', 'AppxBlockMap.xml', 'AppxSignature.p7x',
+        'AppxMetadata\CodeIntegrity.cat')) {
+        [void]$metadata.Add($path)
+    }
+    foreach ($path in $archiveEntries.Keys) {
+        if ($path -ieq 'AppxManifest.xml' -or $metadata.Contains($path) -or $seen.Contains($path)) { continue }
+        throw "Unexpected MSIX payload not in the recipe: $path"
+    }
 }
 finally { $archive.Dispose() }
 
