@@ -402,6 +402,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabProgressPercentUsesLocaleFormatting);
         TEST_METHOD(AgentBillingUsesLocaleCurrencyFormatting);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
+        TEST_METHOD(LatestBuiltinAgentReportWinsForPane);
+        TEST_METHOD(AgentSnapshotTiesPreserveLastReceivedPaneReport);
+        TEST_METHOD(AgentSnapshotSelectionIsIndependentOfRowOrder);
         TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
         TEST_METHOD(BottomBarSessionsButtonDispatchesExistingAction);
         TEST_METHOD(BottomBarSessionsButtonTracksVisibleView);
@@ -6425,7 +6428,8 @@ namespace TerminalAppLocalTests
                 "custom:claude-wrapper",
                 uint64_t{ 2345 },
                 "Error"));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Attention" }, item.Status());
+            // History rows are refreshed separately from these pane/session caches.
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, item.Status());
             VERIFY_ARE_EQUAL(
                 uint64_t{ 1234 },
                 page->_richTabAgentStatusBySessionId.at("session-a").lastActivityAtMs.value());
@@ -6456,7 +6460,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(
                 std::string{ "Attention" },
                 page->_richTabAgentStatusByPaneId.at(
-                    winrt::guid{ L"00000000-0000-0000-0000-000000000001" })
+                                                     winrt::guid{ L"00000000-0000-0000-0000-000000000001" })
                     .status);
             VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
                 "session-c",
@@ -6471,18 +6475,240 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(std::string{ "Working" }, reusedPaneInfo.status);
             VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
             const auto updated = page->_tabStrip.HistoryItems().GetAt(0);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Attention" }, updated.Status());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, updated.Status());
             VERIFY_ARE_EQUAL(metadata, updated.Subtitle());
-            VERIFY_ARE_EQUAL(winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText("Attention"), updated.StatusText());
-            VERIFY_IS_TRUE(updated.StatusTextStyle() != idleStyle);
-            VERIFY_IS_TRUE(
-                updated.StatusTextStyle() ==
-                page->_tabStrip.Resources().Lookup(winrt::box_value(L"HistoryAttentionTextStyle")).as<Style>());
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText("Idle"), updated.StatusText());
+            VERIFY_IS_TRUE(updated.StatusTextStyle() == idleStyle);
             VERIFY_IS_TRUE(updated.IsLive());
             VERIFY_IS_FALSE(updated.IsHistorical());
 
             VERIFY_IS_FALSE(page->_ApplyAgentSessionStatusDelta("session-a", "", "claude", std::nullopt, "FutureStatus"));
         });
+    }
+
+    void TabTests::LatestBuiltinAgentReportWinsForPane()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_tabStrip.RichTabAgentStatusVisible(false);
+            for (const auto launchProvider : { L"copilot", L"custom:fixture" })
+            {
+                winrt::guid paneId;
+                VERIFY_SUCCEEDED(CoCreateGuid(reinterpret_cast<GUID*>(&paneId)));
+                const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+                NewTerminalArgs args;
+                args.NativeAgentProviderId(launchProvider);
+                const auto pane = page->_MakePane(args, nullptr, *connection);
+                VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                const auto tab = page->_GetFocusedTabImpl();
+                const auto control = pane->GetTerminalControl();
+                const auto paneIdString = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(paneId));
+                uint64_t activity = 1000;
+                for (const auto& [provider, status] : {
+                         std::pair{ "copilot", "Working" },
+                         std::pair{ "claude", "Attention" },
+                         std::pair{ "opencode", "Idle" },
+                         std::pair{ "codex", "Error" },
+                         std::pair{ "copilot", "Working" } })
+                {
+                    const auto sessionId = std::string{ provider } + "-" + std::to_string(activity);
+                    VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(sessionId, paneIdString, provider, activity, status));
+                    const auto info = page->_RichTabAgentInfoForControl(control);
+                    VERIFY_IS_TRUE(info.has_value());
+                    VERIFY_ARE_EQUAL(sessionId, info->sessionId);
+                    VERIFY_ARE_EQUAL(std::string{ provider }, info->providerId);
+                    VERIFY_ARE_EQUAL(std::string{ status }, info->status);
+                    VERIFY_ARE_EQUAL(
+                        winrt::hstring{ L"ms-appx:///AgentIcons/" } + winrt::to_hstring(provider) + L".svg",
+                        tab->Icon());
+                    activity += 100;
+                }
+                const auto latest = *page->_RichTabAgentInfoForControl(control);
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(latest.sessionId, paneIdString, "custom:wrapper", 2000, "Error"));
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("claude-1100", paneIdString, "claude", 1200, "Ended"));
+                const auto retained = page->_RichTabAgentInfoForControl(control);
+                VERIFY_IS_TRUE(retained.has_value());
+                VERIFY_ARE_EQUAL(latest.sessionId, retained->sessionId);
+                VERIFY_ARE_EQUAL(latest.providerId, retained->providerId);
+                VERIFY_ARE_EQUAL(latest.status, retained->status);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/copilot.svg" }, tab->Icon());
+                VERIFY_ARE_EQUAL(
+                    std::string{ "Ended" },
+                    page->_richTabAgentStatusBySessionId.at("claude-1100").status);
+
+                auto candidate = latest;
+                candidate.providerId = "codex";
+                candidate.status = "Idle";
+                candidate.lastActivityAtMs = 1500;
+                VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(latest, candidate));
+                VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(candidate, latest));
+                candidate.lastActivityAtMs = latest.lastActivityAtMs;
+                VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(latest, candidate));
+                candidate.lastActivityAtMs = std::nullopt;
+                VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(latest, candidate));
+                candidate.providerId = "custom:wrapper";
+                candidate.sessionId = latest.sessionId;
+                candidate.lastActivityAtMs = 9999;
+                VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(latest, candidate));
+                VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(candidate, latest));
+                auto ended = latest;
+                ended.status = "Ended";
+                candidate.sessionId = "new-custom-session";
+                VERIFY_IS_TRUE(page->_ShouldReplaceReportedAgentState(ended, candidate));
+                VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(candidate, ended));
+                candidate.lastActivityAtMs = 1000;
+                VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(ended, candidate));
+                candidate.lastActivityAtMs = 9999;
+                candidate.sessionId = ended.sessionId;
+                VERIFY_IS_FALSE(page->_ShouldReplaceReportedAgentState(ended, candidate));
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(latest.sessionId, paneIdString, "copilot", std::nullopt, "Attention"));
+                VERIFY_IS_FALSE(page->_RichTabAgentInfoForControl(control)->lastActivityAtMs.has_value());
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(latest.sessionId, paneIdString, "copilot", 1300, "Working"));
+                VERIFY_ARE_EQUAL(uint64_t{ 1300 }, page->_RichTabAgentInfoForControl(control)->lastActivityAtMs.value());
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(latest.sessionId, paneIdString, "copilot", 1600, "Ended"));
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("new-custom-session", paneIdString, "custom:wrapper", 2000, "Working"));
+                const auto rebound = page->_RichTabAgentInfoForControl(control);
+                VERIFY_IS_TRUE(rebound.has_value());
+                VERIFY_ARE_EQUAL(std::string{ "new-custom-session" }, rebound->sessionId);
+                VERIFY_ARE_EQUAL(std::string{ "custom:wrapper" }, rebound->providerId);
+                VERIFY_ARE_EQUAL(std::string{ "Working" }, rebound->status);
+                VERIFY_ARE_EQUAL(pane->GetContent().Icon(), tab->Icon());
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(latest.sessionId, paneIdString, "copilot", 1600, "Ended"));
+                VERIFY_ARE_EQUAL(std::string{ "new-custom-session" }, page->_RichTabAgentInfoForControl(control)->sessionId);
+                VERIFY_ARE_EQUAL(std::string{ "Working" }, page->_RichTabAgentInfoForControl(control)->status);
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("identity-learning", paneIdString, "", 5000, "Working"));
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("identity-learning", paneIdString, "claude", 1000, "Idle"));
+                const auto learned = page->_RichTabAgentInfoForControl(control);
+                VERIFY_IS_TRUE(learned.has_value());
+                VERIFY_ARE_EQUAL(std::string{ "claude" }, learned->providerId);
+                VERIFY_ARE_EQUAL(std::string{ "Working" }, learned->status);
+                VERIFY_ARE_EQUAL(uint64_t{ 5000 }, learned->lastActivityAtMs.value());
+                const auto& learnedSession = page->_richTabAgentStatusBySessionId.at("identity-learning");
+                VERIFY_ARE_EQUAL(learned->providerId, learnedSession.providerId);
+                VERIFY_ARE_EQUAL(learned->status, learnedSession.status);
+                VERIFY_ARE_EQUAL(learned->lastActivityAtMs, learnedSession.lastActivityAtMs);
+            }
+        });
+    }
+
+    void TabTests::AgentSnapshotTiesPreserveLastReceivedPaneReport()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        const winrt::guid paneId{ L"{1ab11111-2222-3333-4444-555555555555}" };
+        Page::_RichTabAgentInfo copilot{ "copilot-session", "Working", "copilot", 1000, paneId };
+        Page::_RichTabAgentInfo claude{ "claude-session", "Attention", "claude", 1000, paneId };
+        VERIFY_IS_TRUE(Page::_ShouldReplaceReportedAgentState(copilot, claude));
+        VERIFY_IS_TRUE(Page::_ShouldReplaceSnapshotAgentState(copilot, claude, &claude));
+        VERIFY_IS_FALSE(Page::_ShouldReplaceSnapshotAgentState(claude, copilot, &claude));
+        VERIFY_IS_FALSE(Page::_ShouldReplaceSnapshotAgentState(copilot, claude, &copilot));
+        VERIFY_IS_TRUE(Page::_ShouldReplaceSnapshotAgentState(claude, copilot, &copilot));
+        VERIFY_ARE_NOT_EQUAL(
+            Page::_ShouldReplaceSnapshotAgentState(copilot, claude, nullptr),
+            Page::_ShouldReplaceSnapshotAgentState(claude, copilot, nullptr));
+        auto otherPaneWinner = claude;
+        otherPaneWinner.paneSessionId = winrt::guid{ L"{2ab11111-2222-3333-4444-555555555555}" };
+        VERIFY_ARE_EQUAL(
+            Page::_ShouldReplaceSnapshotAgentState(copilot, claude, nullptr),
+            Page::_ShouldReplaceSnapshotAgentState(copilot, claude, &otherPaneWinner));
+        claude.lastActivityAtMs = 2000;
+        VERIFY_IS_TRUE(Page::_ShouldReplaceSnapshotAgentState(copilot, claude, &copilot));
+        VERIFY_IS_FALSE(Page::_ShouldReplaceSnapshotAgentState(claude, copilot, &copilot));
+        copilot.lastActivityAtMs = std::nullopt;
+        claude.lastActivityAtMs = std::nullopt;
+        VERIFY_IS_TRUE(Page::_ShouldReplaceSnapshotAgentState(copilot, claude, &claude));
+        VERIFY_IS_FALSE(Page::_ShouldReplaceSnapshotAgentState(claude, copilot, &claude));
+        VERIFY_ARE_NOT_EQUAL(
+            Page::_ShouldReplaceSnapshotAgentState(copilot, claude, nullptr),
+            Page::_ShouldReplaceSnapshotAgentState(claude, copilot, nullptr));
+        copilot.status = "Ended";
+        Page::_RichTabAgentInfo custom{ "new-custom-session", "Working", "custom:wrapper", std::nullopt, paneId };
+        VERIFY_IS_TRUE(Page::_ShouldReplaceSnapshotAgentState(copilot, custom, &custom));
+        VERIFY_IS_FALSE(Page::_ShouldReplaceSnapshotAgentState(custom, copilot, &custom));
+    }
+
+    void TabTests::AgentSnapshotSelectionIsIndependentOfRowOrder()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        const winrt::guid paneId{ L"{3ab11111-2222-3333-4444-555555555555}" };
+        std::vector<Page::_RichTabAgentInfo> rows{
+            { "session-a", "Working", "copilot", 1000, paneId },
+            { "session-b", "Ended", "custom:b", 2000, paneId },
+            { "session-c", "Working", "custom:c", 3000, paneId },
+            { "session-a", "Working", "custom:a", 9000, paneId }
+        };
+        std::array<size_t, 4> order{ 0, 1, 2, 3 };
+        do
+        {
+            std::vector<Page::_RichTabAgentInfo> shuffled;
+            for (const auto index : order)
+            {
+                shuffled.push_back(rows[index]);
+            }
+            const auto selected = Page::_BuildAgentStatusSnapshot(shuffled, {});
+            VERIFY_ARE_EQUAL(std::string{ "session-c" }, selected.byPane.at(paneId).sessionId);
+            VERIFY_ARE_EQUAL(std::string{ "custom:c" }, selected.byPane.at(paneId).providerId);
+        } while (std::next_permutation(order.begin(), order.end()));
+
+        rows[2].lastActivityAtMs = std::nullopt;
+        std::unordered_map<winrt::guid, Page::_RichTabAgentInfo> lastReceived{ { paneId, rows[2] } };
+        order = { 0, 1, 2, 3 };
+        do
+        {
+            std::vector<Page::_RichTabAgentInfo> shuffled;
+            for (const auto index : order)
+            {
+                shuffled.push_back(rows[index]);
+            }
+            const auto selected = Page::_BuildAgentStatusSnapshot(shuffled, lastReceived);
+            VERIFY_ARE_EQUAL(std::string{ "session-c" }, selected.byPane.at(paneId).sessionId);
+            const auto withoutKnownWinner = Page::_BuildAgentStatusSnapshot(shuffled, {});
+            VERIFY_ARE_EQUAL(std::string{ "session-b" }, withoutKnownWinner.byPane.at(paneId).sessionId);
+        } while (std::next_permutation(order.begin(), order.end()));
+
+        rows = {
+            { "session-a", "Working", "copilot", 1000, paneId },
+            { "session-a", "Error", "custom:a", 3000, paneId },
+            { "session-a", "Attention", "", 2000, paneId },
+            { "session-b", "Working", "claude", 1500, paneId }
+        };
+        order = { 0, 1, 2, 3 };
+        do
+        {
+            std::vector<Page::_RichTabAgentInfo> shuffled;
+            for (const auto index : order)
+            {
+                shuffled.push_back(rows[index]);
+            }
+            const auto selected = Page::_BuildAgentStatusSnapshot(shuffled, {});
+            const auto& pane = selected.byPane.at(paneId);
+            VERIFY_ARE_EQUAL(std::string{ "session-a" }, pane.sessionId);
+            VERIFY_ARE_EQUAL(std::string{ "copilot" }, pane.providerId);
+            VERIFY_ARE_EQUAL(std::string{ "Attention" }, pane.status);
+            VERIFY_ARE_EQUAL(uint64_t{ 2000 }, pane.lastActivityAtMs.value());
+            VERIFY_ARE_EQUAL(pane.providerId, selected.bySession.at("session-a").providerId);
+            VERIFY_ARE_EQUAL(pane.status, selected.bySession.at("session-a").status);
+        } while (std::next_permutation(order.begin(), order.end()));
+
+        rows[2].lastActivityAtMs = std::nullopt;
+        auto winnerWithoutProvider = rows[2];
+        winnerWithoutProvider.providerId = "copilot";
+        lastReceived = { { paneId, winnerWithoutProvider } };
+        order = { 0, 1, 2, 3 };
+        do
+        {
+            std::vector<Page::_RichTabAgentInfo> shuffled;
+            for (const auto index : order)
+            {
+                shuffled.push_back(rows[index]);
+            }
+            const auto selected = Page::_BuildAgentStatusSnapshot(shuffled, lastReceived);
+            const auto& pane = selected.byPane.at(paneId);
+            VERIFY_ARE_EQUAL(std::string{ "session-a" }, pane.sessionId);
+            VERIFY_ARE_EQUAL(std::string{ "copilot" }, pane.providerId);
+            VERIFY_ARE_EQUAL(std::string{ "Attention" }, pane.status);
+            VERIFY_IS_FALSE(pane.lastActivityAtMs.has_value());
+        } while (std::next_permutation(order.begin(), order.end()));
     }
 
     void TabTests::VerticalTabHistoryRelativeAge()
@@ -12554,11 +12780,16 @@ namespace TerminalAppLocalTests
     {
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
         const auto connection = winrt::make_self<TestConnection>(winrt::guid{ L"{436c8552-a3b3-4141-9b6c-c57b3251936e}" }, State::Connected);
-        auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
 
         TestOnUIThread([&]() {
+            page->Width(1200);
+            page->Height(600);
+            page->UpdateLayout();
             const auto tab = page->_GetFocusedTabImpl();
-            const auto sourcePane = tab->GetActivePane();
+            tab->SuppressAgentPrewarm();
+            tab->GetActiveTerminalControl().Connection(*connection);
+            auto sourcePane = tab->GetActivePane();
             const auto paneSessionId = sourcePane->GetSessionId();
             const auto profileIcon = sourcePane->GetContent().Icon();
             page->_UpdateTabIcon(*tab);
@@ -12569,6 +12800,8 @@ namespace TerminalAppLocalTests
             agentPane->IsAgentPane(true);
             VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane));
             VERIFY_IS_TRUE(tab->GetActivePane() == agentPane);
+            sourcePane = tab->GetRootPane()->FindPaneBySessionId(paneSessionId);
+            VERIFY_IS_NOT_NULL(sourcePane);
 
             const std::u16string progressStart{ u"\x1b]9;4;3\x07" };
             connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ progressStart.data(), progressStart.data() + progressStart.size() });
@@ -12718,6 +12951,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(tab->FocusPane(sourcePane->Id().value()));
             const auto secondPane = page->_MakePane(nullptr, page->_GetFocusedTab(), nullptr);
             VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, secondPane));
+            sourcePane = tab->GetRootPane()->FindPaneBySessionId(paneSessionId);
+            VERIFY_IS_NOT_NULL(sourcePane);
             VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
                 "second-pane-session",
                 winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(secondPane->GetSessionId())),
