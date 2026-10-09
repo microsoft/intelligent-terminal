@@ -989,6 +989,14 @@
   <data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>Terminal Protocol-Info anzeigen</value><comment>{Locked="Terminal Protocol"}</comment></data>
   <data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>Bereichssichtbarkeit umschalten</value></data>
   <data name="ToggleSidebarCommandKey" xml:space="preserve"><value>Seitenleiste ein-/ausblenden</value><comment>A command that shows or collapses the vertical tabs sidebar.</comment></data>
+  <data name="ToggleSidebarAgentsOnlyCommandKey" xml:space="preserve">
+    <value>Filter „Nur Agenten“ in der Seitenleiste ein-/ausschalten</value>
+    <comment>Command that toggles whether the sidebar shows only open AI-agent tabs. It does not change the independent Recent agent sessions option. Global sidebar search includes all tabs regardless of this preference.</comment>
+  </data>
+  <data name="ToggleSidebarRecentAgentSessionsCommandKey" xml:space="preserve">
+    <value>Letzte Agentsitzungen in der Seitenleiste ein-/ausblenden</value>
+    <comment>Command that toggles the Recent agent sessions section in the sidebar without changing the independent Agents only filter. Recent sessions are also included while a global search query is present.</comment>
+  </data>
   <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>KI-Agent umschalten</value></data>
   <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>KI-Agent-Bereich fokussieren</value></data>
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>KI-Agent-Sitzungsliste öffnen</value></data>

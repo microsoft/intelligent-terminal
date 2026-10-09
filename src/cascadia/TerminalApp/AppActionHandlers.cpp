@@ -1750,32 +1750,44 @@ namespace winrt::TerminalApp::implementation
         args.Handled(true);
     }
 
-    void TerminalPage::_HandleOpenAgentSessions(const IInspectable& /*sender*/,
+    void TerminalPage::_HandleToggleSidebarAgentsOnly(const IInspectable&, const ActionEventArgs& args)
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible || !_tabStrip)
+        {
+            args.Handled(false);
+            return;
+        }
+        const auto filters = _tabStrip.SidebarFilters();
+        filters.ShowAgentsOnly(!filters.ShowAgentsOnly());
+        if (filters.ShowAgentsOnly() && _isVerticalRailCollapsed)
+        {
+            _OnVerticalRailCollapseRequested(nullptr, nullptr);
+        }
+        args.Handled(true);
+    }
+
+    void TerminalPage::_HandleToggleSidebarRecentAgentSessions(const IInspectable&, const ActionEventArgs& args)
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible || !_tabStrip)
+        {
+            args.Handled(false);
+            return;
+        }
+        const auto filters = _tabStrip.SidebarFilters();
+        filters.ShowRecentAgentSessions(!filters.ShowRecentAgentSessions());
+        if (filters.ShowRecentAgentSessions() && _isVerticalRailCollapsed)
+        {
+            _OnVerticalRailCollapseRequested(nullptr, nullptr);
+        }
+        args.Handled(true);
+    }
+
+    void TerminalPage::_HandleOpenAgentSessions(const IInspectable& sender,
                                                 const ActionEventArgs& args)
     {
         if (_isVerticalLayout)
         {
-            if (_tabStrip && _isVerticalRailVisible)
-            {
-                if (_tabStrip.HistoryActive())
-                {
-                    _CloseSidebarHistory(true);
-                }
-                else
-                {
-                    _CaptureSidebarHistoryEntry();
-                    if (_isVerticalRailCollapsed)
-                    {
-                        _OnVerticalRailCollapseRequested(nullptr, nullptr);
-                    }
-                    winrt::get_self<implementation::TabStrip>(_tabStrip)->OpenHistory();
-                    if (!_tabStrip.HistoryActive())
-                    {
-                        _historyEntryState.reset();
-                    }
-                }
-            }
-            args.Handled(true);
+            _HandleToggleSidebarRecentAgentSessions(sender, args);
             return;
         }
 

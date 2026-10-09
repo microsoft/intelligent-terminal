@@ -224,8 +224,8 @@
     <comment>Tooltip for the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
-    <value>필터</value>
-    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
+    <value>표시</value>
+    <comment>Section heading above independent sidebar display options: show only agent tabs, or also show recent agent sessions.</comment>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>모든 탭</value>
@@ -284,8 +284,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>최근 세션</value>
-    <comment>Collapsible noun heading below open agent tabs in the Agents sidebar. Includes prior agent sessions, kept-running background tabs, sessions in other tracked windows, and external sessions not represented by the current window's open agent panes. This is not an archive-only list.</comment>
+    <value>최근 에이전트 세션</value>
+    <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>에이전트</value>
@@ -1692,8 +1692,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
-    <value>활성 및 최근 에이전트 세션 검색</value>
-    <comment>Shared search placeholder, tooltip, and accessible name in the Agents sidebar. Searches both open AI-agent tabs, including idle open sessions, and the Recent Sessions section. Active does not mean only currently working. Keep the separate Tabs view search labels unchanged.</comment>
+    <value>탭 및 최근 에이전트 세션 검색</value>
+    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · 다른 창</value>
@@ -1716,12 +1716,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Tooltip and accessible action name of the sidebar header button while Agents is selected. One click switches to the Tabs view; it does not change between sidebar and horizontal tab layouts.</comment>
   </data>
   <data name="VerticalTabsExpandRecentSessions" xml:space="preserve">
-    <value>최근 세션 펼치기</value>
-    <comment>Tooltip for expanding the Recent Sessions section inside the Agents sidebar. Expansion shows its session rows without leaving Agents or resuming a session.</comment>
+    <value>최근 에이전트 세션 펼치기</value>
+    <comment>Tooltip for expanding the Recent agent sessions section in the sidebar. This shows session rows without resuming a session.</comment>
   </data>
   <data name="VerticalTabsCollapseRecentSessions" xml:space="preserve">
-    <value>최근 세션 접기</value>
-    <comment>Tooltip for collapsing the Recent Sessions section inside the Agents sidebar. Collapse hides its rows without closing agents or deleting sessions.</comment>
+    <value>최근 에이전트 세션 접기</value>
+    <comment>Tooltip for collapsing the Recent agent sessions section in the sidebar. This hides rows without closing agents or deleting sessions.</comment>
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>탭을 더 스마트하게 관리하는 방법</value>

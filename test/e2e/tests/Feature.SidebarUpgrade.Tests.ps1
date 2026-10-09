@@ -92,7 +92,7 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
         Restart-UpgradeFixture
         (Get-WtSetting -App $script:app -Key tabLayout) | Should -Be horizontal
         (Get-WtStateObject -App $script:app).sidebarLayoutMigrationCompleted | Should -BeTrue
-        @(Get-UpgradeVisiblePeer VerticalTabsHeaderButton) | Should -HaveCount 0
+        @(Get-UpgradeVisiblePeer VerticalTabsHeader) | Should -HaveCount 0
         @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
     }
     It 'Sidebar introduction is independent of completed migration' {
@@ -164,7 +164,7 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
             } | Out-Null
             (Get-WtStateObject -App $script:app).sidebarLayoutMigrationCompleted | Should -BeFalse
             (Get-WtSetting -App $script:app -Key tabLayout) | Should -Be horizontal
-            @(Get-UpgradeVisiblePeer VerticalTabsHeaderButton) | Should -HaveCount 0 -Because 'effective layout must agree with the rolled-back disk preference'
+            @(Get-UpgradeVisiblePeer VerticalTabsHeader) | Should -HaveCount 0 -Because 'effective layout must agree with the rolled-back disk preference'
             @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
         }
         finally { $lock.Dispose() }
@@ -220,7 +220,7 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
         Send-WtWindowKey -App $script:app -Vk 0x50 -Ctrl -Shift -RequireForeground | Out-Null
         Wait-Until -TimeoutSec 5 -Condition { Test-CommandPaletteOpen -App $script:app } | Out-Null
         Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
-        Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer VerticalTabsHeaderButton).Count -eq 1 } | Out-Null
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer VerticalTabsHeader).Count -eq 1 } | Out-Null
         Set-UiValue -App $script:app -Selector '_searchBox' -Value 'Toggle sidebar' | Out-Null
         $result = & (Get-Module ItE2E) {
             param($App)
@@ -229,7 +229,7 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
         $result.ExitCode | Should -Be 0
         Wait-Until -TimeoutSec 5 -Condition {
             -not (Test-CommandPaletteOpen -App $script:app) -and
-                @(Get-UpgradeVisiblePeer VerticalTabsHeaderButton).Count -eq 0
+                @(Get-UpgradeVisiblePeer VerticalTabsHeader).Count -eq 0
         } | Out-Null
         foreach ($i in 1..4) {
             Start-Sleep -Milliseconds 500
@@ -238,7 +238,7 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
         }
         Invoke-UpgradePaletteAction 'Toggle sidebar'
         Wait-Until -TimeoutSec 10 -Condition {
-            @(Get-UpgradeVisiblePeer VerticalTabsHeaderButton).Count -eq 1 -and
+            @(Get-UpgradeVisiblePeer VerticalTabsHeader).Count -eq 1 -and
                 @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 -and
                 (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $true
         } | Out-Null
@@ -274,7 +274,7 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
         } | Out-Null
         $script:app = $first
         Set-WtWindowForeground -App $first | Should -BeTrue
-        Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer VerticalTabsHeaderButton).Count -eq 1 } | Out-Null
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer VerticalTabsHeader).Count -eq 1 } | Out-Null
         foreach ($i in 1..4) {
             Start-Sleep -Milliseconds 500
             @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0

@@ -39,8 +39,8 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.SidebarSessionScroll.Tests.ps1` | Real shell hooks update the same visible Agents row through Idle/Active/Waiting for input/Idle without changing the search query or scrolling unchanged history order; status filters and genuine activity-time reordering still update. All three cases gate C374. Deterministic seeded rows, no model quota or test settings changes; teardown closes only recorded fixture pane GUIDs in the verified logical window after rechecking HWND/PID, never the shared process or unrelated windows/tabs. Original state is recovered only after the package is inactive, even on screenshot/settings failure; unrelated package activity or unconfirmed ownership/inactivity retains backups and fails explicitly. Changed, missing or unreadable settings and their recovery backup are retained and fail explicitly. Requires inactive Dev, Sidebar mode, completed FRE, and exact-build App/WTA hashes | 3 |
 | `Feature.PaneProgress.Tests.ps1` | PR #1043: one-shot OSC progress across real tab right-click moves/layout round trips, shared group-chevron/icon slot and aligned top-level titles, layout-specific Move submenu order/direction, and fixture-owned native hook identity/icon restoration with OSC3/OSC0; six-frame rendered ring evidence, no model quota | 4 checklist cases plus literal one-shot coverage (explicit Dev, exact-source `ITE2E_EXPECTED_APP_SHA256` / `ITE2E_EXPECTED_WTA_SHA256`, inactive package and interactive desktop required) |
 | `Feature.PinnedTabSelection.Tests.ps1` | PRs #1043/#1052: the primary two-pinned-plus-one-ordinary Horizontal/Sidebar round trip first verifies Alpha's active shell, exactly one selected Alpha Sidebar row, terminal focus, canonical order, shell identities and retained pin menus. A separate visual round trip verifies canonical accessibility labels and matched same-profile title-leading offsets; Beta unpin removes its extra Sidebar slot and keeps first-ordinary positioning. FontIcon peers are diagnostic only. A passing test credits C372's automated selection, identity, accessibility and geometry contracts. Full-header compositor crops and `acceptance.json` leave actual Sidebar glyph presence/Horizontal absence pending independent sign-off under the separate C373 MANUAL item **Pinned tab glyphs render only in Sidebar**, which has no automated coverage mapping | 1 (deterministic ACP fixture, no model quota; explicit Dev, exact-source `ITE2E_EXPECTED_APP_SHA256` / `ITE2E_EXPECTED_WTA_SHA256`, inactive package and interactive desktop required) |
-| `Feature.CombinedAgentsSidebar.Tests.ps1` | Superseding PM/UX #1070: actual header/search/options tooltips, preserved shared search, one mixed ItemsList, native collapse/property events/Content view, focused-history fallback, physical mixed-boundary keyboard and actual short-window resize; real append/title replacement/removal reconciles exact live identities without refreshing history. Existing metadata/provider/identity/retention/ownership/restore/resume oracles remain. C382/C383 are retired. Exact Dev hashes and inactive package required; approved native fixture SIDs only, no provider quota. Authored, not live accepted | 20 |
-| `Feature.AgentsModeActions.Tests.ps1` | PR #1070: mode-specific plus creates a fresh interactive delegate, native provider metadata precedes barrier-held session-start hooks for legitimate pinned Copilot and conversation-free custom launches, same-provider splitting preserves the target project and original agent, ordinary Tabs controls remain unchanged, and unidentified/custom-unsupported splits fail visibly; test-owned native CLI fixtures, exact Dev hashes, no provider prompts | 7 |
+| `Feature.CombinedAgentsSidebar.Tests.ps1` | Updated Sidebar UX: static Tabs text; standard independent Agents only/Recent agent sessions toggles; four rendered scope combinations; global search; clear/close and collapse-preference restoration; toggle-during-search; UIA checked states and foreground-gated Ctrl+Shift+G/R. Only visible owned ItemsList descendants count. Existing native CLI resume (Recent preference On/Off), live/group actions, metadata, identity, retention, ownership, scroll, expansion events, focus, mutations and resize protections remain. C367/C381/C397/C408 retain their IDs; C382/C383 remain retired. Explicit feature-head Dev hashes and inactive package required; deterministic ACP history/provider-labelled cmd tabs, no model quota. Fresh hash-backed settings/state/runtime snapshots restore only after package inactivity. Authored, not live accepted | 32 |
+| `Feature.AgentsModeActions.Tests.ps1` | Original plus opens the configured default profile across filters, search and layout; splits retain the source profile without view-specific delegation, assistant panes stay fixed, and explicit native-provider fixtures retain held-hook identity; exact Dev hashes, no provider prompts | 7 |
 | `Feature.SidebarRelativeTime.Tests.ps1` | PR #1070: six-unit English/Arabic compact ages, readable RTL geometry, and provider accessibility; deterministic history fixture | 2 |
 | `Feature.SidebarUpgrade.Tests.ps1` | Superseding PM/UX: persisted once-only Horizontal migration and later explicit Horizontal restart, independently pending introduction, absent flags/fresh FRE gate, real palette collapse deferral, exact-shell owned second-window suppression, actual rendered tip/restart suppression; real state.json sharing fault, visible warning, Horizontal memory/disk rollback and released-lock retry. No ACL/registry changes, provider quota or callback fault proxies; exact Dev hashes and inactive package required | 6 (authored, not live accepted) |
 | `Feature.SidebarProviderAppearance.Tests.ps1` | PR #1070: horizontal-first provider creation, native identity/layout preservation, and scoped Light/Dark header evidence; rendered foreground requires independent visual review | 2 |
@@ -100,6 +100,40 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.AgentPaneMove.Tests.ps1` | PR #429: `/move` stays per-tab, preserves global position, and restores agent input focus | 1 |
 
 **Coverage and results are tracked by stable checklist IDs and generated release reports.**
+The updated combined-sidebar scope/search cases reuse that suite's owned Dev
+startup, deterministic history fixture, native resume fixtures and teardown.
+The related action, session-refresh, delegated-identity, provider-appearance,
+relative-time and opt-in telemetry suites now select scope through the same
+standard checked menu items rather than invoking the retired heading. Upgrade
+tests observe the static heading for rail visibility. Legacy History hotkey
+coverage retains the horizontal agent-pane path; in Sidebar it toggles Recent
+without moving source input focus or undoing a prior rail expansion. Menu
+dismissal returns to Filter, while active shared-search identity/query remain
+intact. Their existing ownership, action, deduplication and persistence oracles
+are unchanged.
+Its 300-second bound applies to the new scope/search context, not the longer
+native-action regression suite. Nonlive discovery and synthetic report checks
+are not package acceptance.
+
+SearchTextBox assertions use `Get-UiValue -ValuePattern` to read the real UIA
+value, including empty text. The default display-text helper retains winapp's
+Name fallback and is not an exact-empty query oracle.
+After the build owner proves the deployed
+feature-head App/WTA hashes, run with explicit Dev and prerequisite validation:
+
+```powershell
+$env:ITE2E_PACKAGE = 'Dev'
+pwsh -NoProfile -File test\e2e\bootstrap.ps1 -Check
+& .\test\e2e\Invoke-ItE2EReport.ps1 `
+    -Path @('test\e2e\tests\Feature.CombinedAgentsSidebar.Tests.ps1', 'test\e2e\tests\Feature.SidebarTabKeyboard.Tests.ps1') `
+    -UpdateReport
+```
+
+For a focused Pester run, use `Filter.FullName` selectors
+`*Independent scope filters and global search*` and
+`*History Enter resumes an unbound native session*`. The report driver does not
+accept `-FullNameFilter`; use its whole-suite `-Path` option for release results.
+
 Ordinary revised Sidebar fixtures explicitly pass `-State @{
 sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true }`
 to `Start-Terminal`. This is opt-in, applied only after the existing owned
