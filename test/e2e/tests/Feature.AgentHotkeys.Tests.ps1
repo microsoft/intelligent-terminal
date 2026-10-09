@@ -18,7 +18,9 @@ BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Na
 Describe 'Feature §2/§5 agent hotkeys + delegation palette (window-level accelerators)' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; delegateAgent = 'copilot' }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{
+            sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+        } -Settings @{ acpAgent = 'copilot'; delegateAgent = 'copilot' }
         # VK codes: Ctrl+Shift+. = 0xBE (OEM_PERIOD); Alt+Shift+B = 0x42; Alt+Shift+/ = 0xBF (OEM_2).
         $script:TogglePaneHotkey = { Send-WtWindowKey -App $script:app -Vk 0xBE -Ctrl -Shift | Out-Null }
         $script:OpenDelegatePalette = { Send-WtWindowKey -App $script:app -Vk 0xBF -Alt -Shift | Out-Null }
@@ -132,13 +134,60 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             param($App)
             Send-WtWindowKey -App $App -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
         }
+        $script:HistoryVisible = {
+            param($App)
+            $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$App.Hwnd))
+            if ($window.Current.ProcessId -ne $App.Pid) { throw 'History window changed ownership.' }
+            $history = $window.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, 'HistoryHeaderButton'))
+            $history -and -not $history.Current.IsOffscreen -and
+                $history.Current.BoundingRectangle.Width -gt 0 -and $history.Current.BoundingRectangle.Height -gt 0
+        }
+        $script:AgentsViewShown = {
+            param($App)
+            $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$App.Hwnd))
+            if ($window.Current.ProcessId -ne $App.Pid) { throw 'Agents view window changed ownership.' }
+            $history = $window.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, 'HistoryHeaderButton'))
+            $header = $window.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, 'VerticalTabsHeader'))
+            $history -and -not $history.Current.IsOffscreen -and
+                $history.Current.BoundingRectangle.Width -gt 0 -and $history.Current.BoundingRectangle.Height -gt 0 -and
+                $header -and -not $header.Current.IsOffscreen -and $header.Current.Name -eq 'Agents'
+        }
+        $script:AssertSearchOff = {
+            param($App)
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$App.Hwnd))
+            $condition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'SearchTabsButton')
+            $button = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+            $button | Should -Not -BeNullOrEmpty
+            $toggle = $button.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+            $toggle.Current.ToggleState | Should -Be ([Windows.Automation.ToggleState]::Off)
+            $condition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'SearchTextBox')
+            $search = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+            [bool]($search -and -not $search.Current.IsOffscreen -and
+                $search.Current.BoundingRectangle.Height -gt 0) | Should -BeFalse
+        }
+        $script:OpenSharedSearch = {
+            param($App)
+            $search = Get-UiElement -App $App -Selector SearchTextBox
+            if (-not $search -or $search.isOffscreen -or $search.height -le 0) {
+                Invoke-UiClick -App $App -Selector SearchTabsButton | Out-Null
+            }
+        }
         $script:HistorySearchFocused = {
             param($App)
             $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$App.Hwnd))
             $condition = [Windows.Automation.PropertyCondition]::new(
-                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'HistorySearchTextBox')
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'SearchTextBox')
             $search = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
-            $search -and -not $search.Current.IsOffscreen -and $search.Current.HasKeyboardFocus
+            $historyCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'HistoryHeaderButton')
+            $history = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $historyCondition)
+            $history -and -not $history.Current.IsOffscreen -and
+                $search -and -not $search.Current.IsOffscreen -and $search.Current.HasKeyboardFocus
         }
         $script:TabSearchFocused = {
             param($App)
@@ -146,11 +195,21 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $condition = [Windows.Automation.PropertyCondition]::new(
                 [Windows.Automation.AutomationElement]::AutomationIdProperty, 'SearchTextBox')
             $search = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
-            $search -and -not $search.Current.IsOffscreen -and $search.Current.HasKeyboardFocus
+            $historyCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'HistoryHeaderButton')
+            $history = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $historyCondition)
+            (-not $history -or $history.Current.IsOffscreen) -and
+                $search -and -not $search.Current.IsOffscreen -and $search.Current.HasKeyboardFocus
         }
         $script:StartLayoutApp = {
             param([ValidateSet('horizontal', 'vertical')][string]$Layout)
-            Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            $target = Resolve-ItApp -Package (Get-ItTestPackage)
+            if (@(Get-WtProcessesForApp -App $target -IncludePackageExecutables).Count) {
+                throw 'Refusing to replace an existing selected-package window for layout hotkey tests.'
+            }
+            Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{
+                sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+            } -Settings @{
                 language = 'en-US'
                 tabLayout = $Layout
                 actions = @()
@@ -197,44 +256,53 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 return
             }
             Wait-UiElement -App $vertical -Selector 'SearchTabsButton' | Out-Null
-            Test-UiElementExists -App $vertical -Selector 'HistorySearchTextBox' -TimeoutSec 1 |
+            $terminal = Wait-Until -TimeoutSec 8 -Because 'the vertical window has its actual shell and header before the physical accelerator' -Condition {
+                $pane = Get-ActivePane -App $vertical
+                if ($pane -and $pane.session_id -and $pane.window_id -eq $vertical.WindowId -and
+                    (Get-WtSetting -App $vertical -Key tabLayout) -eq 'vertical') { $pane }
+            }
+            Set-WtPaneFocus -App $vertical -SessionId $terminal.session_id
+            Wait-UiElement -App $vertical -Selector VerticalTabsHeaderButton | Out-Null
+            & $script:AssertSearchOff $vertical
+            (& $script:HistoryVisible $vertical) |
                 Should -BeFalse -Because 'Sidebar History must start closed'
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'history-vertical-before.png') | Out-Null
             & $script:OpenAgentHistoryHotkey $vertical
             $historyOpened = Test-Until -TimeoutSec 8 -IntervalSec 0.5 -Condition {
-                $history = Get-UiElement -App $vertical -Selector 'HistorySearchTextBox'
-                $history -and -not $history.isOffscreen -and $history.width -gt 0 -and $history.height -gt 0
+                & $script:AgentsViewShown $vertical
             }
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'history-vertical-after.png') | Out-Null
             $historyOpened | Should -BeTrue -Because 'Ctrl+Shift+/ must open Sidebar History, not the agent-pane sessions view, in vertical layout'
             Test-AgentPaneOpen -App $vertical | Should -BeFalse -Because 'opening Sidebar History must not also open the WTA agent pane'
-            (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) |
-                Should -BeTrue -Because 'the history accelerator must focus the sidebar search box'
+            & $script:AssertSearchOff $vertical
 
             & $script:OpenAgentHistoryHotkey $vertical
             $historyHidden = Test-Until -TimeoutSec 8 -Condition {
-                $history = Get-UiElement -App $vertical -Selector 'HistorySearchTextBox'
-                -not ($history -and -not $history.isOffscreen -and $history.width -gt 0 -and $history.height -gt 0)
+                -not (& $script:HistoryVisible $vertical)
             }
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'history-vertical-hidden.png') | Out-Null
-            $historyHidden | Should -BeTrue -Because 'a second Ctrl+Shift+/ must hide Sidebar History while search owns focus'
+            $historyHidden | Should -BeTrue -Because 'a second Ctrl+Shift+/ must hide Sidebar History without activating search'
+            & $script:AssertSearchOff $vertical
             $tabs = Get-UiElement -App $vertical -Selector 'SearchTabsButton'
             ($tabs -and -not $tabs.isOffscreen -and $tabs.width -gt 0) |
                 Should -BeTrue -Because 'closing history must restore the normal expanded sidebar'
             & $script:OpenAgentHistoryHotkey $vertical
-            (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) |
-                Should -BeTrue -Because 'history must reopen and focus search after being toggled closed'
+            (Test-Until -TimeoutSec 5 -Condition { & $script:AgentsViewShown $vertical }) |
+                Should -BeTrue -Because 'history must reopen without implicitly activating search'
+            & $script:AssertSearchOff $vertical
+            & $script:OpenSharedSearch $vertical
+            (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
 
             & $script:ToggleSidebarHotkey $vertical
             Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
-            $hiddenHistory = Get-UiElement -App $vertical -Selector 'HistorySearchTextBox'
-            ($hiddenHistory -and -not $hiddenHistory.isOffscreen -and $hiddenHistory.width -gt 0) |
+            (& $script:HistoryVisible $vertical) |
                 Should -BeFalse -Because 'collapsing the sidebar must close its history view'
 
             & $script:OpenAgentHistoryHotkey $vertical
-            $reopened = Test-Until -TimeoutSec 8 -Condition { & $script:HistorySearchFocused $vertical }
+            $reopened = Test-Until -TimeoutSec 8 -Condition { & $script:AgentsViewShown $vertical }
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'history-from-collapsed-sidebar.png') | Out-Null
-            $reopened | Should -BeTrue -Because 'the history accelerator must expand a collapsed sidebar and restore history search focus'
+            $reopened | Should -BeTrue -Because 'the history accelerator must expand a collapsed sidebar without activating search'
+            & $script:AssertSearchOff $vertical
 
             $historyTerminal = Get-ActivePane -App $vertical
             Set-WtPaneFocus -App $vertical -SessionId ([string]$historyTerminal.session_id)
@@ -242,14 +310,14 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
             (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) |
                 Should -BeTrue -Because 'from focus outside History, the sidebar hotkey must enter tab search instead of collapsing the rail'
-            $hiddenHistory = Get-UiElement -App $vertical -Selector 'HistorySearchTextBox'
-            ($hiddenHistory -and -not $hiddenHistory.isOffscreen -and $hiddenHistory.width -gt 0) |
+            (& $script:HistoryVisible $vertical) |
                 Should -BeFalse -Because 'entering tab search must dismiss History without restoring its old focus'
             & $script:ToggleSidebarHotkey $vertical
             Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
 
             & $script:OpenAgentHistoryHotkey $vertical
-            (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
+            (Test-Until -TimeoutSec 5 -Condition { & $script:AgentsViewShown $vertical }) | Should -BeTrue
+            & $script:AssertSearchOff $vertical
             & $script:OpenAgentHistoryHotkey $vertical
             Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
             Invoke-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
@@ -326,14 +394,73 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                         Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
                     }
                     foreach ($closeWithButton in @($false, $true)) {
+                        Set-WtWindowForeground -App $vertical | Should -BeTrue
+                        $originFocus.SetFocus()
+                        Wait-Until -TimeoutSec 5 -Because 'the exact intended input owns focus after applying sidebar state' -Condition {
+                            $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                            $focused -and $focused.Current.HasKeyboardFocus -and
+                                [Windows.Automation.Automation]::Compare($originFocus, $focused)
+                        } | Out-Null
+                        $entryFocused = [Windows.Automation.AutomationElement]::FocusedElement
+                        $entryPhase = "entry-$($origin.Name)-collapsed-$initiallyCollapsed-button-$closeWithButton"
+                        @{
+                            at = [DateTimeOffset]::UtcNow.ToString('o'); phase = $entryPhase
+                            requested_source_pane_id = $origin.Id
+                            active_pane = Get-ActivePane -App $vertical
+                            actual_focus = if ($entryFocused) { @{
+                                automation_id = $entryFocused.Current.AutomationId; class = $entryFocused.Current.ClassName
+                                name = $entryFocused.Current.Name; process_id = $entryFocused.Current.ProcessId
+                            } }
+                            matches_original_source = [bool]$entryFocused -and
+                                [Windows.Automation.Automation]::Compare($originFocus, $entryFocused)
+                            shell_ids = @($terminal.session_id, $split.session_id)
+                            helper_pane_id = $agent.PaneSessionId; helper_pid = $agent.HelperProcessId
+                            fixture_acp_session_id = $agent.AcpSessionId
+                        } | ConvertTo-Json -Depth 8 |
+                            Set-Content -LiteralPath (Join-Path $script:evidenceDir "$entryPhase.json")
+                        [Windows.Automation.Automation]::Compare($originFocus, $entryFocused) |
+                            Should -BeTrue -Because 'the entry source must be the exact requested Agent or shell control'
                         & $script:OpenAgentHistoryHotkey $vertical
-                        (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
-                        if ($closeWithButton) { Invoke-UiElement -App $vertical -Selector HistoryCloseButton | Out-Null }
+                        (Test-Until -TimeoutSec 5 -Condition { & $script:AgentsViewShown $vertical }) | Should -BeTrue
+                        & $script:AssertSearchOff $vertical
+                        (Test-Until -TimeoutSec 5 -Condition $focusRestored) |
+                            Should -BeTrue -Because 'passive Agents navigation must leave the exact source input focused'
+                        if ($closeWithButton) { Invoke-UiElement -App $vertical -Selector VerticalTabsHeaderButton | Out-Null }
                         else { & $script:OpenAgentHistoryHotkey $vertical }
                         $expectedLabel = if ($initiallyCollapsed) { 'Expand sidebar' } else { 'Collapse sidebar' }
                         Wait-UiElement -App $vertical -Selector $expectedLabel | Out-Null
-                        (Test-Until -TimeoutSec 5 -Condition $focusRestored) |
-                            Should -BeTrue -Because "closing history must restore the exact $($origin.Name) input and original sidebar state"
+                        $restored = Test-Until -TimeoutSec 5 -Condition $focusRestored
+                        $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                        $phase = "restore-$($origin.Name)-collapsed-$initiallyCollapsed-button-$closeWithButton"
+                        @{
+                            at = [DateTimeOffset]::UtcNow.ToString('o'); phase = $phase; restored = $restored
+                            source_pane_id = $origin.Id; active_pane = Get-ActivePane -App $vertical
+                            helpers = @(Get-AgentPaneSessions -App $vertical)
+                            expected_focus = @{
+                                automation_id = $originFocus.Current.AutomationId; class = $originFocus.Current.ClassName
+                                name = $originFocus.Current.Name; process_id = $originFocus.Current.ProcessId
+                            }
+                            actual_focus = if ($focused) { @{
+                                automation_id = $focused.Current.AutomationId; class = $focused.Current.ClassName
+                                name = $focused.Current.Name; process_id = $focused.Current.ProcessId
+                            } }
+                            search_focus = & $script:TabSearchFocused $vertical
+                            agents_search_focus = & $script:HistorySearchFocused $vertical
+                            sidebar_state = $expectedLabel
+                            shell_ids = @($terminal.session_id, $split.session_id)
+                            fixture_acp_session_id = $agent.AcpSessionId; fixture_marker = $turn
+                        } | ConvertTo-Json -Depth 8 |
+                            Set-Content -LiteralPath (Join-Path $script:evidenceDir "$phase.json")
+                        if (-not $restored) {
+                            Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir "$phase.png") | Out-Null
+                            Get-UiTree -App $vertical -Depth 4 |
+                                Set-Content -LiteralPath (Join-Path $script:evidenceDir "$phase.tree.txt")
+                        }
+                        Get-ItLogText -App $vertical -Name 'terminal-agent-pane.log' -SinceStart |
+                            Select-String -Pattern 'sidebar.*history|history.*source|history.*restor|sourcepane|source pane' |
+                            ForEach-Object Line |
+                            Set-Content -LiteralPath (Join-Path $script:evidenceDir "$phase.binding.log")
+                        $restored | Should -BeTrue -Because "closing history must restore the exact $($origin.Name) input and original sidebar state"
                         & $verifyPreservation
                     }
                     if ($initiallyCollapsed) {
@@ -351,6 +478,9 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 (Test-Until -TimeoutSec 5 -Condition $focusRestored) |
                     Should -BeTrue -Because 'the source input must own focus before invoking the History hotkey'
                 & $script:OpenAgentHistoryHotkey $vertical
+                (Test-Until -TimeoutSec 5 -Condition { & $script:AgentsViewShown $vertical }) | Should -BeTrue
+                & $script:AssertSearchOff $vertical
+                & $script:OpenSharedSearch $vertical
                 (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
                 & $script:ToggleSidebarHotkey $vertical
                 Wait-UiElement -App $vertical -Selector 'Expand sidebar' | Out-Null
@@ -390,7 +520,8 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $boundSession = $agent.AcpSessionId
             Invoke-WtCli -App $vertical -Arguments @('focus-pane', '-t', $agent.PaneSessionId) | Out-Null
             & $script:OpenAgentHistoryHotkey $vertical
-            (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
+            (Test-Until -TimeoutSec 5 -Condition { & $script:AgentsViewShown $vertical }) | Should -BeTrue
+            & $script:AssertSearchOff $vertical
             Send-WtWindowKey -App $vertical -Vk 0xBE -Ctrl -Shift -RequireForeground | Out-Null
             (Test-Until -TimeoutSec 5 -Condition { -not (Test-AgentPaneOpen -App $vertical) }) | Should -BeTrue
             & $script:OpenAgentHistoryHotkey $vertical
@@ -408,7 +539,8 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
 
             Set-WtPaneFocus -App $vertical -SessionId $split.session_id
             & $script:OpenAgentHistoryHotkey $vertical
-            (Test-Until -TimeoutSec 5 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
+            (Test-Until -TimeoutSec 5 -Condition { & $script:AgentsViewShown $vertical }) | Should -BeTrue
+            & $script:AssertSearchOff $vertical
             Close-WtPane -App $vertical -SessionId $split.session_id
             & $script:OpenAgentHistoryHotkey $vertical
             (Test-Until -TimeoutSec 5 -Condition {
@@ -503,13 +635,20 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             $query = "history-focus-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
             Set-UiValue -App $vertical -Selector SearchTextBox -Value $query | Out-Null
             (Test-Until -TimeoutSec 5 -Condition { & $script:TabSearchFocused $vertical }) | Should -BeTrue
+            $searchFocus = [Windows.Automation.AutomationElement]::FocusedElement
+            $searchFocus.Current.AutomationId | Should -Be 'SearchTextBox'
 
             & $script:OpenAgentHistoryHotkey $vertical
             (Test-Until -TimeoutSec 6 -Condition { & $script:HistorySearchFocused $vertical }) |
                 Should -BeTrue -Because 'History must take focus from tab search'
+            (Get-UiValue -App $vertical -Selector SearchTextBox) | Should -Be $query
             & $script:OpenAgentHistoryHotkey $vertical
             (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
                 Should -BeTrue -Because 'closing History by hotkey must return focus to the prior tab search'
+            [Windows.Automation.Automation]::Compare(
+                $searchFocus, [Windows.Automation.AutomationElement]::FocusedElement) |
+                Should -BeTrue -Because 'the exact explicitly opened search control must regain focus'
+            (Get-UiValue -App $vertical -Selector SearchTextBox) | Should -Be $query
             Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
             (Get-WtCapture -App $vertical -SessionId $pane.session_id -MaxLines 30).TrimEnd() |
                 Should -Match ([regex]::Escape($draft) + '$')
@@ -517,9 +656,13 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
 
             & $script:OpenAgentHistoryHotkey $vertical
             (Test-Until -TimeoutSec 6 -Condition { & $script:HistorySearchFocused $vertical }) | Should -BeTrue
-            Invoke-UiElement -App $vertical -Selector HistoryCloseButton | Out-Null
+            Invoke-UiElement -App $vertical -Selector VerticalTabsHeaderButton | Out-Null
             (Test-Until -TimeoutSec 6 -Condition { & $script:TabSearchFocused $vertical }) |
                 Should -BeTrue -Because 'closing History by button must also return to tab search'
+            [Windows.Automation.Automation]::Compare(
+                $searchFocus, [Windows.Automation.AutomationElement]::FocusedElement) |
+                Should -BeTrue -Because 'header navigation must retain the exact shared search control'
+            (Get-UiValue -App $vertical -Selector SearchTextBox) | Should -Be $query
         }
         finally {
             if ($vertical) { Stop-Terminal -App $vertical }

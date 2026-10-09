@@ -42,6 +42,7 @@
     'Custom delegate errors are clear'  = 'Custom delegate errors are clear'
 
     # §1 settings
+    'Settings follows UI direction'     = '^Feature Settings editor language direction\.Settings follows UI direction: complete matrix$'
     'Model control appears'             = 'Model control / model changes apply'
     'Model changes apply'               = 'Model control / model changes apply'
     # PR #481 profile-scoped WSL backend runtime. The profile picker UI is deliberately

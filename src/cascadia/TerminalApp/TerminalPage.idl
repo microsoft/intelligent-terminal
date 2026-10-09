@@ -3,6 +3,7 @@
 import "TaskbarState.idl";
 import "Remoting.idl";
 import "Tab.idl";
+import "IPaneContent.idl";
 // Microsoft.Terminal.Protocol types are available via project reference (.winmd)
 
 namespace TerminalApp
@@ -34,6 +35,7 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<ContentManager, Object> KeptSessionsChanged;
         event Windows.Foundation.TypedEventHandler<ContentManager, String> DetachedSessionEvent;
         void DiscardAllKeptGroups();
+        Windows.Foundation.Collections.IVectorView<IPaneContent> KeptPanes();
     }
 
     [default_interface] runtimeclass RenameWindowRequestedArgs
@@ -256,5 +258,6 @@ namespace TerminalApp
         void SetTabKeepRunning(Guid tabId, Boolean enabled);
         Boolean RestoreKeptGroup(Guid groupId);
         void ShutdownPanes();
+        Windows.Foundation.IAsyncOperation<Boolean> GetProtocolPaneIsBackground(Guid paneSessionId);
     }
 }

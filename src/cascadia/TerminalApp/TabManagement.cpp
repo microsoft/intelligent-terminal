@@ -10,6 +10,7 @@
 
 #include "pch.h"
 #include "TerminalPage.h"
+#include "ContentManager.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentPaneRestore.h"
 #include "Utils.h"
@@ -23,6 +24,7 @@
 #include "ShellIntegrationSweep.h"
 #include "SharedWta.h"
 #include "TabRowControl.h"
+#include "AgentIconUtils.h"
 #include "TabStrip.h"
 #include "DebugTapConnection.h"
 #include "DesktopNotification.h"
@@ -63,21 +65,22 @@ namespace winrt::TerminalApp::implementation
     {
         if (control)
         {
+            const auto providerId = winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId());
             if (const auto agentInfo = _RichTabAgentInfoForControl(control);
                 agentInfo &&
+                !agentInfo->providerId.empty() &&
                 (agentInfo->status == "Idle" ||
                  agentInfo->status == "Working" ||
                  agentInfo->status == "Attention" ||
                  agentInfo->status == "Error"))
             {
-                const auto providerId = winrt::to_hstring(agentInfo->providerId);
-                for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents)
-                {
-                    if (::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(agent.id, providerId))
-                    {
-                        return winrt::hstring{ L"ms-appx:///AgentIcons/" } + winrt::hstring{ agent.id } + L".svg";
-                    }
-                }
+                return _IsBuiltinAgentProviderId(agentInfo->providerId) ?
+                           ::Microsoft::Terminal::UI::AgentIcons::IconPathForProvider(std::wstring_view{ winrt::to_hstring(agentInfo->providerId) }) :
+                           profileIcon;
+            }
+            if (!providerId.empty())
+            {
+                return ::Microsoft::Terminal::UI::AgentIcons::IconPathForProvider(std::wstring_view{ providerId });
             }
         }
         return profileIcon;
@@ -2200,6 +2203,27 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        if (tabStrip)
+        {
+            std::vector<implementation::TabStrip::RepresentedHistorySession> representedSessions;
+            for (const auto& tab : _tabs)
+            {
+                if (const auto impl = _GetTabImpl(tab); impl && impl->GetRootPane())
+                {
+                    impl->GetRootPane()->WalkTree([&](const auto& pane) {
+                        if (const auto binding = _paneAgentSessions.find(pane->GetSessionId());
+                            binding != _paneAgentSessions.end() && !binding->second.sessionId.empty())
+                        {
+                            representedSessions.push_back({ binding->second.sessionId,
+                                                            binding->second.agent,
+                                                            winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(pane->GetSessionId()) } });
+                        }
+                    });
+                }
+            }
+            tabStrip->SetRepresentedHistorySessions(std::move(representedSessions));
+        }
+
         if (updateBookkeeping)
         {
             _UpdateTabFilterStatus();
@@ -2363,7 +2387,8 @@ namespace winrt::TerminalApp::implementation
         return rootPane && rootPane->WalkTree([&](const auto& pane) {
             const auto sessionId = pane->GetSessionId();
             return sessionId != winrt::guid{} &&
-                   (_activeCliAgentPanes.contains(sessionId) ||
+                   (!winrt::get_self<ContentManager>(_manager)->NativeAgentProviderIdForPane(sessionId).empty() ||
+                    _activeCliAgentPanes.contains(sessionId) ||
                     _paneAgentSessions.contains(sessionId));
         });
     }
@@ -2371,6 +2396,7 @@ namespace winrt::TerminalApp::implementation
     bool TerminalPage::_MatchesPaneAgentScope(const Tab::VisiblePaneSnapshot& pane) const
     {
         return pane.IsAgentPane ||
+               !winrt::get_self<ContentManager>(_manager)->NativeAgentProviderIdForPane(pane.SessionId).empty() ||
                _IsKnownAgentCliTitle(std::wstring_view{ pane.Title }) ||
                (pane.SessionId != winrt::guid{} &&
                 (_activeCliAgentPanes.contains(pane.SessionId) ||

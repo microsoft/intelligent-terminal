@@ -161,6 +161,11 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--profile \"{}\" "), Profile());
         }
 
+        if (!NativeAgentProviderId().empty())
+        {
+            fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--native-agent-provider {} "), QuoteAndEscapeCommandlineArg(NativeAgentProviderId()));
+        }
+
         if (const auto id = SessionId(); id != winrt::guid{})
         {
             const auto idStr = ::Microsoft::Console::Utils::GuidToString(id);

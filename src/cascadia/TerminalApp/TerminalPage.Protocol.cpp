@@ -92,7 +92,7 @@ namespace winrt::TerminalApp::implementation
         return pane;
     }
 
-    static Protocol::PaneInfo _getProtocolPaneInfo(const std::shared_ptr<Pane>& pane)
+    static Protocol::PaneInfo _getProtocolPaneInfo(const std::shared_ptr<Pane>& pane, const TerminalApp::ContentManager& manager)
     {
         Protocol::PaneInfo info{};
         info.IsAgentPane = pane->IsAgentPane();
@@ -119,6 +119,7 @@ namespace winrt::TerminalApp::implementation
             info.Cwd = control.WorkingDirectory();
             info.Shell = control.ShellName();
             info.ShellVersion = control.ShellVersion();
+            info.NativeAgentProviderId = winrt::get_self<ContentManager>(manager)->NativeAgentProviderId(control.ContentId());
         }
         return info;
     }
@@ -168,7 +169,7 @@ namespace winrt::TerminalApp::implementation
         if (!effectivePane)
             co_return result;
 
-        result = _getProtocolPaneInfo(effectivePane);
+        result = _getProtocolPaneInfo(effectivePane, _manager);
         result.SessionId = _getSessionIdFromPane(effectivePane);
         result.TabId = focusedTabIdx.value();
         result.IsActive = true;
@@ -194,6 +195,13 @@ namespace winrt::TerminalApp::implementation
         result.LineCount = bounded.lineCount;
         result.Truncated = bounded.truncated;
         co_return result;
+    }
+
+    IAsyncOperation<bool> TerminalPage::GetProtocolPaneIsBackground(winrt::guid paneSessionId)
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+        co_return paneSessionId != winrt::guid{} && _manager.KeptGroupForPane(paneSessionId) != winrt::guid{};
     }
 
     IAsyncOperation<Protocol::PaneContext> TerminalPage::GetProtocolPaneContext(
@@ -267,7 +275,7 @@ namespace winrt::TerminalApp::implementation
             co_return result;
         }
 
-        auto paneInfo = _getProtocolPaneInfo(targetPane);
+        auto paneInfo = _getProtocolPaneInfo(targetPane, _manager);
         paneInfo.SessionId = sessionId;
         paneInfo.TabId = targetTabIndex;
 
@@ -409,7 +417,7 @@ namespace winrt::TerminalApp::implementation
                 if (sid == winrt::guid{})
                     return; // Skip non-terminal panes
 
-                auto info = _getProtocolPaneInfo(pane);
+                auto info = _getProtocolPaneInfo(pane, _manager);
                 info.SessionId = sid;
                 info.TabId = tabIdx;
                 info.IsActive = activeIsAgent

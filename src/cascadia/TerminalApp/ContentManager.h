@@ -39,6 +39,12 @@ namespace winrt::TerminalApp::implementation
                                                                       const Microsoft::Terminal::Control::IControlAppearance& unfocusedAppearance,
                                                                       const Microsoft::Terminal::TerminalConnection::ITerminalConnection& connection);
         Microsoft::Terminal::Control::ControlInteractivity TryLookupCore(uint64_t id);
+        Microsoft::Terminal::Control::ControlInteractivity CreateAgentCliCore(const Microsoft::Terminal::Control::IControlSettings& settings,
+                                                                              const Microsoft::Terminal::Control::IControlAppearance& unfocusedAppearance,
+                                                                              const Microsoft::Terminal::TerminalConnection::ITerminalConnection& connection,
+                                                                              const winrt::hstring& providerId);
+        winrt::hstring NativeAgentProviderId(uint64_t contentId) const;
+        winrt::hstring NativeAgentProviderIdForPane(const winrt::guid& paneId) const;
 
         void Detach(const Microsoft::Terminal::Control::TermControl& control);
 
@@ -57,13 +63,19 @@ namespace winrt::TerminalApp::implementation
         void CompleteKeptGroupReattach(const winrt::guid& groupId, bool committed);
         void DiscardKeptGroup(const winrt::guid& groupId);
         void DiscardAllKeptGroups();
+        winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::IPaneContent> KeptPanes();
 
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::hstring> DetachedSessionEvent;
 
     private:
-        std::mutex _mutex;
-        std::unordered_map<uint64_t, Microsoft::Terminal::Control::ControlInteractivity> _content;
+        mutable std::mutex _mutex;
+        struct TerminalContent
+        {
+            Microsoft::Terminal::Control::ControlInteractivity core;
+            winrt::hstring nativeAgentProviderId;
+        };
+        std::unordered_map<uint64_t, TerminalContent> _content;
 
         struct AgentBinding
         {

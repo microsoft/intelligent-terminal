@@ -458,10 +458,12 @@
     <value>Hľadať v kartách</value>
   </data>
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Filtrovať karty</value>
+    <value>Možnosti zobrazenia bočného panela</value>
+    <comment>Accessible name of the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Filtrovať karty</value>
+    <value>Možnosti zobrazenia bočného panela</value>
+    <comment>Tooltip for the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
     <value>Filter</value>
@@ -522,6 +524,10 @@
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Agenti</value>
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
+  </data>
+  <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
+    <value>Nedávne relácie</value>
+    <comment>Collapsible noun heading below open agent tabs in the Agents sidebar. Includes prior agent sessions, kept-running background tabs, sessions in other tracked windows, and external sessions not represented by the current window's open agent panes. This is not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agenti</value>
@@ -712,5 +718,63 @@
   <data name="PaneProgressStatusPaused" xml:space="preserve">
     <value>Pozastavené</value>
     <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
+  </data>
+  <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
+    <value>Hľadať aktívne a nedávne relácie agentov</value>
+    <comment>Shared search placeholder, tooltip, and accessible name in the Agents sidebar. Searches both open AI-agent tabs, including idle open sessions, and the Recent Sessions section. Active does not mean only currently working. Keep the separate Tabs view search labels unchanged.</comment>
+  </data>
+  <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
+    <value>{0} · iné okno</value>
+    <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
+  </data>
+  <data name="VerticalTabsHistoryRestoreBackgroundTab" xml:space="preserve">
+    <value>Obnoviť kartu na pozadí</value>
+    <comment>Action for a live agent session in a kept-running background tab. Restores the entire original tab, with all its panes, to the foreground. This does not resume a new conversation or focus another visible window.</comment>
+  </data>
+  <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
+    <value>Prepnúť do iného okna</value>
+    <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
+  </data>
+  <data name="TabColorChoose"><value>Zmeniť farbu karty</value></data>
+  <data name="RenameTabText"><value>Premenovať kartu</value></data>
+  <data name="DuplicateTabText"><value>Duplikovať kartu</value></data>
+  <data name="SplitTabText"><value>Rozdeliť kartu</value></data>
+  <data name="TabMoveSubMenu"><value>Presunúť kartu</value></data>
+  <data name="ExportTabText"><value>Exportovať text</value></data>
+  <data name="FindText"><value>Nájsť</value></data>
+  <data name="RestartConnectionText"><value>Reštartovať reláciu</value></data>
+  <data name="TabCloseSubMenu"><value>Zavrieť</value></data>
+  <data name="TabClose"><value>Zavrieť kartu</value></data>
+  <data name="MoveTabToNewWindowText"><value>Presunúť kartu do nového okna</value></data>
+  <data name="TabMoveLeft"><value>Presunúť doľava</value></data>
+  <data name="TabMoveRight"><value>Presunúť doprava</value></data>
+  <data name="TabMoveUp"><value>Presunúť nahor</value><comment>Command in a tab context menu that moves the selected tab earlier in a vertical tab list.</comment></data>
+  <data name="TabMoveDown"><value>Presunúť nadol</value><comment>Command in a tab context menu that moves the selected tab later in a vertical tab list.</comment></data>
+  <data name="TabCloseAfter"><value>Zavrieť karty napravo</value></data>
+  <data name="TabCloseOther"><value>Zavrieť ostatné karty</value></data>
+  <data name="ClosePaneText"><value>Zavrieť tablu</value></data>
+  <data name="VerticalTabsSwitchToAgents" xml:space="preserve">
+    <value>Prepnúť na Agentov</value>
+    <comment>Tooltip and accessible action name of the sidebar header button while Tabs is selected. One click switches to the Agents view; it does not open a menu. Agents means AI agents, not people.</comment>
+  </data>
+  <data name="VerticalTabsSwitchToTabs" xml:space="preserve">
+    <value>Prepnúť na Karty</value>
+    <comment>Tooltip and accessible action name of the sidebar header button while Agents is selected. One click switches to the Tabs view; it does not change between sidebar and horizontal tab layouts.</comment>
+  </data>
+  <data name="VerticalTabsExpandRecentSessions" xml:space="preserve">
+    <value>Rozbaliť nedávne relácie</value>
+    <comment>Tooltip for expanding the Recent Sessions section inside the Agents sidebar. Expansion shows its session rows without leaving Agents or resuming a session.</comment>
+  </data>
+  <data name="VerticalTabsCollapseRecentSessions" xml:space="preserve">
+    <value>Zbaliť nedávne relácie</value>
+    <comment>Tooltip for collapsing the Recent Sessions section inside the Agents sidebar. Collapse hides its rows without closing agents or deleting sessions.</comment>
+  </data>
+  <data name="SidebarIntroductionTitle" xml:space="preserve">
+    <value>Inteligentnejší spôsob správy kariet</value>
+    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+  </data>
+  <data name="SidebarIntroductionDescription" xml:space="preserve">
+    <value>Vaše karty a relácie agentov sú teraz na bočnom paneli. Pomocou tlačidla Možnosti zobrazenia bočného panela vyberte podrobnosti kariet. Kliknutím pravým tlačidlom na kartu sa vrátite k vodorovným kartám.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
   </data>
 </root>

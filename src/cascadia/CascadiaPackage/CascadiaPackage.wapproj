@@ -66,6 +66,9 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Resources -->
+    <Content Include="AgentIcons\Masks\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- This resw only defines things that are used in this package's AppxManifest,
          so it's not in the common resource items. -->
     <PRIResource Include="Resources\en-US\Resources.resw" />

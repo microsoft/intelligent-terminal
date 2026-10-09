@@ -51,6 +51,7 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(ParseBasicCommandlineIntoArgs);
         TEST_METHOD(ParseNewTabCommand);
+        TEST_METHOD(ParseNativeAgentProviderAcrossElevation);
         TEST_METHOD(ParseSplitPaneIntoArgs);
         TEST_METHOD(ParseComboCommandlineIntoArgs);
         TEST_METHOD(ParseFocusTabArgs);
@@ -74,6 +75,23 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestMultipleSplitPaneSizes);
 
     private:
+        void _NativeAgentProviderAcrossElevation()
+        {
+            for (const auto provider : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"custom:fixture with spaces" })
+            {
+                NewTerminalArgs original;
+                original.NativeAgentProviderId(provider);
+                const auto commandline = original.ToCommandline();
+                VERIFY_IS_TRUE(std::wstring_view{ commandline }.find(L"--native-agent-provider") != std::wstring_view::npos);
+                AppCommandlineArgs appArgs{};
+                std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"new-tab", L"--native-agent-provider", provider };
+                _buildCommandlinesHelper(appArgs, 1u, rawCommands);
+                const auto args = appArgs._startupActions.at(0).Args().as<NewTabArgs>().ContentArgs().as<NewTerminalArgs>();
+                VERIFY_ARE_EQUAL(original.NativeAgentProviderId(), args.NativeAgentProviderId());
+                VERIFY_IS_TRUE(args.Type().empty());
+            }
+        }
+
         void _buildCommandlinesHelper(AppCommandlineArgs& appArgs,
                                       const size_t expectedSubcommands,
                                       std::vector<const wchar_t*>& rawCommands)
@@ -116,6 +134,11 @@ namespace TerminalAppLocalTests
             Log::Comment(NoThrowString().Format(L"%s", buffer.c_str()));
         }
     };
+
+    void CommandlineTest::ParseNativeAgentProviderAcrossElevation()
+    {
+        _NativeAgentProviderAcrossElevation();
+    }
 
     void CommandlineTest::ParseSimpleCommandline()
     {

@@ -389,6 +389,13 @@
                          IsLightDismissEnabled="True"
                          Subtitle="{x:Bind WindowProperties.WindowNameForDisplay, Mode=OneWay}" />
 
+        <mux:TeachingTip x:Name="SidebarIntroductionTip"
+                         AutomationProperties.AutomationId="SidebarIntroductionTip"
+                         x:Load="False"
+                         Closed="_OnSidebarIntroductionClosed"
+                         IsLightDismissEnabled="True"
+                         PreferredPlacement="Right" />
+
         <mux:TeachingTip x:Name="WindowRenamer"
                          x:Uid="WindowRenamer"
                          Title="{x:Bind WindowProperties.WindowIdForDisplay}"

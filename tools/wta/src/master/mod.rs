@@ -624,6 +624,7 @@ struct MasterStateInner {
     history_refresh: Arc<Mutex<()>>,
     history_discovery_state: std::sync::atomic::AtomicU8,
     history_discovery_errors: Mutex<HashMap<AgentCmdKey, HistoryRefreshFailure>>,
+    history_discovery_retries: Mutex<HashMap<AgentCmdKey, HistoryRefreshState>>,
     history_status: watch::Sender<HistorySyncStatus>,
     history_status_gate: Mutex<()>,
     helper_roles: Mutex<HashMap<HelperId, HelperRole>>,
@@ -1896,6 +1897,18 @@ struct HistoryRefreshState {
     next_refresh_at: Option<tokio::time::Instant>,
     failures: u32,
     last_count: Option<usize>,
+}
+
+impl HistoryRefreshState {
+    fn record_failure(&mut self) -> std::time::Duration {
+        self.failures = self.failures.saturating_add(1).min(5);
+        std::time::Duration::from_secs((5u64 << (self.failures - 1)).min(60))
+    }
+
+    fn retry_due(&self) -> bool {
+        self.next_refresh_at
+            .is_none_or(|at| at <= tokio::time::Instant::now())
+    }
 }
 
 /// One spawned agent CLI subprocess and everything a helper needs to
@@ -4935,6 +4948,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         history_refresh: Arc::new(Mutex::new(())),
         history_discovery_state: std::sync::atomic::AtomicU8::new(0),
         history_discovery_errors: Mutex::new(HashMap::new()),
+        history_discovery_retries: Mutex::new(HashMap::new()),
         history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading.into())
             .0,
         history_status_gate: Mutex::new(()),
@@ -5609,6 +5623,7 @@ async fn get_or_spawn_agent(
     })
     .await?;
     state.history_discovery_errors.lock().await.remove(&key);
+    state.history_discovery_retries.lock().await.remove(&key);
     Ok(agent)
 }
 
@@ -7140,8 +7155,7 @@ async fn refresh_agent_history(
         refresh.failures = 0;
         HISTORY_REFRESH_INTERVAL
     } else {
-        refresh.failures = refresh.failures.saturating_add(1).min(5);
-        std::time::Duration::from_secs((5u64 << (refresh.failures - 1)).min(60))
+        refresh.record_failure()
     };
     refresh.next_refresh_at = Some(if result.is_ok() {
         started_at + delay
@@ -7238,6 +7252,7 @@ fn start_history_refresh_loop(state: &Arc<MasterStateInner>) {
         loop {
             ticks.tick().await;
             let Some(state) = weak.upgrade() else { break };
+            retry_failed_host_history_discovery(&state).await;
             let agents: Vec<_> = state
                 .agents
                 .lock()
@@ -7273,23 +7288,74 @@ fn host_history_agent_ids(
 }
 
 async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &[&str]) -> bool {
+    refresh_host_history_agents_for_trigger(state, agent_ids, HistoryRefreshTrigger::Immediate)
+        .await
+}
+
+async fn refresh_host_history_agents_for_trigger(
+    state: &Arc<MasterStateInner>,
+    agent_ids: &[&str],
+    trigger: HistoryRefreshTrigger,
+) -> bool {
+    refresh_host_history_agents_with(state, agent_ids, trigger, |command, agent_id| {
+        let state = Arc::clone(state);
+        async move {
+            get_or_spawn_agent(
+                &state,
+                &command,
+                Some(&agent_id),
+                &crate::agent_source::AgentSource::Host,
+                ProviderBinding::Native,
+                Vec::new(),
+            )
+            .await
+        }
+    })
+    .await
+}
+
+async fn refresh_host_history_agents_with<F, Fut>(
+    state: &Arc<MasterStateInner>,
+    agent_ids: &[&str],
+    trigger: HistoryRefreshTrigger,
+    initialize: F,
+) -> bool
+where
+    F: Fn(String, String) -> Fut,
+    Fut: std::future::Future<Output = Result<Arc<AgentCli>>>,
+{
+    let initialize = &initialize;
     let results = futures::future::join_all(agent_ids.iter().map(|&agent_id| async move {
         let command = crate::agent_registry::build_acp_command(agent_id, None);
-        let agent = match get_or_spawn_agent(
-            state,
+        let key = agent_cmd_key(
             &command,
             Some(agent_id),
             &crate::agent_source::AgentSource::Host,
-            ProviderBinding::Native,
-            Vec::new(),
-        )
-        .await
+        );
+        if !matches!(trigger, HistoryRefreshTrigger::Immediate)
+            && state
+                .history_discovery_retries
+                .lock()
+                .await
+                .get(&key)
+                .is_some_and(|retry| !retry.retry_due())
         {
+            state
+                .history_discovery_errors
+                .lock()
+                .await
+                .insert(key, HistoryRefreshFailure::Other);
+            return false;
+        }
+        let agent = match initialize(command, agent_id.to_string()).await {
             Ok(agent) => agent,
             Err(error) => {
-                state.history_discovery_errors.lock().await.insert(agent_cmd_key(
-                    &command, Some(agent_id), &crate::agent_source::AgentSource::Host,
-                ), HistoryRefreshFailure::Other);
+                let mut retries = state.history_discovery_retries.lock().await;
+                let retry = retries.entry(key.clone()).or_default();
+                let delay = retry.record_failure();
+                retry.next_refresh_at = Some(tokio::time::Instant::now() + delay);
+                drop(retries);
+                state.history_discovery_errors.lock().await.insert(key, HistoryRefreshFailure::Other);
                 tracing::warn!(
                     target: "master_history",
                     agent_id,
@@ -7299,12 +7365,13 @@ async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &
                 return false;
             }
         };
+        state.history_discovery_retries.lock().await.remove(&key);
         if agent.cached_init_resp.agent_capabilities.session_capabilities.list.is_none() {
             state.history_discovery_errors.lock().await.remove(&agent.cmd_key);
             tracing::debug!(target: "master_history", agent_id, "agent does not support session/list");
             return true;
         }
-        if seed_host_and_broadcast(state, &agent).await.is_none() {
+        if refresh_agent_history(state, &agent, trigger).await.is_none() {
             let failure = agent.history_refresh.failure.lock().await.unwrap_or(HistoryRefreshFailure::Other);
             state.history_discovery_errors.lock().await.insert(agent.cmd_key.clone(), failure);
             tracing::warn!(target: "master_history", agent_id, "could not load agent history");
@@ -7317,10 +7384,34 @@ async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &
 }
 
 fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
+    request_host_history_discovery(state, true);
+}
+
+async fn retry_failed_host_history_discovery(state: &Arc<MasterStateInner>) {
     use std::sync::atomic::Ordering;
-    // Bit 0 owns the single worker; bit 1 requests another pass. The worker's
+    if state.history_discovery_state.load(Ordering::Acquire) == 0
+        && state
+            .history_discovery_retries
+            .lock()
+            .await
+            .values()
+            .any(HistoryRefreshState::retry_due)
+    {
+        request_host_history_discovery(state, false);
+    }
+}
+
+fn request_host_history_discovery(state: &Arc<MasterStateInner>, immediate: bool) {
+    use std::sync::atomic::Ordering;
+    // Bit 0 owns the single worker; bit 1 requests another pass; bit 2 makes
+    // an explicit refresh bypass startup-failure backoff. The worker's
     // idle transition is atomic with respect to requests, even on COM threads.
-    if state.history_discovery_state.fetch_or(3, Ordering::AcqRel) & 1 != 0 {
+    if state
+        .history_discovery_state
+        .fetch_or(if immediate { 7 } else { 3 }, Ordering::AcqRel)
+        & 1
+        != 0
+    {
         return;
     }
     let guard = Arc::clone(&state.history_refresh).try_lock_owned().ok();
@@ -7332,9 +7423,10 @@ fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
             None => Arc::clone(&state.history_refresh).lock_owned().await,
         };
         loop {
-            state
+            let pending = state
                 .history_discovery_state
-                .fetch_and(!2, Ordering::AcqRel);
+                .fetch_and(!6, Ordering::AcqRel);
+            let immediate = pending & 4 != 0;
             state.history_discovery_errors.lock().await.clear();
             let allowed_ids = state.allowed_agent_ids.clone();
             let discovery = tokio::task::spawn_blocking(move || {
@@ -7347,7 +7439,31 @@ fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
             .await;
             match discovery {
                 Ok(agent_ids) => {
-                    refresh_host_history_agents(&state, &agent_ids).await;
+                    let eligible_keys: HashSet<_> = agent_ids
+                        .iter()
+                        .map(|id| {
+                            agent_cmd_key(
+                                &crate::agent_registry::build_acp_command(id, None),
+                                Some(id),
+                                &crate::agent_source::AgentSource::Host,
+                            )
+                        })
+                        .collect();
+                    state
+                        .history_discovery_retries
+                        .lock()
+                        .await
+                        .retain(|key, _| eligible_keys.contains(key));
+                    if immediate {
+                        refresh_host_history_agents(&state, &agent_ids).await;
+                    } else {
+                        refresh_host_history_agents_for_trigger(
+                            &state,
+                            &agent_ids,
+                            HistoryRefreshTrigger::Periodic,
+                        )
+                        .await;
+                    }
                 }
                 Err(error) => {
                     state
@@ -7426,7 +7542,94 @@ async fn handle_sessions_list(
     // its newly published Ready status.
     let history_status = *state.history_status.borrow();
     let mut sessions = state.registry.snapshot().await;
+    for row in &mut sessions {
+        row.owner_window_id = None;
+        row.background_tab = None;
+    }
 
+    // Enrich only the response copy; pane/window attribution is not registry state.
+    if let Some(wt) = state.wt.as_ref() {
+        use crate::agent_sessions::AgentStatus;
+        use futures::{stream, StreamExt};
+        let panes: std::collections::HashSet<uuid::Uuid> = sessions
+            .iter()
+            .filter(|row| {
+                matches!(
+                    row.status,
+                    Some(
+                        AgentStatus::Idle
+                            | AgentStatus::Working
+                            | AgentStatus::Attention
+                            | AgentStatus::Error
+                    )
+                )
+            })
+            .filter_map(|row| row.pane_session_id.as_deref())
+            .filter_map(|pane| uuid::Uuid::parse_str(pane).ok())
+            .filter(|pane| !pane.is_nil())
+            .collect();
+        let mut requests = stream::iter(panes)
+            .map(|pane| async move {
+                let result = wt
+                    .request(
+                        "get_pane_context",
+                        serde_json::json!({
+                            "session_id": pane.to_string(), "max_lines": 0, "max_chars": 0
+                        }),
+                    )
+                    .await;
+                (pane, result)
+            })
+            .buffer_unordered(8);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut owners = std::collections::HashMap::new();
+        loop {
+            match tokio::time::timeout_at(deadline, requests.next()).await {
+                Ok(Some((pane, Ok(context)))) => {
+                    if let Some(window_id) = pane_context_owner_window(pane, &context) {
+                        owners.insert(
+                            pane,
+                            (window_id, pane_context_background_tab(pane, &context)),
+                        );
+                    } else {
+                        tracing::warn!(target: "master_history", %pane, "pane ownership context invalid; retaining unattributed status");
+                    }
+                }
+                Ok(Some((pane, Err(error)))) => {
+                    tracing::debug!(target: "master_history", %pane, %error, "pane ownership unavailable; retaining unattributed status");
+                }
+                Ok(None) => break,
+                Err(_) => {
+                    tracing::warn!(target: "master_history", "pane ownership snapshot timed out; retaining unresolved statuses");
+                    break;
+                }
+            }
+        }
+        for row in &mut sessions {
+            if !matches!(
+                row.status,
+                Some(
+                    AgentStatus::Idle
+                        | AgentStatus::Working
+                        | AgentStatus::Attention
+                        | AgentStatus::Error
+                )
+            ) {
+                continue;
+            }
+            if let Some((window_id, background_tab)) = row
+                .pane_session_id
+                .as_deref()
+                .and_then(|pane| uuid::Uuid::parse_str(pane).ok())
+                .and_then(|pane| owners.get(&pane).copied())
+            {
+                row.owner_window_id = Some(window_id);
+                row.background_tab = background_tab;
+            }
+        }
+    }
+
+    crate::session_watcher::copilot_status::enrich_snapshot(&mut sessions).await;
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
     let raw = crate::session_registry::build_sessions_list_response(
         sessions,
@@ -7434,6 +7637,57 @@ async fn handle_sessions_list(
         history_status.error_kind,
     );
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+}
+
+fn pane_context_owner_window(pane: uuid::Uuid, context: &serde_json::Value) -> Option<u64> {
+    let pane_context = context.get("pane")?.as_object()?;
+    let returned_pane = uuid::Uuid::parse_str(pane_context.get("session_id")?.as_str()?).ok()?;
+    if pane.is_nil() || returned_pane != pane {
+        return None;
+    }
+    pane_context
+        .get("window_id")?
+        .as_u64()
+        .filter(|window| *window != 0)
+}
+
+fn pane_context_background_tab(pane: uuid::Uuid, context: &serde_json::Value) -> Option<bool> {
+    pane_context_owner_window(pane, context)?;
+    context.get("pane")?.get("is_background_tab")?.as_bool()
+}
+
+#[cfg(test)]
+mod history_background_tests {
+    use super::pane_context_background_tab;
+
+    #[test]
+    fn membership_requires_bound_context_and_typed_boolean() {
+        let pane = uuid::Uuid::new_v4();
+        for expected in [true, false] {
+            let context = serde_json::json!({
+                "pane": { "session_id": pane.to_string(), "window_id": 42, "is_background_tab": expected }
+            });
+            assert_eq!(pane_context_background_tab(pane, &context), Some(expected));
+        }
+        for value in [
+            serde_json::Value::Null,
+            serde_json::json!("false"),
+            serde_json::json!(0),
+        ] {
+            let context = serde_json::json!({
+                "pane": { "session_id": pane.to_string(), "window_id": 42, "is_background_tab": value }
+            });
+            assert_eq!(pane_context_background_tab(pane, &context), None);
+        }
+        for context in [
+            serde_json::json!({"pane": { "session_id": pane.to_string(), "window_id": 42 }}),
+            serde_json::json!({"pane": { "session_id": uuid::Uuid::new_v4().to_string(), "window_id": 42, "is_background_tab": true }}),
+            serde_json::json!({"pane": { "session_id": pane.to_string(), "window_id": 0, "is_background_tab": true }}),
+            serde_json::json!({"is_background_tab": true}),
+        ] {
+            assert_eq!(pane_context_background_tab(pane, &context), None);
+        }
+    }
 }
 
 async fn handle_source_pane_session_by_pane(
@@ -7586,6 +7840,25 @@ async fn execute_session_activation(
         }
         response
     };
+    let focus = |pane_session_id: String| async move {
+        let Some(wt) = state.wt.as_ref() else {
+            return respond!(
+                "focus",
+                false,
+                Some("Terminal activation service is unavailable.".to_string())
+            );
+        };
+        match wt
+            .request(
+                "focus_pane",
+                serde_json::json!({ "session_id": pane_session_id }),
+            )
+            .await
+        {
+            Ok(_) => respond!("focus", true, None),
+            Err(error) => failed("focus", error),
+        }
+    };
 
     let Some(row) = state.registry.lookup_identity(&parsed.identity).await else {
         return respond!(
@@ -7594,6 +7867,17 @@ async fn execute_session_activation(
             Some("The selected session is no longer available.".to_string())
         );
     };
+    let status = row.status.clone().unwrap_or(AgentStatus::Historical);
+    let liveness = liveness_from_status(&status, row.pane_session_id.clone());
+    // Focusing an existing live pane does not require a launchable provider.
+    if let crate::session_mgmt::Liveness::Live {
+        pane_session_id: Some(pane_session_id),
+    } = &liveness
+    {
+        if !pane_session_id.is_empty() {
+            return focus(pane_session_id.clone()).await;
+        }
+    }
     let Some(cli_source) = row.cli_source.clone() else {
         return respond!(
             "not_resumable",
@@ -7612,37 +7896,38 @@ async fn execute_session_activation(
             Some("The selected session provider is unavailable.".to_string())
         );
     }
-    let status = row.status.clone().unwrap_or(AgentStatus::Historical);
-    let action = decide_enter_action(&RowSnapshot {
+    let mut action = decide_enter_action(&RowSnapshot {
         origin: row.origin.clone().unwrap_or(SessionOrigin::Unknown),
-        liveness: liveness_from_status(&status, row.pane_session_id.clone()),
+        liveness,
         key: row.session_id.to_string(),
         cli_source: cli_source.clone(),
         load_session_capability: crate::session_mgmt::LoadSessionCapability::Unknown,
         cli_supports_resume_flag: profile.is_some_and(|profile| !profile.resume_flag.is_empty()),
         is_wsl: row.location.is_wsl(),
     });
+    if matches!(
+        action,
+        EnterAction::NotResumable {
+            reason: crate::session_mgmt::NotResumableReason::LiveWithoutPane
+        }
+    ) && row
+        .origin
+        .as_ref()
+        .is_none_or(|origin| *origin == SessionOrigin::Unknown)
+        && profile.is_some_and(|profile| !profile.resume_flag.is_empty())
+    {
+        // This is an explicit sidebar activation, not evidence of external
+        // ownership. Native hook admission leaves origin unset, which has
+        // the same Unknown meaning as the routing snapshot above. A bound
+        // pane always keeps the focus-only path.
+        action = EnterAction::ResumeCliFlag {
+            key: row.session_id.to_string(),
+            cli: cli_source.clone(),
+        };
+    }
 
     match action {
-        EnterAction::Focus { pane_session_id } => {
-            let Some(wt) = state.wt.as_ref() else {
-                return respond!(
-                    "focus",
-                    false,
-                    Some("Terminal activation service is unavailable.".to_string())
-                );
-            };
-            match wt
-                .request(
-                    "focus_pane",
-                    serde_json::json!({ "session_id": pane_session_id }),
-                )
-                .await
-            {
-                Ok(_) => respond!("focus", true, None),
-                Err(error) => failed("focus", error),
-            }
-        }
+        EnterAction::Focus { pane_session_id } => focus(pane_session_id).await,
         EnterAction::ResumeInAgentPane { .. } => {
             let provider_id = provider_id.expect("known provider was checked above");
             let (agent_source, wsl_distro) = match &row.location {
@@ -7694,12 +7979,49 @@ async fn execute_session_activation(
                 );
             };
             let provider_id = provider_id.expect("known provider was checked above");
-            let profile = crate::agent_registry::lookup_profile_by_id(&provider_id);
-            let invocation = format!("{} {} {}", provider_id, profile.resume_flag, row.session_id);
+            if state
+                .allowed_agent_ids
+                .as_ref()
+                .is_some_and(|allowed| !allowed.contains(&provider_id))
+            {
+                return respond!(
+                    "resume_cli",
+                    false,
+                    Some("The selected session provider is blocked by policy.".to_string())
+                );
+            }
+            let runtimes =
+                crate::coordinator::default_delegate_agent_runtimes(Some(&provider_id), None, None);
+            let runtime = &runtimes[0];
             let commandline = match &row.location {
-                crate::agent_sessions::SessionLocation::Host => invocation,
+                crate::agent_sessions::SessionLocation::Host => {
+                    crate::coordinator::build_delegate_resume_commandline(
+                        runtime,
+                        &row.session_id.to_string(),
+                    )
+                }
                 crate::agent_sessions::SessionLocation::Wsl { distro } => {
-                    format!("wsl -d {distro} -- bash -lc \"{invocation}\"")
+                    if distro.trim().is_empty() || !row.cwd.to_string_lossy().starts_with('/') {
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some("The selected WSL session has no valid distro or working directory.".to_string())
+                        );
+                    }
+                    crate::coordinator::build_wsl_delegate_resume_commandline(
+                        runtime,
+                        &row.session_id.to_string(),
+                    )
+                    .map(|command| {
+                        format!(
+                            "wsl.exe -d {} --cd {} -- bash -lc {}",
+                            crate::coordinator::quote_windows_commandline_arg(distro),
+                            crate::coordinator::quote_windows_commandline_arg(
+                                &row.cwd.to_string_lossy()
+                            ),
+                            crate::coordinator::quote_windows_commandline_arg(&command)
+                        )
+                    })
                 }
                 crate::agent_sessions::SessionLocation::Unknown => {
                     return respond!(
@@ -7709,10 +8031,15 @@ async fn execute_session_activation(
                     );
                 }
             };
+            let commandline = match commandline {
+                Ok(commandline) => commandline,
+                Err(error) => return failed("resume_cli", error),
+            };
             let mut params = serde_json::json!({
                 "window_id": parsed.window_id,
-                "commandline": format!("cmd /c {commandline}"),
+                "commandline": commandline,
                 "background": true,
+                "native_agent_provider_id": provider_id,
             });
             if matches!(row.location, crate::agent_sessions::SessionLocation::Host)
                 && !row.cwd.as_os_str().is_empty()
@@ -9603,7 +9930,29 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         .get("payload")
         .cloned()
         .unwrap_or(serde_json::Value::Null);
-    let facts = crate::app::AgentEventFacts { key, session_known };
+    let pane_key = crate::agent_sessions::pane_key(pane_id);
+    let pane_owned_by_other = !pane_key.is_empty()
+        && state.registry.snapshot().await.iter().any(|row| {
+            (row.session_id.0.as_ref() != key || row.cli_source.as_ref() != Some(&cli_source))
+                && matches!(
+                    row.status,
+                    Some(
+                        crate::agent_sessions::AgentStatus::Idle
+                            | crate::agent_sessions::AgentStatus::Working
+                            | crate::agent_sessions::AgentStatus::Attention
+                            | crate::agent_sessions::AgentStatus::Error
+                    )
+                )
+                && row
+                    .pane_session_id
+                    .as_deref()
+                    .is_some_and(|pane| crate::agent_sessions::pane_key(pane) == pane_key)
+        });
+    let facts = crate::app::AgentEventFacts {
+        key,
+        session_known,
+        pane_owned_by_other,
+    };
     let session_key = facts.key.clone();
     let plan = crate::app::plan_agent_event(event, &payload, pane_id, &cli_source, &facts);
     if plan.events.is_empty() {
@@ -9684,7 +10033,24 @@ async fn resolve_master_hook_key(
     };
 
     if !asid.is_empty() {
-        let known = snapshot.iter().any(|s| s.session_id.0.as_ref() == asid);
+        let candidates: Vec<_> = snapshot
+            .iter()
+            .filter(|row| row.session_id.0.as_ref() == asid)
+            .collect();
+        // Raw IDs alone are not canonical identity. Without a unique provider
+        // and source-qualified row, activity must not borrow another row's birth.
+        let known = candidates.len() == 1
+            && candidates[0].cli_source.as_ref() == Some(cli_source)
+            && candidates[0].session_universe.is_none()
+            && (candidates[0].location == crate::agent_sessions::SessionLocation::Host
+                || candidates[0]
+                    .pane_session_id
+                    .as_deref()
+                    .is_some_and(|pane| {
+                        !pane_session_id.is_empty()
+                            && crate::agent_sessions::pane_key(pane)
+                                == crate::agent_sessions::pane_key(pane_session_id)
+                    }));
         return Some((asid.to_string(), known));
     }
 
