@@ -1,3 +1,4 @@
+use crate::win32::ClipboardPaste;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::CrosstermBackend;
@@ -96,9 +97,12 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
 mod attachments;
 mod autofix;
 mod input_edit;
+mod prompt_queue;
+mod queue_controls;
 mod tab_state;
 mod turn_state;
 use autofix::*;
+pub(crate) use queue_controls::{QueueControl, QueueControlHit};
 
 pub use crate::turn_context::TurnContext;
 #[cfg(test)]
@@ -1279,6 +1283,10 @@ pub struct App {
     pub pane_focused: bool,
     pub should_quit: bool,
     prompt_tx: mpsc::UnboundedSender<PromptSubmission>,
+    #[cfg(test)]
+    test_prompt_rx: Option<mpsc::UnboundedReceiver<PromptSubmission>>,
+    #[cfg(test)]
+    test_recommendation_rx: Option<mpsc::UnboundedReceiver<crate::coordinator::ChoiceExecution>>,
     recommendation_tx: mpsc::UnboundedSender<crate::coordinator::ChoiceExecution>,
     permission_tx: mpsc::UnboundedSender<String>,
     new_session_tx: mpsc::UnboundedSender<NewSessionForTab>,
@@ -1313,6 +1321,8 @@ pub struct App {
     pub(crate) last_completed_turn_click: Option<CompletedTurnClickRecord>,
     last_permission_snapshot: Option<(String, Option<String>)>,
     pub(crate) input_dialog_area: Option<Rect>,
+    pub(crate) queue_control_hits: Vec<QueueControlHit>,
+    pub(crate) pressed_queue_control: Option<(QueueControlHit, bool)>,
     pub(crate) pressed_input_dialog: Option<PressedInputDialog>,
     pub(crate) completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
     pub(crate) painted_completed_turn_action_links:
@@ -1379,8 +1389,8 @@ pub struct App {
     /// can't rehydrate ACP sessions. Set on `AgentConnected`.
     pub agent_supports_load_session: bool,
     /// Whether the connected ACP agent advertised the `image` prompt
-    /// capability (`promptCapabilities.image`). Gates the Alt+V image-paste
-    /// handler. Set on `AgentConnected`.
+    /// capability (`promptCapabilities.image`). Gates clipboard image attachment
+    /// handlers. Set on `AgentConnected`.
     pub agent_supports_image: bool,
     /// Origin filter for the `/sessions` picker. Captured once at
     /// `App::new` time via [`resolve_sessions_origin_filter`] so the value is
@@ -1638,6 +1648,10 @@ impl App {
             pane_focused: true,
             should_quit: false,
             prompt_tx,
+            #[cfg(test)]
+            test_prompt_rx: None,
+            #[cfg(test)]
+            test_recommendation_rx: None,
             recommendation_tx,
             permission_tx,
             new_session_tx,
@@ -1660,6 +1674,8 @@ impl App {
             last_completed_turn_click: None,
             last_permission_snapshot: None,
             input_dialog_area: None,
+            queue_control_hits: Vec::new(),
+            pressed_queue_control: None,
             pressed_input_dialog: None,
             completed_turn_action_links: Vec::new(),
             painted_completed_turn_action_links: Vec::new(),
@@ -2375,7 +2391,17 @@ impl App {
             return false;
         }
 
-        self.acp_model = new_model.filter(|s| !s.trim().is_empty());
+        let new_model = new_model.filter(|s| !s.trim().is_empty());
+        if self.acp_model != new_model {
+            for tab in self
+                .tab_sessions
+                .values_mut()
+                .filter(|tab| tab.model_override.is_none())
+            {
+                tab.cancel_pending_prompts();
+            }
+        }
+        self.acp_model = new_model;
         if let Some(params) = self.deferred_acp.as_mut() {
             params.acp_model.clone_from(&self.acp_model);
         }
@@ -2552,6 +2578,9 @@ impl App {
     }
 
     fn apply_agent_pick(&mut self, agent: AvailableAgent) {
+        if self.queue_blocks_session_change() {
+            return;
+        }
         if agent.id == self.current_agent_id && agent.source == self.current_agent_source {
             return;
         }
@@ -2684,6 +2713,9 @@ impl App {
     }
 
     fn config_picker_enter(&mut self) {
+        if self.queue_blocks_session_change() {
+            return;
+        }
         let picker = self.current_tab().config_picker.clone();
         let options = self.current_session_config_options();
 
@@ -2908,6 +2940,9 @@ impl App {
     /// in Settings, so slash-command changes never cross modes or restart the
     /// agent CLI.
     fn apply_model_pick(&mut self, model_id: String) {
+        if self.queue_blocks_session_change() {
+            return;
+        }
         if self.current_model_id_for_picker() == Some(model_id.as_str()) {
             return;
         }
@@ -3526,6 +3561,9 @@ impl App {
     /// id (unknown adapters); the inflight check is best-effort because
     /// only the agent-side knows whether the session id is recognizable.
     fn dispatch_resume_in_agent_pane(&mut self, s: &crate::agent_sessions::AgentSession) {
+        if self.queue_blocks_session_change() {
+            return;
+        }
         tracing::info!(
             target: "agents_view",
             key = %s.key,
@@ -4119,6 +4157,7 @@ impl App {
             tab.telemetry_model_pending = None;
             tab.last_telemetry_session_id = None;
             tab.clear_chat_history();
+            tab.cancel_pending_prompts();
             tab.invalidate_active_prompt_attachment();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
@@ -4154,6 +4193,7 @@ impl App {
             tab.autofix.trigger_echo_pane = None;
             tab.autofix.bar_snapshot = Default::default();
         }
+        self.invalidate_prompt_queue_sessions();
         if self.tab_sessions.contains_key(&active_tab_id) {
             self.emit_autofix_state_cleared(&active_tab_id);
         }
@@ -5117,7 +5157,7 @@ impl App {
                     self.apply_resize_if_needed(terminal, &event)?;
                     let should_redraw = self.event_requires_redraw(&event);
                     let handle_started = std::time::Instant::now();
-                    self.handle_event(event);
+                    self.handle_event_and_capture(event).await;
                     self.log_permission_snapshot();
                     ui_trace::log_slow("ui_event_handle", handle_started.elapsed(), || {
                         format!("event={} {}", event_name, self.trace_state())
@@ -5138,7 +5178,7 @@ impl App {
                     let mut processed = 0usize;
 
                     let mut should_redraw_now = self.event_requires_redraw(&event);
-                    self.handle_event(event);
+                    self.handle_event_and_capture(event).await;
                     processed += 1;
 
                     while processed < MAX_EVENTS_PER_FRAME {
@@ -5148,7 +5188,7 @@ impl App {
                                 if self.event_requires_redraw(&event) {
                                     should_redraw_now = true;
                                 }
-                                self.handle_event(event);
+                                self.handle_event_and_capture(event).await;
                                 processed += 1;
                             }
                             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
@@ -5297,6 +5337,8 @@ impl App {
 
     fn event_name(event: &AppEvent) -> &'static str {
         match event {
+            AppEvent::AutofixSnapshotReady { .. } => "autofix_snapshot_ready",
+            AppEvent::RecommendationExecutionSettled { .. } => "recommendation_execution_settled",
             AppEvent::Key(_) => "key",
             AppEvent::Mouse(_) => "mouse",
             AppEvent::Tick => "tick",
@@ -5326,8 +5368,8 @@ impl App {
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::PromptError { .. } => "prompt_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
-            AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
-            AppEvent::AgentPasteTextFailed { .. } => "agent_paste_text_failed",
+            AppEvent::AgentPasteReady { .. } => "agent_paste_ready",
+            AppEvent::AgentPasteFailed { .. } => "agent_paste_failed",
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
             AppEvent::PromptTargetResolved { .. } => "prompt_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
@@ -5474,7 +5516,8 @@ impl App {
         tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
     }
 
-    fn handle_agent_paste_text(&mut self, params: &serde_json::Value) {
+    // Keep the existing agent_paste_text wire event compatible with packaged Terminal.
+    fn handle_agent_paste_request(&mut self, params: &serde_json::Value) {
         let Some(target_tab) = self.agent_paste_target_tab(params) else {
             return;
         };
@@ -5516,19 +5559,19 @@ impl App {
         tokio::task::spawn_local(async move {
             let tab_for_result = target_tab.clone();
             let result =
-                tokio::task::spawn_blocking(crate::win32::read_paste_string_from_clipboard).await;
+                tokio::task::spawn_blocking(crate::win32::read_agent_paste_from_clipboard).await;
             let event = match result {
-                Ok(Ok(text)) => AppEvent::AgentPasteTextReady {
+                Ok(Ok(content)) => AppEvent::AgentPasteReady {
                     tab_id: tab_for_result,
                     generation,
-                    text,
+                    content,
                 },
-                Ok(Err(e)) => AppEvent::AgentPasteTextFailed {
+                Ok(Err(e)) => AppEvent::AgentPasteFailed {
                     tab_id: tab_for_result,
                     generation,
                     error: e.to_string(),
                 },
-                Err(e) => AppEvent::AgentPasteTextFailed {
+                Err(e) => AppEvent::AgentPasteFailed {
                     tab_id: tab_for_result,
                     generation,
                     error: e.to_string(),
@@ -5584,7 +5627,8 @@ impl App {
             .unwrap_or(false)
     }
 
-    fn insert_agent_paste_text(&mut self, target_tab: &str, generation: u64, text: &str) {
+    fn insert_agent_paste(&mut self, target_tab: &str, generation: u64, content: ClipboardPaste) {
+        let image_supported = self.agent_supports_image;
         if self.mode != AppMode::Chat {
             if let Some(tab) = self.tab_sessions.get_mut(target_tab) {
                 if tab.paste_generation == generation {
@@ -5600,7 +5644,6 @@ impl App {
             return;
         }
 
-        let text = normalize_agent_paste_text(text);
         let Some(tab) = self.tab_sessions.get_mut(target_tab) else {
             return;
         };
@@ -5614,16 +5657,7 @@ impl App {
             );
             return;
         }
-        {
-            tab.paste_pending = false;
-        }
-        if text.is_empty() {
-            tracing::debug!(target: "agent_paste", tab_id = target_tab, "ignoring empty paste");
-            return;
-        }
-
-        let byte_len = text.len();
-        let line_count = text.split('\n').count();
+        tab.paste_pending = false;
         let tab = self.tab_mut(target_tab);
         if !tab.pane_open || tab.current_view != View::Chat || !tab.input_has_nav_focus() {
             tracing::debug!(
@@ -5632,21 +5666,41 @@ impl App {
                 pane_open = tab.pane_open,
                 view = ?tab.current_view,
                 input_live = tab.input_has_nav_focus(),
-                byte_len,
-                line_count,
                 "dropping paste because chat input is not live"
             );
             return;
         }
 
-        tab.insert_input_str(&text);
-        tracing::info!(
-            target: "agent_paste",
-            tab_id = target_tab,
-            byte_len,
-            line_count,
-            "inserted pasted text into agent input"
-        );
+        match content {
+            ClipboardPaste::Image(image) => {
+                if image_supported {
+                    tab.insert_image_attachment(image);
+                    tracing::info!(target: "agent_paste", tab_id = target_tab, "attached clipboard image to agent input");
+                } else {
+                    tab.messages.push(ChatMessage::warning(
+                        t!("system.image_not_supported").into_owned(),
+                    ));
+                    tab.scroll_to_bottom();
+                }
+            }
+            ClipboardPaste::Text(text) => {
+                let text = normalize_agent_paste_text(&text);
+                if text.is_empty() {
+                    tracing::debug!(target: "agent_paste", tab_id = target_tab, "ignoring empty paste");
+                    return;
+                }
+                let byte_len = text.len();
+                let line_count = text.split('\n').count();
+                tab.insert_input_str(&text);
+                tracing::info!(
+                    target: "agent_paste",
+                    tab_id = target_tab,
+                    byte_len,
+                    line_count,
+                    "inserted pasted text into agent input"
+                );
+            }
+        }
     }
 }
 
@@ -6239,6 +6293,9 @@ impl App {
                     return true;
                 }
                 if matches!(candidate, crate::ui::CommandCandidate::Agent(_)) {
+                    if !self.ensure_prompt_connection() {
+                        return true;
+                    }
                     let tab = self.current_tab_mut();
                     tab.replace_input(format!("/{name}"));
                     return false;
@@ -6249,7 +6306,9 @@ impl App {
                         spec,
                         rest: String::new(),
                     };
-                    self.current_tab_mut().discard_input();
+                    if parsed.kind != CommandKind::Fix {
+                        self.current_tab_mut().discard_input();
+                    }
                     self.handle_slash_command(parsed);
                     return true;
                 }
@@ -6265,7 +6324,10 @@ impl App {
         }
         match commands::classify(&self.current_tab().input) {
             ParseOutcome::Command(cmd) => {
-                self.current_tab_mut().discard_input();
+                // /fix consumes the draft only after queue capacity has been checked.
+                if cmd.kind != CommandKind::Fix {
+                    self.current_tab_mut().discard_input();
+                }
                 self.handle_slash_command(cmd);
                 true
             }
@@ -6303,8 +6365,8 @@ impl App {
         }
     }
 
-    /// Dispatch a parsed slash-command. The Enter handler is responsible
-    /// for clearing the input and cursor before calling this.
+    /// Dispatch a parsed slash-command. Prompt-producing commands consume the
+    /// draft only after admission; local commands are cleared by the Enter handler.
     fn handle_slash_command(&mut self, cmd: ParsedCommand) {
         let in_flight = self.current_tab().turn.is_in_flight();
         let cancelling = self.current_tab().turn.is_cancelling();
@@ -6348,10 +6410,12 @@ impl App {
         tab.scroll_to_bottom();
     }
 
-    /// `/stop` — cancel the in-flight turn, or note that there is nothing to
+    /// `/stop` — cancel the in-flight turn and pause waiting user requests, or note that there is nothing to
     /// stop. `in_flight` is the active tab's turn state, captured by the
     /// dispatcher before any mutation.
     fn cmd_stop(&mut self, in_flight: bool, cancelling: bool) {
+        let had_pending = !self.current_tab().prompt_queue.entries.is_empty();
+        self.current_tab_mut().pause_pending_prompts();
         if in_flight || cancelling {
             let tab_id = self
                 .tab_id
@@ -6364,7 +6428,7 @@ impl App {
                     .push(ChatMessage::success(t!("system.cancelled").into_owned()));
                 tab.scroll_to_bottom();
             }
-        } else {
+        } else if !had_pending {
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::info(
                 t!("system.no_prompt_in_flight").into_owned(),
@@ -6376,6 +6440,9 @@ impl App {
     /// `/new` — start a fresh session on the active tab. Refuses while a turn
     /// is in flight (the user should `/stop` first).
     fn cmd_new(&mut self, prompt_blocked: bool) {
+        if self.queue_blocks_session_change() {
+            return;
+        }
         if prompt_blocked {
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::warning(
@@ -6449,85 +6516,9 @@ impl App {
     /// armed — that UI is tied to a specific failing pane, and a command typed
     /// into the agent pane surfaces its result there directly.
     ///
-    /// Refuses while a turn is in flight; the user should `/stop` first.
-    fn cmd_fix(&mut self, in_flight: bool, hint: String) {
-        if in_flight {
-            let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::warning(
-                t!("system.busy_use_stop").into_owned(),
-            ));
-            tab.scroll_to_bottom();
-            return;
-        }
-
-        let target_tab_id = self
-            .tab_id
-            .clone()
-            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-        if self.prompt_reconfiguration_pending_for_tab(&target_tab_id) {
-            let tab = self.tab_mut(&target_tab_id);
-            tab.messages
-                .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
-            tab.scroll_to_bottom();
-            return;
-        }
-
-        // Bump generation so any stale in-flight autofix response is dropped,
-        // and clear a leftover suggestion — mirrors `maybe_trigger_autofix`.
-        let generation = {
-            let tab = self.tab_mut(&target_tab_id);
-            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
-            tab.autofix.suggested_pane_id = None;
-            tab.autofix.generation
-        };
-
-        let source_pane_id = self.source_session_id.clone();
-        let pane_context = PaneContext {
-            pane_id: self.pane_id.clone(),
-            tab_id: Some(target_tab_id.clone()),
-            window_id: self.window_id.clone(),
-            cwd: None,
-            source_pane_id: source_pane_id.clone(),
-        };
-
-        let hint = hint.trim().to_string();
-        let reattached_session_id = self
-            .tab_sessions
-            .get(&target_tab_id)
-            .and_then(|tab| tab.reattached_session_id().map(str::to_string));
-        let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context))
-            .with_byok(self.current_model_is_byok())
-            .with_agent_id(self.current_agent_id.clone())
-            .with_reattached_session(reattached_session_id)
-            .with_restore_identity(
-                self.tab_sessions
-                    .get(&target_tab_id)
-                    .and_then(|tab| tab.restore_identity()),
-            );
-        let submitted = SubmittedPrompt {
-            id: prompt.id,
-            text: prompt.text.clone(),
-            submitted_at_unix_s: prompt.submitted_at_unix_s,
-            context: TurnContext {
-                // Normally captured when the helper starts. If unavailable,
-                // the ACP client resolves the active source and late-binds it.
-                target_pane_id: source_pane_id,
-            },
-            autofix: Some(AutofixContext { generation }),
-        };
-        tracing::info!(
-            target: "slash_cmd",
-            tab_id = %target_tab_id,
-            generation,
-            has_hint = !hint.is_empty(),
-            "dispatching /fix",
-        );
-        self.turn_submit_prompt_for_tab_with_cancellation(
-            &target_tab_id,
-            submitted,
-            prompt.cancellation_token(),
-        );
-        let _ = self.prompt_tx.send(prompt);
+    /// Queues behind active work without installing or replacing a turn.
+    fn cmd_fix(&mut self, _in_flight: bool, hint: String) {
+        self.enqueue_input(Some(hint.trim().to_owned()));
     }
 
     /// Late-bind a manual `/fix`'s target pane. The working pane is resolved
@@ -6765,6 +6756,14 @@ impl App {
     /// CLI pool. Viable panes, ConPTYs, and helpers stay alive and reconnect
     /// over the stable master pipe with clean ACP sessions.
     fn cmd_restart(&mut self) {
+        let recovering = matches!(
+            self.state,
+            ConnectionState::Failed(_) | ConnectionState::Disconnected
+        );
+        if !recovering && self.queue_blocks_session_change() {
+            return;
+        }
+        self.invalidate_prompt_queue_sessions();
         self.initial_startup_presentation_eligible = false;
         self.initial_transport_superseded = true;
         self.state = ConnectionState::Connecting(t!("connection.restarting").into_owned());
@@ -6978,10 +6977,11 @@ impl App {
             );
             return;
         }
-        if let Some(tab) = self.tab_sessions.get(closed_tab_id) {
+        if let Some(tab) = self.tab_sessions.get_mut(closed_tab_id) {
             if let Some(prompt_id) = tab.turn.prompt_id() {
                 tab.cancel_active_prompt(prompt_id);
             }
+            tab.cancel_autofix_captures();
         }
         let removed = self.tab_sessions.remove(closed_tab_id);
         if self
@@ -7101,12 +7101,29 @@ impl App {
             // in normal flow that shouldn't happen (WT mints the new
             // id atomically with the drag). Defensive only: prefer the
             // entry that already has conversation state.
-            if let Some(existing) = self.tab_sessions.remove(new_tab_id) {
-                if !existing.messages.is_empty() && entry.messages.is_empty() {
+            if let Some(mut existing) = self.tab_sessions.remove(new_tab_id) {
+                if !existing.messages.is_empty()
+                    && entry.messages.is_empty()
+                    && entry.prompt_queue.entries.is_empty()
+                    && entry.pending_autofix_captures.is_empty()
+                    && entry.input.is_empty()
+                    && entry.attachments.is_empty()
+                {
                     entry = existing;
+                } else {
+                    existing.cancel_autofix_captures();
                 }
             }
             entry.invalidate_pending_paste();
+            entry.prompt_queue.rename(new_tab_id, new_window_id);
+            for item in &mut entry.pending_autofix_captures {
+                if let Some(context) = item.submission.pane_context.as_mut() {
+                    context.tab_id = Some(new_tab_id.to_owned());
+                    if let Some(window) = new_window_id {
+                        context.window_id = Some(window.to_owned());
+                    }
+                }
+            }
             entry.break_input_undo_group();
             self.tab_sessions.insert(new_tab_id.to_string(), entry);
             true
@@ -7245,6 +7262,9 @@ impl App {
     /// next tab_changed back into this tab finds an empty-but-present
     /// `TabSession` and just renders an empty chat.
     fn reset_tab_session_for(&mut self, tab_id: &str) {
+        if let Some(tab) = self.tab_sessions.get_mut(tab_id) {
+            tab.pending_queue_action = None;
+        }
         self.pending_yolo_session_tabs.remove(tab_id);
         if self
             .pending_session_load
@@ -7273,6 +7293,7 @@ impl App {
             tab.meaningful_conversation_before_load = None;
             tab.loading_session = false;
             tab.loading_target_session_id = None;
+            tab.cancel_pending_prompts();
             tab.scroll_to_bottom();
         }
         if let Some(session_id) = removed_session_id {
@@ -7756,6 +7777,10 @@ mod slash_command_tests;
 #[cfg(test)]
 #[path = "autofix_tests.rs"]
 mod autofix_tests;
+
+#[cfg(test)]
+#[path = "queue_lifecycle_tests.rs"]
+mod queue_lifecycle_tests;
 
 #[cfg(test)]
 #[path = "app_tests.rs"]

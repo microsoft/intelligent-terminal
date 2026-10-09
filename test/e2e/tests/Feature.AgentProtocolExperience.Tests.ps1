@@ -69,18 +69,22 @@ Describe 'Feature: ACP agent-pane protocol experience' -Tag 'Feature' -Skip:(-no
 
         Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
             -Pattern 'AFTER_TOOL_MARKER' -TimeoutSec 30
-        $rendered = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
-        foreach ($marker in @('TOOL_DETAIL_MARKER', 'TOOL_OUTPUT_MARKER', 'PLAN_MARKER')) {
-            $rendered | Should -Match $marker -Because 'the complete ACP transcript must remain visible with its tool output'
+        # Capture reads the current TUI viewport, not its off-screen chat history.
+        # Alt-wheel moves one row, preserving overlap even in a short chat viewport.
+        $expected = @('TOOL_DETAIL_MARKER', 'TOOL_OUTPUT_MARKER', 'PLAN_MARKER', 'AFTER_TOOL_MARKER')
+        $seen = [System.Collections.Generic.List[string]]::new()
+        $scanRows = 300
+        Send-AgentMouseEvent -App $script:app -PaneSessionId $script:agentPane -Kind ScrollUp -Alt -Count $scanRows | Out-Null
+        for ($step = 0; $step -le $scanRows -and $seen.Count -lt $expected.Count; $step++) {
+            $rendered = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+            foreach ($match in [regex]::Matches($rendered, ($expected -join '|'))) {
+                if (-not $seen.Contains($match.Value)) { $seen.Add($match.Value) }
+            }
+            if ($seen.Count -lt $expected.Count -and $step -lt $scanRows) {
+                Send-AgentMouseEvent -App $script:app -PaneSessionId $script:agentPane -Kind ScrollDown -Alt | Out-Null
+            }
         }
-
-        $tool = $rendered.IndexOf('TOOL_DETAIL_MARKER', [System.StringComparison]::Ordinal)
-        $output = $rendered.IndexOf('TOOL_OUTPUT_MARKER', [System.StringComparison]::Ordinal)
-        $plan = $rendered.IndexOf('PLAN_MARKER', [System.StringComparison]::Ordinal)
-        $after = $rendered.IndexOf('AFTER_TOOL_MARKER', [System.StringComparison]::Ordinal)
-        $tool | Should -BeLessThan $output
-        $output | Should -BeLessThan $plan
-        $plan | Should -BeLessThan $after
+        ($seen -join '|') | Should -Be ($expected -join '|') -Because 'all ACP transcript markers must be readable in their original order'
     }
 
     It 'Clarification modal returns the selected answer to the requesting ACP session' {
