@@ -1,5 +1,5 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# New sidebar action coverage only. Search/navigation remains in CombinedAgentsSidebar.
+# Normal plus and explicit agent action coverage. Search/navigation remains in CombinedAgentsSidebar.
 # A native canonical shim and custom interactive CLI avoid provider quota.
 
 Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
@@ -97,6 +97,11 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $invocation = "& '$($acp.Replace("'", "''"))' -LogPath '$($script:evidence.Replace("'", "''"))\acp.log'"
         $acpCommand = 'pwsh -NoProfile -EncodedCommand ' +
             [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation))
+        $script:defaultProfile = '{7d075d6b-6625-49fe-8a57-c31f362b7fce}'
+        $script:otherProfile = '{ca763862-36cd-41f3-80ef-60de629865e9}'
+        $defaultBootstrap = "`$env:ITE2E_PROFILE_MARKER = '$script:defaultProfile'; Write-Output 'DEFAULT-PROFILE-$script:runId'"
+        $defaultCommand = "`"$pwsh`" -NoLogo -NoProfile -NoExit -EncodedCommand " +
+            [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($defaultBootstrap))
         $script:ownsConfig = $true
         $script:app = Start-Terminal -Package Dev -PassFre $true -State @{
             sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
@@ -107,12 +112,18 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             delegateAgent = 'custom:agents-actions-cli'; delegateCustomCommand = $delegate; delegateModel = ''
             autoFixEnabled = $false; 'warning.confirmOnClose' = 'never'
             actions = @(); keybindings = @()
-            defaultProfile = '{7d075d6b-6625-49fe-8a57-c31f362b7fce}'
+            defaultProfile = $script:defaultProfile
             profiles = @{
                 list = @(@{
                     guid = '{7d075d6b-6625-49fe-8a57-c31f362b7fce}'
-                    name = 'ite2e-agents-actions'; commandline = "`"$pwsh`" -NoLogo -NoProfile -NoExit"
+                    name = 'ite2e-agents-actions'; commandline = $defaultCommand
                     startingDirectory = $script:evidence; commandPaletteAgent = ''
+                    reloadEnvironmentVariables = $false
+                }, @{
+                    guid = $script:otherProfile; name = 'ite2e-other-profile'
+                    commandline = "`"$pwsh`" -NoLogo -NoProfile -NoExit"
+                    startingDirectory = $script:evidence; commandPaletteAgent = ''
+                    tabTitle = 'ite2e-other-profile'; suppressApplicationTitle = $true
                     reloadEnvironmentVariables = $false
                 })
             }
@@ -218,7 +229,6 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         function Set-ActionView {
             param([bool]$Agents)
             Set-TestSidebarScope -App $script:app -AgentsOnly $Agents -Recent $Agents
-            $script:actionAgentsOnly = $Agents
             (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         }
         function Get-ActionLaunches {
@@ -241,10 +251,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         }
         function Invoke-ActionPlus {
             $before = @(Get-ActionTabs).tab_id
-            $label = if ($script:actionAgentsOnly) {
-                'Open background agent in a new tab'
-            } else { 'New tab' }
-            Invoke-UiClick -App $script:app -Selector $label | Out-Null
+            Invoke-UiClick -App $script:app -Selector 'New tab' | Out-Null
             Wait-Until -TimeoutSec 25 -Because 'plus creates exactly one new tab' -Condition {
                 @(Get-ActionTabs | Where-Object tab_id -NotIn $before).Count -eq 1
             } | Out-Null
@@ -274,12 +281,14 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         }
         function Save-ActionUiEvidence {
             param([string]$Phase)
-            $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern(
-                [Windows.Automation.TogglePattern]::Pattern)
+            $search = Get-ActionElement SearchTabsButton
+            $header = Get-ActionElement VerticalTabsHeader
             @{
                 phase = $Phase; at = [DateTimeOffset]::UtcNow.ToString('o')
-                header = (Get-ActionElement VerticalTabsHeader).Current.Name
-                search_toggle = $toggle.Current.ToggleState.ToString()
+                header = if ($header) { $header.Current.Name } else { $null }
+                search_toggle = if ($search) {
+                    $search.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState.ToString()
+                } else { $null }
                 active_pane = Get-ActivePane -App $script:app
                 tabs = @(Get-ActionTabs)
                 custom_launches = @(Get-ActionLaunches)
@@ -336,56 +345,81 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         }
     }
 
-    It 'Agents plus creates a fresh interactive delegate' {
-        Set-ActionView $true
-        $original = Get-ActivePane -App $script:app
-        $tabsBeforeFailure = @(Get-ActionTabs).Count
-        $retryError = Invoke-ActionRejectedSplit
-        @(Get-ActionTabs).Count | Should -Be $tabsBeforeFailure
-        @(Get-ActionLaunches).Count | Should -Be 0
-        $first = Invoke-ActionPlus
-        Wait-Until -TimeoutSec 20 -Because 'interactive CLI logs its own launch' -Condition {
-            @(Get-ActionLaunches).Count -eq 1
-        } | Out-Null
-        $one = @(Get-ActionLaunches)[0]
-        $panes = @(Get-WtPanes -App $script:app -TabId ([string]$first.tab_id) -WindowId ([string]$script:app.WindowId))
-        $matches = @($panes | Where-Object session_id -EQ $one.pane_session_id)
-        $matches.Count | Should -Be 1
-        $one.pane_session_id | Should -Not -Be $original.session_id
-        $first.tab_id | Should -Not -Be $original.tab_id
-        $one.cwd | Should -Be $script:evidence
-        $one.source | Should -Be 'host'
-        @($one.args).Count | Should -Be 0 -Because 'no startup prompt or resume ID is allowed'
-        $process = Get-CimInstance Win32_Process -Filter "ProcessId=$($one.pid)" -ErrorAction Stop
-        $process.ExecutablePath | Should -Be $pwsh
-        $process.CommandLine | Should -Match ([regex]::Escape($fixture))
-        Get-WtCapture -App $script:app -SessionId $one.pane_session_id -MaxLines 30 |
-            Should -Match ([regex]::Escape("ITE2E-INTERACTIVE-DELEGATE $script:runId $($one.session_id)"))
-        Assert-ActionRetryClearsError $retryError
-        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
-        $second = Invoke-ActionPlus
-        Wait-Until -TimeoutSec 20 -Because 'second plus launches a fresh CLI' -Condition {
-            @(Get-ActionLaunches).Count -eq 2
-        } | Out-Null
-        $two = @(Get-ActionLaunches)[1]
-        $two.session_id | Should -Not -Be $one.session_id
-        $two.pid | Should -Not -Be $one.pid
-        $two.pane_session_id | Should -Not -Be $one.pane_session_id
-        $second.tab_id | Should -Not -Be $first.tab_id
-        $two.cwd | Should -Be $one.cwd
-        $two.source | Should -Be $one.source
-        @($two.args).Count | Should -Be 0
-        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
-        Wait-Until -TimeoutSec 10 -Because 'second delegate renders its unique interactive banner' -Condition {
-            (Get-WtCapture -App $script:app -SessionId $two.pane_session_id -MaxLines 30) -match
-                [regex]::Escape("ITE2E-INTERACTIVE-DELEGATE $script:runId $($two.session_id)")
-        } | Out-Null
-        Send-WtInput -App $script:app -SessionId $one.pane_session_id -Text "alive-$script:runId"
-        Send-WtKeys -App $script:app -SessionId $one.pane_session_id -Keys Enter
-        Wait-Until -TimeoutSec 10 -Because 'original delegate remains responsive' -Condition {
-            (Get-WtCapture -App $script:app -SessionId $one.pane_session_id -MaxLines 30) -match
-                [regex]::Escape("ITE2E-DELEGATE-ALIVE $($one.session_id) alive-$script:runId")
-        } | Out-Null
+    It 'Sidebar plus always creates the default profile' {
+        $launchCount = @(Get-ActionLaunches).Count + @(Get-CanonicalLaunches).Count
+        $created = @()
+        try {
+            foreach ($agentsOnly in @($false, $true)) {
+                foreach ($recent in @($false, $true)) {
+                    Set-TestSidebarScope -App $script:app -AgentsOnly $agentsOnly -Recent $recent
+                    foreach ($query in @('', "no-matching-tab-$script:runId")) {
+                        $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern(
+                            [Windows.Automation.TogglePattern]::Pattern)
+                        if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) {
+                            Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+                        }
+                        Set-UiValue -App $script:app -Selector SearchTextBox -Value $query | Out-Null
+                        foreach ($layout in @('vertical', 'horizontal')) {
+                            Set-WtSetting -App $script:app -Key tabLayout -Value $layout | Out-Null
+                            Wait-Until -TimeoutSec 10 -Because 'the requested layout is realized before plus' -Condition {
+                                $peer = Get-ActionElement $(if ($layout -eq 'vertical') { 'ItemsList' } else { 'TabView' })
+                                $peer -and -not $peer.Current.IsOffscreen -and
+                                    (Get-WtSetting -App $script:app -Key tabLayout) -eq $layout
+                            } | Out-Null
+                            if ($layout -eq 'vertical') {
+                                Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $query
+                                (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
+                            }
+                            $original = Invoke-WtCli -App $script:app -Arguments @(
+                                'new-tab', '--profile', $script:otherProfile, '-w', [string]$script:app.WindowId)
+                            Set-WtPaneFocus -App $script:app -SessionId $original.session_id | Out-Null
+                            (Get-ActivePane -App $script:app).session_id | Should -Be $original.session_id
+                            $tab = Invoke-ActionPlus
+                            $panes = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId))
+                            $panes.Count | Should -Be 1
+                            $pane = $panes[0]
+                            $pane.session_id | Should -Not -BeIn $created
+                            $pane.session_id | Should -Not -Be $original.session_id
+                            $pane.native_agent_provider_id | Should -BeNullOrEmpty
+                            $pane.is_agent_pane | Should -BeFalse
+                            (Get-ActivePane -App $script:app).session_id | Should -Be $pane.session_id
+                            Wait-Until -TimeoutSec 15 -Because 'the configured default profile, not the active profile, started its shell' -Condition {
+                                (Get-WtCapture -App $script:app -SessionId $pane.session_id -MaxLines 30) -match
+                                    [regex]::Escape("DEFAULT-PROFILE-$script:runId")
+                            } | Out-Null
+                            Invoke-RunCommand -App $script:app -SessionId $pane.session_id -Command `
+                                'Write-Output ("PROFILE-IDENTITY:" + $env:ITE2E_PROFILE_MARKER)' -SettleSec 1 | Out-Null
+                            Get-WtCapture -App $script:app -SessionId $pane.session_id -MaxLines 30 |
+                                Should -Match ([regex]::Escape("PROFILE-IDENTITY:$script:defaultProfile"))
+                            @(Get-ActionLaunches).Count + @(Get-CanonicalLaunches).Count | Should -Be $launchCount
+                            if ($layout -eq 'vertical') {
+                                Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $query
+                            }
+                            $created += $pane.session_id
+                            Save-ActionUiEvidence "plus-$agentsOnly-$recent-$($query.Length)-$layout"
+                            Close-WtPane -App $script:app -SessionId $pane.session_id
+                            Close-WtPane -App $script:app -SessionId $original.session_id
+                        }
+                        Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+                        Wait-Until -TimeoutSec 10 -Because 'Sidebar restores the existing search after the layout round trip' -Condition {
+                            $box = Get-ActionElement SearchTextBox
+                            $box -and -not $box.Current.IsOffscreen
+                        } | Out-Null
+                        Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $query
+                    }
+                }
+            }
+            $created.Count | Should -Be 16
+        }
+        finally {
+            Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
+            $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+            if ($toggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::On) {
+                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            }
+            Set-ActionView $false
+        }
     }
 
     It 'Tabs plus and split retain ordinary terminal behavior' {
@@ -393,6 +427,13 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $count = @(Get-ActionLaunches).Count
         $tab = Invoke-ActionPlus
         $source = Get-ActivePane -App $script:app
+        $pane = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId))[0]
+        $pane.native_agent_provider_id | Should -BeNullOrEmpty
+        $pane.is_agent_pane | Should -BeFalse
+        Wait-Until -TimeoutSec 15 -Because 'ordinary plus also creates the configured default profile' -Condition {
+            (Get-WtCapture -App $script:app -SessionId $source.session_id -MaxLines 30) -match
+                [regex]::Escape("DEFAULT-PROFILE-$script:runId")
+        } | Out-Null
         Invoke-RunCommand -App $script:app -SessionId $source.session_id -Command "Write-Output 'NORMAL-TABS-$script:runId'" -SettleSec 1 | Out-Null
         Get-WtCapture -App $script:app -SessionId $source.session_id -MaxLines 30 |
             Should -Match "NORMAL-TABS-$script:runId"
@@ -422,7 +463,12 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                 $settings = Invoke-Native -FilePath $script:target.WtcliPath -Arguments @('--json', 'get-settings') -TimeoutSec 10
                 $settings.ExitCode -eq 0 -and ($settings.StdOut | ConvertFrom-Json).delegateAgent -eq 'copilot'
             } | Out-Null
-            $tab = Invoke-ActionPlus
+            $tabsBefore = @(Get-ActionTabs).tab_id
+            Send-WtWindowKey -App $script:app -Vk 0x42 -Alt -Shift | Out-Null
+            $tab = Wait-Until -TimeoutSec 25 -Because 'explicit background-agent action creates its own native fixture tab' -Condition {
+                $new = @(Get-ActionTabs | Where-Object tab_id -NotIn $tabsBefore)
+                if ($new.Count -eq 1) { $new[0] }
+            }
             Wait-Until -TimeoutSec 20 -Because 'native fixture is held before publishing any session hook' -Condition {
                 @(Get-ChildItem -LiteralPath $script:evidence -Filter 'release-session-start.waiting-*.json' |
                     Where-Object FullName -NotIn $receiptsBefore).Count -eq 1
@@ -474,14 +520,12 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $provider = 'custom:agents-actions-no-pin'
         $customShim = Join-Path $script:shimDirectory 'interactive-fixture.exe'
         [IO.File]::Copy($script:shim, $customShim, $false)
-        $priorAgent = Get-WtSetting -App $script:app -Key delegateAgent
-        $priorCommand = Get-WtSetting -App $script:app -Key delegateCustomCommand
         $rowsBefore = @(Save-ActionSessionSnapshot 'custom-before-launch')
         if (Test-Path -LiteralPath $gate) { Remove-Item -LiteralPath $gate }
         try {
-            Set-WtSetting -App $script:app -Key delegateCustomCommand -Value "`"$customShim`" --session-id $sid" | Out-Null
-            Set-WtDelegateAgent -App $script:app -Agent $provider | Out-Null
-            $tab = Invoke-ActionPlus
+            $tab = Invoke-WtCli -App $script:app -Arguments @(
+                'new-tab', '-c', "`"$customShim`" --session-id $sid", '-d', $script:evidence,
+                '-w', [string]$script:app.WindowId, '--agent-provider', $provider)
             Wait-Until -TimeoutSec 20 -Because 'no-pin native fixture waits before publishing its genuine session hook' -Condition {
                 Test-Path -LiteralPath "$gate.waiting-$sid.json"
             } | Out-Null
@@ -505,8 +549,6 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         }
         finally {
             Set-Content -LiteralPath $gate -Value 'released'
-            Set-WtSetting -App $script:app -Key delegateCustomCommand -Value $priorCommand | Out-Null
-            Set-WtDelegateAgent -App $script:app -Agent $priorAgent | Out-Null
         }
         Wait-Until -TimeoutSec 20 -Because 'the real hook supplies exactly one conversation for the same custom-launched pane' -Condition {
             (Test-Path -LiteralPath "$gate.emitted-$sid.json") -and @(Get-ActionSessions | Where-Object {

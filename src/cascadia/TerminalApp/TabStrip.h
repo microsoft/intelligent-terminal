@@ -357,7 +357,6 @@ namespace winrt::TerminalApp::implementation
                                      winrt::hstring const& statusText);
         bool HasHistoryItems() const noexcept { return !_historySnapshot.empty(); }
         void ClearHistorySnapshot();
-        void ClearHistorySearch();
         void OpenHistory();
         bool HistoryActive() const noexcept { return _sidebarFilters.ShowRecentAgentSessions(); }
         TerminalApp::SidebarFiltersViewModel SidebarFilters() const noexcept { return _sidebarFilters; }

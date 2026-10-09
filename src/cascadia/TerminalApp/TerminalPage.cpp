@@ -610,7 +610,7 @@ namespace winrt::TerminalApp::implementation
                         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 
-                    page->_OpenDefaultNewTab();
+                    page->_OpenNewTerminalViaDropdown(NewTerminalArgs());
                 }
             });
             button.Drop([weakThis](const auto& sender, const auto& args) {
@@ -841,7 +841,7 @@ namespace winrt::TerminalApp::implementation
         _tabStrip.CompactNewTabRequested([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto page = weakThis.get(); page && page->_isVerticalLayout && !page->_changingTabLayout)
             {
-                page->_OpenDefaultNewTab();
+                page->_OpenNewTerminalViaDropdown(NewTerminalArgs());
             }
         });
         _tabStrip.CompactNewTabMenuRequested([weakThis{ get_weak() }](auto&&, const auto& anchor) {
@@ -853,30 +853,6 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
-        const auto registerDefaultPlusLabel = [this](const WUX::FrameworkElement& button) {
-            if (!button)
-            {
-                return;
-            }
-            const auto name = WUX::Automation::AutomationProperties::GetName(button);
-            const auto help = WUX::Automation::AutomationProperties::GetHelpText(button);
-            const auto tooltip = WUX::Controls::ToolTipService::GetToolTip(button);
-            _tabStrip.FilterChanged([weakButton{ winrt::make_weak(button) }, name, help, tooltip](const auto& strip, auto&&) {
-                if (const auto target = weakButton.get())
-                {
-                    const auto label = strip.SidebarFilters().ShowAgentsOnly() ?
-                                           ScopedResourceLoader{ L"Microsoft.Terminal.Settings.Model/Resources" }.GetLocalizedString(L"OpenBackgroundAgentCommandKey") :
-                                           name;
-                    WUX::Automation::AutomationProperties::SetName(target, label);
-                    WUX::Automation::AutomationProperties::SetHelpText(target, strip.SidebarFilters().ShowAgentsOnly() ? label : help);
-                    WUX::Controls::ToolTipService::SetToolTip(target, strip.SidebarFilters().ShowAgentsOnly() ? box_value(label) : tooltip);
-                }
-            });
-        };
-        registerDefaultPlusLabel(_horizontalNewTabButton);
-        registerDefaultPlusLabel(_verticalNewTabButton);
-        registerDefaultPlusLabel(_tabStrip.FindName(L"CompactNewTabButton").try_as<WUX::FrameworkElement>());
-
         _CreateNewTabFlyout();
 
         _UpdateTabWidthMode();
@@ -2116,26 +2092,14 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalPage::_OpenDefaultNewTab()
-    {
-        if (_tabStrip && _tabStrip.SidebarFilters().ShowAgentsOnly())
-        {
-            _OpenBackgroundAgentTab(true);
-        }
-        else
-        {
-            _OpenNewTerminalViaDropdown(NewTerminalArgs());
-        }
-    }
-
     // Open the delegate agent interactively in a brand-new tab with no
     // startup prompt — the "background agent" hotkey (Alt+Shift+B). This is
     // the no-prompt sibling of the `?<prompt>` delegation: `wta delegate`
     // (invoked with no PROMPT positional) connects to WT over COM and spawns
     // a new tab whose commandline is the delegate agent's own interactive CLI.
-    void TerminalPage::_OpenBackgroundAgentTab(bool preserveSidebarView)
+    void TerminalPage::_OpenBackgroundAgentTab()
     {
-        _LaunchDelegate(std::nullopt, preserveSidebarView);
+        _LaunchDelegate(std::nullopt);
     }
 
     // Launch a hidden `wta delegate` process. With a prompt this is the
@@ -2143,25 +2107,17 @@ namespace winrt::TerminalApp::implementation
     // the new tab's agent CLI). Without a prompt the agent opens interactively
     // in a new tab. Either way wta itself creates the tab via the WT COM
     // protocol; this launched process exits once the tab is spawned.
-    void TerminalPage::_LaunchDelegate(const std::optional<winrt::hstring>& prompt, bool preserveSidebarView)
+    void TerminalPage::_LaunchDelegate(const std::optional<winrt::hstring>& prompt)
     {
         const auto triggerSource = prompt.has_value() ? L"CommandPalette" : L"Action";
         _agentPaneLog(prompt.has_value() ?
                           "_LaunchDelegate called, prompt='" + winrt::to_string(*prompt) + "'" :
                           "_LaunchDelegate called (interactive, no prompt)");
-        const auto notifySidebarFailure = [this, preserveSidebarView]() {
-            if (preserveSidebarView && _tabStrip)
-            {
-                _tabStrip.HistoryError(RS_(L"VerticalTabsHistoryActivationError"));
-            }
-        };
-
         // Find the WTA executable.
         const auto wtaPath = _DetectWtaPath();
         if (wtaPath.empty())
         {
             _agentPaneLog("ABORT: no WTA path found");
-            notifySidebarFailure();
             return;
         }
 
@@ -2185,7 +2141,6 @@ namespace winrt::TerminalApp::implementation
                 if (!backend)
                 {
                     _agentPaneLog("ABORT: invalid profile commandPaletteAgent");
-                    notifySidebarFailure();
                     return;
                 }
                 namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
@@ -2225,7 +2180,6 @@ namespace winrt::TerminalApp::implementation
         if (delegateAgent.empty())
         {
             _agentPaneLog("ABORT: no allowed delegate agent configured");
-            notifySidebarFailure();
             if (AgentPolicy::IsAllowedAgentsPolicyConfigured())
             {
                 if (auto tip{ FindName(L"WindowIdToast").try_as<MUX::Controls::TeachingTip>() })
@@ -2263,7 +2217,6 @@ namespace winrt::TerminalApp::implementation
         // exits before `logging::init("delegate")` runs (silent failure, no
         // wta-delegate.log, no new tab).
         std::wstring cmdline = quoteArg(wtaPath);
-        const auto argsOffset = cmdline.size();
 
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
@@ -2271,11 +2224,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         cmdline += L" delegate";
-        if (preserveSidebarView)
-        {
-            cmdline += L" --preserve-sidebar-view";
-        }
-
         if (!agentCliPath.empty())
         {
             cmdline += L" --agent " + quoteArg(std::wstring_view{ agentCliPath });
@@ -2333,42 +2281,35 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("launching: " + winrt::to_string(winrt::hstring{ cmdline }));
 
-        if (preserveSidebarView)
-        {
-            _RunSidebarDelegate(std::wstring{ wtaPath.c_str(), wtaPath.size() }, cmdline.substr(argsOffset));
-        }
-        else
-        {
-            // Launch as a hidden background process.
-            STARTUPINFOW si{};
-            si.cb = sizeof(si);
-            si.dwFlags = STARTF_USESHOWWINDOW;
-            si.wShowWindow = SW_HIDE;
+        // Launch as a hidden background process.
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
 
-            wil::unique_process_information pi;
-            auto mutableCmdline = cmdline;
-            if (!CreateProcessW(
-                    wtaPath.c_str(),
-                    mutableCmdline.data(),
-                    nullptr,
-                    nullptr,
-                    FALSE,
-                    CREATE_NO_WINDOW,
-                    nullptr,
-                    nullptr,
-                    &si,
-                    &pi))
-            {
-                const auto err = GetLastError();
-                _agentPaneLog("FAILED to launch delegate process: GetLastError=" +
-                              std::to_string(err) +
-                              " cmdline=" + winrt::to_string(winrt::hstring{ cmdline }));
-                return;
-            }
-
-            // pi destructor closes hProcess + hThread on scope exit.
-            _agentPaneLog("delegate process launched OK");
+        wil::unique_process_information pi;
+        auto mutableCmdline = cmdline;
+        if (!CreateProcessW(
+                wtaPath.c_str(),
+                mutableCmdline.data(),
+                nullptr,
+                nullptr,
+                FALSE,
+                CREATE_NO_WINDOW,
+                nullptr,
+                nullptr,
+                &si,
+                &pi))
+        {
+            const auto err = GetLastError();
+            _agentPaneLog("FAILED to launch delegate process: GetLastError=" +
+                          std::to_string(err) +
+                          " cmdline=" + winrt::to_string(winrt::hstring{ cmdline }));
+            return;
         }
+
+        // pi destructor closes hProcess + hThread on scope exit.
+        _agentPaneLog("delegate process launched OK");
         TraceLoggingWrite(
             g_hTerminalAppProvider,
             "DelegateInvoked",

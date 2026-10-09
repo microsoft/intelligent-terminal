@@ -2,6 +2,9 @@ BeforeAll {
     $script:root = Join-Path $PSScriptRoot ('..\artifacts\sidebar-report-selftest-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $script:root | Out-Null
     $script:titles = @(
+        'Sidebar plus always creates the default profile',
+        'Tabs plus and split retain ordinary terminal behavior',
+        'Custom native provider intent creates no conversation before its hook',
         'Combined sidebar mixed rows share one scroll viewport',
         'Recent Sessions collapses without hiding live agents',
         'Sidebar upgrade migrates Horizontal only once',
@@ -29,6 +32,38 @@ BeforeAll {
 }
 AfterAll { Remove-Item -LiteralPath $script:root -Recurse -Force }
 Describe 'Sidebar release-report contracts without product activation' {
+    It 'keeps normal plus and explicit provider creation in separate real action cases' {
+        $tokens = $null
+        $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PSScriptRoot '..\tests\Feature.AgentsModeActions.Tests.ps1'),
+            [ref]$tokens, [ref]$errors)
+        $errors | Should -BeNullOrEmpty
+        $cases = @($ast.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'It'
+        }, $true))
+        $cases | Should -HaveCount 7
+        $normal = @($cases | Where-Object { $_.CommandElements[1].Value -in $script:titles[0..1] })
+        $normal | Should -HaveCount 2
+        foreach ($case in $normal) {
+            $case.Extent.Text | Should -Match 'Invoke-ActionPlus'
+            $case.Extent.Text | Should -Not -Match 'Vk 0x42|--agent-provider'
+        }
+        $canonical = @($cases | Where-Object { $_.CommandElements[1].Value -eq 'Native agent provider is visible before session startup' })[0]
+        $canonical.Extent.Text | Should -Match 'Vk 0x42 -Alt -Shift'
+        $canonical.Extent.Text | Should -Not -Match 'Invoke-ActionPlus'
+        $custom = @($cases | Where-Object { $_.CommandElements[1].Value -eq $script:titles[2] })[0]
+        $custom.Extent.Text | Should -Match "'--agent-provider', "
+        $custom.Extent.Text | Should -Not -Match 'Invoke-ActionPlus'
+        $plus = $ast.Find({
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-ActionPlus'
+        }, $true)
+        $plus.Extent.Text | Should -Match "-Selector 'New tab'"
+        $plus.Extent.Text | Should -Not -Match 'actionAgentsOnly|Open background agent'
+    }
     It 'allocates unique stable IDs and keeps the retired divider ID out of checkbox coverage' {
         $lines = Get-Content (Join-Path $PSScriptRoot '..\..\..\doc\release-check-list.md')
         $newLines = @($lines | Where-Object {

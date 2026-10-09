@@ -42,6 +42,9 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestToggleCommandPaletteArgs);
         TEST_METHOD(TestMoveTabArgs);
         TEST_METHOD(TestGetKeyBindingForAction);
+        TEST_METHOD(RebindKeysRefreshesCaches);
+        TEST_METHOD(DeleteKeyBindingRefreshesCaches);
+        TEST_METHOD(DeleteInheritedKeyBindingRefreshesCaches);
         TEST_METHOD(KeybindingsWithoutVkey);
         TEST_METHOD(DefaultAgentKeybindings);
         TEST_METHOD(AgentActionsParse);
@@ -776,6 +779,121 @@ namespace SettingsModelUnitTests
             const auto& kbd{ actionMap->GetKeyBindingForAction(L"Test.CmdPal") };
             VerifyKeyChordEquality({ VirtualKeyModifiers::Control | VirtualKeyModifiers::Shift, static_cast<int32_t>('P'), 0 }, kbd);
         }
+    }
+
+    void KeyBindingsTests::RebindKeysRefreshesCaches()
+    {
+        const auto oldKeys = KeyChordSerialization::FromString(L"ctrl+shift+s");
+        const auto newKeys = KeyChordSerialization::FromString(L"ctrl+shift+y");
+        const winrt::hstring commandID{ L"Terminal.ToggleSidebar" };
+
+        for (const auto inherited : { false, true })
+        {
+            const auto original = winrt::make_self<implementation::ActionMap>();
+            original->LayerJson(VerifyParseSucceeded(R"([
+                { "command": "toggleSidebar", "id": "Terminal.ToggleSidebar", "keys": "ctrl+shift+s" }
+            ])"), OriginTag::InBox);
+            const auto actionMap = inherited ? winrt::make_self<implementation::ActionMap>() : original;
+            if (inherited)
+            {
+                actionMap->AddLeastImportantParent(original);
+            }
+
+            VERIFY_ARE_EQUAL(1u, actionMap->AllCommands().Size());
+            VERIFY_ARE_EQUAL(commandID, actionMap->KeyBindings().Lookup(oldKeys).ID());
+            VERIFY_IS_TRUE(oldKeys.Equals(actionMap->GetKeyBindingForAction(commandID)));
+            VERIFY_ARE_EQUAL(1u, actionMap->AllKeyBindingsForAction(commandID).Size());
+
+            VERIFY_IS_TRUE(actionMap->RebindKeys(oldKeys, newKeys));
+            VERIFY_IS_NULL(actionMap->GetActionByKeyChord(oldKeys));
+            VERIFY_ARE_EQUAL(commandID, actionMap->GetActionByKeyChord(newKeys).ID());
+            VERIFY_ARE_EQUAL(1u, actionMap->KeyBindings().Size());
+            VERIFY_IS_FALSE(actionMap->KeyBindings().HasKey(oldKeys));
+            VERIFY_ARE_EQUAL(commandID, actionMap->KeyBindings().Lookup(newKeys).ID());
+            VERIFY_IS_TRUE(newKeys.Equals(actionMap->GetKeyBindingForAction(commandID)));
+            const auto bindings = actionMap->AllKeyBindingsForAction(commandID);
+            VERIFY_ARE_EQUAL(1u, bindings.Size());
+            VERIFY_IS_TRUE(newKeys.Equals(bindings.GetAt(0)));
+            VERIFY_ARE_EQUAL(commandID, actionMap->GetActionByKeyChord(bindings.GetAt(0)).ID());
+            VERIFY_ARE_EQUAL(1u, actionMap->AllCommands().Size());
+            if (inherited)
+            {
+                VERIFY_IS_TRUE(actionMap->IsKeyChordExplicitlyUnbound(oldKeys));
+                VERIFY_ARE_EQUAL(commandID, original->GetActionByKeyChord(oldKeys).ID());
+                VERIFY_IS_NULL(original->GetActionByKeyChord(newKeys));
+            }
+        }
+    }
+
+    void KeyBindingsTests::DeleteKeyBindingRefreshesCaches()
+    {
+        const auto actionMap = winrt::make_self<implementation::ActionMap>();
+        actionMap->LayerJson(VerifyParseSucceeded(R"([
+            { "command": "toggleSidebar", "id": "Terminal.ToggleSidebar", "keys": "ctrl+shift+s" }
+        ])"), OriginTag::User);
+        const auto oldKeys = KeyChordSerialization::FromString(L"ctrl+shift+s");
+        const auto newKeys = KeyChordSerialization::FromString(L"ctrl+shift+y");
+        const winrt::hstring commandID{ L"Terminal.ToggleSidebar" };
+
+        VERIFY_ARE_EQUAL(1u, actionMap->AllCommands().Size());
+        VERIFY_ARE_EQUAL(commandID, actionMap->KeyBindings().Lookup(oldKeys).ID());
+        VERIFY_IS_TRUE(oldKeys.Equals(actionMap->GetKeyBindingForAction(commandID)));
+        VERIFY_ARE_EQUAL(1u, actionMap->AllKeyBindingsForAction(commandID).Size());
+        VERIFY_IS_TRUE(actionMap->RebindKeys(oldKeys, newKeys));
+        VERIFY_ARE_EQUAL(commandID, actionMap->KeyBindings().Lookup(newKeys).ID());
+        VERIFY_IS_TRUE(newKeys.Equals(actionMap->GetKeyBindingForAction(commandID)));
+        VERIFY_ARE_EQUAL(1u, actionMap->AllKeyBindingsForAction(commandID).Size());
+
+        actionMap->DeleteKeyBinding(newKeys);
+        VERIFY_IS_NULL(actionMap->GetActionByKeyChord(oldKeys));
+        VERIFY_IS_NULL(actionMap->GetActionByKeyChord(newKeys));
+        VERIFY_ARE_EQUAL(0u, actionMap->KeyBindings().Size());
+        VERIFY_IS_NULL(actionMap->GetKeyBindingForAction(commandID));
+        VERIFY_ARE_EQUAL(0u, actionMap->AllKeyBindingsForAction(commandID).Size());
+        VERIFY_ARE_EQUAL(1u, actionMap->AllCommands().Size());
+        VERIFY_ARE_EQUAL(commandID, actionMap->GetActionByID(commandID).ID());
+
+        VERIFY_IS_FALSE(actionMap->RebindKeys(newKeys, oldKeys));
+        actionMap->DeleteKeyBinding(newKeys);
+        VERIFY_ARE_EQUAL(0u, actionMap->KeyBindings().Size());
+        VERIFY_IS_NULL(actionMap->GetKeyBindingForAction(commandID));
+        VERIFY_ARE_EQUAL(0u, actionMap->AllKeyBindingsForAction(commandID).Size());
+    }
+
+    void KeyBindingsTests::DeleteInheritedKeyBindingRefreshesCaches()
+    {
+        const auto parent = winrt::make_self<implementation::ActionMap>();
+        parent->LayerJson(VerifyParseSucceeded(R"([
+            { "command": "toggleSidebar", "id": "Terminal.ToggleSidebar", "keys": "ctrl+shift+s" }
+        ])"), OriginTag::InBox);
+        const auto actionMap = winrt::make_self<implementation::ActionMap>();
+        actionMap->AddLeastImportantParent(parent);
+        const auto keys = KeyChordSerialization::FromString(L"ctrl+shift+s");
+        const winrt::hstring commandID{ L"Terminal.ToggleSidebar" };
+
+        VERIFY_ARE_EQUAL(commandID, parent->KeyBindings().Lookup(keys).ID());
+        VERIFY_IS_TRUE(keys.Equals(parent->GetKeyBindingForAction(commandID)));
+        VERIFY_ARE_EQUAL(1u, parent->AllKeyBindingsForAction(commandID).Size());
+        VERIFY_ARE_EQUAL(1u, actionMap->AllCommands().Size());
+        VERIFY_ARE_EQUAL(commandID, actionMap->KeyBindings().Lookup(keys).ID());
+        VERIFY_IS_TRUE(keys.Equals(actionMap->GetKeyBindingForAction(commandID)));
+        VERIFY_ARE_EQUAL(1u, actionMap->AllKeyBindingsForAction(commandID).Size());
+
+        actionMap->DeleteKeyBinding(keys);
+        VERIFY_IS_TRUE(actionMap->IsKeyChordExplicitlyUnbound(keys));
+        VERIFY_IS_NULL(actionMap->GetActionByKeyChord(keys));
+        VERIFY_ARE_EQUAL(0u, actionMap->KeyBindings().Size());
+        VERIFY_IS_NULL(actionMap->GetKeyBindingForAction(commandID));
+        VERIFY_ARE_EQUAL(0u, actionMap->AllKeyBindingsForAction(commandID).Size());
+        VERIFY_ARE_EQUAL(1u, actionMap->AllCommands().Size());
+        VERIFY_ARE_EQUAL(commandID, actionMap->AllCommands().GetAt(0).ID());
+        VERIFY_ARE_EQUAL(commandID, actionMap->GetActionByID(commandID).ID());
+        VERIFY_ARE_EQUAL(commandID, parent->GetActionByKeyChord(keys).ID());
+        VERIFY_ARE_EQUAL(1u, parent->KeyBindings().Size());
+        VERIFY_ARE_EQUAL(commandID, parent->KeyBindings().Lookup(keys).ID());
+        VERIFY_IS_TRUE(keys.Equals(parent->GetKeyBindingForAction(commandID)));
+        VERIFY_ARE_EQUAL(1u, parent->AllKeyBindingsForAction(commandID).Size());
+        VERIFY_ARE_EQUAL(commandID, parent->GetActionByID(commandID).ID());
     }
 
     void KeyBindingsTests::DefaultAgentKeybindings()

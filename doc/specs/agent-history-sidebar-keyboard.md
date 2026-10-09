@@ -97,6 +97,11 @@ Tabs heading has no activation action or keyboard focus stop. Recent-session
 loading is triggered when the section is needed by its preference or a query,
 using the existing backend and matching rules.
 
+The default **+** action always opens a normal terminal tab using the configured
+default profile. Filters, search, and tab layout do not change its action,
+accessible name, help text, or tooltip. Creating an agent requires an explicit
+agent action, not an override of the normal new-tab control.
+
 ## Sidebar presentation
 
 - The toolbar heading is static **Tabs**, with no switch button, border, or swap

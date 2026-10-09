@@ -23,11 +23,21 @@ Describe 'Combined sidebar initialization order' -Tag 'Unit' {
     It 'snapshots runtime state after provenance but before any fixture or app mutation' {
         $text = $script:ast.Extent.Text
         $call = $text.IndexOf("`n        Initialize-CombinedRuntimeBackup")
-        $call | Should -BeGreaterThan $text.IndexOf('$script:target = Resolve-ItApp')
-        $call | Should -BeGreaterThan $text.IndexOf('Refusing to adopt or close an existing Dev process')
-        $call | Should -BeGreaterThan $text.IndexOf('New-Item -ItemType Directory -Path $script:evidence')
-        $call | Should -BeGreaterThan $text.IndexOf("'package-before-launch.json'")
-        $call | Should -BeLessThan $text.IndexOf('$script:historyPath = Join-Path')
-        $call | Should -BeLessThan $text.IndexOf('Start-Terminal -Package Dev')
+        $call | Should -BeGreaterOrEqual 0
+        foreach ($marker in @(
+            '$script:target = Resolve-ItApp',
+            'Refusing to adopt or close an existing Dev process',
+            'New-Item -ItemType Directory -Path $script:evidence',
+            "'package-before-launch.json'"
+        )) {
+            $position = $text.IndexOf($marker)
+            $position | Should -BeGreaterOrEqual 0 -Because "the prerequisite marker must exist: $marker"
+            $call | Should -BeGreaterThan $position
+        }
+        foreach ($marker in @('$script:historyPath = Join-Path', 'Start-Terminal -Package Dev')) {
+            $position = $text.IndexOf($marker)
+            $position | Should -BeGreaterOrEqual 0 -Because "the mutation marker must exist: $marker"
+            $call | Should -BeLessThan $position
+        }
     }
 }

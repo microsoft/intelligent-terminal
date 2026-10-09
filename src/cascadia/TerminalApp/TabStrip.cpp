@@ -621,10 +621,15 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::_onSidebarFiltersChanged(IInspectable const&, WUX::Data::PropertyChangedEventArgs const& args)
     {
         const auto queryChanged = args.PropertyName() == L"SearchQuery";
-        const auto filterChanged = args.PropertyName() == L"ShowAgentsOnly" || args.PropertyName() == L"ShowRecentAgentSessions";
+        const auto recentSessionsChanged = args.PropertyName() == L"ShowRecentAgentSessions";
+        const auto filterChanged = args.PropertyName() == L"ShowAgentsOnly" || recentSessionsChanged;
         if (!queryChanged && !filterChanged)
         {
             return;
+        }
+        if (recentSessionsChanged)
+        {
+            _agentFilterTelemetryPending = _sidebarFilters.ShowRecentAgentSessions();
         }
         if (queryChanged)
         {
@@ -1504,22 +1509,8 @@ namespace winrt::TerminalApp::implementation
         _updateHistoryVisualState();
     }
 
-    void TabStrip::ClearHistorySearch()
-    {
-        if (SearchQuery().empty())
-        {
-            return;
-        }
-
-        SearchQuery(L"");
-    }
-
     void TabStrip::HistoryActive(bool value)
     {
-        if (!value)
-        {
-            _agentFilterTelemetryPending = false;
-        }
         _sidebarFilters.ShowRecentAgentSessions(value);
     }
 
@@ -1799,10 +1790,6 @@ namespace winrt::TerminalApp::implementation
         if (_isRailCollapsed || !_projectionControlsEnabled)
         {
             return;
-        }
-        if (!HistoryActive())
-        {
-            _agentFilterTelemetryPending = true;
         }
         HistoryActive(true);
         if (_searchActive)

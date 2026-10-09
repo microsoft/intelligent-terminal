@@ -565,10 +565,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             if (!keyToActionMap.contains(keys))
             {
                 keyToActionMap.emplace(keys, cmdID);
-            }
-            if (!actionToKeyMap.contains(cmdID))
-            {
-                actionToKeyMap.emplace(cmdID, keys);
+                if (!cmdID.empty() && !actionToKeyMap.contains(cmdID))
+                {
+                    actionToKeyMap.emplace(cmdID, keys);
+                }
             }
         }
 
@@ -986,6 +986,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             _KeyMap.insert_or_assign(oldKeys, L"");
         }
 
+        _RefreshKeyBindingCaches();
         return true;
     }
 
@@ -1010,6 +1011,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             // set to unbound in this layer
             _KeyMap.emplace(keys, L"");
         }
+        _RefreshKeyBindingCaches();
     }
 
     void ActionMap::AddKeyBinding(Control::KeyChord keys, const winrt::hstring& cmdID)
