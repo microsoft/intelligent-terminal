@@ -626,8 +626,8 @@
     <comment>Command in the notification-area menu that brings a background tab and its still-running terminal panes back into a window. It does not restart the processes or restore a file backup.</comment>
   </data>
   <data name="KeepTabRunningText" xml:space="preserve">
-    <value>Разделът да продължи да работи</value>
-    <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+    <value>Включване на режим без интерфейс</value>
+    <comment>Command at the top of a vertical terminal tab&apos;s context menu that enables headless mode. Headless mode keeps all existing panes running after the tab or window is closed; it does not immediately hide or pin the tab. Also labels the tab&apos;s headless-mode status indicator.</comment>
   </data>
   <data name="PinTabText" xml:space="preserve">
     <value>Закачане на раздела</value>
@@ -653,15 +653,15 @@
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>Този раздел да продължи да работи във фонов режим след затваряне на раздела или прозореца.</value>
-    <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
+    <comment>Tooltip and accessibility help for Turn on headless mode. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
   </data>
   <data name="TurnOffKeepTabRunningText" xml:space="preserve">
-    <value>Изключване на продължаването на работата</value>
-    <comment>Command shown instead of Keep tab running when that tab already has keep running enabled. It only turns off the background-running behavior; it does not close the tab or stop its current processes immediately.</comment>
+    <value>Изключване на режим без интерфейс</value>
+    <comment>Command shown instead of Turn on headless mode when that tab already has headless mode enabled. It only turns off the background-running behavior; it does not close the tab or stop its current processes immediately.</comment>
   </data>
   <data name="TurnOffKeepTabRunningToolTip" xml:space="preserve">
     <value>Този раздел вече няма да продължава да работи, след като затворите раздела или прозореца.</value>
-    <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
+    <comment>Tooltip and accessibility help for Turn off headless mode. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
     <value>Неактивен</value>
@@ -721,7 +721,7 @@
   </data>
   <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
     <value>Затваряне на всички раздели, работещи във фонов режим</value>
-    <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by Keep tab running and terminates their panes and processes. Does not close tabs still in a window or only turn off keep running.</comment>
+    <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by headless mode and terminates their panes and processes. Does not close tabs still in a window or only turn off headless mode.</comment>
   </data>
   <data name="PaneProgressStatusNormal" xml:space="preserve">
     <value>Напредък</value>

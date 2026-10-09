@@ -348,7 +348,7 @@ files to release it.
 
 Its `row_count` oracle counts the unified Agent view's session rows
 on first successful load, independently of live-tab search and split-pane
-children. `SidebarTabPinned` means enabling Keep tab running,
+children. `SidebarTabPinned` means enabling headless mode,
 not tab-order pinning. Row-field selection verifies canonical field IDs for
 empty, single, and paired selections, a disabled third choice, and suppression
 during menu-only actions and metadata/layout refresh.

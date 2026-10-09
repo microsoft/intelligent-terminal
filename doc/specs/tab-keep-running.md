@@ -1,11 +1,12 @@
-# Per-tab keep running
+# Per-tab headless mode
 
-Keep running is an explicit, runtime-only choice for an entire terminal tab.
+Headless mode (internally called keep running) is an explicit, runtime-only
+choice for an entire terminal tab.
 It is available to ordinary shell tabs without an agent CLI or lifecycle hooks,
 and is independent of startup-layout restoration.
 
-In vertical layout, right-click a terminal tab and select **Keep tab running**,
-the first menu item. When enabled, that action changes to **Turn off keep running**;
+In vertical layout, right-click a terminal tab and select **Turn on headless mode**,
+the first menu item. When enabled, that action changes to **Turn off headless mode**;
 selecting it disables background retention without closing the tab or stopping
 its current processes. It targets the clicked tab even when another
 tab has focus. The item is absent from horizontal-tab and pane context menus,
