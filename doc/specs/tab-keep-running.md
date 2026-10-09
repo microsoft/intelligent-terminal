@@ -98,6 +98,24 @@ then runs on a later UI turn. A failed tab remains available in the tray and
 does not close the receiver before other tabs in the batch can restore.
 Explicit profile launches keep their normal new-tab behavior.
 
+Startup-layout restoration remains independent of background retention. With
+**Restore window layout** or **Restore window layout and content** enabled,
+closing the last visible window saves its complete arrangement before any tabs
+move to the background, then appends distinct detached tabs from every owning
+window. This also includes tabs individually moved to the background earlier
+in the same window. Stable tab IDs prevent duplicate restoration; the visible
+window's selected tab, window geometry, and name remain unchanged. Added tabs
+restore visibly in that window, not in additional windows or as live background
+processes. Headless operation and tray Close commands retain this complete
+snapshot for the next process start.
+The content option saves both visible and detached scrollback before teardown
+and protects those files during exit cleanup. Opening another window supersedes
+the frozen snapshot; subsequent persistence describes the visible windows plus
+all remaining detached tabs, appended to one window only. Tabs already claimed
+by a live reattachment are represented by their destination, not added again.
+The Keep running choice itself is still runtime-only, and explicitly closing
+kept tabs terminates their current processes, not the saved startup layout.
+
 Selecting a live session in Agent history or the agent session list also
 reattaches its kept tab and focuses the original pane. The shared `focus-pane`
 protocol path restores the entire tab into the most recently active terminal

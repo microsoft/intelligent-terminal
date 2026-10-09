@@ -65,5 +65,6 @@ namespace TerminalApp::AgentUsage
         const std::vector<Item>& items,
         std::wstring_view tokensUnit,
         bool showUsageAndCost = true,
-        std::wstring_view contextWindowLabel = L"Context Window");
+        std::wstring_view contextWindowLabel = L"Context Window",
+        std::wstring_view languageTag = {});
 }

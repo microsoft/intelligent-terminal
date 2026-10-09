@@ -46,6 +46,15 @@ each gets its own one-line wrapper around the OS locale database.
   Win32 reading-layout locale-info field — the same OS API the Rust
   side uses, so we have one cross-stack source of truth.
 
+### Settings editor (C++ XAML)
+
+`TerminalPage::_makeSettingsContent` applies the app's existing flow direction
+to the settings page root. Navigation, search, setting cards, and Save / Discard
+buttons inherit it through XAML. The direction follows the explicit language
+setting or the first preferred resource language, even when some strings fall
+back to English. Changing the language still requires relaunch; terminal pane
+content remains left-to-right.
+
 ### `wta` TUI (Rust)
 
 - The Rust TUI library has no native bidi engine; it draws monospaced
@@ -74,6 +83,9 @@ Set `"language": "qps-plocm"` in `settings.json`:
   the left, ComboBoxes drop down on the opposite side.
 - Agent pane: setup / auth / permission / recommendations / chat
   prose right-aligns.
+- Settings editor: navigation moves to the right, setting cards mirror, and
+  Save / Discard buttons move to the left. Relaunch with `en-US` to confirm
+  the original left-to-right layout.
 
 Non-RTL locales explicitly receive `FlowDirection::LeftToRight` on the
 FRE root grid (we set both branches so the cascade always reflects the

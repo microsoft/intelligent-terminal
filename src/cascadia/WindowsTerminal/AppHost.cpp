@@ -1246,8 +1246,9 @@ void AppHost::_WindowMoved()
 }
 
 void AppHost::_CloseRequested(const winrt::Windows::Foundation::IInspectable& /*sender*/,
-                              const winrt::Windows::Foundation::IInspectable& /*args*/)
+                              const winrt::Windows::Foundation::IInspectable& args)
 {
+    _closingLayout = args.try_as<winrt::Microsoft::Terminal::Settings::Model::WindowLayout>();
     PostMessageW(_windowManager->GetMainWindow(), WindowEmperor::WM_CLOSE_TERMINAL_WINDOW, 0, reinterpret_cast<LPARAM>(this));
 }
 
