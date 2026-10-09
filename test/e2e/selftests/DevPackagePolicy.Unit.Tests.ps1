@@ -85,6 +85,25 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
             Should -Invoke Stop-Process -Times 0
         }
 
+        It 'reaps a Dev embedding process after an initially empty quiet-window sample' {
+            $first = $script:process
+            $late = New-FakeTerminalProcess -Id 51002
+            $script:queries = 0
+            Mock Get-WtProcessesForApp {
+                $script:queries++
+                if ($script:queries -eq 1) { return $first }
+                if ($script:queries -eq 2) { return }
+                if (-not $late.HasExited) { return $late }
+            }
+
+            Stop-StaleItInstances -App $script:app
+
+            $first.Closed | Should -BeTrue
+            $late.Closed | Should -BeTrue
+            $script:queries | Should -BeGreaterThan 3
+            Should -Invoke Stop-Process -Times 0
+        }
+
         It 'fails closed after three Dev respawns instead of retrying indefinitely' {
             $script:spawnedProcesses = @($script:process) + @(2..4 | ForEach-Object {
                 New-FakeTerminalProcess -Id (51000 + $_)
