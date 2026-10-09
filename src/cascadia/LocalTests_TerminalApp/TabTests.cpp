@@ -598,6 +598,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentPaneIndicatorsIgnoreNonTerminalPanes);
         TEST_METHOD(AgentPaneIndicatorsRefreshAfterNonActivePaneClose);
         TEST_METHOD(PendingAgentOpenSurvivesStartupProjection);
+        TEST_METHOD(AgentPaneCopyOnSelectTracksSettingsReload);
         TEST_METHOD(InitialSessionsViewSurvivesStartupProjection);
         TEST_METHOD(SessionsDisabledHintFollowsViewAndSettings);
         TEST_METHOD(SessionsDisabledHintUpdatesWhileStashed);
@@ -17301,6 +17302,49 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(protocolEvents[1]["params"]["pane_open"].asBool());
             page->ProtocolVtSequenceReceived(token);
         });
+    }
+
+    void TabTests::AgentPaneCopyOnSelectTracksSettingsReload()
+    {
+        for (const auto stashed : { false, true })
+        {
+            const auto page = _commonSetup();
+            TestOnUIThread([&]() {
+                const auto tab = page->_GetFocusedTabImpl();
+                auto pane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+                pane->IsAgentPane(true);
+                page->_SplitPane(tab, SplitDirection::Left, 0.5f, pane);
+                if (stashed)
+                {
+                    tab->StashAgentPane();
+                }
+                std::vector<Json::Value> requests;
+                const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                    Json::Value event;
+                    Json::CharReaderBuilder reader;
+                    std::istringstream stream{ winrt::to_string(payload) };
+                    std::string errors;
+                    if (Json::parseFromStream(reader, stream, &event, &errors) &&
+                        event["method"].asString() == "set_agent_state")
+                    {
+                        requests.push_back(event["params"]);
+                    }
+                });
+                const auto removeHandler = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+
+                for (const auto copyOnSelect : { false, true, false })
+                {
+                    requests.clear();
+                    page->_settings.GlobalSettings().CopyOnSelect(copyOnSelect);
+                    page->_RefreshUIForSettingsReload();
+                    VERIFY_ARE_EQUAL(1u, requests.size());
+                    VERIFY_ARE_EQUAL(winrt::to_string(tab->StableId()), requests[0]["tab_id"].asString());
+                    VERIFY_ARE_EQUAL(copyOnSelect, requests[0]["copy_on_select"].asBool());
+                    VERIFY_ARE_EQUAL(copyOnSelect, pane->GetTerminalControl().Settings().CopyOnSelect());
+                    VERIFY_ARE_EQUAL(stashed, tab->HasStashedAgentPane());
+                }
+            });
+        }
     }
 
     void TabTests::InitialSessionsViewSurvivesStartupProjection()

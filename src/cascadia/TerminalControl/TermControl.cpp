@@ -2704,6 +2704,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         _interactivity.RequestPasteTextFromClipboard();
     }
 
+    void TermControl::EnableAgentRightClickContextMenu(bool enabled)
+    {
+        get_self<ControlInteractivity>(_interactivity)->EnableAgentRightClickContextMenu(enabled);
+    }
+
     void TermControl::SelectAll()
     {
         _core.SelectAll();

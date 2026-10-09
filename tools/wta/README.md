@@ -287,6 +287,9 @@ the view clamps to surviving content.
 |-----|--------|
 | Type + Enter | Send prompt to agent |
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
+| Ctrl+V / configured Paste shortcut | Paste text or attach a clipboard image to the chat draft |
+| Right-click | Follow the effective `rightClickContextMenu` and `copyOnSelect` settings |
+| Alt+V | Attach a clipboard image to the chat draft |
 | Ctrl+Z | Undo the latest edit in the focused chat draft |
 | Ctrl+Y | Redo an undone edit in the focused chat draft |
 | Up / Down | Browse prompt input history |
@@ -302,6 +305,21 @@ the view clamps to surviving content.
 | Shift+PageUp/Down | Scroll debug panel |
 | Y / N | Quick allow/reject on permission dialog |
 | Up / Down / Enter | Navigate permission options |
+
+Image paste accepts screenshots and copied image files. Images appear as inline
+attachment tokens and are sent with the next prompt, not immediately. The agent
+must advertise image support; otherwise the pane shows a warning and leaves the
+draft unchanged. Ordinary text and non-image file paths retain their paste
+behavior. Alt+V remains an image-only shortcut.
+
+Ctrl+V follows the terminal action map: an explicitly unbound or reassigned
+shortcut is not overridden. With `rightClickContextMenu` enabled, right-click
+opens the terminal context menu instead of copying or pasting. Otherwise, with
+`copyOnSelect` disabled, right-click copies selected text or pastes when nothing
+is selected. With `copyOnSelect` enabled, mouse selections are copied on release
+without removing the highlight, and right-click pastes without re-copying an
+already-copied selection. These settings also update in existing and stashed
+agent panes when terminal settings reload.
 
 Draft undo groups contiguous typing; paste, cut, selection replacement, deletion,
 and idle draft clearing are separate edits. Cursor, selection, focus, and view

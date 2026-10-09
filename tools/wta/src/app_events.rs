@@ -329,12 +329,12 @@ impl App {
         &mut self,
         cut: bool,
         copy: impl FnOnce(&str) -> std::io::Result<()>,
-    ) -> bool {
+    ) -> std::io::Result<bool> {
         if !self.chat_input_has_edit_focus()
             || !self.current_tab().input_all_selected
             || self.current_tab().input.is_empty()
         {
-            return false;
+            return Ok(false);
         }
         self.current_tab_mut().break_input_undo_group();
         match copy(&self.current_tab().input) {
@@ -350,19 +350,25 @@ impl App {
             Err(error) => {
                 self.transient_hint = None;
                 tracing::warn!(target: "clipboard", error = %error, cut, "failed to copy selected input");
+                self.close_pane_armed_at = None;
+                return Err(error);
             }
         }
         self.close_pane_armed_at = None;
-        true
+        Ok(true)
     }
 
-    fn copy_text_selection(&mut self) -> bool {
+    fn copy_text_selection(&mut self, clear_selection: bool) -> std::io::Result<bool> {
         let Some(text) = self.text_selection.selected_text() else {
-            return false;
+            return Ok(false);
         };
         match crate::win32::copy_text_to_clipboard(&text) {
             Ok(()) => {
-                self.text_selection.clear();
+                if clear_selection {
+                    self.text_selection.clear();
+                } else {
+                    self.text_selection.mark_copied();
+                }
                 self.close_pane_armed_at = None;
                 self.transient_hint = Some((
                     t!("system.selection_copied").into_owned(),
@@ -376,9 +382,17 @@ impl App {
                     error = %error,
                     "failed to copy mouse-selected text"
                 );
+                return Err(error);
             }
         }
-        true
+        Ok(true)
+    }
+
+    fn finish_mouse_selection(&mut self, mouse: crossterm::event::MouseEvent) {
+        self.text_selection.handle_mouse(mouse);
+        if self.current_tab().copy_on_select && !self.text_selection.was_copied() {
+            let _ = self.copy_text_selection(false);
+        }
     }
 
     pub(super) fn default_paste_request_for_current_tab(&self) -> Option<String> {
@@ -408,10 +422,26 @@ impl App {
 
     pub(super) fn handle_right_click(&mut self) -> Option<String> {
         self.cancel_completed_turn_click();
-        if self.copy_input_selection(false, crate::win32::copy_text_to_clipboard)
-            || self.copy_text_selection()
-        {
+        let copy_on_select = self.current_tab().copy_on_select;
+        let Ok(copied_input) =
+            self.copy_input_selection(false, crate::win32::copy_text_to_clipboard)
+        else {
             return None;
+        };
+        let copied_text = if !copied_input && (!copy_on_select || !self.text_selection.was_copied())
+        {
+            let Ok(copied) = self.copy_text_selection(true) else {
+                return None;
+            };
+            copied
+        } else {
+            false
+        };
+        if !copy_on_select && (copied_input || copied_text) {
+            return None;
+        }
+        if copy_on_select {
+            self.text_selection.clear();
         }
         let Some(request) = self.default_paste_request_for_current_tab() else {
             let tab = self.current_tab();
@@ -508,17 +538,24 @@ impl App {
                 }
                 let is_copy = matches!(key.code, KeyCode::Char('c'))
                     && key.modifiers.contains(KeyModifiers::CONTROL);
-                if is_copy && self.copy_input_selection(false, crate::win32::copy_text_to_clipboard)
+                if is_copy
+                    && !matches!(
+                        self.copy_input_selection(false, crate::win32::copy_text_to_clipboard),
+                        Ok(false)
+                    )
                 {
                     return;
                 }
-                if is_copy && self.copy_text_selection() {
+                if is_copy && !matches!(self.copy_text_selection(true), Ok(false)) {
                     self.current_tab_mut().break_input_undo_group();
                     return;
                 }
                 if matches!(key.code, KeyCode::Char('x'))
                     && key.modifiers == KeyModifiers::CONTROL
-                    && self.copy_input_selection(true, crate::win32::copy_text_to_clipboard)
+                    && !matches!(
+                        self.copy_input_selection(true, crate::win32::copy_text_to_clipboard),
+                        Ok(false)
+                    )
                 {
                     return;
                 }
@@ -622,7 +659,7 @@ impl App {
                         .is_some_and(|pressed| pressed.tab_id == active_tab_id)
                         && self.input_dialog_at(mouse.column, mouse.row)
                     {
-                        self.text_selection.handle_mouse(mouse);
+                        self.finish_mouse_selection(mouse);
                         self.pressed_completed_turn = None;
                         self.last_completed_turn_click = None;
                         self.current_tab_mut().clear_completed_turn_selection();
@@ -651,7 +688,7 @@ impl App {
                     }
                     let pressed = self.pressed_completed_turn.take();
                     let released = self.completed_turn_hit_at(mouse.column, mouse.row);
-                    self.text_selection.handle_mouse(mouse);
+                    self.finish_mouse_selection(mouse);
                     if let Some(hit) = released.filter(|hit| {
                         pressed.as_ref().is_some_and(|pressed| {
                             pressed.tab_id == active_tab_id
@@ -764,14 +801,14 @@ impl App {
                     self.text_selection.handle_mouse(mouse);
                 }
             },
-            AppEvent::AgentPasteTextReady {
+            AppEvent::AgentPasteReady {
                 tab_id,
                 generation,
-                text,
+                content,
             } => {
-                self.insert_agent_paste_text(&tab_id, generation, &text);
+                self.insert_agent_paste(&tab_id, generation, content);
             }
-            AppEvent::AgentPasteTextFailed {
+            AppEvent::AgentPasteFailed {
                 tab_id,
                 generation,
                 error,
@@ -786,7 +823,7 @@ impl App {
                     target: "agent_paste",
                     tab_id = %tab_id,
                     error = %error,
-                    "failed to read text from clipboard"
+                    "failed to read agent paste from clipboard"
                 );
             }
             AppEvent::Tick => {
@@ -2949,7 +2986,7 @@ impl App {
                 }
 
                 if method == "agent_paste_text" {
-                    self.handle_agent_paste_text(&params);
+                    self.handle_agent_paste_request(&params);
                     return;
                 }
 
@@ -3523,6 +3560,7 @@ impl App {
                 //               route to the right TabSession).
                 //   * `view`: "chat" | "sessions"
                 //   * `pane_open`: bool
+                //   * `copy_on_select`: effective terminal setting, bool
                 //
                 // **Projection rule**: if the target tab is the currently-
                 // active one, immediately project the new snapshot back to
@@ -3590,6 +3628,11 @@ impl App {
                         }
                     }
 
+                    if let Some(copy_on_select) =
+                        params.get("copy_on_select").and_then(|v| v.as_bool())
+                    {
+                        self.tab_mut(&target_tab).copy_on_select = copy_on_select;
+                    }
                     // Apply `view` if present.
                     if let Some(view_str) = params.get("view").and_then(|v| v.as_str()) {
                         tracing::info!(
