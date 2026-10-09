@@ -523,6 +523,7 @@ namespace winrt::TerminalApp::implementation
         const auto flowDirection = _isRightToLeft ? FlowDirection::RightToLeft : FlowDirection::LeftToRight;
         _tabRow.FlowDirection(flowDirection);
         _tabStrip.FlowDirection(flowDirection);
+        BottomBarRoot().FlowDirection(flowDirection);
         if (const auto titlebar = tabRowImpl->VerticalTitleBarContent().try_as<FrameworkElement>())
         {
             titlebar.FlowDirection(flowDirection);
@@ -3368,6 +3369,9 @@ namespace winrt::TerminalApp::implementation
         if (const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
         {
             agentImpl->UpdateSettings(_settings);
+            const auto flowDirection = _isRightToLeft ? FlowDirection::RightToLeft : FlowDirection::LeftToRight;
+            agentImpl->AgentBarRoot().FlowDirection(flowDirection);
+            agentImpl->SessionsHintRoot().FlowDirection(flowDirection);
         }
         // Apply the cached fallback immediately when a pane is created
         // mid-session (#348). The next theme refresh replaces it with the
@@ -4828,7 +4832,8 @@ namespace winrt::TerminalApp::implementation
                     impl->GetAgentUsage(),
                     RS_(L"Usage_TokensUnit"),
                     _settings && _settings.GlobalSettings().ShowTokenUsageAndCost(),
-                    RS_(L"Usage_ContextWindowLabel"));
+                    RS_(L"Usage_ContextWindowLabel"),
+                    _settings ? _ResolveEffectiveLanguage(_settings.GlobalSettings()) : winrt::hstring{});
                 usageVisible = display.visible;
                 for (const auto& item : display.items)
                 {

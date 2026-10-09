@@ -29,6 +29,7 @@ chpwd
 Cim
 claude
 CLAUDECODE
+CLF
 clickable
 clippy
 clis
@@ -103,9 +104,11 @@ intellterm
 interoperates
 IOCP
 ipfs
+JPY
 Kbds
 keyspace
 killp
+KWD
 libfuzzer
 liga
 Llast

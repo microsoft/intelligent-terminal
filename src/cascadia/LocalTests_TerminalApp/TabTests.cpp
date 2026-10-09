@@ -17,6 +17,7 @@
 #include "../TerminalApp/TabStrip.h"
 #include "../TerminalApp/ShortcutActionDispatch.h"
 #include "../TerminalApp/AgentPaneContent.h"
+#include "../TerminalApp/AgentUsage.h"
 #include "../TerminalApp/AgentIconUtils.h"
 #include "../TerminalApp/AgentPaneDragStash.h"
 #include "../TerminalApp/Tab.h"
@@ -339,6 +340,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(EmptyTabLayoutChangeCompletesBeforeStartup);
         TEST_METHOD(VerticalLayoutMirrorsForRtl);
         TEST_METHOD(VerticalLayoutUsesFirstPreferredResourceLanguage);
+        TEST_METHOD(AgentChromeMirrorsWithoutChangingTerminalFlowDirection);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(SidebarHotkeyFocusesSearchAndReturnsToInput);
@@ -398,6 +400,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(RichTabMetadataFlyoutDismissalBehavior);
         TEST_METHOD(VerticalTabHistoryStatusText);
         TEST_METHOD(VerticalTabProgressPercentUsesLocaleFormatting);
+        TEST_METHOD(AgentBillingUsesLocaleCurrencyFormatting);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
         TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
         TEST_METHOD(BottomBarSessionsButtonDispatchesExistingAction);
@@ -4434,6 +4437,57 @@ namespace TerminalAppLocalTests
         }
     }
 
+    void TabTests::AgentChromeMirrorsWithoutChangingTerminalFlowDirection()
+    {
+        for (const auto layout : { TabLayout::Horizontal, TabLayout::Vertical })
+        {
+            for (const auto language : { L"ar-SA", L"qps-plocm", L"en-US" })
+            {
+                CascadiaSettings settings{ LR"({
+                    "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                    "showTabsInTitlebar": false,
+                    "profiles": [{
+                        "name": "profile0",
+                        "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                        "commandline": "cmd.exe"
+                    }]
+                })", {} };
+                settings.GlobalSettings().TabLayout(layout);
+                settings.GlobalSettings().Language(language);
+                winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+                const auto connection = winrt::make_self<TestConnection>(
+                    winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
+                    winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+                _initializeTerminalPage(page, settings, *connection);
+
+                TestOnUIThread([&]() {
+                    const auto expected = std::wstring_view{ language } == L"en-US" ?
+                                              FlowDirection::LeftToRight :
+                                              FlowDirection::RightToLeft;
+                    VERIFY_ARE_EQUAL(expected, page->BottomBarRoot().FlowDirection());
+                    VERIFY_ARE_EQUAL(expected, page->AgentToggleButton().FlowDirection());
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, page->AgentToggleIconBottom().FlowDirection());
+                    VERIFY_ARE_EQUAL(expected, page->UsageGroup().FlowDirection());
+
+                    const auto pane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, *connection));
+                    const auto agent = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(
+                        pane->GetContent().as<winrt::TerminalApp::AgentPaneContent>());
+                    const auto root = agent->GetRoot();
+                    for (const auto name : { L"AgentBarRoot", L"AgentLogo", L"AgentLabelText", L"SessionsHintRoot", L"SessionsDisabledHintText" })
+                    {
+                        VERIFY_ARE_EQUAL(expected, root.FindName(name).as<FrameworkElement>().FlowDirection());
+                    }
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, page->FlowDirection());
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, page->_tabContent.FlowDirection());
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, root.FlowDirection());
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, root.FindName(L"InnerContent").as<ContentPresenter>().FlowDirection());
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, agent->GetTermControl().FlowDirection());
+                    VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, page->_GetFocusedTabImpl()->GetActiveTerminalControl().FlowDirection());
+                });
+            }
+        }
+    }
+
     void TabTests::SidebarRailHintsTrackBindings()
     {
         const auto connection = winrt::make_self<TestConnection>(
@@ -6210,6 +6264,114 @@ namespace TerminalAppLocalTests
 
             VERIFY_ARE_EQUAL(expected, actual);
             VERIFY_ARE_NOT_EQUAL(winrt::hstring{ L"25%" }, actual);
+        });
+    }
+
+    void TabTests::AgentBillingUsesLocaleCurrencyFormatting()
+    {
+        TestOnUIThread([&]() {
+            using namespace winrt::Windows::Globalization::NumberFormatting;
+            for (const auto language : { L"en-US", L"fr-FR", L"ar-SA" })
+            {
+                for (const auto currency : { "USD", "JPY", "KWD" })
+                {
+                    CurrencyFormatter formatter{ til::u8u16(currency), winrt::single_threaded_vector<winrt::hstring>({ language }), L"ZZ" };
+                    formatter.Mode(CurrencyFormatterMode::UseCurrencyCode);
+                    const auto digits = formatter.FractionDigits();
+                    for (const auto value : { "1234.565", "0.004", "0" })
+                    {
+                        const std::vector<::TerminalApp::AgentUsage::Item> items{
+                            { .displayKind = ::TerminalApp::AgentUsage::DisplayKind::Billing,
+                              .valueDecimalText = value,
+                              .unitId = currency,
+                              .unitDisplayText = currency,
+                              .source = "acp_standard" }
+                        };
+                        const auto display = ::TerminalApp::AgentUsage::BuildPrimaryDisplay(items, L"tokens", true, L"Context Window", language);
+                        VERIFY_IS_TRUE(display.visible);
+                        VERIFY_ARE_EQUAL(size_t{ 1 }, display.items.size());
+                        const auto amount = std::stod(value);
+                        formatter.NumberRounder(nullptr);
+                        formatter.FractionDigits(0);
+                        VERIFY_ARE_EQUAL(std::wstring{ formatter.FormatDouble(amount) }, display.items[0].fullText);
+                        formatter.FractionDigits(digits);
+                        formatter.ApplyRoundingForCurrency(RoundingAlgorithm::RoundHalfUp);
+                        const auto threshold = std::pow(10.0, -static_cast<double>(digits));
+                        const auto expected = amount > 0 && amount < threshold ?
+                                                  L"\u2066<" + std::wstring{ formatter.FormatDouble(threshold) } + L"\u2069" :
+                                                  std::wstring{ formatter.FormatDouble(amount) };
+                        VERIFY_ARE_EQUAL(expected, display.items[0].text);
+                        if (amount > 0 && amount < threshold)
+                        {
+                            VERIFY_ARE_EQUAL(wchar_t{ L'<' }, display.items[0].text[1]);
+                            VERIFY_ARE_EQUAL(wchar_t{ 0x2066 }, display.items[0].text.front());
+                            VERIFY_ARE_EQUAL(wchar_t{ 0x2069 }, display.items[0].text.back());
+                        }
+                    }
+                }
+            }
+            struct CurrencyRangeCase
+            {
+                const char* currency;
+                const char* value;
+                bool localized;
+            };
+            for (const auto language : { L"en-US", L"fr-FR", L"ar-SA" })
+            {
+                for (const auto& test : {
+                         CurrencyRangeCase{ "USD", "9999999999999.99", true },
+                         CurrencyRangeCase{ "USD", "10000000000000", false },
+                         CurrencyRangeCase{ "USD", "10000000000000.01", false },
+                         CurrencyRangeCase{ "JPY", "999999999999999", true },
+                         CurrencyRangeCase{ "JPY", "1000000000000000", false },
+                         CurrencyRangeCase{ "JPY", "1000000000000001", false },
+                         CurrencyRangeCase{ "KWD", "999999999999.999", true },
+                         CurrencyRangeCase{ "KWD", "1000000000000", false },
+                         CurrencyRangeCase{ "KWD", "1000000000000.001", false },
+                         CurrencyRangeCase{ "CLF", "99999999999.9999", true },
+                         CurrencyRangeCase{ "CLF", "100000000000", false },
+                         CurrencyRangeCase{ "CLF", "100000000000.0001", false },
+                         CurrencyRangeCase{ "USD", "123456789012345.67", false },
+                         CurrencyRangeCase{ "USD", "9007199254740992", false },
+                     })
+                {
+                    const std::vector<::TerminalApp::AgentUsage::Item> items{
+                        { .displayKind = ::TerminalApp::AgentUsage::DisplayKind::Billing,
+                          .valueDecimalText = test.value,
+                          .unitId = test.currency,
+                          .unitDisplayText = test.currency,
+                          .source = "acp_standard" }
+                    };
+                    const auto display = ::TerminalApp::AgentUsage::BuildPrimaryDisplay(items, L"tokens", true, L"Context Window", language);
+                    VERIFY_IS_TRUE(display.visible);
+                    VERIFY_ARE_EQUAL(size_t{ 1 }, display.items.size());
+                    if (test.localized)
+                    {
+                        CurrencyFormatter formatter{ til::u8u16(test.currency), winrt::single_threaded_vector<winrt::hstring>({ language }), L"ZZ" };
+                        formatter.Mode(CurrencyFormatterMode::UseCurrencyCode);
+                        const auto amount = std::stod(test.value);
+                        VERIFY_ARE_EQUAL(std::wstring{ formatter.FormatDouble(amount) }, display.items[0].text);
+                        formatter.FractionDigits(0);
+                        VERIFY_ARE_EQUAL(std::wstring{ formatter.FormatDouble(amount) }, display.items[0].fullText);
+                    }
+                    else
+                    {
+                        const auto legacy = ::TerminalApp::AgentUsage::BuildPrimaryDisplay(items, L"tokens", true, L"Context Window");
+                        VERIFY_ARE_EQUAL(legacy.items[0].text, display.items[0].text);
+                        VERIFY_ARE_EQUAL(legacy.items[0].fullText, display.items[0].fullText);
+                    }
+                }
+            }
+            const std::vector<::TerminalApp::AgentUsage::Item> unsupported{
+                { .displayKind = ::TerminalApp::AgentUsage::DisplayKind::Billing,
+                  .valueDecimalText = "0.004",
+                  .unitId = "EURO",
+                  .unitDisplayText = "EURO",
+                  .source = "acp_standard" }
+            };
+            const auto retained = ::TerminalApp::AgentUsage::BuildPrimaryDisplay(unsupported, L"tokens", true, L"Context Window", L"ar-SA");
+            VERIFY_ARE_EQUAL(std::wstring{ L"<0.01 EURO" }, retained.items[0].text);
+            VERIFY_ARE_EQUAL(std::wstring{ L"0.004 EURO" }, retained.items[0].fullText);
         });
     }
 
