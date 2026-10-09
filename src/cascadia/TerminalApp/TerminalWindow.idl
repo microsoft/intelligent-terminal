@@ -157,5 +157,7 @@ namespace TerminalApp
 
         void SetStartupKeptGroups(Windows.Foundation.Collections.IVectorView<Guid> groups,
                                   Windows.Foundation.IReference<Windows.Foundation.Rect> bounds);
+
+        Microsoft.Terminal.Settings.Model.WindowLayout GetStartupRestoreLayout();
     }
 }

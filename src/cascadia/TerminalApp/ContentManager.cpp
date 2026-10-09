@@ -293,6 +293,25 @@ namespace winrt::TerminalApp::implementation
         return it == _keptGroups.end() ? nullptr : it->second.owner;
     }
 
+    winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::IPaneContent> ContentManager::KeptPanes()
+    {
+        _CheckThread();
+        std::vector<winrt::TerminalApp::IPaneContent> panes;
+        for (const auto& [id, group] : _keptGroups)
+        {
+            if (!group.restoring)
+            {
+                winrt::get_self<Tab>(group.tab)->GetRootPane()->WalkTree([&](const auto& pane) {
+                    if (auto content = pane->GetContent())
+                    {
+                        panes.emplace_back(std::move(content));
+                    }
+                });
+            }
+        }
+        return winrt::single_threaded_vector(std::move(panes)).GetView();
+    }
+
     winrt::TerminalApp::Tab ContentManager::BeginReattachKeptGroup(const winrt::guid& groupId)
     {
         _CheckThread();

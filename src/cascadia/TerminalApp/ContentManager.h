@@ -63,6 +63,7 @@ namespace winrt::TerminalApp::implementation
         void CompleteKeptGroupReattach(const winrt::guid& groupId, bool committed);
         void DiscardKeptGroup(const winrt::guid& groupId);
         void DiscardAllKeptGroups();
+        winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::IPaneContent> KeptPanes();
 
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::hstring> DetachedSessionEvent;

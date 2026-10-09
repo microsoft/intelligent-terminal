@@ -22,6 +22,7 @@ public:
     winrt::Windows::Foundation::IAsyncOperation<winrt::guid> GetVirtualDesktopId();
     IslandWindow* GetWindow() const noexcept;
     winrt::TerminalApp::TerminalWindow Logic();
+    winrt::Microsoft::Terminal::Settings::Model::WindowLayout ClosingLayout() const { return _closingLayout; }
 
     bool OnDirectKeyEvent(uint32_t vkey, uint8_t scanCode, bool down);
     void SetTaskbarProgress(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::Foundation::IInspectable& args);
@@ -41,6 +42,7 @@ private:
     winrt::TerminalApp::AppLogic _appLogic{ nullptr };
     mutable std::mutex _stateMutex;
     winrt::TerminalApp::TerminalWindow _windowLogic{ nullptr };
+    winrt::Microsoft::Terminal::Settings::Model::WindowLayout _closingLayout{ nullptr };
     std::shared_ptr<ThrottledFunc<bool>> _showHideWindowThrottler;
     SafeDispatcherTimer _frameTimer;
     LARGE_INTEGER _lastActivatedTime{};
