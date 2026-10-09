@@ -9,6 +9,7 @@ BeforeAll {
             [string]$Tag,
             [switch]$GenerateReport,
             [switch]$ObstructReport,
+            [switch]$UpdateReport,
             [switch]$RequireNoSkips,
             [string[]]$AdditionalArguments
         )
@@ -21,9 +22,17 @@ BeforeAll {
         if ($ObstructReport) {
             New-Item -ItemType Directory -Path (Join-Path $out 'release-report.md') | Out-Null
         }
+        if ($UpdateReport) {
+            @(
+                '# Release Report'
+                '> **Automated: 1 passed, 0 failed. Manual: 0 item(s) left for you.** (total 1)'
+                '- [x] `C349` **Sidebar startup snapshots preserve the consolidated launch contract:** prior result'
+            ) | Set-Content -LiteralPath (Join-Path $out 'release-report.md')
+        }
 
         $arguments = @('-NoProfile', '-File', $script:runner, '-Path', $testFile, '-OutDir', $out)
         if (-not $GenerateReport) { $arguments += '-SkipReleaseReport' }
+        if ($UpdateReport) { $arguments += '-UpdateReport' }
         if ($Tag) { $arguments += @('-Tag', $Tag) }
         if ($RequireNoSkips) { $arguments += '-RequireNoSkips' }
         if ($AdditionalArguments) { $arguments += $AdditionalArguments }
@@ -36,6 +45,9 @@ BeforeAll {
             ExitCode = $exitCode
             Output = Get-Content -LiteralPath $log -Raw
             Html = if (Test-Path -LiteralPath $html) { Get-Content -LiteralPath $html -Raw } else { '' }
+            ReleaseReport = if (Test-Path -LiteralPath (Join-Path $out 'release-report.md')) {
+                Get-Content -LiteralPath (Join-Path $out 'release-report.md') -Raw
+            } else { '' }
         }
     }
 }
@@ -73,6 +85,23 @@ Describe 'ordinary suite' {
 
         $run.ExitCode | Should -Not -Be 0
         $run.Output | Should -Not -Match 'release-report.md : SKIPPED'
+    }
+
+    It 'withholds all checklist credit after a structural cleanup failure in <Mode> mode' -ForEach @(
+        @{ Mode = 'full'; UpdateReport = $false }
+        @{ Mode = 'incremental'; UpdateReport = $true }
+    ) {
+        $run = Invoke-ReportFixture -GenerateReport -UpdateReport:$UpdateReport -Body @"
+Describe 'Sidebar startup snapshots preserve the consolidated launch contract' {
+    It 'passes before cleanup fails' { `$true | Should -BeTrue }
+    AfterAll { throw 'fixture AfterAll failed' }
+}
+"@
+
+        $run.ExitCode | Should -Not -Be 0
+        $run.Output | Should -Match 'Passed=1 Failed=0'
+        $run.ReleaseReport | Should -Match 'AUTOMATION FAILED.*setup or cleanup failed'
+        $run.ReleaseReport | Should -Not -Match '(?m)^- \[x\]'
     }
 
     It 'distinguishes an allowed mixed skip from all tests passed' {

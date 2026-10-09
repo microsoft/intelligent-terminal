@@ -141,6 +141,28 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
             Should -Invoke Stop-Process -Times 1 -ParameterFilter { $Id -eq 51001 }
         }
 
+        It 'holds the revalidated process handle until its PID-bound stop completes' {
+            $script:process = New-FakeTerminalProcess -Name wta
+            $script:live = New-FakeTerminalProcess -Name wta
+            [void]$script:live.PSObject.Properties.Remove('Handle')
+            $script:liveHandleReads = 0
+            $script:live | Add-Member ScriptProperty Handle {
+                $script:liveHandleReads++
+                [IntPtr]::new(42)
+            }
+            Mock Test-Until { $false }
+            Mock Get-Process { $script:live } -ParameterFilter { $Id -eq $script:process.Id }
+            Mock Stop-Process {
+                $script:liveHandleReads | Should -BeGreaterThan 0
+                $script:process.HasExited = $true
+            }
+
+            Stop-StaleItInstances -App $script:app -GraceSec 1
+
+            $script:process.HasExited | Should -BeTrue
+            Should -Invoke Stop-Process -Times 1 -ParameterFilter { $Id -eq 51001 }
+        }
+
         It 'preserves a running non-Dev Intelligent Terminal window' {
             $script:app.Package = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe'
             $script:app.PackageFullName = 'Microsoft.IntelligentTerminal_1.0.0.0_x64__8wekyb3d8bbwe'

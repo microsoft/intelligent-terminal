@@ -303,6 +303,7 @@ function Stop-ItDevPackageProcesses {
                     throw
                 }
                 $null = $live.Handle
+                # The retained handle prevents Windows from reusing this PID before shutdown.
                 if ($live.HasExited -or
                     $live.StartTime.ToUniversalTime() -ne $target.StartTime -or
                     [IO.Path]::GetFullPath([string]$live.Path) -cne $target.Path -or
@@ -544,8 +545,8 @@ function Start-Terminal {
                          cannot leak into a test that only patches a subset of keys (default
                          $true; ignored when Backup is $false).
     .PARAMETER ShowFre   Leave the agent FRE overlay SHOWING (writes agentFreCompleted=false).
-                         COM resolution is best-effort in this mode. A fresh monarch is required;
-                         a running selected package is refused before changing configuration.
+                         COM resolution is best-effort in this mode. A cold start is required:
+                         verified Dev processes close automatically; active non-Dev packages are refused.
     #>
     [CmdletBinding()]
     param(

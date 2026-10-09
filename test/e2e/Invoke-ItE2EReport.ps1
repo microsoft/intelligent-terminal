@@ -77,11 +77,26 @@ if (-not $result) {
     throw 'Pester did not return a test result object.'
 }
 
+$setupFailures = @(@($result.FailedContainers) + @($result.FailedBlocks) | Where-Object { $_ })
+$noTests = ($result.TotalCount - $result.NotRunCount) -eq 0
+$unexpectedSkips = $RequireNoSkips -and $result.SkippedCount -gt 0
+$runFailed = $result.FailedCount -gt 0 -or $setupFailures.Count -gt 0 -or
+    $noTests -or $result.PassedCount -eq 0 -or $unexpectedSkips
+
 $releaseReport = $null
 $releaseReportKind = $null
 if (-not $SkipReleaseReport) {
     $releaseReport = Join-Path $OutDir 'release-report.md'
-    if ($UpdateReport -and (Test-Path $releaseReport)) {
+    if ($setupFailures.Count) {
+        @(
+            '# Release Report'
+            ''
+            '> ⚠️ **AUTOMATION FAILED** — Pester setup or cleanup failed. No checklist item is credited.'
+            '> See the test output and report.html for diagnostics; rerun after fixing the failure.'
+        ) | Set-Content -LiteralPath $releaseReport -Encoding utf8
+        $releaseReportKind = 'blocked by setup/cleanup failure'
+    }
+    elseif ($UpdateReport -and (Test-Path $releaseReport)) {
         & (Join-Path $PSScriptRoot 'Update-ReleaseReport.ps1') -Report $releaseReport -ResultsXml $cfg.TestResult.OutputPath.Value
         $releaseReportKind = 'incrementally updated'
     }
@@ -92,11 +107,6 @@ if (-not $SkipReleaseReport) {
     }
 }
 
-$setupFailures = @(@($result.FailedContainers) + @($result.FailedBlocks) | Where-Object { $_ })
-$noTests = ($result.TotalCount - $result.NotRunCount) -eq 0
-$unexpectedSkips = $RequireNoSkips -and $result.SkippedCount -gt 0
-$runFailed = $result.FailedCount -gt 0 -or $setupFailures.Count -gt 0 -or
-    $noTests -or $result.PassedCount -eq 0 -or $unexpectedSkips
 $bannerText = if ($result.FailedCount -gt 0) {
     "$($result.FailedCount) FAILED"
 }

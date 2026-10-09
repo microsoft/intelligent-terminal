@@ -82,7 +82,7 @@ Describe 'Telemetry funnel scenario helpers' -Tag Unit {
                 $node.Extent.Text -match '-App\s+\$other\b'
         }, $true))
         $guards | Should -HaveCount 1
-        $guards[0].Extent.Text | Should -Match '\b-IncludePackageExecutables\b'
+        $guards[0].Extent.Text | Should -Match '-IncludePackageExecutables\b'
         $transaction = $ast.Find({
             param($node)
             $node -is [Management.Automation.Language.CommandAst] -and

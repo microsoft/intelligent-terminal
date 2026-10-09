@@ -767,6 +767,9 @@ Outputs (all under `test/e2e/artifacts/`):
   (runs the suite, then overlays only its items onto the existing report; falls back to a fresh
   generate if no report exists yet). Or standalone after a run wrote `results.xml`:
   `pwsh -File test/e2e/Update-ReleaseReport.ps1`.
+  If Pester reports a structural setup/cleanup failure, both full and incremental
+  runner modes replace the release report with a blocked notice and **no checked
+  items**, rather than crediting test cases that passed before the failure.
 - Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).
   Zero selected or passing cases and setup/report-generation errors are non-green,
   even with no failing test assertion. A mixture of passes and externally gated
