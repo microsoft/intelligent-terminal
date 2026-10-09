@@ -5,6 +5,8 @@ const MAX_REQUESTS: usize = 32;
 const MAX_PAYLOAD_BYTES: usize = 16 * 1024 * 1024;
 // Reserve context space before capture, then account for the actual snapshot payload.
 const SNAPSHOT_RESERVATION: usize = 256 * 1024;
+// Allow cold process/COM overhead without inheriting wtcli's 30-second deadline.
+const ADMISSION_CAPTURE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RequestKind {
@@ -758,6 +760,40 @@ impl App {
     }
 
     pub(super) async fn capture_pending_autofix_snapshots(&mut self) {
+        // One deadline covers the entire event's preparation drain. Dropping the
+        // read future also drops CliChannel's kill_on_drop wtcli child.
+        let capture = tokio::time::timeout(ADMISSION_CAPTURE_TIMEOUT, async {
+            while let Some(item) = self
+                .tab_sessions
+                .values()
+                .flat_map(|tab| &tab.pending_autofix_captures)
+                .next()
+            {
+                let request_id = item.submission.id;
+                let result = match (
+                    item.submission.pane_context.as_ref(),
+                    item.submission.autofix_text_kind,
+                ) {
+                    (Some(context), Some(text_kind)) => {
+                        crate::protocol::acp::client::capture_autofix_snapshot(
+                            &self.shell_mgr,
+                            context,
+                            text_kind,
+                        )
+                        .await
+                    }
+                    _ => {
+                        tracing::error!(target: "prompt_queue", request_id, "Autofix capture missing request context");
+                        Err(t!("queue.snapshot_source_required").into_owned())
+                    }
+                };
+                self.handle_event(AppEvent::AutofixSnapshotReady { request_id, result });
+            }
+        })
+        .await;
+        let Err(error) = capture else {
+            return;
+        };
         while let Some(item) = self
             .tab_sessions
             .values()
@@ -765,24 +801,10 @@ impl App {
             .next()
         {
             let request_id = item.submission.id;
-            let result = match (
-                item.submission.pane_context.as_ref(),
-                item.submission.autofix_text_kind,
-            ) {
-                (Some(context), Some(text_kind)) => {
-                    crate::protocol::acp::client::capture_autofix_snapshot(
-                        &self.shell_mgr,
-                        context,
-                        text_kind,
-                    )
-                    .await
-                }
-                _ => {
-                    tracing::error!(target: "prompt_queue", request_id, "Autofix capture missing request context");
-                    Err(t!("queue.snapshot_source_required").into_owned())
-                }
-            };
-            self.handle_event(AppEvent::AutofixSnapshotReady { request_id, result });
+            self.handle_event(AppEvent::AutofixSnapshotReady {
+                request_id,
+                result: Err(error.to_string()),
+            });
         }
     }
 
@@ -941,6 +963,8 @@ mod tests {
         response: Mutex<serde_json::Value>,
         requests: AtomicUsize,
         fail: bool,
+        hang: bool,
+        completed: AtomicUsize,
     }
 
     impl AdmissionCaptureChannel {
@@ -962,6 +986,8 @@ mod tests {
                 })),
                 requests: AtomicUsize::new(0),
                 fail,
+                hang: false,
+                completed: AtomicUsize::new(0),
             }
         }
     }
@@ -978,10 +1004,14 @@ mod tests {
             assert_eq!(params["max_lines"], 30);
             assert_eq!(params["max_chars"], 4000);
             self.requests.fetch_add(1, Ordering::Relaxed);
+            if self.hang {
+                std::future::pending::<()>().await;
+            }
             tokio::task::yield_now().await;
             if self.fail {
                 anyhow::bail!("capture unavailable");
             }
+            self.completed.fetch_add(1, Ordering::Relaxed);
             Ok(self.response.lock().unwrap().clone())
         }
 
@@ -1153,6 +1183,63 @@ mod tests {
             }
             release(&mut app);
             assert_eq!(rx.try_recv().unwrap().text, "unrelated queued input");
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn autofix_admission_timeout_bounds_event_and_keeps_diagnostics_retryable() {
+        let _locale = crate::test_support::lock_locale();
+        for kind in [
+            AutofixTrigger::Automatic,
+            AutofixTrigger::Typed,
+            AutofixTrigger::Detected,
+        ] {
+            let (mut app, mut rx) = app();
+            hold(&mut app);
+            enter(&mut app, "unrelated queued input");
+            let channel = Arc::new(AdmissionCaptureChannel {
+                hang: true,
+                ..AdmissionCaptureChannel::new(false)
+            });
+            app.shell_mgr = Arc::new(ShellManager::new().with_wt_channel(channel.clone()));
+            let event = admission_event(&mut app, kind);
+            // Multiple preparations share the event budget.
+            app.handle_event(event);
+            enter(&mut app, "/fix second");
+            let tokens: Vec<_> = app
+                .current_tab()
+                .pending_autofix_captures
+                .iter()
+                .map(|entry| entry.submission.cancellation_token())
+                .collect();
+            let started = tokio::time::Instant::now();
+            app.capture_pending_autofix_snapshots().await;
+            assert_eq!(started.elapsed(), ADMISSION_CAPTURE_TIMEOUT);
+            assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+            assert_eq!(channel.completed.load(Ordering::Relaxed), 0);
+            assert!(tokens.iter().all(|token| token.is_cancelled()));
+            assert!(app.current_tab().pending_autofix_captures.is_empty());
+            assert!(!app.current_tab().prompt_queue.paused);
+            assert!(app.current_tab().messages.iter().any(|message| {
+                matches!(message, ChatMessage::Notice { kind: NoticeKind::Warning, text }
+                    if text == t!("queue.capture_failed", error = "deadline has elapsed").as_ref())
+            }));
+            if kind == AutofixTrigger::Detected {
+                assert!(matches!(
+                    app.current_tab().autofix.bar_snapshot,
+                    AutofixBarSnapshot::Detected { .. }
+                ));
+                let channel = Arc::new(AdmissionCaptureChannel::new(false));
+                app.shell_mgr = Arc::new(ShellManager::new().with_wt_channel(channel));
+                let event = admission_event(&mut app, kind);
+                app.handle_event_and_capture(event).await;
+                assert!(app.current_tab().autofix.detected_request_id.is_some());
+            }
+            release(&mut app);
+            assert_eq!(rx.try_recv().unwrap().text, "unrelated queued input");
+            tokio::time::advance(std::time::Duration::from_secs(30)).await;
+            assert_eq!(channel.completed.load(Ordering::Relaxed), 0);
+            assert!(app.current_tab().pending_autofix_captures.is_empty());
         }
     }
 

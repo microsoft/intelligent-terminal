@@ -37,6 +37,8 @@ pub struct TabAutofixState {
     /// notifications reset this identity even when their pane and text are identical.
     /// Independent of `generation`, which fences output from the active turn.
     pub detected_request_id: Option<u64>,
+    /// Original manually admitted diagnostic, retained across result projection.
+    pub(super) admitted_diagnostic: Option<(u64, String, String, Option<uuid::Uuid>)>,
     /// Last bottom-bar state we emitted (or would have emitted, if the
     /// tab wasn't active). Used to re-emit on tab_changed so the bar
     /// shows the right state when the user comes back to this tab.
@@ -280,6 +282,7 @@ impl App {
         pane_id: &str,
         summary: &str,
     ) {
+        self.tab_mut(target_tab_id).autofix.admitted_diagnostic = None;
         self.tab_mut(target_tab_id).autofix.suggested_pane_id = None;
         let snapshot = AutofixBarSnapshot::Detected {
             pane_id: pane_id.to_string(),
@@ -556,6 +559,7 @@ impl App {
     }
 
     pub(super) fn emit_autofix_state_cleared(&mut self, target_tab_id: &str) {
+        self.tab_mut(target_tab_id).autofix.admitted_diagnostic = None;
         // `cleared` carries no pane info — C++ clears its
         // `lastErrorSessionId` based on the state alone. Reusing the
         // `Idle` snapshot means a subsequent tab switch re-emits a

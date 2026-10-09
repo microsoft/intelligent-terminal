@@ -97,6 +97,139 @@ fn detected_autofix_is_actionable_while_connecting_and_queues_until_ready() {
 }
 
 #[test]
+fn admitted_detected_autofix_cancel_restores_only_current_manual_diagnostic() {
+    let _locale = crate::test_support::lock_locale();
+    for stale in [
+        "none",
+        "new_failure",
+        "exit_zero",
+        "new_command",
+        "pane_closed",
+    ] {
+        for end_before_cancel in [false, true] {
+            let mut app = test_app();
+            app.tab_id = Some("tab".into());
+            app.state = ConnectionState::Connected;
+            app.current_tab_mut().session_id = Some("diagnostic-session".into());
+            app.autofix_enabled = false;
+            let detection_id = uuid::Uuid::new_v4();
+            app.current_tab_mut().autofix.detected_offer = Some(("pane".into(), detection_id));
+            app.maybe_trigger_autofix(&failure_notification("pane", Some("tab")));
+            app.handle_autofix_execute_from_detected("pane", Some("tab"));
+            complete_autofix_capture(&mut app, "tab");
+            let id = app.current_tab().turn.prompt_id().unwrap();
+            let token = app
+                .current_tab()
+                .active_prompt_cancellation
+                .as_ref()
+                .unwrap()
+                .token
+                .clone();
+            let session = app
+                .current_tab()
+                .session_id
+                .clone()
+                .unwrap_or_else(|| "tab".into());
+            if end_before_cancel {
+                app.handle_event(AppEvent::AgentMessageChunk {
+                    session_id: session.clone(),
+                    text: "diagnosis".into(),
+                });
+                app.turn_close(&session);
+            }
+            match stale {
+                "new_failure" => {
+                    let mut failure = failure_notification("new-pane", Some("tab"));
+                    failure.summary = "new failure".into();
+                    app.maybe_trigger_autofix(&failure);
+                }
+                "exit_zero" | "new_command" => {
+                    app.current_tab_mut().autofix.trigger_echo_pane = None;
+                    app.handle_event(AppEvent::WtEvent {
+                        method: "vt_sequence".into(),
+                        pane_id: "pane".into(),
+                        tab_id: Some("tab".into()),
+                        params: serde_json::json!({ "sequence": if stale == "exit_zero" { "osc:133;D;0" } else { "osc:133;A" } }),
+                    });
+                }
+                "pane_closed" => app.handle_autofix_pane_closed(Some("tab"), "pane"),
+                _ => {}
+            }
+            app.request_turn_cancel_for_tab("tab");
+            if stale == "none" {
+                assert!(
+                    matches!(&app.current_tab().autofix.bar_snapshot,
+                    AutofixBarSnapshot::Detected { pane_id, summary, .. }
+                    if pane_id == "pane" && summary == "Command failed (exit 1)"),
+                    "end={end_before_cancel}: {:?}",
+                    app.current_tab().autofix
+                );
+                assert_eq!(
+                    app.current_tab().autofix.detected_offer,
+                    Some(("pane".into(), detection_id))
+                );
+                assert!(app.current_tab().autofix.detected_request_id.is_none());
+                if !end_before_cancel {
+                    assert!(token.is_cancelled());
+                    app.settle_prompt_cancellation(id, true);
+                }
+                app.handle_autofix_execute_from_detected("pane", Some("tab"));
+                app.handle_autofix_execute_from_detected("pane", Some("tab"));
+                assert_eq!(app.current_tab().pending_autofix_captures.len(), 1);
+                assert_ne!(
+                    app.current_tab().pending_autofix_captures[0].submission.id,
+                    id
+                );
+                let retry_id = app.current_tab().pending_autofix_captures[0].submission.id;
+                complete_autofix_capture(&mut app, "tab");
+                assert_eq!(app.current_tab().turn.prompt_id(), Some(retry_id));
+                app.handle_autofix_execute_from_detected("pane", Some("tab"));
+                assert!(app.current_tab().pending_autofix_captures.is_empty());
+                assert!(app.current_tab().prompt_queue.entries.is_empty());
+            } else if stale == "new_failure" {
+                assert!(matches!(&app.current_tab().autofix.bar_snapshot,
+                    AutofixBarSnapshot::Detected { pane_id, summary, .. }
+                    if pane_id == "new-pane" && summary == "new failure"));
+            } else {
+                assert!(
+                    matches!(
+                        app.current_tab().autofix.bar_snapshot,
+                        AutofixBarSnapshot::Idle
+                    ),
+                    "{stale}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn cancelling_automatic_or_typed_fix_does_not_create_detected_offer() {
+    let _locale = crate::test_support::lock_locale();
+    for automatic in [false, true] {
+        let mut app = test_app();
+        app.tab_id = Some("tab".into());
+        app.state = ConnectionState::Connected;
+        if automatic {
+            app.autofix_enabled = true;
+            app.maybe_trigger_autofix(&failure_notification("pane", Some("tab")));
+            complete_autofix_capture(&mut app, "tab");
+        } else {
+            app.current_tab_mut().input = "/fix explain this failure".into();
+            app.enqueue_input(Some("explain this failure".into()));
+            complete_autofix_capture(&mut app, "tab");
+        }
+        assert!(app.current_tab().turn.is_in_flight());
+        assert!(app.current_tab().autofix.admitted_diagnostic.is_none());
+        app.request_turn_cancel_for_tab("tab");
+        assert!(!matches!(
+            app.current_tab().autofix.bar_snapshot,
+            AutofixBarSnapshot::Detected { .. }
+        ));
+    }
+}
+
+#[test]
 fn detected_activation_is_idempotent_while_capturing_connecting_or_busy() {
     let _locale = crate::test_support::lock_locale();
     for gate in ["capturing", "connecting", "busy"] {

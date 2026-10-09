@@ -361,6 +361,7 @@ pending state; it does not wait for the request to start running.
 Repeated activation of the same detected failure does not add another request,
 including while the session is still connecting. A later fresh failure remains
 eligible for its own activation.
+Cancelling active analysis requested from a detected diagnostic restores its actionable Detected hint unless a newer failure, shell progress, or source-pane closure has superseded or invalidated it.
 
 The count refers to the pending queue, not the chat history. Queue capacity is
 bounded; when a request does not fit, its draft remains in the editor.
@@ -390,7 +391,11 @@ shell work and do not discard a waiting fix. When WTA handles an Autofix trigger
 it awaits capture of the source pane's output, shell, and working directory as
 part of queue admission, before processing the next helper event. Capture does not
 wait for agent readiness or the current turn to finish. A typed `/fix` uses the
-same admission-time capture. Dispatch consumes the frozen evidence without
+same admission-time capture. All preparations from one helper event share a
+one-second capture deadline, so an unresponsive terminal read cannot hold up helper
+event processing for wtcli's 30-second deadline. Expiry cancels the read subprocess
+and discards unfinished preparations through the usual capture-failure warning;
+it never admits a late result. Dispatch consumes the frozen evidence without
 reading the pane again. This is a snapshot when WTA handles the trigger, not an
 atomic snapshot at the terminal's command-finished marker. Any failed capture
 shows a warning in the agent pane without creating a queue entry or stopping

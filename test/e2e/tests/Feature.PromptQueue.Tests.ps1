@@ -378,11 +378,27 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
         Invoke-QueueShellCommand $failure -Failure
         Wait-UiElement -App $script:app -Selector 'DiagnosticsButton' -TimeoutSec 15 | Out-Null
         Assert-QueueSize 0
-        foreach ($click in 1..3) {
+        $activationListener = Start-WtEventListener -App $script:app -WaitForReady
+        try {
             Test-UiElementEnabled -App $script:app -Selector 'DiagnosticsButton' | Should -BeTrue
             Invoke-UiElement -App $script:app -Selector 'DiagnosticsButton' | Out-Null
+            $activation = Wait-WtEvent -Listener $activationListener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'autofix_execute_from_detected' -and
+                "$($_.params.pane_id)" -eq $script:sourcePaneId
+            }
+            $activation | Should -Not -BeNullOrEmpty
             Assert-QueueSize 1
+            Wait-Until -TimeoutSec 20 -Because 'accepted diagnostics cannot be clicked again' -Condition {
+                -not (Test-UiElementEnabled -App $script:app -Selector 'DiagnosticsButton')
+            } | Out-Null
+            $duplicate = $activation | ConvertTo-Json -Depth 64 -Compress
+            foreach ($attempt in 1..2) {
+                Invoke-WtCli -App $script:app -Arguments @('publish', $duplicate) | Out-Null
+                Assert-QueueSize 1
+                Test-UiElementEnabled -App $script:app -Selector 'DiagnosticsButton' | Should -BeFalse
+            }
         }
+        finally { Stop-WtEventListener -Listener $activationListener }
         @(Get-QueueRecords -Kind session_ready) | Should -HaveCount 0
         Assert-QueuePromptCountStable 0
 

@@ -57,7 +57,7 @@ use cli::args::{Cli, Command, HooksAction, InitialView};
 #[cfg(test)]
 use cli::args::{HooksCliFilter, SessionsAction, SessionsOriginArg};
 
-include!(concat!(env!("OUT_DIR"), "\\locale_codegen.rs"));
+include!(concat!(env!("OUT_DIR"), "/locale_codegen.rs"));
 
 #[cfg(test)]
 #[test]

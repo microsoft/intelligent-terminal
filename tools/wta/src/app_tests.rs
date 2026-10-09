@@ -23346,6 +23346,61 @@ fn direct_proposal_history_distinguishes_localized_insert_and_run() {
 }
 
 #[test]
+fn disconnected_recommendation_teardown_is_not_user_cancellation() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    for end_before_action in [false, true] {
+        let mut app = test_app();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        drop(rx);
+        let manager = std::sync::Arc::new(
+            crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+        );
+        app.set_proposal_channels(std::sync::Arc::clone(&manager));
+        let session = "disconnected-action";
+        stage_proposal_session(&mut app, session);
+        submit_proposal_prompt(&mut app, session);
+        let (proposal_id, mut final_rx) = stage_direct_proposal(&mut app, &manager, session);
+        let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+        app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+            proposal_id,
+            responder: commit_tx,
+        });
+        assert!(commit_rx.blocking_recv().unwrap());
+        if end_before_action {
+            app.turn_close(session);
+        }
+        app.turn_execute_card(session);
+        assert_eq!(
+            final_rx.try_recv().unwrap(),
+            crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Unavailable
+        );
+        let tab = app.session_tab(session);
+        assert!(tab.pending_queue_action.is_none());
+        assert!(tab
+            .messages
+            .iter()
+            .chain(tab.completed_turns.iter().flat_map(|turn| &turn.details))
+            .any(
+                |m| matches!(m, ChatMessage::Error(text) if text == t!("connection.lost").as_ref())
+            ));
+        assert_eq!(tab.completed_turns.len(), 1);
+        assert_eq!(tab.completed_turns[0].trailing_marker, None);
+        assert!(!format!("{:?}", tab.completed_turns).contains("(canceled)"));
+        assert_eq!(tab.turn.is_cancelling(), !end_before_action);
+        if !end_before_action {
+            assert!(tab
+                .active_prompt_cancellation
+                .as_ref()
+                .unwrap()
+                .token
+                .is_cancelled());
+        }
+    }
+}
+
+#[test]
 fn direct_proposal_cancel_history_marks_action_not_title() {
     let _locale = crate::test_support::lock_locale();
     for (locale, canceled) in [("en-US", "(canceled)"), ("zh-CN", "(已取消)")] {
