@@ -31,7 +31,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.SidebarTelemetry.Tests.ps1` | Opt-in typed ETW: sidebar actions, real tab-order pin/unpin, KeepId/AttemptId restoration and surviving observation sessions, Launch/UserChange field snapshots, raw-provider-ID exclusion and negative controls | 10 (requires `ITE2E_TELEMETRY=1`; no policy changes) |
 | `Feature.WtcliPublishStdin.Tests.ps1` | PR #652: WTA/wtcli stdin transport delivers command-line-limit-sized events intact and preserves positional compatibility | 3 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
-| `Feature.SettingsUi.Tests.ps1` | Live Settings editor: Agent controls and Appearance's localized Tab Mode label matching FRE | 4 |
+| `Feature.SettingsUi.Tests.ps1` | Live Settings editor: Agent controls, Appearance's localized Tab Mode label matching FRE, and Arabic/Hebrew/mirrored/English layout and footer actions; C409 requires the complete matrix | 9 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) plus topmost Tab Mode, Sidebar default, explicit preferences, Save-only persistence, setup failure/retry and restart | 9 (failure injection requires Dev) |
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE automatic CurrentUser execution-policy remediation (**Dev**, auto-skips) | 4 (1 conditional skip) |
 | `Feature.FreHooks.Tests.ps1` | §0 FRE progressive setup ordering, session hook installation, failure, and retry (**Dev**, auto-skips) | 3 |
