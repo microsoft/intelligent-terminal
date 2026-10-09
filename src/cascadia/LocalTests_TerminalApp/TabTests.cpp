@@ -419,7 +419,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryStatusStyles);
         TEST_METHOD(VerticalTabHistoryProtocolActivationPreservesView);
         TEST_METHOD(AgentsDelegateProtocolCreationPreservesSearchOff);
-        TEST_METHOD(AgentsSplitUsesTargetLiveBindingWithoutResume);
+        TEST_METHOD(SplitPaneUsesOriginalBehaviorInBothViews);
+        TEST_METHOD(SplitPaneIgnoresAgentSessionInBothViews);
+        TEST_METHOD(SplitPaneKeepsAssistantPaneFixedInBothViews);
         TEST_METHOD(AgentsPlusLabelsFollowView);
         TEST_METHOD(AgentsPlusInvalidProfileReportsFailure);
         TEST_METHOD(VerticalTabHistoryForegroundProtocolCreationExitsView);
@@ -7298,34 +7300,104 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::AgentsSplitUsesTargetLiveBindingWithoutResume()
+    void TabTests::SplitPaneUsesOriginalBehaviorInBothViews()
     {
-        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
-        TestOnUIThread([&]() {
-            const auto target = page->_GetFocusedTabImpl();
-            const auto paneId = target->GetActivePane()->GetSessionId();
-            VERIFY_IS_FALSE(page->_BuildAgentSplitArguments(target, SplitDirection::Right, 0.5f).has_value());
-            using Page = winrt::TerminalApp::implementation::TerminalPage;
-            page->_paneAgentSessions.insert_or_assign(paneId, Page::_PaneAgentSession{ L"original-sid", L"copilot", L"copilot --resume original-sid" });
-            page->_activeCliAgentPanes.insert_or_assign(paneId, Page::_ActiveCliAgentPane{ L"original-sid" });
-            VERIFY_SUCCEEDED(page->_OpenNewTab(NewTerminalArgs{ 1 }));
-            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() != target);
-            const auto args = page->_BuildAgentSplitArguments(target, SplitDirection::Right, 0.4f);
-            VERIFY_IS_TRUE(args.has_value());
-            if (args)
+        for (const auto historyActive : { false, true })
+        {
+            for (const auto splitMode : { SplitType::Duplicate, SplitType::Manual })
             {
-                VERIFY_ARE_NOT_EQUAL(std::wstring::npos, args->find(L"--split-pane"));
-                VERIFY_ARE_NOT_EQUAL(std::wstring::npos, args->find(std::wstring{ winrt::to_hstring(paneId) }));
-                VERIFY_ARE_NOT_EQUAL(std::wstring::npos, args->find(L"--delegate-agent \"copilot\""));
-                VERIFY_ARE_NOT_EQUAL(std::wstring::npos, args->find(L"--split-session \"original-sid\""));
-                VERIFY_ARE_EQUAL(std::wstring::npos, args->find(L"--resume"));
-                VERIFY_ARE_EQUAL(std::wstring::npos, args->find(L"--delegate-source"));
+                auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+                TestOnUIThread([&]() {
+                    const auto tab = page->_GetFocusedTabImpl();
+                    const auto sourceId = tab->GetActivePane()->GetSessionId();
+                    const auto sourceProfile = tab->GetActivePane()->GetContent().as<TerminalPaneContent>().GetProfile();
+                    const auto expectedProfile = splitMode == SplitType::Duplicate ?
+                                                     sourceProfile :
+                                                     page->_settings.ActiveProfiles().GetAt(1);
+                    page->_tabStrip.HistoryActive(historyActive);
+                    page->_tabStrip.HistoryError(L"");
+                    const auto direction = splitMode == SplitType::Duplicate ? SplitDirection::Right : SplitDirection::Down;
+                    const auto splitSize = 0.4f;
+                    ActionEventArgs args{ SplitPaneArgs{ splitMode, direction, splitSize, NewTerminalArgs{ 1 } } };
+                    page->_HandleSplitPane(nullptr, args);
+
+                    VERIFY_IS_TRUE(args.Handled());
+                    VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+                    VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == tab);
+                    VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+                    const auto root = tab->GetRootPane();
+                    VERIFY_ARE_EQUAL(sourceId, root->_firstChild->GetSessionId());
+                    const auto newPane = root->_secondChild;
+                    VERIFY_ARE_NOT_EQUAL(sourceId, newPane->GetSessionId());
+                    VERIFY_ARE_EQUAL(expectedProfile.Guid(), newPane->GetContent().as<TerminalPaneContent>().GetProfile().Guid());
+                    VERIFY_ARE_EQUAL(splitMode == SplitType::Duplicate ? SplitState::Vertical : SplitState::Horizontal,
+                                     root->_splitState);
+                    VERIFY_ARE_EQUAL(1.0f - splitSize, root->_desiredSplitPosition);
+                    VERIFY_IS_FALSE(newPane->IsAgentPane());
+                    VERIFY_ARE_EQUAL(historyActive, page->_tabStrip.HistoryActive());
+                    VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+                });
             }
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"original-sid" }, page->_paneAgentSessions.at(paneId).sessionId);
-            page->_activeCliAgentPanes.erase(paneId);
-            VERIFY_IS_FALSE(page->_BuildAgentSplitArguments(target, SplitDirection::Right, 0.5f).has_value());
-            VERIFY_IS_FALSE(page->_BuildAgentSplitArguments(nullptr, SplitDirection::Right, 0.5f).has_value());
-        });
+        }
+    }
+
+    void TabTests::SplitPaneIgnoresAgentSessionInBothViews()
+    {
+        for (const auto historyActive : { false, true })
+        {
+            for (const auto& session : { winrt::hstring{}, winrt::hstring{ L"original-sid" } })
+            {
+                auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+                TestOnUIThread([&]() {
+                    const auto tab = page->_GetFocusedTabImpl();
+                    const auto paneId = tab->GetActivePane()->GetSessionId();
+                    using Page = winrt::TerminalApp::implementation::TerminalPage;
+                    page->_paneAgentSessions.insert_or_assign(paneId, Page::_PaneAgentSession{ session, L"copilot", L"copilot --resume original-sid" });
+                    page->_activeCliAgentPanes.insert_or_assign(paneId, Page::_ActiveCliAgentPane{ session });
+                    page->_tabStrip.HistoryActive(historyActive);
+                    page->_tabStrip.HistoryError(L"");
+                    ActionEventArgs args{ SplitPaneArgs{ SplitType::Duplicate, SplitDirection::Right, 0.5f, nullptr } };
+                    page->_HandleSplitPane(nullptr, args);
+
+                    VERIFY_IS_TRUE(args.Handled());
+                    VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+                    VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+                    const auto newPane = tab->GetRootPane()->_secondChild;
+                    VERIFY_IS_FALSE(newPane->IsAgentPane());
+                    VERIFY_IS_FALSE(page->_paneAgentSessions.contains(newPane->GetSessionId()));
+                    VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(newPane->GetSessionId()));
+                    VERIFY_ARE_EQUAL(session, page->_paneAgentSessions.at(paneId).sessionId);
+                    VERIFY_ARE_EQUAL(historyActive, page->_tabStrip.HistoryActive());
+                    VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+                });
+            }
+        }
+    }
+
+    void TabTests::SplitPaneKeepsAssistantPaneFixedInBothViews()
+    {
+        for (const auto historyActive : { false, true })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+            TestOnUIThread([&]() {
+                const auto tab = page->_GetFocusedTabImpl();
+                auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+                agentPane->IsAgentPane(true);
+                VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane));
+                VERIFY_IS_TRUE(tab->GetActivePane()->IsAgentPane());
+                const auto paneId = tab->GetActivePane()->GetSessionId();
+                page->_tabStrip.HistoryActive(historyActive);
+                page->_tabStrip.HistoryError(L"");
+                ActionEventArgs args{ SplitPaneArgs{ SplitType::Duplicate, SplitDirection::Down, 0.5f, nullptr } };
+                page->_HandleSplitPane(nullptr, args);
+
+                VERIFY_IS_FALSE(args.Handled());
+                VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+                VERIFY_ARE_EQUAL(paneId, tab->GetActivePane()->GetSessionId());
+                VERIFY_ARE_EQUAL(historyActive, page->_tabStrip.HistoryActive());
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            });
+        }
     }
 
     void TabTests::AgentsDelegateProtocolCreationPreservesSearchOff()
