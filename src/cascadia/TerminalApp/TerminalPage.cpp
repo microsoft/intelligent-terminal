@@ -2013,85 +2013,6 @@ namespace winrt::TerminalApp::implementation
         _LaunchDelegate(prompt);
     }
 
-    std::optional<std::wstring> TerminalPage::_BuildAgentSplitArguments(const winrt::com_ptr<Tab>& tab, SplitDirection direction, float size)
-    {
-        const auto pane = tab ? tab->GetActivePane() : nullptr;
-        if (!pane || !(size > 0 && size < 1))
-        {
-            return std::nullopt;
-        }
-        const auto paneId = pane->GetSessionId();
-        winrt::hstring provider;
-        winrt::hstring session;
-        if (const auto binding = _paneAgentSessions.find(paneId);
-            binding != _paneAgentSessions.end() && (pane->IsAgentPane() || _activeCliAgentPanes.contains(paneId)))
-        {
-            provider = binding->second.agent;
-            session = binding->second.sessionId;
-        }
-        else if (const auto agent = pane->GetContent().try_as<TerminalApp::AgentPaneContent>())
-        {
-            const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agent);
-            session = agentImpl->AgentSessionId();
-            const auto identity = agentImpl->AgentSessionOwner();
-            if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(std::wstring_view{ identity }))
-            {
-                provider = winrt::hstring{ backend->agentId };
-            }
-        }
-        namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
-        const auto allowed = Registry::FilteredDelegateAgents();
-        if (session.empty() || provider.empty() || paneId == winrt::guid{} ||
-            !std::any_of(allowed.begin(), allowed.end(), [&](const auto& entry) { return entry.id == std::wstring_view{ provider }; }))
-        {
-            return std::nullopt;
-        }
-        std::wstring args{ L"delegate --preserve-sidebar-view" };
-        const auto append = [&](std::wstring_view flag, std::wstring_view value) {
-            args.append(L" ").append(flag).append(L" ");
-            ::Microsoft::Terminal::AgentPaneRestore::AppendQuoted(args, value);
-        };
-        append(L"--delegate-agent", provider);
-        append(L"--split-pane", winrt::to_hstring(paneId));
-        append(L"--split-session", session);
-        const auto directionName = direction == SplitDirection::Right ? L"right" :
-                                   direction == SplitDirection::Left ? L"left" :
-                                   direction == SplitDirection::Up ? L"up" :
-                                   direction == SplitDirection::Down ? L"down" : L"auto";
-        append(L"--split-direction", directionName);
-        args.append(fmt::format(FMT_COMPILE(L" --split-size {}"), size));
-        return args;
-    }
-
-    safe_void_coroutine TerminalPage::_SplitAgentDelegate(winrt::com_ptr<Tab> tab, SplitDirection direction, float size)
-    {
-        const auto args = _BuildAgentSplitArguments(tab, direction, size);
-        if (!args)
-        {
-            _agentPaneLog("agent split rejected: missing live identity, unsupported provider, or policy");
-            _tabStrip.HistoryError(RS_(L"VerticalTabsHistoryActivationError"));
-            co_return;
-        }
-        const auto wtaPath = _DetectWtaPath();
-        _RunSidebarDelegate(std::wstring{ wtaPath.c_str(), wtaPath.size() }, *args);
-        co_return;
-    }
-
-    safe_void_coroutine TerminalPage::_RunSidebarDelegate(std::wstring wtaPath, std::wstring args)
-    {
-        const auto weakThis = get_weak();
-        const auto dispatcher = Dispatcher();
-        _tabStrip.HistoryError(L"");
-        co_await winrt::resume_background();
-        const auto result = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(wtaPath, args, 30'000);
-        co_await wil::resume_foreground(dispatcher);
-        if (const auto page = weakThis.get(); page && (!result.completed || result.exitCode != 0))
-        {
-            _agentPaneLog("sidebar delegate failed: " + result.output);
-            page->_tabStrip.HistoryError(result.output.empty() ? RS_(L"VerticalTabsHistoryActivationError") : winrt::to_hstring(result.output));
-        }
-    }
-
     // Open the delegate agent interactively in a brand-new tab with no
     // startup prompt — the "background agent" hotkey (Alt+Shift+B). This is
     // the no-prompt sibling of the `?<prompt>` delegation: `wta delegate`
@@ -3828,6 +3749,13 @@ namespace winrt::TerminalApp::implementation
             if (!stableId.empty())
             {
                 params["tab_id"] = winrt::to_string(stableId);
+            }
+            if (const auto pane = tab->FindAgentPane())
+            {
+                if (const auto control = pane->GetTerminalControl())
+                {
+                    params["copy_on_select"] = control.Settings().CopyOnSelect();
+                }
             }
         }
 
@@ -7161,6 +7089,7 @@ namespace winrt::TerminalApp::implementation
             item.IsHistorical(isHistorical);
             item.IsAgentPane(isAgentPane);
             const auto nativeItem = winrt::get_self<TerminalApp::implementation::TabStripHistoryItem>(item);
+            nativeItem->LastActivityAtMs(lastActivityAtMs);
             nativeItem->BackgroundTab(background);
             nativeItem->OtherWindow(otherWindow);
             snapshot.items.emplace_back(std::move(item));
@@ -15281,6 +15210,10 @@ namespace winrt::TerminalApp::implementation
             {
                 // Let the tab know that there are new settings. It's up to each content to decide what to do with them.
                 tabImpl->UpdateSettings(_settings);
+                if (tabImpl->FindAgentPane())
+                {
+                    _RequestAgentStateForTab(tabImpl, std::nullopt, std::nullopt);
+                }
 
                 // Update the icon of the tab for the currently focused profile in that tab.
                 // Only do this for TerminalTabs. Other types of tabs won't have multiple panes

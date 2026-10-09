@@ -92,6 +92,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                       bool withControlSequences,
                                       const CopyFormat formats);
         void RequestPasteTextFromClipboard();
+        void EnableAgentRightClickContextMenu(bool enabled) noexcept { _agentRightClickContextMenuEnabled = enabled; }
         void SetEndSelectionPoint(const Core::Point pixelPosition);
 
         uint64_t Id();
@@ -150,6 +151,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         bool _focused{ false };
         bool _pointerPressedInBounds{ false };
+        bool _agentRightClickContextMenuEnabled{ false };
+        bool _agentRightClickContextMenuPressed{ false };
 
         unsigned int _numberOfClicks(Core::Point clickPos, Timestamp clickTime);
         void _updateSystemParameterSettings() noexcept;

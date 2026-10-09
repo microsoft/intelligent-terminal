@@ -1051,6 +1051,7 @@ namespace winrt::TerminalApp::implementation
                                            std::optional<uint64_t> lastActivityAtMs,
                                            std::string_view status);
         static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs, std::wstring_view languageTag = {});
+        friend struct TabStripHistoryItem;
         struct _SidebarHistorySnapshot
         {
             enum class State
@@ -1359,9 +1360,6 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _DetectWtaPath() const;
         std::optional<uint32_t> _FindSourceOfAgentPaneId(const std::shared_ptr<Pane>& root);
         void _DelegatePromptToAgent(const winrt::hstring& prompt);
-        std::optional<std::wstring> _BuildAgentSplitArguments(const winrt::com_ptr<Tab>& tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
-        safe_void_coroutine _SplitAgentDelegate(winrt::com_ptr<Tab> tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
-        safe_void_coroutine _RunSidebarDelegate(std::wstring wtaPath, std::wstring args);
         void _OpenBackgroundAgentTab();
         void _LaunchDelegate(const std::optional<winrt::hstring>& prompt);
 

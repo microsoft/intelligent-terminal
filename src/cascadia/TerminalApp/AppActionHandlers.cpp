@@ -290,13 +290,6 @@ namespace winrt::TerminalApp::implementation
             const auto& duplicateFromTab{ realArgs.SplitMode() == SplitType::Duplicate ? _GetFocusedTab() : nullptr };
 
             const auto& activeTab{ _senderOrFocusedTab(sender) };
-            if (_IsAgentScopeEffective() && realArgs.SplitMode() == SplitType::Duplicate)
-            {
-                _SplitAgentDelegate(activeTab, realArgs.SplitDirection(), realArgs.SplitSize());
-                args.Handled(true);
-                return;
-            }
-
             // A persisted agent pane replays as an ordinary splitPane action,
             // but it cannot be built by `_MakePane`: the helper needs this
             // run's master pipe and owner ids, and its agent has to be

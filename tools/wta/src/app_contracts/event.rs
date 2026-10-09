@@ -111,12 +111,12 @@ pub enum AppEvent {
         tab_id: String,
         message: String,
     },
-    AgentPasteTextReady {
+    AgentPasteReady {
         tab_id: String,
         generation: u64,
-        text: String,
+        content: crate::win32::ClipboardPaste,
     },
-    AgentPasteTextFailed {
+    AgentPasteFailed {
         tab_id: String,
         generation: u64,
         error: String,

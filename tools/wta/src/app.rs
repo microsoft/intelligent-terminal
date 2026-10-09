@@ -1,3 +1,4 @@
+use crate::win32::ClipboardPaste;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::CrosstermBackend;
@@ -1351,8 +1352,8 @@ pub struct App {
     /// can't rehydrate ACP sessions. Set on `AgentConnected`.
     pub agent_supports_load_session: bool,
     /// Whether the connected ACP agent advertised the `image` prompt
-    /// capability (`promptCapabilities.image`). Gates the Alt+V image-paste
-    /// handler. Set on `AgentConnected`.
+    /// capability (`promptCapabilities.image`). Gates clipboard image attachment
+    /// handlers. Set on `AgentConnected`.
     pub agent_supports_image: bool,
     /// Origin filter for the `/sessions` picker. Captured once at
     /// `App::new` time via [`resolve_sessions_origin_filter`] so the value is
@@ -4981,8 +4982,8 @@ impl App {
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::PromptError { .. } => "prompt_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
-            AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
-            AppEvent::AgentPasteTextFailed { .. } => "agent_paste_text_failed",
+            AppEvent::AgentPasteReady { .. } => "agent_paste_ready",
+            AppEvent::AgentPasteFailed { .. } => "agent_paste_failed",
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
             AppEvent::PromptTargetResolved { .. } => "prompt_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
@@ -5129,7 +5130,8 @@ impl App {
         tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
     }
 
-    fn handle_agent_paste_text(&mut self, params: &serde_json::Value) {
+    // Keep the existing agent_paste_text wire event compatible with packaged Terminal.
+    fn handle_agent_paste_request(&mut self, params: &serde_json::Value) {
         let Some(target_tab) = self.agent_paste_target_tab(params) else {
             return;
         };
@@ -5171,19 +5173,19 @@ impl App {
         tokio::task::spawn_local(async move {
             let tab_for_result = target_tab.clone();
             let result =
-                tokio::task::spawn_blocking(crate::win32::read_paste_string_from_clipboard).await;
+                tokio::task::spawn_blocking(crate::win32::read_agent_paste_from_clipboard).await;
             let event = match result {
-                Ok(Ok(text)) => AppEvent::AgentPasteTextReady {
+                Ok(Ok(content)) => AppEvent::AgentPasteReady {
                     tab_id: tab_for_result,
                     generation,
-                    text,
+                    content,
                 },
-                Ok(Err(e)) => AppEvent::AgentPasteTextFailed {
+                Ok(Err(e)) => AppEvent::AgentPasteFailed {
                     tab_id: tab_for_result,
                     generation,
                     error: e.to_string(),
                 },
-                Err(e) => AppEvent::AgentPasteTextFailed {
+                Err(e) => AppEvent::AgentPasteFailed {
                     tab_id: tab_for_result,
                     generation,
                     error: e.to_string(),
@@ -5239,7 +5241,8 @@ impl App {
             .unwrap_or(false)
     }
 
-    fn insert_agent_paste_text(&mut self, target_tab: &str, generation: u64, text: &str) {
+    fn insert_agent_paste(&mut self, target_tab: &str, generation: u64, content: ClipboardPaste) {
+        let image_supported = self.agent_supports_image;
         if self.mode != AppMode::Chat {
             if let Some(tab) = self.tab_sessions.get_mut(target_tab) {
                 if tab.paste_generation == generation {
@@ -5255,7 +5258,6 @@ impl App {
             return;
         }
 
-        let text = normalize_agent_paste_text(text);
         let Some(tab) = self.tab_sessions.get_mut(target_tab) else {
             return;
         };
@@ -5269,16 +5271,7 @@ impl App {
             );
             return;
         }
-        {
-            tab.paste_pending = false;
-        }
-        if text.is_empty() {
-            tracing::debug!(target: "agent_paste", tab_id = target_tab, "ignoring empty paste");
-            return;
-        }
-
-        let byte_len = text.len();
-        let line_count = text.split('\n').count();
+        tab.paste_pending = false;
         let tab = self.tab_mut(target_tab);
         if !tab.pane_open || tab.current_view != View::Chat || !tab.input_has_nav_focus() {
             tracing::debug!(
@@ -5287,21 +5280,41 @@ impl App {
                 pane_open = tab.pane_open,
                 view = ?tab.current_view,
                 input_live = tab.input_has_nav_focus(),
-                byte_len,
-                line_count,
                 "dropping paste because chat input is not live"
             );
             return;
         }
 
-        tab.insert_input_str(&text);
-        tracing::info!(
-            target: "agent_paste",
-            tab_id = target_tab,
-            byte_len,
-            line_count,
-            "inserted pasted text into agent input"
-        );
+        match content {
+            ClipboardPaste::Image(image) => {
+                if image_supported {
+                    tab.insert_image_attachment(image);
+                    tracing::info!(target: "agent_paste", tab_id = target_tab, "attached clipboard image to agent input");
+                } else {
+                    tab.messages.push(ChatMessage::warning(
+                        t!("system.image_not_supported").into_owned(),
+                    ));
+                    tab.scroll_to_bottom();
+                }
+            }
+            ClipboardPaste::Text(text) => {
+                let text = normalize_agent_paste_text(&text);
+                if text.is_empty() {
+                    tracing::debug!(target: "agent_paste", tab_id = target_tab, "ignoring empty paste");
+                    return;
+                }
+                let byte_len = text.len();
+                let line_count = text.split('\n').count();
+                tab.insert_input_str(&text);
+                tracing::info!(
+                    target: "agent_paste",
+                    tab_id = target_tab,
+                    byte_len,
+                    line_count,
+                    "inserted pasted text into agent input"
+                );
+            }
+        }
     }
 }
 

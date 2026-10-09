@@ -81,7 +81,8 @@ namespace winrt::TerminalApp::implementation
         TabStripHistoryItem() = default;
         WINRT_PROPERTY(winrt::hstring, SessionId);
         WINRT_PROPERTY(winrt::hstring, Title);
-        WINRT_PROPERTY(winrt::hstring, Subtitle);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Subtitle, PropertyChanged.raise);
+        WINRT_PROPERTY(std::optional<uint64_t>, LastActivityAtMs);
         WINRT_PROPERTY(winrt::hstring, Cwd);
         WINRT_PROPERTY(winrt::hstring, PaneSessionId);
         WINRT_PROPERTY(winrt::hstring, AgentId);
@@ -104,7 +105,11 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Media::Brush, CurrentForeground, PropertyChanged.raise, nullptr);
 
     public:
+        bool RefreshAge(uint64_t nowMs);
         til::property_changed_event PropertyChanged;
+
+    private:
+        std::optional<std::pair<uint64_t, uint64_t>> _ageKey;
     };
 
     struct TabStripHistoryActivationEventArgs : TabStripHistoryActivationEventArgsT<TabStripHistoryActivationEventArgs>
@@ -538,6 +543,9 @@ namespace winrt::TerminalApp::implementation
         TerminalApp::SidebarFiltersViewModel _sidebarFilters{ winrt::make<SidebarFiltersViewModel>() };
         winrt::Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker _sidebarFiltersChanged;
         void _onSidebarFiltersChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Data::PropertyChangedEventArgs const&);
+        winrt::Windows::UI::Xaml::DispatcherTimer _historyAgeTimer{ nullptr };
+        void _updateHistoryAgeTimer();
+        void _refreshHistoryAges(uint64_t nowMs);
         std::vector<RepresentedHistorySession> _representedHistorySessions;
         bool _agentFilterTelemetryPending{ false };
         bool _historySnapshotReady{ false };

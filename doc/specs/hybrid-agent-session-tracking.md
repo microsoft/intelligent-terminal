@@ -308,10 +308,17 @@ line with ellipsis; the metadata line below it is unchanged.
 The second line is left-aligned as `Agent name · relative age · status` for Host
 sessions and `Agent name · distro name · relative age · status` for WSL sessions,
 using the provider's display name, the exact WSL distro name, and
-`last_activity_at_ms`. Like the session manager,
-timestamps less than seven days old use localized relative time; timestamps at
-least seven days old use the UTC calendar date formatted with Windows' localized
-long-date format. The display refreshes with each snapshot. Missing,
+`last_activity_at_ms`. The sidebar uses Windows ICU short relative-time formatting
+for minutes, hours, days, weeks, and completed Gregorian UTC months and years.
+It retains the master-provided timestamp and checks the local clock every second
+while the Agents view is loaded and expanded. Age text is recalculated when the
+elapsed-minute bucket changes, and only changed text raises a property notification.
+This does not request a session snapshot or replace unchanged list rows; selection,
+focus, and scroll position are preserved. Search terms follow the updated age text.
+Collapsing or unloading the sidebar, or leaving Agents, stops the local timer;
+showing it again immediately corrects cached ages. Session data refreshes and
+retry backoff remain independent, so retained ages continue advancing during a
+failed or in-flight refresh. Missing,
 zero, or invalid timestamps display Unknown, and future timestamps display just now.
 Active uses a theme-aware green success accent, Waiting for input a yellow caution
 accent, and Error a red critical accent, matching the session management view.
@@ -340,7 +347,7 @@ Missing or unrecognized states display Unknown rather than implying a historical
 session. Search matches both the displayed status and the raw registry value;
 the existing `live` and `history` search terms remain available. This presentation
 does not change shell-session visibility, liveness classification, or focus/resume
-routing. Registry-change notifications and the existing five-second snapshot
+routing. Registry-change notifications and the existing 60-second snapshot
 refresh update the displayed status.
 Rows whose raw status is neither `Ended` nor `Historical` appear first, followed by
 closed/history rows. Within each group, rows retain newest-first ordering by
@@ -381,7 +388,7 @@ refresh warning, not a failed focus/resume result. Existing localized error
 messages are reused.
 
 Consecutive list failures impose a 5, 10, 20, 40, then 60-second retry delay,
-measured from completion. Both registry notifications and the five-second timer
+measured from completion. Both registry notifications and the 60-second timer
 respect it; the timer retries on its first eligible tick. Failed requests discard
 the coalesced pending refresh instead of immediately retrying. A `ready` snapshot
 or leaving/reopening the Agents view resets the retry delay. A `loading` discovery
