@@ -4927,6 +4927,60 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(recentSessions, strip->HistorySection() != nullptr);
                 }
             }
+
+            const auto secondaryConnection = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{6239a42c-eeee-49a3-80bd-e8fdd045186c}" }, State::Connected);
+            const auto secondaryPane = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *secondaryConnection);
+            VERIFY_IS_NOT_NULL(secondaryPane);
+            VERIFY_IS_TRUE(page->_SplitPane(agent, SplitDirection::Right, 0.5f, secondaryPane, false));
+            page->UpdateLayout();
+            const std::u16string secondaryTitle{ u"\x1b]0;Secondary shell search needle\x07" };
+            secondaryConnection->TerminalOutput.raise(
+                winrt::array_view<const char16_t>{ secondaryTitle.data(), secondaryTitle.data() + secondaryTitle.size() });
+            const auto secondaryNode = agent->GetRootPane()->FindPaneBySessionId(secondaryConnection->SessionId());
+            VERIFY_IS_NOT_NULL(secondaryNode);
+            const auto secondaryContentId = secondaryNode->ContentId().value();
+            VERIFY_IS_FALSE(secondaryNode->IsAgentPane());
+            VERIFY_IS_FALSE(page->_paneAgentSessions.contains(secondaryConnection->SessionId()));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Global marker agent" }, agent->Title());
+            VERIFY_ARE_NOT_EQUAL(winrt::hstring{ L"Secondary shell search needle" }, agent->GetActiveTerminalControl().Title());
+
+            filters.ShowAgentsOnly(true);
+            filters.ShowRecentAgentSessions(false);
+            page->_tabStrip.SearchActive(true);
+            page->UpdateLayout();
+            VERIFY_IS_TRUE(page->_IsAgentScopeEffective());
+            VERIFY_IS_TRUE(agentDisplay.IsGroup());
+            VERIFY_IS_TRUE(agentDisplay.IsExpanded());
+            VERIFY_ARE_EQUAL(1u, agentDisplay.PaneItems().Size());
+            VERIFY_ARE_EQUAL(paneId, agent->GetActivePane()->GetSessionId());
+            VERIFY_IS_FALSE(page->_IsTabVisibleInProjection(shell, shellDisplay));
+            VERIFY_IS_TRUE(page->_IsTabVisibleInProjection(agent, agentDisplay));
+
+            // Only SearchChanged may rebuild the rows when global search relaxes the agent scope.
+            page->_tabStrip.SearchQuery(L"Secondary shell search needle");
+            page->UpdateLayout();
+            VERIFY_IS_TRUE(filters.ShowAgentsOnly());
+            VERIFY_IS_FALSE(page->_IsAgentScopeEffective());
+            VERIFY_ARE_EQUAL(2u, agentDisplay.PaneItems().Size());
+            VERIFY_ARE_EQUAL(secondaryContentId, agentDisplay.PaneItems().GetAt(1).ContentId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Secondary shell search needle" }, agentDisplay.PaneItems().GetAt(1).Title());
+            VERIFY_ARE_EQUAL(Visibility::Visible, agentDisplay.ChildrenVisibility());
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*agent, agentDisplay));
+            VERIFY_IS_TRUE(page->_IsTabVisibleInProjection(agent, agentDisplay));
+            VERIFY_IS_FALSE(page->_IsTabVisibleInProjection(shell, shellDisplay));
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.ContainerFromIndex(1).as<ListViewItem>().Visibility());
+
+            page->_tabStrip.SearchQuery(L"");
+            page->UpdateLayout();
+            VERIFY_IS_TRUE(filters.ShowAgentsOnly());
+            VERIFY_IS_TRUE(page->_IsAgentScopeEffective());
+            VERIFY_ARE_EQUAL(1u, agentDisplay.PaneItems().Size());
+            VERIFY_ARE_NOT_EQUAL(secondaryContentId, agentDisplay.PaneItems().GetAt(0).ContentId());
+            VERIFY_IS_TRUE(page->_IsTabVisibleInProjection(agent, agentDisplay));
+            VERIFY_IS_FALSE(page->_IsTabVisibleInProjection(shell, shellDisplay));
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.ContainerFromIndex(1).as<ListViewItem>().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>().Visibility());
         });
     }
 
@@ -6020,7 +6074,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(headerPeer.IsKeyboardFocusable());
             VERIFY_IS_NULL(strip.FindName(L"VerticalTabsHeaderButton"));
             VERIFY_IS_NULL(strip.FindName(L"VerticalTabsHeaderSwitchIcon"));
-            VERIFY_IS_FALSE(header.Parent().try_as<Button>());
+            VERIFY_IS_NULL(header.Parent().try_as<Button>());
             const auto toolbar = header.Parent().as<Grid>();
             VERIFY_ARE_EQUAL(3u, toolbar.Children().Size());
             for (const auto child : toolbar.Children())
@@ -7693,6 +7747,71 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_CompleteSidebarHistoryActivation(10, true, L""));
             VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
             VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+
+            const auto filters = page->_tabStrip.SidebarFilters();
+            for (const auto collapseRail : { false, true })
+            {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(collapseRail ? L"activation-hidden-by-rail" : L"activation-hidden-by-preference");
+                item.AgentId(L"copilot");
+                item.AgentSource(L"host");
+                filters.ShowRecentAgentSessions(true);
+                VERIFY_IS_TRUE(page->_tabStrip.SearchQuery().empty());
+                VERIFY_IS_TRUE(page->_AreRecentAgentSessionsVisible());
+                const auto request = page->_PrepareSidebarHistoryActivation(item);
+                VERIFY_IS_FALSE(request.statusOnly);
+                page->_tabStrip.HistoryLoading(true);
+                page->_tabStrip.HistoryActivating(true);
+                const auto serial = page->_historyActivationSerial;
+
+                if (collapseRail)
+                {
+                    page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+                    VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+                    VERIFY_IS_TRUE(filters.ShowRecentAgentSessions());
+                }
+                else
+                {
+                    filters.ShowRecentAgentSessions(false);
+                }
+                VERIFY_IS_FALSE(page->_AreRecentAgentSessionsVisible());
+                VERIFY_IS_TRUE(page->_historyActivationSerial > serial);
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+                VERIFY_ARE_EQUAL(request.id, page->_historyUnresolvedActivations.at(request.arguments));
+                VERIFY_IS_FALSE(page->_CompleteSidebarHistoryActivation(serial, false, L"Stale hidden failure"));
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+
+                if (collapseRail)
+                {
+                    page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+                    VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
+                }
+                else
+                {
+                    filters.ShowRecentAgentSessions(true);
+                }
+                VERIFY_IS_TRUE(page->_AreRecentAgentSessionsVisible());
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+                VERIFY_IS_TRUE(stripImpl->ItemsList().IsItemClickEnabled());
+                VERIFY_IS_FALSE(page->_CompleteSidebarHistoryActivation(serial, false, L"Stale reopened failure"));
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+
+                // Prepare the native retry without launching WTA: the receipt must be queried, not redispatched.
+                const auto retry = page->_PrepareSidebarHistoryActivation(item);
+                VERIFY_IS_TRUE(retry.statusOnly);
+                VERIFY_ARE_EQUAL(request.id, retry.id);
+                VERIFY_ARE_EQUAL(request.arguments, retry.arguments);
+                VERIFY_ARE_EQUAL(request.id, page->_historyUnresolvedActivations.at(request.arguments));
+                const auto retrySerial = ++page->_historyActivationSerial;
+                page->_tabStrip.HistoryActivating(true);
+                VERIFY_IS_FALSE(page->_CompleteSidebarHistoryActivation(serial, true, L""));
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryActivating());
+                VERIFY_IS_TRUE(page->_CompleteSidebarHistoryActivation(retrySerial, true, L""));
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+                VERIFY_ARE_EQUAL(request.id, page->_historyUnresolvedActivations.at(request.arguments));
+                filters.ShowRecentAgentSessions(false);
+            }
         });
     }
 

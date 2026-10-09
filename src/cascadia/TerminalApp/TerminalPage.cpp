@@ -256,6 +256,7 @@ namespace winrt::TerminalApp::implementation
     static std::optional<winrt::guid> _TryParsePaneSessionId(std::string_view value) noexcept;
     static winrt::hstring _BuildAgentResumeCommandline(std::string_view cliSource, std::string_view agentSessionId);
     static winrt::hstring _ResolveEffectiveLanguage(const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals);
+    static std::wstring _FormatOverrideShortcutText(VirtualKeyModifiers modifiers);
 
     TerminalPage::TerminalPage(TerminalApp::WindowProperties properties, const TerminalApp::ContentManager& manager) :
         _tabs{ winrt::single_threaded_observable_vector<TerminalApp::Tab>() },
