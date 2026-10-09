@@ -111,7 +111,12 @@ intact. Their existing ownership, action, deduplication and persistence oracles
 are unchanged.
 Its 300-second bound applies to the new scope/search context, not the longer
 native-action regression suite. Nonlive discovery and synthetic report checks
-are not package acceptance. After the build owner proves the deployed
+are not package acceptance.
+
+SearchTextBox assertions use `Get-UiValue -ValuePattern` to read the real UIA
+value, including empty text. The default display-text helper retains winapp's
+Name fallback and is not an exact-empty query oracle.
+After the build owner proves the deployed
 feature-head App/WTA hashes, run with explicit Dev and prerequisite validation:
 
 ```powershell
