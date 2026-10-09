@@ -71,6 +71,94 @@ Key security claim post-revert: shell input is **not** held behind a separate ca
 | **C-VT** | Shell <-> WT | ConPTY VT stream, including OSC marks | Not authenticated; pane output is attacker-controllable when the pane process is malicious. |
 | **C-FS** | Processes <-> disk | `settings.json`, diagnostic logs, Agent CLI hook config / bundles | NTFS ACLs and package-local storage layout. This is not a sandbox boundary. |
 
+#### Protocol proxy provenance
+
+Before exposing or consuming the private terminal-control COM protocol,
+WindowsTerminal and wtcli explicitly load `OpenConsoleProxy.dll` and register
+that module's proxy factory in-process. An interface IID or a matching proxy
+CLSID is not proof of the implementing DLL's provenance.
+
+For packaged execution, the DLL path comes from the current package's original
+installation directory and must also match the executable's sibling path.
+Signing remains the deploying package's responsibility: Store content retains
+its package signature guarantees, and an unsigned Debug deployment remains
+unsigned. The loader does not introduce a new signing policy, require a separate
+Authenticode signature on each DLL, or accept another package based on a matching
+publisher. External-location executables fail closed rather than borrowing a
+different package's proxy.
+
+Dev branding also allows unpackaged execution, but still loads only its own
+executable's sibling proxy. Release, Preview, and Canary allow this only when
+the actual process token is elevated and the identity API returns
+`APPMODEL_ERROR_NO_PACKAGE`, as elevated shells can lack package identity.
+Other package API errors never enable sibling loading. Non-elevated unpackaged
+production processes still fail closed, even with Dev installed alongside them.
+No runtime environment variable enables either exception. Package-local files in a mutable
+Debug layout are not represented as tamper-proof.
+
+Both owned processes bind all interfaces implemented by this DLL, including
+the existing handoff interfaces, to the local factory. WindowsTerminal does not
+start its inbound handoff listener if local proxy initialization failed. This
+does not change any interface ABI or global handoff registration. It does not
+control proxy selection in external Windows processes, authenticate the remote
+COM peer, or unload an already-mapped DLL. Package-mutating coexistence tests must
+run separately in an approved isolated environment.
+
+Initialization failure prevents protocol exposure/use; registration is not
+transactional. A failed IID mapping attempts class-factory revocation, but earlier
+process-local IID mappings may remain. COM provides no documented API to remove
+these mappings. Failed initialization is not cached as success: retry registers
+the factory and all eight mappings again.
+
+Terminal clears inherited `WT_COM_CLSID` before capturing its startup environment
+and publishes its own CLSID only after protocol registration succeeds. Child
+connections apply the host's current value after profile environment overrides,
+removing stale discovery data when the host has no registered server. The
+`ProtocolParsingTests::HostClsidOverridesStaleEnvironment` unit test covers
+missing and replacement identities, case-insensitive keys, and repeated launches
+without disturbing unrelated variables.
+`ProtocolParsingTests::UnpublishedStartupRemovesInheritedClsid` seeds a real
+process environment value, uses the production clear-and-capture operation,
+and verifies that unpublished startup removes it from the snapshot and child
+environment. It restores the test process's prior value afterward.
+
+The offline proxy tests run without activating Terminal or changing package
+registration. After x64 Debug builds of WindowsTerminal and wtcli, run
+`pwsh -File src\tools\wtcli\tests\Test-ProtocolProxyRegistration.ps1`
+from an x64 Visual Studio developer shell. They compile all four branding modes,
+check unpackaged path policy and failure handling, compare the registered factory
+with the explicitly loaded DLL's factory, and require exact equality between its
+generated stub-header IID metadata and the production registration list. All
+metadata IIDs are first mapped to an unregistered sentinel CLSID in the test
+process, so ambient registrations cannot hide a missing override; every mapping
+and factory proxy creation is then checked. Alongside the event callback, a
+cross-apartment query for `ITerminalProtocolNativeAgent` exercises both
+`CreateAgentCliTab` and `SplitAgentCliPane`, validating arguments and synthetic
+JSON replies without performing Terminal operations.
+Test-only package API fixtures invoke the public loader with matching,
+case-varied, and mismatched package roots and failing API responses, while keeping
+the real executable path and DLL loader. They do not substitute for installed-package
+coexistence validation or verify package signatures.
+
+Deterministic token fixtures retain real owned token handles and override only
+elevation results or known API failures; the actual-token smoke test remains.
+An in-memory COM mutation ledger tests class-registration and first/middle/last
+mapping failures, revocation attempts, and retry, including `ScopedMarshaling`.
+It is disabled for the real native COM tests and does not model mapping rollback.
+`ListenerConnection.Tests.cpp` also injects public loader/registration failures:
+listen and publish (including stdin and existing-only paths) make no activation,
+active-object lookup, or factory calls after either failure.
+
+Build and run the targeted CLI tests from the repository root (no Terminal launch):
+
+```powershell
+cmd /c "tools\razzle.cmd && msbuild src\tools\wtcli\wtcli.vcxproj /t:Build /p:Configuration=Debug /p:Platform=x64 /p:SolutionDir=%CD%\ /p:ForceImportAfterCppTargets=%CD%\src\tools\wtcli\tests\ListenerConnection.Tests.targets /m:2 /nologo /v:minimal"
+.\bin\x64\Debug\wtcli\wtcli-listener-native-tests.exe
+```
+
+Both native test builds use `/W4 /WX`. The four-brand runner bounds each compile
+to 120 seconds and each test process to 30 seconds.
+
 ### 2.3 Typical process tree
 
 ```text

@@ -91,6 +91,10 @@
     <AppxManifest Include="Package.appxmanifest">
       <SubType>Designer</SubType>
     </AppxManifest>
+    <Content Include="$(OpenConsoleDir)src\cascadia\CascadiaPackage\AgentIcons\Masks\*.png">
+      <Link>AgentIcons\Masks\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="UnitTestApp.xaml.cpp">

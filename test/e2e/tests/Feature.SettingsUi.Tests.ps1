@@ -20,6 +20,7 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             acpAgent = 'custom:qwen'; acpCustomCommand = 'copilot --acp --stdio'
         }
+
         # Try to open Settings once; if the window can't take foreground, mark the suite skippable.
         $script:settingsOpen = $false
         try { Open-WtSettings -App $script:app -TimeoutSec 20 | Out-Null; $script:settingsOpen = $true }
@@ -73,5 +74,86 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
             (Get-WtSettingsObject -App $script:app).showTokenUsageAndCost -eq $false
         } | Out-Null
         Assert-Setting -App $script:app -Key 'showTokenUsageAndCost' -Value $false
+    }
+}
+
+Describe 'Feature Settings editor language direction' -Tag 'Feature', 'SettingsRtl' -Skip:(-not $script:Ready) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:languageResults = @{}
+    }
+
+    It 'Settings follows UI direction: <Language>' -ForEach @(
+        @{ Language = 'ar-SA'; Rtl = $true }
+        @{ Language = 'he-IL'; Rtl = $true }
+        @{ Language = 'qps-plocm'; Rtl = $true }
+        @{ Language = 'en-US'; Rtl = $false }
+    ) {
+        $app = $null
+        $foregroundUnavailable = $false
+        $script:languageResults[$Language] = 'Failed'
+        try {
+            $app = Start-Terminal -Package (Get-ItTestPackage) -TimeoutSec 60 -Settings @{
+                language = $Language
+                tabLayout = 'horizontal'
+                initialCols = 120
+                initialRows = 35
+                firstWindowPreference = 'defaultProfile'
+                minimizeToNotificationArea = $false
+                alwaysShowNotificationIcon = $false
+                showTokenUsageAndCost = $true
+                'aiIntegration.coordinator.enabled' = $false
+            } -State @{ sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true }
+            if (-not (Test-WtWindowKeyFocusable -App $app)) {
+                $foregroundUnavailable = $true
+                Set-ItResult -Skipped -Because 'WT window cannot take foreground for the Ctrl+, accelerator'
+                return
+            }
+            Open-WtSettings -App $app -TimeoutSec 25 | Out-Null
+            $settingsRoot = Get-UiElement -App $app -Selector SettingsNav
+            $settingsRoot | Should -Not -BeNullOrEmpty
+            $center = $settingsRoot.x + $settingsRoot.width / 2
+            foreach ($selector in 'SettingsSearchBox', 'SaveButton', 'ResetButton') {
+                $element = Get-UiElement -App $app -Selector $selector
+                $element | Should -Not -BeNullOrEmpty -Because "$selector must be visible"
+                $element.isOffscreen | Should -BeFalse
+                $onRight = $element.x + $element.width / 2 -gt $center
+                $expectedOnRight = if ($selector -eq 'SettingsSearchBox') { $Rtl } else { -not $Rtl }
+                $onRight | Should -Be $expectedOnRight -Because "$selector must follow $Language layout"
+            }
+            Invoke-SettingsNav -App $app -NavItem AIAgentsNavItem | Out-Null
+            $tokenUsageToggle = Get-UiElement -App $app -Selector ShowTokenUsageAndCostToggle
+            $tokenUsageToggle.toggleState | Should -Be 'on'
+            $tokenUsageToggle.isOffscreen | Should -BeFalse
+            ($tokenUsageToggle.x + $tokenUsageToggle.width / 2 -gt $center) |
+                Should -Be (-not $Rtl) -Because "the setting control must follow $Language layout"
+            Invoke-UiElement -App $app -Selector ShowTokenUsageAndCostToggle | Out-Null
+            Invoke-UiElement -App $app -Selector SaveButton -TimeoutSec 15 | Out-Null
+            Wait-Until -TimeoutSec 8 -Because 'Save must persist the changed preference' -Condition {
+                (Get-WtSettingsObject -App $app).showTokenUsageAndCost -eq $false
+            } | Out-Null
+            Assert-Setting -App $app -Key language -Value $Language
+            Invoke-UiElement -App $app -Selector ShowTokenUsageAndCostToggle | Out-Null
+            (Get-UiElement -App $app -Selector ShowTokenUsageAndCostToggle).toggleState | Should -Be 'on'
+            Invoke-UiElement -App $app -Selector ResetButton -TimeoutSec 15 | Out-Null
+            Wait-Until -TimeoutSec 8 -Because 'Discard must restore the saved preference' -Condition {
+                (Get-UiElement -App $app -Selector ShowTokenUsageAndCostToggle).toggleState -eq 'off'
+            } | Out-Null
+            Assert-Setting -App $app -Key showTokenUsageAndCost -Value $false
+            Invoke-SettingsNav -App $app -NavItem LaunchNavItem | Out-Null
+        }
+        finally {
+            if ($app) { Stop-Terminal -App $app | Out-Null }
+            if ($foregroundUnavailable) { $script:languageResults[$Language] = 'Skipped' }
+        }
+        $script:languageResults[$Language] = 'Passed'
+    }
+
+    It 'Settings follows UI direction: complete matrix' {
+        $script:languageResults.Values | Should -Not -Contain 'Failed' -Because 'every language must pass'
+        if ($script:languageResults.Count -ne 4 -or $script:languageResults.Values -contains 'Skipped') {
+            Set-ItResult -Skipped -Because 'not all four language cases completed'
+            return
+        }
     }
 }

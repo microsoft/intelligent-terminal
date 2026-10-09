@@ -39,6 +39,14 @@ D2D
 # Axe.Windows artifact file extension
 (?<=\.)a11ytest\b
 
+# Windows ICU relative-time APIs and constants
+\b(?:URelativeDateTime(?:Formatter|Unit)|UCalendar(?:DateFields)?|UDate)\b
+\b(?:ureldatefmt_(?:open|close|formatNumeric)|ucal_(?:open|close|setMillis|getFieldDifference)|uloc_forLanguageTag|u_errorName)\b
+\b(?:UCAL_(?:GREGORIAN|YEAR|MONTH)|UDAT_(?:REL_UNIT_(?:MINUTE|HOUR|DAY|WEEK|MONTH|YEAR)|STYLE_SHORT)|UDISPCTX_CAPITALIZATION_NONE|ULOC_FULLNAME_CAPACITY)\b
+
+# Standard English ICU short relative-time examples
+\b[0-9]+\s+(?:min|hr|wk|mo|yr)\.\s+ago\b
+
 # Automatically suggested patterns
 
 # hit-count: 26 file-count: 12

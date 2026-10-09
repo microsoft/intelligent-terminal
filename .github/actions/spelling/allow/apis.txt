@@ -16,6 +16,8 @@ BUILDMSG
 BUILDNUMBER
 BYCOMMAND
 charconv
+CINTERFACE
+CLASSNOTREG
 CLOSEAPP
 cmdletbinding
 colspan
@@ -131,16 +133,19 @@ PATINVERT
 Pels
 PHANDLER
 PICKFOLDERS
+piid
 PINPUT
 pmr
 QUERYENDSESSION
 rcx
 REGCLS
+REGDB
 remotesigned
 RETURNCMD
 rfind
 ROOTOWNER
 roundf
+RPCPROXY
 RSHIFT
 rvrn
 SACL
@@ -196,6 +201,7 @@ USEROBJECTFLAGS
 Vcpp
 Viewbox
 virtualalloc
+Vtbl
 wcsnicmp
 wcsnlen
 WDJ

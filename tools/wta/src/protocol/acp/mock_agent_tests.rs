@@ -1095,6 +1095,7 @@ fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
         is_byok: false,
         agent_id: "copilot".to_string(),
         reattached_session_id: None,
+        restore_identity: None,
     }
 }
 

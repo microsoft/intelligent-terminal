@@ -130,6 +130,7 @@ namespace winrt::TerminalApp::implementation
         void _switchToMode(CommandPaletteMode mode);
         void _recordAgentPromptEntry();
         ::TerminalApp::CommandPaletteTelemetry::AgentPromptEntry _agentPromptEntry;
+        winrt::hstring _agentPromptEntryId;
 
         std::wstring _getTrimmedInput();
         void _evaluatePrefix();

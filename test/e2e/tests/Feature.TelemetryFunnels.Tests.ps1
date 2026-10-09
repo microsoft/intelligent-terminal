@@ -169,8 +169,10 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             foreach ($decision in @('Run', 'Insert', 'Reject')) {
                 Invoke-TelemetryPhase -Name "offer-$decision" -Action { Invoke-TelemetryOffer -Decision $decision }
             }
-            foreach ($allowed in @($false, $true)) {
-                Invoke-TelemetryPhase -Name "autofix-policy-$allowed" -Action { Invoke-TelemetryAutoFixPolicy -Allowed $allowed }
+            if ($env:ITE2E_TELEMETRY_HOT_POLICY -eq '1') {
+                foreach ($allowed in @($false, $true)) {
+                    Invoke-TelemetryPhase -Name "autofix-policy-$allowed" -Action { Invoke-TelemetryAutoFixPolicy -Allowed $allowed }
+                }
             }
             Set-TelemetryPolicy -Transaction $script:policyTransaction -Name AllowAutoFix -Value $null
             Invoke-TelemetryPhase -Name second-window -Action { Invoke-TelemetrySecondWindow }
@@ -229,7 +231,13 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             }
         }
         finally { Stop-TestTelemetryTrace -Trace $trace }
-        $script:records = @(Read-TestTelemetryTrace -Directory $trace.Directory -ProcessIds @($script:ownedPids))
+        $script:records = @(Read-TestTelemetryTrace -Directory $trace.Directory -ProcessIds @($script:ownedPids) `
+            -IncludeEventName @('AppCreated', 'AgentProviderConfigured', 'CustomAgentConfigured', 'SidebarStateOnLaunch',
+                'AgentSlashCommandUsed', 'SlashCommandInvoked', 'SessionBecameInteractive', 'UserInteract',
+                'ConnectionCreated', 'AcpNewSessionComplete', 'AgentPromptSent', 'AgentResponseComplete',
+                'ErrorDetected', 'ErrorFixOffered', 'ErrorFixAccepted', 'ErrorFixRunStarted', 'ErrorFixRunResult',
+                'CommandPaletteAgentPromptEntered', 'CommandPaletteDispatchedAgentPrompt',
+                'AgentProviderChanged', 'JsonSettingsChanged', 'AgentSessionStarted'))
         Initialize-TelemetryPhaseClock -CaptureDirectory $trace.Directory
         @($script:ownedPids) | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:root 'owned-processes.json')
         ConvertTo-Json -InputObject $script:records -Depth 12 | Set-Content -LiteralPath (Join-Path $script:root 'scoped-events.json')
@@ -368,7 +376,11 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         $prompts = @(Get-TelemetryPhaseEvents -Phase conversation -Name AgentPromptSent)
         $prompts | Should -HaveCount 2
         foreach ($record in $prompts) {
-            $record.Fields.Keys | Should -Not -Contain 'SessionId'
+            $record.Types.SessionId | Should -Match 'AnsiString$'
+            $record.Types.TurnId | Should -Match 'AnsiString$'
+            [guid]::Parse($record.Fields.SessionId) | Should -Not -Be ([guid]::Empty)
+            [guid]::Parse($record.Fields.TurnId) | Should -Not -Be ([guid]::Empty)
+            $record.Fields.SessionId | Should -Not -Be $script:agent.AcpSessionId
             $record.Fields.IsAutofix | Should -BeIn @('false', '0')
             $record.Fields.TemplateKind | Should -Not -Be 'AgentCommand'
             $record.Types.PromptLengthBytes | Should -Match 'UInt32$'
@@ -378,12 +390,37 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         $completed = @(Get-TelemetryPhaseEvents -Phase conversation -Name AgentResponseComplete | Where-Object {
             $_.ProcessId -eq $script:agent.HelperProcessId
         })
-        $completed.Count | Should -BeGreaterOrEqual 2
+        $completed | Should -HaveCount 2
         foreach ($record in $completed) {
-            $record.Fields.Keys | Should -Not -Contain 'SessionId'
             $record.Fields.Success | Should -BeIn @('true', '1')
             $record.Types.TotalDurationMs | Should -Match 'Double$'
+            $record.Types.IsAutofix | Should -Match 'Boolean$'
         }
+        @($prompts.Fields.SessionId | Select-Object -Unique) | Should -HaveCount 1
+        @($prompts.Fields.TurnId | Select-Object -Unique) | Should -HaveCount 2
+        foreach ($sent in $prompts) {
+            $result = @($completed | Where-Object { $_.Fields.TurnId -eq $sent.Fields.TurnId })
+            $result | Should -HaveCount 1
+            $result[0].Fields.SessionId | Should -Be $sent.Fields.SessionId
+            $result[0].Fields.IsAutofix | Should -Be $sent.Fields.IsAutofix
+        }
+    }
+
+    It 'Daily keyboard activity telemetry deduplicates input across same-process windows' {
+        $events = @($script:records | Where-Object { $_.ProcessId -eq $script:primaryAppPid -and $_.Name -eq 'UserInteract' })
+        $events.Count | Should -BeGreaterThan 0
+        foreach ($day in @($events | Group-Object { ([DateTimeOffset]$_.Timestamp).UtcDateTime.Add($script:traceClockCorrection).Date })) {
+            $day.Count | Should -Be 1
+        }
+        foreach ($event in $events) {
+            @($event.Fields.Keys | Sort-Object) | Should -Be @('Branding', 'Distribution', 'PartA_PrivTags')
+            $event.Types.Branding | Should -Match 'UInt8$'
+            $event.Types.Distribution | Should -Match 'UInt8$'
+            $event.Fields.Branding | Should -Be '0'
+            $event.Fields.Distribution | Should -Be '2'
+        }
+        @($script:records | Where-Object { $_.ProcessId -eq $script:primaryAppPid -and $_.Name -eq 'SessionBecameInteractive' }) | Should -HaveCount 1
+        @(Get-TelemetryPhaseEvents -Phase second-window -Name AppCreated) | Should -HaveCount 1
     }
 
     It 'Concrete Autofix offers count once and only Run accepts' -ForEach @(
@@ -394,11 +431,22 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         $offered | Should -HaveCount 1 -Because 'redrawing the same concrete card must not double count it'
         $offered[0].Types.OfferId | Should -Match 'AnsiString$'
         [guid]::Parse($offered[0].Fields.OfferId) | Should -Not -Be ([guid]::Empty)
+        $offered[0].Fields.Source | Should -Be 'Detection'
+        $detected = @(Get-TelemetryPhaseEvents -Phase "offer-$Decision" -Name ErrorDetected | Where-Object { $_.Fields.OfferId -eq $offered[0].Fields.OfferId })
+        $detected | Should -HaveCount 1
+        $detected[0].Fields.Source | Should -Be 'Detection'
+        $sent = @(Get-TelemetryPhaseEvents -Phase "offer-$Decision" -Name AgentPromptSent | Where-Object { $_.Fields.IsAutofix -in @('true', '1') })
+        $sent | Should -HaveCount 1
+        $completed = @(Get-TelemetryPhaseEvents -Phase "offer-$Decision" -Name AgentResponseComplete | Where-Object { $_.Fields.TurnId -eq $sent[0].Fields.TurnId })
+        $completed | Should -HaveCount 1
+        $completed[0].Fields.SessionId | Should -Be $sent[0].Fields.SessionId
+        $completed[0].Fields.IsAutofix | Should -BeIn @('true', '1')
         $phase = $script:phases["offer-$Decision"].Data
         if ($Decision -eq 'Run') {
             $accepted | Should -HaveCount 1
             $accepted[0].Fields.OfferId | Should -Be $offered[0].Fields.OfferId
             $accepted[0].Types.OfferId | Should -Match 'AnsiString$'
+            $accepted[0].Fields.Source | Should -Be 'Detection'
             ([DateTimeOffset]$accepted[0].Timestamp).UtcDateTime.Add($script:traceClockCorrection) |
                 Should -BeGreaterOrEqual ([DateTimeOffset]$phase.DecisionUtc).UtcDateTime
             $phase.Executed | Should -BeTrue
@@ -406,6 +454,26 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         else {
             $accepted | Should -HaveCount 0
             $phase.Executed | Should -BeFalse
+        }
+    }
+
+    It 'Run telemetry observes dispatch without claiming command success' {
+        $starts = @(Get-TelemetryPhaseEvents -Phase offer-Run -Name ErrorFixRunStarted)
+        $results = @(Get-TelemetryPhaseEvents -Phase offer-Run -Name ErrorFixRunResult)
+        $accepted = @(Get-TelemetryPhaseEvents -Phase offer-Run -Name ErrorFixAccepted)
+        $starts | Should -HaveCount 1
+        $results | Should -HaveCount 1
+        $accepted | Should -HaveCount 1
+        $script:phases['offer-Run'].Data.Executed | Should -BeTrue
+        $starts[0].Fields.OfferId | Should -Be $accepted[0].Fields.OfferId
+        $results[0].Fields.OfferId | Should -Be $starts[0].Fields.OfferId
+        $results[0].Fields.RunId | Should -Be $starts[0].Fields.RunId
+        [guid]::Parse($starts[0].Fields.RunId) | Should -Not -Be ([guid]::Empty)
+        $results[0].Fields.Outcome | Should -Be 'unobservable'
+        $results[0].Types.RunId | Should -Match 'AnsiString$'
+        $results[0].Types.Outcome | Should -Match 'AnsiString$'
+        foreach ($phase in @('offer-Insert', 'offer-Reject', 'conversation')) {
+            @(Get-TelemetryPhaseEvents -Phase $phase | Where-Object Name -in @('ErrorFixRunStarted', 'ErrorFixRunResult')) | Should -HaveCount 0
         }
     }
 
@@ -421,6 +489,12 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         $second | Should -BeGreaterOrEqual ([DateTimeOffset]$phase.ReopenUtc).UtcDateTime
         $second | Should -BeLessThan ([DateTimeOffset]$phase.SubmitUtc).UtcDateTime
         $submissions[0].Fields.IsBackgroundMode | Should -BeIn @('false', '0')
+        @($entries.Fields.EntryId | Select-Object -Unique) | Should -HaveCount 2
+        foreach ($entry in $entries) {
+            [guid]::Parse($entry.Fields.EntryId) | Should -Not -Be ([guid]::Empty)
+            $entry.Types.EntryId | Should -Match 'UnicodeString$'
+        }
+        $submissions[0].Fields.EntryId | Should -Be $entries[1].Fields.EntryId
     }
 
     It 'Provider changes expose bounded roles and transitions without unchanged reloads' {
@@ -475,8 +549,10 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         }
     }
 
-    It 'Raw Autofix policy stays distinct from effective helper state' -ForEach @(
-        @{ Allowed = $false }, @{ Allowed = $true }
+    It 'Optional hot-policy diagnostic updates a connected helper' -Tag 'HotPolicyDiagnostic' -ForEach @(
+        if ($env:ITE2E_TELEMETRY_HOT_POLICY -eq '1') {
+            @{ Allowed = $false }, @{ Allowed = $true }
+        }
     ) {
         $events = @(Get-TelemetryPhaseEvents -Phase "autofix-policy-$Allowed" -Name ErrorDetected | Where-Object {
             $_.Provider -eq '4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b' -and $_.Fields.PaneId -eq $script:shell.session_id

@@ -23,7 +23,8 @@
                              a legacy zero-comment summary or current
                              "Findings: None" / "Comments generated: 0 new",
                              with every present structured summary zero
-                             and no nonzero previously-missed findings
+                             and no remaining actionable finding; an explicit
+                             "0 open findings" permits only known resolved sections
       - OpenThreadCount    : number of unresolved review threads (from all
                              reviewers); informational — convergence does
                              NOT require this to be zero
@@ -43,7 +44,7 @@
       - Converged          : true iff the agent has done its job.
                              - When a Copilot review is at HEAD:
                                ReviewAtHead && NoNewComments &&
-                               OpenThreadsAwaitingReply == 0.
+                               OpenThreadsAwaitingReply == 0 && !CopilotPending.
                              - When no Copilot review has been observed
                                on this PR (LatestCopilotReview is null
                                AND CopilotPending is false): just
@@ -148,12 +149,28 @@ function Test-CopilotReviewHasNoNewFindings {
         $line
     }
     $summary = ($summaryLines -join "`n") -replace '\*\*', ''
-    $fields = [regex]::Matches($summary, '(?im)^[ \t]*(?:[-+*][ \t]+)?(?:Findings:[ \t]*(?<count>None|\d+)\b|Comments generated:[ \t]*(?<count>\d+)[ \t]+new\b|(?<count>\d+)[ \t]+open[ \t]+findings[ \t]*$)')
+    $fields = [regex]::Matches($summary, '(?im)^[ \t]*(?:[-+*][ \t]+)?(?:Findings:[ \t]*(?<count>None|\d+)\b|Comments generated:[ \t]*(?<count>\d+)[ \t]+new\b|(?<openCount>\d+)[ \t]+open[ \t]+findings?\b)(?<tail>[^\r\n]*)$')
     # Every explicit summary constrains the result; none can override another.
     foreach ($field in $fields) {
-        if ($field.Groups['count'].Value -notmatch '^(?:None|0+)$') { return $false }
+        $count = if ($field.Groups['openCount'].Success) { $field.Groups['openCount'].Value } else { $field.Groups['count'].Value }
+        if ($count -notmatch '^(?:None|0+)$' -or $field.Groups['tail'].Value.Trim()) { return $false }
     }
-    if ($summary -match '(?i)Previously missed\s*\(0*[1-9]\d*\)') { return $false }
+    # Only a known, non-nested resolved section may hide historical finding links.
+    $findingPattern = '(?i)\b[1-9]\d*\s+(?:open|new|unresolved)\s+findings?\b|Previously missed\s*\(0*[1-9]\d*\)|\b(?:critical|high|medium|low)(?: severity)?(?:\s+|:\s*)(?:unresolved|open)\b|\b(?:unresolved|open)(?:\s+|:\s*)(?:critical|high|medium|low)\b'
+    $withoutResolved = $summary
+    $resolvedSections = [regex]::Matches($summary,
+        '(?is)<details\b[^>]*>\s*<summary>\s*<strong>\d+ resolved since last review</strong>\s*</summary>(?:(?!</?details\b).)*</details\s*>')
+    foreach ($section in $resolvedSections) {
+        $sectionText = [regex]::Replace($section.Value, '<[^>]+>', ' ')
+        if ($sectionText -notmatch $findingPattern) {
+            $withoutResolved = $withoutResolved.Replace($section.Value, '')
+        }
+    }
+    $summaryText = [regex]::Replace($withoutResolved, '<[^>]+>', ' ')
+    if ($withoutResolved -match '(?i)alt=["''](?:critical|high|medium|low) severity["'']|#discussion_r\d+' -or
+        $summaryText -match $findingPattern) { return $false }
+    if (@($fields | Where-Object { $_.Groups['openCount'].Success }).Count -gt 0 -and
+        $withoutResolved -match '(?i)<(?:details|summary)\b') { return $false }
     if ($fields.Count -gt 0) { return $true }
     return $summary -match '(?i)generated no new comments|generated\s+0\s+comments'
 }
@@ -337,13 +354,16 @@ $result = [ordered]@{
     #   trigger intentionally skipped): just OpenThreadsAwaitingReply
     #   == 0. Ignores ReviewAtHead / NoNewComments because those will
     #   never advance without a new Copilot review.
-    # - Copilot review exists or pending: ReviewAtHead &&
+    # - Pending review: never converge on the prior review.
+    # - Copilot review exists: ReviewAtHead &&
     #   NoNewComments && OpenThreadsAwaitingReply == 0.
     # - No Copilot review has ever been observed: just
     #   OpenThreadsAwaitingReply == 0 (also fires for brand-new PRs
     #   with zero findings; agent should still trigger via
     #   01-request-review.ps1 if Copilot is enabled).
-    Converged = if ($SingleIteration) {
+    Converged = if ($copilotPending) {
+        $false
+    } elseif ($SingleIteration) {
         $awaitingCount -eq 0
     } elseif ($latest -or $copilotPending) {
         $reviewAtHead -and $noNewComments -and $awaitingCount -eq 0

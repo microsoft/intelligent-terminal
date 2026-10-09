@@ -15,9 +15,9 @@ foreach ($scope in @('Private', 'Public')) {
 $publicFns = @(
     # Harness
     'Resolve-ItApp', 'Resolve-WtComClsid', 'Get-ItTestPackage', 'Start-Terminal', 'Start-TerminalClean', 'Stop-Terminal',
-    'Reset-TerminalState', 'Backup-WtConfig', 'Restore-WtConfig', 'Clear-WtConfig', 'Get-WtProcessesForApp', 'Stop-AppInstances', 'Stop-StaleItInstances', 'Start-TerminalFre', 'Get-DescendantWtaIds',
+    'Reset-TerminalState', 'Backup-WtConfig', 'Restore-WtConfig', 'Clear-WtConfig', 'Get-WtProcessesForApp', 'Assert-WtPackageInactive', 'Stop-AppInstances', 'Stop-StaleItInstances', 'Start-TerminalFre', 'Get-DescendantWtaIds',
     # Core (useful in tests)
-    'Wait-Until', 'Test-Until', 'Invoke-Native', 'Write-ItLog', 'ConvertFrom-JsonSafe',
+    'Wait-Until', 'Test-Until', 'Invoke-Native', 'Write-ItLog', 'ConvertFrom-JsonSafe', 'Wait-ItProcessDeadline', 'Test-ItProcessDeadline',
     # Wt
     'Invoke-WtCli', 'Invoke-WtCliRaw', 'Get-WtWindows', 'Get-WtTabs', 'Get-WtPanes', 'Get-ActivePane',
     'Get-WtPaneStatus', 'New-WtTab', 'Split-WtPane', 'Close-WtPane', 'Set-WtPaneFocus',
@@ -34,8 +34,8 @@ $publicFns = @(
     # Policy (agent GPO via HKCU)
     'Get-WtAgentPolicyState', 'Set-WtAgentPolicy', 'Restore-WtAgentPolicy', 'Test-WtAgentPolicyControllable',
     # Ui
-    'Get-UiTree', 'Find-UiElement', 'Get-UiElement', 'Test-UiElementEnabled', 'Invoke-UiElement', 'Invoke-UiClick', 'Get-UiTextBounds', 'Invoke-UiMouseDrag', 'Set-UiValue', 'Get-UiValue',
-    'Wait-UiElement', 'Test-UiElementExists', 'Save-UiScreenshot', 'Get-WtWindowHwnds', 'Test-WinAppAvailable',
+    'Get-UiTree', 'Find-UiElement', 'Get-UiElement', 'Test-UiElementEnabled', 'Invoke-UiElement', 'Invoke-UiClick', 'Get-UiTextBounds', 'Invoke-ItOwnedHover', 'Invoke-UiMouseDrag', 'Set-UiValue', 'Get-UiValue',
+    'Wait-UiElement', 'Test-UiElementExists', 'Save-UiScreenshot', 'Get-WtWindowHwnds', 'Test-WinAppAvailable', 'Invoke-WinAppUi',
     'Send-WtWindowKey', 'Invoke-WtWindowWheel', 'Set-WtWindowForeground', 'Test-WtWindowKeyFocusable', 'Open-WtSettings', 'Test-CommandPaletteOpen', 'Invoke-SettingsNav',
     # Observe
     'Get-ItLogDir', 'Initialize-LogOffsets', 'Get-ItLogText', 'Start-WtEventListener', 'Get-WtEvents',
