@@ -35,6 +35,7 @@
 
 #include <cmath>
 #include <icu.h>
+#include <map>
 #include <set>
 #include <winrt/Windows.Globalization.NumberFormatting.h>
 #include <winrt/Windows.Storage.Streams.h>
@@ -322,6 +323,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SidebarRailHintsTrackBindings);
         TEST_METHOD(VerticalTabChromeBackgroundTracksTheme);
         TEST_METHOD(NewTabButtonSharesChromeBackdrop);
+        TEST_METHOD(NewTabFlyoutAgentIconsKeepSvgColors);
         TEST_METHOD(VerticalTabStripBindsBackground);
         TEST_METHOD(VerticalTabHistorySharesBackdrop);
         TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
@@ -4544,6 +4546,130 @@ namespace TerminalAppLocalTests
                         verifyState(L"Normal", normal, normal);
                     }
                 }
+            }
+        });
+    }
+
+    void TabTests::NewTabFlyoutAgentIconsKeepSvgColors()
+    {
+        auto page = _commonSetup();
+        UIElement previousContent{ nullptr };
+        StackPanel host{ nullptr };
+        TestOnUIThread([&]() {
+            const auto window = Window::Current();
+            previousContent = window.Content();
+            host = StackPanel{};
+            window.Content(host);
+            window.Activate();
+            host.UpdateLayout();
+        });
+        const auto cleanup = wil::scope_exit([&]() {
+            LOG_IF_FAILED(RunOnUIThread([&]() { Window::Current().Content(previousContent); }));
+        });
+
+        std::map<std::wstring, std::vector<uint8_t>> originalPixels;
+        for (const auto theme : { ElementTheme::Dark, ElementTheme::Light, ElementTheme::Dark })
+        {
+            for (const auto id : { L"copilot", L"claude", L"codex", L"gemini", L"opencode" })
+            {
+                ::details::Event loaded;
+                ::details::Event imageLoaded;
+                MenuFlyout flyout{ nullptr };
+                MenuFlyoutItem item{ nullptr };
+                winrt::MUX::Controls::ImageIcon icon{ nullptr };
+                Image artwork{ nullptr };
+                Media::Imaging::SvgImageSource source{ nullptr };
+                winrt::event_token loadedToken{};
+                winrt::event_token openedToken{};
+                winrt::event_token failedToken{};
+                const auto hide = wil::scope_exit([&]() {
+                    LOG_IF_FAILED(RunOnUIThread([&]() {
+                        if (source)
+                        {
+                            source.Opened(openedToken);
+                            source.OpenFailed(failedToken);
+                        }
+                        if (flyout)
+                        {
+                            item.Loaded(loadedToken);
+                            flyout.Hide();
+                        }
+                    }));
+                });
+                TestOnUIThread([&]() {
+                    host.RequestedTheme(theme);
+                    const auto path = winrt::hstring{ L"ms-appx:///AgentIcons/" } + id + L".svg";
+                    winrt::Microsoft::Terminal::Settings::Model::Profile profile;
+                    profile.Name(id);
+                    profile.Icon(winrt::Microsoft::Terminal::Settings::Model::MediaResourceHelper::FromString(path));
+                    item = page->_CreateNewTabFlyoutProfile(profile, 0, {}).as<MenuFlyoutItem>();
+                    icon = item.Icon().as<winrt::MUX::Controls::ImageIcon>();
+                    source = icon.Source().as<Media::Imaging::SvgImageSource>();
+                    openedToken = source.Opened([&](auto&&, auto&&) { imageLoaded.Set(); });
+                    failedToken = source.OpenFailed([&](auto&&, auto&&) {
+                        Log::Error(L"Agent SVG failed to load");
+                        imageLoaded.Set();
+                    });
+                    VERIFY_ARE_EQUAL(path, source.UriSource().AbsoluteUri());
+                    VERIFY_IS_TRUE(icon.ReadLocalValue(IconElement::ForegroundProperty()) == DependencyProperty::UnsetValue());
+
+                    item.RequestedTheme(theme);
+                    loadedToken = item.Loaded([&](auto&&, auto&&) {
+                        const auto root = Media::VisualTreeHelper::GetChild(item, 0).as<FrameworkElement>();
+                        artwork = root.FindName(L"IconContent").as<ContentPresenter>().Content().as<Image>();
+                        VERIFY_IS_TRUE(artwork.Source() == source);
+                        loaded.Set();
+                    });
+                    flyout = MenuFlyout{};
+                    flyout.Items().Append(item);
+                    flyout.ShowAt(host);
+                });
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(loaded.m_handle, 10000));
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(imageLoaded.m_handle, 10000));
+                for (const auto state : { L"Normal", L"PointerOver", L"Pressed", L"Normal" })
+                {
+                    Media::Imaging::RenderTargetBitmap bitmap{ nullptr };
+                    winrt::Windows::Foundation::IAsyncAction render{ nullptr };
+                    TestOnUIThread([&]() {
+                        VERIFY_IS_TRUE(VisualStateManager::GoToState(item, state, false));
+                        item.UpdateLayout();
+                        bitmap = Media::Imaging::RenderTargetBitmap{};
+                        render = bitmap.RenderAsync(artwork);
+                    });
+                    render.get();
+                    winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Storage::Streams::IBuffer> read{ nullptr };
+                    TestOnUIThread([&]() { read = bitmap.GetPixelsAsync(); });
+                    const auto buffer = read.get();
+                    std::vector<uint8_t> pixels(buffer.Length());
+                    winrt::Windows::Storage::Streams::DataReader::FromBuffer(buffer).ReadBytes(pixels);
+                    VERIFY_IS_FALSE(pixels.empty());
+                    if (!originalPixels.contains(id))
+                    {
+                        bool hasTransparentBackground = false;
+                        bool hasGlyph = false;
+                        for (size_t offset = 0; offset + 3 < pixels.size(); offset += 4)
+                        {
+                            hasTransparentBackground |= pixels[offset + 3] == 0;
+                            hasGlyph |= pixels[offset] >= 200 && pixels[offset + 1] >= 200 &&
+                                        pixels[offset + 2] >= 200 && pixels[offset + 3] == 255;
+                        }
+                        VERIFY_IS_TRUE(hasTransparentBackground);
+                        VERIFY_ARE_EQUAL(uint8_t{ 0 }, pixels[3]);
+                        VERIFY_IS_TRUE(hasGlyph);
+                        originalPixels.emplace(id, pixels);
+                    }
+                    VERIFY_IS_TRUE(originalPixels.at(id) == pixels);
+                }
+            }
+        }
+
+        TestOnUIThread([&]() {
+            for (const auto path : { L"ms-appx:///ProfileIcons/pwsh.png" })
+            {
+                const auto icon = page->_CreateNewTabFlyoutIcon(path).as<IconSourceElement>();
+                const auto source = icon.IconSource().as<winrt::Windows::UI::Xaml::Controls::BitmapIconSource>();
+                VERIFY_IS_FALSE(source.ShowAsMonochrome());
+                VERIFY_ARE_EQUAL(winrt::hstring{ path }, source.UriSource().AbsoluteUri());
             }
         });
     }

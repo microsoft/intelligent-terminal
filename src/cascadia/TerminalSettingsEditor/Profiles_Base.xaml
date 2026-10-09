@@ -126,18 +126,6 @@
                          Text="{x:Bind Profile.AgentProfileArguments, Mode=TwoWay}" />
             </local:SettingContainer>
 
-            <local:SettingContainer x:Uid="Profile_DefaultSplitProfile"
-                                    ClearSettingValue="{x:Bind Profile.ClearDefaultSplitProfile}"
-                                    CurrentValue="{x:Bind Profile.CurrentSplitProfile.DisplayLabel, Mode=OneWay}"
-                                    HasSettingValue="{x:Bind Profile.HasDefaultSplitProfile, Mode=OneWay}"
-                                    SettingOverrideSource="{x:Bind Profile.DefaultSplitProfileOverrideSource, Mode=OneWay}"
-                                    Style="{StaticResource ExpanderSettingContainerStyle}">
-                <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
-                          ItemsSource="{x:Bind Profile.SplitProfileList, Mode=OneWay}"
-                          SelectedItem="{x:Bind Profile.CurrentSplitProfile, Mode=TwoWay}"
-                          Style="{StaticResource ComboBoxSettingStyle}" />
-            </local:SettingContainer>
-
             <!--  Starting Directory  -->
             <local:SettingContainer x:Name="StartingDirectory"
                                     x:Uid="Profile_StartingDirectory"

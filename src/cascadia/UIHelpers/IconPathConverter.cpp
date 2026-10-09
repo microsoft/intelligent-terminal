@@ -84,13 +84,7 @@ namespace winrt::Microsoft::Terminal::UI::implementation
             {
                 winrt::Windows::Foundation::Uri iconUri{ path };
                 typename BitmapIconSource<TIconSource>::type iconSource;
-                // These brand glyphs follow the foreground in light/dark and high-contrast
-                // themes. OpenCode keeps its original multicolor, opaque artwork.
-                const bool agentGlyph = path == L"ms-appx:///AgentIcons/copilot.png" ||
-                                        path == L"ms-appx:///AgentIcons/claude.png" ||
-                                        path == L"ms-appx:///AgentIcons/codex.png" ||
-                                        path == L"ms-appx:///AgentIcons/gemini.png";
-                iconSource.ShowAsMonochrome(monochrome || agentGlyph);
+                iconSource.ShowAsMonochrome(monochrome);
                 iconSource.UriSource(iconUri);
                 return iconSource;
             }
@@ -320,6 +314,23 @@ namespace winrt::Microsoft::Terminal::UI::implementation
 
     Windows::UI::Xaml::Controls::IconElement IconPathConverter::IconWUX(const winrt::hstring& iconPath)
     {
+        const auto expandedIconPath = _expandIconPath(iconPath);
+        if (til::ends_with(expandedIconPath, L".svg"))
+        {
+            try
+            {
+                Windows::UI::Xaml::Media::Imaging::SvgImageSource imageSource{ Foundation::Uri{ expandedIconPath } };
+                imageSource.RasterizePixelWidth(64);
+                imageSource.RasterizePixelHeight(64);
+                MUX::Controls::ImageIcon icon;
+                icon.Source(imageSource);
+                icon.Width(16);
+                icon.Height(16);
+                return icon;
+            }
+            CATCH_LOG();
+        }
+
         std::wstring_view iconPathWithoutIndex;
         const auto indexOpt = _getIconIndex(iconPath, iconPathWithoutIndex);
         if (!indexOpt.has_value())

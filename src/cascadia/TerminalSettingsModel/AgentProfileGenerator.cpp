@@ -77,7 +77,7 @@ void AgentProfileGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implemen
         const auto identity = std::wstring{ AgentProfiles::Source } + L":" + std::wstring{ agent.id };
         auto profile = CreateDynamicProfile(identity);
         profile->Name(winrt::hstring{ agent.displayName });
-        profile->Icon(winrt::hstring{ L"ms-appx:///AgentIcons/" + std::wstring{ agent.id } + L".png" });
+        profile->Icon(winrt::hstring{ L"ms-appx:///AgentIcons/" + std::wstring{ agent.id } + L".svg" });
         profile->AgentProfileId(winrt::hstring{ agent.id });
         profile->Commandline(winrt::hstring{ AgentProfiles::BuildCommand(launcher, agent.id, {}, {}, {}) });
         profiles.emplace_back(std::move(profile));

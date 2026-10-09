@@ -8577,6 +8577,27 @@ namespace winrt::TerminalApp::implementation
         {
             const auto icon = _CreateNewTabFlyoutIcon(iconPath);
             profileMenuItem.Icon(icon);
+            if (const auto image = icon.try_as<winrt::MUX::Controls::ImageIcon>())
+            {
+                if (const auto source = image.Source().try_as<WUX::Media::Imaging::SvgImageSource>())
+                {
+                    // The menu's IconContent foreground states must not tint SVG artwork.
+                    profileMenuItem.Loaded([source](const auto& sender, const auto&) {
+                        const auto item = sender.template as<WUX::Controls::MenuFlyoutItem>();
+                        const auto root = WUX::Media::VisualTreeHelper::GetChild(item, 0).as<FrameworkElement>();
+                        const auto host = root.FindName(L"IconContent").as<ContentPresenter>();
+                        WUX::Controls::Image artwork;
+                        artwork.Source(source);
+                        artwork.Width(16);
+                        artwork.Height(16);
+                        artwork.Stretch(WUX::Media::Stretch::Uniform);
+                        artwork.IsHitTestVisible(false);
+                        Automation::AutomationProperties::SetAccessibilityView(artwork, Automation::Peers::AccessibilityView::Raw);
+                        host.Content(artwork);
+                        _agentPaneLog("New-tab SVG image presented: " + winrt::to_string(source.UriSource().AbsoluteUri()), AgentPaneLogLevel::Debug);
+                    });
+                }
+            }
         }
 
         if (profile.Guid() == _settings.GlobalSettings().DefaultProfile())
@@ -8695,6 +8716,26 @@ namespace winrt::TerminalApp::implementation
         }
 
         auto icon = UI::IconPathConverter::IconWUX(iconSource);
+        if (std::wstring_view{ iconSource }.starts_with(L"ms-appx:///AgentIcons/"))
+        {
+            _agentPaneLog("New-tab agent icon: " + winrt::to_string(iconSource) +
+                              " control=" + winrt::to_string(winrt::get_class_name(icon)),
+                          AgentPaneLogLevel::Debug);
+            if (const auto image = icon.try_as<winrt::MUX::Controls::ImageIcon>())
+            {
+                if (const auto svg = image.Source().try_as<winrt::Windows::UI::Xaml::Media::Imaging::SvgImageSource>())
+                {
+                    svg.Opened([iconSource](auto&&, auto&&) {
+                        _agentPaneLog("New-tab agent SVG loaded: " + winrt::to_string(iconSource), AgentPaneLogLevel::Debug);
+                    });
+                    svg.OpenFailed([iconSource](auto&&, auto&& args) {
+                        _agentPaneLog("New-tab agent SVG failed: " + winrt::to_string(iconSource) +
+                                      " status=" + std::to_string(static_cast<int>(args.Status())));
+                        LOG_HR_MSG(E_FAIL, "New-tab agent SVG failed to load");
+                    });
+                }
+            }
+        }
         Automation::AutomationProperties::SetAccessibilityView(icon, Automation::Peers::AccessibilityView::Raw);
 
         return icon;

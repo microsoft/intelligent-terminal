@@ -11,6 +11,10 @@ WSL installations and arbitrary custom agents are not automatically generated.
 Discovery does not install software, sign in, or start an ACP server. Native CLI
 availability is independent of the adapters needed by the built-in agent pane.
 
+The generated profile icons use transparent SVG artwork. The new-tab menu
+renders the SVG's original colors without foreground tinting, preserving them
+when hovering, pressing, or switching between light and dark themes.
+
 ## Launch and configuration
 
 A managed profile starts the application's `wta launch-agent` command in a
