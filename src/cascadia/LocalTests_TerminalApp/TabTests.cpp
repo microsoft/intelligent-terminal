@@ -6373,9 +6373,10 @@ namespace TerminalAppLocalTests
             const auto filters = strip.SidebarFilters();
             const auto agents = stripImpl->AgentsOnlyFilterMenuItem();
             const auto recent = stripImpl->RecentAgentSessionsFilterMenuItem();
-            // Establish the intended focus modality after the asynchronous query update, before testing preference-only changes.
+            // Programmatic focus retains the prior Pointer/Keyboard modality on modern XAML.
             VERIFY_IS_TRUE(stripImpl->SearchTextBox().Focus(FocusState::Programmatic));
-            VERIFY_ARE_EQUAL(FocusState::Programmatic, stripImpl->SearchTextBox().FocusState());
+            const auto focusState = stripImpl->SearchTextBox().FocusState();
+            VERIFY_ARE_NOT_EQUAL(FocusState::Unfocused, focusState);
             VERIFY_IS_TRUE(winrt::Windows::UI::Xaml::Input::FocusManager::GetFocusedElement(strip.XamlRoot()) == stripImpl->SearchTextBox());
             stripImpl->ProjectionControlsEnabled(false);
             VERIFY_IS_FALSE(historyClosed);
@@ -6395,7 +6396,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->TabsToolbar().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"agent query" }, strip.SearchQuery());
-            VERIFY_ARE_EQUAL(FocusState::Programmatic, stripImpl->SearchTextBox().FocusState());
+            VERIFY_ARE_EQUAL(focusState, stripImpl->SearchTextBox().FocusState());
             VERIFY_IS_TRUE(winrt::Windows::UI::Xaml::Input::FocusManager::GetFocusedElement(strip.XamlRoot()) == stripImpl->SearchTextBox());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
             VERIFY_IS_TRUE(filters.RecentAgentSessionsVisible());
@@ -7827,7 +7828,16 @@ namespace TerminalAppLocalTests
             {
                 VERIFY_ARE_EQUAL(saved.name, Automation::AutomationProperties::GetName(saved.button));
                 VERIFY_ARE_EQUAL(saved.help, Automation::AutomationProperties::GetHelpText(saved.button));
-                VERIFY_IS_TRUE(saved.tooltip == ToolTipService::GetToolTip(saved.button));
+                const auto tooltip = ToolTipService::GetToolTip(saved.button);
+                const auto property = saved.tooltip.try_as<winrt::Windows::Foundation::IPropertyValue>();
+                if (property && property.Type() == winrt::Windows::Foundation::PropertyType::String)
+                {
+                    VERIFY_ARE_EQUAL(property.GetString(), winrt::unbox_value<winrt::hstring>(tooltip));
+                }
+                else
+                {
+                    VERIFY_IS_TRUE(saved.tooltip == tooltip);
+                }
             }
         };
         for (const auto layout : { TabLayout::Vertical, TabLayout::Horizontal })
@@ -7874,6 +7884,8 @@ namespace TerminalAppLocalTests
                             const auto button = layout == TabLayout::Vertical ?
                                                     page->_verticalNewTabButton.as<FrameworkElement>() :
                                                     page->_horizontalNewTabButton.as<FrameworkElement>();
+                            button.as<Control>().ApplyTemplate();
+                            VERIFY_IS_TRUE(Media::VisualTreeHelper::GetChildrenCount(button) > 0);
                             const auto window = CoreWindow::GetForCurrentThread();
                             for (const auto key : { winrt::Windows::System::VirtualKey::Control, winrt::Windows::System::VirtualKey::Shift,
                                                     winrt::Windows::System::VirtualKey::LeftMenu, winrt::Windows::System::VirtualKey::RightMenu })
@@ -7882,7 +7894,15 @@ namespace TerminalAppLocalTests
                             }
                             const auto peer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(button);
                             VERIFY_IS_NOT_NULL(peer);
-                            peer.GetPattern(Automation::Peers::PatternInterface::Invoke).as<Automation::Provider::IInvokeProvider>().Invoke();
+                            try
+                            {
+                                peer.GetPattern(Automation::Peers::PatternInterface::Invoke).as<Automation::Provider::IInvokeProvider>().Invoke();
+                            }
+                            catch (const winrt::hresult_error& error)
+                            {
+                                Log::Error(NoThrowString().Format(L"Default-plus Invoke failed: 0x%08x %s", static_cast<uint32_t>(error.code()), error.message().c_str()));
+                                throw;
+                            }
                         });
                         VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(created.m_handle, 10000));
                         TestOnUIThread([&]() {
@@ -8523,12 +8543,14 @@ namespace TerminalAppLocalTests
                             VERIFY_ARE_EQUAL(enabled, strip->_agentFilterTelemetryPending);
                             VERIFY_ARE_EQUAL(winrt::hstring{ query }, filters.SearchQuery());
                         };
+                        strip->CommitHistorySnapshot({}, false);
                         setRecent(true);
                         strip->CommitHistorySnapshot({}, false);
                         VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
                         setRecent(false);
                         strip->CommitHistorySnapshot({}, true);
                         VERIFY_IS_FALSE(strip->_agentFilterTelemetryPending);
+                        strip->CommitHistorySnapshot({}, false);
                         setRecent(true);
                         strip->CommitHistorySnapshot({}, true);
                         VERIFY_IS_FALSE(strip->_agentFilterTelemetryPending);
@@ -8540,6 +8562,7 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(16u, preferenceChanges);
             }
             page->_tabStrip.SearchQuery(L"");
+            strip->CommitHistorySnapshot({}, false);
             strip->OnHistoryClick(nullptr, {});
             page->_historyRefreshPending = false;
             VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
@@ -8553,7 +8576,8 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
             }
 
-            strip->SearchTextBox().Text(L"no match");
+            page->_tabStrip.SearchQuery(L"no match");
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"no match" }, page->_tabStrip.SearchQuery());
             page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(
                                                                  R"({"history_status":"ready","sessions":[
                     {"session_id":"fresh","provider_id":"copilot","title":"New row","location":"Host","status":"Historical"}]})"));
@@ -8568,7 +8592,63 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(strip->_agentFilterTelemetryPending);
 
             page->_tabStrip.HistoryActive(false);
+            page->_tabStrip.SearchQuery(L"no match");
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"no match" }, filters.SearchQuery());
+            const auto cached = page->_ParseSidebarHistorySnapshot(
+                R"({"history_status":"ready","sessions":[{"session_id":"cached-ready","provider_id":"copilot",
+                    "title":"Ready retained row","location":"Host","status":"Historical"}]})").items;
+            strip->CommitHistorySnapshot(cached, true);
+            VERIFY_IS_TRUE(strip->HasHistoryItems());
+            VERIFY_ARE_EQUAL(0u, page->_tabStrip.HistoryItems().Size());
             page->_historyRefreshInFlight = true;
+            page->_historyRefreshPending = false;
+            const auto cachedGeneration = page->_historyRequestGeneration;
+            uint32_t cachedPreferenceChanges{};
+            const auto token = page->_tabStrip.FilterChanged([&](auto&&, auto&&) {
+                ++cachedPreferenceChanges;
+                VERIFY_ARE_EQUAL(filters.ShowRecentAgentSessions(), strip->_agentFilterTelemetryPending);
+            });
+            const auto revoke = wil::scope_exit([&]() {
+                page->_tabStrip.FilterChanged(token);
+            });
+            filters.ShowRecentAgentSessions(true);
+            VERIFY_ARE_EQUAL(1u, cachedPreferenceChanges);
+            VERIFY_IS_FALSE(strip->_agentFilterTelemetryPending);
+            VERIFY_IS_FALSE(page->_historyRefreshPending);
+            VERIFY_ARE_EQUAL(cachedGeneration, page->_historyRequestGeneration);
+            VERIFY_ARE_EQUAL(0u, page->_tabStrip.HistoryItems().Size());
+            filters.ShowRecentAgentSessions(true);
+            VERIFY_ARE_EQUAL(1u, cachedPreferenceChanges);
+            VERIFY_IS_FALSE(strip->_agentFilterTelemetryPending);
+            filters.ShowRecentAgentSessions(false);
+            VERIFY_ARE_EQUAL(2u, cachedPreferenceChanges);
+            VERIFY_IS_FALSE(strip->_agentFilterTelemetryPending);
+            for (const auto state : { "loading", "error" })
+            {
+                page->_tabStrip.HistoryError(L"");
+                page->_tabStrip.HistoryRefreshError(L"");
+                page->_tabStrip.HistoryLoading(false);
+                strip->CommitHistorySnapshot(cached, true);
+                page->_historyRefreshInFlight = true;
+                page->_historyRefreshPending = false;
+                const auto response = std::string{ R"({"history_status":")" } + state + R"(","sessions":[]})";
+                page->_CompleteSidebarHistoryRefresh(cachedGeneration, page->_ParseSidebarHistorySnapshot(response));
+                VERIFY_IS_TRUE(strip->HasHistoryItems());
+                VERIFY_ARE_EQUAL(0u, page->_tabStrip.HistoryItems().Size());
+                page->_historyRefreshInFlight = true;
+                filters.ShowRecentAgentSessions(true);
+                VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
+                page->_tabStrip.HistoryError(L"");
+                page->_tabStrip.HistoryRefreshError(L"");
+                page->_tabStrip.HistoryLoading(false);
+                VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
+                filters.ShowRecentAgentSessions(false);
+                VERIFY_IS_FALSE(strip->_agentFilterTelemetryPending);
+            }
+            VERIFY_ARE_EQUAL(6u, cachedPreferenceChanges);
+            page->_tabStrip.HistoryActive(false);
+            page->_historyRefreshInFlight = true;
+            strip->CommitHistorySnapshot(cached, false);
             strip->OnHistoryClick(nullptr, {});
             VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
             page->_CloseSidebarHistory(false);

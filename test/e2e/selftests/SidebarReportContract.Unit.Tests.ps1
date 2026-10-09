@@ -32,6 +32,46 @@ BeforeAll {
 }
 AfterAll { Remove-Item -LiteralPath $script:root -Recurse -Force }
 Describe 'Sidebar release-report contracts without product activation' {
+    It 'assigns new sidebar scope cases unique stable IDs' {
+        $text = Get-Content (Join-Path $PSScriptRoot '..\..\..\doc\release-check-list.md') -Raw
+        $ids = [regex]::Matches($text, '(?m)^- \[[ x!]\] `(?<id>C\d+)`') |
+            ForEach-Object { $_.Groups['id'].Value }
+        foreach ($id in 411..417) {
+            @($ids | Where-Object { $_ -eq "C$id" }) | Should -HaveCount 1
+        }
+    }
+    It 'retains upstream source-profile splits and fixed assistant panels instead of sidebar delegation overrides' {
+        $tokens = $null
+        $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PSScriptRoot '..\tests\Feature.AgentsModeActions.Tests.ps1'),
+            [ref]$tokens, [ref]$errors)
+        $errors | Should -BeNullOrEmpty
+        $ast.Extent.Text | Should -Not -Match 'Invoke-ActionRejectedSplit|Assert-ActionRetryClearsError|agent split rejected|split-session|same-provider split'
+        $titles = @(
+            'Native agent terminal splits use the source profile without delegation',
+            'Sidebar splits use the source profile across filters search and layouts',
+            'Assistant panes remain fixed during ordinary split actions'
+        )
+        foreach ($title in $titles) {
+            $case = $ast.Find({
+                param($node)
+                $node -is [Management.Automation.Language.CommandAst] -and
+                    $node.GetCommandName() -eq 'It' -and $node.CommandElements[1].Value -eq $title
+            }, $true)
+            $case | Should -Not -BeNullOrEmpty
+            $case.Extent.Text | Should -Match 'Vk 0xBB -Alt -Shift'
+            $case.Extent.Text | Should -Not -Match 'Invoke-Wta|retryError|HistoryMessage.*Should -Not -BeNullOrEmpty'
+            if ($title -ne $titles[2]) {
+                $case.Extent.Text | Should -Match 'SPLIT-PROFILE:\$script:otherProfile'
+                $case.Extent.Text | Should -Match 'native_agent_provider_id \| Should -BeNullOrEmpty'
+            }
+            else {
+                $case.Extent.Text | Should -Match 'SessionId \$helper.PaneSessionId'
+                $case.Extent.Text | Should -Match 'AcpSessionId \| Should -Be \$helper.AcpSessionId'
+            }
+        }
+    }
     It 'checks both real filter preferences around each plus and the layout round trip without resetting them' {
         $tokens = $null
         $errors = $null

@@ -341,6 +341,8 @@ namespace winrt::TerminalApp::implementation
         bool FocusTabSearch();
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, bool ready = false);
+        void InvalidateHistorySnapshotReadiness() noexcept { _historySnapshotReady = false; }
+        void TryCompleteAgentFilterTelemetry();
         struct RepresentedHistorySession
         {
             winrt::hstring sessionId;
@@ -538,6 +540,7 @@ namespace winrt::TerminalApp::implementation
         void _onSidebarFiltersChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Data::PropertyChangedEventArgs const&);
         std::vector<RepresentedHistorySession> _representedHistorySessions;
         bool _agentFilterTelemetryPending{ false };
+        bool _historySnapshotReady{ false };
         friend class ::TerminalAppLocalTests::TabTests;
         bool _historyLoading{ false };
         bool _historyActivating{ false };

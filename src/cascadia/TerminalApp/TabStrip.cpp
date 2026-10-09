@@ -647,6 +647,7 @@ namespace winrt::TerminalApp::implementation
         {
             FilterChanged.raise(*this, nullptr);
         }
+        TryCompleteAgentFilterTelemetry();
     }
 
     IInspectable TabStrip::SelectedItem()
@@ -1382,6 +1383,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, const bool ready)
     {
+        _historySnapshotReady = ready;
         _historySnapshot = std::move(items);
         // WTA supplies newest-activity-first rows; preserve that order within each group.
         std::stable_partition(_historySnapshot.begin(), _historySnapshot.end(), [](const auto& item) {
@@ -1405,7 +1407,14 @@ namespace winrt::TerminalApp::implementation
             _historySearchTerms.emplace_back(_buildHistorySearchTerms(item));
         }
         _applyHistoryProjection(true);
-        if (ready && _sidebarFilters.RecentAgentSessionsVisible() && _agentFilterTelemetryPending)
+        TryCompleteAgentFilterTelemetry();
+    }
+
+    void TabStrip::TryCompleteAgentFilterTelemetry()
+    {
+        if (_historySnapshotReady && !_historyLoading &&
+            _historyError.empty() && _historyRefreshError.empty() &&
+            _sidebarFilters.RecentAgentSessionsVisible() && _agentFilterTelemetryPending)
         {
             _agentFilterTelemetryPending = false;
             TraceLoggingWrite(
@@ -1503,6 +1512,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::ClearHistorySnapshot()
     {
+        InvalidateHistorySnapshotReadiness();
         _historySnapshot.clear();
         _historySearchTerms.clear();
         _historyItems.Clear();
@@ -1516,6 +1526,10 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::HistoryLoading(bool value)
     {
+        if (value)
+        {
+            InvalidateHistorySnapshotReadiness();
+        }
         if (_historyLoading != value)
         {
             _historyLoading = value;
@@ -1534,6 +1548,10 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::HistoryError(winrt::hstring const& value)
     {
+        if (!value.empty())
+        {
+            InvalidateHistorySnapshotReadiness();
+        }
         if (_historyError != value)
         {
             _historyError = value;
@@ -1543,6 +1561,10 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::HistoryRefreshError(winrt::hstring const& value)
     {
+        if (!value.empty())
+        {
+            InvalidateHistorySnapshotReadiness();
+        }
         if (_historyRefreshError != value)
         {
             _historyRefreshError = value;

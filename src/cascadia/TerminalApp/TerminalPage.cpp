@@ -7231,11 +7231,15 @@ namespace winrt::TerminalApp::implementation
         }
 
         using State = _SidebarHistorySnapshot::State;
+        const auto strip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        if (snapshot.state != State::Ready)
+        {
+            strip->InvalidateHistorySnapshotReadiness();
+        }
         if (snapshot.state == State::Cancelled)
         {
             return;
         }
-        const auto strip = winrt::get_self<implementation::TabStrip>(_tabStrip);
         if (snapshot.state == State::Timeout)
         {
             _agentPaneLog("sidebar history refresh timed out; retaining the current snapshot");
@@ -7269,6 +7273,7 @@ namespace winrt::TerminalApp::implementation
             _historyNextRefresh = {};
         }
         _tabStrip.HistoryLoading((snapshot.state == State::Loading || snapshot.state == State::Timeout) && !strip->HasHistoryItems());
+        strip->TryCompleteAgentFilterTelemetry();
         if (_historyRefreshPending)
         {
             _historyRefreshPending = false;
