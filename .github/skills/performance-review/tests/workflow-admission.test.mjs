@@ -8,6 +8,28 @@ import { captureReviewSummary, readReviewSummary } from '../scripts/performance-
 
 const runtime = fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url));
 
+test('reusable performance reviewer supports non-PR inputs while workflow adapters stay PR-bound', () => {
+    const agent = fs.readFileSync(new URL('../../../agents/performance-review.agent.md', import.meta.url), 'utf8');
+    const skill = fs.readFileSync(new URL('../SKILL.md', import.meta.url), 'utf8');
+    assert.match(skill, /^name: performance-review$/m);
+    assert.match(skill, /^# Performance Review$/m);
+    assert.match(agent, /local changes, commit\s+ranges, branches, or pull requests/);
+    assert.match(agent, /Do not assume a PR\s+number, GitHub access, or workflow tools are available/);
+    assert.match(skill, /A local review needs no PR number, GitHub connection, safe-output queue or\s+agentic-workflow tool/);
+    assert.match(skill, /Standalone review returns Markdown/);
+    assert.match(skill, /## GitHub workflow report contract/);
+    assert.match(skill, /## GitHub workflow native repair handoff/);
+    assert.ok(skill.split(/\r?\n/).length <= 500);
+    for (const name of ['ghaw-pr-performance', 'ghaw-pr-performance-fork-guidance']) {
+        const source = fs.readFileSync(new URL(`../../../workflows/${name}.md`, import.meta.url), 'utf8');
+        const compiled = fs.readFileSync(new URL(`../../../workflows/${name}.lock.yml`, import.meta.url), 'utf8');
+        assert.match(source, /imports:\s+- \.github\/agents\/performance-review\.agent\.md/);
+        assert.match(compiled, /GH_AW_AGENT_FILE: "\.github\/agents\/performance-review\.agent\.md"/);
+        assert.match(compiled, /\.github[\\/]skills[\\/]performance-review/);
+        assert.doesNotMatch(compiled, /pr-performance-review|ghaw-pr-performance\.agent\.md/);
+    }
+});
+
 test('all fresh native repair jobs install and explicitly use Rust 1.93 with rustfmt', () => {
     const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
     const validator = fs.readFileSync(new URL('../scripts/run-native-performance-checks.ps1', import.meta.url), 'utf8');
@@ -24,7 +46,7 @@ test('all fresh native repair jobs install and explicitly use Rust 1.93 with rus
 
 test('repair report validation belongs to trusted post-processing, not a model-side shell', () => {
     const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
-    const agent = fs.readFileSync(new URL('../../../agents/ghaw-pr-performance.agent.md', import.meta.url), 'utf8');
+    const agent = fs.readFileSync(new URL('../../../agents/performance-review.agent.md', import.meta.url), 'utf8');
     const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
     assert.match(workflow, /Do not run a shell validator or renderer/);
     assert.match(workflow, /Submit the complete\s+JSON to `validate_performance_report`/);
@@ -76,7 +98,7 @@ function fixture(t, trackedSummary = false) {
     const rustSource = path.join(repo, 'tools', 'wta', 'src', 'fixture.rs');
     const script = path.join(root, 'trusted runtime.mjs');
     fs.copyFileSync(runtime, script);
-    const runtimeRelative = '.github/skills/pr-performance-review/scripts/performance-review.mjs';
+    const runtimeRelative = '.github/skills/performance-review/scripts/performance-review.mjs';
     fs.mkdirSync(path.dirname(path.join(repo, runtimeRelative)), { recursive: true });
     fs.copyFileSync(runtime, path.join(repo, runtimeRelative));
     fs.writeFileSync(path.join(repo, '.gitignore'), '/ignored-attack.txt\n');

@@ -48,7 +48,7 @@ jobs:
           fetched_head="$(git rev-parse "$remote_ref")"
           test "$fetched_head" = "$HEAD_SHA"
           comparison_base="$(git merge-base "$BASE_SHA" "$fetched_head")"
-          node .github/skills/pr-performance-review/scripts/performance-review.mjs prepare \
+          node .github/skills/performance-review/scripts/performance-review.mjs prepare \
             --output-dir "$RUNNER_TEMP/performance-scope" \
             --pr "$PR_NUMBER" --base "$comparison_base" --head "$HEAD_SHA"
           applicable="$(node -e "const s=require(process.argv[1]);process.stdout.write(String(s.applicable))" "$RUNNER_TEMP/performance-scope/performance-scope.json")"
@@ -192,7 +192,7 @@ jobs:
           set -euo pipefail
           gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
             --name performance-result --dir "$RUNNER_TEMP/performance-result"
-          status="$(node .github/skills/pr-performance-review/scripts/performance-review.mjs verdict \
+          status="$(node .github/skills/performance-review/scripts/performance-review.mjs verdict \
             --input "$RUNNER_TEMP/performance-result/performance-verdict.json" \
             --pr "$PR_NUMBER" --base "$BASE_SHA" --head "$HEAD_SHA" --print-status true)"
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -229,7 +229,7 @@ jobs:
             const path = require("path");
             const { pathToFileURL } = require("url");
             const { publishRepair } = await import(pathToFileURL(
-              path.join(process.env.GITHUB_WORKSPACE, ".github/skills/pr-performance-review/scripts/performance-review.mjs")).href);
+              path.join(process.env.GITHUB_WORKSPACE, ".github/skills/performance-review/scripts/performance-review.mjs")).href);
             const result = await publishRepair({
               github,
               proposalPath: path.join(process.env.RUNNER_TEMP, "performance-native-result/performance-proposal.json"),
@@ -270,7 +270,7 @@ jobs:
             const path = require("path");
             const { pathToFileURL } = require("url");
             const { readReviewSummary } = await import(pathToFileURL(
-              path.join(process.env.GITHUB_WORKSPACE, ".github/skills/pr-performance-review/scripts/performance-review.mjs")).href);
+              path.join(process.env.GITHUB_WORKSPACE, ".github/skills/performance-review/scripts/performance-review.mjs")).href);
             let reviewSummary = "Review summary missing; see worker run";
             let summaryDelivered = false;
             if (process.env.WORKER_RUN_ID) {

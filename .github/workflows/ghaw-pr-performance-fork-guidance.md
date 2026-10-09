@@ -25,7 +25,7 @@ engine:
   id: copilot
   model: auto
 imports:
-  - .github/agents/ghaw-pr-performance.agent.md
+  - .github/agents/performance-review.agent.md
 
 checkout:
   ref: ${{ github.workflow_sha }}
@@ -131,7 +131,7 @@ jobs:
           $metadata = & gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER"
           if ($LASTEXITCODE -ne 0) { throw 'Could not read the live PR metadata.' }
           [IO.File]::WriteAllText($metadataPath, ($metadata -join "`n"), [Text.UTF8Encoding]::new($false))
-          & node .github/skills/pr-performance-review/scripts/performance-review.mjs verify-pr `
+          & node .github/skills/performance-review/scripts/performance-review.mjs verify-pr `
               --input $metadataPath --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA `
               --expected-base $env:EXPECTED_BASE_SHA --repo $env:REPOSITORY `
               --head-repo $env:HEAD_REPO --same-repo $env:SAME_REPO `
@@ -184,7 +184,7 @@ pre-agent-steps:
       set -euo pipefail
       test "$SAME_REPO" = "false"
       mkdir -p /tmp/gh-aw "$(dirname "$GH_AW_SAFE_OUTPUTS")"
-      git show "${TRUSTED_SHA}:.github/skills/pr-performance-review/scripts/performance-review.mjs" \
+      git show "${TRUSTED_SHA}:.github/skills/performance-review/scripts/performance-review.mjs" \
         > "$RUNNER_TEMP/performance-trusted.mjs"
       node "$RUNNER_TEMP/performance-trusted.mjs" prepare \
         --output-dir /tmp/gh-aw \
@@ -229,7 +229,7 @@ post-steps:
       TRUSTED_REVIEW_RUNTIME: '${{ runner.temp }}/performance-trusted.mjs'
     run: |
       set -euo pipefail
-      git show "${TRUSTED_SHA}:.github/skills/pr-performance-review/scripts/performance-review.mjs" \
+      git show "${TRUSTED_SHA}:.github/skills/performance-review/scripts/performance-review.mjs" \
         > "$RUNNER_TEMP/performance-trusted.mjs"
       node "$RUNNER_TEMP/performance-trusted.mjs" fork-report
 
@@ -256,7 +256,7 @@ UI blocking, growing session/log costs, and retained tasks/processes. Require
 base/head evidence, not speculative allocation cleanup; never repair fork code.
 
 Use the imported performance reviewer and its
-`.github/skills/pr-performance-review/SKILL.md` procedure in `guide` mode.
+`.github/skills/performance-review/SKILL.md` procedure in `guide` mode.
 
 Immutable PR change size: **${{ needs.prepare.outputs.change_summary }}**.
 Use it with the scope's per-file counts and subsystem risk to assess effort;

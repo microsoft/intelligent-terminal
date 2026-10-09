@@ -1,21 +1,39 @@
 ---
-name: pr-performance-review
-description: 'Review and safely repair Intelligent Terminal PR performance regressions. Use for renderer, text-buffer, VT, UI-thread, tab/pane, WTA, async, session, logging, allocation, event-amplification, benchmark, profiling, responsiveness, memory, and CI-cost changes.'
+name: performance-review
+description: 'Review Intelligent Terminal performance changes in local work, commit ranges, branches, or PRs. Use for renderer, text-buffer, VT, UI-thread, tab/pane, WTA, async, session, logging, allocation, event-amplification, benchmark, profiling, responsiveness, memory, and CI-cost changes.'
 ---
 
-# PR Performance Review
+# Performance Review
 
 Investigate changes that can make typing, rendering, tab switching, WTA startup,
 or session refresh slower as work repeats or data grows. Trace changed code
 through its callers and lifecycle, compare base/head behavior, and require
 concrete impact rather than speculative allocation or async cleanup.
 Eligible small HIGH WTA regressions can proceed to native-tested repair;
-C++ findings remain manual. These instructions focus the review but do not
+C++ workflow fixes remain manual. These instructions focus the review but do not
 establish that it detects more defects than ordinary Copilot review.
+
+## Review inputs and outputs
+
+Use this procedure for a working-tree diff, commit range, branch comparison,
+or PR. Confirm the caller's baseline and reviewed changes; for mutable local
+work, record the exact diff and do not mix in later edits. If no machine scope
+file exists, identify the changed files, counts, affected components and callers
+directly. Default to a review-only Markdown report using the results template.
+
+A local review needs no PR number, GitHub connection, safe-output queue or
+agentic-workflow tool. Apply the shared rules, evidence and triage below; use
+repository-native checks when available and permitted. Do not invent IDs or
+claim unavailable checks passed. Local edits require explicit authorization,
+an eligible HIGH repair and the caller's native-validation contract.
+
+The machine scope, PR-bound JSON schema and three-job publication backend are
+GitHub workflow adapters, not prerequisites for standalone review. Follow them
+only when that caller supplies the corresponding contract.
 
 ## Caller boundary
 
-The caller owns PR context, immutable revisions, trusted checkout, fork policy,
+The caller owns change context, baseline/revisions, trusted checkout, any fork policy,
 allowed tools and edits, safe outputs, stale-head checks, report path, and
 publication mechanics. This skill owns reusable scope classification, changed
 path/caller analysis, evidence standards, severity, repair eligibility, report
@@ -26,16 +44,17 @@ classification, report validation, card rendering, and publication gating.
 
 ## Procedure
 
-1. Read the caller-generated scope JSON. Stop if the caller classified the PR
-   as non-applicable.
-   Its `totals` give changed files, candidate files, lines added and deleted,
+1. Read the caller-generated scope JSON when supplied; otherwise inspect the
+   requested diff/range and construct its review scope directly. Stop if no
+   performance-relevant source or affected caller is in scope.
+   Machine-scope `totals` give changed files, candidate files, lines added and deleted,
    and binary-file count; each file also carries its line counts. Use these
    inputs alongside caller depth and subsystem risk to assess review effort
    and whether more evidence is needed. Counts are context, not severity or
    proof. Binary-file line counts are unavailable, not zero.
-   The engine starts with `auto`; do not assume you can change its model
+   The GitHub workflow engine starts with `auto`; do not assume you can change its model
    mid-run or claim that these counts control Auto's routing.
-2. Verify immutable base/head identities, resolve the merge base, and inspect
+2. Verify the requested baseline/reviewed revisions or local diff, resolve the merge base when applicable, and inspect
    the complete exact patch. Treat file lists/statistics only as discovery.
 3. Trace changed functions into callers and repeated lifecycle/event paths:
    renderer/TerminalCore, text buffer, VT parser/adapter, UI thread, tab/pane
@@ -63,7 +82,8 @@ classification, report validation, card rendering, and publication gating.
 5. Separate application performance, responsiveness, memory growth, and CI
    runtime/cost. Separate microbenchmark, end-to-end, and profile evidence.
 6. Produce the human-readable summary below before preparing the mechanical
-   version-1 report. Repair writes the caller's fixed summary and report files;
+   version-1 report only when the caller requires that adapter. Standalone
+   review can finish with Markdown alone. Workflow repair writes the caller's fixed summary and report files;
    fork guidance submits its summary and structured report through the declared
    tool without general shell or file-writing access. Follow the caller's
    mechanical validation contract: gh-aw repair uses its scoped report tool
@@ -166,7 +186,8 @@ Repair only when every condition holds:
 4. no broad threading, caching, architecture, dependency, generated-file,
    security-policy, or CI-policy change;
 5. a supported native backend can run an existing focused test on the exact final tree;
-6. the caller explicitly permits edits and branch push;
+6. the caller explicitly permits the proposed edits; workflow publication
+   additionally requires its branch-push authorization;
 7. any caller-required base/head analysis is complete, correctly bound, and
    comparable. Missing, failed, partial, or mismatched required analysis
    requires a manual handoff, even when a source finding looks repairable.
@@ -178,9 +199,12 @@ stays read-only, submits fixed report artifacts and emits one `noop`;
 the trusted controller alone publishes Conversation results. **Never combine a PR comment and
 branch commit in one worker.**
 
-## Native repair handoff
+## GitHub workflow native repair handoff
 
-The current supported backend is focused WTA Rust unit testing on Windows.
+This section applies only to the GitHub workflow's supported Windows WTA
+backend. Standalone callers use their explicit repository-native contract,
+not unavailable workflow tools. The current workflow backend is focused WTA
+Rust unit testing on Windows.
 For a small HIGH WTA source repair, use `fixDisposition: proposed` and
 `status: pending_validation`. Read the existing test's function and enclosing
 module declarations, then set `validationPlan.type` to `wta-unit` and
@@ -307,7 +331,8 @@ schema check.
 
 Produce one Markdown summary using this template. Keep the opening summary
 as an ordinary sentence; put findings and check results in tables.
-Repair writes `.performance-summary.md` before the mechanical report.
+Standalone review returns Markdown or writes the caller's requested report
+path. Workflow repair writes `.performance-summary.md` before its mechanical report.
 Shell-disabled fork guidance supplies the same Markdown as `summaryMarkdown`
 to its declared report tool; only the caller captures the output artifact.
 Do not extract this summary from agent or build logs.
@@ -342,7 +367,11 @@ The summary describes the review-time decision. Never label a proposed repair
 validation and publication. The PR check supplies actual job/publication status,
 reviewed SHA, and run links separately; the summary cannot override them.
 
-## Report contract
+## GitHub workflow report contract
+
+This PR-bound schema is only for callers that request the GitHub workflow
+adapter. A standalone local/commit/branch review does not require this JSON
+or a synthetic `prNumber`; use the Markdown results template instead.
 
 Produce the following report. Use the caller-provided file path in repair
 mode; in shell-disabled fork guidance, validate and capture the JSON through the
@@ -442,12 +471,12 @@ read tools; it never executes a shell or materializes fork source as executable
 code. If an operation is denied, use the declared interface instead of trying
 alternate executables or bypassing trusted validation.
 
-For standalone callers that explicitly permit local report inspection, these
+For standalone inspection of an existing PR-bound JSON report, these
 commands remain available; they are not required model steps in gh-aw repair:
 
 ```powershell
-pwsh -NoProfile -Command "node '.github/skills/pr-performance-review/scripts/performance-review.mjs' validate --report '<report>' --mode '<repair-or-guide>' --pr '<number>' --base '<sha>' --head '<sha>'"
-pwsh -NoProfile -Command "node '.github/skills/pr-performance-review/scripts/performance-review.mjs' render --report '<report>' --mode '<repair-or-guide>' --pr '<number>' --base '<sha>' --head '<sha>'"
+pwsh -NoProfile -Command "node '.github/skills/performance-review/scripts/performance-review.mjs' validate --report '<report>' --mode '<repair-or-guide>' --pr '<number>' --base '<sha>' --head '<sha>'"
+pwsh -NoProfile -Command "node '.github/skills/performance-review/scripts/performance-review.mjs' render --report '<report>' --mode '<repair-or-guide>' --pr '<number>' --base '<sha>' --head '<sha>'"
 ```
 
 ## Gotchas

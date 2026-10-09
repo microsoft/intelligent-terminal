@@ -40,9 +40,16 @@ additional checks already running on every normal CI build or PR.
 
 ## File layout and localization comparison
 
+The reusable agent is `performance-review.agent.md` and the shared skill is
+`performance-review`. Both apply to local diffs, commit ranges, branches and
+PRs. Standalone review can return Markdown without a PR number or GitHub tools;
+the PR-bound JSON and three-job publishing rules are workflow adapters only.
+The `ghaw-pr-performance*` workflow names remain PR-specific because those
+files actually implement GitHub PR triggers and publication.
+
 Like localization, the workflow imports a thin agent and keeps reusable logic
-inside its skill. Runtime files live in `pr-performance-review/scripts`;
-fixtures live in `pr-performance-review/tests`, not alongside runtime helpers
+inside its skill. Runtime files live in `performance-review/scripts`;
+fixtures live in `performance-review/tests`, not alongside runtime helpers
 in another scripts directory.
 
 | Runtime file | Concrete responsibility |
@@ -191,8 +198,8 @@ of Clippy in normal CI's pinned MSRustup distribution remains unverified.
 1. `ghaw-pr-performance-controller.yml` checks the immutable PR diff, skips
    non-runtime changes, and dispatches a same-repo repair or read-only fork
    worker using the localization pattern.
-2. The thin `ghaw-pr-performance.agent.md` role follows
-   `pr-performance-review/SKILL.md`: trace callers, distinguish native runtime,
+2. The thin `performance-review.agent.md` role follows
+   `performance-review/SKILL.md`: trace callers, distinguish native runtime,
    responsiveness, memory and CI cost, and avoid speculative optimizations.
 3. Eligible same-repo HIGH changes are proposals, not model-authored claims of
    passing tests. Trusted post-processing seals their exact Git blobs and
@@ -403,9 +410,9 @@ no custom model router or mid-run switching mechanism is introduced.
 ## Local checks
 
 ```powershell
-node --test .github\skills\pr-performance-review\tests\*.test.mjs
-pwsh -NoProfile -File .github\skills\pr-performance-review\tests\RepairValidationPhase.Tests.ps1
-pwsh -NoProfile -File .github\skills\pr-performance-review\tests\RepairValidationPhase.Tests.ps1 -AnalysisOnly
+node --test .github\skills\performance-review\tests\*.test.mjs
+pwsh -NoProfile -File .github\skills\performance-review\tests\RepairValidationPhase.Tests.ps1
+pwsh -NoProfile -File .github\skills\performance-review\tests\RepairValidationPhase.Tests.ps1 -AnalysisOnly
 gh aw compile ghaw-pr-performance ghaw-pr-performance-fork-guidance --validate --no-check-update
 actionlint -shellcheck= -pyflakes= -ignore 'unknown permission scope "copilot-requests"' -ignore 'unexpected key "queue" for "concurrency" section' .github\workflows\ghaw-pr-performance.lock.yml .github\workflows\ghaw-pr-performance-fork-guidance.lock.yml .github\workflows\ghaw-pr-performance-controller.yml
 ```
