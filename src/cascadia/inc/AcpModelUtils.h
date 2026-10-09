@@ -91,6 +91,14 @@ namespace Microsoft::Terminal::AcpModels
         return commandLine;
     }
 
+    inline std::wstring BuildAgentModelProbeCommandLine(const std::wstring_view agentId)
+    {
+        // Model discovery must not depend on the currently selected model.
+        // That model may have been removed or become unavailable, which is
+        // exactly when Settings needs a clean catalog to let the user recover.
+        return BuildAgentCommandLine(agentId);
+    }
+
     namespace details
     {
         inline bool IsBlank(const std::string_view value)
