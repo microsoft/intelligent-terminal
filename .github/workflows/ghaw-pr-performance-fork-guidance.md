@@ -26,6 +26,7 @@ engine:
   model: auto
 imports:
   - .github/agents/performance-review.agent.md
+  - .github/workflows/ghaw-pr-performance/report-contract.md
 
 checkout:
   ref: ${{ github.workflow_sha }}
@@ -111,6 +112,8 @@ jobs:
           BASE_REF: ${{ github.event.inputs.base_ref }}
         run: |
           $ErrorActionPreference = 'Stop'
+          & node .github/workflows/ghaw-pr-performance/scripts/performance-review.mjs repository-policy --root .
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted repository policy no longer matches the native workflow.' }
 
           if ($env:PR_NUMBER -notmatch '^[1-9][0-9]*$') {
               throw 'PR_NUMBER must be a positive decimal number.'
@@ -131,7 +134,7 @@ jobs:
           $metadata = & gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER"
           if ($LASTEXITCODE -ne 0) { throw 'Could not read the live PR metadata.' }
           [IO.File]::WriteAllText($metadataPath, ($metadata -join "`n"), [Text.UTF8Encoding]::new($false))
-          & node .github/skills/performance-review/scripts/performance-review.mjs verify-pr `
+          & node .github/workflows/ghaw-pr-performance/scripts/performance-review.mjs verify-pr `
               --input $metadataPath --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA `
               --expected-base $env:EXPECTED_BASE_SHA --repo $env:REPOSITORY `
               --head-repo $env:HEAD_REPO --same-repo $env:SAME_REPO `
@@ -184,7 +187,7 @@ pre-agent-steps:
       set -euo pipefail
       test "$SAME_REPO" = "false"
       mkdir -p /tmp/gh-aw "$(dirname "$GH_AW_SAFE_OUTPUTS")"
-      git show "${TRUSTED_SHA}:.github/skills/performance-review/scripts/performance-review.mjs" \
+      git show "${TRUSTED_SHA}:.github/workflows/ghaw-pr-performance/scripts/performance-review.mjs" \
         > "$RUNNER_TEMP/performance-trusted.mjs"
       node "$RUNNER_TEMP/performance-trusted.mjs" prepare \
         --output-dir /tmp/gh-aw \
@@ -229,7 +232,7 @@ post-steps:
       TRUSTED_REVIEW_RUNTIME: '${{ runner.temp }}/performance-trusted.mjs'
     run: |
       set -euo pipefail
-      git show "${TRUSTED_SHA}:.github/skills/performance-review/scripts/performance-review.mjs" \
+      git show "${TRUSTED_SHA}:.github/workflows/ghaw-pr-performance/scripts/performance-review.mjs" \
         > "$RUNNER_TEMP/performance-trusted.mjs"
       node "$RUNNER_TEMP/performance-trusted.mjs" fork-report
 
@@ -290,7 +293,8 @@ without invented rows. Never claim `Fixed`; this is review-time guidance.
 The caller captures only this fixed output artifact before parsing report JSON;
 it never executes or mutates fork source. The summary is not validation authority.
 
-Construct the complete version-1 guide report as JSON data. First call
+Construct the complete version-1 guide report using the imported workflow
+report contract. First call
 `validate_performance_report` with `summaryMarkdown` and `report_json` to capture
 the human summary and validate and preview the
 deterministic card. Correct any validation errors before completion.

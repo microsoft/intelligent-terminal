@@ -55,7 +55,7 @@ exit /b 0
         if downloads.join("alternative.json").exists() {
             std::fs::copy(downloads.join("alternative.json"), downloads.join("performance-proposal/performance-proposal.json")).unwrap();
             std::fs::copy(downloads.join("fake-helper.mjs"), std::path::Path::new(&workspace)
-                .join("trust/.github/skills/performance-review/scripts/performance-review.mjs")).unwrap();
+                .join("trust/.github/workflows/ghaw-pr-performance/scripts/performance-review.mjs")).unwrap();
             std::fs::write(downloads.join("tampering-observed"), b"compiled original build script ran").unwrap();
         }
     }
@@ -194,8 +194,8 @@ exit /b 0
         fs.copyFileSync(alternativePath, path.join(freshDownloads, 'alternative.json'));
         fs.copyFileSync(path.join(nativeArtifacts, 'fake-helper.mjs'), path.join(freshDownloads, 'fake-helper.mjs'));
         for (const [source, destination] of [
-            [runtime, path.join(freshRoot, 'trust', '.github', 'skills', 'performance-review', 'scripts', 'performance-review.mjs')],
-            [validator, path.join(freshRoot, 'trust', '.github', 'skills', 'performance-review', 'scripts', 'run-native-performance-checks.ps1')],
+            [runtime, path.join(freshRoot, 'trust', '.github', 'workflows', 'ghaw-pr-performance', 'scripts', 'performance-review.mjs')],
+            [validator, path.join(freshRoot, 'trust', '.github', 'workflows', 'ghaw-pr-performance', 'scripts', 'run-native-performance-checks.ps1')],
         ]) {
             fs.mkdirSync(path.dirname(destination), { recursive: true });
             fs.copyFileSync(source, destination);
@@ -233,7 +233,7 @@ exit /b 0
         assert.equal(fs.readFileSync(nativeSource, 'utf8'), phase === 'OriginalListing' ? headSource : baselineSource);
         assert.equal(fs.existsSync(path.join(freshDownloads, 'tampering-observed')), true);
         assert.deepEqual(JSON.parse(fs.readFileSync(path.join(freshDownloads, 'performance-proposal', 'performance-proposal.json'))), alternative);
-        assert.equal(fs.readFileSync(path.join(freshRoot, 'trust', '.github', 'skills', 'performance-review', 'scripts', 'performance-review.mjs'), 'utf8'),
+        assert.equal(fs.readFileSync(path.join(freshRoot, 'trust', '.github', 'workflows', 'ghaw-pr-performance', 'scripts', 'performance-review.mjs'), 'utf8'),
             fs.readFileSync(path.join(freshDownloads, 'fake-helper.mjs'), 'utf8'), 'native code overwrote only this phase runtime helper');
         assert.equal(fs.existsSync(path.join(nativeArtifacts, 'fake-helper-executed')), false);
         const stages = [...native.stdout.matchAll(/^([\w-]+): cargo /gm)].map(match => match[1]);

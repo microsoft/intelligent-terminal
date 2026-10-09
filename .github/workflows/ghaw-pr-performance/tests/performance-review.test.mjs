@@ -19,6 +19,7 @@ import {
     sealProposal,
     createAnalysisPlan,
     analysisComparisonComplete,
+    verifyRepositoryPolicy,
 } from '../scripts/performance-review.mjs';
 
 const identity = {
@@ -27,6 +28,56 @@ const identity = {
     headSha: 'b'.repeat(40),
     mode: 'guide',
 };
+
+test('trusted repository policy checks CI pin, analysis alias and owning recipes before review', t => {
+    const repository = fileURLToPath(new URL('../../../../', import.meta.url));
+    const expected = verifyRepositoryPolicy(repository);
+    assert.equal(expected.rustToolchain, '1.93.0');
+    assert.ok(expected.cppRecipes > 0);
+    const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-policy-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const write = (name, content) => {
+        const filename = path.join(root, name);
+        fs.mkdirSync(path.dirname(filename), { recursive: true });
+        fs.writeFileSync(filename, content);
+    };
+    const aliases = fs.readFileSync(path.join(repository, '.cargo', 'config.toml'), 'utf8');
+    write('tools/wta/rust-toolchain.toml', '[toolchain]\nchannel = "ms-prod-1.93"\n');
+    write('.cargo/config.toml', aliases);
+    const projects = execFileSync('git', ['ls-files', '*.vcxproj'], {
+        cwd: repository, encoding: 'utf8', timeout: 15000,
+    }).trim().split(/\r?\n/);
+    for (const project of projects) write(project, '<Project />');
+    assert.deepEqual(verifyRepositoryPolicy(root), expected);
+    for (const pin of ['ms-prod-1.92', 'ms-prod-1.94', 'stable', 'nightly']) {
+        write('tools/wta/rust-toolchain.toml', `[toolchain]\nchannel = "${pin}"\n`);
+        assert.throws(() => verifyRepositoryPolicy(root), /toolchain no longer matches WTA CI/);
+    }
+    write('tools/wta/rust-toolchain.toml', '[toolchain]\nchannel = "ms-prod-1.93.0"\n');
+    write('.cargo/config.toml', '[alias]\n');
+    assert.throws(() => verifyRepositoryPolicy(root), /analysis alias is missing or unsupported/);
+    for (const changedAlias of [
+        aliases.replace('"x86_64-pc-windows-msvc"', '"aarch64-pc-windows-msvc"'),
+        aliases.replace('tools\\\\wta\\\\Cargo.toml', 'tools\\\\other\\\\Cargo.toml'),
+        aliases.replace('"--all-targets"', '"--lib"'),
+    ]) {
+        write('.cargo/config.toml', changedAlias);
+        assert.throws(() => verifyRepositoryPolicy(root), /no longer covers the planned crate, target and all targets/);
+    }
+    write('.cargo/config.toml', aliases);
+    fs.unlinkSync(path.join(root, 'src', 'renderer', 'atlas', 'atlas.vcxproj'));
+    assert.throws(() => verifyRepositoryPolicy(root), /owning-project recipe is stale/);
+});
+
+test('new or unmapped source is an explicit review candidate, not silently excluded', () => {
+    const files = ['src/new-subsystem/worker.cpp', 'src/new-subsystem/state.h', 'src/new-subsystem/View.xaml'];
+    const scope = classifyPullRequest(files.map(filename => ({ filename })), identity);
+    assert.equal(scope.applicable, true);
+    assert.deepEqual(scope.candidates.map(file => file.filename), files);
+    assert.deepEqual(scope.categories, ['other']);
+    assert.deepEqual(scope.analysisPlan.manualScope.map(file => file.path), files);
+    assert.equal(scope.analysisPlan.coverage, 'partial');
+});
 
 test('native plan selects provisional projects and never silently drops shared headers or HLSL', () => {
     const scope = classifyPullRequest([
@@ -290,6 +341,31 @@ test('immutable root Cargo configuration changes require manual handoff, not new
     }
 });
 
+test('original PR changes to WTA CI toolchain require manual repair validation', () => {
+    for (const change of ['addition', 'deletion', 'modification', 'mode', 'unchanged']) {
+        withRepository(({ git, write, expected }) => {
+            const filename = 'tools/wta/rust-toolchain.toml';
+            const content = '[toolchain]\nchannel = "ms-prod-1.93"\n';
+            const commitTree = parent => git(['commit-tree', git(['write-tree']), '-p', parent, '-m', 'toolchain fixture']);
+            git(['read-tree', expected.baseSha]);
+            if (change !== 'addition') {
+                write(filename, content);
+                git(['add', '--', filename]);
+            }
+            const base = commitTree(expected.baseSha);
+            git(['read-tree', expected.headSha]);
+            if (change !== 'deletion') {
+                write(filename, change === 'modification' ? content.replace('1.93', '1.94') : content);
+                git(['add', '--', filename]);
+                if (change === 'mode') git(['update-index', '--chmod=+x', '--', filename]);
+            }
+            const head = commitTree(base);
+            if (change === 'unchanged') assert.doesNotThrow(() => reconstructTree(proposal().files, head, base));
+            else assert.throws(() => reconstructTree(proposal().files, head, base), /changes WTA CI toolchain policy.*manual handoff/);
+        });
+    }
+});
+
 test('fresh immutable CI sealing and upfront native proposal validation reject tracked fake runner configuration', () => {
     for (const configPath of ['.cargo\\config.toml', '.cargo\\CONFIG', '.CARGO\\config', '.CaRgO\\CoNfIg.ToMl']) withRepository(({ root, git, write, expected, output }) => {
         write(configPath, '[target.x86_64-pc-windows-msvc]\nrunner = "fake-runner.cmd"\n');
@@ -492,15 +568,20 @@ test('prepared change-size input counts all files and does not invent binary lin
     });
 });
 
-test('does not infer a hot path from a filename, documentation, benchmark, or test alone', () => {
+test('unmapped source discovery does not infer a hot path or include documentation and tests', () => {
     const scope = classifyPullRequest([
         { filename: 'doc/performance-plan.md' },
         { filename: 'test/e2e/PerformanceRegression.Tests.ps1' },
         { filename: 'src/tools/ConsoleBench/main.cpp' },
         { filename: 'README.md' },
     ], identity);
-    assert.equal(scope.applicable, false);
-    assert.equal(scope.candidates.length, 0);
+    assert.equal(scope.applicable, true);
+    assert.deepEqual(scope.candidates.map(file => file.filename), ['src/tools/ConsoleBench/main.cpp']);
+    assert.equal(scope.supporting.length, 3);
+    assert.deepEqual(scope.dimensions, []);
+    assert.deepEqual(scope.analysisPlan.manualScope.map(file => file.path), ['src/tools/ConsoleBench/main.cpp']);
+    assert.equal(scope.analysisPlan.cpp.required, false);
+    assert.equal(scope.analysisPlan.coverage, 'partial');
 });
 
 test('requires measurement evidence to identify microbenchmark versus end-to-end', () => {

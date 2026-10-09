@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
+const RUST_TOOLCHAIN = '1.93.0';
 const MAX_REPAIR_FILES = 3;
 const MAX_REPAIR_LINES = 100;
 const MAX_REPAIR_DIFF_BYTES = 16 * 1024;
@@ -48,6 +49,34 @@ const CPP_PROJECTS = [
     ['src/types/', 'src/types/lib/types.vcxproj'],
 ];
 
+export function verifyRepositoryPolicy(root) {
+    const channel = fs.readFileSync(path.join(root, 'tools', 'wta', 'rust-toolchain.toml'), 'utf8');
+    const version = /^\s*channel\s*=\s*"ms-prod-(\d+\.\d+)(?:\.(\d+))?"\s*(?:#.*)?$/m.exec(channel);
+    if (!version || `${version[1]}.${version[2] ?? '0'}` !== RUST_TOOLCHAIN)
+        fail('Native workflow toolchain no longer matches WTA CI; update the analysis and repair bindings before running this workflow.');
+    for (const [, project] of CPP_PROJECTS) {
+        if (!fs.existsSync(path.join(root, project)) || !fs.statSync(path.join(root, project)).isFile())
+            fail(`Native owning-project recipe is stale: ${project}; update its scope mapping before running this workflow.`);
+    }
+    const aliases = fs.readFileSync(path.join(root, '.cargo', 'config.toml'), 'utf8');
+    const readAlias = name => {
+        const definition = new RegExp(`^\\s*${name}\\s*=\\s*(\\[[^\\r\\n]+\\])\\s*$`, 'm').exec(aliases);
+        if (!definition) fail(`Native WTA analysis alias is missing or unsupported: ${name}; update its workflow binding.`);
+        const argumentsList = JSON.parse(definition[1]);
+        if (!Array.isArray(argumentsList) || argumentsList.some(argument => typeof argument !== 'string'))
+            fail(`Native WTA analysis alias must contain string arguments: ${name}`);
+        return argumentsList;
+    };
+    const extended = readAlias('wta-perf-extended');
+    const command = extended[0] === 'wta-perf' ? [...readAlias('wta-perf'), ...extended.slice(1)] : extended;
+    const argument = name => command.includes(name) ? command[command.indexOf(name) + 1] : undefined;
+    if (command[0] !== 'clippy' || !command.includes('--all-targets') ||
+        argument('--target') !== 'x86_64-pc-windows-msvc' ||
+        argument('--manifest-path')?.replaceAll('\\', '/') !== 'tools/wta/Cargo.toml')
+        fail('Native WTA analysis alias no longer covers the planned crate, target and all targets; update its workflow binding.');
+    return { rustToolchain: RUST_TOOLCHAIN, cppRecipes: CPP_PROJECTS.length };
+}
+
 export function createAnalysisPlan(files) {
     const projects = new Set();
     const candidatePaths = [];
@@ -74,7 +103,7 @@ export function createAnalysisPlan(files) {
     }
     return {
         version: 1, target: 'x86_64-pc-windows-msvc',
-        rust: { required: rustPaths.length > 0, paths: rustPaths, toolchain: '1.93.0', alias: 'wta-perf-extended',
+        rust: { required: rustPaths.length > 0, paths: rustPaths, toolchain: RUST_TOOLCHAIN, alias: 'wta-perf-extended',
             configuration: '.cargo/config.toml', scope: 'Entire WTA crate and all targets, not edited lines.' },
         cpp: { required: projects.size > 0, projects: [...projects].sort(), candidatePaths,
             profile: 'Extended', configuration: 'AuditMode', platform: 'x64',
@@ -162,6 +191,7 @@ function classifyFile(file) {
         /\.(md|txt|png|jpg|svg)$/i.test(filename);
     const source = SOURCE_EXTENSIONS.has(path.posix.extname(filename).toLowerCase()) ||
         ['tools/wta/Cargo.toml', 'tools/wta/Cargo.lock'].includes(filename);
+    if (source && filename.startsWith('src/') && !categories.length) categories.push('other');
     const candidate = categories.length > 0 && source && !supporting;
     return {
         filename, status: file.status ?? 'modified',
@@ -595,6 +625,8 @@ export function reconstructTree(files, headSha, baseSha) {
         const originalChanges = changedPaths(baseSha, headSha);
         if (originalChanges.some(filename => ['.cargo/config', '.cargo/config.toml'].includes(filename.toLowerCase())))
             fail('immutable original PR changes root Cargo configuration presence, mode, or blob; use manual handoff');
+        if (originalChanges.some(filename => filename.toLowerCase() === 'tools/wta/rust-toolchain.toml'))
+            fail('immutable original PR changes WTA CI toolchain policy; use manual handoff');
         const allowed = new Set(originalChanges.filter(filename => classifyFile({ filename }).role === 'candidate'));
         if (files.some(file => !allowed.has(file.path))) fail('publication replacement is outside the immutable original candidate scope');
     }
@@ -748,6 +780,10 @@ function expectedFromArgs(args, requireMode = true) {
 
 async function main() {
     const [command, ...args] = process.argv.slice(2);
+    if (command === 'repository-policy') {
+        process.stdout.write(`${JSON.stringify(verifyRepositoryPolicy(option(args, '--root')))}\n`);
+        return;
+    }
     if (command === 'fork-report') return validateForkReport(args);
     if (command === 'summary') {
         const summary = readReviewSummary(option(args, '--root'));

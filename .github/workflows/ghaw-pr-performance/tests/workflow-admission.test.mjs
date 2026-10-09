@@ -8,24 +8,36 @@ import { captureReviewSummary, readReviewSummary } from '../scripts/performance-
 
 const runtime = fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url));
 
-test('reusable performance reviewer supports non-PR inputs while workflow adapters stay PR-bound', () => {
+test('agent, skill and workflow contracts have separate ownership', () => {
     const agent = fs.readFileSync(new URL('../../../agents/performance-review.agent.md', import.meta.url), 'utf8');
-    const skill = fs.readFileSync(new URL('../SKILL.md', import.meta.url), 'utf8');
+    const skill = fs.readFileSync(new URL('../../../skills/performance-review/SKILL.md', import.meta.url), 'utf8');
     assert.match(skill, /^name: performance-review$/m);
     assert.match(skill, /^# Performance Review$/m);
-    assert.match(agent, /local changes, commit\s+ranges, branches, or pull requests/);
-    assert.match(agent, /Do not assume a PR\s+number, GitHub access, or workflow tools are available/);
-    assert.match(skill, /A local review needs no PR number, GitHub connection, safe-output queue or\s+agentic-workflow tool/);
-    assert.match(skill, /Standalone review returns Markdown/);
-    assert.match(skill, /## GitHub workflow report contract/);
-    assert.match(skill, /## GitHub workflow native repair handoff/);
-    assert.ok(skill.split(/\r?\n/).length <= 500);
+    for (const heading of ['Goal', 'Principles', 'Out of scope'])
+        assert.match(agent, new RegExp(`^## ${heading}$`, 'm'));
+    assert.match(agent, /local changes, commit ranges, branches and pull requests/);
+    assert.doesNotMatch(agent, /gh-aw|validate_performance|noop|Never|Do not|^\d+\./mi);
+    assert.match(skill, /Review produces Markdown/);
+    assert.match(skill, /## Investigation/);
+    assert.match(skill, /## Results template/);
+    assert.doesNotMatch(skill, /gh-aw|prNumber|validate_performance|noop|GitHub workflow|native job|report-contract|\.github[\\/]workflows[\\/]ghaw-pr-performance/i);
+    assert.ok(agent.split(/\r?\n/).length <= 40);
+    assert.ok(skill.split(/\r?\n/).length <= 200);
     for (const name of ['ghaw-pr-performance', 'ghaw-pr-performance-fork-guidance']) {
         const source = fs.readFileSync(new URL(`../../../workflows/${name}.md`, import.meta.url), 'utf8');
         const compiled = fs.readFileSync(new URL(`../../../workflows/${name}.lock.yml`, import.meta.url), 'utf8');
         assert.match(source, /imports:\s+- \.github\/agents\/performance-review\.agent\.md/);
+        assert.match(source, /- \.github\/workflows\/ghaw-pr-performance\/report-contract\.md/);
+        assert.match(source, /repository-policy --root \./);
         assert.match(compiled, /GH_AW_AGENT_FILE: "\.github\/agents\/performance-review\.agent\.md"/);
-        assert.match(compiled, /\.github[\\/]skills[\\/]performance-review/);
+        assert.match(compiled, /\{\{#runtime-import \.github\/workflows\/ghaw-pr-performance\/report-contract\.md\}\}/);
+        const activation = compiled.match(/^  activation:\r?\n([\s\S]*?)(?=^  [a-z_]+:)/m)?.[1];
+        assert.ok(activation);
+        assert.ok(activation.indexOf('Checkout .github and .agents folders') <
+            activation.indexOf('{{#runtime-import .github/workflows/ghaw-pr-performance/report-contract.md}}'));
+        assert.match(activation, /Upload activation artifact/);
+        assert.match(compiled, /\.github[\\/]workflows[\\/]ghaw-pr-performance[\\/]scripts/);
+        assert.doesNotMatch(compiled, /\.github[\\/]skills[\\/]performance-review[\\/](scripts|tests)/);
         assert.doesNotMatch(compiled, /pr-performance-review|ghaw-pr-performance\.agent\.md/);
     }
 });
@@ -46,13 +58,13 @@ test('all fresh native repair jobs install and explicitly use Rust 1.93 with rus
 
 test('repair report validation belongs to trusted post-processing, not a model-side shell', () => {
     const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
-    const agent = fs.readFileSync(new URL('../../../agents/performance-review.agent.md', import.meta.url), 'utf8');
     const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
     assert.match(workflow, /Do not run a shell validator or renderer/);
     assert.match(workflow, /Submit the complete\s+JSON to `validate_performance_report`/);
     assert.match(workflow, /After acceptance, write that exact JSON to/);
     assert.match(workflow, /Write the fixed report and summary through the permitted file-editing tool/);
-    assert.match(agent, /repair caller validates the fixed JSON report in trusted post-processing before\s+native tests/);
+    const contract = fs.readFileSync(new URL('../report-contract.md', import.meta.url), 'utf8');
+    assert.match(contract, /Trusted\s+processing independently validates the actual report, source and native job\s+results/);
     assert.match(compiled, /performance-trusted\.mjs\\" gate/);
     assert.match(compiled, /--report \/tmp\/gh-aw\/performance-report\.json/);
     assert.match(compiled, /--analysis-input/);
@@ -98,7 +110,7 @@ function fixture(t, trackedSummary = false) {
     const rustSource = path.join(repo, 'tools', 'wta', 'src', 'fixture.rs');
     const script = path.join(root, 'trusted runtime.mjs');
     fs.copyFileSync(runtime, script);
-    const runtimeRelative = '.github/skills/performance-review/scripts/performance-review.mjs';
+    const runtimeRelative = '.github/workflows/ghaw-pr-performance/scripts/performance-review.mjs';
     fs.mkdirSync(path.dirname(path.join(repo, runtimeRelative)), { recursive: true });
     fs.copyFileSync(runtime, path.join(repo, runtimeRelative));
     fs.writeFileSync(path.join(repo, '.gitignore'), '/ignored-attack.txt\n');

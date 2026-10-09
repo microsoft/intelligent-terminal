@@ -26,6 +26,7 @@ engine:
   model: auto
 imports:
   - .github/agents/performance-review.agent.md
+  - .github/workflows/ghaw-pr-performance/report-contract.md
 
 checkout:
   ref: ${{ github.event.inputs.expected_head_sha }}
@@ -98,6 +99,8 @@ jobs:
           AW_CONTEXT: ${{ github.event.inputs.aw_context }}
         run: |
           $ErrorActionPreference = 'Stop'
+          & node .github/workflows/ghaw-pr-performance/scripts/performance-review.mjs repository-policy --root .
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted repository policy no longer matches the native workflow.' }
 
           if ($env:PR_NUMBER -notmatch '^[1-9][0-9]*$') {
               throw 'PR_NUMBER must be a positive decimal number.'
@@ -118,7 +121,7 @@ jobs:
           $metadata = & gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER"
           if ($LASTEXITCODE -ne 0) { throw 'Could not read the live PR metadata.' }
           [IO.File]::WriteAllText($metadataPath, ($metadata -join "`n"), [Text.UTF8Encoding]::new($false))
-          & node .github/skills/performance-review/scripts/performance-review.mjs verify-pr `
+          & node .github/workflows/ghaw-pr-performance/scripts/performance-review.mjs verify-pr `
               --input $metadataPath --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA `
               --expected-base $env:EXPECTED_BASE_SHA --repo $env:REPOSITORY `
               --head-repo $env:HEAD_REPO --same-repo $env:SAME_REPO `
@@ -208,7 +211,7 @@ jobs:
           $output = Join-Path $env:RUNNER_TEMP "performance-analysis-$env:REVISION"
           $mergeBase = & git merge-base $env:BASE_TIP $env:HEAD_SHA
           if ($LASTEXITCODE -ne 0 -or $mergeBase -cne $env:BASE_SHA) { throw 'Comparison base must equal actual immutable merge base.' }
-          $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\performance-review\scripts\performance-review.mjs'
+          $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\workflows\ghaw-pr-performance\scripts\performance-review.mjs'
           & node $runtime prepare --output-dir $output --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
           if ($LASTEXITCODE -ne 0) { throw 'Could not classify immutable comparison.' }
           $scope = Get-Content (Join-Path $output 'performance-scope.json') -Raw | ConvertFrom-Json
@@ -229,9 +232,9 @@ jobs:
         run: |
           $output = Join-Path $env:RUNNER_TEMP "performance-analysis-$env:REVISION"
           $trust = Join-Path $env:GITHUB_WORKSPACE 'trust'
-          & (Join-Path $trust '.github\skills\performance-review\scripts\run-native-performance-checks.ps1') `
+          & (Join-Path $trust '.github\workflows\ghaw-pr-performance\scripts\run-native-performance-checks.ps1') `
             -Phase Analysis -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'analysis') `
-            -TrustedRuntimePath (Join-Path $trust '.github\skills\performance-review\scripts\performance-review.mjs') `
+            -TrustedRuntimePath (Join-Path $trust '.github\workflows\ghaw-pr-performance\scripts\performance-review.mjs') `
             -TrustedRepositoryRoot $trust -ScopePath (Join-Path $output 'performance-scope.json') `
             -Revision $env:REVISION -OutputDirectory $output
       - name: Upload fixed source-analysis diagnostics even after failure
@@ -283,7 +286,7 @@ pre-agent-steps:
       test "$SAME_REPO" = "true"
       mkdir -p /tmp/gh-aw "$(dirname "$GH_AW_SAFE_OUTPUTS")"
       test "$(git rev-parse HEAD)" = "$HEAD_SHA"
-      git show "${TRUSTED_SHA}:.github/skills/performance-review/scripts/performance-review.mjs" \
+      git show "${TRUSTED_SHA}:.github/workflows/ghaw-pr-performance/scripts/performance-review.mjs" \
         > "$RUNNER_TEMP/performance-trusted.mjs"
       node "$RUNNER_TEMP/performance-trusted.mjs" prepare \
         --output-dir /tmp/gh-aw \
@@ -340,12 +343,12 @@ safe-outputs:
             HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
           run: |
             $ErrorActionPreference = 'Stop'
-            $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\performance-review\scripts\performance-review.mjs'
+            $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\workflows\ghaw-pr-performance\scripts\performance-review.mjs'
             $proposal = Join-Path $env:RUNNER_TEMP 'performance-proposal\performance-proposal.json'
             & node $runtime validate-proposal --input $proposal `
               --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
             if ($LASTEXITCODE -ne 0) { throw 'Invalid sealed native proposal.' }
-            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\performance-review\scripts\run-native-performance-checks.ps1') `
+            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\workflows\ghaw-pr-performance\scripts\run-native-performance-checks.ps1') `
               -Phase OriginalListing -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
               -TrustedRuntimePath $runtime
     validate-performance-focused-tests:
@@ -395,12 +398,12 @@ safe-outputs:
             HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
           run: |
             $ErrorActionPreference = 'Stop'
-            $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\performance-review\scripts\performance-review.mjs'
+            $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\workflows\ghaw-pr-performance\scripts\performance-review.mjs'
             $proposal = Join-Path $env:RUNNER_TEMP 'performance-proposal\performance-proposal.json'
             & node $runtime validate-proposal --input $proposal `
               --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
             if ($LASTEXITCODE -ne 0) { throw 'Invalid sealed native proposal.' }
-            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\performance-review\scripts\run-native-performance-checks.ps1') `
+            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\workflows\ghaw-pr-performance\scripts\run-native-performance-checks.ps1') `
               -Phase Focused -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
               -TrustedRuntimePath $runtime
     validate-performance-repair:
@@ -450,12 +453,12 @@ safe-outputs:
             HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
           run: |
             $ErrorActionPreference = 'Stop'
-            $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\performance-review\scripts\performance-review.mjs'
+            $runtime = Join-Path $env:GITHUB_WORKSPACE 'trust\.github\workflows\ghaw-pr-performance\scripts\performance-review.mjs'
             $proposal = Join-Path $env:RUNNER_TEMP 'performance-proposal\performance-proposal.json'
             & node $runtime validate-proposal --input $proposal `
               --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA
             if ($LASTEXITCODE -ne 0) { throw 'Invalid sealed native proposal.' }
-            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\skills\performance-review\scripts\run-native-performance-checks.ps1') `
+            & (Join-Path $env:GITHUB_WORKSPACE 'trust\.github\workflows\ghaw-pr-performance\scripts\run-native-performance-checks.ps1') `
               -Phase FullSuite -ProposalPath $proposal -RepositoryRoot (Join-Path $env:GITHUB_WORKSPACE 'candidate') `
               -TrustedRuntimePath $runtime
 
@@ -499,7 +502,7 @@ post-steps:
     run: |
       set -euo pipefail
       mkdir -p "$RUNNER_TEMP/performance-summary"
-      if ! node "$GITHUB_WORKSPACE/.performance-trusted/.github/skills/performance-review/scripts/performance-review.mjs" summary \
+      if ! node "$GITHUB_WORKSPACE/.performance-trusted/.github/workflows/ghaw-pr-performance/scripts/performance-review.mjs" summary \
         --root "$GITHUB_WORKSPACE" --output-dir "$RUNNER_TEMP/performance-summary"; then
         echo "::warning::Review summary missing or unreadable; see worker run."
       fi
@@ -526,7 +529,7 @@ post-steps:
     run: |
       set -euo pipefail
       trusted_root="$GITHUB_WORKSPACE/.performance-trusted"
-      cp "$trusted_root/.github/skills/performance-review/scripts/performance-review.mjs" \
+      cp "$trusted_root/.github/workflows/ghaw-pr-performance/scripts/performance-review.mjs" \
         "$RUNNER_TEMP/performance-trusted.mjs"
       status="$(node "$RUNNER_TEMP/performance-trusted.mjs" gate \
         --trusted-repository-root "$trusted_root" --agent-worktree-root "$GITHUB_WORKSPACE" \
@@ -639,8 +642,8 @@ separate checks table; state "No actionable findings" without invented rows.
 These are review-time proposals: never claim `Fixed` before trusted publication.
 The Markdown summary is diagnostic only and cannot authorize repair or native success.
 
-Read the skill's complete Report contract before preparing the mechanical JSON;
-do not stop at a partial skill-file read. Every finding needs its own `location`
+Use the imported workflow report contract for the mechanical JSON.
+Every finding needs its own `location`
 and every other required field, not just the first finding. Submit the complete
 JSON to `validate_performance_report`. If it returns a field or identity error,
 correct the report and call that tool again; do not request native jobs or
@@ -670,6 +673,13 @@ For an eligible WTA Rust repair, mark each HIGH repair as `proposed`, status
 `pending_validation`. Set `validationPlan.type` to `wta-unit` and select the
 actual qualified test name from its function and enclosing module declarations.
 Confirm it in the immutable source with Git; do not copy an example selector.
+The native backend accepts original candidate `tools/wta/src/*.rs` replacements
+only: at most three files, 100 added-plus-deleted lines and 16 KiB of UTF-8
+zero-context diff; the replacement transport limit is separately 256 KiB.
+Existing inline tests remain byte-identical; dedicated test/support files,
+Cargo configuration and toolchain policy are outside automatic repair.
+These bounds keep the correction reviewable; trusted reconstruction enforces
+them independently of the model.
 Request exactly one each of `validate_performance_original_tests`,
 `validate_performance_focused_tests`, and `validate_performance_repair`, all with
 `confirm: true`. Native post-processing seals the exact replacements. Three
