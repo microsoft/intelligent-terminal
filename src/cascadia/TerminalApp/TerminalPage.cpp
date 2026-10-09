@@ -3782,6 +3782,13 @@ namespace winrt::TerminalApp::implementation
             {
                 params["tab_id"] = winrt::to_string(stableId);
             }
+            if (const auto pane = tab->FindAgentPane())
+            {
+                if (const auto control = pane->GetTerminalControl())
+                {
+                    params["copy_on_select"] = control.Settings().CopyOnSelect();
+                }
+            }
         }
 
         std::string logSuffix;
@@ -15210,6 +15217,17 @@ namespace winrt::TerminalApp::implementation
             {
                 // Let the tab know that there are new settings. It's up to each content to decide what to do with them.
                 tabImpl->UpdateSettings(_settings);
+                if (tabImpl->HasStashedAgentPane())
+                {
+                    if (const auto content = tabImpl->FindAgentPaneContent())
+                    {
+                        winrt::get_self<implementation::AgentPaneContent>(content)->UpdateSettings(_settings);
+                    }
+                }
+                if (tabImpl->FindAgentPane())
+                {
+                    _RequestAgentStateForTab(tabImpl, std::nullopt, std::nullopt);
+                }
 
                 // Update the icon of the tab for the currently focused profile in that tab.
                 // Only do this for TerminalTabs. Other types of tabs won't have multiple panes

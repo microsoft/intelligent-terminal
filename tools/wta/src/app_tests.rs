@@ -15272,7 +15272,7 @@ mod input_undo_tests {
             if let Some((code, modifiers)) = deletion {
                 key(&mut app, code, modifiers);
             } else {
-                assert!(app.copy_input_selection(true, |_| Ok(())));
+                assert!(app.copy_input_selection(true, |_| Ok(())).unwrap());
             }
             assert!(app.current_tab().input.is_empty());
             undo(&mut app);
@@ -15288,9 +15288,11 @@ mod input_undo_tests {
         let mut app = test_app();
         type_text(&mut app, "keep");
         key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
-        assert!(app.copy_input_selection(true, |_| {
-            Err(std::io::Error::other("clipboard unavailable"))
-        }));
+        assert!(app
+            .copy_input_selection(true, |_| {
+                Err(std::io::Error::other("clipboard unavailable"))
+            })
+            .is_err());
         assert_eq!(app.current_tab().input, "keep");
         undo(&mut app);
         assert!(app.current_tab().input.is_empty());
@@ -15424,7 +15426,7 @@ mod input_undo_tests {
         app.current_tab_mut().insert_input_str(" suffix");
         undo(&mut app);
         key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
-        assert!(app.copy_input_selection(false, |_| Ok(())));
+        assert!(app.copy_input_selection(false, |_| Ok(())).unwrap());
         key(&mut app, KeyCode::Left, KeyModifiers::NONE);
         redo(&mut app);
         assert_eq!(app.current_tab().input, "base suffix");
@@ -15980,18 +15982,22 @@ fn input_selection_copy_and_cut_preserve_exact_source_text() {
         KeyModifiers::CONTROL,
     )));
     app.close_pane_armed_at = Some(std::time::Instant::now());
-    assert!(app.copy_input_selection(false, |text| {
-        assert_eq!(text, draft);
-        Ok(())
-    }));
+    assert!(app
+        .copy_input_selection(false, |text| {
+            assert_eq!(text, draft);
+            Ok(())
+        })
+        .unwrap());
     assert_eq!(app.current_tab().input, draft);
     assert!(app.current_tab().input_all_selected);
     assert!(app.close_pane_armed_at.is_none());
     app.close_pane_armed_at = Some(std::time::Instant::now());
-    assert!(app.copy_input_selection(true, |text| {
-        assert_eq!(text, draft);
-        Ok(())
-    }));
+    assert!(app
+        .copy_input_selection(true, |text| {
+            assert_eq!(text, draft);
+            Ok(())
+        })
+        .unwrap());
     assert!(app.current_tab().input.is_empty());
     assert!(!app.current_tab().input_all_selected);
     assert!(app.close_pane_armed_at.is_none());
@@ -16009,7 +16015,9 @@ fn input_selection_clipboard_failure_keeps_draft_and_consumes_copy() {
         )));
         // The helper must disarm independently of the key dispatcher.
         app.close_pane_armed_at = Some(std::time::Instant::now());
-        assert!(app.copy_input_selection(cut, |_| Err(std::io::Error::other("clipboard busy"))));
+        assert!(app
+            .copy_input_selection(cut, |_| Err(std::io::Error::other("clipboard busy")))
+            .is_err());
         assert_eq!(app.current_tab().input, "do not lose this");
         assert!(app.current_tab().input_all_selected);
         assert!(app.close_pane_armed_at.is_none());
@@ -16026,9 +16034,11 @@ fn input_selection_unhandled_copy_preserves_close_arm() {
         )));
         let armed = app.close_pane_armed_at;
         assert!(armed.is_some());
-        assert!(!app.copy_input_selection(cut, |_| {
-            panic!("an unhandled event must not access the clipboard")
-        }));
+        assert!(!app
+            .copy_input_selection(cut, |_| {
+                panic!("an unhandled event must not access the clipboard")
+            })
+            .unwrap());
         assert_eq!(app.close_pane_armed_at, armed);
     }
 }
@@ -16054,7 +16064,9 @@ fn input_selection_copy_failure_cannot_retain_an_earlier_close_arm() {
         )));
         assert!(app.current_tab().input_all_selected);
         assert!(app.close_pane_armed_at.is_none());
-        assert!(app.copy_input_selection(cut, |_| { Err(std::io::Error::other("clipboard busy")) }));
+        assert!(app
+            .copy_input_selection(cut, |_| { Err(std::io::Error::other("clipboard busy")) })
+            .is_err());
         assert_eq!(app.current_tab().input, "clipboard draft");
         assert!(app.current_tab().input_all_selected);
         assert!(app.close_pane_armed_at.is_none());
@@ -16094,7 +16106,9 @@ fn input_selection_requires_live_edit_focus_not_just_draft_text() {
             !app.current_tab().input_all_selected,
             "{context} owns focus"
         );
-        assert!(!app.copy_input_selection(true, |_| panic!("must not cut hidden draft")));
+        assert!(!app
+            .copy_input_selection(true, |_| panic!("must not cut hidden draft"))
+            .unwrap());
         assert_eq!(app.current_tab().input, "keep draft");
     }
 }
@@ -16473,6 +16487,132 @@ fn default_paste_request_is_chat_only() {
 
     assert!(app.default_paste_request_for_current_tab().is_none());
     assert!(app.handle_right_click().is_none());
+}
+
+#[cfg(windows)]
+#[test]
+fn copy_on_select_preserves_mouse_highlight_and_right_click_image_clipboard() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let _locale = crate::test_support::lock_locale();
+    let _clipboard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+
+    for copy_on_select in [false, true] {
+        let mut app = test_app();
+        app.window_id = Some("window-a".into());
+        app.tab_id = Some("tab-a".into());
+        app.pane_id = Some("pane-a".into());
+        app.current_tab_mut().pane_open = true;
+        app.current_tab_mut().copy_on_select = copy_on_select;
+        app.current_tab_mut()
+            .messages
+            .push(ChatMessage::info("AUTO_COPY_MARKER"));
+        let rendered = render_to_text(&mut app, 80, 16);
+        let (row, column) = rendered
+            .lines()
+            .enumerate()
+            .find_map(|(row, line)| {
+                line.find("AUTO_COPY_MARKER")
+                    .map(|column| (row as u16, column as u16 + 2))
+            })
+            .expect("selection marker must be visible");
+        crate::win32::copy_text_to_clipboard("before selection").unwrap();
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            app.handle_event(AppEvent::Mouse(MouseEvent {
+                kind,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }));
+        }
+        assert_eq!(
+            app.text_selection.selected_text().as_deref(),
+            Some("AUTO_COPY_MARKER")
+        );
+        assert_eq!(
+            crate::win32::read_paste_string_from_clipboard().unwrap(),
+            if copy_on_select {
+                "AUTO_COPY_MARKER"
+            } else {
+                "before selection"
+            },
+        );
+
+        let dib = crate::clipboard_image::sample_screenshot_dib();
+        assert!(unsafe { crate::clipboard_image::set_clipboard_dib(&dib) });
+        let image = crate::clipboard_image::read_clipboard_image().unwrap();
+        let request = app.handle_right_click();
+        assert_eq!(request.is_some(), copy_on_select);
+        assert!(app.text_selection.selected_text().is_none());
+        if copy_on_select {
+            assert_eq!(crate::clipboard_image::read_clipboard_image(), Some(image),
+                "right-click must not overwrite a new screenshot by re-copying the highlighted selection");
+        } else {
+            assert_eq!(
+                crate::win32::read_paste_string_from_clipboard().unwrap(),
+                "AUTO_COPY_MARKER"
+            );
+        }
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn copy_on_select_right_click_copies_keyboard_selection_then_requests_paste() {
+    let _locale = crate::test_support::lock_locale();
+    let _clipboard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let mut app = test_app();
+    app.window_id = Some("window-a".into());
+    app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
+    let tab = app.current_tab_mut();
+    tab.pane_open = true;
+    tab.copy_on_select = true;
+    tab.insert_input_str("selected draft");
+    tab.select_all_input();
+    crate::win32::copy_text_to_clipboard("before selection").unwrap();
+
+    assert!(app.handle_right_click().is_some());
+    assert_eq!(
+        crate::win32::read_paste_string_from_clipboard().unwrap(),
+        "selected draft"
+    );
+}
+
+#[test]
+fn copy_on_select_settings_updates_are_owner_scoped_and_preserve_missing_values() {
+    let mut app = test_app();
+    app.window_id = Some("window-a".into());
+    app.owner_tab_id = Some("tab-a".into());
+    app.tab_id = Some("tab-a".into());
+    for (window, tab, value, expected) in [
+        ("window-a", "tab-a", Some(true), true),
+        ("window-b", "tab-a", Some(false), true),
+        ("window-a", "tab-b", Some(false), true),
+        ("window-a", "tab-a", None, true),
+        ("window-a", "tab-a", Some(false), false),
+    ] {
+        let mut params = json!({ "window_id": window, "tab_id": tab });
+        if let Some(value) = value {
+            params["copy_on_select"] = json!(value);
+        }
+        app.handle_event(AppEvent::WtEvent {
+            method: "set_agent_state".into(),
+            pane_id: String::new(),
+            tab_id: Some(tab.into()),
+            params,
+        });
+        assert_eq!(app.current_tab().copy_on_select, expected);
+    }
+    assert!(!app.tab_sessions.contains_key("tab-b"));
 }
 
 #[test]

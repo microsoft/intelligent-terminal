@@ -188,5 +188,6 @@ namespace Microsoft.Terminal.Control
 
         void Detach();
         void EnableAgentMouseWheelZoom(Boolean enabled);
+        void EnableAgentRightClickContextMenu(Boolean enabled);
     }
 }
