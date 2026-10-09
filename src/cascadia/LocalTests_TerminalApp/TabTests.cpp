@@ -409,6 +409,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(BottomBarSessionsButtonDispatchesExistingAction);
         TEST_METHOD(BottomBarSessionsButtonTracksVisibleView);
         TEST_METHOD(VerticalTabHistoryRelativeAge);
+        TEST_METHOD(VerticalTabHistoryAgeUpdatesPreserveCollection);
+        TEST_METHOD(VerticalTabHistoryAgeSearchTracksClock);
+        TEST_METHOD(VerticalTabHistoryAgeTimerFollowsVisibility);
         TEST_METHOD(VerticalTabHistoryMetadataLayout);
         TEST_METHOD(VerticalTabHistoryWslDistroMetadata);
         TEST_METHOD(VerticalTabHistoryCurrentSessionTracksPane);
@@ -6820,6 +6823,213 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalTabHistoryAgeUpdatesPreserveCollection()
+    {
+        HistoryTestView view;
+        _waitForContentTransferReviewUI([&]() {
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(view.strip);
+            return impl->_historyAgeTimer && impl->_historyAgeTimer.IsEnabled();
+        });
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            using Row = winrt::TerminalApp::implementation::TabStripHistoryItem;
+            constexpr uint64_t nowMs = 100ULL * 86'400'000;
+            const auto strip = view.strip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            if (impl->_historyAgeTimer)
+            {
+                impl->_historyAgeTimer.Stop();
+            }
+            const auto parsed = Page::_ParseSidebarHistorySnapshot(
+                R"({"history_status":"ready","sessions":[{"session_id":"parsed","provider_id":"copilot","location":"Host","status":"Historical","last_activity_at_ms":12345}]})");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, parsed.items.size());
+            VERIFY_ARE_EQUAL(uint64_t{ 12345 }, winrt::get_self<Row>(parsed.items[0])->LastActivityAtMs().value());
+
+            const auto makeItem = [&](const wchar_t* provider, uint64_t activity) {
+                auto item = winrt::make<Row>();
+                item.SessionId(L"same-id");
+                item.AgentId(provider);
+                item.AgentSource(L"host");
+                item.Title(L"Clock session");
+                item.Status(L"Historical");
+                item.IsHistorical(true);
+                winrt::get_self<Row>(item)->LastActivityAtMs(activity);
+                item.Subtitle(Page::_SidebarHistoryAgeText(activity, nowMs));
+                return item;
+            };
+            const auto first = makeItem(L"copilot", nowMs - 90'000);
+            const auto second = makeItem(L"claude", nowMs - 61'000);
+            impl->CommitHistorySnapshot({ first, second });
+            const auto items = strip.HistoryItems();
+            std::vector<CollectionChange> changes;
+            const auto vectorChanged = items.VectorChanged(winrt::auto_revoke, [&](auto&&, const IVectorChangedEventArgs& args) {
+                changes.emplace_back(args.CollectionChange());
+            });
+            const auto refreshed = makeItem(L"copilot", nowMs - 80'000);
+            impl->CommitHistorySnapshot({ refreshed, makeItem(L"claude", nowMs - 61'000) });
+            VERIFY_IS_TRUE(changes.empty());
+            VERIFY_IS_TRUE(items.GetAt(0) == first);
+            VERIFY_IS_TRUE(items.GetAt(1) == second);
+            VERIFY_IS_TRUE(impl->_historySnapshot[0] == refreshed);
+            VERIFY_ARE_EQUAL(nowMs - 80'000, winrt::get_self<Row>(first)->LastActivityAtMs().value());
+
+            winrt::MUX::Controls::TabViewItem tab;
+            tab.Header(winrt::box_value(L"Agent tab"));
+            strip.TabItems().Append(tab);
+            strip.SelectedItem(tab);
+            strip.Width(360);
+            strip.Height(400);
+            strip.UpdateLayout();
+            const auto list = impl->ItemsList();
+            const auto container = list.ContainerFromItem(first).as<ListViewItem>();
+            const auto selection = list.SelectedItem();
+            VERIFY_IS_NOT_NULL(selection);
+            VERIFY_IS_TRUE(strip.SelectedItem() == tab);
+            VERIFY_IS_TRUE(container.Focus(FocusState::Programmatic));
+            const auto focused = winrt::Windows::UI::Xaml::Input::FocusManager::GetFocusedElement();
+            first.IsCurrent(true);
+            const auto row = container.ContentTemplateRoot().as<Grid>();
+            const auto age = row.FindName(L"HistorySubtitleText").as<winrt::TerminalApp::HighlightedTextControl>();
+            std::vector<winrt::hstring> propertyChanges;
+            const auto propertyChanged = first.PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                propertyChanges.emplace_back(args.PropertyName());
+            });
+
+            impl->_refreshHistoryAges(nowMs + 39'999);
+            VERIFY_ARE_EQUAL(Page::_SidebarHistoryAgeText(nowMs - 80'000, nowMs + 39'999), first.Subtitle());
+            VERIFY_IS_TRUE(propertyChanges.empty());
+            impl->_refreshHistoryAges(nowMs + 40'000);
+            VERIFY_ARE_EQUAL(Page::_SidebarHistoryAgeText(nowMs - 80'000, nowMs + 40'000), first.Subtitle());
+            VERIFY_ARE_EQUAL(first.Subtitle(), refreshed.Subtitle());
+            VERIFY_ARE_EQUAL(first.Subtitle(), age.Text());
+            VERIFY_ARE_EQUAL(Page::_SidebarHistoryAgeText(nowMs - 61'000, nowMs + 40'000), second.Subtitle());
+            VERIFY_ARE_EQUAL(size_t{ 1 }, propertyChanges.size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Subtitle" }, propertyChanges[0]);
+            impl->_refreshHistoryAges(nowMs + 40'999);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, propertyChanges.size());
+
+            strip.HistoryActivating(true);
+            impl->HistoryRefreshError(L"Snapshot unavailable");
+            impl->_refreshHistoryAges(nowMs + 300'000);
+            VERIFY_ARE_EQUAL(Page::_SidebarHistoryAgeText(nowMs - 80'000, nowMs + 300'000), first.Subtitle());
+            VERIFY_ARE_EQUAL(first.Subtitle(), age.Text());
+            VERIFY_ARE_EQUAL(size_t{ 2 }, propertyChanges.size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Snapshot unavailable" }, strip.HistoryError());
+            VERIFY_IS_TRUE(strip.HistoryActivating());
+            impl->_refreshHistoryAges(nowMs + 39'999);
+            VERIFY_ARE_EQUAL(Page::_SidebarHistoryAgeText(nowMs - 80'000, nowMs + 39'999), first.Subtitle());
+            VERIFY_IS_TRUE(changes.empty());
+            VERIFY_IS_TRUE(items.GetAt(0) == first);
+            VERIFY_IS_TRUE(items.GetAt(1) == second);
+            VERIFY_IS_TRUE(list.ContainerFromItem(first) == container);
+            VERIFY_IS_TRUE(list.SelectedItem() == selection);
+            VERIFY_IS_TRUE(strip.SelectedItem() == tab);
+            VERIFY_IS_TRUE(winrt::Windows::UI::Xaml::Input::FocusManager::GetFocusedElement() == focused);
+            VERIFY_IS_TRUE(first.IsCurrent());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryAgeSearchTracksClock()
+    {
+        HistoryTestView view;
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using Row = winrt::TerminalApp::implementation::TabStripHistoryItem;
+        constexpr uint64_t nowMs = 100ULL * 86'400'000;
+        const auto strip = view.strip;
+        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+        _waitForContentTransferReviewUI([&]() { return impl->_historyAgeTimer && impl->_historyAgeTimer.IsEnabled(); });
+        const auto query = Page::_SidebarHistoryAgeText(nowMs - 120'000, nowMs);
+        winrt::TerminalApp::TabStripHistoryItem first{ nullptr };
+        winrt::TerminalApp::TabStripHistoryItem second{ nullptr };
+        TestOnUIThread([&]() {
+            if (impl->_historyAgeTimer)
+            {
+                impl->_historyAgeTimer.Stop();
+            }
+            const auto makeItem = [&](const wchar_t* id, uint64_t activity) {
+                auto item = winrt::make<Row>();
+                item.SessionId(id);
+                item.AgentId(L"copilot");
+                item.Title(L"Clock session");
+                item.Status(L"Historical");
+                item.IsHistorical(true);
+                winrt::get_self<Row>(item)->LastActivityAtMs(activity);
+                item.Subtitle(Page::_SidebarHistoryAgeText(activity, nowMs));
+                return item;
+            };
+            first = makeItem(L"first", nowMs - 60'000);
+            second = makeItem(L"second", nowMs - 120'000);
+            impl->CommitHistorySnapshot({ first, second });
+        });
+        view.Search(query);
+        TestOnUIThread([&]() {
+            const auto items = strip.HistoryItems();
+            VERIFY_ARE_EQUAL(1u, items.Size());
+            VERIFY_IS_TRUE(items.GetAt(0) == second);
+            std::vector<CollectionChange> changes;
+            const auto vectorChanged = items.VectorChanged(winrt::auto_revoke, [&](auto&&, const IVectorChangedEventArgs& args) {
+                changes.emplace_back(args.CollectionChange());
+            });
+            impl->_refreshHistoryAges(nowMs + 60'000);
+            VERIFY_ARE_EQUAL(1u, items.Size());
+            VERIFY_IS_TRUE(items.GetAt(0) == first);
+            VERIFY_ARE_EQUAL(query, first.Subtitle());
+            VERIFY_ARE_EQUAL(query, strip.SearchQuery());
+            VERIFY_IS_TRUE(std::ranges::find(changes, CollectionChange::Reset) == changes.end());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryAgeTimerFollowsVisibility()
+    {
+        HistoryTestView view;
+        const auto strip = view.strip;
+        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+        _waitForContentTransferReviewUI([&]() { return strip.IsLoaded(); });
+        winrt::TerminalApp::TabStripHistoryItem item{ nullptr };
+        winrt::hstring nextAge;
+        TestOnUIThread([&]() {
+            VERIFY_IS_TRUE(impl->_historyAgeTimer.IsEnabled());
+            VERIFY_ARE_EQUAL(
+                std::chrono::duration_cast<winrt::Windows::Foundation::TimeSpan>(std::chrono::seconds{ 1 }).count(),
+                impl->_historyAgeTimer.Interval().count());
+            strip.IsRailCollapsed(true);
+            VERIFY_IS_FALSE(impl->_historyAgeTimer.IsEnabled());
+            const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                         std::chrono::system_clock::now().time_since_epoch())
+                                                         .count());
+            item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            item.SessionId(L"reopened");
+            item.AgentId(L"copilot");
+            item.Status(L"Historical");
+            item.IsHistorical(true);
+            item.Subtitle(L"Stale age");
+            winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item)->LastActivityAtMs(nowMs - 57'000);
+            impl->CommitHistorySnapshot({ item });
+            impl->_refreshHistoryAges(nowMs);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Stale age" }, item.Subtitle());
+            strip.IsRailCollapsed(false);
+            VERIFY_IS_TRUE(impl->_historyAgeTimer.IsEnabled());
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(nowMs - 57'000, nowMs), item.Subtitle());
+            nextAge = winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(nowMs - 57'000, nowMs + 3'000);
+            strip.HistoryActive(false);
+            VERIFY_IS_FALSE(impl->_historyAgeTimer.IsEnabled());
+            strip.HistoryActive(true);
+            VERIFY_IS_TRUE(impl->_historyAgeTimer.IsEnabled());
+        });
+        _waitForContentTransferReviewUI([&]() { return item.Subtitle() == nextAge; });
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(nextAge, item.Subtitle());
+            Window::Current().Content(Grid{});
+        });
+        _waitForContentTransferReviewUI([&]() { return !strip.IsLoaded(); });
+        TestOnUIThread([&]() {
+            VERIFY_IS_FALSE(impl->_historyAgeTimer.IsEnabled());
+            Window::Current().Content(strip);
+        });
+        _waitForContentTransferReviewUI([&]() { return strip.IsLoaded(); });
+        TestOnUIThread([&]() { VERIFY_IS_TRUE(impl->_historyAgeTimer.IsEnabled()); });
+    }
+
     void TabTests::VerticalTabHistoryMetadataLayout()
     {
         TestOnUIThread([&]() {
@@ -8464,6 +8674,24 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(std::abs(scroll.VerticalOffset() - offset) <= 1.0);
             VERIFY_IS_TRUE(std::abs(tabsScroll.VerticalOffset() - tabsOffset) <= 1.0);
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                         std::chrono::system_clock::now().time_since_epoch())
+                                                         .count());
+            for (const auto& item : impl->_historySnapshot)
+            {
+                winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item)->LastActivityAtMs(nowMs - 120'000);
+            }
+            for (const auto& item : strip.HistoryItems())
+            {
+                winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item)->LastActivityAtMs(nowMs - 120'000);
+            }
+            impl->_refreshHistoryAges(nowMs + 300'000);
+            VERIFY_ARE_EQUAL(
+                winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(nowMs - 120'000, nowMs + 300'000),
+                strip.HistoryItems().GetAt(0).Subtitle());
+            host.UpdateLayout();
+            VERIFY_IS_TRUE(std::abs(scroll.VerticalOffset() - offset) <= 1.0);
+            VERIFY_IS_TRUE(std::abs(tabsScroll.VerticalOffset() - tabsOffset) <= 1.0);
             VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"0", L"live-pane", L"Working", L"Active"));
             host.UpdateLayout();
         });

@@ -251,7 +251,7 @@
                         </Grid.ColumnDefinitions>
                         <local:HighlightedTextControl x:Name="HistorySubtitleText"
                                                       SearchText="{x:Bind SearchQuery}"
-                                                      Text="{x:Bind Subtitle}"
+                                                      Text="{x:Bind Subtitle, Mode=OneWay}"
                                                       TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
                         <local:HighlightedTextControl x:Name="HistoryStatusText"
                                                       Grid.Column="1"
