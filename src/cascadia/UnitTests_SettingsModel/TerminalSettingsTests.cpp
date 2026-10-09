@@ -54,7 +54,43 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestLayerProfileOnColorScheme);
         TEST_METHOD(TestCommandlineToTitlePromotion);
         TEST_METHOD(TestInitialPositionParsing);
+        TEST_METHOD(AgentProfileDirectCommandPrecedence);
     };
+
+    void TerminalSettingsTests::AgentProfileDirectCommandPrecedence()
+    {
+        const auto settings = winrt::make<implementation::CascadiaSettings>(std::string_view{ R"({
+            "defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+            "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Claude",
+                         "commandline":"C:\\OldPackage\\wta.exe launch-agent --agent-id claude",
+                         "agentProfile.id":"claude","agentProfile.model":"chosen"}]})" });
+        const auto profile = settings.ActiveProfiles().GetAt(0);
+        const auto direct = TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings();
+        VERIFY_IS_TRUE(direct->UsesManagedAgentCommand());
+        VERIFY_IS_TRUE(std::wstring_view{ direct->Commandline() }.find(L"wta.exe") == std::wstring_view::npos);
+        VERIFY_IS_TRUE(std::wstring_view{ direct->Commandline() }.find(L"launch-agent") == std::wstring_view::npos);
+        VERIFY_IS_TRUE(std::wstring_view{ direct->Commandline() }.find(L"--model") != std::wstring_view::npos);
+        direct->UsesManagedAgentCommand(false);
+        VERIFY_IS_FALSE(direct->UsesManagedAgentCommand());
+        NewTerminalArgs args;
+        args.Profile(Utils::GuidToString(profile.Guid()));
+        args.Commandline(L"cmd.exe /d /c echo explicit");
+        const auto explicitSettings = TerminalSettings::CreateWithNewTerminalArgs(settings, args).DefaultSettings();
+        VERIFY_IS_FALSE(explicitSettings->UsesManagedAgentCommand());
+        VERIFY_ARE_EQUAL(args.Commandline(), explicitSettings->Commandline());
+        args.AppendCommandLine(true);
+        VERIFY_IS_FALSE(TerminalSettings::CreateWithNewTerminalArgs(settings, args).DefaultSettings()->UsesManagedAgentCommand());
+        profile.AgentProfileCustomCommand(true);
+        profile.Commandline(L"cmd.exe /d /k");
+        const auto custom = TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings();
+        VERIFY_IS_FALSE(custom->UsesManagedAgentCommand());
+        VERIFY_ARE_EQUAL(profile.Commandline(), custom->Commandline());
+        profile.AgentProfileCustomCommand(false);
+        profile.AgentProfilePermissionMode(L"invalid-edit-in-progress");
+        VERIFY_IS_TRUE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
+        profile.AgentProfileId(L"unknown-agent");
+        VERIFY_IS_TRUE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
+    }
 
     // CascadiaSettings::_normalizeCommandLine abuses some aspects from CommandLineToArgvW
     // to simplify the implementation. It assumes that all arguments returned by

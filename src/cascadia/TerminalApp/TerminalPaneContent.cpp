@@ -8,6 +8,7 @@
 #include <mmsystem.h>
 
 #include "TerminalSettingsCache.h"
+#include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../../types/inc/utils.hpp"
 #include "../inc/AgentProfileUtils.h"
 
@@ -31,8 +32,7 @@ namespace winrt::TerminalApp::implementation
         _profile{ profile },
         _manager{ manager }
     {
-        _usesManagedAgentCommand = ::Microsoft::Terminal::AgentProfiles::IsManaged(_profile) &&
-                                   _control.Settings().Commandline() == ::Microsoft::Terminal::AgentProfiles::Command(_profile);
+        _usesManagedAgentCommand = winrt::get_self<winrt::Microsoft::Terminal::Settings::TerminalSettings>(_control.Settings())->UsesManagedAgentCommand();
         _setupControlEvents();
     }
 

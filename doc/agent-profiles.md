@@ -17,10 +17,12 @@ when hovering, pressing, or switching between light and dark themes.
 
 ## Launch and configuration
 
-A managed profile starts the application's `wta launch-agent` command in a
-normal ConPTY. WTA starts the native interactive CLI with inherited input,
-output, environment, and working directory. It does not draw a chat interface
-or connect this CLI through the ACP master.
+A managed profile starts the native interactive CLI directly in a normal
+ConPTY. Native executables are launched by Terminal; npm `.cmd` shims use the
+Windows system `cmd.exe` with AutoRun and delayed expansion disabled. Neither
+discovery nor profile launch runs WTA. Input, output, environment, working
+directory, and process lifetime follow the ordinary Terminal connection path.
+This does not draw a chat interface or connect the CLI through the ACP master.
 
 Edit the profile in Settings. Existing starting-directory, environment,
 appearance, elevation, and close-on-exit settings still apply. Fonts are
@@ -56,7 +58,12 @@ Unsupported modes and conflicting arguments produce startup errors.
 Additional arguments use Windows command-line quoting, for example an argument
 containing a space must be quoted. They are arguments, not PowerShell or command
 prompt script text. Supported extras are conservatively allowlisted per provider;
-see the [launcher contract](../tools/wta/README.md) for the supported arguments.
+see the [native argument contract](../tools/wta/README.md) for the supported arguments.
+Terminal applies the same provider-specific flags and argument allowlist before
+starting a managed profile.
+Managed commands reject `%` environment references to preserve the validated
+arguments. Batch shims additionally reject embedded quotes, `!`, `^`, and line
+breaks; use a custom command line when shell expansion is required.
 Organization policy remains applicable to managed launches.
 Do not put credentials in command-line arguments.
 
@@ -102,20 +109,32 @@ of persisting a package-version-specific executable path.
 
 ## Discovery and lifetime
 
-Discovery runs during settings loading, not each time the new-tab menu opens.
+Discovery checks native CLI files directly during settings loading and Settings
+Extensions enumeration, not each time the new-tab menu opens. It reads the fresh
+Windows environment PATH and retains process-only PATH entries, preferring
+`.exe` over `.cmd` across directories. It does not depend on `wta.exe`.
 Successful results are cached for 30 seconds. After installing or removing a
-CLI, reload settings after that interval or restart Terminal. A failed probe is
+CLI, reload settings after that interval or restart Terminal. There is no
+30-second polling timer. A failed filesystem probe is
 logged and retains the last successful in-process snapshot rather than treating
 the failure as an uninstall.
+
+Removing a CLI stops generation after the next successful uncached discovery.
+Its saved profile becomes orphaned and leaves the active profile list, while
+retaining user overrides. Reinstalling restores the same generated GUID and
+settings. Deleting a generated profile and saving settings suppresses it through
+Terminal's generated-profile state; rediscovery does not make it visible again.
+Managed launches resolve the executable again at connection creation, so a stale
+menu entry cannot run an unavailable CLI.
 
 Agent profiles use the ordinary profile menu mechanism and can be reordered
 through the new-tab menu settings or hidden individually. Existing custom menu
 layouts are preserved. Profiles also respect disabled profile sources and the
 agent allowlist.
 
-There is no hidden PowerShell process beneath a managed agent. The native CLI
-decides what Ctrl+C means during interaction. When it exits, WTA returns its exit
-status and the pane follows `closeOnExit`; startup failures are not converted
+There is no WTA or hidden PowerShell process beneath a managed agent. The native CLI
+decides what Ctrl+C means during interaction. When it exits, Terminal observes its
+exit status and the pane follows `closeOnExit`; startup failures are not converted
 into successful exits.
 
 Existing per-tab agent-pane prewarming and AI-assistant toggling remain

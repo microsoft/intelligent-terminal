@@ -131,6 +131,7 @@ namespace winrt::Microsoft::Terminal::Settings
             // Override commandline, starting directory if they exist in newTerminalArgs
             if (!newTerminalArgs.Commandline().empty())
             {
+                defaultSettings->_UsesManagedAgentCommand = false;
                 if (!newTerminalArgs.AppendCommandLine())
                 {
                     defaultSettings->_Commandline = newTerminalArgs.Commandline();
@@ -304,7 +305,8 @@ namespace winrt::Microsoft::Terminal::Settings
         _CellHeight = fontInfo.CellHeight();
         _Padding = profile.Padding();
 
-        _Commandline = ::Microsoft::Terminal::AgentProfiles::IsManaged(profile) ?
+        _UsesManagedAgentCommand = ::Microsoft::Terminal::AgentProfiles::IsManaged(profile);
+        _Commandline = UsesManagedAgentCommand() ?
                            winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(profile) } :
                            profile.Commandline();
 

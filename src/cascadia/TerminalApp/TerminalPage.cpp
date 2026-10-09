@@ -24,6 +24,7 @@
 #include "../inc/AcpModelUtils.h"
 #include "../inc/AgentAvailability.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentProfileUtils.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
 #include "../inc/AgentSourceUtils.h"
@@ -8898,6 +8899,13 @@ namespace winrt::TerminalApp::implementation
         {
             auto settingsInternal{ winrt::get_self<Settings::TerminalSettings>(settings) };
             auto environment = settingsInternal->EnvironmentVariables();
+            if (settingsInternal->UsesManagedAgentCommand())
+            {
+                ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
+                ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(
+                    profile.AgentProfileId(), *::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
+                settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(profile, true) });
+            }
 
             // Update the path to be relative to whatever our CWD is.
             //
@@ -8984,6 +8992,9 @@ namespace winrt::TerminalApp::implementation
             // TODO GH#5047 If we cache the NewTerminalArgs, we no longer need to do this.
             profile = GetClosestProfileForDuplicationOfProfile(profile);
             controlSettings = Settings::TerminalSettings::CreateWithProfile(_settings, profile);
+            controlSettings.DefaultSettings()->UsesManagedAgentCommand(
+                controlSettings.DefaultSettings()->UsesManagedAgentCommand() &&
+                winrt::get_self<Settings::TerminalSettings>(control.Settings())->UsesManagedAgentCommand());
 
             // Replace the Starting directory with the CWD, if given
             const auto workingDirectory = control.WorkingDirectory();
@@ -14983,7 +14994,10 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        const auto control = _CreateNewControlAndContent(controlSettings, connection, newTerminalArgs ? newTerminalArgs.NativeAgentProviderId() : winrt::hstring{});
+        const auto nativeAgentProvider = controlSettings.DefaultSettings()->UsesManagedAgentCommand() ?
+                                             profile.AgentProfileId() :
+                                             newTerminalArgs ? newTerminalArgs.NativeAgentProviderId() : winrt::hstring{};
+        const auto control = _CreateNewControlAndContent(controlSettings, connection, nativeAgentProvider);
 
         // Two kinds of pane replay their own history and must not also be
         // seeded from the saved buffer: one running an agent resume command,
@@ -16227,6 +16241,10 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
+        if (newTerminalArgs.NativeAgentProviderId().empty() && controlSettings.DefaultSettings()->UsesManagedAgentCommand())
+        {
+            newTerminalArgs.NativeAgentProviderId(profile.AgentProfileId());
+        }
         if (newTerminalArgs.NativeAgentProviderId().empty())
         {
             const auto resume = ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(newTerminalArgs.Commandline());
@@ -16244,6 +16262,10 @@ namespace winrt::TerminalApp::implementation
             THROW_HR_IF(E_INVALIDARG, id.empty());
             Policy::Reload();
             THROW_HR_IF(E_ACCESSDENIED, !Registry::IsNativeAgentProviderAllowed(id, *Policy::_GetSnapshot()));
+            if (controlSettings.DefaultSettings()->UsesManagedAgentCommand())
+            {
+                ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(id, *Policy::_GetSnapshot());
+            }
             newTerminalArgs.NativeAgentProviderId(winrt::hstring{ id });
         }
 

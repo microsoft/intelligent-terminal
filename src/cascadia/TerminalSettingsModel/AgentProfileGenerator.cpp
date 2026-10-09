@@ -6,7 +6,6 @@
 #include "DynamicProfileUtils.h"
 #include "../inc/AgentProfileUtils.h"
 #include "../inc/AgentRegistry.h"
-#include "../inc/WtaProcess.h"
 #include <mutex>
 
 using namespace winrt::Microsoft::Terminal::Settings::Model;
@@ -29,48 +28,32 @@ std::wstring_view AgentProfileGenerator::GetIcon() const noexcept
 
 void AgentProfileGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implementation::Profile>>& profiles) const
 {
-    const auto launcher = AgentProfiles::ResolveLauncher();
-    if (launcher.empty())
-    {
-        return;
-    }
-
-    // Settings reloads and the Extensions page share a short-lived successful
-    // snapshot. A transient probe failure must not erase the last known set.
     static std::mutex mutex;
-    static std::optional<Json::Value> snapshot;
+    static std::optional<std::map<std::wstring, std::filesystem::path>> snapshot;
     static auto lastProbe = std::chrono::steady_clock::time_point{};
     std::scoped_lock lock{ mutex };
     const auto now = std::chrono::steady_clock::now();
     if (!snapshot || now - lastProbe >= std::chrono::seconds{ 30 })
     {
-        const auto result = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(launcher, L"probe-profile-agents", 2'000, nullptr, false);
-        Json::Value parsed;
-        Json::CharReaderBuilder builder;
-        const std::unique_ptr<Json::CharReader> reader{ builder.newCharReader() };
-        std::string errors;
-        const bool valid = result.completed && result.exitCode == 0 &&
-                           reader->parse(result.output.data(), result.output.data() + result.output.size(), &parsed, &errors) &&
-                           parsed.isObject() && parsed["agents"].isArray() &&
-                           std::ranges::all_of(parsed["agents"], [](const auto& agent) {
-                               return agent.isObject() && agent["id"].isString();
-                           });
-        if (valid)
+        try
         {
-            snapshot = std::move(parsed);
+            snapshot = AgentProfiles::Discover(AgentProfiles::NativePath());
             lastProbe = now;
         }
-        else
+        catch (...)
         {
-            LOG_HR_MSG(E_FAIL, "Native agent profile discovery failed; retaining the last successful snapshot");
-            THROW_HR_IF(E_FAIL, !snapshot);
+            LOG_CAUGHT_EXCEPTION_MSG("Native agent profile discovery failed; retaining the last successful snapshot");
+            if (!snapshot)
+            {
+                throw;
+            }
         }
     }
 
     for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::FilteredDelegateAgents())
     {
-        const auto id = winrt::to_string(agent.id);
-        if (!std::ranges::any_of((*snapshot)["agents"], [&](const auto& found) { return found["id"].asString() == id; }))
+        const auto found = snapshot->find(std::wstring{ agent.id });
+        if (found == snapshot->end())
         {
             continue;
         }
@@ -79,7 +62,7 @@ void AgentProfileGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implemen
         profile->Name(winrt::hstring{ agent.displayName });
         profile->Icon(winrt::hstring{ L"ms-appx:///AgentIcons/" + std::wstring{ agent.id } + L".svg" });
         profile->AgentProfileId(winrt::hstring{ agent.id });
-        profile->Commandline(winrt::hstring{ AgentProfiles::BuildCommand(launcher, agent.id, {}, {}, {}) });
+        profile->Commandline(winrt::hstring{ AgentProfiles::BuildCommand(found->second.native(), agent.id, {}, {}, {}) });
         profiles.emplace_back(std::move(profile));
     }
 }

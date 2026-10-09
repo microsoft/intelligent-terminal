@@ -36,6 +36,8 @@
 #include "../inc/AgentProfileUtils.h"
 #include "../inc/ProfileSplitPolicy.h"
 #include "JsonTestClass.h"
+#include <fstream>
+#include <tuple>
 
 using namespace Microsoft::Console;
 using namespace WEX::Logging;
@@ -54,6 +56,12 @@ namespace SettingsModelUnitTests
         TEST_METHOD(CustomAcpAgentRoundtrips);
         TEST_METHOD(AgentProfileSettingsRoundtrip);
         TEST_METHOD(AgentProfileCommandQuoting);
+        TEST_METHOD(AgentProfileNativeCommands);
+        TEST_METHOD(AgentProfileArgumentValidation);
+        TEST_METHOD(AgentProfileDiscoveryLifecycle);
+        TEST_METHOD(AgentProfileUninstallPreservesOverrides);
+        TEST_METHOD(AgentProfileLaunchPolicy);
+        TEST_METHOD(AgentProfileBatchCommand);
         TEST_METHOD(AgentProfileSplitTargets);
         TEST_METHOD(CustomDelegateAgentRoundtrips);
         TEST_METHOD(CustomAgentCollectionsRoundtrip);
@@ -414,17 +422,177 @@ namespace SettingsModelUnitTests
     void CustomAgentAndPolicyTests::AgentProfileCommandQuoting()
     {
         const auto command = ::Microsoft::Terminal::AgentProfiles::BuildCommand(
-            LR"(C:\Program Files\Terminal\wta.exe)", L"claude", LR"(model "name"\)", L"plan",
+            LR"(C:\Program Files\Claude\claude.exe)", L"claude", LR"(model "name"\)", L"plan",
             LR"(--add-dir "C:\source tree")");
         int argc = 0;
         wil::unique_hlocal_ptr<PWSTR[]> argv{ ::CommandLineToArgvW(command.c_str(), &argc) };
         VERIFY_IS_NOT_NULL(argv.get());
-        VERIFY_ARE_EQUAL(11, argc);
-        VERIFY_ARE_EQUAL(std::wstring{ LR"(C:\Program Files\Terminal\wta.exe)" }, std::wstring{ argv[0] });
-        VERIFY_ARE_EQUAL(std::wstring{ L"launch-agent" }, std::wstring{ argv[1] });
-        VERIFY_ARE_EQUAL(std::wstring{ LR"(model "name"\)" }, std::wstring{ argv[5] });
-        VERIFY_ARE_EQUAL(std::wstring{ L"--" }, std::wstring{ argv[8] });
-        VERIFY_ARE_EQUAL(std::wstring{ LR"(C:\source tree)" }, std::wstring{ argv[10] });
+        VERIFY_ARE_EQUAL(7, argc);
+        VERIFY_ARE_EQUAL(std::wstring{ LR"(C:\Program Files\Claude\claude.exe)" }, std::wstring{ argv[0] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"--model" }, std::wstring{ argv[1] });
+        VERIFY_ARE_EQUAL(std::wstring{ LR"(model "name"\)" }, std::wstring{ argv[2] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"--permission-mode" }, std::wstring{ argv[3] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"--add-dir" }, std::wstring{ argv[5] });
+        VERIFY_ARE_EQUAL(std::wstring{ LR"(C:\source tree)" }, std::wstring{ argv[6] });
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileNativeCommands()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinDelegateAgents)
+        {
+            const auto executable = L"C:\\Native Tools\\" + std::wstring{ agent.id } + L".exe";
+            VERIFY_ARE_EQUAL(L"\"" + executable + L"\"", Agents::BuildCommand(executable, agent.id, {}, {}, {}));
+            const auto args = Agents::ParseArguments(Agents::BuildCommand(executable, agent.id, L"provider/model", {}, L"--version"));
+            VERIFY_ARE_EQUAL(size_t{ 4 }, args.size());
+            VERIFY_ARE_EQUAL(executable, args[0]);
+            VERIFY_ARE_EQUAL(std::wstring{ L"--model" }, args[1]);
+            VERIFY_ARE_EQUAL(std::wstring{ L"provider/model" }, args[2]);
+            VERIFY_ARE_EQUAL(std::wstring{ L"--version" }, args[3]);
+        }
+        for (const auto& [id, mode, flag] : {
+                 std::tuple{ L"copilot", L"allow-all-tools", L"--allow-all-tools" },
+                 std::tuple{ L"claude", L"plan", L"--permission-mode" },
+                 std::tuple{ L"codex", L"on-request", L"--ask-for-approval" },
+                 std::tuple{ L"gemini", L"auto_edit", L"--approval-mode" },
+                 std::tuple{ L"opencode", L"auto", L"--auto" } })
+        {
+            const auto args = Agents::ParseArguments(Agents::BuildCommand(L"C:\\agent.exe", id, {}, mode, {}));
+            VERIFY_ARE_EQUAL(std::wstring{ flag }, args[1]);
+        }
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileArgumentValidation()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        for (const auto arguments : { L"--model other", L"--config approval_policy=never", L"-capproval_policy=never",
+                                     L"--permission-mode=auto", L"--allow-all", L"--acp", L"login",
+                                     L"--resume", L"--add-dir --model", L"--version=other" })
+        {
+            VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", {}, {}, arguments), wil::ResultException);
+        }
+        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", L"--allow-all", {}, {}), wil::ResultException);
+        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", {}, L"invented-mode", {}), wil::ResultException);
+        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.cmd", L"claude", L"%PATH%", {}, {}), wil::ResultException);
+        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", L"%PATH%", {}, {}), wil::ResultException);
+        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", {}, {}, L"--add-dir %USERPROFILE%"), wil::ResultException);
+        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.cmd", L"claude", L"embedded\"quote", {}, {}), wil::ResultException);
+        VERIFY_THROWS(Agents::BuildCommand(L"C:\\agent.exe", L"custom:claude", {}, {}, {}), wil::ResultException);
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileDiscoveryLifecycle()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        GUID guid;
+        THROW_IF_FAILED(CoCreateGuid(&guid));
+        const auto root = std::filesystem::temp_directory_path() / (L"Native Agent " + Utils::GuidToString(guid));
+        const auto early = root / L"early";
+        const auto late = root / L"late";
+        std::filesystem::create_directories(early);
+        std::filesystem::create_directory(late);
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        const auto shim = early / L"claude.cmd";
+        const auto exe = late / L"claude.exe";
+        std::ofstream{ shim }.put('\n');
+        std::ofstream{ exe }.put('\n');
+        const auto path = early.native() + L";" + late.native();
+        VERIFY_ARE_EQUAL(exe.native(), Agents::Discover(path).at(L"claude").native());
+        std::filesystem::remove(exe);
+        VERIFY_ARE_EQUAL(shim.native(), Agents::Discover(path).at(L"claude").native());
+        std::filesystem::remove(shim);
+        VERIFY_IS_TRUE(Agents::Discover(path).empty());
+        std::ofstream{ shim }.put('\n');
+        VERIFY_ARE_EQUAL(shim.native(), Agents::Discover(path).at(L"claude").native());
+        VERIFY_IS_TRUE(Agents::Discover(L"").empty());
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileUninstallPreservesOverrides()
+    {
+        static constexpr std::string_view user{ R"({
+            "defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+            "profiles":[
+                {"guid":"{00000000-0000-0000-0000-000000000001}","name":"Shell","commandline":"cmd.exe"},
+                {"guid":"{00000000-0000-0000-0000-000000000002}","name":"My Claude",
+                 "source":"IntelligentTerminal.AgentProfiles","agentProfile.model":"chosen-model",
+                 "startingDirectory":"C:\\Project"}]})" };
+        static constexpr std::string_view generated{ R"({"profiles":[
+            {"guid":"{00000000-0000-0000-0000-000000000002}","name":"Claude",
+             "source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"claude",
+             "commandline":"C:\\Native\\claude.exe"}]})" };
+        const winrt::guid agentGuid{ L"{00000000-0000-0000-0000-000000000002}" };
+        const auto installed = winrt::make_self<implementation::CascadiaSettings>(user, generated);
+        VERIFY_ARE_EQUAL(2u, installed->ActiveProfiles().Size());
+        VERIFY_IS_FALSE(installed->FindProfile(agentGuid).Orphaned());
+        const auto removed = winrt::make_self<implementation::CascadiaSettings>(user, std::string_view{ R"({"profiles":[]})" });
+        const auto orphan = removed->FindProfile(agentGuid);
+        VERIFY_IS_TRUE(orphan.Orphaned());
+        VERIFY_ARE_EQUAL(1u, removed->ActiveProfiles().Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"chosen-model" }, orphan.AgentProfileModel());
+        const auto serialized = removed->ToJson();
+        VERIFY_ARE_EQUAL(std::string{ "chosen-model" }, serialized["profiles"]["list"][1]["agentProfile.model"].asString());
+        const auto restored = winrt::make_self<implementation::CascadiaSettings>(toString(serialized), generated);
+        const auto profile = restored->FindProfile(agentGuid);
+        VERIFY_IS_FALSE(profile.Orphaned());
+        VERIFY_ARE_EQUAL(2u, restored->ActiveProfiles().Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"chosen-model" }, profile.AgentProfileModel());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\Project" }, profile.StartingDirectory());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"My Claude" }, profile.Name());
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileLaunchPolicy()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        AgentPolicy::PolicySnapshot policy;
+        Agents::CheckLaunchPolicy(L"claude", policy);
+        policy.allowedAgents.emplace();
+        VERIFY_THROWS(Agents::CheckLaunchPolicy(L"claude", policy), wil::ResultException);
+        policy.allowedAgents->insert(L"claude");
+        Agents::CheckLaunchPolicy(L"claude", policy);
+        policy.yoloMode = AgentPolicy::PolicyState::Blocked;
+        VERIFY_THROWS(Agents::CheckLaunchPolicy(L"claude", policy), wil::ResultException);
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileBatchCommand()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        GUID guid;
+        THROW_IF_FAILED(CoCreateGuid(&guid));
+        const auto root = std::filesystem::temp_directory_path() / (L"Native Agent " + Utils::GuidToString(guid));
+        std::filesystem::create_directory(root);
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        const auto shim = root / L"claude.cmd";
+        std::ofstream{ shim } << "@echo off\r\n> \"%~dp0result.txt\" echo %*\r\nexit /b 37\r\n";
+        auto command = Agents::BuildCommand(shim.native(), L"claude", L"model with spaces", L"plan", LR"(--add-dir "C:\source & (tree)\\")");
+        STARTUPINFOW startup{ sizeof(startup) };
+        wil::unique_process_information process;
+        THROW_IF_WIN32_BOOL_FALSE(CreateProcessW(nullptr, command.data(), nullptr, nullptr, false, CREATE_NO_WINDOW,
+                                                nullptr, root.c_str(), &startup, &process));
+        const auto stop = wil::scope_exit([&]() {
+            if (WaitForSingleObject(process.hProcess, 0) == WAIT_TIMEOUT)
+            {
+                LOG_IF_WIN32_BOOL_FALSE(TerminateProcess(process.hProcess, 1));
+                WaitForSingleObject(process.hProcess, 5000);
+            }
+        });
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(process.hProcess, 10000));
+        DWORD code;
+        THROW_IF_WIN32_BOOL_FALSE(GetExitCodeProcess(process.hProcess, &code));
+        VERIFY_ARE_EQUAL(DWORD{ 37 }, code);
+        std::ifstream output{ root / L"result.txt" };
+        std::string text;
+        std::getline(output, text);
+        if (!text.empty() && text.back() == '\r')
+        {
+            text.pop_back();
+        }
+        const auto args = Agents::ParseArguments(winrt::to_hstring(text));
+        VERIFY_ARE_EQUAL(size_t{ 6 }, args.size());
+        VERIFY_ARE_EQUAL(std::wstring{ L"--model" }, args[0]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"model with spaces" }, args[1]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"--permission-mode" }, args[2]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"plan" }, args[3]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"--add-dir" }, args[4]);
+        VERIFY_ARE_EQUAL(std::wstring{ LR"(C:\source & (tree)\)" }, args[5]);
     }
 
     void CustomAgentAndPolicyTests::AgentProfileSplitTargets()

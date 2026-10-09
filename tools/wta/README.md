@@ -69,6 +69,11 @@ branding or reproducing a protected package path.
 
 ### Native interactive Agent Profiles (Windows host)
 
+Automatically generated Terminal Agent profiles now discover and launch the
+native CLI directly through C++, without these WTA commands. The commands below
+remain available as standalone CLI utilities; their native flag/argument
+contract is also used by Terminal's managed profile command builder.
+
 ```powershell
 wta probe-profile-agents
 wta launch-agent --agent-id copilot
