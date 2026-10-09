@@ -390,7 +390,7 @@ fn agent_paste_text_inserts_into_owner_chat_input_without_submitting() {
     let pasted = format!("{}\r\n{}", "alpha", "beta");
     let expected = ["alpha", "beta"].join("\n");
 
-    app.insert_agent_paste_text("tab-a", 0, &pasted);
+    app.insert_agent_paste("tab-a", 0, ClipboardPaste::Text(pasted));
 
     let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
     assert_eq!(tab.input, expected);
@@ -415,12 +415,200 @@ fn agent_paste_text_inserts_at_cursor() {
         tab.paste_pending = true;
     }
 
-    app.insert_agent_paste_text("tab-a", 0, "X\nY");
+    app.insert_agent_paste("tab-a", 0, ClipboardPaste::Text("X\nY".into()));
 
     let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
     assert_eq!(tab.input, "aX\nYb");
     assert_eq!(tab.cursor_pos, "aX\nY".len());
     assert!(!tab.paste_pending);
+}
+
+#[cfg(windows)]
+#[tokio::test(flavor = "current_thread")]
+async fn agent_paste_screenshot_attaches_image_through_default_paste_request() {
+    let _locale = crate::test_support::lock_locale();
+    let _clipboard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let dib = crate::clipboard_image::sample_screenshot_dib();
+    if !unsafe { crate::clipboard_image::set_clipboard_dib(&dib) } {
+        eprintln!("agent_paste_screenshot_attaches_image_through_default_paste_request: clipboard unavailable; skipping");
+        return;
+    }
+    let expected = crate::clipboard_image::read_clipboard_image()
+        .expect("successfully written screenshot must decode");
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut app = test_app();
+            app.window_id = Some("w1".into());
+            app.owner_tab_id = Some("tab-a".into());
+            app.tab_id = Some("tab-a".into());
+            app.pane_id = Some("pane-a".into());
+            app.agent_supports_image = true;
+            app.state = ConnectionState::Connected;
+            app.tab_mut("tab-a").pane_open = true;
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            app.event_tx = Some(tx);
+            let (prompt_tx, mut prompts) = tokio::sync::mpsc::unbounded_channel();
+            app.prompt_tx = prompt_tx;
+
+            app.handle_event(AppEvent::WtEvent {
+                method: "agent_paste_text".into(),
+                pane_id: String::new(),
+                tab_id: Some("tab-a".into()),
+                params: agent_paste_params("w1", "tab-a"),
+            });
+            assert!(app.current_tab().paste_pending);
+            let completion = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+                .await
+                .expect("clipboard read must finish")
+                .expect("clipboard read must publish its result");
+            app.handle_event(completion);
+
+            let tab = app.current_tab();
+            assert!(!tab.paste_pending);
+            assert_eq!(tab.input, "[image: image-1.png]");
+            assert!(
+                prompts.try_recv().is_err(),
+                "paste must not submit a prompt"
+            );
+            app.current_tab_mut().insert_input_str("describe this");
+            app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            let prompt = prompts
+                .try_recv()
+                .expect("Enter must submit the attachment");
+            assert_eq!(prompt.text, "describe this");
+            assert_eq!(prompt.images, vec![expected]);
+            assert!(app.current_tab().input.is_empty());
+            assert!(app.current_tab().attachments.is_empty());
+        })
+        .await;
+}
+
+#[test]
+fn agent_paste_image_replaces_selection_and_supports_undo_redo() {
+    let mut app = test_app();
+    app.agent_supports_image = true;
+    let tab = app.tab_mut("tab-a");
+    tab.pane_open = true;
+    tab.insert_input_str("replace me");
+    tab.select_all_input();
+    tab.paste_pending = true;
+    tab.paste_generation = 1;
+    let image = crate::clipboard_image::PastedImage {
+        data_base64: "AAA=".into(),
+        mime_type: "image/png".into(),
+        label: "screenshot".into(),
+    };
+
+    app.handle_event(AppEvent::AgentPasteReady {
+        tab_id: "tab-a".into(),
+        generation: 1,
+        content: ClipboardPaste::Image(image.clone()),
+    });
+
+    let tab = app.tab_mut("tab-a");
+    assert_eq!(tab.input, "[image: image-1.png]");
+    assert_eq!(tab.attachments.images().collect::<Vec<_>>(), vec![&image]);
+    assert!(!tab.paste_pending);
+    tab.undo_input();
+    assert_eq!(tab.input, "replace me");
+    assert!(tab.input_all_selected);
+    assert!(tab.attachments.is_empty());
+    tab.redo_input();
+    assert_eq!(tab.input, "[image: image-1.png]");
+    assert_eq!(tab.attachments.images().collect::<Vec<_>>(), vec![&image]);
+}
+
+#[test]
+fn agent_paste_image_without_capability_warns_without_changing_draft() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.agent_supports_image = false;
+    let tab = app.tab_mut("tab-a");
+    tab.pane_open = true;
+    tab.insert_input_str("keep me");
+    tab.select_all_input();
+    tab.paste_pending = true;
+
+    app.handle_event(AppEvent::AgentPasteReady {
+        tab_id: "tab-a".into(),
+        generation: 0,
+        content: ClipboardPaste::Image(crate::clipboard_image::PastedImage {
+            data_base64: "AAA=".into(),
+            mime_type: "image/png".into(),
+            label: "screenshot".into(),
+        }),
+    });
+
+    let tab = app.tab_sessions.get("tab-a").unwrap();
+    assert_eq!(tab.input, "keep me");
+    assert!(tab.input_all_selected);
+    assert!(tab.attachments.is_empty());
+    assert!(!tab.paste_pending);
+    let warning = t!("system.image_not_supported").into_owned();
+    assert!(tab.messages.iter().any(|message| matches!(
+        message,
+        ChatMessage::Notice { kind: NoticeKind::Warning, text } if *text == warning
+    )));
+}
+
+#[test]
+fn agent_paste_image_respects_generation_mode_pane_and_input_focus() {
+    for blocked_by in ["stale", "auth", "stashed", "agents", "picker"] {
+        let mut app = test_app();
+        app.agent_supports_image = true;
+        let tab = app.tab_mut("tab-a");
+        tab.pane_open = blocked_by != "stashed";
+        tab.paste_generation = 2;
+        tab.paste_pending = true;
+        tab.current_view = if blocked_by == "agents" {
+            View::Agents
+        } else {
+            View::Chat
+        };
+        tab.model_picker_open = blocked_by == "picker";
+        if blocked_by == "auth" {
+            app.mode = AppMode::Auth;
+        }
+
+        app.handle_event(AppEvent::AgentPasteReady {
+            tab_id: "tab-a".into(),
+            generation: if blocked_by == "stale" { 1 } else { 2 },
+            content: ClipboardPaste::Image(crate::clipboard_image::PastedImage {
+                data_base64: "AAA=".into(),
+                mime_type: "image/png".into(),
+                label: "screenshot".into(),
+            }),
+        });
+
+        let tab = app.tab_sessions.get("tab-a").unwrap();
+        assert!(tab.input.is_empty(), "{blocked_by}");
+        assert!(tab.attachments.is_empty(), "{blocked_by}");
+        assert_eq!(tab.paste_pending, blocked_by == "stale", "{blocked_by}");
+        assert!(
+            app.current_tab().attachments.is_empty(),
+            "must not paste into a different tab"
+        );
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn agent_paste_clipboard_reader_preserves_ordinary_text() {
+    let _clipboard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let text = "alpha\r\nbeta\t\u{4e2d}";
+    if let Err(error) = crate::win32::copy_text_to_clipboard(text) {
+        eprintln!("agent_paste_clipboard_reader_preserves_ordinary_text: clipboard unavailable; skipping: {error}");
+        return;
+    }
+    match crate::win32::read_agent_paste_from_clipboard().expect("clipboard must be readable") {
+        ClipboardPaste::Text(pasted) => assert_eq!(pasted, text),
+        ClipboardPaste::Image(_) => panic!("ordinary text must not become an image attachment"),
+    }
 }
 
 #[test]
@@ -500,7 +688,7 @@ fn agent_paste_text_ignores_non_chat_or_non_live_input() {
     app.tab_mut("tab-a").pane_open = true;
     app.tab_mut("tab-a").current_view = View::Agents;
 
-    app.insert_agent_paste_text("tab-a", 0, "hidden");
+    app.insert_agent_paste("tab-a", 0, ClipboardPaste::Text("hidden".into()));
     assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
 
     app.tab_mut("tab-a").current_view = View::Chat;
@@ -512,7 +700,7 @@ fn agent_paste_text_ignores_non_chat_or_non_live_input() {
     });
     app.tab_mut("tab-a").selected_completed_turn_idx = Some(0);
 
-    app.insert_agent_paste_text("tab-a", 0, "locked");
+    app.insert_agent_paste("tab-a", 0, ClipboardPaste::Text("locked".into()));
     assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
 }
 
@@ -561,7 +749,7 @@ fn agent_paste_failure_clears_pending_state() {
     app.tab_mut("tab-a").paste_pending = true;
     app.tab_mut("tab-a").paste_generation = 1;
 
-    app.handle_event(AppEvent::AgentPasteTextFailed {
+    app.handle_event(AppEvent::AgentPasteFailed {
         tab_id: "tab-a".into(),
         generation: 1,
         error: "clipboard busy".into(),
@@ -577,10 +765,10 @@ fn stale_agent_paste_completion_is_ignored() {
     app.tab_mut("tab-a").paste_pending = true;
     app.tab_mut("tab-a").paste_generation = 2;
 
-    app.handle_event(AppEvent::AgentPasteTextReady {
+    app.handle_event(AppEvent::AgentPasteReady {
         tab_id: "tab-a".into(),
         generation: 1,
-        text: "stale".into(),
+        content: ClipboardPaste::Text("stale".into()),
     });
 
     let tab = app.tab_sessions.get("tab-a").unwrap();
@@ -614,10 +802,10 @@ fn agent_paste_completion_is_ignored_after_pane_is_stashed() {
     assert!(!tab.paste_pending);
     assert_eq!(tab.paste_generation, 2);
 
-    app.handle_event(AppEvent::AgentPasteTextReady {
+    app.handle_event(AppEvent::AgentPasteReady {
         tab_id: "tab-a".into(),
         generation: 1,
-        text: "hidden".into(),
+        content: ClipboardPaste::Text("hidden".into()),
     });
 
     let tab = app.tab_sessions.get("tab-a").unwrap();
@@ -640,10 +828,10 @@ fn tab_rename_invalidates_pending_agent_paste() {
     assert!(!tab.paste_pending);
     assert_eq!(tab.paste_generation, 8);
 
-    app.handle_event(AppEvent::AgentPasteTextReady {
+    app.handle_event(AppEvent::AgentPasteReady {
         tab_id: "AAAA".into(),
         generation: 7,
-        text: "stale".into(),
+        content: ClipboardPaste::Text("stale".into()),
     });
     assert!(app.tab_sessions.get("BBBB").unwrap().input.is_empty());
 }
@@ -15088,7 +15276,7 @@ mod input_undo_tests {
             if let Some((code, modifiers)) = deletion {
                 key(&mut app, code, modifiers);
             } else {
-                assert!(app.copy_input_selection(true, |_| Ok(())));
+                assert!(app.copy_input_selection(true, |_| Ok(())).unwrap());
             }
             assert!(app.current_tab().input.is_empty());
             undo(&mut app);
@@ -15104,9 +15292,11 @@ mod input_undo_tests {
         let mut app = test_app();
         type_text(&mut app, "keep");
         key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
-        assert!(app.copy_input_selection(true, |_| {
-            Err(std::io::Error::other("clipboard unavailable"))
-        }));
+        assert!(app
+            .copy_input_selection(true, |_| {
+                Err(std::io::Error::other("clipboard unavailable"))
+            })
+            .is_err());
         assert_eq!(app.current_tab().input, "keep");
         undo(&mut app);
         assert!(app.current_tab().input.is_empty());
@@ -15119,7 +15309,11 @@ mod input_undo_tests {
         let mut app = test_app();
         app.current_tab_mut().pane_open = true;
         app.current_tab_mut().paste_pending = true;
-        app.insert_agent_paste_text(DEFAULT_TAB_ID, 0, concat!("\u{4e2d}", "\r\n", "caf\u{e9}"));
+        app.insert_agent_paste(
+            DEFAULT_TAB_ID,
+            0,
+            ClipboardPaste::Text(concat!("\u{4e2d}", "\r\n", "caf\u{e9}").into()),
+        );
         let expected = concat!("\u{4e2d}", "\n", "caf\u{e9}");
         assert_eq!(app.current_tab().input, expected);
         undo(&mut app);
@@ -15139,7 +15333,7 @@ mod input_undo_tests {
         type_text(&mut app, "draft");
         app.current_tab_mut().pane_open = true;
         app.current_tab_mut().paste_generation = 2;
-        app.insert_agent_paste_text(DEFAULT_TAB_ID, 1, "stale");
+        app.insert_agent_paste(DEFAULT_TAB_ID, 1, ClipboardPaste::Text("stale".into()));
         undo(&mut app);
         assert!(app.current_tab().input.is_empty());
         redo(&mut app);
@@ -15236,7 +15430,7 @@ mod input_undo_tests {
         app.current_tab_mut().insert_input_str(" suffix");
         undo(&mut app);
         key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
-        assert!(app.copy_input_selection(false, |_| Ok(())));
+        assert!(app.copy_input_selection(false, |_| Ok(())).unwrap());
         key(&mut app, KeyCode::Left, KeyModifiers::NONE);
         redo(&mut app);
         assert_eq!(app.current_tab().input, "base suffix");
@@ -15675,7 +15869,11 @@ fn input_selection_paste_replaces_draft_without_submitting() {
         KeyModifiers::CONTROL,
     )));
     app.current_tab_mut().paste_pending = true;
-    app.insert_agent_paste_text(DEFAULT_TAB_ID, 0, "new\r\n\u{4e2d}");
+    app.insert_agent_paste(
+        DEFAULT_TAB_ID,
+        0,
+        ClipboardPaste::Text("new\r\n\u{4e2d}".into()),
+    );
     assert_eq!(app.current_tab().input, "new\n\u{4e2d}");
     assert_eq!(app.current_tab().cursor_pos, app.current_tab().input.len());
     assert!(app.current_tab().turn.is_idle());
@@ -15788,18 +15986,22 @@ fn input_selection_copy_and_cut_preserve_exact_source_text() {
         KeyModifiers::CONTROL,
     )));
     app.close_pane_armed_at = Some(std::time::Instant::now());
-    assert!(app.copy_input_selection(false, |text| {
-        assert_eq!(text, draft);
-        Ok(())
-    }));
+    assert!(app
+        .copy_input_selection(false, |text| {
+            assert_eq!(text, draft);
+            Ok(())
+        })
+        .unwrap());
     assert_eq!(app.current_tab().input, draft);
     assert!(app.current_tab().input_all_selected);
     assert!(app.close_pane_armed_at.is_none());
     app.close_pane_armed_at = Some(std::time::Instant::now());
-    assert!(app.copy_input_selection(true, |text| {
-        assert_eq!(text, draft);
-        Ok(())
-    }));
+    assert!(app
+        .copy_input_selection(true, |text| {
+            assert_eq!(text, draft);
+            Ok(())
+        })
+        .unwrap());
     assert!(app.current_tab().input.is_empty());
     assert!(!app.current_tab().input_all_selected);
     assert!(app.close_pane_armed_at.is_none());
@@ -15817,7 +16019,9 @@ fn input_selection_clipboard_failure_keeps_draft_and_consumes_copy() {
         )));
         // The helper must disarm independently of the key dispatcher.
         app.close_pane_armed_at = Some(std::time::Instant::now());
-        assert!(app.copy_input_selection(cut, |_| Err(std::io::Error::other("clipboard busy"))));
+        assert!(app
+            .copy_input_selection(cut, |_| Err(std::io::Error::other("clipboard busy")))
+            .is_err());
         assert_eq!(app.current_tab().input, "do not lose this");
         assert!(app.current_tab().input_all_selected);
         assert!(app.close_pane_armed_at.is_none());
@@ -15834,9 +16038,11 @@ fn input_selection_unhandled_copy_preserves_close_arm() {
         )));
         let armed = app.close_pane_armed_at;
         assert!(armed.is_some());
-        assert!(!app.copy_input_selection(cut, |_| {
-            panic!("an unhandled event must not access the clipboard")
-        }));
+        assert!(!app
+            .copy_input_selection(cut, |_| {
+                panic!("an unhandled event must not access the clipboard")
+            })
+            .unwrap());
         assert_eq!(app.close_pane_armed_at, armed);
     }
 }
@@ -15862,7 +16068,9 @@ fn input_selection_copy_failure_cannot_retain_an_earlier_close_arm() {
         )));
         assert!(app.current_tab().input_all_selected);
         assert!(app.close_pane_armed_at.is_none());
-        assert!(app.copy_input_selection(cut, |_| { Err(std::io::Error::other("clipboard busy")) }));
+        assert!(app
+            .copy_input_selection(cut, |_| { Err(std::io::Error::other("clipboard busy")) })
+            .is_err());
         assert_eq!(app.current_tab().input, "clipboard draft");
         assert!(app.current_tab().input_all_selected);
         assert!(app.close_pane_armed_at.is_none());
@@ -15902,7 +16110,9 @@ fn input_selection_requires_live_edit_focus_not_just_draft_text() {
             !app.current_tab().input_all_selected,
             "{context} owns focus"
         );
-        assert!(!app.copy_input_selection(true, |_| panic!("must not cut hidden draft")));
+        assert!(!app
+            .copy_input_selection(true, |_| panic!("must not cut hidden draft"))
+            .unwrap());
         assert_eq!(app.current_tab().input, "keep draft");
     }
 }
@@ -16281,6 +16491,142 @@ fn default_paste_request_is_chat_only() {
 
     assert!(app.default_paste_request_for_current_tab().is_none());
     assert!(app.handle_right_click().is_none());
+}
+
+#[cfg(windows)]
+#[test]
+fn copy_on_select_preserves_mouse_highlight_and_right_click_image_clipboard() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let _locale = crate::test_support::lock_locale();
+    let _clipboard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+
+    for copy_on_select in [false, true] {
+        let mut app = test_app();
+        app.window_id = Some("window-a".into());
+        app.tab_id = Some("tab-a".into());
+        app.pane_id = Some("pane-a".into());
+        app.current_tab_mut().pane_open = true;
+        app.current_tab_mut().copy_on_select = copy_on_select;
+        app.current_tab_mut()
+            .messages
+            .push(ChatMessage::info("AUTO_COPY_MARKER"));
+        let rendered = render_to_text(&mut app, 80, 16);
+        let (row, column) = rendered
+            .lines()
+            .enumerate()
+            .find_map(|(row, line)| {
+                line.find("AUTO_COPY_MARKER")
+                    .map(|column| (row as u16, column as u16 + 2))
+            })
+            .expect("selection marker must be visible");
+        if let Err(error) = crate::win32::copy_text_to_clipboard("before selection") {
+            eprintln!("copy_on_select_preserves_mouse_highlight_and_right_click_image_clipboard: clipboard unavailable; skipping: {error}");
+            return;
+        }
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            app.handle_event(AppEvent::Mouse(MouseEvent {
+                kind,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }));
+        }
+        assert_eq!(
+            app.text_selection.selected_text().as_deref(),
+            Some("AUTO_COPY_MARKER")
+        );
+        assert_eq!(
+            crate::win32::read_paste_string_from_clipboard().unwrap(),
+            if copy_on_select {
+                "AUTO_COPY_MARKER"
+            } else {
+                "before selection"
+            },
+        );
+
+        let dib = crate::clipboard_image::sample_screenshot_dib();
+        if !unsafe { crate::clipboard_image::set_clipboard_dib(&dib) } {
+            eprintln!("copy_on_select_preserves_mouse_highlight_and_right_click_image_clipboard: clipboard unavailable during image setup; skipping");
+            return;
+        }
+        let image = crate::clipboard_image::read_clipboard_image()
+            .expect("successfully written screenshot must decode");
+        let request = app.handle_right_click();
+        assert_eq!(request.is_some(), copy_on_select);
+        assert!(app.text_selection.selected_text().is_none());
+        if copy_on_select {
+            assert_eq!(crate::clipboard_image::read_clipboard_image(), Some(image),
+                "right-click must not overwrite a new screenshot by re-copying the highlighted selection");
+        } else {
+            assert_eq!(
+                crate::win32::read_paste_string_from_clipboard().unwrap(),
+                "AUTO_COPY_MARKER"
+            );
+        }
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn copy_on_select_right_click_copies_keyboard_selection_then_requests_paste() {
+    let _locale = crate::test_support::lock_locale();
+    let _clipboard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let mut app = test_app();
+    app.window_id = Some("window-a".into());
+    app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
+    let tab = app.current_tab_mut();
+    tab.pane_open = true;
+    tab.copy_on_select = true;
+    tab.insert_input_str("selected draft");
+    tab.select_all_input();
+    if let Err(error) = crate::win32::copy_text_to_clipboard("before selection") {
+        eprintln!("copy_on_select_right_click_copies_keyboard_selection_then_requests_paste: clipboard unavailable; skipping: {error}");
+        return;
+    }
+
+    assert!(app.handle_right_click().is_some());
+    assert_eq!(
+        crate::win32::read_paste_string_from_clipboard().unwrap(),
+        "selected draft"
+    );
+}
+
+#[test]
+fn copy_on_select_settings_updates_are_owner_scoped_and_preserve_missing_values() {
+    let mut app = test_app();
+    app.window_id = Some("window-a".into());
+    app.owner_tab_id = Some("tab-a".into());
+    app.tab_id = Some("tab-a".into());
+    for (window, tab, value, expected) in [
+        ("window-a", "tab-a", Some(true), true),
+        ("window-b", "tab-a", Some(false), true),
+        ("window-a", "tab-b", Some(false), true),
+        ("window-a", "tab-a", None, true),
+        ("window-a", "tab-a", Some(false), false),
+    ] {
+        let mut params = json!({ "window_id": window, "tab_id": tab });
+        if let Some(value) = value {
+            params["copy_on_select"] = json!(value);
+        }
+        app.handle_event(AppEvent::WtEvent {
+            method: "set_agent_state".into(),
+            pane_id: String::new(),
+            tab_id: Some(tab.into()),
+            params,
+        });
+        assert_eq!(app.current_tab().copy_on_select, expected);
+    }
+    assert!(!app.tab_sessions.contains_key("tab-b"));
 }
 
 #[test]

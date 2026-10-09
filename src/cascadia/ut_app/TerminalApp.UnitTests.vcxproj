@@ -90,7 +90,7 @@
   <Import Project="$(OpenConsoleDir)src\common.build.tests.props" />
   <Import Project="$(SolutionDir)src\common.nugetversions.targets" />
 
-  <Target Name="CopyProtocolMarshalingFixtures" AfterTargets="Build">
+  <Target Name="CopyProtocolMarshalingFixtures" AfterTargets="Build" Condition="'$(Configuration)'!='Fuzzing'">
     <MakeDir Directories="$(OutDir)ProtocolMarshaling\Present;$(OutDir)ProtocolMarshaling\Missing" />
     <Copy SourceFiles="$(OpenConsoleCommonOutDir)ProtocolMarshalingProbe.exe" DestinationFolder="$(OutDir)ProtocolMarshaling\Present" />
     <Copy SourceFiles="$(OpenConsoleCommonOutDir)ProtocolMarshalingProbe.exe" DestinationFolder="$(OutDir)ProtocolMarshaling\Missing" />

@@ -155,12 +155,15 @@ Notably, this method of building the Terminal package can't leverage the FastUpT
 ### Elevated Intelligent Terminal agent integration
 
 The Terminal protocol uses classic COM interfaces marshaled by
-`OpenConsoleProxy.dll`. Normal processes use the packaged COM declarations.
-Elevated `WindowsTerminal.exe` and `wtcli.exe` additionally register the protocol,
-event-sink, and native-agent proxy/stub factory inside their own processes,
+`OpenConsoleProxy.dll`. Both normal and elevated `WindowsTerminal.exe` and
+`wtcli.exe` explicitly load their local DLL and register its factory for all
+eight protocol and handoff interfaces inside their own processes,
 without writing global COM registry entries. Keep `OpenConsoleProxy.dll` beside both executables;
-the elevated path loads the proxy from that absolute path and restricts
-dependency searches to its directory and system DLL directories.
+the loader verifies the loaded path and restricts dependency searches to its
+directory and system DLL directories. Packaged execution requires the current
+package's original installation path. Unpackaged Dev and actually elevated
+processes may load their own executable's sibling DLL; other package API errors
+do not enable that exception. No additional DLL signing requirement applies to Dev.
 
 An elevated shell outside the package can use the already-running Terminal
 factory when packaged class activation returns `REGDB_E_CLASSNOTREG`. This
@@ -173,8 +176,9 @@ initialization error from `wtcli` identifies a missing or unusable adjacent DLL;
 `E_NOINTERFACE` during connection indicates custom-interface marshaling failed.
 
 The `ProtocolMarshalingTests` unit tests launch isolated native probes to test
-all three interface registrations and missing adjacent DLL failures without requiring
-elevation. After building `TerminalApp.UnitTests.vcxproj`, run:
+all eight interface registrations and missing adjacent DLL failures without requiring
+elevation. The scoped facade also retains its normal-process no-op gate; production
+uses the shared all-mode registration instead. After building `TerminalApp.UnitTests.vcxproj`, run:
 
 ```powershell
 & .\bin\x64\Debug\UnitTests_TerminalApp\TE.exe `

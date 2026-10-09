@@ -18,6 +18,7 @@ Abstract:
 #pragma once
 
 #include <mutex>
+#include "../inc/WindowPersistence.h"
 
 class AppHost;
 struct TerminalProtocolComServer;
@@ -110,6 +111,7 @@ private:
     winrt::TerminalApp::App _app{ nullptr };
     mutable std::mutex _windowsMutex;
     std::vector<std::shared_ptr<::AppHost>> _windows;
+    Microsoft::Terminal::WindowPersistence::Snapshot _lastClosedWindow;
 
     // Protocol server for AI CLI integration
     std::wstring _comClsid; // Stringified CLSID for WT_COM_CLSID env var

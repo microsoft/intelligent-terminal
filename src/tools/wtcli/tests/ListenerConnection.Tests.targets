@@ -1,12 +1,19 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(ProjectName)' == 'wtcli'">
     <TargetName>wtcli-listener-native-tests</TargetName>
+    <TargetPath>$(OutDir)$(TargetName)$(TargetExt)</TargetPath>
   </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(ProjectName)' == 'wtcli'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <TreatWarningAsError>true</TreatWarningAsError>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup Condition="'$(ProjectName)' == 'wtcli'">
     <ClCompile Remove="main.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)ListenerConnection.Tests.cpp" />
   </ItemGroup>
-  <Target Name="CopyListenerConnectionTestProxy" AfterTargets="Build" Condition="'$(ProjectName)' == 'wtcli'">
+  <Target Name="CopyListenerConnectionTestProxy" AfterTargets="Build" Condition="'$(ProjectName)' == 'wtcli' and '$(Configuration)'!='Fuzzing'">
     <Copy SourceFiles="$(OpenConsoleCommonOutDir)OpenConsoleProxy.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>

@@ -20,6 +20,29 @@ Custom native CLI launch identities remain `custom:<name>` when their underlying
 CLI reports activity as a built-in provider. Activity/session bindings still
 update, and built-in native CLI panes retain provider rebinding.
 
+For reports attributed to the same pane and session, a built-in provider takes
+precedence over a custom-provider representation. Different sessions using that
+pane are selected by their newest activity timestamp, including when providers
+differ. This preserves the existing provider precedence without freezing the
+pane to an older session. Live updates with equal or missing timestamps use the
+latest received report. Tab/pane icons follow the selected reported provider
+rather than remaining fixed to the agent originally launched. No nested-agent
+stack is inferred.
+Snapshots first select the canonical report for each pane/session, then select
+the newest session for each pane. A newer session can replace an ended one,
+including a custom session, and a delayed older ended report cannot reclaim the
+pane. Custom reports about the same completed session still cannot override its
+built-in report.
+Snapshot rows without a provider ID are aggregated separately, then applied as
+state updates to the resolved session provider. They must not inherit whichever
+provider happened to occur immediately before them in an unordered snapshot.
+An older live report may identify a previously unnamed provider without rolling
+back that session's newer status or activity timestamp.
+Live reports with equal or missing timestamps use receive order. Snapshot rows
+have no receive order, so a tied refresh preserves the known pane winner. With
+no known winner, timestamp/provider/session ordering provides a stable fallback
+instead of letting unordered snapshot rows repeatedly change the icon.
+
 ## One-time Sidebar upgrade and introduction
 
 - Sidebar becomes the default tab layout for new users. On the first eligible

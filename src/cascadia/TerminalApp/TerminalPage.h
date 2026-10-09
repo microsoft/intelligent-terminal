@@ -187,6 +187,7 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine RequestQuit();
         safe_void_coroutine CloseWindow();
         winrt::Microsoft::Terminal::Settings::Model::WindowLayout GetWindowLayout();
+        winrt::Microsoft::Terminal::Settings::Model::WindowLayout GetStartupRestoreLayout();
         void PersistState();
         std::vector<IPaneContent> Panes() const;
 
@@ -945,6 +946,7 @@ namespace winrt::TerminalApp::implementation
 
         bool _displayingCloseDialog{ false };
         bool _windowCloseAccepted{ false };
+        winrt::Microsoft::Terminal::Settings::Model::WindowLayout _closingStartupRestoreLayout{ nullptr };
         bool _windowPanesShutdown{ false };
         std::vector<winrt::guid> _startupKeptGroups;
         bool _restoringStartupKeptGroups{ false };
@@ -985,6 +987,16 @@ namespace winrt::TerminalApp::implementation
             std::optional<uint64_t> lastActivityAtMs;
             std::optional<winrt::guid> paneSessionId;
         };
+        static bool _IsBuiltinAgentProviderId(std::string_view id);
+        static bool _ShouldUseIncomingAgentProvider(std::string_view existingProviderId, std::string_view incomingProviderId);
+        static bool _ShouldReplaceReportedAgentState(const _RichTabAgentInfo& existing, const _RichTabAgentInfo& incoming);
+        static bool _ShouldReplaceSnapshotAgentState(const _RichTabAgentInfo& existing, const _RichTabAgentInfo& incoming, const _RichTabAgentInfo* lastReceived);
+        struct _RichTabAgentStatusSnapshot
+        {
+            std::unordered_map<std::string, _RichTabAgentInfo> bySession;
+            std::unordered_map<winrt::guid, _RichTabAgentInfo> byPane;
+        };
+        static _RichTabAgentStatusSnapshot _BuildAgentStatusSnapshot(const std::vector<_RichTabAgentInfo>& rows, const std::unordered_map<winrt::guid, _RichTabAgentInfo>& lastReceivedByPane);
         std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
         winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& profileIcon);
         std::unordered_map<std::string, std::string> _BuildRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
@@ -1040,6 +1052,7 @@ namespace winrt::TerminalApp::implementation
                                            std::optional<uint64_t> lastActivityAtMs,
                                            std::string_view status);
         static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs, std::wstring_view languageTag = {});
+        friend struct TabStripHistoryItem;
         struct _SidebarHistorySnapshot
         {
             enum class State
@@ -1120,6 +1133,8 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
         void _RefreshAgentRestoreIdentity(Tab* tab);
         void _StampAgentResumeCommandlines(std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
+        std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs> _BuildPersistedTabActions(Tab* tab);
+        winrt::Microsoft::Terminal::Settings::Model::WindowLayout _AppendKeptTabsToStartupLayout(const winrt::Microsoft::Terminal::Settings::Model::WindowLayout& visibleLayout);
         // Pane ids whose terminal end event (`closed` / `failed`) already went
         // out on ProtocolVtSequenceReceived for the current TermControl
         // lifetime. `_SetupControl` clears any stale mark when a new control
@@ -1347,8 +1362,6 @@ namespace winrt::TerminalApp::implementation
         std::optional<uint32_t> _FindSourceOfAgentPaneId(const std::shared_ptr<Pane>& root);
         void _DelegatePromptToAgent(const winrt::hstring& prompt);
         void _OpenDefaultNewTab();
-        std::optional<std::wstring> _BuildAgentSplitArguments(const winrt::com_ptr<Tab>& tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
-        safe_void_coroutine _SplitAgentDelegate(winrt::com_ptr<Tab> tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
         safe_void_coroutine _RunSidebarDelegate(std::wstring wtaPath, std::wstring args);
         void _OpenBackgroundAgentTab(bool preserveSidebarView = false);
         void _LaunchDelegate(const std::optional<winrt::hstring>& prompt, bool preserveSidebarView = false);

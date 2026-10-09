@@ -5,6 +5,7 @@
 
 #include "pch.h"
 #include "TabStrip.h"
+#include "TerminalPage.h"
 #include "AgentIconUtils.h"
 #include "TabStripAutomationPeer.h"
 #include "..\RichTabProvider\ProviderBroker.h"
@@ -40,6 +41,28 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    bool TabStripHistoryItem::RefreshAge(const uint64_t nowMs)
+    {
+        const auto lastActivityAtMs = LastActivityAtMs();
+        if (!lastActivityAtMs)
+        {
+            return false;
+        }
+
+        const auto elapsedMs = nowMs > *lastActivityAtMs ? nowMs - *lastActivityAtMs : 0;
+        const auto key = std::pair{ *lastActivityAtMs, elapsedMs / 60'000 };
+        if (_ageKey == key)
+        {
+            return false;
+        }
+        _ageKey = key;
+
+        const auto text = TerminalPage::_SidebarHistoryAgeText(lastActivityAtMs, nowMs);
+        const auto changed = Subtitle() != text;
+        Subtitle(text);
+        return changed;
+    }
+
     DataTemplate TabStripItemTemplateSelector::SelectTemplateCore(IInspectable const& item)
     {
         return item.try_as<TerminalApp::TabStripDisplayItem>() ? LiveTemplate :
@@ -561,6 +584,7 @@ namespace winrt::TerminalApp::implementation
             {
                 self->_searchAnimationEnabled = true;
                 self->_updateSearchVisualState();
+                self->_updateHistoryAgeTimer();
             }
         });
         ActualThemeChanged([weakThis{ get_weak() }](auto&&, auto&&) {
@@ -574,6 +598,10 @@ namespace winrt::TerminalApp::implementation
             {
                 self->_searchAnimationEnabled = false;
                 self->_setSearchPanelExpanded(false, false);
+                if (self->_historyAgeTimer)
+                {
+                    self->_historyAgeTimer.Stop();
+                }
             }
         });
         if constexpr (Feature_RichTabProviders::IsEnabled())
@@ -1251,6 +1279,7 @@ namespace winrt::TerminalApp::implementation
         {
             _isRailCollapsed = value;
             _applyRailState();
+            _updateHistoryAgeTimer();
         }
     }
 
@@ -1362,6 +1391,64 @@ namespace winrt::TerminalApp::implementation
                 TraceLoggingUInt32(_historyItems.Size(), "row_count"),
                 TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                 TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        }
+    }
+
+    void TabStrip::_updateHistoryAgeTimer()
+    {
+        if (!_historyActive || _isRailCollapsed || !IsLoaded())
+        {
+            if (_historyAgeTimer)
+            {
+                _historyAgeTimer.Stop();
+            }
+            return;
+        }
+        if (!_historyAgeTimer)
+        {
+            _historyAgeTimer = DispatcherTimer{};
+            _historyAgeTimer.Interval(std::chrono::seconds{ 1 });
+            _historyAgeTimer.Tick([weakThis{ get_weak() }](auto&&, auto&&) {
+                if (const auto self = weakThis.get())
+                {
+                    const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                                 std::chrono::system_clock::now().time_since_epoch())
+                                                                 .count());
+                    self->_refreshHistoryAges(nowMs);
+                }
+            });
+        }
+        const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                     std::chrono::system_clock::now().time_since_epoch())
+                                                     .count());
+        _refreshHistoryAges(nowMs);
+        _historyAgeTimer.Start();
+    }
+
+    void TabStrip::_refreshHistoryAges(const uint64_t nowMs)
+    {
+        if (!_historyActive || _isRailCollapsed)
+        {
+            return;
+        }
+        bool changed = false;
+        for (size_t index = 0; index < _historySnapshot.size(); ++index)
+        {
+            const auto& item = _historySnapshot[index];
+            if (winrt::get_self<TabStripHistoryItem>(item)->RefreshAge(nowMs))
+            {
+                _historySearchTerms[index] = _buildHistorySearchTerms(item);
+                changed = true;
+            }
+        }
+        // Equal snapshots can retain distinct visible objects.
+        for (const auto& item : _historyItems)
+        {
+            winrt::get_self<TabStripHistoryItem>(item)->RefreshAge(nowMs);
+        }
+        if (changed && !_searchQuery.empty())
+        {
+            _applyHistoryProjection(true);
         }
     }
 
@@ -1489,6 +1576,7 @@ namespace winrt::TerminalApp::implementation
             _applyHistoryProjection(true);
             _updateSearchVisualState();
             _updateHistoryVisualState();
+            _updateHistoryAgeTimer();
         }
     }
 
@@ -2513,6 +2601,10 @@ namespace winrt::TerminalApp::implementation
                 else if (!_sameHistoryItem(_historyItems.GetAt(index), visibleItems[index]))
                 {
                     _historyItems.SetAt(index, visibleItems[index]);
+                }
+                else
+                {
+                    winrt::get_self<TabStripHistoryItem>(_historyItems.GetAt(index))->LastActivityAtMs(winrt::get_self<TabStripHistoryItem>(visibleItems[index])->LastActivityAtMs());
                 }
             }
             while (_historyItems.Size() > visibleItems.size())

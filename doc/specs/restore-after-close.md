@@ -53,6 +53,20 @@ picks it up for free:
 | `WindowEmperor::_finalizeSessionPersistence` | closing the last window, quitting, sign-out, shutdown |
 | `TerminalPage::_SaveWorkspaceIfNeeded` | named windows, which persist as workspaces |
 
+If closing the last visible window leaves Keep running tabs or headless mode
+active, the close captures the complete window layout before detaching any tabs.
+`GetStartupRestoreLayout` appends all other detached tabs, including those from
+previously closed windows or individually closed tabs in the same window. It
+uses each tab's owning page to stamp the correct agent resume identity, deduplicates
+by stable tab ID, and preserves the visible window's focus and geometry.
+The process persists that complete snapshot while it has no windows, including
+when the last background tab is explicitly closed from the tray. Timer saves
+and normal shutdown also include detached tabs once, appended to one persisted
+window. With the content option enabled, visible and detached buffers are saved
+before teardown and retained during exit cleanup. A control that has not
+initialized retains its existing saved buffer instead of truncating it.
+A subsequently opened window replaces the frozen headless fallback.
+
 **Shell panes.** `_paneAgentSessions` holds the most recent agent session seen in
 each shell pane, keyed by the pane's connection `SessionId`. The binding arrives
 from the agent hooks, which reach `OnPaneAgentSessionChanged` through the COM
@@ -194,9 +208,10 @@ stashed helper to every tab the replay left without one.
 
 * Layout and agent bindings survive a crash, because the five-minute timer has
   already written them. At most the last five minutes of arrangement is lost.
-* Scrollback does **not** survive a crash. `buffer_{guid}.txt` is only written on
-  the way out, which is Windows Terminal's existing behavior and is unchanged
-  here. A resumed agent CLI is unaffected — it replays its own history.
+* Scrollback is **not** checkpointed by the five-minute timer. Buffers are saved
+  when a window closes or Terminal exits normally. A crash while headless retains
+  the content saved from the last visible window, not later background output.
+  A resumed agent CLI is unaffected — it replays its own history.
 * Running processes are not preserved. A build that was halfway through when the
   window closed is not halfway through when it comes back.
 * Restoring is gated on the existing **Settings → Startup → "When Terminal

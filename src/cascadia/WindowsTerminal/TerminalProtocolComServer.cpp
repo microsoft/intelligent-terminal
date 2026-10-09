@@ -10,8 +10,8 @@
 
 #include <json/json.h>
 #include <til/io.h>
+#include "../inc/TerminalProtocolProxyRegistration.h"
 #include "../TerminalProtocol/ProtocolParsing.h"
-#include "../TerminalProtocol/ProtocolMarshaling.h"
 #include "../inc/AgentRegistry.h"
 
 #include <algorithm>
@@ -73,13 +73,18 @@ try
 
     g_comMtaThread = std::thread([&ready, &regHr]() {
         auto coInit = wil::CoInitializeEx(COINIT_MULTITHREADED);
-        Microsoft::Terminal::Protocol::ScopedMarshaling marshaling;
-        regHr = marshaling.InitializeForElevatedProcess();
 
-        // Classic-COM class factory (WRL) — marshaled via the OpenConsoleProxy
-        // proxy/stub, not WinRT MBM.
+        wil::unique_hmodule proxyDll;
+        regHr = Microsoft::Terminal::Protocol::LoadAndVerifyLocalProxyDll(proxyDll);
         if (SUCCEEDED(regHr))
         {
+            // Set COM's proxy factory, not the terminal server factory below.
+            regHr = Microsoft::Terminal::Protocol::RegisterProcessLocalProxyFactory(proxyDll);
+        }
+        if (SUCCEEDED(regHr))
+        {
+            // Classic-COM class factory (WRL) — marshaled via the OpenConsoleProxy
+            // proxy/stub, not WinRT MBM.
             const auto factory = Make<SimpleClassFactory<TerminalProtocolComServer>>();
             if (!factory)
             {
@@ -115,9 +120,15 @@ try
 
         // Keep this MTA thread alive so the COM registration stays active.
         WaitForSingleObject(g_comMtaStop.get(), INFINITE);
+        LOG_IF_FAILED(Microsoft::Terminal::Protocol::UnregisterTerminalProtocolProxy());
     });
 
     ready.wait();
+    if (FAILED(regHr))
+    {
+        g_comMtaStop.SetEvent();
+        g_comMtaThread.join();
+    }
     RETURN_IF_FAILED(regHr);
     return S_OK;
 }
