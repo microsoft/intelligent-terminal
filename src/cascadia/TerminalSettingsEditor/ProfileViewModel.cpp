@@ -121,6 +121,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                    Commandline();
     }
 
+    bool ProfileViewModel::IsManagedAgentProfile() const
+    {
+        return ::Microsoft::Terminal::AgentProfiles::IsManaged(_profile);
+    }
+
     bool ProfileViewModel::IsAgentProfilePolicyBlocked() const
     {
         namespace Policy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
@@ -130,9 +135,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     void ProfileViewModel::LaunchCommandline(const hstring& value)
     {
-        if (!IsManagedAgentProfile())
+        if (value != LaunchCommandline())
         {
-            Commandline(value);
+            _profile.Commandline(value);
+            _NotifyChanges(L"HasCommandline", L"Commandline");
         }
     }
 
@@ -317,10 +323,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             {
                 _NotifyChanges(L"CurrentCommandPaletteAgent");
             }
-            else if (viewModelProperty == L"AgentProfileCustomCommand")
-            {
-                _NotifyChanges(L"IsManagedAgentProfile", L"IsAgentProfilePolicyBlocked", L"LaunchCommandline");
-            }
             else if (viewModelProperty == L"AgentProfilePermissionMode")
             {
                 _NotifyChanges(L"CurrentAgentProfilePermission", L"LaunchCommandline");
@@ -336,7 +338,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             else if (viewModelProperty == L"Commandline")
             {
                 _RefreshAgentPaneBackendList();
-                _NotifyChanges(L"LaunchCommandline");
+                _NotifyChanges(L"IsManagedAgentProfile", L"IsAgentProfilePolicyBlocked", L"LaunchCommandline");
             }
             else if (viewModelProperty == L"AntialiasingMode")
             {

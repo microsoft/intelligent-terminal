@@ -94,8 +94,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Editor::AgentEntry CurrentCommandPaletteAgent();
         void CurrentCommandPaletteAgent(const Editor::AgentEntry& value);
         void SetAvailableHostAgents(const std::unordered_set<std::wstring>& availableHostAgents);
-        bool IsAgentProfile() const { return !_profile.AgentProfileId().empty(); }
-        bool IsManagedAgentProfile() const { return IsAgentProfile() && !_profile.AgentProfileCustomCommand(); }
+        bool IsManagedAgentProfile() const;
         bool IsAgentProfilePolicyBlocked() const;
         hstring LaunchCommandline() const;
         void LaunchCommandline(const hstring& value);
@@ -149,7 +148,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         OBSERVABLE_PROJECTED_SETTING(_profile, AgentProfileModel);
         OBSERVABLE_PROJECTED_SETTING(_profile, AgentProfilePermissionMode);
         OBSERVABLE_PROJECTED_SETTING(_profile, AgentProfileArguments);
-        OBSERVABLE_PROJECTED_SETTING(_profile, AgentProfileCustomCommand);
         OBSERVABLE_PROJECTED_SETTING(_profile, DefaultSplitProfile);
         OBSERVABLE_PROJECTED_SETTING(_profile, AgentPaneBackend);
         OBSERVABLE_PROJECTED_SETTING(_profile, CommandPaletteAgent);

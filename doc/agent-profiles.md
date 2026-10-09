@@ -38,7 +38,6 @@ The profile uses these additional, flat JSON properties:
     "agentProfile.model": "",
     "agentProfile.permissionMode": "",
     "agentProfile.arguments": "",
-    "agentProfile.customCommand": false,
     "startingDirectory": "C:\\source\\project",
     "defaultSplitProfile": "default"
 }
@@ -73,11 +72,17 @@ CLI's default mode. Native CLIs can change approvals through their own
 configuration and interactive controls, so a startup-only launcher cannot
 guarantee the policy throughout the session. Settings displays this restriction.
 
-**Use a custom command line** switches the profile to its normal `commandline`
-setting. The structured model, permission, and additional-argument settings no
-longer apply. An explicit command supplied in a new-tab action also overrides
-the managed launch, following ordinary Terminal action precedence. A custom
-command is not a managed launcher or an operating-system security boundary.
+The command-line field is directly editable, just like a shell profile. Saving
+an explicit `commandline` runs that command unchanged by the agent command
+builder; structured model, permission, and additional-argument settings no
+longer apply and are hidden in Settings. Reset the command-line setting to
+restore generated native commands and the structured controls. Simply opening
+Settings or leaving the displayed command unchanged does not create an override.
+Copying a generated profile retains its structured settings; copying an edited
+profile retains its explicit command. An explicit command supplied in a new-tab
+action also overrides the managed launch, following ordinary Terminal action
+precedence. An edited command is not a managed launcher or an operating-system
+security boundary.
 
 ## Splitting panes
 

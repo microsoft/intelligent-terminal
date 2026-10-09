@@ -2701,14 +2701,6 @@ Alt+Shift+/ введіть запит; Alt+Shift+B запустіть без п�
     <value>Видалити</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
-  <data name="Profile_AgentCustomCommand.Header" xml:space="preserve">
-    <value>Використовувати власний командний рядок</value>
-    <comment>Toggle in an AI agent profile. When enabled, the user controls the full startup command instead of the managed agent launcher.</comment>
-  </data>
-  <data name="Profile_AgentCustomCommand.HelpText" xml:space="preserve">
-    <value>Виконує наведений вище командний рядок замість його створення з налаштувань агента. Наведені нижче налаштування моделі, режиму дозволів і додаткових аргументів не застосовуються до власної команди.</value>
-    <comment>Explains precedence between a custom startup command and structured AI agent profile options.</comment>
-  </data>
   <data name="Profile_AgentModel.Header" xml:space="preserve">
     <value>Модель агента</value>
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>

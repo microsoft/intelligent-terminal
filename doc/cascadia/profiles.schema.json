@@ -3220,21 +3220,16 @@
           "enum": ["", "copilot", "claude", "codex", "gemini", "opencode", null]
         },
         "agentProfile.model": {
-          "description": "Native CLI model identifier. Empty leaves the agent's own configuration unchanged. Applies only to managed launches.",
+          "description": "Native CLI model identifier. Empty leaves the agent's own configuration unchanged. Applies only when commandline has no explicit override.",
           "type": ["string", "null"]
         },
         "agentProfile.permissionMode": {
-          "description": "Provider-specific native permission mode. Empty leaves the agent's own configuration unchanged. Unsupported modes fail explicitly; these are not Windows file permissions.",
+          "description": "Provider-specific native permission mode. Empty leaves the agent's own configuration unchanged. Applies only when commandline has no explicit override. Unsupported modes fail explicitly; these are not Windows file permissions.",
           "type": ["string", "null"]
         },
         "agentProfile.arguments": {
-          "description": "Additional native CLI arguments using Windows command-line quoting, not shell syntax. Conflicts with managed options and policy are rejected.",
+          "description": "Additional native CLI arguments using Windows command-line quoting, not shell syntax. Applies only when commandline has no explicit override. Conflicts with managed options and policy are rejected.",
           "type": ["string", "null"]
-        },
-        "agentProfile.customCommand": {
-          "description": "Use commandline instead of the managed agent launcher. Structured agent model, permission and argument settings do not apply.",
-          "type": ["boolean", "null"],
-          "default": false
         },
         "defaultSplitProfile": {
           "description": "Target of profile-aware split actions: empty duplicates this profile, default selects the global default, or a profile GUID selects that profile. Explicit duplicate and explicit target actions are unchanged.",

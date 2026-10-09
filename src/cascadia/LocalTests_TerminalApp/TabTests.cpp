@@ -324,6 +324,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabChromeBackgroundTracksTheme);
         TEST_METHOD(NewTabButtonSharesChromeBackdrop);
         TEST_METHOD(NewTabFlyoutAgentIconsKeepSvgColors);
+        TEST_METHOD(AgentProfileCommandlineCopies);
         TEST_METHOD(VerticalTabStripBindsBackground);
         TEST_METHOD(VerticalTabHistorySharesBackdrop);
         TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
@@ -4547,6 +4548,29 @@ namespace TerminalAppLocalTests
                     }
                 }
             }
+        });
+    }
+
+    void TabTests::AgentProfileCommandlineCopies()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto settings = winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings::LoadDefaults();
+            const auto profile = settings.CreateNewProfile();
+            profile.AgentProfileId(L"claude");
+            profile.AgentProfileModel(L"chosen");
+            const auto copy = settings.DuplicateProfile(profile);
+            VERIFY_ARE_EQUAL(profile.AgentProfileId(), copy.AgentProfileId());
+            VERIFY_ARE_EQUAL(profile.AgentProfileModel(), copy.AgentProfileModel());
+            VERIFY_IS_FALSE(copy.HasCommandline());
+            VERIFY_IS_TRUE(winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, copy).DefaultSettings()->UsesManagedAgentCommand());
+            const winrt::hstring edited{ L"claude --model handwritten --custom-option" };
+            profile.Commandline(edited);
+            const auto editedCopy = settings.DuplicateProfile(profile);
+            VERIFY_IS_TRUE(editedCopy.HasCommandline());
+            VERIFY_ARE_EQUAL(edited, winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, editedCopy).DefaultSettings()->Commandline());
+            profile.ClearCommandline();
+            VERIFY_IS_TRUE(winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings()->UsesManagedAgentCommand());
         });
     }
 

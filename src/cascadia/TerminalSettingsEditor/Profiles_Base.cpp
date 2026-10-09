@@ -136,7 +136,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         if (!path.empty())
         {
-            _Profile.Commandline(path);
+            _Profile.LaunchCommandline(path);
         }
     }
 

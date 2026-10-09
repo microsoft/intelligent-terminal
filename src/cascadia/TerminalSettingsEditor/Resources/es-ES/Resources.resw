@@ -2997,14 +2997,6 @@ Alt+Shift+/ introduzca una consulta; Alt+Shift+B inicie sin una consulta inicial
     <value>Quitar</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
-  <data name="Profile_AgentCustomCommand.Header" xml:space="preserve">
-    <value>Usar una línea de comandos personalizada</value>
-    <comment>Toggle in an AI agent profile. When enabled, the user controls the full startup command instead of the managed agent launcher.</comment>
-  </data>
-  <data name="Profile_AgentCustomCommand.HelpText" xml:space="preserve">
-    <value>Ejecuta la línea de comandos anterior en lugar de generarla a partir de la configuración del agente. La configuración de modelo, modo de permisos y argumentos adicionales que aparece a continuación no se aplica a un comando personalizado.</value>
-    <comment>Explains precedence between a custom startup command and structured AI agent profile options.</comment>
-  </data>
   <data name="Profile_AgentModel.Header" xml:space="preserve">
     <value>Modelo del agente</value>
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>

@@ -396,7 +396,6 @@ namespace SettingsModelUnitTests
         json["agentProfile.model"] = "example-model";
         json["agentProfile.permissionMode"] = "plan";
         json["agentProfile.arguments"] = "--add-dir \"C:\\source tree\"";
-        json["agentProfile.customCommand"] = false;
         json["defaultSplitProfile"] = "default";
         auto parent = implementation::Profile::FromJson(json);
         auto child = winrt::make_self<implementation::Profile>();
@@ -414,8 +413,11 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(parent->AgentProfilePermissionMode(), restored->AgentProfilePermissionMode());
         VERIFY_ARE_EQUAL(parent->AgentProfileArguments(), restored->AgentProfileArguments());
         VERIFY_IS_TRUE(::Microsoft::Terminal::AgentProfiles::IsManaged(*restored));
-        restored->AgentProfileCustomCommand(true);
+        restored->Commandline(L"claude --model edited");
         VERIFY_IS_FALSE(::Microsoft::Terminal::AgentProfiles::IsManaged(*restored));
+        VERIFY_ARE_EQUAL(std::string{ "claude --model edited" }, restored->ToJson()["commandline"].asString());
+        restored->ClearCommandline();
+        VERIFY_IS_TRUE(::Microsoft::Terminal::AgentProfiles::IsManaged(*restored));
         VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, parent->AgentProfileId());
     }
 

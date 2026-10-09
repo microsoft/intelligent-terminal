@@ -2992,14 +2992,6 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <value>Remove</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
-  <data name="Profile_AgentCustomCommand.Header" xml:space="preserve">
-    <value>Ｕｓｅ ａ ｃｕｓｔｏｍ ｃｏｍｍａｎｄ ｌｉｎｅ !!! !!!</value>
-    <comment>Toggle in an AI agent profile. When enabled, the user controls the full startup command instead of the managed agent launcher.</comment>
-  </data>
-  <data name="Profile_AgentCustomCommand.HelpText" xml:space="preserve">
-    <value>Ｒｕｎ ｔｈｅ ｃｏｍｍａｎｄ ｌｉｎｅ ａｂｏｖｅ ｉｎｓｔｅａｄ ｏｆ ｇｅｎｅｒａｔｉｎｇ ｉｔ ｆｒｏｍ ｔｈｅ ａｇｅｎｔ ｓｅｔｔｉｎｇｓ. Ｍｏｄｅｌ, ｐｅｒｍｉｓｓｉｏｎ ｍｏｄｅ, ａｎｄ ａｄｄｉｔｉｏｎａｌ ａｒｇｕｍｅｎｔ ｓｅｔｔｉｎｇｓ ｂｅｌｏｗ ｄｏ ｎｏｔ ａｐｐｌｙ ｔｏ ａ ｃｕｓｔｏｍ ｃｏｍｍａｎｄ. !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
-    <comment>Explains precedence between a custom startup command and structured AI agent profile options.</comment>
-  </data>
   <data name="Profile_AgentModel.Header" xml:space="preserve">
     <value>Ａｇｅｎｔ ｍｏｄｅｌ !!!</value>
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>

@@ -2998,14 +2998,6 @@ Alt+Shift+/ saisir une requête ; Alt+Shift+B lancer sans requête initiale.</va
     <value>Supprimer</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
-  <data name="Profile_AgentCustomCommand.Header" xml:space="preserve">
-    <value>Utiliser une ligne de commande personnalisée</value>
-    <comment>Toggle in an AI agent profile. When enabled, the user controls the full startup command instead of the managed agent launcher.</comment>
-  </data>
-  <data name="Profile_AgentCustomCommand.HelpText" xml:space="preserve">
-    <value>Exécute la ligne de commande ci-dessus au lieu de la générer à partir des paramètres de l’agent. Les paramètres de modèle, de mode d’autorisation et d’arguments supplémentaires ci-dessous ne s’appliquent pas à une commande personnalisée.</value>
-    <comment>Explains precedence between a custom startup command and structured AI agent profile options.</comment>
-  </data>
   <data name="Profile_AgentModel.Header" xml:space="preserve">
     <value>Modèle de l’agent</value>
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>

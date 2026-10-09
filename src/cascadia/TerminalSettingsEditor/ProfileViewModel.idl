@@ -81,7 +81,6 @@ namespace Microsoft.Terminal.Settings.Editor
         AgentEntry CurrentAgentPaneBackend;
         Windows.Foundation.Collections.IObservableVector<AgentEntry> CommandPaletteAgentList { get; };
         AgentEntry CurrentCommandPaletteAgent;
-        Boolean IsAgentProfile { get; };
         Boolean IsManagedAgentProfile { get; };
         Boolean IsAgentProfilePolicyBlocked { get; };
         String LaunchCommandline;
@@ -139,7 +138,6 @@ namespace Microsoft.Terminal.Settings.Editor
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfileModel);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfilePermissionMode);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfileArguments);
-        OBSERVABLE_PROJECTED_PROFILE_SETTING(Boolean, AgentProfileCustomCommand);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, DefaultSplitProfile);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentPaneBackend);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, CommandPaletteAgent);

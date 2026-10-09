@@ -2997,14 +2997,6 @@ Alt+Shift+/ 輸入提問；Alt+Shift+B 不帶初始提問啟動。</value><comme
     <value>移除</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
-  <data name="Profile_AgentCustomCommand.Header" xml:space="preserve">
-    <value>使用自訂命令列</value>
-    <comment>Toggle in an AI agent profile. When enabled, the user controls the full startup command instead of the managed agent launcher.</comment>
-  </data>
-  <data name="Profile_AgentCustomCommand.HelpText" xml:space="preserve">
-    <value>執行上方的命令列，而不是根據智能體設定產生命令列。下方的模型、權限模式和其他引數設定不適用於自訂命令。</value>
-    <comment>Explains precedence between a custom startup command and structured AI agent profile options.</comment>
-  </data>
   <data name="Profile_AgentModel.Header" xml:space="preserve">
     <value>智能體模型</value>
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>

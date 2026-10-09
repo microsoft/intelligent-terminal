@@ -64,25 +64,14 @@
                                     Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(Profile.IsBaseLayer), Mode=OneWay}">
                 <StackPanel>
                     <TextBox x:Uid="Profile_CommandlineBox"
-                             IsEnabled="{x:Bind mtu:Converters.InvertBoolean(Profile.IsManagedAgentProfile), Mode=OneWay}"
                              IsSpellCheckEnabled="False"
                              Style="{StaticResource TextBoxSettingStyle}"
                              Text="{x:Bind Profile.LaunchCommandline, Mode=TwoWay}" />
                     <Button x:Uid="Profile_CommandlineBrowse"
-                            IsEnabled="{x:Bind mtu:Converters.InvertBoolean(Profile.IsManagedAgentProfile), Mode=OneWay}"
                             Margin="0,8,0,0"
                             Click="Commandline_Click"
                             Style="{StaticResource BrowseButtonStyle}" />
                 </StackPanel>
-            </local:SettingContainer>
-
-            <local:SettingContainer x:Uid="Profile_AgentCustomCommand"
-                                    ClearSettingValue="{x:Bind Profile.ClearAgentProfileCustomCommand}"
-                                    HasSettingValue="{x:Bind Profile.HasAgentProfileCustomCommand, Mode=OneWay}"
-                                    SettingOverrideSource="{x:Bind Profile.AgentProfileCustomCommandOverrideSource, Mode=OneWay}"
-                                    Visibility="{x:Bind Profile.IsAgentProfile, Mode=OneWay}">
-                <ToggleSwitch IsOn="{x:Bind Profile.AgentProfileCustomCommand, Mode=TwoWay}"
-                              Style="{StaticResource ToggleSwitchInExpanderStyle}" />
             </local:SettingContainer>
 
             <TextBlock x:Uid="Profile_AgentPolicyBlocked"

@@ -217,15 +217,32 @@ namespace Microsoft::Terminal::AgentProfiles
     }
 
     template<typename Profile>
-    bool IsManaged(const Profile& profile)
+    bool IsManaged(Profile&& profile)
     {
-        return !profile.AgentProfileId().empty() && !profile.AgentProfileCustomCommand();
+        if (profile.AgentProfileId().empty() || profile.HasCommandline())
+        {
+            return false;
+        }
+        const auto source = profile.CommandlineOverrideSource();
+        return !source || source.Origin() == winrt::Microsoft::Terminal::Settings::Model::OriginTag::Generated;
     }
 
     template<typename Profile>
     std::wstring Command(const Profile& profile, const bool requireExecutable = false)
     {
-        auto executable = ResolveExecutable(profile.AgentProfileId(), NativePath());
+        std::filesystem::path executable;
+        try
+        {
+            executable = ResolveExecutable(profile.AgentProfileId(), NativePath());
+        }
+        catch (const std::filesystem::filesystem_error&)
+        {
+            if (requireExecutable)
+            {
+                throw;
+            }
+            LOG_CAUGHT_EXCEPTION_MSG("Native agent command preview could not inspect the executable");
+        }
         if (executable.empty())
         {
             THROW_HR_IF_MSG(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), requireExecutable, "Native agent executable is unavailable");

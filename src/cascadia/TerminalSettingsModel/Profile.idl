@@ -64,7 +64,6 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_PROFILE_SETTING(String, AgentProfileModel);
         INHERITABLE_PROFILE_SETTING(String, AgentProfilePermissionMode);
         INHERITABLE_PROFILE_SETTING(String, AgentProfileArguments);
-        INHERITABLE_PROFILE_SETTING(Boolean, AgentProfileCustomCommand);
         INHERITABLE_PROFILE_SETTING(String, DefaultSplitProfile);
         String EvaluatedStartingDirectory { get; };
         INHERITABLE_PROFILE_SETTING(String, AgentPaneBackend);

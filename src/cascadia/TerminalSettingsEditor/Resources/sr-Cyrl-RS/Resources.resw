@@ -3044,14 +3044,6 @@ Alt+Shift+/ унесите упит; Alt+Shift+B покрените без по�
     <value>Уклони</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
-  <data name="Profile_AgentCustomCommand.Header" xml:space="preserve">
-    <value>Користи прилагођену командну линију</value>
-    <comment>Toggle in an AI agent profile. When enabled, the user controls the full startup command instead of the managed agent launcher.</comment>
-  </data>
-  <data name="Profile_AgentCustomCommand.HelpText" xml:space="preserve">
-    <value>Покреће горенаведену командну линију уместо да је генерише из подешавања агента. Доленаведена подешавања модела, режима дозвола и додатних аргумената не примењују се на прилагођену команду.</value>
-    <comment>Explains precedence between a custom startup command and structured AI agent profile options.</comment>
-  </data>
   <data name="Profile_AgentModel.Header" xml:space="preserve">
     <value>Модел агента</value>
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>

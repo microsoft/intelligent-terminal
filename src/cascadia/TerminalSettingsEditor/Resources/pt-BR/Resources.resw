@@ -3031,14 +3031,6 @@ Alt+Shift+/ insira um prompt; Alt+Shift+B inicie sem um prompt inicial.</value>
     <value>Remover</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
-  <data name="Profile_AgentCustomCommand.Header" xml:space="preserve">
-    <value>Usar uma linha de comando personalizada</value>
-    <comment>Toggle in an AI agent profile. When enabled, the user controls the full startup command instead of the managed agent launcher.</comment>
-  </data>
-  <data name="Profile_AgentCustomCommand.HelpText" xml:space="preserve">
-    <value>Executa a linha de comando acima em vez de gerá-la a partir das configurações do agente. As configurações de modelo, modo de permissão e argumentos adicionais abaixo não se aplicam a um comando personalizado.</value>
-    <comment>Explains precedence between a custom startup command and structured AI agent profile options.</comment>
-  </data>
   <data name="Profile_AgentModel.Header" xml:space="preserve">
     <value>Modelo do agente</value>
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>

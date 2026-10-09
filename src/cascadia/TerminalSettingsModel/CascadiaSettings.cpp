@@ -8,6 +8,7 @@
 
 #include "DefaultTerminal.h"
 #include "FileUtils.h"
+#include "../inc/AgentProfileUtils.h"
 
 #include <VersionHelpers.h>
 #include <WtExeUtils.h>
@@ -367,6 +368,11 @@ Model::Profile CascadiaSettings::DuplicateProfile(const Model::Profile& source)
 
     MTSM_PROFILE_SETTINGS(DUPLICATE_PROFILE_SETTINGS)
 #undef DUPLICATE_PROFILE_SETTINGS
+
+    if (::Microsoft::Terminal::AgentProfiles::IsManaged(source))
+    {
+        duplicated->ClearCommandline();
+    }
 
     // These aren't in MTSM_PROFILE_SETTINGS because they're special
     DUPLICATE_SETTING_MACRO(TabColor);
