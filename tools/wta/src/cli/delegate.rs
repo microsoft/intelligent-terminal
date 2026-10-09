@@ -97,15 +97,11 @@ pub(crate) async fn run(
                         "split target execution source changed"
                     );
                 }
-                let current_cwd = target["cwd"].as_str().filter(|cwd| match &requested_source {
-                    AgentSource::Host => std::path::Path::new(cwd).is_absolute(),
-                    AgentSource::Wsl { .. } => cwd.starts_with('/'),
-                });
-                split_cwd = Some(
-                    current_cwd
-                        .map(str::to_string)
-                        .unwrap_or_else(|| row.cwd.to_string_lossy().into_owned()),
-                );
+                split_cwd = Some(resolve_split_delegate_cwd(
+                    &requested_source,
+                    target["cwd"].as_str(),
+                    &row.cwd.to_string_lossy(),
+                )?);
             } else {
                 let (source, cwd) = resolve_native_split_source(target, provider)?;
                 requested_source = source;
@@ -201,7 +197,7 @@ fn resolve_native_split_source(
     let shell = target["shell"].as_str().unwrap_or("");
     let source = if let Some(distro) = shell.strip_prefix("wsl:") {
         anyhow::ensure!(
-            !distro.trim().is_empty() && cwd.starts_with('/'),
+            !distro.trim().is_empty(),
             "split target has incomplete WSL context"
         );
         AgentSource::Wsl {
@@ -224,7 +220,27 @@ fn resolve_native_split_source(
         );
         AgentSource::Host
     };
+    let cwd = match &source {
+        AgentSource::Wsl { .. } => select_wsl_delegate_cwd(Some(cwd), None)
+            .context("split target has no usable WSL working directory")?,
+        AgentSource::Host => cwd,
+    };
     Ok((source, cwd.to_string()))
+}
+
+fn resolve_split_delegate_cwd(
+    source: &AgentSource,
+    current_cwd: Option<&str>,
+    row_cwd: &str,
+) -> Result<String> {
+    let cwd = match source {
+        AgentSource::Host => current_cwd
+            .filter(|cwd| std::path::Path::new(cwd).is_absolute())
+            .unwrap_or(row_cwd),
+        AgentSource::Wsl { .. } => select_wsl_delegate_cwd(current_cwd, Some(row_cwd))
+            .context("split target has no usable WSL working directory")?,
+    };
+    Ok(cwd.to_string())
 }
 
 fn resolve_split_session<'a>(
@@ -582,6 +598,10 @@ async fn delegate_with_context(
             .and_then(|pane| pane.get("cwd"))
             .and_then(|v| v.as_str());
         let wsl_cwd = select_wsl_delegate_cwd(active_pane_cwd, cwd);
+        anyhow::ensure!(
+            split_pane.is_none() || wsl_cwd.is_some(),
+            "split target has no usable WSL working directory"
+        );
         let wsl_commandline = match wsl_cwd {
             Some(cwd) => {
                 format!("wsl -d {distro_arg} --cd \"{cwd}\" -- {login_invocation}")
@@ -788,6 +808,69 @@ mod tests {
     }
 
     #[test]
+    fn live_wsl_split_selects_only_usable_cwd_candidates() {
+        let source = AgentSource::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        for (current, row, expected) in [
+            (Some("/current"), "/row", "/current"),
+            (Some("/current"), "/row/\"quoted\"", "/current"),
+            (Some("/current/\"quoted\""), "/row", "/row"),
+            (Some(""), "/row", "/row"),
+            (None, "/row", "/row"),
+            (Some("  /current  "), "  /row  ", "/current"),
+            (Some(" \t "), "  /row  ", "/row"),
+            (Some("C:\\host"), "/row", "/row"),
+        ] {
+            assert_eq!(
+                super::resolve_split_delegate_cwd(&source, current, row).unwrap(),
+                expected
+            );
+        }
+        for (current, row) in [
+            (Some("/current/\"quoted\""), "/row/\"quoted\""),
+            (Some("C:\\host"), "D:\\row"),
+            (Some(""), ""),
+            (None, ""),
+            (Some(" \t "), " \n "),
+        ] {
+            let error = super::resolve_split_delegate_cwd(&source, current, row).unwrap_err();
+            assert!(super::sidebar_split_can_fallback(
+                &error,
+                true,
+                Some("pane")
+            ));
+            assert!(!error.is::<super::DelegateCreationDispatched>());
+        }
+    }
+
+    #[test]
+    fn native_wsl_split_normalizes_cwd_and_rejects_unusable_paths() {
+        let mut pane = serde_json::json!({
+            "native_agent_provider_id": "copilot",
+            "cwd": "  /home/user/current project  ", "shell": "wsl:Ubuntu",
+        });
+        assert_eq!(
+            super::resolve_native_split_source(&pane, "copilot").unwrap(),
+            (
+                AgentSource::Wsl {
+                    distro: "Ubuntu".into()
+                },
+                "/home/user/current project".into(),
+            )
+        );
+        for cwd in ["/home/\"quoted\"", "C:\\host", "", " \t "] {
+            pane["cwd"] = cwd.into();
+            let error = super::resolve_native_split_source(&pane, "copilot").unwrap_err();
+            assert!(super::sidebar_split_can_fallback(
+                &error,
+                true,
+                Some("pane")
+            ));
+        }
+    }
+
+    #[test]
     fn native_split_does_not_trust_a_shell_label_without_process_provenance() {
         let pane = serde_json::json!({
             "native_agent_provider_id": "copilot",
@@ -923,6 +1006,44 @@ mod tests {
         assert_eq!(requests[0].1["native_agent_provider_id"], "copilot");
         assert_eq!(requests[1].0, "focus_pane");
         assert_eq!(requests[1].1["session_id"], "fresh-pane");
+    }
+
+    #[tokio::test]
+    async fn wsl_split_serialization_retains_validated_cwd() {
+        let channel = std::sync::Arc::new(RecordingChannel {
+            requests: Default::default(),
+            response: serde_json::json!({"session_id": "fresh-pane"}),
+            fail_focus: false,
+        });
+        let shell = crate::shell::ShellManager::new().with_wt_channel(channel.clone());
+        let cwd = super::resolve_split_delegate_cwd(
+            &AgentSource::Wsl {
+                distro: "Ubuntu".into(),
+            },
+            Some("/current/\"quoted\""),
+            "  /home/user/current project  ",
+        )
+        .unwrap();
+        let commandline = format!("wsl -d Ubuntu --cd \"{cwd}\" -- bash -lc copilot");
+        super::create_delegate_target(
+            &shell,
+            "copilot",
+            &commandline,
+            None,
+            true,
+            Some("original-pane"),
+            "right",
+            0.4,
+        )
+        .await
+        .unwrap();
+        let requests = channel.requests.lock().unwrap();
+        assert_eq!(requests[0].0, "split_pane");
+        assert_eq!(requests[0].1["commandline"], commandline);
+        assert!(requests[0].1["commandline"]
+            .as_str()
+            .unwrap()
+            .contains("--cd \"/home/user/current project\""));
     }
 
     #[test]

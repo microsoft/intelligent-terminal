@@ -30,6 +30,14 @@ BeforeAll {
         Set-Content -LiteralPath $script:xml
     $script:full = Join-Path $script:root 'full.md'
     $script:incremental = Join-Path $script:root 'incremental.md'
+    $script:fallbackTitle = 'Agents split falls back to an ordinary terminal'
+    $script:fallbackContract = "When the PowerShell source terminal has no reusable agent identity, duplicate-split creates exactly one ordinary shell in the same tab with the source's ordinary profile and working directory. Both shells remain responsive, Agents remains selected, and no default agent or new tab is launched."
+    $script:fallbackUnitTests = @(
+        'AgentsSplitFallbackPreservesWslDirectory',
+        'AgentsSplitFallbackPreservesWindowsDirectory',
+        'AgentsSplitFallbackKeepsProfileDirectoryWhenUnusable',
+        'AgentsSplitFallbackClearsEffectiveAgentLaunchIntent'
+    )
 }
 AfterAll { Remove-Item -LiteralPath $script:root -Recurse -Force }
 Describe 'Sidebar release-report contracts without product activation' {
@@ -59,6 +67,38 @@ Describe 'Sidebar release-report contracts without product activation' {
                 $text | Should -Match ('(?m)^- \[x\].*\*\*' + [regex]::Escape($title) + ':')
             }
             $text | Should -Not -Match '(?m)^- \[x\].*`C38[23]`'
+            $fallback = @(Get-Content -LiteralPath $path | Where-Object { $_ -match '^- \[x\] `C379` ' })
+            $fallback | Should -HaveCount 1
+            $fallback[0] | Should -Be ('- [x] `C379` **{0}:** {1}' -f $script:fallbackTitle, $script:fallbackContract)
+            $text | Should -Match '(?m)^\*\*Agents split fallback unit-only coverage \(passed\):\*\*'
+        }
+    }
+    It 'keeps passed fallback unit-only cases outside C379 in full and incremental reports' {
+        $unitXml = Join-Path $script:root 'fallback-unit-only.xml'
+        $unitFull = Join-Path $script:root 'fallback-unit-full.md'
+        $unitIncremental = Join-Path $script:root 'fallback-unit-incremental.md'
+        $cases = $script:fallbackUnitTests | ForEach-Object {
+            '<test-case name="Synthetic unit report.TabTests.' + $_ + '" executed="True" result="Success" />'
+        }
+        '<test-results><test-suite><results>' + ($cases -join '') + '</results></test-suite></test-results>' |
+            Set-Content -LiteralPath $unitXml
+        & (Join-Path $PSScriptRoot '..\New-ReleaseReport.ps1') -ResultsXml $unitXml -OutFile $unitFull
+        & (Join-Path $PSScriptRoot '..\New-ReleaseReport.ps1') -ResultsXml @() -OutFile $unitIncremental
+        & (Join-Path $PSScriptRoot '..\Update-ReleaseReport.ps1') -Report $unitIncremental `
+            -ResultsXml $unitXml -OutFile $unitIncremental
+        foreach ($path in @($unitFull, $unitIncremental)) {
+            $lines = Get-Content -LiteralPath $path
+            $fallback = @($lines | Where-Object { $_ -match '^- \[[ x]\] `C379` ' })
+            $fallback | Should -HaveCount 1
+            $fallback[0] | Should -Be ('- [ ] `C379` **{0}:** {1}' -f $script:fallbackTitle, $script:fallbackContract)
+            $unitNote = @($lines | Where-Object { $_.StartsWith('**Agents split fallback unit-only coverage (passed):**') })
+            $unitNote | Should -HaveCount 1
+            $unitNote[0] | Should -Match 'WSL/Linux.*unusable directories.*--cd.*effective agent commands.*provider intent.*resume/session'
+            $unitNote[0] | Should -Match "not part of C379's checkbox E2E acceptance"
+            $unitNote[0] | Should -Match 'Live WSL/edge-case integration remains unvalidated'
+            foreach ($name in $script:fallbackUnitTests) {
+                $unitNote[0] | Should -Match ([regex]::Escape($name))
+            }
         }
     }
     It 'marks a matching failed case as failed and does not erase that evidence with a skipped-only update' {
