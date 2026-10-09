@@ -22,9 +22,9 @@ jobs:
       - name: Verify production parent and adapter-only difference
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=2 origin "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 7921a12ad8197483347ecd2ca0b80eebc10430c4
-          test "$(git diff --name-only HEAD^ HEAD)" = .github/workflows/ghaw-pr-security-official-e2e.lock.yml
+          git fetch --no-tags --depth=3 origin "$GITHUB_SHA"
+          git merge-base --is-ancestor 7921a12ad8197483347ecd2ca0b80eebc10430c4 HEAD
+          test "$(git diff --name-only 7921a12ad8197483347ecd2ca0b80eebc10430c4 HEAD)" = .github/workflows/ghaw-pr-security-official-e2e.lock.yml
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -88,12 +88,13 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $evidence = Join-Path $env:RUNNER_TEMP 'security-infra-evidence'
           New-Item -ItemType Directory -Path $evidence | Out-Null
-          git fetch --no-tags --depth=2 origin $env:GITHUB_SHA
+          git fetch --no-tags --depth=3 origin $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw 'Cannot verify test snapshot ancestry.' }
-          $parent = (git rev-parse HEAD^).Trim()
-          $changed = @(git diff --name-only HEAD^ HEAD)
-          if ($parent -ne '7921a12ad8197483347ecd2ca0b80eebc10430c4' -or
-              $changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/ghaw-pr-security-official-e2e.lock.yml') {
+          $parent = '7921a12ad8197483347ecd2ca0b80eebc10430c4'
+          git merge-base --is-ancestor $parent HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Reviewed production source is not an ancestor.' }
+          $changed = @(git diff --name-only $parent HEAD)
+          if ($changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/ghaw-pr-security-official-e2e.lock.yml') {
             throw 'Smoke snapshot must have only its adapter workflow over the reviewed production source.'
           }
           $drive = Get-PSDrive -Name C
@@ -132,8 +133,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $evidence = Join-Path $env:RUNNER_TEMP 'security-infra-evidence'
           $tools = Join-Path $env:RUNNER_TEMP 'security-infra-tools'
-          $home = Join-Path $env:RUNNER_TEMP 'security-infra-empty-home'
-          New-Item -ItemType Directory -Path $tools, $home | Out-Null
+          $isolatedHome = Join-Path $env:RUNNER_TEMP 'security-infra-empty-home'
+          New-Item -ItemType Directory -Path $tools, $isolatedHome | Out-Null
           $archive = Join-Path $tools 'copilot-win32-x64.zip'
           Invoke-WebRequest -TimeoutSec 90 -Uri 'https://github.com/github/copilot-cli/releases/download/v1.0.90/copilot-win32-x64.zip' -OutFile $archive
           if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'f153880e60a24d0d7bdb594d2c79c023259e458de50962f5da239488f750f3dc') {
@@ -144,11 +145,11 @@ jobs:
           if ((Get-FileHash $binary -Algorithm SHA256).Hash.ToLowerInvariant() -ne '8d042ae7fa94456faca8f1e5061f64b4e3add69517a63969c42e93d5c13a1e12') {
             throw 'Pinned CLI executable digest mismatch.'
           }
-          $env:HOME = $home
-          $env:USERPROFILE = $home
-          $env:COPILOT_HOME = Join-Path $home '.copilot'
-          $env:LOCALAPPDATA = Join-Path $home 'AppData\Local'
-          $env:APPDATA = Join-Path $home 'AppData\Roaming'
+          $env:HOME = $isolatedHome
+          $env:USERPROFILE = $isolatedHome
+          $env:COPILOT_HOME = Join-Path $isolatedHome '.copilot'
+          $env:LOCALAPPDATA = Join-Path $isolatedHome 'AppData\Local'
+          $env:APPDATA = Join-Path $isolatedHome 'AppData\Roaming'
           $env:COPILOT_AUTO_UPDATE = 'false'
           foreach ($argument in @('--help', '--version')) {
             $label = if ($argument -eq '--help') { 'help' } else { 'version' }
