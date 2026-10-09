@@ -272,14 +272,12 @@ function Test-ItDevPackageQuietWindow {
 function Stop-ItDevPackageProcesses {
     param([Parameter(Mandatory)]$App, [int]$GraceSec = 6)
     $root = [IO.Path]::GetFullPath([string]$App.InstallLocation).TrimEnd('\') + '\'
-    $seenDevProcess = $false
     for ($pass = 1; $pass -le 3; $pass++) {
         $processes = @(Get-WtProcessesForApp -App $App -IncludePackageExecutables)
         if (-not $processes.Count) {
-            if (-not $seenDevProcess -or (Test-ItDevPackageQuietWindow -App $App)) { return }
+            if (Test-ItDevPackageQuietWindow -App $App) { return }
             continue
         }
-        $seenDevProcess = $true
         if (-not $App.PackageFullName -or
             $App.PackageFullName -cnotlike 'IntelligentTerminal_*__rd9vj3e6a2mbr') {
             throw 'The registered Dev package identity is missing or unexpected.'

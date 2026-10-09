@@ -104,6 +104,22 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
             Should -Invoke Stop-Process -Times 0
         }
 
+        It 'closes a Dev process appearing after an initially empty discovery' {
+            $late = New-FakeTerminalProcess -Id 51002
+            $script:queries = 0
+            Mock Get-WtProcessesForApp {
+                $script:queries++
+                if ($script:queries -eq 1) { return }
+                if (-not $late.HasExited) { return $late }
+            }
+
+            Stop-StaleItInstances -App $script:app
+
+            $late.Closed | Should -BeTrue
+            $script:queries | Should -BeGreaterThan 2
+            Should -Invoke Stop-Process -Times 0
+        }
+
         It 'fails closed after three Dev respawns instead of retrying indefinitely' {
             $script:spawnedProcesses = @($script:process) + @(2..4 | ForEach-Object {
                 New-FakeTerminalProcess -Id (51000 + $_)

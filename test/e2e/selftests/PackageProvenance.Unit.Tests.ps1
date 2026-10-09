@@ -13,6 +13,7 @@ BeforeAll {
             [switch]$IncludeEncodedIcon,
             [switch]$WithMetadata,
             [switch]$OmitArchiveDll,
+            [switch]$DuplicateMixedSeparator,
             [switch]$TraversalPath,
             [switch]$WrongFamily
         )
@@ -47,12 +48,16 @@ BeforeAll {
 
         $recipe = Join-Path $sourceRoot 'CascadiaPackage.build.appxrecipe'
         $dllPackagePath = if ($TraversalPath) { '..\TerminalApp.dll' } else { 'TerminalApp.dll' }
+        $extraIcon = if ($DuplicateMixedSeparator) {
+            "<AppxPackagedFile Include=`"$sourceIcon`"><PackagePath>ProfileIcons/$iconName</PackagePath></AppxPackagedFile>"
+        } else { '' }
         @"
 <Project>
   <ItemGroup>
     <AppXManifest Include="$sourceManifest"><PackagePath>AppxManifest.xml</PackagePath></AppXManifest>
     <AppxPackagedFile Include="$sourceDll"><PackagePath>$dllPackagePath</PackagePath></AppxPackagedFile>
     <AppxPackagedFile Include="$sourceIcon"><PackagePath>$iconPackagePath</PackagePath></AppxPackagedFile>
+    $extraIcon
   </ItemGroup>
 </Project>
 "@ | Set-Content -LiteralPath $recipe
@@ -206,6 +211,13 @@ Describe 'Offline package provenance' -Tag 'Unit' {
 
     It 'rejects path traversal in a package recipe' {
         $f = New-ProvenanceFixture -TraversalPath
+        { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
+                -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
+            Should -Throw '*Invalid or duplicate package recipe path*'
+    }
+
+    It 'rejects duplicate recipe paths with mixed separators before matching MSIX entries' {
+        $f = New-ProvenanceFixture -DuplicateMixedSeparator
         { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
                 -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
             Should -Throw '*Invalid or duplicate package recipe path*'

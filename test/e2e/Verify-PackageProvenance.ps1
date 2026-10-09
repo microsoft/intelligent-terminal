@@ -141,10 +141,10 @@ try {
     $items = @(
         foreach ($item in $recipeXml.SelectNodes("//*[local-name()='AppxPackagedFile']")) {
             $pathNode = $item.SelectSingleNode("*[local-name()='PackagePath']")
-            $relative = if ($pathNode) { [string]$pathNode.InnerText } else { '' }
+            $relative = if ($pathNode) { ([string]$pathNode.InnerText).Replace('/', '\') } else { '' }
             if (-not $relative -or -not $item.Include -or
                 [IO.Path]::IsPathRooted($relative) -or $relative.Contains(':') -or
-                $relative -match '(^|[\\/])\.\.([\\/]|$)' -or
+                $relative -match '(^|\\)\.{1,2}(\\|$)' -or
                 $relative -ieq 'AppxManifest.xml' -or -not $seen.Add($relative)) {
                 throw "Invalid or duplicate package recipe path: $relative"
             }
@@ -165,7 +165,7 @@ try {
             if ($sourceHash -ne $installedHash) {
                 throw "The installed payload differs from the recipe source: $relative"
             }
-            $archivePath = $relative.Replace('/', '\')
+            $archivePath = $relative
             $included = $archiveEntries.ContainsKey($archivePath)
             if ($included) {
                 if ((Get-ArchiveHash $archiveEntries[$archivePath]) -ne $sourceHash) {
