@@ -1,0 +1,194 @@
+name: Security infrastructure smoke - no inference
+
+on:
+  push:
+    branches:
+      - test/yeelam/ghaw-security-infra-20261009
+
+permissions:
+  contents: read
+
+jobs:
+  linux-contracts:
+    if: github.repository == 'microsoft/intelligent-terminal' && github.actor == 'yeelam-gordon' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact smoke snapshot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify production parent and adapter-only difference
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=2 origin "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = 7921a12ad8197483347ecd2ca0b80eebc10430c4
+          test "$(git diff --name-only HEAD^ HEAD)" = .github/workflows/ghaw-pr-security-official-e2e.lock.yml
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Checkout immutable native test runtime
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: github/gh-aw-actions
+          ref: bc8c008a419c5b7a29df6f5641edd35fd1c6ea85
+          path: .infra-native-runtime
+          persist-credentials: false
+      - name: Run deterministic native contracts without an agent
+        timeout-minutes: 4
+        env:
+          SECURITY_PINNED_GHAW_RUNTIME: ${{ github.workspace }}/.infra-native-runtime
+        run: |
+          set -euo pipefail
+          mkdir -p infra-evidence
+          node --test --test-timeout=120000 --test-reporter=tap \
+            .github/skills/ghaw-pr-security/scripts/security-review.test.mjs \
+            .github/skills/ghaw-pr-security/scripts/security-review-driver.test.mjs \
+            .github/skills/ghaw-pr-security/scripts/prepare-security-review-private-logs.test.mjs \
+            .github/skills/ghaw-pr-security/scripts/restore-security-review-trusted-inputs.test.mjs \
+            | tee infra-evidence/contracts.tap
+          {
+            echo '## Inference-free infrastructure smoke'
+            echo
+            echo '| Check | Result | Scope |'
+            echo '| --- | --- | --- |'
+            echo '| Native contracts | PASS | Deterministic tests; no model or agent session |'
+            echo '| Production parent | 7921a12 | Adapter-only test snapshot |'
+            echo '| PR publication | Not exercised | No PR, commit/push job or guidance comment |'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain deterministic test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: infrastructure-linux-${{ github.run_id }}
+          path: infra-evidence
+          if-no-files-found: error
+
+  windows-bootstrap:
+    if: github.repository == 'microsoft/intelligent-terminal' && github.actor == 'yeelam-gordon' && github.run_attempt == 1
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      GIT_NO_REPLACE_OBJECTS: '1'
+      DOCKER_HOST: npipe:////./pipe/docker_engine
+      DOCKER_CONTEXT: ''
+    steps:
+      - name: Checkout exact smoke snapshot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Initialize evidence and verify exact source
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'security-infra-evidence'
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          git fetch --no-tags --depth=2 origin $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify test snapshot ancestry.' }
+          $parent = (git rev-parse HEAD^).Trim()
+          $changed = @(git diff --name-only HEAD^ HEAD)
+          if ($parent -ne '7921a12ad8197483347ecd2ca0b80eebc10430c4' -or
+              $changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/ghaw-pr-security-official-e2e.lock.yml') {
+            throw 'Smoke snapshot must have only its adapter workflow over the reviewed production source.'
+          }
+          $drive = Get-PSDrive -Name C
+          if ($drive.Free -lt 2GB) { throw 'Less than 2 GiB free before cold CLI extraction.' }
+          @{ source = $parent; snapshot = $env:GITHUB_SHA; freeBytesBefore = $drive.Free;
+             inferenceCommands = 0; privateExecutions = 0 } |
+            ConvertTo-Json | Set-Content (Join-Path $evidence 'source-and-disk.json')
+      - name: Validate deterministic Docker preflight cases
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Module -ListAvailable Pester | Where-Object Version -eq ([version]'5.7.1'))) {
+            Write-Host 'Required Pester 5.7.1 is missing; installing only this test dependency.'
+            Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Repository PSGallery -Force
+          }
+          Import-Module Pester -RequiredVersion 5.7.1 -Force
+          $result = Invoke-Pester -Path .\build\scripts\tests\Wait-WindowsDocker.Tests.ps1 -Output Detailed -PassThru
+          @{ passed = $result.PassedCount; failed = $result.FailedCount; skipped = $result.SkippedCount } |
+            ConvertTo-Json | Set-Content (Join-Path $env:RUNNER_TEMP 'security-infra-evidence\pester.json')
+          if ($result.PassedCount -ne 27 -or $result.FailedCount -ne 0 -or $result.SkippedCount -ne 0) {
+            throw 'Docker preflight regression suite did not pass all 27 cases.'
+          }
+      - name: Test actual installed Windows Docker readiness
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . .\build\scripts\Wait-WindowsDocker.ps1
+          Wait-WindowsDocker -EvidenceDirectory (Join-Path $env:RUNNER_TEMP 'security-infra-evidence') -DiagnosticPrefix actual-docker -TimeoutSeconds 120 |
+            ConvertTo-Json -Depth 6 | Set-Content (Join-Path $env:RUNNER_TEMP 'security-infra-evidence\docker-ready.json')
+      - name: Cold pinned CLI bootstrap without inference or credentials
+        timeout-minutes: 4
+        env:
+          GH_TOKEN: ''
+          GITHUB_TOKEN: ''
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'security-infra-evidence'
+          $tools = Join-Path $env:RUNNER_TEMP 'security-infra-tools'
+          $home = Join-Path $env:RUNNER_TEMP 'security-infra-empty-home'
+          New-Item -ItemType Directory -Path $tools, $home | Out-Null
+          $archive = Join-Path $tools 'copilot-win32-x64.zip'
+          Invoke-WebRequest -TimeoutSec 90 -Uri 'https://github.com/github/copilot-cli/releases/download/v1.0.90/copilot-win32-x64.zip' -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'f153880e60a24d0d7bdb594d2c79c023259e458de50962f5da239488f750f3dc') {
+            throw 'Pinned CLI archive digest mismatch.'
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $tools
+          $binary = Join-Path $tools 'copilot.exe'
+          if ((Get-FileHash $binary -Algorithm SHA256).Hash.ToLowerInvariant() -ne '8d042ae7fa94456faca8f1e5061f64b4e3add69517a63969c42e93d5c13a1e12') {
+            throw 'Pinned CLI executable digest mismatch.'
+          }
+          $env:HOME = $home
+          $env:USERPROFILE = $home
+          $env:COPILOT_HOME = Join-Path $home '.copilot'
+          $env:LOCALAPPDATA = Join-Path $home 'AppData\Local'
+          $env:APPDATA = Join-Path $home 'AppData\Roaming'
+          $env:COPILOT_AUTO_UPDATE = 'false'
+          foreach ($argument in @('--help', '--version')) {
+            $label = if ($argument -eq '--help') { 'help' } else { 'version' }
+            $started = [DateTime]::UtcNow
+            $child = Start-Process -FilePath $binary -ArgumentList @('--no-auto-update', '--prefer-version', '1.0.90', $argument) -PassThru `
+              -RedirectStandardOutput (Join-Path $evidence "$label.stdout.txt") `
+              -RedirectStandardError (Join-Path $evidence "$label.stderr.txt")
+            $deadline = $started.AddSeconds(90)
+            while (-not $child.WaitForExit(250) -and [DateTime]::UtcNow -lt $deadline) {}
+            $timedOut = -not $child.HasExited
+            if ($timedOut) {
+              $null = $child.CloseMainWindow()
+              if (-not $child.WaitForExit(3000)) { $child.Kill($true) }
+              if (-not $child.WaitForExit(3000)) { throw "Owned bootstrap child PID=$($child.Id) did not terminate." }
+            }
+            @{ argument = $argument; pid = $child.Id; elapsedSeconds = ([DateTime]::UtcNow - $started).TotalSeconds;
+               exitCode = $child.ExitCode; timedOut = $timedOut; inference = $false } |
+              ConvertTo-Json | Set-Content (Join-Path $evidence "$label-process.json")
+            if ($timedOut -or $child.ExitCode -ne 0) { throw "Pinned CLI $label bootstrap failed." }
+          }
+          $version = Get-Content (Join-Path $evidence 'version.stdout.txt') -Raw
+          $help = Get-Content (Join-Path $evidence 'help.stdout.txt') -Raw
+          if ($version -notmatch '1\.0\.90' -or $help.Length -lt 500) { throw 'Unexpected CLI bootstrap output.' }
+          @{ cliVersion = $version.Trim(); helpBytes = [Text.Encoding]::UTF8.GetByteCount($help);
+             freeBytesAfter = (Get-PSDrive C).Free; inferenceCommands = 0; credentialInputs = 0 } |
+            ConvertTo-Json | Set-Content (Join-Path $evidence 'bootstrap-result.json')
+          @(
+            '## Inference-free Windows infrastructure smoke'
+            ''
+            '| Check | Result | Scope |'
+            '| --- | --- | --- |'
+            '| Docker regression cases | PASS | 27 mocked cases; no app deployment |'
+            '| Actual Docker service | PASS | Installed Windows engine readiness only |'
+            '| Pinned CLI cold bootstrap | PASS | 1.0.90 help/version, no model or agent session |'
+            '| Model and publication | Not exercised | No prompt, repair, PR or comment |'
+          ) | Add-Content $env:GITHUB_STEP_SUMMARY
+      - name: Retain infrastructure diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: infrastructure-windows-${{ github.run_id }}
+          path: ${{ runner.temp }}/security-infra-evidence
+          if-no-files-found: error
