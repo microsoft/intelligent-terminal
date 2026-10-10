@@ -108,7 +108,7 @@ below rather than uninstalling and unpacking the MSIX into another layout.
 For signing and distributing an MSIX, see [Building Installers](building-installer.md);
 that distribution workflow is separate from the loose Dev inner loop.
 
-### Loose Debug/Dev deployment
+### Loose Debug and Dev deployment
 
 After building the package, deploy the canonical Intelligent Terminal Dev layout:
 

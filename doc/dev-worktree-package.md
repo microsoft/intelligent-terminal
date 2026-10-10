@@ -40,7 +40,7 @@ Expand `build\templates\Package-DevWorktree.appxmanifest.template` into
 
 Parse the result as XML; no placeholders may remain. The fresh-layout registration
 below requires a version newer than this worktree's installed version, not an
-uninstall. This is separate from [same-layout recipe redeployment](building.md#loose-debugdev-deployment),
+uninstall. This is separate from [same-layout recipe redeployment](building.md#loose-debug-and-dev-deployment),
 which can retain the same version.
 
 Make these additional **Dev-only** edits:
