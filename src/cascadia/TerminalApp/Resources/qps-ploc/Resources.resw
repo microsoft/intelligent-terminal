@@ -1584,6 +1584,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>[Îñ ûśé!!]</value>
     <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
   </data>
+  <data name="VerticalTabsHistoryInUseToolTip" xml:space="preserve">
+    <value>[Ţĥïś śéśśïöñ ïś öþéñ ïñ åñöţĥéŕ åþþļïçåţïöñ.!!!! !!!!]</value>
+    <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
     <value>[Àçţïṽé!!]</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>

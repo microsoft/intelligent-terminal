@@ -132,18 +132,21 @@ agent action, not an override of the normal new-tab control.
   activation, rather than also activating its containing row.
   Provider identity remains available through the icon tooltip and shared search.
   The working directory supports search highlighting and a full-path tooltip.
+  For **In use** sessions, hovering the row, working directory, or provider icon
+  instead explains: **This session is open in another application.**
+  The tooltip follows status changes without replacing the row.
   Text may truncate with an ellipsis at the minimum sidebar width; the ownership
   action retains reserved space.
-- History ages use Windows ICU's standard, locale-aware **short numeric relative
-  time** format (CLDR), using the UI resource language rather than private unit
-  abbreviations. For example, English uses `2 min. ago`, `2 hr. ago`, `2 wk. ago`,
-  `2 mo. ago`, and `2 yr. ago`; translations and grammar come from the platform.
-  Below a minute, the existing localized “just now” text remains. Whole elapsed
-  minutes, hours, days, and seven-day weeks are floored; older timestamps use
-  completed Gregorian UTC calendar months and years, including month-end and
-  leap-year adjustment, rather than fixed 30-day/365-day approximations.
+- History ages match the original session-management view: localized,
+  unabbreviated numeric relative time below seven days, such as `2 minutes ago`,
+  `2 hours ago`, and `2 days ago`. Below a minute, the existing localized
+  “just now” text remains. Whole elapsed minutes, hours, and days are floored.
+  At exactly seven days and beyond, display the session's UTC calendar date
+  using Windows' localized long-date format, rather than weeks, months, or years
+  ago. Relative-time translations and plural grammar come from Windows ICU's
+  long CLDR format; date ordering and month names come from `GetDateFormatEx`,
+  using the UI resource language.
   Missing or unsupported timestamps, or timestamps that cannot be formatted, retain localized “unknown.”
-  ICU's normal locale fallback applies, including for unsupported pseudo-locales.
 - The sidebar has exactly one vertical scrolling viewport containing the
   eligible open tabs followed by **Recent agent sessions** when requested.
   The live section grows or shrinks with its tab, group, and pane rows; this does

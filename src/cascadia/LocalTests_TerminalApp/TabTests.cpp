@@ -7257,20 +7257,20 @@ namespace TerminalAppLocalTests
                 { 0, justNow },
                 { 1'000, justNow },
                 { 59'999, justNow },
-                { 60'000, L"1 min. ago" },
-                { 119'999, L"1 min. ago" },
-                { 120'000, L"2 min. ago" },
-                { 3'599'999, L"59 min. ago" },
-                { 3'600'000, L"1 hr. ago" },
-                { 7'199'999, L"1 hr. ago" },
-                { 7'200'000, L"2 hr. ago" },
-                { 86'399'999, L"23 hr. ago" },
+                { 60'000, L"1 minute ago" },
+                { 119'999, L"1 minute ago" },
+                { 120'000, L"2 minutes ago" },
+                { 3'599'999, L"59 minutes ago" },
+                { 3'600'000, L"1 hour ago" },
+                { 7'199'999, L"1 hour ago" },
+                { 7'200'000, L"2 hours ago" },
+                { 86'399'999, L"23 hours ago" },
                 { 86'400'000, L"1 day ago" },
                 { 172'799'999, L"1 day ago" },
                 { 172'800'000, L"2 days ago" },
                 { 7ULL * 86'400'000 - 1, L"6 days ago" },
-                { 7ULL * 86'400'000, L"1 wk. ago" },
-                { 14ULL * 86'400'000, L"2 wk. ago" },
+                { 7ULL * 86'400'000, L"Saturday, April 4, 1970" },
+                { 14ULL * 86'400'000, L"Saturday, March 28, 1970" },
                 { nowMs, unknown },
             };
             for (const auto& test : cases)
@@ -7282,28 +7282,13 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(unknown, Page::_SidebarHistoryAgeText(std::nullopt, nowMs));
             VERIFY_ARE_EQUAL(unknown, Page::_SidebarHistoryAgeText(UINT64_MAX - 60'000, UINT64_MAX));
             VERIFY_ARE_EQUAL(unknown, Page::_SidebarHistoryAgeText(nowMs - 60'000, nowMs, L"invalid!"));
+            VERIFY_ARE_EQUAL(unknown, Page::_SidebarHistoryAgeText(nowMs - 7ULL * 86'400'000, nowMs, L"invalid!"));
 
             const auto utcMs = [](int year, unsigned month, unsigned day) {
                 const auto time = std::chrono::sys_days{ std::chrono::year{ year } / month / day } + std::chrono::hours{ 12 };
                 return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(time.time_since_epoch()).count());
             };
-            const auto calendarAge = [&](int year, unsigned month, unsigned day, uint64_t now) {
-                return Page::_SidebarHistoryAgeText(utcMs(year, month, day), now, L"en-US");
-            };
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"1 wk. ago" }, calendarAge(2026, 9, 21, utcMs(2026, 9, 28)));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"1 mo. ago" }, calendarAge(2026, 1, 31, utcMs(2026, 2, 28)));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"3 wk. ago" }, calendarAge(2026, 1, 31, utcMs(2026, 2, 28) - 1));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"1 mo. ago" }, calendarAge(2024, 1, 31, utcMs(2024, 2, 29)));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"2 mo. ago" }, calendarAge(2026, 7, 28, utcMs(2026, 9, 28)));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"1 yr. ago" }, calendarAge(2024, 2, 29, utcMs(2025, 2, 28)));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"11 mo. ago" }, calendarAge(2024, 2, 29, utcMs(2025, 2, 28) - 1));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"2 yr. ago" }, calendarAge(2024, 9, 28, utcMs(2026, 9, 28)));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"56 yr. ago" }, Page::_SidebarHistoryAgeText(1, utcMs(2026, 9, 28), L"en-US"));
-            VERIFY_IS_TRUE(Page::_SidebarHistoryAgeText(nowMs - 120'000, nowMs, L"en-US").size() < std::wstring_view{ L"2 minutes ago" }.size());
-            VERIFY_ARE_NOT_EQUAL(Page::_SidebarHistoryAgeText(nowMs - 120'000, nowMs, L"en-US"),
-                                 calendarAge(2026, 7, 28, utcMs(2026, 9, 28)));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"2分钟前" }, Page::_SidebarHistoryAgeText(nowMs - 120'000, nowMs, L"zh-CN"));
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"2个月前" }, Page::_SidebarHistoryAgeText(utcMs(2026, 7, 28), utcMs(2026, 9, 28), L"zh-CN"));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"2 分前" }, Page::_SidebarHistoryAgeText(nowMs - 120'000, nowMs, L"ja-JP"));
             const auto arabic = Page::_SidebarHistoryAgeText(nowMs - 120'000, nowMs, L"ar-SA");
             VERIFY_ARE_NOT_EQUAL(unknown, arabic);
@@ -7320,16 +7305,13 @@ namespace TerminalAppLocalTests
                 { UDAT_REL_UNIT_MINUTE, calendarNow - 120'000 },
                 { UDAT_REL_UNIT_HOUR, calendarNow - 7'200'000 },
                 { UDAT_REL_UNIT_DAY, calendarNow - 2 * 86'400'000ULL },
-                { UDAT_REL_UNIT_WEEK, calendarNow - 14 * 86'400'000ULL },
-                { UDAT_REL_UNIT_MONTH, utcMs(2026, 7, 28) },
-                { UDAT_REL_UNIT_YEAR, utcMs(2024, 9, 28) },
             };
             // Compare all units against the installed CLDR data, not private translations.
             for (const auto locale : { L"en-US", L"de-DE", L"zh-CN", L"ja-JP", L"ar-SA" })
             {
                 UErrorCode status = U_ZERO_ERROR;
                 using Formatter = wistd::unique_ptr<URelativeDateTimeFormatter, wil::function_deleter<decltype(&ureldatefmt_close), &ureldatefmt_close>>;
-                Formatter formatter{ ureldatefmt_open(winrt::to_string(locale).c_str(), nullptr, UDAT_STYLE_SHORT, UDISPCTX_CAPITALIZATION_NONE, &status) };
+                Formatter formatter{ ureldatefmt_open(winrt::to_string(locale).c_str(), nullptr, UDAT_STYLE_LONG, UDISPCTX_CAPITALIZATION_NONE, &status) };
                 VERIFY_IS_FALSE(U_FAILURE(status) != 0);
                 VERIFY_IS_NOT_NULL(formatter.get());
                 for (const auto& test : units)
@@ -7340,6 +7322,24 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_TRUE(length > 0 && length < ARRAYSIZE(buffer));
                     const winrt::hstring expected{ std::wstring{ buffer, buffer + length } };
                     VERIFY_ARE_EQUAL(expected, Page::_SidebarHistoryAgeText(test.last, calendarNow, locale));
+                }
+                for (const auto& [year, month, day] : {
+                         std::tuple{ 2026, 9u, 21u },
+                         std::tuple{ 2026, 1u, 31u },
+                         std::tuple{ 2024, 2u, 29u },
+                     })
+                {
+                    SYSTEMTIME date{};
+                    date.wYear = static_cast<WORD>(year);
+                    date.wMonth = static_cast<WORD>(month);
+                    date.wDay = static_cast<WORD>(day);
+                    wchar_t buffer[256]{};
+                    const auto length = GetDateFormatEx(locale, DATE_LONGDATE, &date, nullptr, buffer, ARRAYSIZE(buffer), nullptr);
+                    VERIFY_IS_TRUE(length > 0);
+                    const winrt::hstring expected{ std::wstring_view{ buffer, static_cast<size_t>(length - 1) } };
+                    const auto last = utcMs(year, month, day);
+                    VERIFY_ARE_EQUAL(expected, Page::_SidebarHistoryAgeText(last, calendarNow, locale));
+                    VERIFY_ARE_EQUAL(expected, Page::_SidebarHistoryAgeText(last, calendarNow + 10 * 86'400'000ULL, locale));
                 }
             }
         });
@@ -7448,6 +7448,20 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(strip.SelectedItem() == tab);
             VERIFY_IS_TRUE(winrt::Windows::UI::Xaml::Input::FocusManager::GetFocusedElement() == focused);
             VERIFY_IS_TRUE(first.IsCurrent());
+            const auto boundary = makeItem(L"copilot", nowMs - 7ULL * 86'400'000 + 60'000);
+            boundary.SessionId(L"date-boundary");
+            impl->CommitHistorySnapshot({ boundary });
+            const auto relativeText = boundary.Subtitle();
+            changes.clear();
+            impl->_refreshHistoryAges(nowMs + 59'999);
+            VERIFY_ARE_EQUAL(relativeText, boundary.Subtitle());
+            impl->_refreshHistoryAges(nowMs + 60'000);
+            const auto dateText = boundary.Subtitle();
+            VERIFY_ARE_NOT_EQUAL(relativeText, dateText);
+            impl->_refreshHistoryAges(nowMs + 10 * 86'400'000ULL);
+            VERIFY_ARE_EQUAL(dateText, boundary.Subtitle());
+            VERIFY_IS_TRUE(changes.empty());
+            VERIFY_IS_TRUE(items.GetAt(0) == boundary);
         });
     }
 
@@ -7605,7 +7619,7 @@ namespace TerminalAppLocalTests
             const auto ownership = row.FindName(L"HistoryOwnershipButton").as<Button>();
             VERIFY_ARE_EQUAL(1, Grid::GetColumn(ownership));
             ownership.Visibility(Visibility::Visible);
-            subtitle.Text(L"2 min. ago");
+            subtitle.Text(L"2 minutes ago");
             status.Text(L"Waiting for input");
             status.TextBlockStyle(strip.Resources().Lookup(winrt::box_value(L"HistoryActiveTextStyle")).as<Style>());
             subtitle.ApplyTemplate();
@@ -7664,6 +7678,11 @@ namespace TerminalAppLocalTests
         const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
         TestOnUIThread([&]() {
             using Page = winrt::TerminalApp::implementation::TerminalPage;
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            const auto externalTip = resources.GetValue(L"VerticalTabsHistoryInUseToolTip").ValueAsString();
+            VERIFY_IS_FALSE(externalTip.empty());
             strip.Width(360);
             strip.Height(400);
             for (const auto state : { "InUse", "Idle", "Working", "Attention", "Error", "Historical", "Ended" })
@@ -7688,9 +7707,13 @@ namespace TerminalAppLocalTests
                 const auto age = row.FindName(L"HistorySubtitleText").as<winrt::TerminalApp::HighlightedTextControl>();
                 const auto status = row.FindName(L"HistoryStatusText").as<winrt::TerminalApp::HighlightedTextControl>();
                 const auto historical = std::string_view{ state } == "Historical" || std::string_view{ state } == "Ended";
+                const auto external = std::string_view{ state } == "InUse";
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"Session title" }, title.Text());
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\work\\project" }, cwd.Text());
-                VERIFY_ARE_EQUAL(cwd.Text(), winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(cwd)));
+                VERIFY_ARE_EQUAL(external ? externalTip : cwd.Text(), winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(cwd)));
+                const auto icon = row.FindName(L"HistoryProviderIcon").as<ContentControl>();
+                VERIFY_ARE_EQUAL(external ? externalTip : item.ProviderDisplayName(), winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(icon)));
+                VERIFY_ARE_EQUAL(external, ToolTipService::GetToolTip(row) != nullptr);
                 VERIFY_ARE_EQUAL(historical ? Visibility::Visible : Visibility::Collapsed, age.Visibility());
                 VERIFY_ARE_EQUAL(historical ? Visibility::Collapsed : Visibility::Visible, status.Visibility());
                 VERIFY_ARE_EQUAL(item.Subtitle(), age.Text());
@@ -7702,6 +7725,14 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(historical ? Visibility::Collapsed : Visibility::Visible, age.Visibility());
                 VERIFY_ARE_EQUAL(historical ? Visibility::Visible : Visibility::Collapsed, status.Visibility());
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\work\\project" }, cwd.Text());
+                VERIFY_ARE_EQUAL(cwd.Text(), winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(cwd)));
+                VERIFY_IS_NULL(ToolTipService::GetToolTip(row));
+                VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"three-lines", L"", L"InUse", L"In use"));
+                strip.UpdateLayout();
+                VERIFY_ARE_EQUAL(externalTip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(row)));
+                VERIFY_ARE_EQUAL(externalTip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(cwd)));
+                VERIFY_ARE_EQUAL(externalTip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(icon)));
+                VERIFY_ARE_EQUAL(externalTip, Automation::AutomationProperties::GetHelpText(row));
             }
         });
         view.Search(L"project");

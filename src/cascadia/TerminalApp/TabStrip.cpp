@@ -975,6 +975,22 @@ namespace winrt::TerminalApp::implementation
         }
         const auto isCurrent = item && item.IsCurrent();
         const auto nativeItem = item ? winrt::get_self<TabStripHistoryItem>(item) : nullptr;
+        const auto external = item && item.Status() == L"InUse";
+        const auto externalTip = external ? RS_(L"VerticalTabsHistoryInUseToolTip") : winrt::hstring{};
+        ToolTipService::SetToolTip(root, external ? box_value(externalTip) : nullptr);
+        WUX::Automation::AutomationProperties::SetHelpText(root, externalTip);
+        if (const auto cwd = root.FindName(L"HistoryCwdText").try_as<Control>())
+        {
+            const auto tip = external ? externalTip : item ? item.Cwd() :
+                                                             winrt::hstring{};
+            ToolTipService::SetToolTip(cwd, tip.empty() ? nullptr : box_value(tip));
+        }
+        if (const auto icon = root.FindName(L"HistoryProviderIcon").try_as<Control>())
+        {
+            const auto tip = external ? externalTip : item ? item.ProviderDisplayName() :
+                                                             winrt::hstring{};
+            ToolTipService::SetToolTip(icon, tip.empty() ? nullptr : box_value(tip));
+        }
         const auto background = nativeItem && nativeItem->BackgroundTab();
         const auto otherWindow = nativeItem && nativeItem->OtherWindow();
         if (const auto button = root.FindName(L"HistoryOwnershipButton").try_as<Button>())
@@ -1592,6 +1608,10 @@ namespace winrt::TerminalApp::implementation
                 if (item.SessionId() == sessionId)
                 {
                     applyStatus(item);
+                    if (const auto container = ItemsList().ContainerFromItem(item).try_as<ListViewItem>())
+                    {
+                        _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), item);
+                    }
                 }
             }
             _applyHistoryProjection(true);

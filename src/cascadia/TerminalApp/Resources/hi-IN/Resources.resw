@@ -678,6 +678,10 @@
     <value>उपयोग में</value>
     <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
   </data>
+  <data name="VerticalTabsHistoryInUseToolTip" xml:space="preserve">
+    <value>यह सत्र किसी अन्य अनुप्रयोग में खुला है।</value>
+    <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
     <value>सक्रिय</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>
