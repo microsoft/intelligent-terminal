@@ -419,6 +419,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryWslDistroMetadata);
         TEST_METHOD(VerticalTabHistoryCurrentSessionTracksPane);
         TEST_METHOD(VerticalTabHistoryKeepRunningTracksOwningTab);
+        TEST_METHOD(VerticalTabHistoryKeepRunningFollowsPaneTransfer);
         TEST_METHOD(VerticalTabHistoryKeepRunningBadgeFitsRow);
         TEST_METHOD(VerticalTabHistoryCurrentSessionColors);
         TEST_METHOD(VerticalTabHistoryAgentIcons);
@@ -9755,10 +9756,93 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalTabHistoryKeepRunningFollowsPaneTransfer()
+    {
+        for (const auto targetKeepRunning : { false, true })
+        {
+            auto fixture = _createContentTransferFixture(false, false, false, true);
+            const auto cleanup = wil::scope_exit([&]() {
+                LOG_IF_FAILED(RunOnUIThread([&]() {
+                    _closeContentTransferFixture(*fixture, false);
+                    fixture.reset();
+                }));
+            });
+            TestOnUIThread([&]() {
+                const auto sourceTab = fixture->original.tab;
+                fixture->source->_HandleClosePaneRequested(sourceTab->FindAgentPane());
+            });
+            _waitForContentTransferReviewUI([&]() {
+                return fixture->original.tab->FindAgentPane() == nullptr;
+            });
+            TestOnUIThread([&]() {
+                const auto sourceTab = fixture->original.tab;
+                VERIFY_ARE_EQUAL(1, sourceTab->GetLeafPaneCount());
+                const auto sourceControl = sourceTab->GetActiveTerminalControl();
+                const auto connection = sourceControl.Connection();
+                const auto paneId = connection.SessionId();
+                const auto targetTab = fixture->destination->_GetFocusedTabImpl();
+                targetTab->KeepRunning(targetKeepRunning);
+                const auto observer = _createStartupRestorePeer(fixture->source);
+                VERIFY_IS_TRUE(observer->_ApplyTabLayout(TabLayout::Vertical));
+                observer->_CompleteTabLayoutChange(observer->_tabLayoutGeneration);
+                observer->_historyRefreshInFlight = true;
+                observer->_tabStrip.HistoryActive(true);
+                const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(observer->_tabStrip);
+                const auto makeItem = [&]() {
+                    auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                    item.SessionId(L"transferred-session");
+                    item.Title(L"Transferred session");
+                    item.Subtitle(winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryAgeText(std::nullopt, 0));
+                    item.PaneSessionId(winrt::to_hstring(paneId));
+                    item.AgentId(L"copilot");
+                    item.AgentSource(L"host");
+                    item.Status(L"Idle");
+                    item.IsLive(true);
+                    return item;
+                };
+                const auto item = makeItem();
+                strip->CommitHistorySnapshot({ item });
+                strip->CommitHistorySnapshot({ makeItem() });
+                VERIFY_IS_TRUE(observer->_tabStrip.HistoryItems().GetAt(0) == item);
+                sourceTab->KeepRunning(true);
+                VERIFY_IS_TRUE(item.IsKeepRunning());
+                uint32_t collectionChanges{};
+                const auto changed = observer->_tabStrip.HistoryItems().VectorChanged(
+                    winrt::auto_revoke, [&](auto&&, auto&&) { ++collectionChanges; });
+
+                winrt::TerminalApp::RequestMoveContentArgs request{ nullptr };
+                const auto token = fixture->source->RequestMoveContent([&](auto&&, const winrt::TerminalApp::RequestMoveContentArgs& args) {
+                    request = args;
+                });
+                const auto revoke = wil::scope_exit([&]() { fixture->source->RequestMoveContent(token); });
+                VERIFY_IS_TRUE(fixture->source->_MovePane(MovePaneArgs{ 0, L"transaction-destination" }));
+                VERIFY_IS_NOT_NULL(request);
+                VERIFY_IS_TRUE(fixture->destination->AttachContent(
+                    ActionAndArgs::Deserialize(request.Content()), 0, request.TransferId()));
+
+                const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(fixture->source->_manager);
+                VERIFY_ARE_EQUAL(0u, fixture->source->_tabs.Size());
+                VERIFY_IS_TRUE(fixture->destination->_GetFocusedTabImpl() == targetTab);
+                VERIFY_ARE_EQUAL(targetKeepRunning, targetTab->KeepRunning());
+                VERIFY_ARE_EQUAL(targetKeepRunning, manager->IsPaneKeepRunning(paneId));
+                VERIFY_ARE_EQUAL(targetKeepRunning, item.IsKeepRunning());
+                VERIFY_IS_TRUE(observer->_tabStrip.HistoryItems().GetAt(0) == item);
+                VERIFY_ARE_EQUAL(0u, collectionChanges);
+                const auto movedControl = targetTab->GetRootPane()->FindPaneBySessionId(paneId)->GetTerminalControl();
+                VERIFY_IS_TRUE(movedControl.Connection() == connection);
+                strip->CommitHistorySnapshot({ makeItem() });
+                VERIFY_ARE_EQUAL(targetKeepRunning, item.IsKeepRunning());
+                VERIFY_ARE_EQUAL(0u, collectionChanges);
+            });
+        }
+    }
+
     void TabTests::VerticalTabHistoryKeepRunningBadgeFitsRow()
     {
         HistoryTestView view;
         winrt::TerminalApp::TabStripHistoryItem item{ nullptr };
+        ::details::Event rowLoaded;
+        FrameworkElement::Loaded_revoker loaded;
         TestOnUIThread([&]() {
             const auto strip = view.strip;
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
@@ -9775,8 +9859,21 @@ namespace TerminalAppLocalTests
             strip.Width(260);
             strip.Height(400);
             strip.UpdateLayout();
+            const auto container = impl->ItemsList().ContainerFromItem(item).as<ListViewItem>();
+            const auto row = container.ContentTemplateRoot().as<Grid>();
+            const auto icon = row.FindName(L"HistoryKeepRunningIcon").as<FontIcon>();
+            if (Automation::AutomationProperties::GetName(icon).empty())
+            {
+                loaded = row.Loaded(winrt::auto_revoke, [&](auto&&, auto&&) { rowLoaded.Set(); });
+            }
+            else
+            {
+                rowLoaded.Set();
+            }
         });
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(rowLoaded.m_handle, 10000));
         TestOnUIThread([&]() {
+            loaded.revoke();
             const auto strip = view.strip;
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             const auto container = impl->ItemsList().ContainerFromItem(item).as<ListViewItem>();

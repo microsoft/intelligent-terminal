@@ -58,6 +58,9 @@ the mutable tab index or a pane's `WT_SESSION`:
 The choice belongs to the tab, not individual panes. New splits are included
 automatically. Moving a whole tab carries its choice; moving one pane does not
 opt its destination tab in. Agent CLI start/end events do not change the choice.
+After a pane move commits, recent-session indicators immediately reflect the
+receiving tab's choice, including when moving the source tab's last pane removes
+that tab. Moving a whole tab or retaining it in the background preserves its choice.
 
 ## Closing and restoring
 

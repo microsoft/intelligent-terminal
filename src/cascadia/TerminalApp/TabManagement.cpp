@@ -1100,6 +1100,7 @@ namespace winrt::TerminalApp::implementation
                 if (movingAway)
                 {
                     tab.Shutdown();
+                    winrt::get_self<implementation::ContentManager>(_manager)->UpdateKeepRunningTab(tab);
                 }
                 else
                 {
@@ -1176,6 +1177,10 @@ namespace winrt::TerminalApp::implementation
         if (!keepAlive)
         {
             tab.Shutdown();
+            if (const auto impl = _GetTabImpl(tab); impl && impl->KeepRunning())
+            {
+                winrt::get_self<implementation::ContentManager>(_manager)->UpdateKeepRunningTab(tab);
+            }
         }
         else
         {
