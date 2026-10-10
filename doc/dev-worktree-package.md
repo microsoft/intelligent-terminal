@@ -38,8 +38,10 @@ Expand `build\templates\Package-DevWorktree.appxmanifest.template` into
 | `__DEV_PACKAGE_VERSION__` | The original Dev manifest version |
 | `__DEV_PACKAGE_RESOURCES__` | The original `<Resources>` element's inner XML |
 
-Parse the result as XML; no placeholders may remain. For redeployment, use a
-version newer than this worktree's installed version, not an uninstall.
+Parse the result as XML; no placeholders may remain. The fresh-layout registration
+below requires a version newer than this worktree's installed version, not an
+uninstall. This is separate from [same-layout recipe redeployment](building.md#loose-debug-and-dev-deployment),
+which can retain the same version.
 
 Make these additional **Dev-only** edits:
 
