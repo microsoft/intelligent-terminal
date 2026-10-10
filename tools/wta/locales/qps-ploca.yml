@@ -132,6 +132,34 @@ agents.status.in_use: "[!!_Îñ ûśé_!!]"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "[!!_  (Ctrl+Shift+. to show/hide agent pane • Ctrl+Shift+/ to show/hide agent session)_!!]"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "[!!_%{count} ḿéśśåĝéś qûéûéď_!!]"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "[!!_%{count} ḿéśśåĝé qûéûéď_!!]"  # Same count indicator when exactly one request is waiting; %{count} is 1
+queue.full: "[!!_Ｑｕｅｕｅ ｉｓ ｆｕｌｌ. Ｙｏｕｒ ｉｎｐｕｔ ｈａｓ ｂｅｅｎ ｋｅｐｔ._!!]"
+queue.enqueued: "[!!_Ｍｅｓｓａｇｅ ｑｕｅｕｅｄ._!!]"  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "[!!_Ｃａｎｃｅｌｌｅｄ %{count} ｑｕｅｕｅｄ ｍｅｓｓａｇｅｓ. Ｙｏｕ ｃａｎ ｓｅｎｄ ａ ｎｅｗ ｍｅｓｓａｇｅ._!!]"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "[!!_Ｑｕｅｕｅｄ ｍｅｓｓａｇｅｓ ｂｅｌｏｎｇ ｔｏ ｔｈｉｓ ｃｏｎｖｅｒｓａｔｉｏｎ. Ｓｅｎｄ ｏｒ ｄｉｓｃａｒｄ ｔｈｅｍ ｂｅｆｏｒｅ ｃｈａｎｇｉｎｇ ｓｅｓｓｉｏｎｓ ｏｒ ｃｏｎｆｉｇｕｒａｔｉｏｎ._!!]"
+queue.paused_header: "[!!_Ｐａｕｓｅｄ: %{count} ｐｅｎｄｉｎｇ; ｎｏｔ ｓｅｎｔ ａｕｔｏｍａｔｉｃａｌｌｙ_!!]"  # Pinned heading: automatic sending is stopped
+queue.recall: "[!!_Ｒｅｃａｌｌ ｌａｓｔ_!!]"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "[!!_Ｓｅｎｄ ｒｅｍａｉｎｉｎｇ_!!]"  # Button: resume sending pending requests
+queue.discard: "[!!_Ｄｉｓｃａｒｄ ｒｅｍａｉｎｉｎｇ_!!]"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "[!!_Ｓｕｂｍｉｔ ｏｒ ｃｌｅａｒ ｔｈｅ ｃｕｒｒｅｎｔ ｄｒａｆｔ ｂｅｆｏｒｅ ｒｅｃａｌｌｉｎｇ ａ ｑｕｅｕｅｄ ｒｅｑｕｅｓｔ._!!]"
+queue.enqueued_paused: "[!!_Ａｄｄｅｄ ｔｏ ｔｈｅ ｓｔｏｐｐｅｄ ｑｕｅｕｅ. Ｃｈｏｏｓｅ Ｓｅｎｄ ｒｅｍａｉｎｉｎｇ ｔｏ ｓｔａｒｔ ｉｔ._!!]"
+queue.resubmit: "[!!_Ｎｅｅｄｓ ｒｅｓｕｂｍｉｓｓｉｏｎ_!!]"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "[!!_Ｗａｉｔｉｎｇ ｒｅｑｕｅｓｔｓ ｃａｎｎｏｔ ｂｅ ｓｅｎｔ ｙｅｔ. Ｒｅｓｏｌｖｅ ｔｈｅ ｃｏｎｎｅｃｔｉｏｎ ｏｒ ａｃｔｉｖｅ ｉｎｔｅｒａｃｔｉｏｎ; ｒｅｃａｌｌ ａｎｄ ｒｅｓｕｂｍｉｔ ａｎｙ ｅｘｐｉｒｅｄ ｆｉｘ ｒｅｑｕｅｓｔｓ._!!]"
+queue.stopped: "[!!_Ｓｔｏｐｐｅｄ ａｕｔｏｍａｔｉｃ ｓｅｎｄｉｎｇ. Ｐｅｎｄｉｎｇ ｕｓｅｒ ｒｅｑｕｅｓｔｓ ｈａｖｅ ｂｅｅｎ ｋｅｐｔ._!!]"
+queue.capture_failed: "[!!_Ｃｏｕｌｄ ｎｏｔ ｐｒｅｓｅｒｖｅ ｔｈｅ ｅｒｒｏｒ ｃｏｎｔｅｘｔ: %{error}_!!]"
+queue.auto: "[!!_Ａｕｔｏｍａｔｉｃ ｆｉｘ_!!]"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "[!!_Ａｕｔｏ-ｆｉｘ ｃａｐｔｕｒｅ ｒｅｑｕｉｒｅｓ ａｎ ｅｘｐｌｉｃｉｔ ｓｏｕｒｃｅ ｐａｎｅ._!!]"
+queue.snapshot_source_unavailable: "[!!_Ａｕｔｏ-ｆｉｘ ｓｏｕｒｃｅ ｐａｎｅ %{pane} ｉｓ ｕｎａｖａｉｌａｂｌｅ._!!]"
+queue.snapshot_shell_unavailable: "[!!_Ａｕｔｏ-ｆｉｘ ｓｏｕｒｃｅ ｐａｎｅ %{pane} ｈａｓ ｎｏ ｓｈｅｌｌ ｃｏｎｔｅｘｔ._!!]"
+queue.snapshot_cwd_unavailable: "[!!_Ａｕｔｏ-ｆｉｘ ｓｏｕｒｃｅ ｐａｎｅ %{pane} ｈａｓ ｎｏ ｗｏｒｋｉｎｇ ｄｉｒｅｃｔｏｒｙ._!!]"
+queue.snapshot_output_unavailable: "[!!_Ａｕｔｏ-ｆｉｘ ｓｏｕｒｃｅ ｐａｎｅ %{pane} ｈａｓ ｎｏ ｒｅａｄａｂｌｅ ｏｕｔｐｕｔ._!!]"
+queue.snapshot_context_changed: "[!!_Ｔｈｅ ｃｏｍｍａｎｄ ｉｎ ｓｏｕｒｃｅ ｐａｎｅ %{pane} ｃｈａｎｇｅｄ ｂｅｆｏｒｅ ｉｔｓ ｅｒｒｏｒ ｃｏｎｔｅｘｔ ｃｏｕｌｄ ｂｅ ｐｒｅｓｅｒｖｅｄ._!!]"
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "[!!_Ｐｒｅｐａｒｉｎｇ ａｇｅｎｔ ｃｏｎｎｅｃｔｉｏｎ..._!!]"

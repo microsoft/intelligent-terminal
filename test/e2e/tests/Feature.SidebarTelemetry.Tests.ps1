@@ -6,6 +6,7 @@ param([switch]$KeepRunningOnly)
 Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelemetry' -Skip:($env:ITE2E_TELEMETRY -ne '1') {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\SidebarExpansionEvents.ps1')
         . (Join-Path $PSScriptRoot 'helpers\TelemetryTrace.ps1')
         . (Join-Path $PSScriptRoot 'helpers\TelemetryFunnels.Scenarios.ps1')
         $script:app = $null
@@ -76,11 +77,9 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         function Set-SidebarHistory {
             param([bool]$Open)
             try {
-                $name = (Get-UiElement -App $script:app -Selector VerticalTabsHeader).name
-                $expected = if ($Open) { 'Agents' } else { 'Tabs' }
-                if ($name -ne $expected) { Invoke-UiElement -App $script:app -Selector VerticalTabsHeaderButton | Out-Null }
+                Set-TestSidebarScope -App $script:app -AgentsOnly $Open -Recent $Open
                 Wait-Until -TimeoutSec 10 -Condition {
-                    (Get-UiElement -App $script:app -Selector VerticalTabsHeader).name -eq $expected
+                    (Get-UiElement -App $script:app -Selector VerticalTabsHeader).name -eq 'Tabs'
                 } | Out-Null
             }
             catch {
@@ -174,11 +173,11 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             param([string]$Title, [bool]$Enable)
             Open-SidebarContextMenu -Title $Title
             (Get-UiElement -App $script:app -Selector KeepTabRunningMenuItem).name |
-                Should -Be $(if ($Enable) { 'Keep tab running' } else { 'Turn off keep running' })
+                Should -Be $(if ($Enable) { 'Turn on headless mode' } else { 'Turn off headless mode' })
             Invoke-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
             Open-SidebarContextMenu -Title $Title
             (Get-UiElement -App $script:app -Selector KeepTabRunningMenuItem).name |
-                Should -Be $(if ($Enable) { 'Turn off keep running' } else { 'Keep tab running' })
+                Should -Be $(if ($Enable) { 'Turn off headless mode' } else { 'Turn on headless mode' })
             Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
         }
         function Assert-SidebarRowFields {

@@ -79,8 +79,8 @@ fn passed_for_custom_agent_falls_back_when_no_custom_suffix() {
 // `pub(super)` so the sibling `slash_command_tests` module (see the
 // `#[path]` mod in app.rs) can reuse it instead of duplicating App::new.
 pub(super) fn test_app() -> App {
-    let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (recommendation_tx, recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
     let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -89,7 +89,7 @@ pub(super) fn test_app() -> App {
     let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
     let debug_capture = Arc::new(AtomicBool::new(false));
     let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
-    App::new(
+    let mut app = App::new(
         prompt_tx,
         recommendation_tx,
         permission_tx,
@@ -106,7 +106,32 @@ pub(super) fn test_app() -> App {
         Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
             false, false,
         ))),
-    )
+    );
+    app.test_prompt_rx = Some(prompt_rx);
+    app.test_recommendation_rx = Some(recommendation_rx);
+    app
+}
+
+pub(super) fn complete_autofix_capture(app: &mut App, tab_id: &str) {
+    let entry = app.tab_sessions[tab_id]
+        .pending_autofix_captures
+        .iter()
+        .next()
+        .expect("a capture is pending");
+    let request_id = entry.submission.id;
+    let source = entry
+        .submission
+        .pane_context
+        .as_ref()
+        .unwrap()
+        .source_pane_id
+        .as_deref()
+        .unwrap_or("source");
+    let snapshot = crate::protocol::acp::client::AutofixSnapshot::for_test(source);
+    app.handle_event(AppEvent::AutofixSnapshotReady {
+        request_id,
+        result: Ok(snapshot),
+    });
 }
 
 pub(super) fn test_app_with_new_session_rx() -> (
@@ -390,7 +415,7 @@ fn agent_paste_text_inserts_into_owner_chat_input_without_submitting() {
     let pasted = format!("{}\r\n{}", "alpha", "beta");
     let expected = ["alpha", "beta"].join("\n");
 
-    app.insert_agent_paste_text("tab-a", 0, &pasted);
+    app.insert_agent_paste("tab-a", 0, ClipboardPaste::Text(pasted));
 
     let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
     assert_eq!(tab.input, expected);
@@ -415,12 +440,200 @@ fn agent_paste_text_inserts_at_cursor() {
         tab.paste_pending = true;
     }
 
-    app.insert_agent_paste_text("tab-a", 0, "X\nY");
+    app.insert_agent_paste("tab-a", 0, ClipboardPaste::Text("X\nY".into()));
 
     let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
     assert_eq!(tab.input, "aX\nYb");
     assert_eq!(tab.cursor_pos, "aX\nY".len());
     assert!(!tab.paste_pending);
+}
+
+#[cfg(windows)]
+#[tokio::test(flavor = "current_thread")]
+async fn agent_paste_screenshot_attaches_image_through_default_paste_request() {
+    let _locale = crate::test_support::lock_locale();
+    let _clipboard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let dib = crate::clipboard_image::sample_screenshot_dib();
+    if !unsafe { crate::clipboard_image::set_clipboard_dib(&dib) } {
+        eprintln!("agent_paste_screenshot_attaches_image_through_default_paste_request: clipboard unavailable; skipping");
+        return;
+    }
+    let expected = crate::clipboard_image::read_clipboard_image()
+        .expect("successfully written screenshot must decode");
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut app = test_app();
+            app.window_id = Some("w1".into());
+            app.owner_tab_id = Some("tab-a".into());
+            app.tab_id = Some("tab-a".into());
+            app.pane_id = Some("pane-a".into());
+            app.agent_supports_image = true;
+            app.state = ConnectionState::Connected;
+            app.tab_mut("tab-a").pane_open = true;
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            app.event_tx = Some(tx);
+            let (prompt_tx, mut prompts) = tokio::sync::mpsc::unbounded_channel();
+            app.prompt_tx = prompt_tx;
+
+            app.handle_event(AppEvent::WtEvent {
+                method: "agent_paste_text".into(),
+                pane_id: String::new(),
+                tab_id: Some("tab-a".into()),
+                params: agent_paste_params("w1", "tab-a"),
+            });
+            assert!(app.current_tab().paste_pending);
+            let completion = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+                .await
+                .expect("clipboard read must finish")
+                .expect("clipboard read must publish its result");
+            app.handle_event(completion);
+
+            let tab = app.current_tab();
+            assert!(!tab.paste_pending);
+            assert_eq!(tab.input, "[image: image-1.png]");
+            assert!(
+                prompts.try_recv().is_err(),
+                "paste must not submit a prompt"
+            );
+            app.current_tab_mut().insert_input_str("describe this");
+            app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            let prompt = prompts
+                .try_recv()
+                .expect("Enter must submit the attachment");
+            assert_eq!(prompt.text, "describe this");
+            assert_eq!(prompt.images, vec![expected]);
+            assert!(app.current_tab().input.is_empty());
+            assert!(app.current_tab().attachments.is_empty());
+        })
+        .await;
+}
+
+#[test]
+fn agent_paste_image_replaces_selection_and_supports_undo_redo() {
+    let mut app = test_app();
+    app.agent_supports_image = true;
+    let tab = app.tab_mut("tab-a");
+    tab.pane_open = true;
+    tab.insert_input_str("replace me");
+    tab.select_all_input();
+    tab.paste_pending = true;
+    tab.paste_generation = 1;
+    let image = crate::clipboard_image::PastedImage {
+        data_base64: "AAA=".into(),
+        mime_type: "image/png".into(),
+        label: "screenshot".into(),
+    };
+
+    app.handle_event(AppEvent::AgentPasteReady {
+        tab_id: "tab-a".into(),
+        generation: 1,
+        content: ClipboardPaste::Image(image.clone()),
+    });
+
+    let tab = app.tab_mut("tab-a");
+    assert_eq!(tab.input, "[image: image-1.png]");
+    assert_eq!(tab.attachments.images().collect::<Vec<_>>(), vec![&image]);
+    assert!(!tab.paste_pending);
+    tab.undo_input();
+    assert_eq!(tab.input, "replace me");
+    assert!(tab.input_all_selected);
+    assert!(tab.attachments.is_empty());
+    tab.redo_input();
+    assert_eq!(tab.input, "[image: image-1.png]");
+    assert_eq!(tab.attachments.images().collect::<Vec<_>>(), vec![&image]);
+}
+
+#[test]
+fn agent_paste_image_without_capability_warns_without_changing_draft() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.agent_supports_image = false;
+    let tab = app.tab_mut("tab-a");
+    tab.pane_open = true;
+    tab.insert_input_str("keep me");
+    tab.select_all_input();
+    tab.paste_pending = true;
+
+    app.handle_event(AppEvent::AgentPasteReady {
+        tab_id: "tab-a".into(),
+        generation: 0,
+        content: ClipboardPaste::Image(crate::clipboard_image::PastedImage {
+            data_base64: "AAA=".into(),
+            mime_type: "image/png".into(),
+            label: "screenshot".into(),
+        }),
+    });
+
+    let tab = app.tab_sessions.get("tab-a").unwrap();
+    assert_eq!(tab.input, "keep me");
+    assert!(tab.input_all_selected);
+    assert!(tab.attachments.is_empty());
+    assert!(!tab.paste_pending);
+    let warning = t!("system.image_not_supported").into_owned();
+    assert!(tab.messages.iter().any(|message| matches!(
+        message,
+        ChatMessage::Notice { kind: NoticeKind::Warning, text } if *text == warning
+    )));
+}
+
+#[test]
+fn agent_paste_image_respects_generation_mode_pane_and_input_focus() {
+    for blocked_by in ["stale", "auth", "stashed", "agents", "picker"] {
+        let mut app = test_app();
+        app.agent_supports_image = true;
+        let tab = app.tab_mut("tab-a");
+        tab.pane_open = blocked_by != "stashed";
+        tab.paste_generation = 2;
+        tab.paste_pending = true;
+        tab.current_view = if blocked_by == "agents" {
+            View::Agents
+        } else {
+            View::Chat
+        };
+        tab.model_picker_open = blocked_by == "picker";
+        if blocked_by == "auth" {
+            app.mode = AppMode::Auth;
+        }
+
+        app.handle_event(AppEvent::AgentPasteReady {
+            tab_id: "tab-a".into(),
+            generation: if blocked_by == "stale" { 1 } else { 2 },
+            content: ClipboardPaste::Image(crate::clipboard_image::PastedImage {
+                data_base64: "AAA=".into(),
+                mime_type: "image/png".into(),
+                label: "screenshot".into(),
+            }),
+        });
+
+        let tab = app.tab_sessions.get("tab-a").unwrap();
+        assert!(tab.input.is_empty(), "{blocked_by}");
+        assert!(tab.attachments.is_empty(), "{blocked_by}");
+        assert_eq!(tab.paste_pending, blocked_by == "stale", "{blocked_by}");
+        assert!(
+            app.current_tab().attachments.is_empty(),
+            "must not paste into a different tab"
+        );
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn agent_paste_clipboard_reader_preserves_ordinary_text() {
+    let _clipboard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let text = "alpha\r\nbeta\t\u{4e2d}";
+    if let Err(error) = crate::win32::copy_text_to_clipboard(text) {
+        eprintln!("agent_paste_clipboard_reader_preserves_ordinary_text: clipboard unavailable; skipping: {error}");
+        return;
+    }
+    match crate::win32::read_agent_paste_from_clipboard().expect("clipboard must be readable") {
+        ClipboardPaste::Text(pasted) => assert_eq!(pasted, text),
+        ClipboardPaste::Image(_) => panic!("ordinary text must not become an image attachment"),
+    }
 }
 
 #[test]
@@ -500,7 +713,7 @@ fn agent_paste_text_ignores_non_chat_or_non_live_input() {
     app.tab_mut("tab-a").pane_open = true;
     app.tab_mut("tab-a").current_view = View::Agents;
 
-    app.insert_agent_paste_text("tab-a", 0, "hidden");
+    app.insert_agent_paste("tab-a", 0, ClipboardPaste::Text("hidden".into()));
     assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
 
     app.tab_mut("tab-a").current_view = View::Chat;
@@ -512,7 +725,7 @@ fn agent_paste_text_ignores_non_chat_or_non_live_input() {
     });
     app.tab_mut("tab-a").selected_completed_turn_idx = Some(0);
 
-    app.insert_agent_paste_text("tab-a", 0, "locked");
+    app.insert_agent_paste("tab-a", 0, ClipboardPaste::Text("locked".into()));
     assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
 }
 
@@ -561,7 +774,7 @@ fn agent_paste_failure_clears_pending_state() {
     app.tab_mut("tab-a").paste_pending = true;
     app.tab_mut("tab-a").paste_generation = 1;
 
-    app.handle_event(AppEvent::AgentPasteTextFailed {
+    app.handle_event(AppEvent::AgentPasteFailed {
         tab_id: "tab-a".into(),
         generation: 1,
         error: "clipboard busy".into(),
@@ -577,10 +790,10 @@ fn stale_agent_paste_completion_is_ignored() {
     app.tab_mut("tab-a").paste_pending = true;
     app.tab_mut("tab-a").paste_generation = 2;
 
-    app.handle_event(AppEvent::AgentPasteTextReady {
+    app.handle_event(AppEvent::AgentPasteReady {
         tab_id: "tab-a".into(),
         generation: 1,
-        text: "stale".into(),
+        content: ClipboardPaste::Text("stale".into()),
     });
 
     let tab = app.tab_sessions.get("tab-a").unwrap();
@@ -614,10 +827,10 @@ fn agent_paste_completion_is_ignored_after_pane_is_stashed() {
     assert!(!tab.paste_pending);
     assert_eq!(tab.paste_generation, 2);
 
-    app.handle_event(AppEvent::AgentPasteTextReady {
+    app.handle_event(AppEvent::AgentPasteReady {
         tab_id: "tab-a".into(),
         generation: 1,
-        text: "hidden".into(),
+        content: ClipboardPaste::Text("hidden".into()),
     });
 
     let tab = app.tab_sessions.get("tab-a").unwrap();
@@ -640,10 +853,10 @@ fn tab_rename_invalidates_pending_agent_paste() {
     assert!(!tab.paste_pending);
     assert_eq!(tab.paste_generation, 8);
 
-    app.handle_event(AppEvent::AgentPasteTextReady {
+    app.handle_event(AppEvent::AgentPasteReady {
         tab_id: "AAAA".into(),
         generation: 7,
-        text: "stale".into(),
+        content: ClipboardPaste::Text("stale".into()),
     });
     assert!(app.tab_sessions.get("BBBB").unwrap().input.is_empty());
 }
@@ -4471,7 +4684,10 @@ fn runtime_policy_reconcile_gates_prompt_until_native_off_acknowledges() {
     app.apply_runtime_yolo_config(Some(false), Some(true));
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    assert_eq!(app.current_tab().input, "must wait for native off");
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.text,
+        "must wait for native off"
+    );
     assert!(prompt_rx.try_recv().is_err());
 
     let reconcile_id = *app.pending_yolo_reconciles.keys().next().unwrap();
@@ -4516,7 +4732,10 @@ fn global_on_session_attach_gates_prompt_until_native_yolo_enable_acknowledges()
     app.current_tab_mut().input = "wait for native on".into();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    assert_eq!(app.current_tab().input, "wait for native on");
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.text,
+        "wait for native on"
+    );
     assert!(prompt_rx.try_recv().is_err());
 
     app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
@@ -4550,7 +4769,10 @@ fn new_session_creation_gates_prompt_before_yolo_reconcile_can_start() {
     app.current_tab_mut().input = "wait for replacement mode".into();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    assert_eq!(app.current_tab().input, "wait for replacement mode");
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.text,
+        "wait for replacement mode"
+    );
     assert!(prompt_rx.try_recv().is_err());
 }
 
@@ -4680,6 +4902,7 @@ fn pending_yolo_reconcile_blocks_manual_and_automatic_autofix_prompts() {
     let (manual_tx, mut manual_rx) = tokio::sync::mpsc::unbounded_channel();
     manual.prompt_tx = manual_tx;
     manual.state = ConnectionState::Connected;
+    manual.source_session_id = Some("manual-source".into());
     manual.current_tab_mut().session_id = Some("manual-fix-session".into());
     manual.pending_yolo_reconciles.insert(
         29,
@@ -4687,6 +4910,8 @@ fn pending_yolo_reconcile_blocks_manual_and_automatic_autofix_prompts() {
     );
 
     manual.cmd_fix(false, String::new());
+    let tab_id = manual.active_tab_key().to_owned();
+    complete_autofix_capture(&mut manual, &tab_id);
 
     assert!(manual_rx.try_recv().is_err());
     assert!(manual.current_tab().turn.is_idle());
@@ -4730,18 +4955,24 @@ fn pending_config_update_blocks_normal_manual_and_automatic_prompts() {
     normal.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     assert!(normal_rx.try_recv().is_err());
-    assert_eq!(normal.current_tab().input, "wait for native mode");
+    assert_eq!(
+        normal.current_tab().prompt_queue.entries[0].submission.text,
+        "wait for native mode"
+    );
     assert!(normal.current_tab().turn.is_idle());
 
     let mut manual = test_app();
     let (manual_tx, mut manual_rx) = tokio::sync::mpsc::unbounded_channel();
     manual.prompt_tx = manual_tx;
     manual.state = ConnectionState::Connected;
+    manual.source_session_id = Some("manual-source".into());
     manual.current_tab_mut().session_id = Some("manual-config-session".into());
     manual.current_tab_mut().config_pending_id = Some("mode".into());
     manual.current_tab_mut().native_yolo_config_pending = true;
 
     manual.cmd_fix(false, String::new());
+    let tab_id = manual.active_tab_key().to_owned();
+    complete_autofix_capture(&mut manual, &tab_id);
 
     assert!(manual_rx.try_recv().is_err());
     assert!(manual.current_tab().turn.is_idle());
@@ -4771,7 +5002,7 @@ fn pending_config_update_blocks_normal_manual_and_automatic_prompts() {
 }
 
 #[test]
-fn pending_non_yolo_config_does_not_block_normal_prompts() {
+fn pending_non_yolo_config_queues_normal_prompts_until_acknowledged() {
     let mut app = test_app();
     let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     app.prompt_tx = prompt_tx;
@@ -4782,8 +5013,11 @@ fn pending_non_yolo_config_does_not_block_normal_prompts() {
 
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
+    assert!(prompt_rx.try_recv().is_err());
+    app.current_tab_mut().config_pending_id = None;
+    app.dispatch_prompt_queues();
     assert_eq!(
-        prompt_rx.try_recv().expect("ordinary prompt").text,
+        prompt_rx.try_recv().unwrap().text,
         "continue while model config is pending"
     );
 }
@@ -4816,7 +5050,10 @@ fn initial_load_waits_for_attach_then_preserves_provider_restored_yolo() {
     );
     app.current_tab_mut().input = "wait for loaded capabilities".into();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    assert_eq!(app.current_tab().input, "wait for loaded capabilities");
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.text,
+        "wait for loaded capabilities"
+    );
     assert!(prompt_rx.try_recv().is_err());
 
     app.handle_event(AppEvent::SessionAttached {
@@ -8652,6 +8889,7 @@ fn autofix_still_triggers_for_non_agent_pane() {
     };
     app.maybe_trigger_autofix(&notification);
 
+    complete_autofix_capture(&mut app, "test-tab");
     assert_eq!(
         app.tab_mut("test-tab").autofix.pane_id.as_deref(),
         Some(pane),
@@ -9568,6 +9806,7 @@ fn ghost_agent_binding_does_not_suppress_shell_failure() {
         }),
     });
 
+    complete_autofix_capture(&mut app, "test-tab");
     assert_eq!(
         app.tab_mut("test-tab").autofix.pane_id.as_deref(),
         Some(pane),
@@ -9595,6 +9834,7 @@ fn vt_sequence_failure_in_normal_pane_still_triggers_autofix() {
         }),
     });
 
+    complete_autofix_capture(&mut app, "test-tab");
     assert_eq!(
         app.tab_mut("test-tab").autofix.pane_id.as_deref(),
         Some(pane),
@@ -9632,6 +9872,7 @@ fn hookless_shell_errors_submit_one_correctly_routed_autofix_prompt() {
     );
 
     app.handle_event(vt_event(pane, "test-tab", "osc:133;D;1"));
+    complete_autofix_capture(&mut app, "test-tab");
     let prompt = prompts
         .try_recv()
         .expect("shell error must reach the ACP prompt queue");
@@ -9645,7 +9886,7 @@ fn hookless_shell_errors_submit_one_correctly_routed_autofix_prompt() {
     app.handle_event(vt_event(pane, "test-tab", "osc:133;D;1"));
     assert!(
         prompts.try_recv().is_err(),
-        "echo/repeated failure must not double-submit"
+        "echo/repeated failure must not overlap the active turn"
     );
     assert_eq!(
         app.tab_mut("test-tab").autofix.pane_id.as_deref(),
@@ -9663,9 +9904,12 @@ fn hookless_manual_fix_still_submits_when_auto_suggest_is_disabled() {
     app.state = ConnectionState::Connected;
     app.autofix_enabled = false;
     app.show_welcome_hint = false;
+    app.source_session_id = Some("hookless-shell".into());
     bind_test_session(&mut app, "chat-without-hooks");
 
     app.cmd_fix(false, "explain the last failure".into());
+    let tab_id = app.active_tab_key().to_owned();
+    complete_autofix_capture(&mut app, &tab_id);
 
     let prompt = prompts
         .try_recv()
@@ -9882,6 +10126,7 @@ exit /b 0
         tab_id: Some(params["tab_id"].as_str().unwrap().into()),
         params,
     });
+    complete_autofix_capture(&mut app, "test-tab");
     let prompt = prompts
         .try_recv()
         .expect("recovered event must submit Autofix, not just update a flag");
@@ -9961,6 +10206,7 @@ fn pending_survives_trigger_echo_dismisses_on_next_prompt_start() {
     let tab = "tab-B";
 
     app.handle_event(vt_event(pane, tab, "osc:133;D;1"));
+    complete_autofix_capture(&mut app, tab);
     assert_eq!(
         app.tab_mut(tab).autofix.pane_id.as_deref(),
         Some(pane),
@@ -11627,7 +11873,7 @@ async fn plan_surfaces_card_in_chat() {
 /// Render a driven `App` to a ratatui `TestBackend` and return the visible
 /// buffer as text (rows joined by `\n`). Lets scenarios assert on what is
 /// actually painted, not just on `App` state.
-fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
+pub(super) fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
     use ratatui::{backend::TestBackend, Terminal};
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("test terminal");
@@ -11640,7 +11886,7 @@ fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
     buffer_to_text(terminal.backend().buffer())
 }
 
-fn render_to_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
+pub(super) fn render_to_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
     use ratatui::{backend::TestBackend, Terminal};
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("test terminal");
@@ -11802,6 +12048,301 @@ fn render_chat_shows_agent_message() {
         text.contains("VISIBLE_REPLY_XYZ"),
         "the chat view must paint the agent message; rendered:\n{text}"
     );
+}
+
+#[test]
+fn render_prompt_queue_automatically_shows_count_and_preserves_active_output() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+    app.session_to_tab
+        .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+    app.current_tab_mut().input = "active request".into();
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+    let active_prompt_id = app.current_tab().turn.prompt_id();
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: "ACTIVE_QUEUE_REPLY_XYZ".into(),
+    });
+    app.current_tab_mut().reveal_chars = "ACTIVE_QUEUE_REPLY_XYZ".chars().count();
+    app.current_tab_mut().input = "QUEUED_REQUEST_XYZ".into();
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+
+    let header = t!("queue.header_one", count = 1);
+    let rendered = render_to_text(&mut app, 120, 24);
+    assert!(
+        rendered.contains(header.as_ref()),
+        "pending work must appear without a command:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("ACTIVE_QUEUE_REPLY_XYZ"),
+        "active output was hidden:\n{rendered}"
+    );
+    assert!(!rendered.contains("Enter: queue"));
+    assert!(!rendered.contains("/queue"));
+    assert!(rendered.contains(t!("queue.enqueued").as_ref()));
+    assert!(!rendered.contains("QUEUED_REQUEST_XYZ"));
+    let input_row = app.input_dialog_area.unwrap().y as usize;
+    assert!(rendered
+        .lines()
+        .nth(input_row - 1)
+        .unwrap()
+        .contains(header.as_ref()));
+    assert!(!rendered.contains("Alt+R"));
+    assert!(!rendered.contains("Alt+S"));
+    assert!(!rendered.contains("Alt+D"));
+    assert_eq!(app.current_tab().turn.prompt_id(), active_prompt_id);
+
+    let (responder, _response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::PermissionRequest {
+        session_id: DEFAULT_TAB_ID.into(),
+        tool_call_id: "queue-permission".into(),
+        description: "QUEUE_PERMISSION_XYZ".into(),
+        title: "QUEUE_PERMISSION_XYZ".into(),
+        kind_label: None,
+        target: None,
+        target_is_command: false,
+        options: vec![PermOption {
+            id: "allow-once".into(),
+            name: "Allow once".into(),
+            kind: "AllowOnce".into(),
+        }],
+        responder,
+    });
+    let modal = render_to_text(&mut app, 120, 24);
+    assert!(
+        modal.contains("QUEUE_PERMISSION_XYZ"),
+        "permission card must remain visible:\n{modal}"
+    );
+    assert!(
+        !modal.contains("Enter: queue"),
+        "modal must not advertise Enter to queue:\n{modal}"
+    );
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    assert_eq!(app.current_tab().turn.prompt_id(), active_prompt_id);
+}
+
+#[test]
+fn render_prompt_queue_stays_pinned_while_chat_scrolls() {
+    use crossterm::event::{MouseEvent, MouseEventKind};
+
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().config_pending_id = Some("mode".into());
+    for index in 0..60 {
+        app.current_tab_mut()
+            .messages
+            .push(ChatMessage::Agent(format!("SCROLL_HISTORY_{index:02}")));
+    }
+    for text in ["PINNED_FIRST", "PINNED_SECOND"] {
+        app.current_tab_mut().input = text.into();
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+    }
+    app.current_tab_mut().input = "draft stays editable".into();
+    app.current_tab_mut().cursor_pos = "draft stays editable".len();
+    let before = render_to_text(&mut app, 80, 16);
+    let input_area = app.input_dialog_area.unwrap();
+    let queue_start = input_area.y as usize - 1;
+    assert!(before
+        .lines()
+        .nth(queue_start)
+        .unwrap()
+        .contains(t!("queue.header", count = 2).as_ref()));
+    assert!(!before.contains("PINNED_FIRST"));
+    assert!(!before.contains("PINNED_SECOND"));
+    for _ in 0..5 {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    let after = render_to_text(&mut app, 80, 16);
+    assert!(app.current_tab().chat_scroll.offset > 0);
+    assert_eq!(app.input_dialog_area, Some(input_area));
+    assert_ne!(
+        before.lines().take(queue_start).collect::<Vec<_>>(),
+        after.lines().take(queue_start).collect::<Vec<_>>(),
+    );
+    assert_eq!(
+        before.lines().skip(queue_start).collect::<Vec<_>>(),
+        after.lines().skip(queue_start).collect::<Vec<_>>(),
+    );
+    assert!(!after.contains("PINNED_FIRST"));
+    assert!(!after.contains("PINNED_SECOND"));
+    assert_eq!(app.current_tab().input, "draft stays editable");
+}
+
+#[test]
+fn render_prompt_queue_retains_stopped_inputs_until_explicit_discard() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+    app.session_to_tab
+        .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+    for text in ["ACTIVE_FIRST", "WAITING_SECOND", "WAITING_THIRD"] {
+        app.current_tab_mut().input = text.into();
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+    }
+    assert_eq!(app.pending_input_previews().count(), 2);
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.into(),
+    });
+    assert_eq!(
+        app.pending_input_previews().collect::<Vec<_>>(),
+        ["1. WAITING_THIRD"]
+    );
+    let rendered = render_to_text(&mut app, 80, 16);
+    assert!(rendered.contains(t!("queue.header_one", count = 1).as_ref()));
+    let input_row = app.input_dialog_area.unwrap().y as usize;
+    assert!(rendered
+        .lines()
+        .nth(input_row - 1)
+        .unwrap()
+        .contains(t!("queue.header_one", count = 1).as_ref()));
+    assert!(!rendered.contains("WAITING_THIRD"));
+    app.current_tab_mut().input = "/stop".into();
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.pending_input_previews().count(), 1);
+    let stopped = render_to_text(&mut app, 80, 16);
+    assert!(!stopped.contains("WAITING_THIRD"));
+    assert!(!stopped.contains(t!("queue.paused_header", count = 1).as_ref()));
+    assert!(!stopped.contains("Alt+S"));
+    assert!(!stopped.contains("Alt+D"));
+    assert!(stopped.contains(t!("queue.header_one", count = 1).as_ref()));
+    app.discard_pending_inputs();
+    assert_eq!(app.pending_input_previews().count(), 0);
+    let discarded = render_to_text(&mut app, 80, 16);
+    assert!(!discarded.contains("WAITING_THIRD"));
+}
+
+#[test]
+fn render_prompt_queue_excludes_unblocked_autofix_preparation() {
+    let _locale = crate::test_support::lock_locale();
+    for typed in [false, true] {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.show_welcome_hint = false;
+        app.source_session_id = Some("failed-source".into());
+        if typed {
+            app.current_tab_mut()
+                .replace_input("/fix investigate".into());
+            app.handle_event(AppEvent::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )));
+        } else {
+            app.enqueue_autofix(DEFAULT_TAB_ID, "failed-source", "AUTOMATIC_FAILURE", false);
+        }
+        let preparing = render_to_text(&mut app, 100, 20);
+        assert!(!preparing.contains(t!("queue.header_one", count = 1).as_ref()));
+        assert!(!preparing.contains(t!("queue.enqueued").as_ref()));
+        complete_autofix_capture(&mut app, DEFAULT_TAB_ID);
+        app.current_tab_mut()
+            .replace_input("WAITING_FOLLOWER".into());
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+        let waiting = render_to_text(&mut app, 100, 20);
+        assert!(waiting.contains(t!("queue.header_one", count = 1).as_ref()));
+        assert!(!waiting.contains("WAITING_FOLLOWER"));
+    }
+}
+
+#[test]
+fn render_prompt_queue_includes_automatic_requests_while_connecting() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connecting("copilot".into());
+    app.enqueue_autofix(DEFAULT_TAB_ID, "failed-source", "AUTOMATIC_FAILURE", false);
+    let preparing = render_to_text(&mut app, 100, 20);
+    assert!(!preparing.contains(t!("queue.header_one", count = 1).as_ref()));
+    complete_autofix_capture(&mut app, DEFAULT_TAB_ID);
+    let automatic = render_to_text(&mut app, 100, 20);
+    assert!(automatic.contains(t!("queue.header_one", count = 1).as_ref()));
+    assert!(!automatic.contains("AUTOMATIC_FAILURE"));
+    assert!(!automatic.contains(t!("queue.enqueued").as_ref()));
+
+    app.current_tab_mut().input = "MANUAL_REQUEST".into();
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+    let mixed = render_to_text(&mut app, 100, 20);
+    let input_row = app.input_dialog_area.unwrap().y as usize;
+    assert!(mixed
+        .lines()
+        .nth(input_row - 1)
+        .unwrap()
+        .contains(t!("queue.header", count = 2).as_ref()));
+    assert!(!mixed.contains("MANUAL_REQUEST"));
+    assert!(!mixed.contains("AUTOMATIC_FAILURE"));
+    assert!(!mixed.contains("Alt+R"));
+    assert!(app.current_tab().turn.is_idle());
+}
+
+#[test]
+fn render_prompt_queue_fits_small_panes_without_previews() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().config_pending_id = Some("mode".into());
+    for index in 0..32 {
+        app.current_tab_mut().input = format!("PINNED_{index}\n\u{202e}long preview");
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+    }
+    for width in [1, 2, 8, 16, 80] {
+        for height in [1, 2, 3, 4, 6, 8, 16] {
+            let rendered = render_to_text(&mut app, width, height);
+            assert!(!rendered.contains('\u{202e}'));
+            let input = app.input_dialog_area.unwrap();
+            assert!(input.bottom() <= height);
+            assert_eq!(app.current_tab().prompt_queue.entries.len(), 32);
+        }
+    }
+    let rendered = render_to_text(&mut app, 40, 8);
+    let input_row = app.input_dialog_area.unwrap().y as usize;
+    assert!(rendered
+        .lines()
+        .nth(input_row - 1)
+        .unwrap()
+        .contains(t!("queue.header", count = 32).as_ref()));
+    assert!(!rendered.contains("PINNED_"));
+    let compact = render_to_text(&mut app, 60, 5);
+    assert!(compact.contains(t!("queue.header", count = 32).as_ref()));
+}
+
+#[test]
+fn render_connecting_input_has_no_queue_hint() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connecting("copilot".into());
+    let rendered = render_to_text(&mut app, 120, 24);
+    assert!(!rendered.contains("Enter: queue"));
+    assert!(!rendered.contains(t!("queue.header", count = 0).as_ref()));
 }
 
 /// Render (C134 "Hooks off behavior is safe"): with session management OFF — no tracked
@@ -15088,7 +15629,7 @@ mod input_undo_tests {
             if let Some((code, modifiers)) = deletion {
                 key(&mut app, code, modifiers);
             } else {
-                assert!(app.copy_input_selection(true, |_| Ok(())));
+                assert!(app.copy_input_selection(true, |_| Ok(())).unwrap());
             }
             assert!(app.current_tab().input.is_empty());
             undo(&mut app);
@@ -15104,9 +15645,11 @@ mod input_undo_tests {
         let mut app = test_app();
         type_text(&mut app, "keep");
         key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
-        assert!(app.copy_input_selection(true, |_| {
-            Err(std::io::Error::other("clipboard unavailable"))
-        }));
+        assert!(app
+            .copy_input_selection(true, |_| {
+                Err(std::io::Error::other("clipboard unavailable"))
+            })
+            .is_err());
         assert_eq!(app.current_tab().input, "keep");
         undo(&mut app);
         assert!(app.current_tab().input.is_empty());
@@ -15119,7 +15662,11 @@ mod input_undo_tests {
         let mut app = test_app();
         app.current_tab_mut().pane_open = true;
         app.current_tab_mut().paste_pending = true;
-        app.insert_agent_paste_text(DEFAULT_TAB_ID, 0, concat!("\u{4e2d}", "\r\n", "caf\u{e9}"));
+        app.insert_agent_paste(
+            DEFAULT_TAB_ID,
+            0,
+            ClipboardPaste::Text(concat!("\u{4e2d}", "\r\n", "caf\u{e9}").into()),
+        );
         let expected = concat!("\u{4e2d}", "\n", "caf\u{e9}");
         assert_eq!(app.current_tab().input, expected);
         undo(&mut app);
@@ -15139,7 +15686,7 @@ mod input_undo_tests {
         type_text(&mut app, "draft");
         app.current_tab_mut().pane_open = true;
         app.current_tab_mut().paste_generation = 2;
-        app.insert_agent_paste_text(DEFAULT_TAB_ID, 1, "stale");
+        app.insert_agent_paste(DEFAULT_TAB_ID, 1, ClipboardPaste::Text("stale".into()));
         undo(&mut app);
         assert!(app.current_tab().input.is_empty());
         redo(&mut app);
@@ -15236,7 +15783,7 @@ mod input_undo_tests {
         app.current_tab_mut().insert_input_str(" suffix");
         undo(&mut app);
         key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
-        assert!(app.copy_input_selection(false, |_| Ok(())));
+        assert!(app.copy_input_selection(false, |_| Ok(())).unwrap());
         key(&mut app, KeyCode::Left, KeyModifiers::NONE);
         redo(&mut app);
         assert_eq!(app.current_tab().input, "base suffix");
@@ -15618,6 +16165,55 @@ mod input_undo_tests {
 }
 
 #[test]
+fn input_selection_during_queued_turn_edits_only_the_next_draft() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+    app.session_to_tab
+        .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.prompt_tx = tx;
+    for text in ["active request", "waiting request"] {
+        app.current_tab_mut().replace_input(text.into());
+        app.enqueue_input(None);
+    }
+    let active = rx.try_recv().unwrap();
+    let queued = app.current_tab().prompt_queue.entries[0].submission.id;
+    app.current_tab_mut().replace_input("next draft".into());
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    assert!(app.current_tab().input_all_selected);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('x'),
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "x");
+    assert_eq!(app.current_tab().turn.prompt_id(), Some(active.id));
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.id,
+        queued
+    );
+    assert_eq!(
+        app.pending_input_previews().collect::<Vec<_>>(),
+        ["1. waiting request"]
+    );
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+    assert!(!app.current_tab().input_all_selected);
+    assert!(app.current_tab().input.is_empty());
+    assert_eq!(
+        app.pending_input_previews().collect::<Vec<_>>(),
+        ["1. waiting request", "2. x"]
+    );
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
 fn input_selection_deletes_entire_draft() {
     for key in [
         KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
@@ -15675,7 +16271,11 @@ fn input_selection_paste_replaces_draft_without_submitting() {
         KeyModifiers::CONTROL,
     )));
     app.current_tab_mut().paste_pending = true;
-    app.insert_agent_paste_text(DEFAULT_TAB_ID, 0, "new\r\n\u{4e2d}");
+    app.insert_agent_paste(
+        DEFAULT_TAB_ID,
+        0,
+        ClipboardPaste::Text("new\r\n\u{4e2d}".into()),
+    );
     assert_eq!(app.current_tab().input, "new\n\u{4e2d}");
     assert_eq!(app.current_tab().cursor_pos, app.current_tab().input.len());
     assert!(app.current_tab().turn.is_idle());
@@ -15788,18 +16388,22 @@ fn input_selection_copy_and_cut_preserve_exact_source_text() {
         KeyModifiers::CONTROL,
     )));
     app.close_pane_armed_at = Some(std::time::Instant::now());
-    assert!(app.copy_input_selection(false, |text| {
-        assert_eq!(text, draft);
-        Ok(())
-    }));
+    assert!(app
+        .copy_input_selection(false, |text| {
+            assert_eq!(text, draft);
+            Ok(())
+        })
+        .unwrap());
     assert_eq!(app.current_tab().input, draft);
     assert!(app.current_tab().input_all_selected);
     assert!(app.close_pane_armed_at.is_none());
     app.close_pane_armed_at = Some(std::time::Instant::now());
-    assert!(app.copy_input_selection(true, |text| {
-        assert_eq!(text, draft);
-        Ok(())
-    }));
+    assert!(app
+        .copy_input_selection(true, |text| {
+            assert_eq!(text, draft);
+            Ok(())
+        })
+        .unwrap());
     assert!(app.current_tab().input.is_empty());
     assert!(!app.current_tab().input_all_selected);
     assert!(app.close_pane_armed_at.is_none());
@@ -15817,7 +16421,9 @@ fn input_selection_clipboard_failure_keeps_draft_and_consumes_copy() {
         )));
         // The helper must disarm independently of the key dispatcher.
         app.close_pane_armed_at = Some(std::time::Instant::now());
-        assert!(app.copy_input_selection(cut, |_| Err(std::io::Error::other("clipboard busy"))));
+        assert!(app
+            .copy_input_selection(cut, |_| Err(std::io::Error::other("clipboard busy")))
+            .is_err());
         assert_eq!(app.current_tab().input, "do not lose this");
         assert!(app.current_tab().input_all_selected);
         assert!(app.close_pane_armed_at.is_none());
@@ -15834,9 +16440,11 @@ fn input_selection_unhandled_copy_preserves_close_arm() {
         )));
         let armed = app.close_pane_armed_at;
         assert!(armed.is_some());
-        assert!(!app.copy_input_selection(cut, |_| {
-            panic!("an unhandled event must not access the clipboard")
-        }));
+        assert!(!app
+            .copy_input_selection(cut, |_| {
+                panic!("an unhandled event must not access the clipboard")
+            })
+            .unwrap());
         assert_eq!(app.close_pane_armed_at, armed);
     }
 }
@@ -15862,7 +16470,9 @@ fn input_selection_copy_failure_cannot_retain_an_earlier_close_arm() {
         )));
         assert!(app.current_tab().input_all_selected);
         assert!(app.close_pane_armed_at.is_none());
-        assert!(app.copy_input_selection(cut, |_| { Err(std::io::Error::other("clipboard busy")) }));
+        assert!(app
+            .copy_input_selection(cut, |_| { Err(std::io::Error::other("clipboard busy")) })
+            .is_err());
         assert_eq!(app.current_tab().input, "clipboard draft");
         assert!(app.current_tab().input_all_selected);
         assert!(app.close_pane_armed_at.is_none());
@@ -15902,7 +16512,9 @@ fn input_selection_requires_live_edit_focus_not_just_draft_text() {
             !app.current_tab().input_all_selected,
             "{context} owns focus"
         );
-        assert!(!app.copy_input_selection(true, |_| panic!("must not cut hidden draft")));
+        assert!(!app
+            .copy_input_selection(true, |_| panic!("must not cut hidden draft"))
+            .unwrap());
         assert_eq!(app.current_tab().input, "keep draft");
     }
 }
@@ -16281,6 +16893,142 @@ fn default_paste_request_is_chat_only() {
 
     assert!(app.default_paste_request_for_current_tab().is_none());
     assert!(app.handle_right_click().is_none());
+}
+
+#[cfg(windows)]
+#[test]
+fn copy_on_select_preserves_mouse_highlight_and_right_click_image_clipboard() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let _locale = crate::test_support::lock_locale();
+    let _clipboard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+
+    for copy_on_select in [false, true] {
+        let mut app = test_app();
+        app.window_id = Some("window-a".into());
+        app.tab_id = Some("tab-a".into());
+        app.pane_id = Some("pane-a".into());
+        app.current_tab_mut().pane_open = true;
+        app.current_tab_mut().copy_on_select = copy_on_select;
+        app.current_tab_mut()
+            .messages
+            .push(ChatMessage::info("AUTO_COPY_MARKER"));
+        let rendered = render_to_text(&mut app, 80, 16);
+        let (row, column) = rendered
+            .lines()
+            .enumerate()
+            .find_map(|(row, line)| {
+                line.find("AUTO_COPY_MARKER")
+                    .map(|column| (row as u16, column as u16 + 2))
+            })
+            .expect("selection marker must be visible");
+        if let Err(error) = crate::win32::copy_text_to_clipboard("before selection") {
+            eprintln!("copy_on_select_preserves_mouse_highlight_and_right_click_image_clipboard: clipboard unavailable; skipping: {error}");
+            return;
+        }
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            app.handle_event(AppEvent::Mouse(MouseEvent {
+                kind,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }));
+        }
+        assert_eq!(
+            app.text_selection.selected_text().as_deref(),
+            Some("AUTO_COPY_MARKER")
+        );
+        assert_eq!(
+            crate::win32::read_paste_string_from_clipboard().unwrap(),
+            if copy_on_select {
+                "AUTO_COPY_MARKER"
+            } else {
+                "before selection"
+            },
+        );
+
+        let dib = crate::clipboard_image::sample_screenshot_dib();
+        if !unsafe { crate::clipboard_image::set_clipboard_dib(&dib) } {
+            eprintln!("copy_on_select_preserves_mouse_highlight_and_right_click_image_clipboard: clipboard unavailable during image setup; skipping");
+            return;
+        }
+        let image = crate::clipboard_image::read_clipboard_image()
+            .expect("successfully written screenshot must decode");
+        let request = app.handle_right_click();
+        assert_eq!(request.is_some(), copy_on_select);
+        assert!(app.text_selection.selected_text().is_none());
+        if copy_on_select {
+            assert_eq!(crate::clipboard_image::read_clipboard_image(), Some(image),
+                "right-click must not overwrite a new screenshot by re-copying the highlighted selection");
+        } else {
+            assert_eq!(
+                crate::win32::read_paste_string_from_clipboard().unwrap(),
+                "AUTO_COPY_MARKER"
+            );
+        }
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn copy_on_select_right_click_copies_keyboard_selection_then_requests_paste() {
+    let _locale = crate::test_support::lock_locale();
+    let _clipboard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let mut app = test_app();
+    app.window_id = Some("window-a".into());
+    app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
+    let tab = app.current_tab_mut();
+    tab.pane_open = true;
+    tab.copy_on_select = true;
+    tab.insert_input_str("selected draft");
+    tab.select_all_input();
+    if let Err(error) = crate::win32::copy_text_to_clipboard("before selection") {
+        eprintln!("copy_on_select_right_click_copies_keyboard_selection_then_requests_paste: clipboard unavailable; skipping: {error}");
+        return;
+    }
+
+    assert!(app.handle_right_click().is_some());
+    assert_eq!(
+        crate::win32::read_paste_string_from_clipboard().unwrap(),
+        "selected draft"
+    );
+}
+
+#[test]
+fn copy_on_select_settings_updates_are_owner_scoped_and_preserve_missing_values() {
+    let mut app = test_app();
+    app.window_id = Some("window-a".into());
+    app.owner_tab_id = Some("tab-a".into());
+    app.tab_id = Some("tab-a".into());
+    for (window, tab, value, expected) in [
+        ("window-a", "tab-a", Some(true), true),
+        ("window-b", "tab-a", Some(false), true),
+        ("window-a", "tab-b", Some(false), true),
+        ("window-a", "tab-a", None, true),
+        ("window-a", "tab-a", Some(false), false),
+    ] {
+        let mut params = json!({ "window_id": window, "tab_id": tab });
+        if let Some(value) = value {
+            params["copy_on_select"] = json!(value);
+        }
+        app.handle_event(AppEvent::WtEvent {
+            method: "set_agent_state".into(),
+            pane_id: String::new(),
+            tab_id: Some(tab.into()),
+            params,
+        });
+        assert_eq!(app.current_tab().copy_on_select, expected);
+    }
+    assert!(!app.tab_sessions.contains_key("tab-b"));
 }
 
 #[test]
@@ -18151,9 +18899,12 @@ fn fix_target_pane_is_late_bound_by_prompt_id() {
 #[test]
 fn manual_fix_uses_the_helpers_captured_source_target() {
     let mut app = test_app();
+    app.state = ConnectionState::Connected;
     app.source_session_id = Some("captured-source-pane".into());
 
     app.cmd_fix(false, String::new());
+    let tab_id = app.active_tab_key().to_owned();
+    complete_autofix_capture(&mut app, &tab_id);
 
     let prompt = app.current_tab().turn.prompt().unwrap();
     assert_eq!(
@@ -19690,6 +20441,8 @@ fn chat_reading_position_background_cancel_preserves_viewport() {
             let mut app = test_app();
             app.state = ConnectionState::Connected;
             submit_autofix_prompt(&mut app, "pane-1");
+            app.current_tab_mut().prompt_queue.active_automatic_id =
+                app.current_tab().turn.prompt_id();
             let lines = |prefix| {
                 (0..90)
                     .map(|i| format!("{prefix}_{i:03}"))
@@ -21249,7 +22002,7 @@ fn thinking_is_pinned_one_row_above_input() {
     let row = text
         .lines()
         .position(|line| line.contains(&label))
-        .expect("Thinking row must render");
+        .unwrap_or_else(|| panic!("Thinking row must render:\n{text}"));
     let expected_row = usize::from(HEIGHT - input_height - 1);
 
     assert_eq!(
@@ -21618,7 +22371,10 @@ fn reset_keeps_cancellation_barrier_and_preserves_next_draft() {
     assert_eq!(app.current_tab().input, "keep next draft");
 
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    assert_eq!(app.current_tab().input, "keep next draft");
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.text,
+        "keep next draft"
+    );
     assert_eq!(
         prompt_rx.try_recv().expect("old prompt remains queued").id,
         prompt_id
@@ -22732,6 +23488,7 @@ fn error_fix_telemetry_detection_flow_is_not_replaced_by_a_busy_detection() {
         params: json!({"sequence": "osc:133;D;1"}),
     };
     app.handle_event(failure());
+    complete_autofix_capture(&mut app, DEFAULT_TAB_ID);
     let tab = app.current_tab();
     let detected = tab.autofix.detected_offer.as_ref().unwrap().1;
     let flow = tab.autofix.offer.as_ref().unwrap();
@@ -22930,6 +23687,61 @@ fn direct_proposal_history_distinguishes_localized_insert_and_run() {
                 assert!(!rendered.contains("Suggested"));
                 assert!(!rendered.contains("executed:"));
             }
+        }
+    }
+}
+
+#[test]
+fn disconnected_recommendation_teardown_is_not_user_cancellation() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    for end_before_action in [false, true] {
+        let mut app = test_app();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        drop(rx);
+        let manager = std::sync::Arc::new(
+            crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+        );
+        app.set_proposal_channels(std::sync::Arc::clone(&manager));
+        let session = "disconnected-action";
+        stage_proposal_session(&mut app, session);
+        submit_proposal_prompt(&mut app, session);
+        let (proposal_id, mut final_rx) = stage_direct_proposal(&mut app, &manager, session);
+        let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+        app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+            proposal_id,
+            responder: commit_tx,
+        });
+        assert!(commit_rx.blocking_recv().unwrap());
+        if end_before_action {
+            app.turn_close(session);
+        }
+        app.turn_execute_card(session);
+        assert_eq!(
+            final_rx.try_recv().unwrap(),
+            crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Unavailable
+        );
+        let tab = app.session_tab(session);
+        assert!(tab.pending_queue_action.is_none());
+        assert!(tab
+            .messages
+            .iter()
+            .chain(tab.completed_turns.iter().flat_map(|turn| &turn.details))
+            .any(
+                |m| matches!(m, ChatMessage::Error(text) if text == t!("connection.lost").as_ref())
+            ));
+        assert_eq!(tab.completed_turns.len(), 1);
+        assert_eq!(tab.completed_turns[0].trailing_marker, None);
+        assert!(!format!("{:?}", tab.completed_turns).contains("(canceled)"));
+        assert_eq!(tab.turn.is_cancelling(), !end_before_action);
+        if !end_before_action {
+            assert!(tab
+                .active_prompt_cancellation
+                .as_ref()
+                .unwrap()
+                .token
+                .is_cancelled());
         }
     }
 }
@@ -23998,7 +24810,7 @@ fn recommendation_card_enter_wins_over_draft_input() {
 }
 
 #[test]
-fn recommendation_input_focus_submits_draft_instead_of_executing_card() {
+fn recommendation_input_focus_queues_draft_without_dismissing_card() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();
     app.state = ConnectionState::Connected;
@@ -24014,12 +24826,12 @@ fn recommendation_input_focus_submits_draft_instead_of_executing_card() {
 
     assert!(app.current_tab().input.is_empty());
     assert!(
-        app.current_tab().turn.recommendations().is_none(),
-        "submitting from the input must dismiss the old recommendation",
+        app.current_tab().turn.recommendations().is_some(),
+        "queued input must preserve the unresolved recommendation",
     );
     assert!(
-        matches!(app.current_tab().turn, TurnState::Submitted(_)),
-        "Enter must submit the draft instead of executing the selected card",
+        app.current_tab().prompt_queue.entries.len() == 1,
+        "Enter must queue the draft without executing the selected card",
     );
 }
 
@@ -24166,6 +24978,254 @@ fn send_choice(parent: &str, input: &str) -> crate::coordinator::RecommendationC
             input: input.into(),
         }],
     }
+}
+
+#[test]
+fn recommendation_history_preserves_queue_barrier_for_both_end_timings() {
+    let _locale = crate::test_support::lock_locale();
+    for insert_only in [false, true] {
+        for ended_before_click in [false, true] {
+            let mut app = test_app();
+            app.state = ConnectionState::Connected;
+            app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+            app.session_to_tab
+                .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            app.prompt_tx = tx;
+            let (action_tx, mut action_rx) = mpsc::unbounded_channel();
+            app.recommendation_tx = action_tx;
+            stage_surfaced_recommendation(
+                &mut app,
+                vec![send_choice("pane", "echo merged")],
+                0,
+                Some("pane"),
+            );
+            if let TurnState::Surfaced { end_pending, .. } = &mut app.current_tab_mut().turn {
+                *end_pending = true;
+            }
+            let prompt_id = app.current_tab().turn.prompt_id().unwrap();
+            app.current_tab_mut().selected_button = usize::from(insert_only);
+            app.current_tab_mut().replace_input("follow-up".into());
+            app.enqueue_input(None);
+            if ended_before_click {
+                app.handle_event(AppEvent::AgentMessageEnd {
+                    session_id: DEFAULT_TAB_ID.into(),
+                });
+            }
+            app.turn_execute_card(DEFAULT_TAB_ID);
+            assert_eq!(
+                action_rx.try_recv().unwrap().completion,
+                Some((DEFAULT_TAB_ID.into(), prompt_id))
+            );
+            if !ended_before_click {
+                app.handle_event(AppEvent::AgentMessageEnd {
+                    session_id: DEFAULT_TAB_ID.into(),
+                });
+            }
+            let label = if insert_only {
+                t!("chat.tool_kind.insert")
+            } else {
+                t!("chat.tool_kind.run")
+            };
+            let completed = app.current_tab().completed_turns.last().unwrap();
+            assert!(completed.details.iter().any(|message| matches!(message,
+                ChatMessage::Agent(text) if text == &format!("{label}: echo merged"))));
+            assert!(completed.trailing_marker.is_none());
+            assert_eq!(app.current_tab().pending_queue_action, Some(prompt_id));
+            assert!(rx.try_recv().is_err());
+            app.handle_event(AppEvent::RecommendationExecutionSettled {
+                tab_id: DEFAULT_TAB_ID.into(),
+                prompt_id,
+                success: true,
+            });
+            assert_eq!(rx.try_recv().unwrap().text, "follow-up");
+        }
+    }
+}
+
+#[test]
+fn recommendation_action_handoff_blocks_queue_until_correlated_completion() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.tab_id = Some(DEFAULT_TAB_ID.into());
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+    app.session_to_tab
+        .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+    let (recommendation_tx, mut recommendation_rx) = mpsc::unbounded_channel();
+    app.recommendation_tx = recommendation_tx;
+    let (prompt_tx, mut prompt_rx) = mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![send_choice("pane", "echo test")],
+        0,
+        Some("pane"),
+    );
+    let card_id = PromptSubmission::new("card".into(), None).id;
+    if let TurnState::Surfaced { prompt, .. } = &mut app.current_tab_mut().turn {
+        prompt.id = card_id;
+    }
+    app.current_tab_mut().input = "next queued request".into();
+    app.enqueue_input(None);
+    app.turn_execute_card(DEFAULT_TAB_ID);
+    let execution = recommendation_rx
+        .try_recv()
+        .expect("confirmed action dispatch");
+    assert_eq!(execution.completion, Some((DEFAULT_TAB_ID.into(), card_id)));
+    assert!(app.current_tab().turn.recommendations().is_none());
+    assert_eq!(app.current_tab().pending_queue_action, Some(card_id));
+
+    app.handle_event(AppEvent::Tick);
+    assert!(
+        prompt_rx.try_recv().is_err(),
+        "resolving a card must not release the action barrier"
+    );
+    app.cmd_clear();
+    assert_eq!(
+        app.current_tab().pending_queue_action,
+        Some(card_id),
+        "/clear must retain the action handoff"
+    );
+    app.handle_event(AppEvent::RecommendationExecutionSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: card_id.wrapping_add(1),
+        success: false,
+    });
+    assert_eq!(app.current_tab().pending_queue_action, Some(card_id));
+    assert_eq!(
+        app.current_tab().prompt_queue.entries.len(),
+        1,
+        "stale failure must not discard the owning queue"
+    );
+    assert!(prompt_rx.try_recv().is_err());
+
+    app.rename_tab_session(DEFAULT_TAB_ID, "renamed-action-tab", Some("window"));
+    app.handle_event(AppEvent::RecommendationExecutionSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: card_id,
+        success: true,
+    });
+    assert!(app.current_tab().pending_queue_action.is_none());
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "next queued request");
+}
+
+#[test]
+fn recommendation_action_failure_pauses_queue_and_retired_completion_is_ignored() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    let (prompt_tx, mut prompt_rx) = mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.current_tab_mut().pending_queue_action = Some(701);
+    app.current_tab_mut().input = "wait for action".into();
+    app.enqueue_input(None);
+    app.handle_event(AppEvent::RecommendationExecutionSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 701,
+        success: false,
+    });
+    assert!(app.current_tab().pending_queue_action.is_none());
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    assert!(app.pending_queue_paused());
+    assert!(prompt_rx.try_recv().is_err());
+    app.discard_pending_inputs();
+    app.current_tab_mut().input = "fresh request after failure".into();
+    app.enqueue_input(None);
+    let fresh = prompt_rx.try_recv().unwrap();
+    assert_eq!(fresh.text, "fresh request after failure");
+    app.current_tab_mut().pending_queue_action = Some(702);
+    app.reset_tab_session_for(DEFAULT_TAB_ID);
+    assert!(app.current_tab().pending_queue_action.is_none());
+    app.current_tab_mut().pending_queue_action = Some(703);
+    app.current_tab_mut().input = "survives retired failure".into();
+    app.enqueue_input(None);
+    app.handle_event(AppEvent::RecommendationExecutionSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 702,
+        success: false,
+    });
+    assert_eq!(app.current_tab().pending_queue_action, Some(703));
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    assert!(prompt_rx.try_recv().is_err());
+    app.handle_event(AppEvent::RecommendationExecutionSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 703,
+        success: true,
+    });
+    assert!(prompt_rx.try_recv().is_err());
+    assert!(app.current_tab().turn.is_cancelling());
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        prompt_id: fresh.id,
+        started: false,
+    });
+    assert_eq!(
+        prompt_rx.try_recv().unwrap().text,
+        "survives retired failure"
+    );
+}
+
+#[test]
+fn recommendation_action_rejected_locally_is_not_marked_executed() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.test_recommendation_rx.take();
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![send_choice("pane", "echo test")],
+        0,
+        Some("pane"),
+    );
+    app.current_tab_mut().input = "wait for confirmed action".into();
+    app.enqueue_input(None);
+    app.turn_execute_card(DEFAULT_TAB_ID);
+    assert!(app.current_tab().pending_queue_action.is_none());
+    assert!(app.current_tab().turn.is_idle());
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    assert!(app.pending_queue_paused());
+    assert!(app.current_tab().messages.iter().any(|message| {
+        matches!(message, ChatMessage::Error(text) if text == t!("connection.lost").as_ref())
+    }));
+}
+
+#[test]
+fn queue_preserves_new_input_when_an_earlier_cancellation_settles_as_an_error() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("queue-cancel-session".into());
+    app.session_to_tab
+        .insert("queue-cancel-session".into(), DEFAULT_TAB_ID.into());
+    let (prompt_tx, mut prompt_rx) = mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.current_tab_mut().input = "active request".into();
+    app.enqueue_input(None);
+    prompt_rx.try_recv().unwrap();
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: "queue-cancel-session".into(),
+        text: "started".into(),
+    });
+    app.current_tab_mut().input = "old pending request".into();
+    app.enqueue_input(None);
+    app.cmd_stop(true, false);
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    app.current_tab_mut().input = "new request after stop".into();
+    app.enqueue_input(None);
+    assert!(prompt_rx.try_recv().is_err());
+    app.handle_event(AppEvent::AgentError {
+        session_id: Some("queue-cancel-session".into()),
+        failure: crate::protocol::acp::failure::AgentFailure::Cancelled,
+        message: "cancelled".into(),
+    });
+    assert!(prompt_rx.try_recv().is_err());
+    assert!(app.pending_queue_paused());
+    app.resume_pending_inputs();
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "old pending request");
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: "queue-cancel-session".into(),
+    });
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "new request after stop");
 }
 
 fn open_choice() -> crate::coordinator::RecommendationChoice {

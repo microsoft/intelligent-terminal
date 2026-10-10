@@ -172,7 +172,7 @@
   </data>
   <data name="MoveTabCommandKey" xml:space="preserve">
     <value>Перемістити вкладку {0}</value>
-    <comment>{0} will be replaced with a "forward" / "backward"</comment>
+    <comment>{0} will be replaced with a "forward (right)" / "backward (left)"</comment>
   </data>
   <data name="MoveTabToWindowCommandKey" xml:space="preserve">
     <value>Перемістити вкладку до вікна "{0}"</value>
@@ -405,7 +405,7 @@
     <value>Додати позначку на прокрутці</value>
   </data>
   <data name="AddMarkWithColorCommandKey" xml:space="preserve">
-    <value>Додати позначку на прокрутці, колір: {0}</value>
+    <value>Додати позначку на прокрутці, color:{0}</value>
     <comment>{Locked="color"}. "color" is a literal parameter name that shouldn't be translated. {0} will be replaced with a color in hexadecimal format, like `#123456`</comment>
   </data>
   <data name="ClearMarkCommandKey" xml:space="preserve">
@@ -979,13 +979,34 @@
   <data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>Показати відомості про Terminal Protocol</value><comment>{Locked="Terminal Protocol"}</comment></data>
   <data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>Перемкнути видимість панелі</value></data>
   <data name="ToggleSidebarCommandKey" xml:space="preserve"><value>Перемкнути бічну панель</value><comment>A command that shows or collapses the vertical tabs sidebar.</comment></data>
-  <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Перемкнути агента ШІ</value></data>
-  <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Перевести фокус на панель агента ШІ</value></data>
-  <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Відкрити список сеансів агента ШІ</value></data>
+  <data name="ToggleSidebarAgentsOnlyCommandKey" xml:space="preserve">
+    <value>Увімкнути/вимкнути фільтр лише агентів на бічній панелі</value>
+    <comment>Command that toggles whether the sidebar shows only open AI-agent tabs. It does not change the independent Recent agent sessions option. Global sidebar search includes all tabs regardless of this preference.</comment>
+  </data>
+  <data name="ToggleSidebarRecentAgentSessionsCommandKey" xml:space="preserve">
+    <value>Показати/приховати нещодавні сеанси агентів на бічній панелі</value>
+    <comment>Command that toggles the Recent agent sessions section in the sidebar without changing the independent Agents only filter. Recent sessions are also included while a global search query is present.</comment>
+  </data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Перемкнути агента ШІ</value><comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Перевести фокус на панель агента ШІ</value><comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Відкрити список сеансів агента ШІ</value><comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>Запустити автовиправлення</value></data>
   <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>Запит</value></data>
-  <data name="BugReportCommandKey" xml:space="preserve"><value>Повідомити про помилку (зібрати журнали)</value></data>
+  <data name="BugReportCommandKey" xml:space="preserve"><value>Повідомити про помилку (зібрати журнали)</value><comment>Command palette entry that collects diagnostic log files into a zip archive on the user's Desktop, for attaching to a bug report.</comment></data>
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>Відкрити фоновий агент у новій вкладці</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
+    <value>Перемкнути палітру команд у режимі делегування агенту</value>
+  </data>
+  <data name="OpenWorkspaceCommandKey" xml:space="preserve">
+    <value>Відкрити робочу область "{0}"</value>
+    <comment>{0} will be replaced with the workspace name</comment>
+  </data>
+  <data name="OpenWorkspaceDefaultCommandKey" xml:space="preserve">
+    <value>Відкрити робочу область</value>
+  </data>
+  <data name="WorkspacesCommandKey" xml:space="preserve">
+    <value>Робочі області...</value>
+  </data>
 </root>

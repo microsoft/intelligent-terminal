@@ -43,6 +43,7 @@ namespace ControlUnitTests
 
         TEST_METHOD(GetMouseEventsInTest);
         TEST_METHOD(AgentPaneCtrlWheelZoomsBeforeVtMouse);
+        TEST_METHOD(AgentRightClickContextMenuRespectsSettingsAndVtMouse);
         TEST_METHOD(AltBufferClampMouse);
         TEST_METHOD(ParseCompletedTurnActionHyperlinks);
         TEST_METHOD(CompletedTurnActionHyperlinksSuppressUnderlines);
@@ -1060,6 +1061,54 @@ namespace ControlUnitTests
                                   {});
         VERIFY_ARE_EQUAL(0u, expectedOutput.size());
         VERIFY_ARE_EQUAL(1.0f, core->_accumulatedFontSizeDelta);
+    }
+
+    void ControlInteractivityTests::AgentRightClickContextMenuRespectsSettingsAndVtMouse()
+    {
+        for (const auto agentPane : { false, true })
+        {
+            for (const auto contextMenu : { false, true })
+            {
+                auto [settings, conn] = _createSettingsAndConnection();
+                settings->RightClickContextMenu(contextMenu);
+                auto [core, interactivity] = _createCoreAndInteractivity(*settings, *conn);
+                _standardInit(core, interactivity);
+                interactivity->EnableAgentRightClickContextMenu(agentPane);
+                core->_terminal->Write(L"\x1b[?1000h\x1b[?1006h");
+
+                std::deque<std::wstring> expectedOutput;
+                auto validateDrained = _addInputCallback(conn, expectedOutput);
+                auto menus = 0;
+                interactivity->ContextMenuRequested([&](auto&&, const Control::ContextMenuRequestedEventArgs& args) {
+                    ++menus;
+                    VERIFY_ARE_EQUAL(0.0f, args.Position().X);
+                    VERIFY_ARE_EQUAL(0.0f, args.Position().Y);
+                });
+                for (const auto reloadBeforeRelease : { false, true })
+                {
+                    settings->RightClickContextMenu(contextMenu);
+                    menus = 0;
+                    if (!agentPane || !contextMenu)
+                    {
+                        expectedOutput.push_back(L"\x1b[<2;1;1M");
+                        expectedOutput.push_back(L"\x1b[<2;1;1m");
+                    }
+                    interactivity->PointerPressed(0,
+                                                  Control::MouseButtonState::IsRightButtonDown,
+                                                  WM_RBUTTONDOWN,
+                                                  0,
+                                                  {},
+                                                  {});
+                    if (reloadBeforeRelease)
+                    {
+                        settings->RightClickContextMenu(!contextMenu);
+                        VERIFY_ARE_EQUAL(!contextMenu, core->Settings().RightClickContextMenu());
+                    }
+                    interactivity->PointerReleased(0, {}, WM_RBUTTONUP, {}, {});
+                    VERIFY_ARE_EQUAL(agentPane && contextMenu ? 1 : 0, menus);
+                }
+            }
+        }
     }
 
     void ControlInteractivityTests::AltBufferClampMouse()

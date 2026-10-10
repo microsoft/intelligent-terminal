@@ -362,13 +362,6 @@ namespace winrt::TerminalApp::implementation
         uint64_t _historyActivationSerial{ 0 };
         std::unordered_map<std::wstring, winrt::hstring> _historyUnresolvedActivations;
         bool _preserveSidebarHistory{ false };
-        struct _SidebarHistoryEntryState
-        {
-            bool railWasCollapsed{ false };
-            bool tabSearchHadFocus{ false };
-            winrt::weak_ref<Microsoft::Terminal::Control::TermControl> sourceControl;
-        };
-        std::optional<_SidebarHistoryEntryState> _historyEntryState;
         Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
         bool _historyRefreshInFlight{ false };
         bool _historyRefreshPending{ false };
@@ -987,6 +980,16 @@ namespace winrt::TerminalApp::implementation
             std::optional<uint64_t> lastActivityAtMs;
             std::optional<winrt::guid> paneSessionId;
         };
+        static bool _IsBuiltinAgentProviderId(std::string_view id);
+        static bool _ShouldUseIncomingAgentProvider(std::string_view existingProviderId, std::string_view incomingProviderId);
+        static bool _ShouldReplaceReportedAgentState(const _RichTabAgentInfo& existing, const _RichTabAgentInfo& incoming);
+        static bool _ShouldReplaceSnapshotAgentState(const _RichTabAgentInfo& existing, const _RichTabAgentInfo& incoming, const _RichTabAgentInfo* lastReceived);
+        struct _RichTabAgentStatusSnapshot
+        {
+            std::unordered_map<std::string, _RichTabAgentInfo> bySession;
+            std::unordered_map<winrt::guid, _RichTabAgentInfo> byPane;
+        };
+        static _RichTabAgentStatusSnapshot _BuildAgentStatusSnapshot(const std::vector<_RichTabAgentInfo>& rows, const std::unordered_map<winrt::guid, _RichTabAgentInfo>& lastReceivedByPane);
         std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
         winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& profileIcon);
         std::unordered_map<std::string, std::string> _BuildRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
@@ -1004,6 +1007,7 @@ namespace winrt::TerminalApp::implementation
         bool _IsAgentScopeEffective() const noexcept
         {
             return _isVerticalLayout &&
+                   _tabSearchQuery.empty() &&
                    _tabFilterMode != TerminalApp::TabStripFilterMode::AllTabs;
         }
         bool _IsTabSearchEffective() const noexcept
@@ -1011,12 +1015,18 @@ namespace winrt::TerminalApp::implementation
             return _isVerticalLayout &&
                    _isVerticalRailVisible &&
                    !_isVerticalRailCollapsed &&
-                   _tabSearchActive;
+                   (_tabSearchActive || !_tabSearchQuery.empty());
         }
         bool _IsTabListProjectionActive() const noexcept
         {
             return _IsAgentScopeEffective() || _IsTabSearchEffective();
         }
+        bool _AreRecentAgentSessionsVisible() const
+        {
+            return _isVerticalLayout && _isVerticalRailVisible && !_isVerticalRailCollapsed &&
+                   _tabStrip && _tabStrip.SidebarFilters().RecentAgentSessionsVisible();
+        }
+        void _UpdateRecentAgentSessionsVisibility();
         bool _IsTabListPositionOperationBlocked() const noexcept
         {
             return _IsTabListProjectionActive();
@@ -1027,7 +1037,6 @@ namespace winrt::TerminalApp::implementation
         void _ClearTabSearch();
         void _StartSidebarHistoryRefreshTimer();
         void _StopSidebarHistoryRefreshTimer();
-        void _CaptureSidebarHistoryEntry();
         Windows::UI::Xaml::Controls::Control _SidebarFocusedControl() const;
         bool _TryFocusSidebarInput(const Microsoft::Terminal::Control::TermControl& control);
         void _FocusSidebarTerminalFallback();
@@ -1042,6 +1051,7 @@ namespace winrt::TerminalApp::implementation
                                            std::optional<uint64_t> lastActivityAtMs,
                                            std::string_view status);
         static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs, std::wstring_view languageTag = {});
+        friend struct TabStripHistoryItem;
         struct _SidebarHistorySnapshot
         {
             enum class State
@@ -1350,12 +1360,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _DetectWtaPath() const;
         std::optional<uint32_t> _FindSourceOfAgentPaneId(const std::shared_ptr<Pane>& root);
         void _DelegatePromptToAgent(const winrt::hstring& prompt);
-        void _OpenDefaultNewTab();
-        std::optional<std::wstring> _BuildAgentSplitArguments(const winrt::com_ptr<Tab>& tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
-        safe_void_coroutine _SplitAgentDelegate(winrt::com_ptr<Tab> tab, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size);
-        safe_void_coroutine _RunSidebarDelegate(std::wstring wtaPath, std::wstring args);
-        void _OpenBackgroundAgentTab(bool preserveSidebarView = false);
-        void _LaunchDelegate(const std::optional<winrt::hstring>& prompt, bool preserveSidebarView = false);
+        void _OpenBackgroundAgentTab();
+        void _LaunchDelegate(const std::optional<winrt::hstring>& prompt);
 
         // Note (Phase 5): the per-pane wta-process watch + Job Object members
         // and their setup/teardown methods were removed when the legacy
