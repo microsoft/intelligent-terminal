@@ -51,6 +51,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE automatic CurrentUser execution-policy remediation (**Dev**, auto-skips) | 4 (1 conditional skip) |
 | `Feature.FreHooks.Tests.ps1` | §0 FRE progressive setup ordering, session hook installation, failure, and retry (**Dev**, auto-skips) | 3 |
 | `Feature.SidebarTabKeyboard.Tests.ps1` | Issue #1045: physical Tab/Up/Down navigate unfiltered and filtered Sidebar tabs without terminal focus; bare Enter activates, Ctrl+Enter does not, pointer selection still works, and Ctrl+Shift+S entry/exit preserves the originating shell while Tab visits a row | 3 |
+| `Feature.SidebarRowAlignment.Tests.ps1` | Configuration-free shell-hook/COM/master fixtures compare cue-free live/recent title-leading edges and history metadata in common ItemsList/screen coordinates within 1 DIP; selection retains bounds and active shell. Raw icon centers are checked only when real 16-DIP peers exist; screenshots require independent glyph/selection review, absent peers remain explicitly unproven. Hash-backed original settings/state/runtime recovery uses inactivity-gated owned-pane cleanup, never process adoption | 1 (authored, not live accepted; requires inactive explicit Dev, existing Sidebar/completed FRE, HEAD source receipt and exact App/WTA hashes) |
 | `Feature.SidebarSessionScroll.Tests.ps1` | Real shell hooks update the same visible Agents row through Idle/Active/Waiting for input/Idle without changing the search query or scrolling unchanged history order; status filters and genuine activity-time reordering still update. All three cases gate C374. Deterministic seeded rows, no model quota or test settings changes; teardown closes only recorded fixture pane GUIDs in the verified logical window after rechecking HWND/PID, never the shared process or unrelated windows/tabs. Original state is recovered only after the package is inactive, even on screenshot/settings failure; unrelated package activity or unconfirmed ownership/inactivity retains backups and fails explicitly. Changed, missing or unreadable settings and their recovery backup are retained and fail explicitly. Requires inactive Dev, Sidebar mode, completed FRE, and exact-build App/WTA hashes | 3 |
 | `Feature.PaneProgress.Tests.ps1` | PR #1043: one-shot OSC progress across real tab right-click moves/layout round trips, shared group-chevron/icon slot and aligned top-level titles, layout-specific Move submenu order/direction, and fixture-owned native hook identity/icon restoration with OSC3/OSC0; six-frame rendered ring evidence, no model quota | 4 checklist cases plus literal one-shot coverage (explicit Dev, exact-source `ITE2E_EXPECTED_APP_SHA256` / `ITE2E_EXPECTED_WTA_SHA256`, inactive package and interactive desktop required) |
 | `Feature.PinnedTabSelection.Tests.ps1` | PRs #1043/#1052: the primary two-pinned-plus-one-ordinary Horizontal/Sidebar round trip first verifies Alpha's active shell, exactly one selected Alpha Sidebar row, terminal focus, canonical order, shell identities and retained pin menus. A separate visual round trip verifies canonical accessibility labels and matched same-profile title-leading offsets; Beta unpin removes its extra Sidebar slot and keeps first-ordinary positioning. FontIcon peers are diagnostic only. A passing test credits C372's automated selection, identity, accessibility and geometry contracts. Full-header compositor crops and `acceptance.json` leave actual Sidebar glyph presence/Horizontal absence pending independent sign-off under the separate C373 MANUAL item **Pinned tab glyphs render only in Sidebar**, which has no automated coverage mapping | 1 (deterministic ACP fixture, no model quota; explicit Dev, exact-source `ITE2E_EXPECTED_APP_SHA256` / `ITE2E_EXPECTED_WTA_SHA256`, inactive package and interactive desktop required) |
@@ -117,6 +118,35 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.AgentPaneMove.Tests.ps1` | PR #429: `/move` stays per-tab, preserves global position, and restores agent input focus | 1 |
 
 **Coverage and results are tracked by stable checklist IDs and generated release reports.**
+For matched Sidebar alignment baseline/candidate captures, optionally set
+`ITE2E_ALIGNMENT_MARKER` to the same unique run-scoped 8–64 character identifier
+(letters, digits and hyphens, beginning with a letter or digit). Use distinct
+`ITE2E_ARTIFACT_ROOT` directories for baseline and candidate; existing evidence
+is never overwritten. Without this option each run generates a fresh marker.
+The source receipt must still match each run's actual worktree HEAD and exact
+deployed App/WTA hashes. `geometry.json` and `alignment.png` are saved before the
+unchanged 1-DIP alignment oracle: a pre-fix baseline must fail, not count as
+acceptance. Marker reuse matches fixture titles/search only; the coordinator
+must also match width, DPI, window bounds, scroll, selection and pointer state.
+For a mirrored Sidebar, set `ITE2E_ALIGNMENT_FLOW_DIRECTION=RTL`; the default
+is `LTR`. This must match the actual captured layout. Title and metadata
+comparisons use the logical leading edge (right in RTL), not the different
+intrinsic widths of their text. Both directions retain the same 1-DIP threshold.
+The alignment selftest preserves prior checklist ID occurrence counts, allowing
+wording/checkbox updates and new IDs, while rejecting removed/replaced prior IDs,
+against the merge-base of HEAD and `origin/main` by default. For a PR targeting
+another branch, set `ITE2E_CHECKLIST_BASE_REF` to its fetched target ref (for
+example `origin/release`). When the default `origin/main` equals HEAD after
+merge, HEAD's first parent supplies the independent baseline instead.
+Explicit candidate-HEAD overrides remain rejected. Missing history, unreadable
+or empty baselines fail explicitly with fetch guidance; the selftest prints the
+resolved baseline and prior-row count.
+The shared Sidebar shell-hook fixture publishes a receipt only after every hook
+succeeds and its JSON is closed, using a unique same-directory staging file and
+no-overwrite rename. Alignment and scroll consumers can then treat final-file
+existence as completion. Use fresh receipt paths; failed publication preserves
+existing final files and cleans only its owned staging file.
+
 The updated combined-sidebar scope/search cases reuse that suite's owned Dev
 startup, deterministic history fixture, native resume fixtures and teardown.
 The related action, session-refresh, delegated-identity, provider-appearance,

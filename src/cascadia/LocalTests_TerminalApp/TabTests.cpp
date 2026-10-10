@@ -416,6 +416,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryAgeSearchTracksClock);
         TEST_METHOD(VerticalTabHistoryAgeTimerFollowsVisibility);
         TEST_METHOD(VerticalTabHistoryMetadataLayout);
+        TEST_METHOD(VerticalTabHistoryAlignsWithLiveRows);
         TEST_METHOD(VerticalTabHistoryWslDistroMetadata);
         TEST_METHOD(VerticalTabHistoryCurrentSessionTracksPane);
         TEST_METHOD(VerticalTabHistoryKeepRunningTracksOwningTab);
@@ -716,12 +717,22 @@ namespace TerminalAppLocalTests
     class HistoryTestView
     {
     public:
-        HistoryTestView()
+        explicit HistoryTestView(const bool usePhysicalCoordinateHost = false)
         {
             TestOnUIThread([&]() {
                 strip = winrt::TerminalApp::TabStrip{};
                 previousContent = Window::Current().Content();
-                Window::Current().Content(strip);
+                if (usePhysicalCoordinateHost)
+                {
+                    coordinateHost = Grid{};
+                    coordinateHost.FlowDirection(FlowDirection::LeftToRight);
+                    coordinateHost.Children().Append(strip);
+                    Window::Current().Content(coordinateHost);
+                }
+                else
+                {
+                    Window::Current().Content(strip);
+                }
                 Window::Current().Activate();
                 strip.HistoryActive(true);
                 strip.UpdateLayout();
@@ -732,6 +743,11 @@ namespace TerminalAppLocalTests
         {
             LOG_IF_FAILED(RunOnUIThread([&]() {
                 Window::Current().Content(previousContent);
+                if (coordinateHost)
+                {
+                    coordinateHost.Children().Clear();
+                    coordinateHost = nullptr;
+                }
                 strip = nullptr;
             }));
         }
@@ -771,6 +787,7 @@ namespace TerminalAppLocalTests
         }
 
         winrt::TerminalApp::TabStrip strip{ nullptr };
+        Grid coordinateHost{ nullptr };
 
     private:
         UIElement previousContent{ nullptr };
@@ -7676,9 +7693,11 @@ namespace TerminalAppLocalTests
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             const auto row = stripImpl->Resources().Lookup(winrt::box_value(L"HistoryRowTemplate")).as<DataTemplate>().LoadContent().as<Grid>();
             VERIFY_ARE_EQUAL(3u, row.ColumnDefinitions().Size());
-            VERIFY_ARE_EQUAL(GridUnitType::Auto, row.ColumnDefinitions().GetAt(0).Width().GridUnitType);
+            VERIFY_ARE_EQUAL(GridUnitType::Pixel, row.ColumnDefinitions().GetAt(0).Width().GridUnitType);
+            VERIFY_ARE_EQUAL(28.0, row.ColumnDefinitions().GetAt(0).Width().Value);
             VERIFY_ARE_EQUAL(GridUnitType::Star, row.ColumnDefinitions().GetAt(1).Width().GridUnitType);
             VERIFY_ARE_EQUAL(GridUnitType::Auto, row.ColumnDefinitions().GetAt(2).Width().GridUnitType);
+            VERIFY_ARE_EQUAL(10.0, row.ColumnSpacing());
             const auto selection = row.FindName(L"HistorySelectionBackground").as<Border>();
             VERIFY_ARE_EQUAL(3, Grid::GetColumnSpan(selection));
             VERIFY_ARE_EQUAL(2, Grid::GetRowSpan(selection));
@@ -7689,7 +7708,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(2, Grid::GetRowSpan(icon));
             VERIFY_ARE_EQUAL(16.0, icon.Width());
             VERIFY_ARE_EQUAL(16.0, icon.Height());
-            VERIFY_ARE_EQUAL(12.0, icon.Margin().Right);
+            VERIFY_ARE_EQUAL(Thickness{}, icon.Margin());
+            VERIFY_ARE_EQUAL(HorizontalAlignment::Center, icon.HorizontalAlignment());
             VERIFY_ARE_EQUAL(VerticalAlignment::Center, icon.VerticalAlignment());
             VERIFY_IS_FALSE(icon.IsTabStop());
             VERIFY_ARE_EQUAL(Automation::Peers::AccessibilityView::Raw, Automation::AutomationProperties::GetAccessibilityView(icon));
@@ -7724,7 +7744,9 @@ namespace TerminalAppLocalTests
             const auto statusText = Media::VisualTreeHelper::GetChild(status, 0).as<TextBlock>();
             const auto titleText = Media::VisualTreeHelper::GetChild(title, 0).as<TextBlock>();
             const auto providerText = Media::VisualTreeHelper::GetChild(provider, 0).as<TextBlock>();
-            const auto rowOverhead = row.Padding().Left + icon.Width() + icon.Margin().Right + row.Padding().Right;
+            const auto textLeading = row.Padding().Left + row.ColumnDefinitions().GetAt(0).Width().Value + row.ColumnSpacing();
+            const auto rowOverhead = row.Padding().Left + row.ColumnDefinitions().GetAt(0).Width().Value +
+                                     row.ColumnSpacing() * (row.ColumnDefinitions().Size() - 1) + row.Padding().Right;
             constexpr double tolerance = 1.0;
             for (const auto subtitleValue : { L"2m ago", L"several minutes ago", L"Localized relative timestamp with a very long display value" })
             {
@@ -7771,7 +7793,7 @@ namespace TerminalAppLocalTests
                         const auto metadataPosition = metadata.TransformToVisual(row).TransformPoint({ 0, 0 });
                         const auto textCenter = (titlePosition.Y + metadataPosition.Y + metadata.ActualHeight()) / 2;
                         VERIFY_IS_TRUE(std::abs(iconPosition.Y + icon.ActualHeight() / 2 - textCenter) <= tolerance);
-                        VERIFY_IS_TRUE(std::abs(subtitlePosition.X - (rowOverhead - row.Padding().Right)) <= tolerance);
+                        VERIFY_IS_TRUE(std::abs(subtitlePosition.X - textLeading) <= tolerance);
                         VERIFY_IS_TRUE(providerPosition.X + providerText.ActualWidth() <= width - row.Padding().Right + tolerance);
                         if (statusValue[0])
                         {
@@ -9037,7 +9059,7 @@ namespace TerminalAppLocalTests
             for (const auto state : { "loading", "error" })
             {
                 page->_tabStrip.HistoryError(L"");
-                page->_tabStrip.HistoryRefreshError(L"");
+                strip->HistoryRefreshError(L"");
                 page->_tabStrip.HistoryLoading(false);
                 strip->CommitHistorySnapshot(cached, true);
                 page->_historyRefreshInFlight = true;
@@ -9050,7 +9072,7 @@ namespace TerminalAppLocalTests
                 filters.ShowRecentAgentSessions(true);
                 VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
                 page->_tabStrip.HistoryError(L"");
-                page->_tabStrip.HistoryRefreshError(L"");
+                strip->HistoryRefreshError(L"");
                 page->_tabStrip.HistoryLoading(false);
                 VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
                 filters.ShowRecentAgentSessions(false);
@@ -10225,6 +10247,148 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, recycledRow.FindName(L"HistorySelectionBackground").as<Border>().Visibility());
             VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(
                                impl->ItemsList().ContainerFromItem(replacement)).empty());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryAlignsWithLiveRows()
+    {
+        HistoryTestView view{ true };
+        TestOnUIThread([&]() {
+            const auto strip = view.strip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto coordinateHost = view.coordinateHost;
+            strip.Height(700);
+            impl->SetVerticalPresentation(true);
+
+            winrt::TerminalApp::TabHeaderControl sourceHeader;
+            sourceHeader.Title(winrt::hstring{ std::wstring(160, L'W') });
+            sourceHeader.MetadataText(L"Long live metadata that must retain its leading edge when trimmed");
+            winrt::TerminalApp::TerminalTabStatus status;
+            sourceHeader.TabStatus(status);
+            winrt::MUX::Controls::TabViewItem live;
+            live.Header(sourceHeader);
+            strip.TabItems().Append(live);
+            strip.SetTabPresentation(live, sourceHeader.Title(), L"\xE756");
+
+            winrt::MUX::Controls::TabViewItem group;
+            group.Header(winrt::box_value(L"Neutral group title"));
+            strip.TabItems().Append(group);
+            const auto panes = winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({
+                winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(group, 1, L"", L"First pane", true),
+                winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(group, 2, L"", L"Second pane", false) });
+            strip.SetPaneItems(group, panes, true);
+
+            const auto history = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            history.SessionId(L"alignment-history");
+            history.AgentId(L"copilot");
+            history.Title(sourceHeader.Title());
+            history.Subtitle(L"Long history metadata that must retain its leading edge when trimmed");
+            history.IsHistorical(true);
+            impl->CommitHistorySnapshot({ history });
+            strip.SelectedItem(live);
+            impl->SetCurrentHistoryItem(history, live);
+
+            constexpr double tolerance = 1.0;
+            for (const auto direction : { FlowDirection::LeftToRight, FlowDirection::RightToLeft })
+            {
+                strip.FlowDirection(direction);
+                for (const auto width : { 360.0, 240.0, 360.0 })
+                {
+                    strip.Width(width);
+                    strip.UpdateLayout();
+                    const auto list = impl->ItemsList();
+                    const auto liveContainer = list.ContainerFromItem(impl->DisplayItemForTab(live)).as<ListViewItem>();
+                    const auto groupContainer = list.ContainerFromItem(impl->DisplayItemForTab(group)).as<ListViewItem>();
+                    const auto historyContainer = list.ContainerFromItem(history).as<ListViewItem>();
+                    const auto liveRoot = liveContainer.ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
+                    const auto groupRoot = groupContainer.ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
+                    const auto historyRoot = historyContainer.ContentTemplateRoot().as<Grid>();
+                    const auto header = liveRoot.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>();
+                    const auto groupHeader = groupRoot.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>();
+                    const auto liveIcon = liveRoot.FindName(L"TabIconPresenter").as<ContentPresenter>();
+                    const auto groupSlot = groupRoot.FindName(L"TabGroupToggleButton").as<Button>();
+                    const auto historyIcon = historyRoot.FindName(L"HistoryProviderIcon").as<ContentControl>();
+                    const auto title = header.FindName(L"HeaderTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+                    const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+                    const auto historyTitle = historyRoot.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
+                    const auto historySubtitle = historyRoot.FindName(L"HistorySubtitleText").as<winrt::TerminalApp::HighlightedTextControl>();
+                    const auto selection = historyRoot.FindName(L"HistorySelectionBackground").as<Border>();
+                    const auto titleText = Media::VisualTreeHelper::GetChild(title, 0).as<TextBlock>();
+                    const auto metadataText = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
+                    const auto historyTitleText = Media::VisualTreeHelper::GetChild(historyTitle, 0).as<TextBlock>();
+                    const auto historySubtitleText = Media::VisualTreeHelper::GetChild(historySubtitle, 0).as<TextBlock>();
+
+                    // A fixed LTR host keeps RTL transforms in physical coordinates.
+                    const auto viewport = list.TransformToVisual(coordinateHost).TransformBounds(
+                        { 0, 0, static_cast<float>(list.ActualWidth()), static_cast<float>(list.ActualHeight()) });
+                    const auto bounds = [&](const FrameworkElement& element) {
+                        VERIFY_IS_TRUE(element.ActualWidth() > 0);
+                        VERIFY_IS_TRUE(element.ActualHeight() > 0);
+                        return element.TransformToVisual(coordinateHost).TransformBounds(
+                            { 0, 0, static_cast<float>(element.ActualWidth()), static_cast<float>(element.ActualHeight()) });
+                    };
+                    const auto leading = [&](const FrameworkElement& element) {
+                        const auto rect = bounds(element);
+                        return direction == FlowDirection::LeftToRight ? rect.X - viewport.X : viewport.X + viewport.Width - rect.X - rect.Width;
+                    };
+                    const auto center = [&](const FrameworkElement& element) {
+                        const auto rect = bounds(element);
+                        return rect.X + rect.Width / 2;
+                    };
+                    VERIFY_ARE_EQUAL(Visibility::Visible, liveIcon.Visibility());
+                    VERIFY_ARE_EQUAL(Visibility::Collapsed, liveRoot.FindName(L"TabGroupToggleButton").as<Button>().Visibility());
+                    VERIFY_ARE_EQUAL(Visibility::Visible, groupSlot.Visibility());
+                    VERIFY_ARE_EQUAL(28.0, groupSlot.ActualWidth());
+                    VERIFY_ARE_EQUAL(Visibility::Collapsed, groupRoot.FindName(L"TabIconPresenter").as<ContentPresenter>().Visibility());
+                    VERIFY_ARE_EQUAL(Visibility::Visible, metadata.Visibility());
+                    VERIFY_IS_TRUE(titleText.IsTextTrimmed());
+                    VERIFY_IS_TRUE(historyTitleText.IsTextTrimmed());
+                    VERIFY_IS_TRUE(std::abs(center(liveIcon) - center(historyIcon)) <= tolerance);
+                    VERIFY_IS_TRUE(std::abs(center(groupSlot) - center(historyIcon)) <= tolerance);
+                    Log::Comment(NoThrowString().Format(L"Alignment direction=%d width=%.1f header=%.2f liveText=%.2f historyText=%.2f liveIcon=%.2f historyIcon=%.2f",
+                                                       static_cast<int>(direction), width, leading(header), leading(titleText),
+                                                       leading(historyTitleText), center(liveIcon), center(historyIcon)));
+                    VERIFY_IS_TRUE(std::abs(leading(header) - leading(historyTitleText)) <= tolerance);
+                    VERIFY_IS_TRUE(std::abs(leading(titleText) - leading(historyTitleText)) <= tolerance);
+                    VERIFY_IS_TRUE(std::abs(leading(metadataText) - leading(historySubtitleText)) <= tolerance);
+                    VERIFY_IS_TRUE(std::abs(leading(historyTitleText) - leading(historySubtitleText)) <= tolerance);
+                    VERIFY_IS_TRUE(std::abs(leading(groupHeader.FindName(L"HeaderTextBlock").as<FrameworkElement>()) - leading(historyTitle)) <= tolerance);
+
+                    VERIFY_ARE_EQUAL(Visibility::Visible, selection.Visibility());
+                    const auto selectionBounds = bounds(selection);
+                    const auto rowBounds = bounds(historyRoot);
+                    VERIFY_IS_TRUE(std::abs(selectionBounds.X - rowBounds.X) <= tolerance);
+                    VERIFY_IS_TRUE(std::abs(selectionBounds.Y - rowBounds.Y) <= tolerance);
+                    VERIFY_IS_TRUE(std::abs(selectionBounds.Width - rowBounds.Width) <= tolerance);
+                    VERIFY_IS_TRUE(std::abs(selectionBounds.Height - rowBounds.Height) <= tolerance);
+                    const auto containerBounds = bounds(historyContainer);
+                    VERIFY_IS_TRUE(std::abs(selectionBounds.X - containerBounds.X) <= tolerance);
+                    VERIFY_IS_TRUE(std::abs(selectionBounds.Width - containerBounds.Width) <= tolerance);
+
+                    const auto neutralTitle = leading(title);
+                    const auto neutralMetadata = leading(metadata);
+                    const auto neutralHeader = leading(header);
+                    const auto neutralIcon = center(liveIcon);
+                    status.IsPinned(true);
+                    status.IsReadOnlyActive(true);
+                    strip.UpdateLayout();
+                    const auto pin = header.FindName(L"HeaderPinnedIcon").as<FontIcon>();
+                    const auto lock = header.FindName(L"HeaderLockIcon").as<FontIcon>();
+                    VERIFY_ARE_EQUAL(Visibility::Visible, pin.Visibility());
+                    VERIFY_ARE_EQUAL(Visibility::Visible, lock.Visibility());
+                    const auto adornedOffset = leading(title) - neutralTitle;
+                    VERIFY_IS_TRUE(adornedOffset > tolerance);
+                    VERIFY_IS_TRUE(std::abs(adornedOffset - pin.ActualWidth() - pin.Margin().Right -
+                                            lock.ActualWidth() - lock.Margin().Right) <= tolerance);
+                    VERIFY_IS_TRUE(std::abs(leading(header) - neutralHeader) <= tolerance);
+                    VERIFY_IS_TRUE(std::abs(leading(metadata) - neutralMetadata) <= tolerance);
+                    VERIFY_IS_TRUE(std::abs(center(liveIcon) - neutralIcon) <= tolerance);
+                    status.IsPinned(false);
+                    status.IsReadOnlyActive(false);
+                    strip.UpdateLayout();
+                    VERIFY_IS_TRUE(std::abs(leading(title) - neutralTitle) <= tolerance);
+                }
+            }
         });
     }
 
