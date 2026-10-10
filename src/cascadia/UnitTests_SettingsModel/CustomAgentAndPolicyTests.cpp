@@ -564,12 +564,25 @@ namespace SettingsModelUnitTests
     {
         namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
         VERIFY_ARE_EQUAL(size_t{ 5 }, Registry::BuiltinNativeProfileAgents.size());
-        VERIFY_IS_TRUE(Registry::CanonicalNativeAgentProviderId(L"antigravity").empty());
-        VERIFY_IS_TRUE(Registry::CanonicalNativeAgentProviderId(L"ANTIGRAVITY").empty());
+        VERIFY_IS_TRUE(Registry::CanonicalNativeAgentProviderId(L"antigravity") == L"antigravity");
+        VERIFY_IS_TRUE(Registry::CanonicalNativeAgentProviderId(L"ANTIGRAVITY") == L"antigravity");
+        VERIFY_IS_FALSE(Registry::SupportsNativeProfile(L"antigravity"));
         VERIFY_IS_TRUE(std::ranges::any_of(Registry::BuiltinAcpAgents, [](const auto& agent) { return agent.id == L"antigravity"; }));
         VERIFY_IS_TRUE(std::ranges::any_of(Registry::BuiltinDelegateAgents, [](const auto& agent) { return agent.id == L"antigravity"; }));
         VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::BuildCommand(L"C:\\agy.exe", L"antigravity", {}, {}, {}), wil::ResultException);
-        VERIFY_IS_FALSE(Registry::IsNativeAgentProviderAllowed(L"antigravity", AgentPolicy::PolicySnapshot{}));
+        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::BuildCommand(L"C:\\agy.exe", L"antigravity", {}, {}, {}, false), wil::ResultException);
+        auto profile = winrt::make_self<implementation::Profile>();
+        profile->AgentProfileId(L"antigravity");
+        VERIFY_IS_FALSE(::Microsoft::Terminal::AgentProfiles::IsManaged(*profile));
+        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::Command(*profile, false, L""), wil::ResultException);
+        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::Command(*profile, true, L""), wil::ResultException);
+        AgentPolicy::PolicySnapshot policy;
+        VERIFY_IS_TRUE(Registry::IsNativeAgentProviderAllowed(L"antigravity", policy));
+        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(L"antigravity", policy), wil::ResultException);
+        policy.allowedAgents.emplace();
+        VERIFY_IS_FALSE(Registry::IsNativeAgentProviderAllowed(L"antigravity", policy));
+        policy.allowedAgents->insert(L"antigravity");
+        VERIFY_IS_TRUE(Registry::IsNativeAgentProviderAllowed(L"ANTIGRAVITY", policy));
     }
 
     void CustomAgentAndPolicyTests::AgentProfileUninstallPreservesOverrides()

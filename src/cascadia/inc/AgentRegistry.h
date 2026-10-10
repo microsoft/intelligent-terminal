@@ -163,7 +163,8 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
 
     inline constexpr std::wstring_view CanonicalNativeAgentProviderId(const std::wstring_view providerId) noexcept
     {
-        for (const auto& agent : BuiltinNativeProfileAgents)
+        // CLI-pane metadata includes delegation/resume providers, not just managed profiles.
+        for (const auto& agent : BuiltinDelegateAgents)
         {
             if (AgentIdEquals(agent.id, providerId))
             {
@@ -177,6 +178,18 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
             return providerId;
         }
         return {};
+    }
+
+    inline constexpr bool SupportsNativeProfile(const std::wstring_view providerId) noexcept
+    {
+        for (const auto& agent : BuiltinNativeProfileAgents)
+        {
+            if (agent.id == providerId)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     inline bool IsNativeAgentProviderAllowed(const std::wstring_view providerId, const AgentPolicy::PolicySnapshot& policy)

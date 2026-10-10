@@ -138,7 +138,7 @@ namespace Microsoft::Terminal::AgentProfiles
                                      const std::wstring_view arguments,
                                      const bool validate = true)
     {
-        THROW_HR_IF(E_INVALIDARG, validate && !std::ranges::any_of(Settings::Model::AgentRegistry::BuiltinNativeProfileAgents, [&](const auto& agent) { return agent.id == id; }));
+        THROW_HR_IF(E_INVALIDARG, !Settings::Model::AgentRegistry::SupportsNativeProfile(id));
         auto values = ParseArguments(arguments);
         if (validate)
         {
@@ -211,7 +211,8 @@ namespace Microsoft::Terminal::AgentProfiles
 
     inline void CheckLaunchPolicy(const std::wstring_view id, const Settings::Model::AgentPolicy::PolicySnapshot& policy)
     {
-        THROW_HR_IF_MSG(E_ACCESSDENIED, !Settings::Model::AgentRegistry::IsNativeAgentProviderAllowed(id, policy) ||
+        THROW_HR_IF_MSG(E_ACCESSDENIED, !Settings::Model::AgentRegistry::SupportsNativeProfile(id) ||
+                                        !Settings::Model::AgentRegistry::IsNativeAgentProviderAllowed(id, policy) ||
                                         policy.yoloMode == Settings::Model::AgentPolicy::PolicyState::Blocked,
                      "Managed native agent launch blocked by policy");
     }
@@ -219,7 +220,7 @@ namespace Microsoft::Terminal::AgentProfiles
     template<typename Profile>
     bool IsManaged(Profile&& profile)
     {
-        if (profile.AgentProfileId().empty() || profile.HasCommandline())
+        if (!Settings::Model::AgentRegistry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() }) || profile.HasCommandline())
         {
             return false;
         }
@@ -230,6 +231,7 @@ namespace Microsoft::Terminal::AgentProfiles
     template<typename Profile>
     std::wstring Command(const Profile& profile, const bool requireExecutable = false, const std::wstring_view path = NativePath())
     {
+        THROW_HR_IF(E_INVALIDARG, !Settings::Model::AgentRegistry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() }));
         std::filesystem::path executable;
         try
         {

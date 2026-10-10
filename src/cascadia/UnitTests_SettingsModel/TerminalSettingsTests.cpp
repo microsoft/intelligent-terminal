@@ -91,7 +91,9 @@ namespace SettingsModelUnitTests
         profile.AgentProfilePermissionMode(L"invalid-edit-in-progress");
         VERIFY_IS_TRUE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
         profile.AgentProfileId(L"unknown-agent");
-        VERIFY_IS_TRUE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
+        VERIFY_IS_FALSE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
+        profile.AgentProfileId(L"antigravity");
+        VERIFY_IS_FALSE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
     }
 
     void TerminalSettingsTests::AgentProfileCommandlineOverrides()

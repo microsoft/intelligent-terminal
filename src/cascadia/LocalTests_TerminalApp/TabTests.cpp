@@ -14147,6 +14147,10 @@ namespace TerminalAppLocalTests
             args.NativeAgentProviderId(L"claude");
             VERIFY_IS_FALSE(page->_maybeElevate(args, settings, profile));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, args.NativeAgentProviderId());
+            args.NativeAgentProviderId(L"");
+            args.Commandline(L"agy --conversation agent-session-1");
+            VERIFY_IS_FALSE(page->_maybeElevate(args, settings, profile));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"antigravity" }, args.NativeAgentProviderId());
             VERIFY_IS_TRUE(page->_paneAgentSessions.empty());
             VERIFY_IS_TRUE(page->_activeCliAgentPanes.empty());
             using namespace ::Microsoft::Terminal::Settings::Model;
@@ -14163,7 +14167,7 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(*baseline);
         TestOnUIThread([&]() {
             const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
-            for (const auto provider : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"custom:fixture" })
+            for (const auto provider : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"antigravity", L"custom:fixture" })
             {
                 winrt::guid paneId;
                 VERIFY_SUCCEEDED(CoCreateGuid(reinterpret_cast<GUID*>(&paneId)));

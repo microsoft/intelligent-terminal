@@ -11,9 +11,17 @@ use std::process::Stdio;
 
 use crate::agent_registry::{AgentProfile, KNOWN_AGENTS};
 
+fn native_profiles() -> impl Iterator<Item = &'static AgentProfile> {
+    KNOWN_AGENTS.iter().filter(|profile| {
+        matches!(
+            profile.id,
+            "copilot" | "claude" | "codex" | "gemini" | "opencode"
+        )
+    })
+}
+
 fn profile(id: &str) -> Result<&'static AgentProfile> {
-    KNOWN_AGENTS
-        .iter()
+    native_profiles()
         .find(|profile| profile.id == id)
         .with_context(|| format!("unknown native agent ID: {id}"))
 }
@@ -63,10 +71,7 @@ fn effective_path() -> std::ffi::OsString {
 
 fn discovery(path: &OsStr, policy: &policy::Policy) -> Result<serde_json::Value> {
     let mut agents = Vec::new();
-    for profile in KNOWN_AGENTS
-        .iter()
-        .filter(|profile| policy.agent_allowed(profile.id))
-    {
+    for profile in native_profiles().filter(|profile| policy.agent_allowed(profile.id)) {
         if find_in_path(profile, path, is_file)?.is_some() {
             agents
                 .push(serde_json::json!({"id": profile.id, "display_name": profile.display_name}));

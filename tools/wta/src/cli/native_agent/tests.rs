@@ -8,6 +8,20 @@ fn strings(values: &[&str]) -> Vec<String> {
 }
 
 #[test]
+fn native_profile_providers_are_exactly_the_five_managed_clis() {
+    assert_eq!(
+        native_profiles()
+            .map(|profile| profile.id)
+            .collect::<Vec<_>>(),
+        ["copilot", "claude", "codex", "gemini", "opencode"]
+    );
+    assert!(KNOWN_AGENTS
+        .iter()
+        .any(|profile| profile.id == "antigravity"));
+    assert!(profile("antigravity").is_err());
+}
+
+#[test]
 fn profile_cli_contract_requires_id_and_delimits_extra_args() {
     use crate::cli::args::{Cli, Command};
     let cli = Cli::try_parse_from([
@@ -46,7 +60,7 @@ fn profile_cli_contract_requires_id_and_delimits_extra_args() {
 
 #[test]
 fn defaults_leave_native_settings_untouched_and_models_are_atomic() {
-    for profile in KNOWN_AGENTS {
+    for profile in native_profiles() {
         assert!(launch_args(profile.id, None, None, &[]).unwrap().is_empty());
         assert!(launch_args(profile.id, Some(""), Some(""), &[])
             .unwrap()
@@ -57,7 +71,16 @@ fn defaults_leave_native_settings_untouched_and_models_are_atomic() {
         );
         assert!(launch_args(profile.id, Some("--allow-all"), None, &[]).is_err());
     }
-    for id in ["", "unknown", "custom:copilot", "Copilot", "claude.exe"] {
+    for id in [
+        "",
+        "unknown",
+        "custom:copilot",
+        "Copilot",
+        "claude.exe",
+        "antigravity",
+        "agy",
+    ] {
+        assert!(profile(id).is_err());
         assert!(launch_args(id, None, None, &[]).is_err());
     }
 }
@@ -100,7 +123,7 @@ fn permission_modes_are_provider_native_not_universal() {
     ] {
         assert_eq!(permission_args(id, mode).unwrap(), expected);
     }
-    for profile in KNOWN_AGENTS {
+    for profile in native_profiles() {
         assert!(permission_args(profile.id, "readOnly").is_err());
         assert!(permission_args(profile.id, "invented-mode").is_err());
     }
@@ -111,7 +134,7 @@ fn permission_modes_are_provider_native_not_universal() {
 
 #[test]
 fn additional_arguments_cannot_replace_settings_or_launch_other_modes() {
-    for profile in KNOWN_AGENTS {
+    for profile in native_profiles() {
         for args in [
             vec!["--model", "other"],
             vec!["--model=other"],
@@ -205,6 +228,8 @@ fn discovery_reports_only_native_availability_and_allowed_ids() {
     let scratch = Scratch::new();
     std::fs::write(scratch.0.join("claude.cmd"), "").unwrap();
     std::fs::write(scratch.0.join("copilot.exe"), "").unwrap();
+    std::fs::write(scratch.0.join("agy.exe"), "").unwrap();
+    std::fs::write(scratch.0.join("antigravity.exe"), "").unwrap();
     let path = scratch.0.as_os_str();
     let all = discovery(path, &policy::Policy::default()).unwrap();
     assert_eq!(
@@ -224,6 +249,12 @@ fn discovery_reports_only_native_availability_and_allowed_ids() {
     );
     assert_eq!(
         discovery(OsStr::new(""), &policy::Policy::default()).unwrap(),
+        serde_json::json!({"agents": []})
+    );
+    std::fs::remove_file(scratch.0.join("claude.cmd")).unwrap();
+    std::fs::remove_file(scratch.0.join("copilot.exe")).unwrap();
+    assert_eq!(
+        discovery(path, &policy::Policy::default()).unwrap(),
         serde_json::json!({"agents": []})
     );
 }
