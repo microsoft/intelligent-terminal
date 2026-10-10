@@ -103,7 +103,7 @@ The Terminal is bundled as an `.msix`, which is produced by the `CascadiaPackage
 ```
 
 This generates an `msix`; it does not install it. For repeatable same-version
-Debug/Dev deployment, use [Loose Debug/Dev deployment](#loose-debugdev-deployment)
+Debug/Dev deployment, use [Loose Debug/Dev deployment](#loose-debug-and-dev-deployment)
 below rather than uninstalling and unpacking the MSIX into another layout.
 For signing and distributing an MSIX, see [Building Installers](building-installer.md);
 that distribution workflow is separate from the loose Dev inner loop.
