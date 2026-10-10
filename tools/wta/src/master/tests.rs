@@ -14789,7 +14789,7 @@ async fn history_refresh_discovery_requests_survive_a_busy_completion_guard() {
             request_host_history_refresh(&state);
             tokio::task::yield_now().await;
             request_host_history_refresh(&state);
-            assert_eq!(state.history_discovery_state.load(Ordering::Acquire), 7);
+            assert_eq!(state.history_discovery_state.load(Ordering::Acquire), 3);
             drop(guard);
             {
                 let _finished = state.history_refresh.lock().await;
@@ -14830,7 +14830,7 @@ async fn history_refresh_discovery_requests_during_a_pass_run_another_pass() {
                 .insert("first-pass-marker".into(), HistoryRefreshFailure::Other);
             request_host_history_refresh(&state);
             request_host_history_refresh(&state);
-            assert_eq!(state.history_discovery_state.load(Ordering::Acquire), 7);
+            assert_eq!(state.history_discovery_state.load(Ordering::Acquire), 3);
             drop(subscribers);
             let _finished = state.history_refresh.lock().await;
             assert!(

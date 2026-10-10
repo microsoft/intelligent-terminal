@@ -7268,6 +7268,7 @@ async fn seed_host_and_broadcast(state: &MasterStateInner, agent: &AgentCli) -> 
 
 #[derive(Clone, Copy)]
 enum HistoryRefreshTrigger {
+    // Explicit requests still honor query pacing and failure backoff.
     Immediate,
     Periodic,
     #[cfg(test)]
@@ -7593,7 +7594,7 @@ where
 }
 
 fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
-    request_host_history_discovery(state, true);
+    request_host_history_discovery(state);
 }
 
 async fn retry_failed_host_history_discovery(state: &Arc<MasterStateInner>) {
@@ -7606,21 +7607,16 @@ async fn retry_failed_host_history_discovery(state: &Arc<MasterStateInner>) {
             .values()
             .any(HistoryRefreshState::retry_due)
     {
-        request_host_history_discovery(state, false);
+        request_host_history_discovery(state);
     }
 }
 
-fn request_host_history_discovery(state: &Arc<MasterStateInner>, immediate: bool) {
+fn request_host_history_discovery(state: &Arc<MasterStateInner>) {
     use std::sync::atomic::Ordering;
-    // Bit 0 owns the single worker; bit 1 requests another pass; bit 2 makes
-    // an explicit refresh bypass startup-failure backoff. The worker's
-    // idle transition is atomic with respect to requests, even on COM threads.
-    if state
-        .history_discovery_state
-        .fetch_or(if immediate { 7 } else { 3 }, Ordering::AcqRel)
-        & 1
-        != 0
-    {
+    // Bit 0 owns the single worker; bit 1 requests another pass. Every
+    // trigger honors startup-failure backoff. The worker's idle transition
+    // is atomic with respect to requests, even on COM threads.
+    if state.history_discovery_state.fetch_or(3, Ordering::AcqRel) & 1 != 0 {
         return;
     }
     let guard = Arc::clone(&state.history_refresh).try_lock_owned().ok();
@@ -7632,10 +7628,9 @@ fn request_host_history_discovery(state: &Arc<MasterStateInner>, immediate: bool
             None => Arc::clone(&state.history_refresh).lock_owned().await,
         };
         loop {
-            let pending = state
+            state
                 .history_discovery_state
-                .fetch_and(!6, Ordering::AcqRel);
-            let immediate = pending & 4 != 0;
+                .fetch_and(!2, Ordering::AcqRel);
             state.history_discovery_errors.lock().await.clear();
             let allowed_ids = state.allowed_agent_ids.clone();
             let discovery = tokio::task::spawn_blocking(move || {
@@ -7663,16 +7658,7 @@ fn request_host_history_discovery(state: &Arc<MasterStateInner>, immediate: bool
                         .lock()
                         .await
                         .retain(|key, _| eligible_keys.contains(key));
-                    if immediate {
-                        refresh_host_history_agents(&state, &agent_ids).await;
-                    } else {
-                        refresh_host_history_agents_for_trigger(
-                            &state,
-                            &agent_ids,
-                            HistoryRefreshTrigger::Periodic,
-                        )
-                        .await;
-                    }
+                    refresh_host_history_agents(&state, &agent_ids).await;
                 }
                 Err(error) => {
                     state
