@@ -7260,6 +7260,14 @@ enum HistoryRefreshTrigger {
     Event,
 }
 
+fn uses_periodic_history_polling(agent_id: &str) -> bool {
+    // Copilot's session/list performs a full history scan that consumes several
+    // CPU-seconds per call even when the ACP server has no active session.
+    // Startup seeding, lifecycle-event title refreshes, and explicit rescans
+    // retain the useful update paths without continuously repeating that work.
+    !agent_id.eq_ignore_ascii_case(crate::agent_registry::COPILOT_AGENT_ID)
+}
+
 fn row_belongs_to_agent(row: &crate::session_registry::SessionInfo, agent: &AgentCli) -> bool {
     row.location == agent.source.session_location()
         && row.session_universe.is_none()
@@ -7295,7 +7303,9 @@ async fn refresh_agent_history(
     let honor_delay = match trigger {
         HistoryRefreshTrigger::Immediate => false,
         HistoryRefreshTrigger::Periodic => refresh.failures != 0,
-        HistoryRefreshTrigger::Event => true,
+        HistoryRefreshTrigger::Event => {
+            refresh.failures != 0 || uses_periodic_history_polling(&agent.resolved_agent_id)
+        }
     };
     // Waiters share the completed refresh rather than queueing another ACP call.
     if agent.history_refresh.generation.load(Ordering::Acquire) != generation
@@ -7418,7 +7428,13 @@ fn start_history_refresh_loop(state: &Arc<MasterStateInner>) {
                 .filter_map(|cell| cell.get().cloned())
                 .collect();
             for agent in agents {
-                if agent.history_refresh.gate.try_lock().is_err() {
+                let Ok(refresh) = agent.history_refresh.gate.try_lock() else {
+                    continue;
+                };
+                let should_refresh = uses_periodic_history_polling(&agent.resolved_agent_id)
+                    || (refresh.failures != 0 && refresh.retry_due());
+                drop(refresh);
+                if !should_refresh {
                     continue;
                 }
                 let state = Arc::clone(&state);
@@ -7489,20 +7505,25 @@ where
             Some(agent_id),
             &crate::agent_source::AgentSource::Host,
         );
-        if !matches!(trigger, HistoryRefreshTrigger::Immediate)
-            && state
+        if matches!(trigger, HistoryRefreshTrigger::Periodic) {
+            let retry_due = state
                 .history_discovery_retries
                 .lock()
                 .await
                 .get(&key)
-                .is_some_and(|retry| !retry.retry_due())
-        {
-            state
-                .history_discovery_errors
-                .lock()
-                .await
-                .insert(key, HistoryRefreshFailure::Other);
-            return false;
+                .map(HistoryRefreshState::retry_due);
+            match retry_due {
+                None => return true,
+                Some(false) => {
+                    state
+                        .history_discovery_errors
+                        .lock()
+                        .await
+                        .insert(key, HistoryRefreshFailure::Other);
+                    return false;
+                }
+                Some(true) => {}
+            }
         }
         let agent = match initialize(command, agent_id.to_string()).await {
             Ok(agent) => agent,
