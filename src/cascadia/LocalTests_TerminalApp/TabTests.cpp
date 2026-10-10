@@ -7736,16 +7736,16 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(2, Grid::GetRow(metadata));
             VERIFY_ARE_EQUAL(1, Grid::GetColumn(metadata));
             VERIFY_ARE_EQUAL(HorizontalAlignment::Stretch, metadata.HorizontalAlignment());
-            VERIFY_ARE_EQUAL(2u, metadata.ColumnDefinitions().Size());
+            VERIFY_ARE_EQUAL(1u, metadata.ColumnDefinitions().Size());
             VERIFY_ARE_EQUAL(GridUnitType::Star, metadata.ColumnDefinitions().GetAt(0).Width().GridUnitType);
-            VERIFY_ARE_EQUAL(GridUnitType::Auto, metadata.ColumnDefinitions().GetAt(1).Width().GridUnitType);
+            VERIFY_ARE_EQUAL(2u, metadata.Children().Size());
+            VERIFY_IS_NULL(row.FindName(L"HistoryOwnershipButton"));
+            VERIFY_IS_NULL(row.FindName(L"HistoryBackgroundIcon"));
+            VERIFY_IS_NULL(row.FindName(L"HistoryOtherWindowIcon"));
             const auto subtitle = metadata.Children().GetAt(0).as<winrt::TerminalApp::HighlightedTextControl>();
             const auto status = metadata.Children().GetAt(1).as<winrt::TerminalApp::HighlightedTextControl>();
             VERIFY_ARE_EQUAL(0, Grid::GetColumn(subtitle));
             VERIFY_ARE_EQUAL(0, Grid::GetColumn(status));
-            const auto ownership = row.FindName(L"HistoryOwnershipButton").as<Button>();
-            VERIFY_ARE_EQUAL(1, Grid::GetColumn(ownership));
-            ownership.Visibility(Visibility::Visible);
             subtitle.Text(L"2 minutes ago");
             status.Text(L"Waiting for input");
             status.TextBlockStyle(strip.Resources().Lookup(winrt::box_value(L"HistoryActiveTextStyle")).as<Style>());
@@ -7779,7 +7779,6 @@ namespace TerminalAppLocalTests
                     const auto metadataPosition = metadata.TransformToVisual(row).TransformPoint({ 0, 0 });
                     const auto detailText = historical ? subtitleText : statusText;
                     const auto detailPosition = detailText.TransformToVisual(row).TransformPoint({ 0, 0 });
-                    const auto ownershipPosition = ownership.TransformToVisual(row).TransformPoint({ 0, 0 });
                     const auto iconPosition = icon.TransformToVisual(row).TransformPoint({ 0, 0 });
                     VERIFY_IS_TRUE(iconPosition.X + icon.ActualWidth() < titlePosition.X);
                     VERIFY_IS_TRUE(std::abs(titlePosition.X - cwdPosition.X) <= tolerance);
@@ -7787,9 +7786,7 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_TRUE(cwdPosition.Y >= titlePosition.Y + titleText.ActualHeight());
                     VERIFY_IS_TRUE(detailPosition.Y >= cwdPosition.Y + cwdText.ActualHeight());
                     VERIFY_IS_TRUE(metadata.ActualWidth() <= width - rowOverhead + tolerance);
-                    VERIFY_ARE_EQUAL(24.0, ownership.ActualWidth());
-                    VERIFY_IS_TRUE(ownershipPosition.X + ownership.ActualWidth() <= width - row.Padding().Right + tolerance);
-                    VERIFY_IS_TRUE(detailPosition.X + detailText.ActualWidth() <= ownershipPosition.X + tolerance);
+                    VERIFY_IS_TRUE(detailPosition.X + detailText.ActualWidth() <= width - row.Padding().Right + tolerance);
                     const auto textCenter = (titlePosition.Y + metadataPosition.Y + metadata.ActualHeight()) / 2;
                     VERIFY_IS_TRUE(std::abs(iconPosition.Y + icon.ActualHeight() / 2 - textCenter) <= tolerance);
                     VERIFY_ARE_EQUAL(width == 180.0f, cwdText.IsTextTrimmed());
@@ -7803,19 +7800,23 @@ namespace TerminalAppLocalTests
         HistoryTestView view;
         const auto strip = view.strip;
         const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        winrt::hstring externalTip, currentStatus;
+        winrt::MUX::Controls::TabViewItem tab{ nullptr };
         TestOnUIThread([&]() {
-            using Page = winrt::TerminalApp::implementation::TerminalPage;
             const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
                                        .MainResourceMap()
                                        .GetSubtree(L"TerminalApp/Resources");
-            const auto externalTip = resources.GetValue(L"VerticalTabsHistoryInUseToolTip").ValueAsString();
+            externalTip = resources.GetValue(L"VerticalTabsHistoryInUseToolTip").ValueAsString();
             VERIFY_IS_FALSE(externalTip.empty());
-            const auto currentStatus = resources.GetValue(L"VerticalTabsHistoryCurrentSession").ValueAsString();
-            const auto tab = winrt::MUX::Controls::TabViewItem{};
+            currentStatus = resources.GetValue(L"VerticalTabsHistoryCurrentSession").ValueAsString();
+            tab = winrt::MUX::Controls::TabViewItem{};
             strip.Width(360);
             strip.Height(400);
-            for (const auto state : { "InUse", "Idle", "Working", "Attention", "Error", "Historical", "Ended" })
-            {
+        });
+        for (const auto state : { "InUse", "Idle", "Working", "Attention", "Error", "Historical", "Ended" })
+        {
+            TestOnUIThread([&]() {
                 Json::Value response;
                 response["history_status"] = "ready";
                 auto& session = response["sessions"][0];
@@ -7829,6 +7830,13 @@ namespace TerminalAppLocalTests
                 auto snapshot = Page::_ParseSidebarHistorySnapshot(Json::writeString(Json::StreamWriterBuilder{}, response));
                 impl->CommitHistorySnapshot(std::move(snapshot.items));
                 strip.UpdateLayout();
+            });
+            _waitForContentTransferReviewUI([&]() {
+                const auto container = impl->ItemsList().ContainerFromItem(strip.HistoryItems().GetAt(0)).try_as<ListViewItem>();
+                const auto row = container ? container.ContentTemplateRoot().try_as<FrameworkElement>() : nullptr;
+                return row && row.IsLoaded();
+            });
+            TestOnUIThread([&]() {
                 const auto item = strip.HistoryItems().GetAt(0);
                 const auto container = impl->ItemsList().ContainerFromItem(item).as<ListViewItem>();
                 const auto row = container.ContentTemplateRoot().as<Grid>();
@@ -7880,8 +7888,8 @@ namespace TerminalAppLocalTests
                 strip.UpdateLayout();
                 VERIFY_IS_TRUE(Automation::AutomationProperties::GetHelpText(container).empty());
                 VERIFY_IS_NULL(ToolTipService::GetToolTip(row));
-            }
-        });
+            });
+        }
         view.Search(L"project");
         TestOnUIThread([&]() { VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size()); });
     }
@@ -9908,7 +9916,7 @@ namespace TerminalAppLocalTests
             const auto peerStrip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(peer->_tabStrip);
             page->_tabStrip.HistoryActive(true);
             peer->_tabStrip.HistoryActive(true);
-            const auto makeItems = [&]() {
+            const auto makeItems = [&](const bool otherWindow) {
                 std::vector<winrt::TerminalApp::TabStripHistoryItem> items;
                 for (const auto& [id, paneId, live] : {
                          std::tuple{ L"first-session", firstId, true },
@@ -9927,12 +9935,15 @@ namespace TerminalAppLocalTests
                     item.Status(live ? L"Idle" : L"Historical");
                     item.IsLive(live);
                     item.IsHistorical(!live);
+                    const auto native = winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item);
+                    native->OtherWindow(otherWindow && live && (paneId == firstId || paneId == secondId));
+                    native->UpdateStatusText(winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText(winrt::to_string(item.Status())));
                     items.emplace_back(item);
                 }
                 return items;
             };
-            strip->CommitHistorySnapshot(makeItems());
-            peerStrip->CommitHistorySnapshot(makeItems());
+            strip->CommitHistorySnapshot(makeItems(false));
+            peerStrip->CommitHistorySnapshot(makeItems(true));
             const auto items = page->_tabStrip.HistoryItems();
             const auto peerItems = peer->_tabStrip.HistoryItems();
             auto visibleFirst = items.GetAt(0);
@@ -9959,8 +9970,12 @@ namespace TerminalAppLocalTests
             verify(false);
             tab->KeepRunning(true);
             verify(true);
-            strip->CommitHistorySnapshot(makeItems());
-            peerStrip->CommitHistorySnapshot(makeItems());
+            const auto idle = winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText("Idle");
+            const auto otherWindowIdle = winrt::hstring{ RS_fmt(L"VerticalTabsHistoryOtherWindowStatusFormat", idle) };
+            VERIFY_ARE_EQUAL(idle, items.GetAt(1).StatusText());
+            VERIFY_ARE_EQUAL(otherWindowIdle, peerItems.GetAt(1).StatusText());
+            strip->CommitHistorySnapshot(makeItems(false));
+            peerStrip->CommitHistorySnapshot(makeItems(true));
             verify(true);
             VERIFY_IS_TRUE(peerStrip->ApplyHistoryStatusDelta(L"first-session", winrt::to_hstring(firstId), L"Ended", L"Historical"));
             verify(true);
@@ -9983,10 +9998,23 @@ namespace TerminalAppLocalTests
             const winrt::guid groupId{ tab->StableId() };
             VERIFY_IS_TRUE(page->_KeepTabRunning(tab));
             verify(true);
+            for (const auto& rows : { items, peerItems })
+            {
+                for (const auto& item : rows)
+                {
+                    if (item.IsLive() && (item.PaneSessionId() == winrt::to_hstring(firstId) ||
+                                          item.PaneSessionId() == winrt::to_hstring(secondId)))
+                    {
+                        VERIFY_ARE_EQUAL(idle, item.StatusText());
+                    }
+                }
+            }
             VERIFY_ARE_EQUAL(0u, first->CloseCount());
             VERIFY_ARE_EQUAL(0u, second->CloseCount());
             VERIFY_IS_TRUE(page->RestoreKeptGroup(groupId));
             verify(true);
+            VERIFY_ARE_EQUAL(idle, items.GetAt(1).StatusText());
+            VERIFY_ARE_EQUAL(otherWindowIdle, peerItems.GetAt(1).StatusText());
             const auto restored = page->_GetFocusedTabImpl();
             restored->KeepRunning(false);
             verify(false);
@@ -10083,8 +10111,6 @@ namespace TerminalAppLocalTests
     {
         HistoryTestView view;
         winrt::TerminalApp::TabStripHistoryItem item{ nullptr };
-        ::details::Event rowLoaded;
-        FrameworkElement::Loaded_revoker loaded;
         TestOnUIThread([&]() {
             const auto strip = view.strip;
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
@@ -10101,21 +10127,15 @@ namespace TerminalAppLocalTests
             strip.Width(260);
             strip.Height(400);
             strip.UpdateLayout();
-            const auto container = impl->ItemsList().ContainerFromItem(item).as<ListViewItem>();
-            const auto row = container.ContentTemplateRoot().as<Grid>();
-            const auto icon = row.FindName(L"HistoryKeepRunningIcon").as<FontIcon>();
-            if (Automation::AutomationProperties::GetName(icon).empty())
-            {
-                loaded = row.Loaded(winrt::auto_revoke, [&](auto&&, auto&&) { rowLoaded.Set(); });
-            }
-            else
-            {
-                rowLoaded.Set();
-            }
         });
-        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(rowLoaded.m_handle, 10000));
+        _waitForContentTransferReviewUI([&]() {
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(view.strip);
+            const auto container = impl->ItemsList().ContainerFromItem(item).try_as<ListViewItem>();
+            const auto row = container ? container.ContentTemplateRoot().try_as<FrameworkElement>() : nullptr;
+            const auto icon = row ? row.FindName(L"HistoryKeepRunningIcon").try_as<FontIcon>() : nullptr;
+            return row && row.IsLoaded() && icon && !Automation::AutomationProperties::GetName(icon).empty();
+        });
         TestOnUIThread([&]() {
-            loaded.revoke();
             const auto strip = view.strip;
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             const auto container = impl->ItemsList().ContainerFromItem(item).as<ListViewItem>();
@@ -10127,7 +10147,7 @@ namespace TerminalAppLocalTests
             const auto text = Media::VisualTreeHelper::GetChild(title, 0).as<TextBlock>();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, icon.Visibility());
             bool enabled = true;
-            impl->UpdateHistoryKeepRunning([&](const auto&) { return enabled; });
+            impl->UpdateHistoryKeepRunning([&](const auto&) { return enabled; }, [](const auto&) { return false; });
             strip.UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Visible, icon.Visibility());
             VERIFY_IS_FALSE(Automation::AutomationProperties::GetName(icon).empty());
@@ -10143,7 +10163,7 @@ namespace TerminalAppLocalTests
             const auto center = (titlePosition.Y + metadataPosition.Y + metadata.ActualHeight()) / 2;
             VERIFY_IS_TRUE(std::abs(iconPosition.Y + icon.ActualHeight() / 2 - center) <= 1);
             enabled = false;
-            impl->UpdateHistoryKeepRunning([&](const auto&) { return enabled; });
+            impl->UpdateHistoryKeepRunning([&](const auto&) { return enabled; }, [](const auto&) { return false; });
             strip.UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, icon.Visibility());
             VERIFY_IS_TRUE(impl->ItemsList().ContainerFromItem(item) == container);
@@ -10710,6 +10730,7 @@ namespace TerminalAppLocalTests
         HistoryTestView view;
         const auto strip = view.strip;
         const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+        double liveHeight{};
 
         TestOnUIThread([&]() {
             strip.Width(320);
@@ -10720,6 +10741,9 @@ namespace TerminalAppLocalTests
             history.Status(L"Idle");
             stripImpl->CommitHistorySnapshot({ history });
             strip.UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return stripImpl->HistoryHeaderButton() && stripImpl->HistoryHeaderButton().IsLoaded();
         });
 
         TestOnUIThread([&]() {
@@ -10756,6 +10780,15 @@ namespace TerminalAppLocalTests
             strip.HistoryActive(false);
             strip.HistoryActive(true);
             strip.UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return stripImpl->HistoryHeaderButton() && stripImpl->HistoryHeaderButton().IsLoaded();
+        });
+        TestOnUIThread([&]() {
+            const auto list = stripImpl->ItemsList();
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
             VERIFY_IS_FALSE(stripImpl->HistoryHeaderButton().IsChecked().Value());
             const auto restoredPeer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(stripImpl->HistoryHeaderButton());
             restoredPeer.GetPattern(Automation::Peers::PatternInterface::ExpandCollapse)
@@ -10763,6 +10796,13 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(2u, list.Items().Size());
             VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsCollapseRecentSessions").ValueAsString(),
                              winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(stripImpl->HistoryHeaderButton())));
+        });
+        _waitForContentTransferReviewUI([&]() {
+            const auto container = stripImpl->ItemsList().ContainerFromIndex(1).try_as<ListViewItem>();
+            return container && container.ContentTemplateRoot();
+        });
+        TestOnUIThread([&]() {
+            const auto list = stripImpl->ItemsList();
             VERIFY_IS_TRUE(list.ContainerFromIndex(1).as<ListViewItem>().Margin() == Thickness{ 0 });
             winrt::MUX::Controls::TabViewItem tab;
             tab.Header(winrt::box_value(L"Live agent"));
@@ -10770,30 +10810,43 @@ namespace TerminalAppLocalTests
             strip.SelectedItem(tab);
             strip.UpdateLayout();
         });
+        _waitForContentTransferReviewUI([&]() {
+            const auto list = stripImpl->ItemsList();
+            for (const auto index : { 0, 1, 2 })
+            {
+                const auto container = list.ContainerFromIndex(index).try_as<ListViewItem>();
+                if (!container || !container.ContentTemplateRoot())
+                {
+                    return false;
+                }
+            }
+            return true;
+        });
 
         TestOnUIThread([&]() {
             const auto list = stripImpl->ItemsList();
             VERIFY_ARE_EQUAL(3u, list.Items().Size());
             const auto live = list.ContainerFromIndex(0).as<ListViewItem>();
             const auto header = list.ContainerFromIndex(1).as<ListViewItem>();
-            const auto liveHeight = live.ActualHeight();
+            liveHeight = live.ActualHeight();
             VERIFY_IS_TRUE(liveHeight > 0 && liveHeight < 100);
             VERIFY_IS_TRUE(header.TransformToVisual(list).TransformPoint({ 0, 0 }).Y < 100);
             const auto history = strip.HistoryItems().GetAt(0);
             const auto historyContainer = list.ContainerFromItem(history).as<ListViewItem>();
             VERIFY_IS_TRUE(historyContainer.Focus(FocusState::Keyboard));
+        });
+        _waitForContentTransferReviewUI([&]() {
+            const auto container = stripImpl->ItemsList().ContainerFromItem(strip.HistoryItems().GetAt(0));
+            return Input::FocusManager::GetFocusedElement(strip.XamlRoot()) == container;
+        });
+        TestOnUIThread([&]() {
+            const auto list = stripImpl->ItemsList();
+            const auto history = strip.HistoryItems().GetAt(0);
+            const auto historyContainer = list.ContainerFromItem(history).as<ListViewItem>();
             const auto selected = strip.SelectedItem();
             list.SelectedItem(history);
             VERIFY_IS_TRUE(strip.SelectedItem() == selected);
             VERIFY_IS_TRUE(Input::FocusManager::GetFocusedElement(strip.XamlRoot()) == historyContainer);
-            winrt::TerminalApp::TabStripHistoryItem activated{ nullptr };
-            const auto activation = strip.HistoryActivationRequested([&](auto&&, const auto& args) { activated = args.Item(); });
-            const auto revoke = wil::scope_exit([&]() { strip.HistoryActivationRequested(activation); });
-            Button resume;
-            resume.Tag(history);
-            stripImpl->OnHistoryOwnershipClick(resume, {});
-            VERIFY_IS_TRUE(activated == history);
-            VERIFY_IS_TRUE(strip.SelectedItem() == selected);
             winrt::MUX::Controls::TabViewItem other;
             other.Header(winrt::box_value(L"Other live agent"));
             strip.TabItems().Append(other);

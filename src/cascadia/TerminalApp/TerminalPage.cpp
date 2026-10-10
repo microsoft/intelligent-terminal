@@ -6612,10 +6612,15 @@ namespace winrt::TerminalApp::implementation
 
         const auto strip = winrt::get_self<implementation::TabStrip>(_tabStrip);
         const auto manager = winrt::get_self<implementation::ContentManager>(_manager);
-        strip->UpdateHistoryKeepRunning([&](const winrt::hstring& paneSessionId) {
-            const auto paneId = _TryParsePaneSessionId(winrt::to_string(paneSessionId));
-            return paneId && manager->IsPaneKeepRunning(*paneId);
-        });
+        strip->UpdateHistoryKeepRunning(
+            [&](const winrt::hstring& paneSessionId) {
+                const auto paneId = _TryParsePaneSessionId(winrt::to_string(paneSessionId));
+                return paneId && manager->IsPaneKeepRunning(*paneId);
+            },
+            [&](const winrt::hstring& paneSessionId) {
+                const auto paneId = _TryParsePaneSessionId(winrt::to_string(paneSessionId));
+                return paneId && manager->KeptGroupForPane(*paneId) != winrt::guid{};
+            });
 
         TerminalApp::TabStripHistoryItem current{ nullptr };
         MUX::Controls::TabViewItem tabItem{ nullptr };

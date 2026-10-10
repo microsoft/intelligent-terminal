@@ -101,9 +101,20 @@ namespace winrt::TerminalApp::implementation
         const auto status = Status();
         const auto liveIt = status == L"Idle" || status == L"Working" ||
                             status == L"Attention" || status == L"Error";
-        StatusText(liveIt && OtherWindow() && !BackgroundTab() ?
+        StatusText(liveIt && OtherWindow() && !BackgroundTab() && !_locallyHeadless ?
                        winrt::hstring{ RS_fmt(L"VerticalTabsHistoryOtherWindowStatusFormat", text) } :
                        text);
+    }
+
+    bool TabStripHistoryItem::UpdateHeadlessState(const bool headless)
+    {
+        if (_locallyHeadless != headless)
+        {
+            _locallyHeadless = headless;
+            UpdateStatusText(TerminalPage::_SidebarHistoryStatusText(winrt::to_string(Status())));
+            return true;
+        }
+        return false;
     }
 
     DataTemplate TabStripItemTemplateSelector::SelectTemplateCore(IInspectable const& item)
@@ -984,7 +995,6 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto isCurrent = item && item.IsCurrent();
-        const auto nativeItem = item ? winrt::get_self<TabStripHistoryItem>(item) : nullptr;
         const auto external = item && item.Status() == L"InUse";
         const auto externalTip = external ? RS_(L"VerticalTabsHistoryInUseToolTip") : winrt::hstring{};
         ToolTipService::SetToolTip(root, external ? box_value(externalTip) : nullptr);
@@ -999,26 +1009,6 @@ namespace winrt::TerminalApp::implementation
             const auto tip = external ? externalTip : item ? item.ProviderDisplayName() :
                                                              winrt::hstring{};
             ToolTipService::SetToolTip(icon, tip.empty() ? nullptr : box_value(tip));
-        }
-        const auto background = nativeItem && nativeItem->BackgroundTab();
-        const auto otherWindow = nativeItem && nativeItem->OtherWindow();
-        if (const auto button = root.FindName(L"HistoryOwnershipButton").try_as<Button>())
-        {
-            const auto label = background ? RS_(L"VerticalTabsHistoryRestoreBackgroundTab") :
-                               otherWindow ? RS_(L"VerticalTabsHistorySwitchOtherWindow") : winrt::hstring{};
-            button.Tag(background || otherWindow ? item : nullptr);
-            button.Visibility(background || otherWindow ? Visibility::Visible : Visibility::Collapsed);
-            button.IsEnabled(background || otherWindow);
-            WUX::Automation::AutomationProperties::SetName(button, label);
-            ToolTipService::SetToolTip(button, label.empty() ? nullptr : box_value(label));
-        }
-        for (const auto& [name, visible] : { std::pair{ L"HistoryBackgroundIcon", background },
-                                            std::pair{ L"HistoryOtherWindowIcon", otherWindow } })
-        {
-            if (const auto icon = root.FindName(name).try_as<UIElement>())
-            {
-                icon.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
-            }
         }
         const auto foreground = isCurrent ? item.CurrentForeground() : nullptr;
         const auto palette = root.FindName(L"HistorySelectionPalette").try_as<Control>();
@@ -1590,10 +1580,14 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TabStrip::UpdateHistoryKeepRunning(const std::function<bool(const winrt::hstring&)>& isPaneKeepRunning)
+    void TabStrip::UpdateHistoryKeepRunning(const std::function<bool(const winrt::hstring&)>& isPaneKeepRunning,
+                                            const std::function<bool(const winrt::hstring&)>& isPaneHeadless)
     {
+        bool changed = false;
         const auto update = [&](const TerminalApp::TabStripHistoryItem& item) {
             item.IsKeepRunning(!item.PaneSessionId().empty() && isPaneKeepRunning(item.PaneSessionId()));
+            changed |= winrt::get_self<TabStripHistoryItem>(item)->UpdateHeadlessState(
+                !item.PaneSessionId().empty() && isPaneHeadless(item.PaneSessionId()));
         };
         for (const auto& item : _historySnapshot)
         {
@@ -1603,6 +1597,17 @@ namespace winrt::TerminalApp::implementation
         for (const auto& item : _historyItems)
         {
             update(item);
+        }
+        if (changed)
+        {
+            for (size_t index = 0; index < _historySnapshot.size(); ++index)
+            {
+                _historySearchTerms[index] = _buildHistorySearchTerms(_historySnapshot[index]);
+            }
+            if (_sidebarFilters.HasSearchQuery())
+            {
+                _applyHistoryProjection(true);
+            }
         }
     }
 
@@ -2153,21 +2158,6 @@ namespace winrt::TerminalApp::implementation
             ToolTipService::SetToolTip(icon, box_value(help));
         }
         _applyHistoryRowForeground(root, item);
-    }
-
-    void TabStrip::OnHistoryOwnershipClick(IInspectable const& sender, RoutedEventArgs const&)
-    {
-        if (_historyActivating || _historyLoading)
-        {
-            return;
-        }
-        if (const auto button = sender.try_as<Button>())
-        {
-            if (const auto item = button.Tag().try_as<TerminalApp::TabStripHistoryItem>())
-            {
-                HistoryActivationRequested.raise(*this, winrt::make<TabStripHistoryActivationEventArgs>(item));
-            }
-        }
     }
 
     void TabStrip::OnContainerContentChanging(ListViewBase const&,

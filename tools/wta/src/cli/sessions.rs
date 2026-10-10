@@ -104,13 +104,13 @@ pub(crate) async fn fetch_from_master(
                 .map(|e| e.code.into())
                 .unwrap_or(0),
         );
-        init_result.map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+        init_result.context("initialize wta-master sessions client")?;
 
         let req = crate::session_registry::build_sessions_list_request(refresh);
         let resp = conn
             .ext_method(req)
             .await
-            .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+            .context("request sessions/list from wta-master")?;
         crate::session_registry::parse_sessions_list_response(&resp.0)
             .context("parse sessions/list response")
     }
@@ -172,7 +172,7 @@ pub(crate) async fn run_activate(
                     "Windows Terminal Sidebar History",
                 ))
                 .await
-                .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+                .context("initialize wta-master activation client")?;
                 let request = crate::session_registry::build_session_activate_request(
                     identity,
                     window_id,
@@ -316,16 +316,9 @@ async fn resolve_master_pipe(master_override: Option<String>) -> Result<String> 
 async fn open_master_pipe(
     pipe_name: &str,
 ) -> Result<tokio::net::windows::named_pipe::NamedPipeClient> {
-    for attempt in 0..2 {
-        match tokio::net::windows::named_pipe::ClientOptions::new().open(pipe_name) {
-            Ok(pipe) => return Ok(pipe),
-            Err(_) if attempt == 0 => {
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await
-            }
-            Err(_) => return Err(anyhow::anyhow!(MASTER_NOT_RUNNING)),
-        }
-    }
-    Err(anyhow::anyhow!(MASTER_NOT_RUNNING))
+    super::open_named_pipe(pipe_name)
+        .await
+        .with_context(|| format!("connect to wta-master pipe '{pipe_name}'"))
 }
 
 fn format_json_lines(sessions: &[crate::session_registry::SessionInfo]) -> Result<String> {

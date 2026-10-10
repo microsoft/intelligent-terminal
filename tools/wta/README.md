@@ -137,6 +137,12 @@ historical resume path. A live IT registration observed after the asynchronous
 probe takes precedence over its older evidence and retains detailed activity.
 This does not infer a window/pane owner or enable a running-location indicator.
 
+Session CLI connections retry transient missing/busy named-pipe instances under
+a bounded backoff (up to 1.87 seconds). Concurrent windows can refresh immediately
+after resume without treating a busy master as stopped; final failures preserve
+the underlying Windows error. This retries connection establishment only, never
+redispatches a session activation.
+
 The initial
 discovery stays `loading` until all eligible host providers finish. Providers that
 do not support listing are skipped, while initialization or listing failures

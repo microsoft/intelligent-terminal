@@ -75,7 +75,7 @@ Describe 'Combined History real-oracle non-live controls' -Tag Unit {
         . (Join-Path $PSScriptRoot '..\fixtures\SidebarRelativeTimeOracle.ps1')
         $ast = [Management.Automation.Language.Parser]::ParseFile(
             (Join-Path $PSScriptRoot '..\tests\Feature.CombinedAgentsSidebar.Tests.ps1'), [ref]$null, [ref]$null)
-        foreach ($name in @('Assert-CombinedHistoryMetadata', 'Assert-CombinedOwnershipButton')) {
+        foreach ($name in @('Assert-CombinedHistoryMetadata', 'Assert-CombinedOwnershipHint')) {
             $function = $ast.FindAll({
                 param($node)
                 $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
@@ -192,16 +192,24 @@ Describe 'Combined History real-oracle non-live controls' -Tag Unit {
         $script:parts[3].Current.BoundingRectangle = [Windows.Rect]::new(88, 28, 50, 16)
         { Assert-CombinedHistoryMetadata -Title session -Status Idle -Provider Copilot } | Should -Throw
     }
-    It 'rejects ownership placed after the leading icon but before provider text' {
+    It 'rejects a dedicated ownership action before metadata' {
         $button = New-MetadataPart 'Restore background tab' 30 28 24 24 HistoryOwnershipButton
         $button.Current.ControlType = [Windows.Automation.ControlType]::Button
         $script:parts += $button
-        { Assert-CombinedOwnershipButton Background } | Should -Throw
+        { Assert-CombinedOwnershipHint Background } | Should -Throw
     }
-    It 'accepts an actionable ownership button after provider display text' {
+    It 'rejects a dedicated ownership action after metadata' {
         $button = New-MetadataPart 'Restore background tab' 180 28 24 24 HistoryOwnershipButton
         $button.Current.ControlType = [Windows.Automation.ControlType]::Button
         $script:parts += $button
-        { Assert-CombinedOwnershipButton Background } | Should -Not -Throw
+        { Assert-CombinedOwnershipHint Background } | Should -Throw
+    }
+    It 'accepts a textual ownership hint without an action button' {
+        Mock Get-CombinedRowText { "session Idle $([char]0xB7) In another window" }
+        { Assert-CombinedOwnershipHint OtherWindow } | Should -Not -Throw
+    }
+    It 'rejects a stale ownership hint on a headless background session' {
+        Mock Get-CombinedRowText { "session Idle $([char]0xB7) In another window" }
+        { Assert-CombinedOwnershipHint Background } | Should -Throw
     }
 }

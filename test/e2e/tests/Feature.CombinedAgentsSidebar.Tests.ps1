@@ -401,7 +401,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 @($textLeaves | Where-Object {
                     $_.Current.Name -match '^(Historical|Ended|Idle|Active|Working|Attention|Error)$'
                 }).Count | Should -Be 0 -Because 'redundant historical status is not rendered'
-                Assert-CombinedOwnershipButton None
+                Assert-CombinedOwnershipHint None | Out-Null
             }
             @{
                 title = $Title; status = $Status; provider = $providerPart.Current.Name
@@ -425,7 +425,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             }
             throw "No real UIA ScrollPattern in $Id."
         }
-            function Assert-CombinedOwnershipButton {
+            function Assert-CombinedOwnershipHint {
                 param([ValidateSet('Background', 'OtherWindow', 'None')][string]$Kind)
                 $rows = @(Get-CombinedRows Recent)
                 $rows.Count | Should -Be 1
@@ -433,31 +433,15 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                     $_.Current.AutomationId -eq 'HistoryOwnershipButton' -and -not $_.Current.IsOffscreen -and
                         $_.Current.BoundingRectangle.Width -gt 0 -and $_.Current.BoundingRectangle.Height -gt 0
                 })
-                if ($Kind -eq 'None') {
-                    $buttons.Count | Should -Be 0 -Because 'unknown and historical ownership must not display an actionable location'
-                    return
+                $buttons.Count | Should -Be 0 -Because 'ownership has no dedicated switch or restore action'
+                $text = Get-CombinedRowText $rows[0]
+                if ($Kind -eq 'OtherWindow') {
+                    $text | Should -Match ([regex]::Escape("$([char]0xB7) In another window"))
+                } else {
+                    $text | Should -Not -Match 'In another window'
                 }
-                $buttons.Count | Should -Be 1
-                $expected = if ($Kind -eq 'Background') { 'Restore background tab' } else { 'Switch to other window' }
-                $buttons[0].Current.Name | Should -Be $expected
-                $buttons[0].Current.IsEnabled | Should -BeTrue
-                $providerIcon = Get-CombinedVisiblePart $rows[0] HistoryProviderIcon
-                $providers = @(Get-CombinedRawChildren $rows[0] | Where-Object {
-                    $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and
-                        $_.Current.Name -eq $providerIcon.Current.Name -and -not $_.Current.IsOffscreen -and
-                        $_.Current.BoundingRectangle.Width -gt 0 -and $_.Current.BoundingRectangle.Height -gt 0 -and
-                        -not @(Get-CombinedRawChildren $_ | Where-Object {
-                            $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and
-                                -not $_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Width -gt 0 -and
-                                $_.Current.BoundingRectangle.Height -gt 0
-                        }).Count
-                })
-                $providers.Count | Should -Be 1 -Because 'ownership follows the visible provider display name'
-                $bounds = $buttons[0].Current.BoundingRectangle
-                $bounds.Left | Should -BeGreaterOrEqual $providers[0].Current.BoundingRectangle.Right
-                $bounds.Right | Should -BeLessOrEqual $rows[0].Current.BoundingRectangle.Right
                 Save-CombinedActionEvidence "ownership-$Kind" -Screenshot
-                $buttons[0]
+                $rows[0]
             }
             function New-CombinedCliFixture {
                 param([string]$Purpose, [string]$SessionId = '', [string]$ResumeSession = '')
@@ -1624,7 +1608,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 Set-CombinedQuery (Split-Path $folder -Leaf)
                 Wait-Until -TimeoutSec 15 -Condition { @(Get-CombinedRows Recent).Count -eq 1 } | Out-Null
                 Assert-CombinedHistoryMetadata -Title (Split-Path $folder -Leaf) -Status $state.Status -Provider Copilot -OtherWindow
-                Assert-CombinedOwnershipButton OtherWindow | Out-Null
+                Assert-CombinedOwnershipHint OtherWindow | Out-Null
                 Save-CombinedActionEvidence "other-window-$($state.Status)" -Screenshot
                 @{
                     session_id = $sid; pane_session_id = $tab.session_id
@@ -1652,13 +1636,13 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $historyRows = @(Get-CombinedRows Recent)
             $historyRows.Count | Should -Be 1
             Set-WtWindowForeground -App $sourceApp -Attempts 3 -DelayMs 150 | Should -BeTrue
-            $ownershipButton = Assert-CombinedOwnershipButton OtherWindow
-            $buttonBounds = $ownershipButton.Current.BoundingRectangle
-            Invoke-UiMouseDrag -App $sourceApp -FromX ([int]($buttonBounds.X + $buttonBounds.Width / 2)) `
-                -FromY ([int]($buttonBounds.Y + $buttonBounds.Height / 2)) `
-                -ToX ([int]($buttonBounds.X + $buttonBounds.Width / 2)) `
-                -ToY ([int]($buttonBounds.Y + $buttonBounds.Height / 2)) -HoldMs 50 | Out-Null
-            Wait-Until -TimeoutSec 15 -Because 'the location button switches to the existing owner window' -Condition {
+            $historyRow = Assert-CombinedOwnershipHint OtherWindow
+            $rowBounds = $historyRow.Current.BoundingRectangle
+            Invoke-UiMouseDrag -App $sourceApp -FromX ([int]($rowBounds.X + $rowBounds.Width / 2)) `
+                -FromY ([int]($rowBounds.Y + $rowBounds.Height / 2)) `
+                -ToX ([int]($rowBounds.X + $rowBounds.Width / 2)) `
+                -ToY ([int]($rowBounds.Y + $rowBounds.Height / 2)) -HoldMs 50 | Out-Null
+            Wait-Until -TimeoutSec 15 -Because 'clicking the history row focuses the existing owner window' -Condition {
                 $foreground = [ItE2E.ItWtWin32Input]::GetForegroundWindow()
                 $foreground.ToInt64() -eq [long]$foreignHwnd -and
                     [ItE2E.ItWtWin32Input]::GetWindowProcessId($foreground) -eq $sourceApp.Pid
@@ -1750,7 +1734,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         }
     }
 
-    It 'History background indicator restores the whole original tab (<Status>)' -ForEach @(
+    It 'History row restores the whole original background tab (<Status>)' -ForEach @(
         @{ Status = 'Idle' }, @{ Status = 'Working' }
     ) {
         $fixture = New-CombinedCliFixture "background-$Status"
@@ -1790,10 +1774,10 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                         $_.session_id -eq $fixture.SessionId -and $_.status -eq $Status -and $_.background_tab -eq $true
                     }).Count -eq 1
             } | Out-Null
-            $button = Assert-CombinedOwnershipButton Background
+            $historyRow = Assert-CombinedOwnershipHint Background
             $beforeCollapse = Get-ActivePane -App $script:app
-            $button.SetFocus()
-            $button.Current.HasKeyboardFocus | Should -BeTrue
+            $historyRow.SetFocus()
+            $historyRow.Current.HasKeyboardFocus | Should -BeTrue
             $heading = Get-CombinedElement HistoryHeaderButton
             $collapse = $heading.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
             try {
@@ -1809,8 +1793,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             }
             finally { $collapse.Expand() }
             Wait-Until -TimeoutSec 5 -Condition { @(Get-CombinedRows Recent).Count -eq 1 } | Out-Null
-            $button = Assert-CombinedOwnershipButton Background
-            $bounds = $button.Current.BoundingRectangle
+            $historyRow = Assert-CombinedOwnershipHint Background
+            $bounds = $historyRow.Current.BoundingRectangle
             Invoke-UiMouseDrag -App $script:app -FromX ([int]($bounds.X + $bounds.Width / 2)) -FromY ([int]($bounds.Y + $bounds.Height / 2)) `
                 -ToX ([int]($bounds.X + $bounds.Width / 2)) -ToY ([int]($bounds.Y + $bounds.Height / 2)) -HoldMs 50 | Out-Null
             Wait-Until -TimeoutSec 15 -Condition { (Get-CombinedAttachedTabCount) -eq $count } | Out-Null
@@ -1854,7 +1838,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                             width = $row.Current.BoundingRectangle.Width
                             height = $row.Current.BoundingRectangle.Height
                             parts = @(Get-CombinedRawChildren $row | Where-Object {
-                                $_.Current.AutomationId -in @('HistoryOwnershipButton', 'HistoryProviderIcon')
+                                $_.Current.AutomationId -eq 'HistoryProviderIcon'
                             } | ForEach-Object {
                                 @{
                                     id = $_.Current.AutomationId; name = $_.Current.Name
@@ -1880,10 +1864,6 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                     })
                     $qualified.Count -eq 1 -and $rowStates.Count -eq 1 -and
                         -not $rowStates[0].offscreen -and $rowStates[0].width -gt 0 -and $rowStates[0].height -gt 0 -and
-                        @($rowStates[0].parts | Where-Object {
-                            $_.id -eq 'HistoryOwnershipButton' -and $_.name -eq 'Restore background tab' -and
-                                -not $_.offscreen -and $_.enabled -and $_.width -gt 0 -and $_.height -gt 0
-                        }).Count -eq 1 -and
                         @($rowStates[0].parts | Where-Object {
                             $_.id -eq 'HistoryProviderIcon' -and $_.name -eq 'Copilot' -and
                                 -not $_.offscreen -and $_.width -gt 0 -and $_.height -gt 0
@@ -1912,7 +1892,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 }
                 catch { Write-Warning "Second-detach diagnostic capture failed: $_" }
             }
-            Assert-CombinedOwnershipButton Background | Out-Null
+            Assert-CombinedOwnershipHint Background | Out-Null
             $historyRow = @(Get-CombinedRows Recent)[0]
             Set-WtWindowForeground -App $script:app -Attempts 3 -DelayMs 150 | Should -BeTrue
             $historyRow.SetFocus()
@@ -2022,7 +2002,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Set-CombinedFilters -AgentsOnly $true -Recent $RecentScope
             Set-CombinedQuery (Split-Path $fixture.Folder -Leaf)
             Wait-Until -TimeoutSec 15 -Condition { @(Get-CombinedRows Recent).Count -eq 1 } | Out-Null
-            Assert-CombinedOwnershipButton None
+            Assert-CombinedOwnershipHint None | Out-Null
             Save-CombinedActionEvidence 'external-unbound-before-enter' -Screenshot
             $window = [string]$script:app.WindowId
             $beforeTabs = @(Get-WtTabs -App $script:app -WindowId $window)

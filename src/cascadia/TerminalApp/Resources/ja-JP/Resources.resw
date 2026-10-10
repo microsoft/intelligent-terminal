@@ -1680,14 +1680,6 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>{0} · 別のウィンドウ内</value>
     <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
   </data>
-  <data name="VerticalTabsHistoryRestoreBackgroundTab" xml:space="preserve">
-    <value>バックグラウンドのタブを復元</value>
-    <comment>Action for a live agent session in a kept-running background tab. Restores the entire original tab, with all its panes, to the foreground. This does not resume a new conversation or focus another visible window.</comment>
-  </data>
-  <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
-    <value>別のウィンドウに切り替え</value>
-    <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
-  </data>
   <data name="VerticalTabsSwitchToAgents" xml:space="preserve">
     <value>AI エージェントに切り替える</value>
     <comment>Tooltip and accessible action name of the sidebar header button while Tabs is selected. One click switches to the Agents view; it does not open a menu. Agents means AI agents, not people.</comment>

@@ -117,23 +117,23 @@ agent action, not an override of the normal new-tab control.
   Idle/Active/Waiting for input/Error status for live IT registrations, or the
   relative timestamp for ended/historical sessions. Live rows do not display a
   timestamp, and historical rows do not display the redundant Historical status.
-  An outlined window with an upward restore arrow beside the third line
-  identifies a confirmed background tab; clicking restores the whole original
-  tab. Two overlapping windows identify a session attached to another visible
-  window; clicking focuses its original tab and pane. Its detailed status also
-  ends with **In another window**, separated by a middle dot (for example,
+  A session attached to another visible IT window ends its detailed status
+  with **In another window**, separated by a middle dot (for example,
   `Idle · In another window`). This requires confirmed different-window
   ownership; current-window, external **In use**, historical, and unknown-owner
   rows do not receive the annotation. Kept-tab membership takes precedence
   over an old window ID and does not show the other-window annotation.
-  Unknown ownership leaves the activity status visible without either indicator.
+  Entering headless mode clears a stale window annotation immediately from
+  locally known retained rows, without waiting for the next master snapshot.
+  There are no dedicated switch-window or restore-background-tab action buttons
+  or icons in recent-session rows. The passive Keep Running badge is unchanged.
+  Unknown ownership leaves the activity status visible without a window annotation.
   Enter uses the same activation: focus or restore an existing bound pane, or
   attempt supported resume in the current window for an explicitly activated
   known-provider shell session with no bound pane. A failed bound-pane focus
   never falls back to creating a new resumed session.
   Bare Enter activates the focused History row even with selection disabled;
-  modified Enter is ignored. A focused ownership button retains its native
-  activation, rather than also activating its containing row.
+  modified Enter is ignored.
   Provider identity remains available through the icon tooltip, the focused
   history row's accessible name (alongside its title), and shared search.
   The working directory supports search highlighting and a full-path tooltip.
@@ -142,8 +142,7 @@ agent action, not an override of the normal new-tab control.
   The focused history row exposes the same explanation as accessible help text.
   Both follow status changes without replacing the row, and the help text clears
   when the session returns to IT or becomes historical.
-  Text may truncate with an ellipsis at the minimum sidebar width; the ownership
-  action retains reserved space.
+  Text may truncate with an ellipsis at the minimum sidebar width.
 - History ages match the original session-management view: localized,
   unabbreviated numeric relative time below seven days, such as `2 minutes ago`,
   `2 hours ago`, and `2 days ago`. Below a minute, the existing localized
@@ -443,7 +442,7 @@ These are required checks for this contract, not claims of completed validation:
   override filters.
 - Change filters during search, then clear and close the query separately.
   Verify restoration of the exact checked preferences, not default values.
-- Verify existing recent-row resume/ownership actions and live tab/group/pane
+- Verify existing recent-row activation and live tab/group/pane
   actions remain available when their rows are visible.
 - For sidebar-hotkey entry from collapsed and expanded rails, verify restoration
   to Agent Pane chat and the exact originating terminal split when available.
