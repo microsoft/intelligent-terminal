@@ -2,6 +2,7 @@ pub(crate) mod authentication;
 pub mod client;
 pub mod conn;
 pub mod failure;
+pub(crate) mod history_process;
 pub mod model_select;
 pub mod native_yolo;
 pub mod probe;

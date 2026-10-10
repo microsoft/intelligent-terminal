@@ -71,6 +71,7 @@ use crate::protocol::acp::spawn::{
 };
 
 pub(crate) mod config;
+mod history;
 mod session_mcp;
 
 use config::MasterConfig;
@@ -629,6 +630,7 @@ struct MasterStateInner {
     history_discovery_state: std::sync::atomic::AtomicU8,
     history_discovery_errors: Mutex<HashMap<AgentCmdKey, HistoryRefreshFailure>>,
     history_discovery_retries: Mutex<HashMap<AgentCmdKey, HistoryRefreshState>>,
+    history_queries: Mutex<HashMap<AgentCmdKey, Arc<Mutex<HistoryRefreshState>>>>,
     history_status: watch::Sender<HistorySyncStatus>,
     history_status_gate: Mutex<()>,
     helper_roles: Mutex<HashMap<HelperId, HelperRole>>,
@@ -1868,11 +1870,14 @@ fn agent_cmd_key_with_provider(
 
 #[derive(Default)]
 struct AgentHistoryRefresh {
-    gate: Mutex<HistoryRefreshState>,
+    gate: Arc<Mutex<HistoryRefreshState>>,
     mutation_gate: Mutex<()>,
     generation: std::sync::atomic::AtomicU64,
     retired: std::sync::atomic::AtomicBool,
     failure: Mutex<Option<HistoryRefreshFailure>>,
+    target: OnceLock<history::HistoryTarget>,
+    cancelled: tokio_util::sync::CancellationToken,
+    worker_started: std::sync::atomic::AtomicBool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1901,6 +1906,8 @@ struct HistoryRefreshState {
     next_refresh_at: Option<tokio::time::Instant>,
     failures: u32,
     last_count: Option<usize>,
+    query: history::HistoryQuery,
+    owner: Option<AgentInstanceId>,
 }
 
 impl HistoryRefreshState {
@@ -4641,7 +4648,7 @@ impl HelperHandler {
                 // without binding an agent, and that is a valid read-only
                 // caller — not a protocol violation worth erroring on.
                 let agent = self.agent.get().cloned();
-                handle_sessions_list(&self.state, agent.as_deref(), &p).await
+                handle_sessions_list(&self.state, agent.as_ref(), &p).await
             }
             Req::SessionActivate(p) => handle_session_activate(&self.state, &p).await,
             Req::SessionActivationStatus(p) => {
@@ -5084,6 +5091,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         history_discovery_state: std::sync::atomic::AtomicU8::new(0),
         history_discovery_errors: Mutex::new(HashMap::new()),
         history_discovery_retries: Mutex::new(HashMap::new()),
+        history_queries: Mutex::new(HashMap::new()),
         history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading.into())
             .0,
         history_status_gate: Mutex::new(()),
@@ -6143,6 +6151,13 @@ async fn spawn_one_agent(
         provider_binding,
         supplied_cloud_models,
     );
+    let history_gate = state
+        .history_queries
+        .lock()
+        .await
+        .entry(key.clone())
+        .or_default()
+        .clone();
     let agent = Arc::new(AgentCli {
         instance_id,
         resolved_agent_id: resolved_agent_id.clone(),
@@ -6153,9 +6168,22 @@ async fn spawn_one_agent(
         cmd_key: key.clone(),
         cloud_catalog: Mutex::new(cloud_catalog),
         bound_helpers: Mutex::new(HashSet::new()),
-        history_refresh: AgentHistoryRefresh::default(),
+        history_refresh: AgentHistoryRefresh {
+            gate: history_gate,
+            ..Default::default()
+        },
         listed_ever: Mutex::new(HashSet::new()),
     });
+    agent
+        .history_refresh
+        .target
+        .set(history::HistoryTarget {
+            command: agent_cmd.to_string(),
+            agent_id: resolved_agent_id.clone(),
+            source: source.clone(),
+            provider: provider_binding.clone(),
+        })
+        .map_err(|_| anyhow!("history target already configured"))?;
     state.agent_authentication.lock().await.insert(
         instance_id,
         Arc::new(AgentAuthenticationBridge {
@@ -6171,26 +6199,7 @@ async fn spawn_one_agent(
     // launch agent's rows. The session view filters by the helper's current
     // CLI, so every switched-to agent then rendered an empty list until the
     // user restarted Terminal.
-    {
-        let state = Arc::clone(state);
-        let agent = Arc::clone(&agent);
-        tokio::task::spawn_local(async move {
-            let count = seed_host_and_broadcast(&state, &agent).await;
-            if update_history_sync_status(&state).await {
-                broadcast_ext_to_helpers(
-                    &state,
-                    crate::session_registry::build_sessions_changed_notification(),
-                )
-                .await;
-            }
-            tracing::info!(
-                target: "master_history",
-                cli = ?agent.cli_source,
-                ?count,
-                "agent ACP history seed complete"
-            );
-        });
-    }
+    start_agent_history_worker(state, &agent);
 
     if start_clean_probe {
         let command = agent_cmd.to_string();
@@ -6221,10 +6230,20 @@ async fn reap_agent(
         // Retirement and registry publication share a boundary, without holding
         // the pool lock or waiting for an ACP network request.
         let _mutation = agent.history_refresh.mutation_gate.lock().await;
-        agent
+        let first_retirement = !agent
             .history_refresh
             .retired
-            .store(true, std::sync::atomic::Ordering::Release);
+            .swap(true, std::sync::atomic::Ordering::AcqRel);
+        agent.history_refresh.cancelled.cancel();
+        drop(_mutation);
+        if first_retirement {
+            let mut refresh = agent.history_refresh.gate.lock().await;
+            if refresh.owner == Some(instance_id) {
+                if let Err(error) = refresh.query.stop().await {
+                    tracing::error!(target: "master_history", %error, "retired history process cleanup failed; replacement remains gated");
+                }
+            }
+        }
     }
     #[cfg(test)]
     let cleanup_pause = state.reap_agent_orphan_cleanup_pause.lock().await.clone();
@@ -6875,6 +6894,7 @@ async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str
 /// Called only under the per-connection refresh gate. Failure is not an empty list.
 async fn host_session_list_raw(
     agent: &AgentCli,
+    refresh: &mut HistoryRefreshState,
 ) -> Result<Vec<acp::schema::v1::SessionInfo>, HistoryRefreshFailure> {
     if agent
         .cached_init_resp
@@ -6886,32 +6906,23 @@ async fn host_session_list_raw(
         return Err(HistoryRefreshFailure::Other);
     }
 
-    match tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        agent
-            .conn
-            .list_sessions(acp::schema::v1::ListSessionsRequest::new()),
-    )
-    .await
+    if refresh
+        .owner
+        .is_some_and(|owner| owner != agent.instance_id)
     {
-        Ok(Ok(resp)) => Ok(resp.sessions),
-        Ok(Err(e)) => {
-            tracing::warn!(
-                target: "master_history",
-                cli = ?agent.cli_source,
-                "host session/list error: {e}"
-            );
-            Err(HistoryRefreshFailure::Other)
-        }
-        Err(_) => {
-            tracing::warn!(
-                target: "master_history",
-                cli = ?agent.cli_source,
-                "host session/list timed out"
-            );
-            Err(HistoryRefreshFailure::Timeout)
+        if let Err(error) = refresh.query.stop().await {
+            tracing::error!(target: "master_history", %error, "previous history generation remains quarantined");
+            return Err(HistoryRefreshFailure::Other);
         }
     }
+    refresh.owner = Some(agent.instance_id);
+    refresh
+        .query
+        .poll(
+            agent.history_refresh.target.get(),
+            &agent.history_refresh.cancelled,
+        )
+        .await
 }
 
 /// Legacy fallback for rows without a qualified provider identity.
@@ -7038,8 +7049,9 @@ fn titles_from_listing(
 async fn sync_host_history(
     state: &MasterStateInner,
     agent: &AgentCli,
+    refresh: &mut HistoryRefreshState,
 ) -> Result<(bool, usize), HistoryRefreshFailure> {
-    let sessions = host_session_list_raw(agent).await?;
+    let sessions = host_session_list_raw(agent, refresh).await?;
     if agent
         .history_refresh
         .retired
@@ -7249,6 +7261,7 @@ fn is_stale_host_history_row(
 
 /// Seed + reconcile `agent`'s history against its own `session/list`,
 /// broadcasting when anything changed. Returns the listed count.
+#[cfg(test)]
 async fn seed_host_and_broadcast(state: &MasterStateInner, agent: &AgentCli) -> Option<usize> {
     refresh_agent_history(state, agent, HistoryRefreshTrigger::Immediate).await
 }
@@ -7257,6 +7270,7 @@ async fn seed_host_and_broadcast(state: &MasterStateInner, agent: &AgentCli) -> 
 enum HistoryRefreshTrigger {
     Immediate,
     Periodic,
+    #[cfg(test)]
     Event,
 }
 
@@ -7290,35 +7304,28 @@ async fn refresh_agent_history(
     if agent.history_refresh.retired.load(Ordering::Acquire) {
         return None;
     }
-    // The interval already paces periodic work. Applying the success delay
-    // again would skip ticks whenever the previous dispatch started slightly late.
-    let honor_delay = match trigger {
-        HistoryRefreshTrigger::Immediate => false,
-        HistoryRefreshTrigger::Periodic => refresh.failures != 0,
-        HistoryRefreshTrigger::Event => true,
-    };
+    // Manual, event and timer requests share the same in-flight operation.
+    // Only an actual response or confirmed process exit releases its slot.
+    let _ = trigger;
     // Waiters share the completed refresh rather than queueing another ACP call.
     if agent.history_refresh.generation.load(Ordering::Acquire) != generation
-        || (honor_delay
+        || (!refresh.query.in_flight()
             && refresh
                 .next_refresh_at
                 .is_some_and(|at| at > tokio::time::Instant::now()))
     {
         return refresh.last_count;
     }
-    let started_at = tokio::time::Instant::now();
-    let result = sync_host_history(state, agent).await;
+    let result = sync_host_history(state, agent, &mut refresh).await;
     let delay = if result.is_ok() {
         refresh.failures = 0;
         HISTORY_REFRESH_INTERVAL
+    } else if refresh.query.in_flight() {
+        std::time::Duration::ZERO
     } else {
         refresh.record_failure()
     };
-    refresh.next_refresh_at = Some(if result.is_ok() {
-        started_at + delay
-    } else {
-        tokio::time::Instant::now() + delay
-    });
+    refresh.next_refresh_at = Some(tokio::time::Instant::now() + delay);
     refresh.last_count = result.ok().map(|(_, count)| count);
     {
         let mut discovery_errors = state.history_discovery_errors.lock().await;
@@ -7418,13 +7425,48 @@ fn start_history_refresh_loop(state: &Arc<MasterStateInner>) {
                 .filter_map(|cell| cell.get().cloned())
                 .collect();
             for agent in agents {
-                if agent.history_refresh.gate.try_lock().is_err() {
-                    continue;
-                }
-                let state = Arc::clone(&state);
-                tokio::task::spawn_local(async move {
-                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic).await;
-                });
+                start_agent_history_worker(&state, &agent);
+            }
+        }
+    });
+}
+
+fn start_agent_history_worker(state: &Arc<MasterStateInner>, agent: &Arc<AgentCli>) {
+    use std::sync::atomic::Ordering;
+    if agent
+        .cached_init_resp
+        .agent_capabilities
+        .session_capabilities
+        .list
+        .is_none()
+        || agent.history_refresh.retired.load(Ordering::Acquire)
+        || agent
+            .history_refresh
+            .worker_started
+            .swap(true, Ordering::AcqRel)
+    {
+        return;
+    }
+    let state = Arc::downgrade(state);
+    let agent = Arc::clone(agent);
+    tokio::spawn(async move {
+        loop {
+            let Some(state) = state.upgrade() else { break };
+            if agent.history_refresh.retired.load(Ordering::Acquire) {
+                break;
+            }
+            refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic).await;
+            drop(state);
+            let next = agent
+                .history_refresh
+                .gate
+                .lock()
+                .await
+                .next_refresh_at
+                .unwrap_or_else(tokio::time::Instant::now);
+            tokio::select! {
+                _ = agent.history_refresh.cancelled.cancelled() => break,
+                _ = tokio::time::sleep_until(next) => {}
             }
         }
     });
@@ -7489,8 +7531,7 @@ where
             Some(agent_id),
             &crate::agent_source::AgentSource::Host,
         );
-        if !matches!(trigger, HistoryRefreshTrigger::Immediate)
-            && state
+        if state
                 .history_discovery_retries
                 .lock()
                 .await
@@ -7664,32 +7705,14 @@ fn request_host_history_discovery(state: &Arc<MasterStateInner>, immediate: bool
 /// Ordinary reads never contact agents. Only an explicit rescan may refresh.
 async fn handle_sessions_list(
     state: &std::sync::Arc<MasterStateInner>,
-    agent: Option<&AgentCli>,
+    agent: Option<&Arc<AgentCli>>,
     parsed: &crate::session_registry::SessionsListParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
     if parsed.rescan {
         if let Some(agent) = agent {
-            // Re-pull this agent's own `session/list` and broadcast. Each pooled
-            // agent — host or in-distro — enumerates its own sessions, so an
-            // F5 in a WSL pane refreshes that distro through its own CLI.
-            let count = seed_host_and_broadcast(state, agent).await;
-            if count.is_none()
-                && agent
-                    .cached_init_resp
-                    .agent_capabilities
-                    .session_capabilities
-                    .list
-                    .is_some()
-            {
-                return Err(acp::Error::internal_error()
-                    .data("session history refresh failed; previous snapshot retained"));
-            }
-            tracing::info!(
-                target: "master_history",
-                cli = ?agent.cli_source,
-                ?count,
-                "sessions/list rescan: reloaded history via ACP"
-            );
+            // F5 shares the bound source's worker, but the helper's ACP
+            // dispatch must never wait behind a slow history request.
+            start_agent_history_worker(state, agent);
         } else {
             request_host_history_refresh(state);
         }
@@ -8340,7 +8363,7 @@ async fn execute_session_activation(
 /// master's snapshot, so the upgrade must happen here.
 ///
 async fn handle_session_hook(
-    state: &MasterStateInner,
+    state: &Arc<MasterStateInner>,
     event: crate::agent_sessions::SessionEvent,
     is_born_bound: bool,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
@@ -8561,7 +8584,7 @@ async fn session_event_status_key(
 /// Re-broadcasts `sessions/changed` only when the location actually changed, so
 /// the host path (no distro) adds no extra push.
 async fn handle_session_born_bound(
-    state: &MasterStateInner,
+    state: &Arc<MasterStateInner>,
     event: crate::agent_sessions::SessionEvent,
     wsl_distro: Option<String>,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
@@ -8597,7 +8620,10 @@ async fn handle_session_born_bound(
 ///      touching the pane binding; or
 ///   3. anything else (a user-typed CLI, or a machine-wide copilot/claude in
 ///      VS Code / another terminal) → drop — we can't bind it to an IT pane.
-async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_watcher::Emitted) {
+async fn apply_watcher_event(
+    state: &Arc<MasterStateInner>,
+    emitted: crate::session_watcher::Emitted,
+) {
     let sid = acp::schema::v1::SessionId::new(emitted.key.clone());
 
     // Hybrid dedup — the watcher is a *fallback*. Coordinate with authoritative
@@ -10786,7 +10812,10 @@ async fn agent_for_row(
 /// early-out: only fetch the agent's session/list when this row is synthetic.
 /// The shared refresh owns history/title notifications; callers publish only
 /// their own lifecycle mutations.
-async fn try_refresh_title_via_acp(state: &MasterStateInner, sid: &acp::schema::v1::SessionId) {
+async fn try_refresh_title_via_acp(
+    state: &Arc<MasterStateInner>,
+    sid: &acp::schema::v1::SessionId,
+) {
     let Some(info) = state.registry.lookup(sid).await else {
         return;
     };
@@ -10811,7 +10840,9 @@ async fn try_refresh_title_via_acp(state: &MasterStateInner, sid: &acp::schema::
     if !row_belongs_to_agent(&info, &agent) {
         return;
     }
-    refresh_agent_history(state, &agent, HistoryRefreshTrigger::Event).await;
+    // The per-agent worker owns one coalesced refresh stream. Never hold a
+    // hook/ACP dispatch handler behind a slow history request.
+    start_agent_history_worker(state, &agent);
 }
 
 /// Pure async handler for the `intellterm.wta/focus_session` ExtRequest.

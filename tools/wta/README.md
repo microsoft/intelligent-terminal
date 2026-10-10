@@ -89,10 +89,42 @@ and ACP wrapper prerequisites.
 Sidebar Agent sessions runs
 `wta sessions list --origin shell --json --include-status`.
 This only reads the current registry snapshot; it never starts an agent or waits
-for an ACP history query. Master synchronizes initialized, listing-capable pooled
-connections every five seconds, including already-connected WSL and custom agents.
-Each connection has one refresh in flight; history and title updates share its
-single response. Failed queries retain prior rows and back off up to 60 seconds.
+for an ACP history query. Each initialized, listing-capable agent command/source
+has a separate, reusable history-only ACP process, including already-connected
+WSL and custom agents. It is never used for chat, Autofix, or session restoration.
+History and title updates share one response. After success, the next query waits
+five seconds from completion; timer, manual, and hook refreshes share this stream
+and cannot queue additional RPCs. Slow title queries never block hook dispatch.
+
+Soft response deadlines widen through 5, 10, 20, 40, and 60 seconds. A soft
+timeout retains the original response receiver and in-flight slot: it does not
+send a new request or pretend to cancel Copilot's work. Checkpoints are measured
+from the original send time, followed by one-minute checks. Three consecutive
+responses faster than five seconds reduce the deadline by one step. Completed
+errors back off through 5, 10, 20, 40, and at most 60 seconds, including manual
+refreshes. Only a successful list resets failure backoff, not ACP initialization.
+An authentication-required response retires the history instance after backoff
+so its replacement can pick up credentials from the normal sign-in flow; it
+never starts a separate interactive login.
+
+At 300 seconds without a response, master recycles only the dedicated history
+process, confirms its exit, then rebuilds after backoff. Windows query launchers
+are assigned to a private kill-on-close Job Object before executing, so their
+descendants are reclaimed too. WSL uses a private process group with a PID/start
+time receipt and an stdin-EOF guardian; recovery checks that the group has exited.
+WSL needs `bash`, `setsid`, `cat`, `ps`, and `grep`. Cleanup failures retain the
+old instance and block replacement, including across chat-process generations.
+Failed queries and recovery retain cached rows; no chat process is restarted.
+
+For optional zero-inference runtime checks, use an authenticated native Copilot
+or explicitly select a WSL distro. These ignored tests are not part of CI:
+
+```powershell
+cargo test --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml history_refresh_live_copilot -- --ignored
+$env:WTA_TEST_WSL_DISTRO = 'Ubuntu'
+cargo test --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml history_wsl_group -- --ignored
+```
+
 The opt-in JSON object contains `sessions` and `history_status` (`loading`, `ready`,
 or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
 ordinary `--json` output remains one session per line.
@@ -147,8 +179,10 @@ a fresh activation ID. See
 [session tracking](../../doc/specs/hybrid-agent-session-tracking.md) for receipt
 retention and refresh cancellation/backoff behavior.
 
-These native-provider ACP processes remain in the master pool after History closes;
-there is no History-specific idle timeout or eviction. Further refreshes reuse them,
+The warm native-provider chat processes remain in the master pool after History
+closes; the dedicated history processes are also reused while their owning pool
+entry remains live. There is no History-view-specific idle eviction.
+Further refreshes reuse healthy processes,
 and concurrent windows share one discovery pass. Registry and discovery-status changes notify the sidebar,
 with a 60-second snapshot poll while the view is open in vertical layout as a fallback. Opening the
 view still fetches immediately. Unavailable or failed
@@ -166,7 +200,7 @@ periodic installation scan. Failed host-agent startup discoveries are retried th
 same discovery worker, with delays of 5, 10, 20, 40, then at most 60 seconds after
 each failure (checked on the existing five-second history timer). Retries recheck
 installation and policy and do not restart healthy resident providers.
-`wta sessions refresh --json` bypasses this startup backoff, schedules discovery and returns the
+`wta sessions refresh --json` schedules discovery while respecting failure backoff and returns the
 current snapshot with `history_status`; it does not wait for discovery to finish.
 The removed `--all-agents` flag is no longer accepted. F5 in a helper's session view
 explicitly refreshes that helper's bound connection without discovering other agents.
@@ -175,8 +209,8 @@ only in nonvertical layout; vertical layout uses the Sidebar fallback instead.
 Live layout changes and helper-ready runtime configuration update this selection per
 window without reconnecting ACP. Push updates remain immediate in either layout,
 and returning to nonvertical layout immediately refreshes an already-open helper view.
-History-query retries do not restart or initialize agents; startup discovery retries
-are separate and retain the existing ACP initialization timeout.
+History-query recovery may rebuild only its history-only process. Startup
+discovery retries are separate and retain the existing ACP initialization timeout.
 
 ### tmux-like CLI
 
@@ -525,6 +559,47 @@ reclaimed after three days.
 Set `WTA_LOG=debug` for verbose output (debug builds default to `debug`, release
 to `info`). The F12 debug panel in the TUI shows protocol traffic live without
 tailing log files.
+
+### Standalone Copilot ACP CPU probe
+
+On Windows with PowerShell 7, compare idle CPU, five-second `session/list`
+polling, and the idle period after polling stops, without making a model
+request or creating a chat session:
+
+```powershell
+pwsh -File tools\wta\Measure-CopilotAcpCpu.ps1
+```
+
+Add `-CreateTranscript` to create and restore only a new test conversation,
+including restarting ACP with `--resume` pointing to that test session.
+This makes one synthetic, tool-denied model request and consumes model
+credits, disables custom instructions and built-in MCP servers, and limits
+available tools to a denied shell tool for all scenarios. The probe verifies
+both user and agent message replay from `session/load`. Empty ACP sessions
+may not be persisted, so restoration requires the completed synthetic
+conversation. Accepting `--resume` in ACP mode does not itself prove that
+startup replay occurred; that phase only measures the launch mode, and the
+report includes update-type counts.
+
+Results are written to a new directory under `tools\wta\target\acp-cpu-probe`:
+`report.json`, per-phase `phases.json`, per-sample `cpu.csv`, and request
+latencies/timeouts in `rpc.csv`. No chat text or session-list contents are
+recorded. Both stdout and stderr are drained continuously. CPU includes the
+server and observed descendants; very short-lived children between samples
+may be missed. `core_percent` uses one logical core as 100%; `machine_percent`
+divides by the machine's logical processor count, like Task Manager. The
+default sustained-busy indicator requires at least 20% of a core in at least
+80% of samples and at least 20% average CPU; it is a diagnostic threshold,
+not a correctness verdict.
+
+Fixed polling is deliberately a stress comparison, not a reproduction of
+current WTA's failure handling. Use `-PollPolicy Backoff` to apply its
+5/10/20/40/60-second failure delays. A local timeout is recorded separately
+from a late response: the probe does not pretend it cancelled server-side
+work. It terminates only processes identified as its own by PID and creation
+time, does not attach to Terminal or restore existing chats, and leaves its
+new test session available for inspection. A quiet short run does not rule
+out a failure specific to a longer or different session history.
 
 ## Project Structure
 
