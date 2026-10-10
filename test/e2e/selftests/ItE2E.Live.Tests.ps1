@@ -63,9 +63,9 @@ Describe 'ItE2E live primitives' -Tag 'Live' -Skip:(-not $script:HasPackage) {
         It 'sees the AgentToggleButton AutomationId' {
             Assert-Ui -App $script:app -Selector 'AgentToggleButton' -TimeoutSec 10
         }
-        It 'sees the new-tab control for the active layout' {
+        It 'sees tab chrome for the active layout' {
             $selector = if ((Get-WtSetting -App $script:app -Key tabLayout) -eq 'vertical') {
-                'CompactNewTabButton'
+                'SearchTabsButton'
             } else {
                 'NewTabButton'
             }
