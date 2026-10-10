@@ -526,6 +526,23 @@ Set `WTA_LOG=debug` for verbose output (debug builds default to `debug`, release
 to `info`). The F12 debug panel in the TUI shows protocol traffic live without
 tailing log files.
 
+Sidebar session activation emits `session_activation` timing records at `info`
+in the CLI and master logs. Match `activation_id` to the `sidebar_activation`
+records in `terminal-agent-pane.log` to follow pipe discovery, initialization,
+registry lookup, resume routing, tab creation, binding, focus, and the return to
+the UI. `elapsed_ms` is cumulative within each operation; native `stage_ms`
+measures the interval since the preceding stage.
+
+Native `protocol_tab_create` records split UI dispatcher wait, pane creation,
+tab insertion, synchronous layout, and selection. `agent_pane_create` further
+splits native agent pane creation into settings, elevation, connection, control,
+and pane-content construction. Match the resulting `pane_id`
+and `client_pid` with the master's `pane_created` record and the provider's own
+startup log. `wtcli_timing` records separately measure spawning and waiting for
+`new-tab` and `focus-pane` bridge processes. An unfinished `*_begin` stage
+identifies an in-flight operation. These timing records do not include prompts,
+command lines, working directories, or credentials.
+
 ## Project Structure
 
 ```

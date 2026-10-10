@@ -182,8 +182,9 @@ agent action, not an override of the normal new-tab control.
   Runtime Narrator/UIA and RTL behavior remain separate validation steps.
 - Exclude only the represented history identity: provider, session ID, source
   location (host or WSL distro), and session universe. The open-pane binding
-  supplies session ID, provider (when known), and pane ID; the matching history
-  row supplies location and universe. Pane ID disambiguates colliding history
+  supplies session ID, provider (when known), and pane ID. Qualified bindings
+  also supply source, distro, and universe directly; incomplete bindings use
+  an unambiguous matching history row to fill those fields. Pane ID disambiguates colliding history
   identities, but an unambiguous session/provider remains represented after
   rebinding to a new pane even if its history row still names the old pane.
   A graceful connection close refreshes this projection even when the pane is
@@ -192,6 +193,48 @@ agent action, not an override of the normal new-tab control.
   If colliding rows cannot be disambiguated, retain them rather than hiding
   an unrelated session. Status alone is not identity: an idle or working
   session without a representing open pane remains in the lower section.
+
+### Shared pane metadata and section membership
+
+`ContentManager` owns one application-shared `paneId -> PaneMetadata` map.
+Each terminal content creates a record; agent launch, hook, ACP, explicit
+resume, and unambiguous live-registry evidence update that record as identity
+becomes available. Session ID may be empty while an agent starts. Native launch
+provider is branding/launch provenance, not proof that the CLI still runs.
+Activity such as Idle, Working, Attention, or Error is separate from lifecycle.
+`agent.stop` ends a turn, not the agent session.
+
+The upper section projects the current window's open tabs and their eligible
+agent panes from this shared metadata. A tab with two CLI agent panes remains
+one tab row with two pane children when expanded. An independent Agent Pane
+continues to use the existing tab representation.
+
+Recent Sessions is a filtered projection of the retained global registry/history
+snapshot, not a second active-session store. Remove exactly the identities
+represented by the current window's open panes, including idle agents.
+Kept/background tabs and sessions in other windows remain eligible below.
+Determine represented identities before applying search or collapsed-row
+visibility, so hiding an upper row never creates a duplicate below.
+Hidden snapshot rows also clear stale Current highlighting, and ended pane
+metadata prevents a stale live registry row from being marked Current.
+
+Explicit shell resume associates the known target with the returned new pane
+immediately, without waiting for a hook. Host/WSL source, distro, universe, and
+the exact resume command accompany the binding; WSL persistence must not rebuild
+a host command. Live history evidence may enrich an incomplete binding only
+when the pane has one unambiguous identity and no conflicting or ended binding.
+Ambiguous evidence is retained below rather than guessed.
+
+CLI session end or return to a shell prompt clears its live association while
+retaining the pane record. Stale native branding or agent-looking titles do not
+revive an ended association. Delayed prompt/end events for superseded sessions cannot clear
+or rebind the current session, and page event fan-out cannot rewrite shared
+authoritative state. Connection failure keeps the restore association until
+the pane closes. Connection restart rekeys the content to the new pane GUID and
+starts a fresh lifecycle. Content destruction removes its metadata; late hooks
+cannot recreate it. Detach, stash, keep-running, and window transfer do not
+destroy metadata. Metadata notifications refresh the owning window on its own
+UI dispatcher.
 
 ## Recent-session preference and focus
 

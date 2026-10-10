@@ -771,8 +771,8 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
 
-            const auto binding = _paneAgentSessions.find(terminalArgs.SessionId());
-            if (binding == _paneAgentSessions.end())
+            const auto metadata = _MetadataForPane(terminalArgs.SessionId());
+            if (!metadata || !metadata->HasSession())
             {
                 continue;
             }
@@ -783,14 +783,14 @@ namespace winrt::TerminalApp::implementation
             // agent absent from `ResumeInvocations`, or a session id that
             // fails validation — rather than dropping the binding entirely.
             namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
-            auto resume = binding->second.agent.empty() ?
+            auto resume = metadata->session.agent.empty() || metadata->source == L"wsl" ?
                               winrt::hstring{} :
                               winrt::hstring{ Restore::BuildResumeCommandline(
-                                  binding->second.agent,
-                                  binding->second.sessionId) };
+                                  metadata->session.agent,
+                                  metadata->session.sessionId) };
             if (resume.empty())
             {
-                resume = binding->second.resumeCommandline;
+                resume = metadata->session.resumeCommandline;
             }
             if (!resume.empty())
             {
@@ -2204,12 +2204,17 @@ namespace winrt::TerminalApp::implementation
                 if (const auto impl = _GetTabImpl(tab); impl && impl->GetRootPane())
                 {
                     impl->GetRootPane()->WalkTree([&](const auto& pane) {
-                        if (const auto binding = _paneAgentSessions.find(pane->GetSessionId());
-                            binding != _paneAgentSessions.end() && !binding->second.sessionId.empty())
+                        if (const auto metadata = _MetadataForPane(pane->GetSessionId());
+                            metadata && metadata->HasSession() &&
+                            (metadata->HasAgent() || pane->IsAgentPane()))
                         {
-                            representedSessions.push_back({ binding->second.sessionId,
-                                                            binding->second.agent,
-                                                            winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(pane->GetSessionId()) } });
+                            representedSessions.push_back({ metadata->session.sessionId,
+                                                            metadata->session.agent,
+                                                            winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(pane->GetSessionId()) },
+                                                            metadata->source,
+                                                            metadata->wslDistro,
+                                                            metadata->universe,
+                                                            metadata->identityQualified });
                         }
                     });
                 }
@@ -2368,32 +2373,25 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
-        // Agent CLIs set a stable, known terminal title before their first
-        // session event. Ignore user-renamed tabs so an arbitrary custom title
-        // cannot opt a normal shell into the Agent filter.
-        if (tab->GetTabText().empty() && _IsKnownAgentCliTitle(tab->Title()))
-        {
-            return true;
-        }
-
         const auto rootPane = tab->GetRootPane();
         return rootPane && rootPane->WalkTree([&](const auto& pane) {
             const auto sessionId = pane->GetSessionId();
-            return sessionId != winrt::guid{} &&
-                   (!winrt::get_self<ContentManager>(_manager)->NativeAgentProviderIdForPane(sessionId).empty() ||
-                    _activeCliAgentPanes.contains(sessionId) ||
-                    _paneAgentSessions.contains(sessionId));
+            const auto metadata = _MetadataForPane(sessionId);
+            return metadata &&
+                   (metadata->HasAgent() ||
+                    (metadata->state == ContentManager::PaneAgentState::Unknown &&
+                     pane->GetContent() && tab->GetTabText().empty() &&
+                     _IsKnownAgentCliTitle(pane->GetContent().Title())));
         });
     }
 
     bool TerminalPage::_MatchesPaneAgentScope(const Tab::VisiblePaneSnapshot& pane) const
     {
+        const auto metadata = _MetadataForPane(pane.SessionId);
         return pane.IsAgentPane ||
-               !winrt::get_self<ContentManager>(_manager)->NativeAgentProviderIdForPane(pane.SessionId).empty() ||
-               _IsKnownAgentCliTitle(std::wstring_view{ pane.Title }) ||
-               (pane.SessionId != winrt::guid{} &&
-                (_activeCliAgentPanes.contains(pane.SessionId) ||
-                 _paneAgentSessions.contains(pane.SessionId)));
+               (metadata && (metadata->HasAgent() ||
+                             (metadata->state == ContentManager::PaneAgentState::Unknown &&
+                              _IsKnownAgentCliTitle(std::wstring_view{ pane.Title }))));
     }
 
     bool TerminalPage::_IsPaneRowProjectionEligible(const Tab::VisiblePaneSnapshot& pane) const

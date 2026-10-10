@@ -74,6 +74,47 @@ namespace winrt
 
 namespace TerminalAppLocalTests
 {
+    static void _initializeTestContent(const winrt::Microsoft::Terminal::Control::ControlInteractivity& content)
+    {
+        VERIFY_IS_TRUE(content.Core().Initialize(270, 380, 1.0));
+        content.Initialize();
+    }
+
+    static auto _paneMetadata(const winrt::TerminalApp::ContentManager& manager, const winrt::guid& paneId)
+    {
+        return winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(manager)->MetadataForPane(paneId);
+    }
+
+    static bool _paneHasSession(const winrt::TerminalApp::ContentManager& manager, const winrt::guid& paneId)
+    {
+        const auto metadata = _paneMetadata(manager, paneId);
+        return metadata && metadata->HasSession();
+    }
+
+    static bool _paneHasAgent(const winrt::TerminalApp::ContentManager& manager, const winrt::guid& paneId)
+    {
+        const auto metadata = _paneMetadata(manager, paneId);
+        return metadata && metadata->HasAgent();
+    }
+
+    static void _bindPaneSession(const winrt::TerminalApp::ContentManager& manager, const winrt::guid& paneId, const winrt::TerminalApp::implementation::ContentManager::PaneAgentSession& session)
+    {
+        winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(manager)->BindPaneSession(paneId, session);
+    }
+
+    static void _endPaneSession(const winrt::TerminalApp::ContentManager& manager, const winrt::guid& paneId)
+    {
+        winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(manager)->EndPaneSession(paneId);
+    }
+
+    static void _publishPaneAgentEvent(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
+                                       const winrt::TerminalApp::ContentManager& manager,
+                                       const winrt::hstring& event)
+    {
+        manager.OnPaneAgentSessionChanged(event);
+        page->OnPaneAgentSessionChanged(event);
+    }
+
     class TestSettingsPaneContent :
         public winrt::implements<TestSettingsPaneContent, IPaneContent>,
         public winrt::TerminalApp::implementation::BasicPaneEvents
@@ -187,8 +228,8 @@ namespace TerminalAppLocalTests
     struct TrackedAgentCore
     {
         explicit TrackedAgentCore(const winrt::TerminalApp::ContentManager& manager) :
-            connection{ winrt::make_self<TestConnection>(winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
-                                                        winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected) }
+            connection{ winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(),
+                                                         winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected) }
         {
             const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
             core = manager.CreateCore(*settings, *settings, *connection);
@@ -488,6 +529,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
         TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
+        TEST_METHOD(PaneMetadataRejectsStaleEventsAndDiesWithContent);
+        TEST_METHOD(AgentsViewEnrichesNativePanesBeforeHooks);
+        TEST_METHOD(AgentsViewRejectsAmbiguousPaneIdentity);
+        TEST_METHOD(AgentsViewWslResumeBindsQualifiedIdentityImmediately);
         TEST_METHOD(KeepRunningAcceptsPlainTerminalTabs);
         TEST_METHOD(KeepRunningSnapshotCountsAttachedTerminalTabs);
         TEST_METHOD(PinnedTabMenuReordersWithoutStealingSelection);
@@ -1029,8 +1074,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(std::string{ "copilot" }, events[0]["params"]["agent"].asString());
             VERIFY_ARE_EQUAL(paneIdText, events[0]["params"]["pane_id"].asString());
             VERIFY_ARE_EQUAL(tabId, events[0]["params"]["tab_id"].asString());
-            VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
-            VERIFY_IS_TRUE(page->_interactiveResumeSessions.contains(paneId));
+            VERIFY_IS_TRUE(_paneHasSession(page->_manager, paneId));
+            VERIFY_IS_TRUE(_paneMetadata(page->_manager, paneId)->interactiveResume);
 
             page->_CompleteInteractiveResumeBinding(paneIdText, tabId);
 
@@ -1038,8 +1083,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(std::string{ "agent_event" }, events[1]["method"].asString());
             VERIFY_ARE_EQUAL(std::string{ "agent.session.end" }, events[1]["params"]["event"].asString());
             VERIFY_ARE_EQUAL(std::string{ "resumed-session" }, events[1]["params"]["agent_session_id"].asString());
-            VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
-            VERIFY_IS_FALSE(page->_interactiveResumeSessions.contains(paneId));
+            VERIFY_IS_FALSE(_paneHasSession(page->_manager, paneId));
+            VERIFY_IS_FALSE(_paneMetadata(page->_manager, paneId)->interactiveResume);
         });
     }
 
@@ -1094,7 +1139,9 @@ namespace TerminalAppLocalTests
         namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
 
-        auto page = _commonSetup();
+        const auto seed = winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(),
+                                                           winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*seed);
         VERIFY_IS_NOT_NULL(page);
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
@@ -1188,7 +1235,9 @@ namespace TerminalAppLocalTests
     void TabTests::RestoredAgentSelectionBecomesExplicitOnlyAfterUserChoice()
     {
         using Tab = winrt::TerminalApp::implementation::Tab;
-        auto page = _commonSetup();
+        const auto seed = winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(),
+                                                           winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*seed);
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
             page->_settings.GlobalSettings().AcpAgent(L"claude");
@@ -1309,23 +1358,23 @@ namespace TerminalAppLocalTests
                 evt["params"]["agent"] = "copilot";
                 Json::StreamWriterBuilder writer;
                 writer["indentation"] = "";
-                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, evt)));
+                _publishPaneAgentEvent(page, page->_manager, winrt::to_hstring(Json::writeString(writer, evt)));
             };
 
             // A hook bridge that never inherited WT_SESSION publishes an empty
             // `pane_id` rather than borrowing the focused pane, so it must not
             // bind its ACP session to any pane at all.
             event("agent.session.start", "");
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(_paneHasSession(page->_manager, paneSessionId)));
 
             const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToString(paneSessionId));
             event("agent.session.start", paneId);
-            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(_paneHasSession(page->_manager, paneSessionId)));
 
             // The same rule protects an existing binding from being cleared by
             // an unattributed end event.
             event("agent.session.end", "");
-            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(_paneHasSession(page->_manager, paneSessionId)));
         });
     }
 
@@ -1356,12 +1405,12 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(keepId != page->_GetFocusedTabImpl()->StableId());
             page->SetTabKeepRunning(tabId, true);
             VERIFY_ARE_EQUAL(keepId, page->_GetFocusedTabImpl()->KeepRunningTelemetryId());
-            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
-            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.prompt.submit", "nested-session"));
-            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.end", "stale-session"));
-            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.end"));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.session.start"));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.prompt.submit", "nested-session"));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.session.end", "stale-session"));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.session.end"));
             VERIFY_IS_TRUE(page->IsTabKeepRunning(tabId));
-            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start", "new-session"));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.session.start", "new-session"));
             VERIFY_IS_TRUE(page->IsTabKeepRunning(tabId));
             page->SetTabKeepRunning(tabId, false);
             VERIFY_IS_FALSE(page->IsTabKeepRunning(tabId));
@@ -1429,7 +1478,9 @@ namespace TerminalAppLocalTests
         const winrt::guid closedId{ L"{13f7aa41-8837-473e-92a3-f1e682ab1003}" };
         const auto kept = winrt::make_self<TestConnection>(keptId, State::Connected);
         const auto closed = winrt::make_self<TestConnection>(closedId, State::Connected);
-        const auto page = _commonSetup(*kept);
+        Grid host{ nullptr };
+        TestOnUIThread([&]() { host = Grid{}; });
+        const auto page = _commonSetup(*kept, host);
         std::vector<ConnectionStateEventRecord> events;
         TestOnUIThread([&]() {
             page->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
@@ -1442,11 +1493,10 @@ namespace TerminalAppLocalTests
             const auto stableId = tab->StableId();
             const winrt::guid groupId{ stableId };
             const auto otherPane = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *closed);
+            _initializeTestContent(page->_manager.TryLookupCore(otherPane->GetTerminalControl().ContentId()));
             VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, otherPane));
-            page->OnPaneAgentSessionChanged(_keepRunningHook(keptId, "agent.session.start"));
-            page->OnPaneAgentSessionChanged(_keepRunningHook(closedId, "agent.session.start"));
-            page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(keptId, "agent.session.start"));
-            page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(closedId, "agent.session.start"));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(keptId, "agent.session.start"));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(closedId, "agent.session.start"));
             page->SetTabKeepRunning(groupId, true);
             const auto keepId = tab->KeepRunningTelemetryId();
             page->_SetTabPinned(tab, true);
@@ -1484,7 +1534,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, restored->_keepRunningMenuItem.Icon().as<FontIcon>().Glyph());
             VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
             VERIFY_ARE_EQUAL(0u, kept->CloseCount());
-            VERIFY_THROWS(page->RestoreKeptGroup(groupId), winrt::hresult_error);
+            VERIFY_THROWS(page->RestoreKeptGroup(groupId), wil::ResultException);
             restored->Close();
         });
     }
@@ -1869,7 +1919,7 @@ namespace TerminalAppLocalTests
         const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
         const auto page = _commonSetup(*connection);
         TestOnUIThread([&]() {
-            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.session.start"));
             page->SetTabKeepRunning(winrt::guid{ page->_GetFocusedTabImpl()->StableId() }, true);
             page->_HandleClosePaneRequested(page->_GetFocusedTabImpl()->GetRootPane());
         });
@@ -1943,14 +1993,19 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_manager.AgentSessionEvent(contentId).empty());
 
             page->OnPaneAgentSessionChanged(started);
-            VERIFY_IS_TRUE(page->_paneAgentSessions.contains(id));
+            VERIFY_IS_FALSE(_paneHasSession(page->_manager, id));
             VERIFY_IS_TRUE(page->_manager.AgentSessionEvent(contentId).empty());
 
             const auto replacement = _keepRunningHook(id, "agent.session.start", "replacement-session");
             page->_manager.OnPaneAgentSessionChanged(replacement);
+            page->_pendingRestoredSessionBindings.insert_or_assign(
+                id, winrt::TerminalApp::implementation::TerminalPage::_PendingRestoredSessionBinding{ L"replacement-session", L"copilot", {} });
             page->OnPaneAgentSessionChanged(started);
             page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.end"));
             VERIFY_ARE_EQUAL(replacement, page->_manager.AgentSessionEvent(contentId));
+            VERIFY_IS_TRUE(page->_pendingRestoredSessionBindings.contains(id));
+            page->OnPaneAgentSessionChanged(replacement);
+            VERIFY_IS_FALSE(page->_pendingRestoredSessionBindings.contains(id));
         });
     }
 
@@ -1963,7 +2018,7 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
             const winrt::guid groupId{ tab->StableId() };
-            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.session.start"));
             page->SetTabKeepRunning(groupId, true);
             page->_KeepTabRunning(tab);
             const auto firstTab = page->_manager.BeginReattachKeptGroup(groupId);
@@ -2167,7 +2222,7 @@ namespace TerminalAppLocalTests
             const auto other = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *closed);
             const winrt::guid groupId{ page->_GetFocusedTabImpl()->StableId() };
             page->_CreateNewTabFromPane(other);
-            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.session.start"));
             page->SetTabKeepRunning(groupId, true);
             uint32_t closeRequests = 0;
             const auto eventToken = page->CloseWindowRequested([&](auto&&, const winrt::Windows::Foundation::IInspectable& args) {
@@ -2481,7 +2536,7 @@ namespace TerminalAppLocalTests
             source->Height(600);
             source->UpdateLayout();
             VERIFY_IS_TRUE(source->_SplitPane(tab, SplitDirection::Right, 0.35f, source->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *split)));
-            source->_paneAgentSessions[split->SessionId()] = { L"older-window-session", L"copilot", L"copilot --resume older-window-session" };
+            _bindPaneSession(source->_manager, split->SessionId(), { L"older-window-session", L"copilot", L"copilot --resume older-window-session" });
             source->SetTabKeepRunning(winrt::guid{ tab->StableId() }, true);
             last = _createStartupRestorePeer(source);
             last->_CreateNewTabFromPane(last->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *visible));
@@ -2784,7 +2839,7 @@ namespace TerminalAppLocalTests
             const winrt::guid groupId{ tab->StableId() };
             contentId = tab->GetRootPane()->GetTerminalControl().ContentId();
             tab->SuppressAgentPrewarm();
-            page->OnPaneAgentSessionChanged(_keepRunningHook(id, "agent.session.start"));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.session.start"));
             page->SetTabKeepRunning(groupId, true);
             page->_KeepTabRunning(tab);
             page->_startupState = Startup::NotInitialized;
@@ -3073,8 +3128,11 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(paneId, captured.Pane.SessionId);
         VERIFY_IS_TRUE(std::wstring_view{ captured.Content }.find(L"headless output") != std::wstring_view::npos);
         VERIFY_ARE_EQUAL(winrt::hstring{ L"running" }, process.get().State);
-        VERIFY_ARE_EQUAL(1u, panes.get().Size());
-        VERIFY_ARE_EQUAL(paneId, panes.get().GetAt(0).SessionId);
+        const auto capturedPanes = panes.get();
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(1u, capturedPanes.Size());
+            VERIFY_ARE_EQUAL(paneId, capturedPanes.GetAt(0).SessionId);
+        });
     }
 
     void TabTests::AgentPaneRestoreDoesNotRequireAgentSession()
@@ -3247,12 +3305,12 @@ namespace TerminalAppLocalTests
                 evt["params"]["agent"] = "copilot";
                 Json::StreamWriterBuilder writer;
                 writer["indentation"] = "";
-                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, evt)));
+                _publishPaneAgentEvent(page, page->_manager, winrt::to_hstring(Json::writeString(writer, evt)));
             };
 
             event("agent.session.start");
-            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
-            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(_paneHasSession(page->_manager, paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(_paneHasAgent(page->_manager, paneSessionId)));
 
             // A late end naming a different agent session must not clear the
             // binding or active marker a newer session just installed.
@@ -3263,37 +3321,244 @@ namespace TerminalAppLocalTests
                 stale["params"]["agent_session_id"] = "agent-session-previous";
                 Json::StreamWriterBuilder writer;
                 writer["indentation"] = "";
-                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, stale)));
+                _publishPaneAgentEvent(page, page->_manager, winrt::to_hstring(Json::writeString(writer, stale)));
             }
-            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
-            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(_paneHasSession(page->_manager, paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(_paneHasAgent(page->_manager, paneSessionId)));
 
             // The agent that ran in this pane exited, so there is nothing left
             // to resume and the pane restores as a plain shell.
             event("agent.session.end");
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(_paneHasSession(page->_manager, paneSessionId)));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(_paneHasAgent(page->_manager, paneSessionId)));
 
             // A new lifecycle may begin before its session id is known. Retire
             // the previous binding, ignore its delayed end, then accept the
             // current lifecycle's id when it first appears on the end event.
             event("agent.session.start", "agent-session-previous");
             event("agent.session.start", "");
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
-            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(_paneHasSession(page->_manager, paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(_paneHasAgent(page->_manager, paneSessionId)));
             event("agent.session.end", "agent-session-previous");
-            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(_paneHasAgent(page->_manager, paneSessionId)));
             event("agent.session.end", "agent-session-current");
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(_paneHasAgent(page->_manager, paneSessionId)));
         });
     }
 
-    // A pane built by attaching an existing ContentId reports its end state
-    // against the SessionId of the connection it attached to, not the one the
-    // action happened to carry. The two differ on a cross-window move, where
-    // the args name a fresh pane while the content keeps the original
-    // connection — attributing the event to the wrong id would route it to a
-    // pane that no longer exists.
+    void TabTests::PaneMetadataRejectsStaleEventsAndDiesWithContent()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto seed = winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(), State::Connected);
+        const auto page = _commonSetup(*seed);
+        const auto connection = winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(), State::Connected);
+        TestOnUIThread([&]() {
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            NewTerminalArgs args;
+            args.NativeAgentProviderId(L"copilot");
+            const auto pane = page->_MakeTerminalPane(args, nullptr, *connection);
+            const auto core = page->_manager.TryLookupCore(pane->GetTerminalControl().ContentId());
+            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto id = pane->GetSessionId();
+            VERIFY_IS_TRUE(_paneHasAgent(page->_manager, id));
+            VERIFY_IS_FALSE(_paneHasSession(page->_manager, id));
+            const auto started = _keepRunningHook(id, "agent.session.start", "current-session");
+            _publishPaneAgentEvent(page, page->_manager, started);
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.error", "current-session"));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.stop", "current-session"));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Error" }, manager->MetadataForPane(id)->activity);
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.prompt.submit", "nested-session"));
+            VERIFY_ARE_EQUAL(started, manager->AgentSessionEvent(core.Id()));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.session.end", "current-session"));
+            VERIFY_IS_TRUE(manager->MetadataForPane(id).has_value());
+            VERIFY_IS_FALSE(page->_TabHasCliAgent(tab));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, manager->NativeAgentProviderId(core.Id()));
+            VERIFY_IS_FALSE(page->_MatchesPaneAgentScope(
+                winrt::TerminalApp::implementation::Tab::VisiblePaneSnapshot{
+                    .SessionId = id,
+                    .Title = L"GitHub Copilot",
+                }));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.prompt.submit", "current-session"));
+            VERIFY_IS_FALSE(_paneHasAgent(page->_manager, id));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.session.start", ""));
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.session.end", "current-session"));
+            VERIFY_IS_TRUE(_paneHasAgent(page->_manager, id));
+
+            const auto replacement = winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(), State::Connected);
+            pane->GetTerminalControl().Connection(*replacement);
+            manager->ResetPaneConnection(core.Id(), replacement->SessionId());
+            VERIFY_IS_FALSE(manager->MetadataForPane(id).has_value());
+            VERIFY_IS_TRUE(_paneHasAgent(page->_manager, replacement->SessionId()));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, manager->NativeAgentProviderId(core.Id()));
+            page->_manager.OnPaneAgentSessionChanged(started);
+            VERIFY_IS_FALSE(manager->MetadataForPane(id).has_value());
+            pane->Shutdown();
+            VERIFY_IS_FALSE(manager->MetadataForPane(replacement->SessionId()).has_value());
+            page->_manager.OnPaneAgentSessionChanged(_keepRunningHook(replacement->SessionId(), "agent.session.start"));
+            VERIFY_IS_FALSE(manager->MetadataForPane(replacement->SessionId()).has_value());
+        });
+    }
+
+    void TabTests::AgentsViewEnrichesNativePanesBeforeHooks()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        const auto seed = winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(), State::Connected);
+        const auto page = _commonSetup(*seed, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            std::vector<winrt::TerminalApp::TabStripHistoryItem> items;
+            winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+            for (const auto provider : { L"copilot", L"claude" })
+            {
+                const auto connection = winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(), State::Connected);
+                NewTerminalArgs args;
+                args.NativeAgentProviderId(provider);
+                const auto pane = page->_MakeTerminalPane(args, nullptr, *connection);
+                if (!tab)
+                {
+                    VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                    tab = page->_GetFocusedTabImpl();
+                }
+                else
+                {
+                    const auto [original, split] = tab->SplitPane(SplitDirection::Right, 0.5f, pane);
+                    VERIFY_IS_NOT_NULL(original);
+                    VERIFY_IS_TRUE(split == pane);
+                    page->_ApplyTabListProjection(*tab);
+                }
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(provider);
+                item.AgentId(provider);
+                item.Title(provider);
+                item.AgentSource(L"host");
+                item.PaneSessionId(winrt::to_hstring(pane->GetSessionId()));
+                item.IsLive(true);
+                item.Status(L"Idle");
+                items.emplace_back(item);
+                VERIFY_IS_FALSE(_paneHasSession(page->_manager, pane->GetSessionId()));
+            }
+            auto recent = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            recent.SessionId(L"recent");
+            recent.AgentId(L"copilot");
+            recent.Title(L"recent");
+            recent.AgentSource(L"host");
+            recent.Status(L"Historical");
+            recent.IsHistorical(true);
+            items.emplace_back(recent);
+            page->_tabStrip.HistoryActive(true);
+            const auto generation = page->_historyRequestGeneration;
+            Page::_SidebarHistorySnapshot snapshot;
+            snapshot.state = Page::_SidebarHistorySnapshot::State::Ready;
+            snapshot.items = items;
+            page->_CompleteSidebarHistoryRefresh(generation, snapshot);
+            VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+            for (size_t i = 0; i < 2; ++i)
+            {
+                const auto id = ::Microsoft::Console::Utils::GuidFromString(items[i].PaneSessionId().c_str());
+                VERIFY_IS_TRUE(_paneHasSession(page->_manager, id));
+            }
+            VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == recent);
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            strip->SearchTextBox().Text(L"recent");
+            VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            for (const auto expanded : { false, true })
+            {
+                strip->_historyExpanded = expanded;
+                strip->_syncViewportItems();
+                VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            }
+            strip->SearchTextBox().Text(L"");
+            VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            for (size_t i = 0; i < 2; ++i)
+            {
+                _endPaneSession(page->_manager, ::Microsoft::Console::Utils::GuidFromString(items[i].PaneSessionId().c_str()));
+            }
+            VERIFY_IS_FALSE(page->_TabHasCliAgent(tab));
+            VERIFY_ARE_EQUAL(3u, page->_tabStrip.HistoryItems().Size());
+            page->_CompleteSidebarHistoryRefresh(generation, std::move(snapshot));
+            VERIFY_IS_FALSE(page->_TabHasCliAgent(tab));
+            VERIFY_ARE_EQUAL(3u, page->_tabStrip.HistoryItems().Size());
+        });
+    }
+
+    void TabTests::AgentsViewRejectsAmbiguousPaneIdentity()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto id = page->_GetFocusedTabImpl()->GetActivePane()->GetSessionId();
+            _bindPaneSession(page->_manager, id, { {}, L"copilot", {} });
+            Page::_SidebarHistorySnapshot snapshot;
+            snapshot.state = Page::_SidebarHistorySnapshot::State::Ready;
+            for (const auto source : { L"host", L"wsl" })
+            {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(L"collision");
+                item.AgentId(L"copilot");
+                item.AgentSource(source);
+                item.PaneSessionId(winrt::to_hstring(id));
+                item.Status(L"Idle");
+                item.IsLive(true);
+                snapshot.items.emplace_back(item);
+            }
+            page->_tabStrip.HistoryActive(true);
+            page->_CompleteSidebarHistoryRefresh(page->_historyRequestGeneration, std::move(snapshot));
+            VERIFY_IS_FALSE(_paneHasSession(page->_manager, id));
+            VERIFY_ARE_EQUAL(2u, page->_tabStrip.HistoryItems().Size());
+        });
+    }
+
+    void TabTests::AgentsViewWslResumeBindsQualifiedIdentityImmediately()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto id = page->_GetFocusedTabImpl()->GetActivePane()->GetSessionId();
+            const winrt::hstring command{ L"wsl.exe -d Ubuntu -- copilot --resume shared-session" };
+            Json::Value event;
+            event["params"]["pane_id"] = _formatPaneId(id);
+            event["params"]["agent"] = "copilot";
+            event["params"]["agent_session_id"] = "shared-session";
+            event["params"]["agent_source"] = "wsl";
+            event["params"]["wsl_distro"] = "Ubuntu";
+            event["params"]["session_universe"] = "selected-universe";
+            event["params"]["resume_commandline"] = winrt::to_string(command);
+            _publishPaneAgentEvent(page, page->_manager, winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+            std::vector<winrt::TerminalApp::TabStripHistoryItem> items;
+            for (const auto universe : { L"selected-universe", L"other-universe" })
+            {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(L"shared-session");
+                item.AgentId(L"copilot");
+                item.AgentSource(L"wsl");
+                item.WslDistro(L"Ubuntu");
+                item.SessionUniverse(universe);
+                item.PaneSessionId(L"22222222-2222-2222-2222-222222222222");
+                item.Status(L"Historical");
+                item.IsHistorical(true);
+                items.emplace_back(item);
+            }
+            page->_tabStrip.HistoryActive(true);
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            strip->CommitHistorySnapshot(items);
+            VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == items[1]);
+            _publishPaneAgentEvent(page, page->_manager, _keepRunningHook(id, "agent.prompt.submit", "shared-session"));
+            VERIFY_ARE_EQUAL(command, _paneMetadata(page->_manager, id)->session.resumeCommandline);
+            NewTerminalArgs args;
+            args.SessionId(id);
+            args.Commandline(L"copilot");
+            std::vector<ActionAndArgs> actions{ { ShortcutAction::NewTab, NewTabArgs{ args } } };
+            page->_StampAgentResumeCommandlines(actions);
+            VERIFY_ARE_EQUAL(command, args.Commandline());
+            _endPaneSession(page->_manager, id);
+            VERIFY_ARE_EQUAL(2u, page->_tabStrip.HistoryItems().Size());
+        });
+    }
+
+    // An attached ContentId reports the connection's SessionId, not the
+    // potentially different SessionId carried by cross-window move arguments.
     void TabTests::ContentIdAttachedPaneEmitsEndStateForItsConnection()
     {
         auto page = _commonSetup();
@@ -3344,17 +3609,23 @@ namespace TerminalAppLocalTests
 
     void TabTests::GetWindowLayoutIncludesAgentRestoreMetadata()
     {
-        auto page = _commonSetup();
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto first = winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(), State::Connected);
+        const auto second = winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(), State::Connected);
+        auto page = _commonSetup(*first);
         VERIFY_IS_NOT_NULL(page);
 
         TestOnUIThread([&]() {
+            page->_startupState = winrt::TerminalApp::implementation::StartupState::Initialized;
             const auto tab = page->_GetTabImpl(page->_tabs.GetAt(0));
             VERIFY_IS_NOT_NULL(tab);
 
-            page->_SplitPane(nullptr, SplitDirection::Right, 0.5f, page->_MakePane(nullptr, page->_GetFocusedTab(), nullptr));
+            const auto splitPane = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second);
+            const auto [original, split] = tab->SplitPane(SplitDirection::Right, 0.5f, splitPane);
+            VERIFY_IS_NOT_NULL(original);
+            VERIFY_IS_TRUE(split == splitPane);
+            tab->_UpdateActivePane(splitPane);
             VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
-
-            page->_paneAgentSessions.clear();
 
             const std::array agentSessionIds{
                 winrt::hstring{ L"agent-session-1" },
@@ -3371,7 +3642,7 @@ namespace TerminalAppLocalTests
 
             auto paneIndex = 0u;
             tab->GetRootPane()->WalkTree([&](const auto& pane) {
-                if (pane->IsAgentPane())
+                if (!pane->GetContent() || pane->IsAgentPane())
                 {
                     return;
                 }
@@ -3382,10 +3653,7 @@ namespace TerminalAppLocalTests
                 const auto connection = control.Connection();
                 VERIFY_IS_NOT_NULL(connection);
 
-                auto& binding = page->_paneAgentSessions[connection.SessionId()];
-                binding.sessionId = agentSessionIds.at(paneIndex);
-                binding.agent = agentIds.at(paneIndex);
-                binding.resumeCommandline = resumeCommandlines.at(paneIndex);
+                _bindPaneSession(page->_manager, connection.SessionId(), { agentSessionIds.at(paneIndex), agentIds.at(paneIndex), resumeCommandlines.at(paneIndex) });
                 paneIndex += 1;
             });
             VERIFY_ARE_EQUAL(2u, paneIndex);
@@ -3398,18 +3666,20 @@ namespace TerminalAppLocalTests
 
             const auto persistedActions = roundTrippedLayout.TabLayout();
             VERIFY_IS_NOT_NULL(persistedActions);
-            VERIFY_ARE_EQUAL(2u, persistedActions.Size());
+            VERIFY_ARE_EQUAL(3u, persistedActions.Size());
+            VERIFY_ARE_EQUAL(ShortcutAction::FocusPane, persistedActions.GetAt(2).Action());
+            VERIFY_ARE_EQUAL(splitPane->Id().value(), persistedActions.GetAt(2).Args().as<FocusPaneArgs>().Id());
 
             VERIFY_ARE_EQUAL(ShortcutAction::NewTab, persistedActions.GetAt(0).Action());
             const auto firstTerminalArgs = _getTerminalArgs(persistedActions.GetAt(0));
             VERIFY_IS_NOT_NULL(firstTerminalArgs);
-            if (const auto firstBinding = page->_paneAgentSessions.find(firstTerminalArgs.SessionId());
-                firstBinding != page->_paneAgentSessions.end())
+            if (const auto firstBinding = _paneMetadata(page->_manager, firstTerminalArgs.SessionId());
+                firstBinding && firstBinding->HasSession())
             {
                 VERIFY_ARE_EQUAL(
                     winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(
-                        firstBinding->second.agent,
-                        firstBinding->second.sessionId) },
+                        firstBinding->session.agent,
+                        firstBinding->session.sessionId) },
                     firstTerminalArgs.Commandline());
             }
             else
@@ -3420,13 +3690,13 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, persistedActions.GetAt(1).Action());
             const auto secondTerminalArgs = _getTerminalArgs(persistedActions.GetAt(1));
             VERIFY_IS_NOT_NULL(secondTerminalArgs);
-            if (const auto secondBinding = page->_paneAgentSessions.find(secondTerminalArgs.SessionId());
-                secondBinding != page->_paneAgentSessions.end())
+            if (const auto secondBinding = _paneMetadata(page->_manager, secondTerminalArgs.SessionId());
+                secondBinding && secondBinding->HasSession())
             {
                 VERIFY_ARE_EQUAL(
                     winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(
-                        secondBinding->second.agent,
-                        secondBinding->second.sessionId) },
+                        secondBinding->session.agent,
+                        secondBinding->session.sessionId) },
                     secondTerminalArgs.Commandline());
             }
             else
@@ -3459,7 +3729,7 @@ namespace TerminalAppLocalTests
                 event["params"]["pane_id"] = _formatPaneId(paneId);
                 event["params"]["agent"] = "copilot";
                 event["params"]["agent_session_id"] = winrt::to_string(sessionIds[i]);
-                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+                _publishPaneAgentEvent(page, page->_manager, winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
 
                 NewTerminalArgs terminalArgs{};
                 terminalArgs.SessionId(paneId);
@@ -3479,7 +3749,11 @@ namespace TerminalAppLocalTests
             unbound.SessionId(::Microsoft::Console::Utils::CreateGuid());
             unbound.Commandline(L"cmd /c echo Resuming copilot session display-... && copilot --resume display-id");
             actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ unbound });
-            VERIFY_ARE_EQUAL(2u, static_cast<unsigned int>(page->_paneAgentSessions.size()));
+            for (const auto& action : actions)
+            {
+                const auto args = _getTerminalArgs(action);
+                VERIFY_ARE_EQUAL(args != unbound, _paneHasSession(page->_manager, args.SessionId()));
+            }
 
             page->_StampAgentResumeCommandlines(actions);
             WindowLayout layout{};
@@ -3498,31 +3772,12 @@ namespace TerminalAppLocalTests
 
     winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_restoreBindingsSetup()
     {
-        _createContentManager();
-        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto seed = winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(), State::Connected);
+        auto page = _commonSetup(*seed);
         TestOnUIThread([&]() {
-            _windowProperties = winrt::make_self<winrt::TerminalApp::implementation::WindowProperties>();
-            const winrt::TerminalApp::TerminalPage projected{ *_windowProperties, *_contentManager };
-            page.copy_from(winrt::get_self<winrt::TerminalApp::implementation::TerminalPage>(projected));
-            page->_isVerticalLayout = false;
-            page->_tabView = winrt::MUX::Controls::TabView{};
-            // These tests need pane identity, not a real shell process or the
-            // application's first-run/startup UI.
-            for (auto i = 0; i < 2; ++i)
-            {
-                const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
-                const auto connection = winrt::make_self<TestConnection>(
-                    ::Microsoft::Console::Utils::CreateGuid(),
-                    winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
-                const winrt::Microsoft::Terminal::Control::TermControl control{ *settings, *settings, *connection };
-                const auto content = winrt::make<winrt::TerminalApp::implementation::TerminalPaneContent>(
-                    Profile{},
-                    std::shared_ptr<winrt::TerminalApp::implementation::TerminalSettingsCache>{},
-                    control);
-                const auto tab = winrt::make_self<winrt::TerminalApp::implementation::Tab>(
-                    std::make_shared<Pane>(content));
-                page->_tabs.Append(*tab);
-            }
+            const auto connection = winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(), State::Connected);
+            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *connection)));
         });
         return page;
     }
@@ -3563,7 +3818,7 @@ namespace TerminalAppLocalTests
                 event["params"]["event"] = "restore_bindings_requested";
                 event["params"]["tab_id"] = winrt::to_string(tab->StableId());
                 event["params"]["window_id"] = windowId;
-                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+                _publishPaneAgentEvent(page, page->_manager, winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
             };
             const auto windowId = std::to_string(page->_WindowProperties.WindowId());
             request(firstTab, "wrong-window");
@@ -3576,9 +3831,11 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_tabsAwaitingRestoredBindings.contains(firstTab->StableId()));
             page->_startupActionReplayDepth = 1;
             page->ProcessStartupActions({});
+            page->_OnStartupStructureSettled();
             VERIFY_IS_TRUE(births.empty());
             page->_startupActionReplayDepth = 0;
             page->ProcessStartupActions({});
+            page->_OnStartupStructureSettled();
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(births.size()));
             VERIFY_ARE_EQUAL(std::string{ "restored-first" }, births[0]["agent_session_id"].asString());
             VERIFY_ARE_EQUAL(winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(firstPane)), births[0]["pane_id"].asString());
@@ -3608,7 +3865,7 @@ namespace TerminalAppLocalTests
                 event["params"]["event"] = "restore_bindings_requested";
                 event["params"]["tab_id"] = winrt::to_string(tab->StableId());
                 event["params"]["window_id"] = windowId;
-                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+                _publishPaneAgentEvent(page, page->_manager, winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
             };
             // The listener's initial handshake has already completed without
             // any bindings. There will be no second listener-ready event.
@@ -3724,21 +3981,17 @@ namespace TerminalAppLocalTests
             const auto paneSessionId = control.Connection().SessionId();
             const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToString(paneSessionId));
 
-            page->_paneAgentSessions.clear();
             page->_panesWithEmittedTerminalEndState.clear();
-            auto& binding = page->_paneAgentSessions[paneSessionId];
-            binding.sessionId = L"agent-session-killed";
-            binding.agent = L"copilot";
-            binding.resumeCommandline = L"copilot --resume agent-session-killed";
+            _bindPaneSession(page->_manager, paneSessionId, { L"agent-session-killed", L"copilot", L"copilot --resume agent-session-killed" });
 
             // The CLI was killed, not ended. The pane is still here, so the
             // binding must be too.
             page->_TryRaiseTerminalEndStateEvent(paneId, "failed");
-            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(_paneHasSession(page->_manager, paneSessionId)));
 
             // The pane going away is what finally retires it.
             page->_NotifyPanesClosing(rootPane);
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(_paneHasSession(page->_manager, paneSessionId)));
         });
     }
 
@@ -3764,16 +4017,13 @@ namespace TerminalAppLocalTests
             // A shell pane running an agent CLI is the thing that has to come
             // back after a close or a crash, so bind one and let the ordinary
             // state.json persist path carry it.
-            page->_paneAgentSessions.clear();
+
             const auto control = tab->GetActiveTerminalControl();
             VERIFY_IS_NOT_NULL(control);
             const auto connection = control.Connection();
             VERIFY_IS_NOT_NULL(connection);
 
-            auto& binding = page->_paneAgentSessions[connection.SessionId()];
-            binding.sessionId = L"agent-session-persisted";
-            binding.agent = L"copilot";
-            binding.resumeCommandline = L"copilot --resume agent-session-persisted";
+            _bindPaneSession(page->_manager, connection.SessionId(), { L"agent-session-persisted", L"copilot", L"copilot --resume agent-session-persisted" });
 
             page->PersistState();
         });
@@ -3834,6 +4084,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(connection);
 
             const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            _initializeTestContent(content);
             VERIFY_IS_NOT_NULL(content);
 
             NewTerminalArgs newTerminalArgs{};
@@ -3843,10 +4094,10 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(tab);
 
             expectedPaneId = _formatPaneId(sessionId);
-            page->_paneAgentSessions.insert_or_assign(
-                sessionId,
-                winrt::TerminalApp::implementation::TerminalPage::_PaneAgentSession{
-                    L"gracefully-ended-session", L"copilot", L"" });
+            _bindPaneSession(page->_manager,
+                             sessionId,
+                             winrt::TerminalApp::implementation::TerminalPage::_PaneAgentSession{
+                                 L"gracefully-ended-session", L"copilot", L"" });
             page->_tabStrip.HistoryActive(true);
             page->_ApplyTabListProjection();
             auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
@@ -3855,8 +4106,8 @@ namespace TerminalAppLocalTests
             item.PaneSessionId(winrt::to_hstring(sessionId));
             item.AgentSource(L"host");
             item.Title(L"Gracefully ended session");
-            item.Status(L"Ended");
-            item.IsHistorical(true);
+            item.Status(L"Idle");
+            item.IsLive(true);
             winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->CommitHistorySnapshot({ item });
             VERIFY_ARE_EQUAL(0u, page->_tabStrip.HistoryItems().Size());
         });
@@ -3870,8 +4121,9 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(paneStates.size()));
             VERIFY_ARE_EQUAL(std::string{ "closed" }, paneStates.at(0));
             VERIFY_IS_NOT_NULL(tab->GetRootPane()->FindPaneBySessionId(connection->SessionId()));
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(connection->SessionId())));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(_paneHasSession(page->_manager, connection->SessionId())));
             VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryItems().GetAt(0).IsCurrent());
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             strip->CommitHistorySnapshot({ page->_tabStrip.HistoryItems().GetAt(0) });
             VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
@@ -3919,6 +4171,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(connection);
 
             const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            _initializeTestContent(content);
             VERIFY_IS_NOT_NULL(content);
 
             NewTerminalArgs newTerminalArgs{};
@@ -3928,12 +4181,12 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(tab);
 
             expectedPaneId = _formatPaneId(sessionId);
-            page->_paneAgentSessions.insert_or_assign(
-                sessionId,
-                winrt::TerminalApp::implementation::TerminalPage::_PaneAgentSession{
-                    L"agent-session-id",
-                    L"copilot",
-                    L"wta resume" });
+            _bindPaneSession(page->_manager,
+                             sessionId,
+                             winrt::TerminalApp::implementation::TerminalPage::_PaneAgentSession{
+                                 L"agent-session-id",
+                                 L"copilot",
+                                 L"wta resume" });
         });
 
         TestOnUIThread([&]() {
@@ -3944,7 +4197,9 @@ namespace TerminalAppLocalTests
             const auto paneStates = _statesForPane(connectionStates, expectedPaneId);
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(paneStates.size()));
             VERIFY_ARE_EQUAL(std::string{ "failed" }, paneStates.at(0));
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(sessionId)));
+            VERIFY_IS_TRUE(_paneHasSession(page->_manager, sessionId));
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::implementation::ContentManager::PaneAgentState::Failed,
+                             _paneMetadata(page->_manager, sessionId)->state);
 
             page->_NotifyPanesClosing(tab->GetRootPane());
             connection->SetState(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
@@ -3955,7 +4210,7 @@ namespace TerminalAppLocalTests
             const auto paneStates = _statesForPane(connectionStates, expectedPaneId);
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(paneStates.size()));
             VERIFY_ARE_EQUAL(std::string{ "failed" }, paneStates.at(0));
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(sessionId)));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(_paneHasSession(page->_manager, sessionId)));
         });
     }
 
@@ -4228,7 +4483,7 @@ namespace TerminalAppLocalTests
         {
             VERIFY_SUCCEEDED(HRESULT_FROM_WIN32(::GetLastError()));
         }
-        if (!connection)
+        if (!connection || layoutHost)
         {
             page->Initialized([&waitForInitEvent](auto&&, auto&&) {
                 waitForInitEvent.Set();
@@ -4250,6 +4505,7 @@ namespace TerminalAppLocalTests
             {
                 const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
                 const auto content = _contentManager->CreateCore(*settings, *settings, connection);
+                _initializeTestContent(content);
                 newTerminalArgs.ContentId(content.Id());
                 VERIFY_SUCCEEDED(page->_OpenNewTab(newTerminalArgs));
             }
@@ -4262,7 +4518,7 @@ namespace TerminalAppLocalTests
             }
             Log::Comment(L"Added a single newTab action");
 
-            if (connection)
+            if (connection && !layoutHost)
             {
                 // Protocol queries need a real tab/control, but not rendered-window startup.
                 return;
@@ -4284,7 +4540,7 @@ namespace TerminalAppLocalTests
         });
         VERIFY_SUCCEEDED(result);
 
-        if (!connection)
+        if (!connection || layoutHost)
         {
             Log::Comment(L"Wait for the page to finish initializing...");
             VERIFY_SUCCEEDED(waitForInitEvent.Wait());
@@ -4795,7 +5051,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(tab);
             const auto display = strip->DisplayItemForTab(tab->TabViewItem());
             VERIFY_IS_NOT_NULL(display);
-            page->_paneAgentSessions.insert_or_assign(paneId, Page::_PaneAgentSession{ L"represented", L"copilot", L"" });
+            _bindPaneSession(page->_manager, paneId, Page::_PaneAgentSession{ L"represented", L"copilot", L"" });
             page->_tabStrip.SearchActive(true);
             page->_tabStrip.SearchQuery(L"no-match");
             page->UpdateLayout();
@@ -4938,7 +5194,7 @@ namespace TerminalAppLocalTests
             agent->SetTabText(L"Global marker agent");
             paneId = agent->GetActivePane()->GetSessionId();
             VERIFY_ARE_EQUAL(agentConnection->SessionId(), paneId);
-            page->_paneAgentSessions.insert_or_assign(paneId, Page::_PaneAgentSession{ L"represented-global", L"copilot", L"" });
+            _bindPaneSession(page->_manager, paneId, Page::_PaneAgentSession{ L"represented-global", L"copilot", L"" });
             VERIFY_IS_TRUE(page->_MatchesTabScope(agent));
             page->_ApplyTabListProjection();
             strip.copy_from(winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip));
@@ -4967,7 +5223,7 @@ namespace TerminalAppLocalTests
             {
                 TestOnUIThread([&]() {
                     VERIFY_ARE_EQUAL(agentConnection->SessionId(), agent->GetActivePane()->GetSessionId());
-                    VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+                    VERIFY_IS_TRUE(_paneHasSession(page->_manager, paneId));
                     VERIFY_IS_TRUE(page->_MatchesTabScope(agent));
                     filters.ShowAgentsOnly(agentsOnly);
                     filters.ShowRecentAgentSessions(recentSessions);
@@ -5003,7 +5259,7 @@ namespace TerminalAppLocalTests
                 });
                 TestOnUIThread([&]() {
                     VERIFY_ARE_EQUAL(agentConnection->SessionId(), agent->GetActivePane()->GetSessionId());
-                    VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+                    VERIFY_IS_TRUE(_paneHasSession(page->_manager, paneId));
                     VERIFY_IS_TRUE(page->_MatchesTabScope(agent));
                     VERIFY_IS_NOT_NULL(strip->HistorySection());
                     VERIFY_IS_TRUE(strip->HistoryHeaderButton().IsChecked().Value());
@@ -5050,7 +5306,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(secondaryNode);
             const auto secondaryContentId = secondaryNode->ContentId().value();
             VERIFY_IS_FALSE(secondaryNode->IsAgentPane());
-            VERIFY_IS_FALSE(page->_paneAgentSessions.contains(secondaryConnection->SessionId()));
+            VERIFY_IS_FALSE(_paneHasSession(page->_manager, secondaryConnection->SessionId()));
             const auto agentSourceNode = agent->GetRootPane()->FindPaneBySessionId(paneId);
             VERIFY_IS_NOT_NULL(agentSourceNode);
             VERIFY_IS_TRUE(agentSourceNode->Id().has_value());
@@ -8131,8 +8387,8 @@ namespace TerminalAppLocalTests
                             const auto control = tab->GetActiveTerminalControl();
                             VERIFY_IS_NULL(control.XamlRoot());
                             VERIFY_ARE_EQUAL(State::NotConnected, control.Connection().State());
-                            VERIFY_IS_FALSE(page->_paneAgentSessions.contains(tab->GetActivePane()->GetSessionId()));
-                            VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(tab->GetActivePane()->GetSessionId()));
+                            VERIFY_IS_FALSE(_paneHasSession(page->_manager, tab->GetActivePane()->GetSessionId()));
+                            VERIFY_IS_FALSE(_paneHasAgent(page->_manager, tab->GetActivePane()->GetSessionId()));
                             auto id = winrt::guid{ L"{6239a42c-dddd-49a3-80bd-e8fdd045185c}" };
                             id.Data1 += tabCount;
                             const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
@@ -8207,8 +8463,7 @@ namespace TerminalAppLocalTests
                     const auto tab = page->_GetFocusedTabImpl();
                     const auto paneId = tab->GetActivePane()->GetSessionId();
                     using Page = winrt::TerminalApp::implementation::TerminalPage;
-                    page->_paneAgentSessions.insert_or_assign(paneId, Page::_PaneAgentSession{ session, L"copilot", L"copilot --resume original-sid" });
-                    page->_activeCliAgentPanes.insert_or_assign(paneId, Page::_ActiveCliAgentPane{ session });
+                    _bindPaneSession(page->_manager, paneId, Page::_PaneAgentSession{ session, L"copilot", L"copilot --resume original-sid" });
                     page->_tabStrip.HistoryActive(historyActive);
                     page->_tabStrip.SidebarFilters().ShowAgentsOnly(historyActive);
                     page->_tabStrip.HistoryError(L"");
@@ -8220,9 +8475,9 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
                     const auto newPane = tab->GetRootPane()->_secondChild;
                     VERIFY_IS_FALSE(newPane->IsAgentPane());
-                    VERIFY_IS_FALSE(page->_paneAgentSessions.contains(newPane->GetSessionId()));
-                    VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(newPane->GetSessionId()));
-                    VERIFY_ARE_EQUAL(session, page->_paneAgentSessions.at(paneId).sessionId);
+                    VERIFY_IS_FALSE(_paneHasSession(page->_manager, newPane->GetSessionId()));
+                    VERIFY_IS_FALSE(_paneHasAgent(page->_manager, newPane->GetSessionId()));
+                    VERIFY_ARE_EQUAL(session, _paneMetadata(page->_manager, paneId)->session.sessionId);
                     VERIFY_ARE_EQUAL(historyActive, page->_tabStrip.HistoryActive());
                     VERIFY_ARE_EQUAL(historyActive, page->_tabStrip.SidebarFilters().ShowAgentsOnly());
                     VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
@@ -8313,7 +8568,10 @@ namespace TerminalAppLocalTests
     {
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
+            page->_historyRefreshInFlight = true;
             page->_tabStrip.HistoryActive(true);
+            page->_tabStrip.HistoryLoading(false);
+            page->_tabStrip.SearchActive(true);
             page->_tabStrip.HistoryActivating(true);
             page->_historyActivationSerial = 9;
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
@@ -8337,14 +8595,13 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Cannot focus session" }, page->_tabStrip.HistoryError());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"history query" }, stripImpl->SearchTextBox().Text());
+            page->_tabStrip.SearchQuery(L"");
             page->_CloseSidebarHistory(false);
             VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
-            VERIFY_ARE_EQUAL(10ULL, page->_historyActivationSerial);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"history query" }, page->_tabStrip.SearchQuery());
-            VERIFY_IS_TRUE(page->_tabStrip.SidebarFilters().RecentAgentSessionsVisible());
+            VERIFY_ARE_EQUAL(11ULL, page->_historyActivationSerial);
+            VERIFY_IS_TRUE(page->_tabStrip.SearchQuery().empty());
+            VERIFY_IS_FALSE(page->_tabStrip.SidebarFilters().RecentAgentSessionsVisible());
             VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
-            VERIFY_IS_TRUE(page->_CompleteSidebarHistoryActivation(10, true, L""));
-            page->_tabStrip.SearchQuery(L"");
             VERIFY_IS_FALSE(page->_CompleteSidebarHistoryActivation(10, true, L""));
             VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
             VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
@@ -8394,6 +8651,8 @@ namespace TerminalAppLocalTests
                 }
                 VERIFY_IS_TRUE(page->_AreRecentAgentSessionsVisible());
                 VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+                stripImpl->CommitHistorySnapshot({}, true);
+                page->_tabStrip.HistoryLoading(false);
                 VERIFY_IS_TRUE(stripImpl->ItemsList().IsItemClickEnabled());
                 VERIFY_IS_FALSE(page->_CompleteSidebarHistoryActivation(serial, false, L"Stale reopened failure"));
                 VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
@@ -8434,7 +8693,8 @@ namespace TerminalAppLocalTests
             item.Status(L"Historical");
             stripImpl->CommitHistorySnapshot({ item });
             strip.HistoryLoading(false);
-            stripImpl->SearchTextBox().Text(L"Claude");
+            strip.SearchActive(true);
+            strip.SearchQuery(L"Claude");
             const auto items = strip.HistoryItems();
 
             strip.HistoryActivating(true);
@@ -8548,14 +8808,14 @@ namespace TerminalAppLocalTests
             wsl.AgentSource(L"wsl");
             wsl.WslDistro(L"Ubuntu");
             wsl.PaneSessionId(L"22222222-2222-2222-2222-222222222222");
-            page->_paneAgentSessions.insert_or_assign(paneId, Page::_PaneAgentSession{ L"bound", L"copilot", L"" });
+            _bindPaneSession(page->_manager, paneId, Page::_PaneAgentSession{ L"bound", L"copilot", L"" });
             page->_tabStrip.HistoryActive(true);
             strip->CommitHistorySnapshot({ bound, wsl, unbound });
             VERIFY_ARE_EQUAL(2u, page->_tabStrip.HistoryItems().Size());
             VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == wsl);
             VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(1) == unbound);
 
-            page->_paneAgentSessions.erase(paneId);
+            _endPaneSession(page->_manager, paneId);
             page->_ApplyTabListProjection();
             VERIFY_ARE_EQUAL(3u, page->_tabStrip.HistoryItems().Size());
         });
@@ -8915,7 +9175,7 @@ namespace TerminalAppLocalTests
             for (const auto state : { "loading", "error" })
             {
                 page->_tabStrip.HistoryError(L"");
-                page->_tabStrip.HistoryRefreshError(L"");
+                strip->HistoryRefreshError(L"");
                 page->_tabStrip.HistoryLoading(false);
                 strip->CommitHistorySnapshot(cached, true);
                 page->_historyRefreshInFlight = true;
@@ -8928,7 +9188,7 @@ namespace TerminalAppLocalTests
                 filters.ShowRecentAgentSessions(true);
                 VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
                 page->_tabStrip.HistoryError(L"");
-                page->_tabStrip.HistoryRefreshError(L"");
+                strip->HistoryRefreshError(L"");
                 page->_tabStrip.HistoryLoading(false);
                 VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
                 filters.ShowRecentAgentSessions(false);
@@ -9646,18 +9906,22 @@ namespace TerminalAppLocalTests
         const winrt::guid secondId{ L"{15a970e1-676f-440e-b250-e93717c1edc2}" };
         const auto first = winrt::make_self<TestConnection>(firstId, State::Connected);
         const auto second = winrt::make_self<TestConnection>(secondId, State::Connected);
-        const auto page = _commonSetup(*first, nullptr, std::nullopt, true);
+        Grid host{ nullptr };
+        TestOnUIThread([&]() { host = Grid{}; });
+        const auto page = _commonSetup(*first, host, std::nullopt, true);
         TestOnUIThread([&]() {
             using Page = winrt::TerminalApp::implementation::TerminalPage;
             const auto tab = page->_GetFocusedTabImpl();
             const auto secondPane = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second);
-            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, secondPane));
+            const auto [original, split] = tab->SplitPane(SplitDirection::Right, 0.5f, secondPane);
+            VERIFY_IS_NOT_NULL(original);
+            VERIFY_IS_TRUE(split == secondPane);
             const auto firstPane = tab->GetRootPane()->FindPaneBySessionId(firstId);
             VERIFY_IS_NOT_NULL(firstPane);
             VERIFY_SUCCEEDED(page->_OpenNewTab(NewTerminalArgs{}));
             const auto otherTab = page->_GetFocusedTabImpl();
             page->_selectedTabItem(tab->TabViewItem());
-            VERIFY_IS_TRUE(tab->FocusPane(firstPane->Id().value()));
+            tab->_UpdateActivePane(firstPane);
 
             const auto makeItem = [](const wchar_t* session, const winrt::guid& pane, const wchar_t* agent) {
                 auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
@@ -9674,8 +9938,8 @@ namespace TerminalAppLocalTests
             const auto secondItem = makeItem(L"second-session", secondId, L"claude");
             const auto superseded = makeItem(L"older-session", firstId, L"copilot");
             const auto otherProvider = makeItem(L"first-session", firstId, L"claude");
-            page->_paneAgentSessions.insert_or_assign(firstId, Page::_PaneAgentSession{ L"first-session", L"copilot", L"" });
-            page->_paneAgentSessions.insert_or_assign(secondId, Page::_PaneAgentSession{ L"second-session", L"claude", L"" });
+            _bindPaneSession(page->_manager, firstId, Page::_PaneAgentSession{ L"first-session", L"copilot", L"" });
+            _bindPaneSession(page->_manager, secondId, Page::_PaneAgentSession{ L"second-session", L"claude", L"" });
             page->_tabStrip.HistoryActive(true);
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             strip->SetRepresentedHistorySessions({});
@@ -9685,10 +9949,13 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(superseded.IsCurrent());
             VERIFY_IS_FALSE(otherProvider.IsCurrent());
 
-            strip->SearchTextBox().Text(L"second-session");
+            strip->SearchQuery(L"second-session");
+            strip->SetRepresentedHistorySessions({});
             VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
             VERIFY_IS_FALSE(secondItem.IsCurrent());
-            strip->SearchTextBox().Text(L"");
+            strip->SearchQuery(L"");
+            strip->SetRepresentedHistorySessions({});
+            page->_UpdateSidebarHistoryCurrentSession();
             VERIFY_IS_TRUE(firstItem.IsCurrent());
 
             page->_historyActivationSerial = 17;
@@ -9696,7 +9963,15 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(firstItem.IsCurrent());
             VERIFY_IS_FALSE(secondItem.IsCurrent());
 
-            VERIFY_IS_TRUE(tab->FocusPane(secondPane->Id().value()));
+            tab->_UpdateActivePane(secondPane);
+            VERIFY_ARE_EQUAL(2u, page->_tabStrip.HistoryItems().Size());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == superseded);
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(1) == otherProvider);
+            VERIFY_IS_FALSE(firstItem.IsCurrent());
+            VERIFY_IS_FALSE(secondItem.IsCurrent());
+            // Inspect current-row bookkeeping independently of open-session exclusion.
+            strip->SetRepresentedHistorySessions({});
+            page->_UpdateSidebarHistoryCurrentSession();
             VERIFY_IS_FALSE(firstItem.IsCurrent());
             VERIFY_IS_TRUE(secondItem.IsCurrent());
             tab->SetRuntimeTabColor(winrt::Windows::UI::Colors::LightSkyBlue());
@@ -9712,6 +9987,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(firstItem.IsCurrent());
             VERIFY_IS_FALSE(secondItem.IsCurrent());
             page->_selectedTabItem(tab->TabViewItem());
+            strip->SetRepresentedHistorySessions({});
+            page->_UpdateSidebarHistoryCurrentSession();
             VERIFY_IS_TRUE(secondItem.IsCurrent());
 
             VERIFY_IS_TRUE(strip->ApplyHistoryStatusDelta(L"second-session", winrt::to_hstring(secondId), L"Ended", L"Historical"));
@@ -9723,25 +10000,34 @@ namespace TerminalAppLocalTests
 
     void TabTests::VerticalTabHistoryCurrentSessionColors()
     {
+        winrt::TerminalApp::TabStrip strip{ nullptr };
+        winrt::MUX::Controls::TabViewItem tab{ nullptr };
+        winrt::TerminalApp::TabStripHistoryItem first{ nullptr };
+        winrt::TerminalApp::TabStripHistoryItem second{ nullptr };
+        ContentControl host{ nullptr };
         const auto cleanup = wil::scope_exit([&]() {
             TestOnUIThread([&]() { Window::Current().Content(nullptr); });
         });
         TestOnUIThread([&]() {
-            winrt::TerminalApp::TabStrip strip;
+            strip = winrt::TerminalApp::TabStrip{};
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
-            winrt::MUX::Controls::TabViewItem tab;
-            const auto first = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
-            const auto second = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            tab = winrt::MUX::Controls::TabViewItem{};
+            first = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            second = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             first.Title(L"First session");
             second.Title(L"Second session");
             impl->CommitHistorySnapshot({ first, second });
             strip.Width(360);
             strip.Height(400);
             strip.HistoryActive(true);
-            ContentControl host;
+            host = ContentControl{};
             host.Content(strip);
             Window::Current().Content(host);
             Window::Current().Activate();
+            host.UpdateLayout();
+        });
+        TestOnUIThread([&]() {
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             host.UpdateLayout();
             VERIFY_IS_NOT_NULL(impl->ItemsList().ItemContainerStyle());
             uint32_t collectionChanges = 0;
@@ -13783,8 +14069,8 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_FALSE(pane->IsAgentPane());
                 VERIFY_ARE_EQUAL(saved.NativeAgentProviderId(), manager->NativeAgentProviderId(control.ContentId()));
                 VERIFY_IS_TRUE(manager->AgentSessionEvent(control.ContentId()).empty());
-                VERIFY_IS_FALSE(page->_paneAgentSessions.contains(pane->GetSessionId()));
-                VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(pane->GetSessionId()));
+                VERIFY_IS_FALSE(_paneHasSession(page->_manager, pane->GetSessionId()));
+                VERIFY_IS_TRUE(_paneHasAgent(page->_manager, pane->GetSessionId()));
                 if (split)
                 {
                     const auto [original, restoredSplit] = sourceTab->SplitPane(SplitDirection::Right, 0.5f, pane);
@@ -13817,8 +14103,9 @@ namespace TerminalAppLocalTests
             args.NativeAgentProviderId(L"claude");
             VERIFY_IS_FALSE(page->_maybeElevate(args, settings, profile));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, args.NativeAgentProviderId());
-            VERIFY_IS_TRUE(page->_paneAgentSessions.empty());
-            VERIFY_IS_TRUE(page->_activeCliAgentPanes.empty());
+            const auto paneId = page->_GetFocusedTabImpl()->GetActivePane()->GetSessionId();
+            VERIFY_IS_FALSE(_paneHasSession(page->_manager, paneId));
+            VERIFY_IS_FALSE(_paneHasAgent(page->_manager, paneId));
             using namespace ::Microsoft::Terminal::Settings::Model;
             VERIFY_IS_TRUE(AgentRegistry::CanonicalNativeAgentProviderId(L"not-a-provider").empty());
             VERIFY_IS_TRUE(AgentRegistry::CanonicalNativeAgentProviderId(L"custom:").empty());
@@ -13850,8 +14137,8 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(winrt::hstring{ provider }, manager->NativeAgentProviderId(contentId));
                 VERIFY_IS_TRUE(page->_TabHasCliAgent(tab));
                 VERIFY_IS_TRUE(manager->AgentSessionEvent(contentId).empty());
-                VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
-                VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(paneId));
+                VERIFY_IS_FALSE(_paneHasSession(page->_manager, paneId));
+                VERIFY_IS_TRUE(_paneHasAgent(page->_manager, paneId));
                 VERIFY_ARE_EQUAL(
                     winrt::hstring{ L"ms-appx:///AgentIcons/" } + (std::wstring_view{ provider }.starts_with(L"custom:") ? winrt::hstring{ L"generic" } : winrt::hstring{ provider }) + L".svg",
                     tab->Icon());
@@ -13874,7 +14161,7 @@ namespace TerminalAppLocalTests
                     const auto started = _keepRunningHook(paneId, "agent.session.start", "real-conversation", "claude");
                     page->_manager.OnPaneAgentSessionChanged(started);
                     page->OnPaneAgentSessionChanged(started);
-                    VERIFY_ARE_EQUAL(winrt::hstring{ L"real-conversation" }, page->_paneAgentSessions.at(paneId).sessionId);
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"real-conversation" }, _paneMetadata(page->_manager, paneId)->session.sessionId);
                     VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, manager->NativeAgentProviderId(contentId));
                     VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/claude.svg" }, tab->Icon());
                 }
@@ -13886,7 +14173,7 @@ namespace TerminalAppLocalTests
                     reattachedControl = page->_AttachControlToContent(contentId);
                     VERIFY_IS_NOT_NULL(reattachedControl);
                     VERIFY_ARE_EQUAL(winrt::hstring{ provider }, manager->NativeAgentProviderId(reattachedControl.ContentId()));
-                    VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
+                    VERIFY_IS_FALSE(_paneHasSession(page->_manager, paneId));
                 }
                 connection->TransitionTo(State::Failed);
                 VERIFY_IS_FALSE(manager->NativeAgentProviderId(contentId).empty());
@@ -13910,7 +14197,7 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:fixture" }, manager->NativeAgentProviderId(customContentId));
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:fixture" }, manager->NativeAgentProviderIdForPane(customPaneId));
                 VERIFY_ARE_EQUAL(started, manager->AgentSessionEvent(customContentId));
-                VERIFY_ARE_EQUAL(winrt::to_hstring(sessionId), page->_paneAgentSessions.at(customPaneId).sessionId);
+                VERIFY_ARE_EQUAL(winrt::to_hstring(sessionId), _paneMetadata(page->_manager, customPaneId)->session.sessionId);
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/generic.svg" }, customTab->Icon());
                 const auto saved = customPane->GetContent().GetNewTerminalArgs(BuildStartupKind::Persist).as<NewTerminalArgs>();
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:fixture" }, saved.NativeAgentProviderId());
@@ -13938,7 +14225,9 @@ namespace TerminalAppLocalTests
             page->UpdateLayout();
             const auto tab = page->_GetFocusedTabImpl();
             tab->SuppressAgentPrewarm();
-            tab->GetActiveTerminalControl().Connection(*connection);
+            const auto control = tab->GetActiveTerminalControl();
+            control.Connection(*connection);
+            winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager)->ResetPaneConnection(control.ContentId(), connection->SessionId());
             auto sourcePane = tab->GetActivePane();
             const auto paneSessionId = sourcePane->GetSessionId();
             const auto profileIcon = sourcePane->GetContent().Icon();
@@ -14039,7 +14328,7 @@ namespace TerminalAppLocalTests
                 uint64_t{ 2345 },
                 "Ended"));
             VERIFY_ARE_EQUAL(profileIcon, tab->Icon());
-            page->_paneAgentSessions[paneSessionId] = { L"session-collision", L"custom:agent", {} };
+            _bindPaneSession(page->_manager, paneSessionId, { L"session-collision", L"custom:agent", {} });
             VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
                 "session-collision",
                 winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(paneSessionId)),
@@ -14083,7 +14372,7 @@ namespace TerminalAppLocalTests
             page->_richTabAgentStatusBySessionId["old-binding"] = {
                 "old-binding", "Ended", "copilot", uint64_t{ 1234 }, std::nullopt
             };
-            page->_paneAgentSessions[paneSessionId] = { L"old-binding", L"copilot", {} };
+            _bindPaneSession(page->_manager, paneSessionId, { L"old-binding", L"copilot", {} });
             const auto currentPaneInfo = page->_RichTabAgentInfoForControl(sourcePane->GetTerminalControl());
             VERIFY_IS_TRUE(currentPaneInfo.has_value());
             VERIFY_ARE_EQUAL(std::string{ "gemini" }, currentPaneInfo->providerId);
@@ -14552,10 +14841,10 @@ namespace TerminalAppLocalTests
             event["params"]["agent"] = "copilot";
             Json::StreamWriterBuilder writer;
             writer["indentation"] = "";
-            page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, event)));
+            _publishPaneAgentEvent(page, page->_manager, winrt::to_hstring(Json::writeString(writer, event)));
 
-            VERIFY_IS_TRUE(page->_activeCliAgentPanes.contains(agentPaneSessionId));
-            VERIFY_IS_FALSE(page->_paneAgentSessions.contains(agentPaneSessionId));
+            VERIFY_IS_TRUE(_paneHasAgent(page->_manager, agentPaneSessionId));
+            VERIFY_IS_FALSE(_paneHasSession(page->_manager, agentPaneSessionId));
             VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
             VERIFY_ARE_EQUAL(agentPane->ContentId().value(), display.PaneItems().GetAt(0).ContentId());
             VERIFY_IS_TRUE(display.IsGroup());
@@ -14666,7 +14955,9 @@ namespace TerminalAppLocalTests
 
     void TabTests::CliAgentClassifiesTab()
     {
-        auto page = _commonSetup();
+        const auto connection = winrt::make_self<TestConnection>(::Microsoft::Console::Utils::CreateGuid(),
+                                                                 winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*connection);
 
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
@@ -14676,6 +14967,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_IsKnownAgentCliTitle(L"PowerShell"));
             VERIFY_IS_TRUE(page->_MatchesPaneAgentScope(
                 winrt::TerminalApp::implementation::Tab::VisiblePaneSnapshot{
+                    .SessionId = tab->GetActivePane()->GetSessionId(),
                     .Title = L"GitHub Copilot",
                 }));
             VERIFY_IS_FALSE(page->_MatchesPaneAgentScope(
@@ -14686,15 +14978,15 @@ namespace TerminalAppLocalTests
 
             const auto paneSessionId = tab->GetRootPane()->GetSessionId();
             VERIFY_IS_TRUE(paneSessionId != winrt::guid{});
-            page->_paneAgentSessions.insert_or_assign(
-                paneSessionId,
-                winrt::TerminalApp::implementation::TerminalPage::_PaneAgentSession{
-                    L"copilot-session",
-                    L"copilot",
-                    L"copilot --resume copilot-session" });
+            _bindPaneSession(page->_manager,
+                             paneSessionId,
+                             winrt::TerminalApp::implementation::TerminalPage::_PaneAgentSession{
+                                 L"copilot-session",
+                                 L"copilot",
+                                 L"copilot --resume copilot-session" });
 
             VERIFY_IS_TRUE(page->_TabHasCliAgent(tab));
-            page->_paneAgentSessions.erase(paneSessionId);
+            _endPaneSession(page->_manager, paneSessionId);
             VERIFY_IS_FALSE(page->_TabHasCliAgent(tab));
         });
     }

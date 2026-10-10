@@ -20,6 +20,8 @@
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
 #include <wil/resource.h>
+#include <atomic>
+#include <chrono>
 #include <json/json.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
 
@@ -744,7 +746,35 @@ namespace winrt::TerminalApp::implementation
     IAsyncOperation<Protocol::TabCreationResult> TerminalPage::CreateProtocolTab(NewTerminalArgs args, bool background)
     {
         auto strong = get_strong();
+        static std::atomic<uint64_t> traceSerial{ 0 };
+        const auto traceId = traceSerial.fetch_add(1, std::memory_order_relaxed) + 1;
+        const auto started = std::chrono::steady_clock::now();
+        auto previousStage = started;
+        const char* lastStage = "foreground_queue";
+        const auto trace = [&](const char* stage) {
+            lastStage = stage;
+            const auto now = std::chrono::steady_clock::now();
+            _agentPaneLog(fmt::format("protocol_tab_create trace_id={} stage={} elapsed_ms={} stage_ms={} pid={} tid={} background={}",
+                                      traceId,
+                                      stage,
+                                      std::chrono::duration_cast<std::chrono::milliseconds>(now - started).count(),
+                                      std::chrono::duration_cast<std::chrono::milliseconds>(now - previousStage).count(),
+                                      GetCurrentProcessId(),
+                                      GetCurrentThreadId(),
+                                      background));
+            previousStage = std::chrono::steady_clock::now();
+        };
+        bool completed = false;
+        const auto logCompletion = wil::scope_exit([&]() {
+            _agentPaneLog(fmt::format("protocol_tab_create trace_id={} stage=end completed={} last_stage={} elapsed_ms={}",
+                                      traceId,
+                                      completed,
+                                      lastStage,
+                                      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count()));
+        });
+        trace("foreground_queue");
         co_await wil::resume_foreground(Dispatcher());
+        trace("foreground_ready");
 
         Protocol::TabCreationResult result{};
 
@@ -782,15 +812,21 @@ namespace winrt::TerminalApp::implementation
             args.Profile(::Microsoft::Console::Utils::GuidToString(profileGuid));
         }
 
+        trace("make_pane_begin");
         auto pane = _MakePane(args, nullptr);
+        trace("make_pane_end");
         if (!pane)
             co_return result;
 
+        trace("insert_tab_begin");
         const auto newTab = _CreateNewTabFromPane(pane, -1, /*openInBackground=*/background);
+        trace("insert_tab_end");
         if (!newTab)
             co_return result;
 
+        trace("layout_begin");
         _tabContent.UpdateLayout(); // Force synchronous terminal initialization
+        trace("layout_end");
 
         // UpdateLayout can realize the vertical ListView and restore its
         // previous row selection. Reassert the
@@ -799,6 +835,7 @@ namespace winrt::TerminalApp::implementation
         {
             _selectedTabItem(newTab.TabViewItem());
         }
+        trace("selection_settled");
 
         uint32_t newTabIdx{};
         if (!_tabs.IndexOf(newTab, newTabIdx))
@@ -818,6 +855,12 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        _agentPaneLog(fmt::format("protocol_tab_create trace_id={} pane_id={} client_pid={} tab_index={}",
+                                  traceId,
+                                  winrt::to_string(winrt::to_hstring(result.SessionId)),
+                                  result.Pid,
+                                  result.TabId));
+        completed = true;
         co_return result;
     }
 

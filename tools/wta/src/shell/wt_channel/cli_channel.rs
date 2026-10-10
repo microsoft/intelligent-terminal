@@ -128,6 +128,13 @@ async fn run_wtcli_one_shot(
     capture_stderr: bool,
     timeout: Duration,
 ) -> Result<std::process::Output, WtcliOneShotError> {
+    let started = std::time::Instant::now();
+    let timing_command = args
+        .get(1)
+        .filter(|command| matches!(command.as_str(), "new-tab" | "focus-pane"));
+    if let Some(command) = timing_command {
+        tracing::info!(target: "wtcli_timing", command, stage = "spawn_begin", "WT mutation timing");
+    }
     let mut command = tokio::process::Command::new(path);
     command
         .args(args)
@@ -144,7 +151,15 @@ async fn run_wtcli_one_shot(
         })
         .kill_on_drop(true);
 
-    let mut child = command.spawn().map_err(WtcliOneShotError::Spawn)?;
+    let spawned = command.spawn();
+    if let Some(command) = timing_command {
+        tracing::info!(target: "wtcli_timing", command, stage = "spawn_end", success = spawned.is_ok(), elapsed_ms = started.elapsed().as_millis() as u64, "WT mutation timing");
+    }
+    let mut child = spawned.map_err(WtcliOneShotError::Spawn)?;
+    let child_pid = child.id();
+    if let Some(command) = timing_command {
+        tracing::info!(target: "wtcli_timing", command, stage = "wait_begin", child_pid, elapsed_ms = started.elapsed().as_millis() as u64, "WT mutation timing");
+    }
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     // Keep process completion and both pipe readers under one deadline. If it
@@ -154,6 +169,9 @@ async fn run_wtcli_one_shot(
         async move { tokio::join!(child.wait(), read_pipe(stdout), read_pipe(stderr),) }
     })
     .await;
+    if let Some(command) = timing_command {
+        tracing::info!(target: "wtcli_timing", command, stage = "wait_end", child_pid, timed_out = completed.is_err(), elapsed_ms = started.elapsed().as_millis() as u64, "WT mutation timing");
+    }
 
     match completed {
         Ok((status, stdout, stderr)) => Ok(std::process::Output {

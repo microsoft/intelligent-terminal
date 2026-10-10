@@ -63,12 +63,14 @@ pub(crate) fn resumed_pane_binding_event(
     session_id: &str,
     pane_id: &str,
     location: &crate::agent_sessions::SessionLocation,
+    universe: Option<&str>,
+    resume_commandline: &str,
 ) -> Option<String> {
-    // The native binding map currently rebuilds host resume invocations.
-    // Do not turn an existing WSL launch into a host command on persistence.
-    if location.is_wsl() {
-        return None;
-    }
+    let (source, distro) = match location {
+        crate::agent_sessions::SessionLocation::Host => ("host", ""),
+        crate::agent_sessions::SessionLocation::Wsl { distro } => ("wsl", distro.as_str()),
+        crate::agent_sessions::SessionLocation::Unknown => ("", ""),
+    };
     Some(
         serde_json::json!({
             "type": "event",
@@ -77,6 +79,10 @@ pub(crate) fn resumed_pane_binding_event(
                 "agent": agent_id,
                 "agent_session_id": session_id,
                 "pane_id": pane_id,
+                "agent_source": source,
+                "wsl_distro": distro,
+                "session_universe": universe.unwrap_or(""),
+                "resume_commandline": resume_commandline,
             },
         })
         .to_string(),
@@ -312,6 +318,8 @@ mod tests {
                     "known-session",
                     "new-pane",
                     &crate::agent_sessions::SessionLocation::Host,
+                    None,
+                    "copilot --resume known-session",
                 )
                 .unwrap(),
             )
@@ -325,6 +333,10 @@ mod tests {
                         "agent": agent,
                         "agent_session_id": "known-session",
                         "pane_id": "new-pane",
+                        "agent_source": "host",
+                        "wsl_distro": "",
+                        "session_universe": "",
+                        "resume_commandline": "copilot --resume known-session",
                     },
                 })
             );
@@ -333,15 +345,46 @@ mod tests {
 
     #[test]
     fn resumed_pane_binding_does_not_rewrite_wsl_resumes_as_host_commands() {
-        assert!(super::resumed_pane_binding_event(
-            "copilot",
-            "known-session",
-            "new-pane",
-            &crate::agent_sessions::SessionLocation::Wsl {
-                distro: "Ubuntu".into(),
-            },
+        let event: serde_json::Value = serde_json::from_str(
+            &super::resumed_pane_binding_event(
+                "copilot",
+                "known-session",
+                "new-pane",
+                &crate::agent_sessions::SessionLocation::Wsl {
+                    distro: "Ubuntu".into(),
+                },
+                Some("wsl-universe"),
+                "wsl.exe -d Ubuntu -- copilot --resume known-session",
+            )
+            .unwrap(),
         )
-        .is_none());
+        .unwrap();
+        assert_eq!(event["params"]["agent_source"], "wsl");
+        assert_eq!(event["params"]["wsl_distro"], "Ubuntu");
+        assert_eq!(event["params"]["session_universe"], "wsl-universe");
+        assert_eq!(
+            event["params"]["resume_commandline"],
+            "wsl.exe -d Ubuntu -- copilot --resume known-session"
+        );
+    }
+
+    #[test]
+    fn resumed_pane_binding_keeps_unknown_location_unqualified() {
+        let event: serde_json::Value = serde_json::from_str(
+            &super::resumed_pane_binding_event(
+                "copilot",
+                "known-session",
+                "new-pane",
+                &crate::agent_sessions::SessionLocation::Unknown,
+                None,
+                "copilot --resume known-session",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(event["params"]["agent_source"], "");
+        assert_eq!(event["params"]["agent_session_id"], "known-session");
+        assert_eq!(event["params"]["pane_id"], "new-pane");
     }
 
     #[test]

@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #pragma once
+#include "ContentManager.h"
 
 #include <ThrottledFunc.h>
 #include <atomic>
@@ -1140,29 +1141,10 @@ namespace winrt::TerminalApp::implementation
         // starts using that SessionId. Only terminal end states belong in this
         // set; non-terminal updates stay untracked.
         std::unordered_set<std::string> _panesWithEmittedTerminalEndState;
-        struct _PaneAgentSession
-        {
-            winrt::hstring sessionId;
-            winrt::hstring agent;
-            winrt::hstring resumeCommandline;
-        };
-        // Most recent resumable agent session observed in each shell pane.
-        // Retained after the CLI exits so a persisted-layout restore can
-        // relaunch it; removed only when the pane itself closes or a new
-        // binding replaces it.
-        std::unordered_map<winrt::guid, _PaneAgentSession> _paneAgentSessions;
-        // Shell panes with a currently active agent CLI. Unlike the resumable
-        // binding above, this does not require an ACP session id: Copilot may
-        // publish its startup lifecycle event before that id is available.
-        // Keep the lifecycle session id when available so a delayed end from
-        // an older CLI cannot remove a newer session from Agent view.
-        struct _ActiveCliAgentPane
-        {
-            winrt::hstring sessionId;
-            std::vector<winrt::hstring> supersededSessionIds;
-        };
-        std::unordered_map<winrt::guid, _ActiveCliAgentPane> _activeCliAgentPanes;
-        std::unordered_map<winrt::guid, _PaneAgentSession> _interactiveResumeSessions;
+        using _PaneAgentSession = ContentManager::PaneAgentSession;
+        winrt::event_token _paneMetadataChangedToken{};
+        std::optional<ContentManager::PaneMetadata> _MetadataForPane(const winrt::guid& paneId) const;
+        void _OnPaneMetadataChanged(const winrt::guid& paneId);
         struct _PendingRestoredSessionBinding
         {
             winrt::hstring sessionId;

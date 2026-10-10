@@ -46,6 +46,54 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring NativeAgentProviderId(uint64_t contentId) const;
         winrt::hstring NativeAgentProviderIdForPane(const winrt::guid& paneId) const;
 
+        struct PaneAgentSession
+        {
+            winrt::hstring sessionId;
+            winrt::hstring agent;
+            winrt::hstring resumeCommandline;
+        };
+        enum class PaneAgentState
+        {
+            Unknown,
+            Starting,
+            Running,
+            Ended,
+            Failed,
+        };
+        struct PaneMetadata
+        {
+            uint64_t contentId{};
+            winrt::hstring launchProvider;
+            PaneAgentState state{ PaneAgentState::Unknown };
+            PaneAgentSession session;
+            winrt::hstring activity;
+            winrt::hstring source;
+            winrt::hstring wslDistro;
+            winrt::hstring universe;
+            bool identityQualified{};
+            bool interactiveResume{};
+            winrt::hstring eventJson;
+            std::vector<winrt::hstring> supersededSessionIds;
+
+            bool HasAgent() const noexcept
+            {
+                return state == PaneAgentState::Starting ||
+                       state == PaneAgentState::Running ||
+                       state == PaneAgentState::Failed;
+            }
+            bool HasSession() const noexcept
+            {
+                return HasAgent() && !session.sessionId.empty();
+            }
+        };
+        std::optional<PaneMetadata> MetadataForPane(const winrt::guid& paneId) const;
+        void ResetPaneConnection(uint64_t contentId, const winrt::guid& paneId);
+        void BindPaneSession(const winrt::guid& paneId, const PaneAgentSession& session, const winrt::hstring& source = {}, const winrt::hstring& distro = {}, const winrt::hstring& universe = {}, bool interactiveResume = false);
+        void EndPaneSession(const winrt::guid& paneId, const winrt::hstring& sessionId = {}, const winrt::hstring& agent = {});
+        void SetPaneConnectionState(const winrt::guid& paneId, bool failed);
+        void UpdatePaneSessionIdentity(const winrt::guid& paneId, const PaneAgentSession& session, const winrt::hstring& source, const winrt::hstring& distro, const winrt::hstring& universe);
+        til::typed_event<winrt::TerminalApp::ContentManager, winrt::guid> PaneMetadataChanged;
+
         void Detach(const Microsoft::Terminal::Control::TermControl& control);
 
         void OnPaneAgentSessionChanged(const winrt::hstring& eventJson);
@@ -73,15 +121,9 @@ namespace winrt::TerminalApp::implementation
         struct TerminalContent
         {
             Microsoft::Terminal::Control::ControlInteractivity core;
-            winrt::hstring nativeAgentProviderId;
         };
         std::unordered_map<uint64_t, TerminalContent> _content;
-
-        struct AgentBinding
-        {
-            winrt::hstring agentSessionId;
-            winrt::hstring eventJson;
-        };
+        std::unordered_map<winrt::guid, PaneMetadata> _paneMetadata;
         struct KeptGroup
         {
             winrt::TerminalApp::TerminalPage owner{ nullptr };
@@ -93,7 +135,6 @@ namespace winrt::TerminalApp::implementation
         // All windows share this dispatcher. Retaining the tab and its event owner
         // preserves the live pane tree, helper lifetime and background protocol routing.
         winrt::Windows::System::DispatcherQueue _dispatcher{ winrt::Windows::System::DispatcherQueue::GetForCurrentThread() };
-        std::unordered_map<uint64_t, AgentBinding> _agentBindings;
         std::unordered_map<winrt::guid, KeptGroup> _keptGroups;
         void _CheckThread() const;
         void _NotifyKeptSessionsChanged() noexcept;

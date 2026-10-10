@@ -3387,6 +3387,7 @@ impl App {
         // so the existing helper handles both.
         let cb_key = key.clone();
         let cb_location = s.location.clone();
+        let cb_commandline = commandline.clone();
         let event_tx = self.agent_event_tx.clone();
         let on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>> =
             Some(Box::new(move |pane_session_id| {
@@ -3395,6 +3396,8 @@ impl App {
                     &cb_key,
                     &pane_session_id,
                     &cb_location,
+                    None,
+                    &cb_commandline,
                 ) {
                     send_wt_protocol_event(binding);
                 }

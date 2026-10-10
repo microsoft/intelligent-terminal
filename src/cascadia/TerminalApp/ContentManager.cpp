@@ -41,7 +41,13 @@ namespace winrt::TerminalApp::implementation
 
         {
             std::lock_guard lock{ _mutex };
-            _content.emplace(content.Id(), TerminalContent{ content, providerId });
+            _content.emplace(content.Id(), TerminalContent{ content });
+            auto& metadata = _paneMetadata[connection.SessionId()];
+            metadata = {};
+            metadata.contentId = content.Id();
+            metadata.launchProvider = providerId;
+            metadata.session.agent = providerId;
+            metadata.state = providerId.empty() ? PaneAgentState::Unknown : PaneAgentState::Starting;
         }
 
         return content;
@@ -57,22 +63,21 @@ namespace winrt::TerminalApp::implementation
     winrt::hstring ContentManager::NativeAgentProviderId(const uint64_t contentId) const
     {
         std::lock_guard lock{ _mutex };
-        const auto it = _content.find(contentId);
-        return it == _content.end() ? winrt::hstring{} : it->second.nativeAgentProviderId;
+        for (const auto& [_, metadata] : _paneMetadata)
+        {
+            if (metadata.contentId == contentId)
+            {
+                return metadata.launchProvider;
+            }
+        }
+        return {};
     }
 
     winrt::hstring ContentManager::NativeAgentProviderIdForPane(const winrt::guid& paneId) const
     {
         std::lock_guard lock{ _mutex };
-        for (const auto& [id, content] : _content)
-        {
-            const auto connection = content.core.Core().Connection();
-            if (connection && connection.SessionId() == paneId)
-            {
-                return content.nativeAgentProviderId;
-            }
-        }
-        return {};
+        const auto it = _paneMetadata.find(paneId);
+        return it == _paneMetadata.end() ? winrt::hstring{} : it->second.launchProvider;
     }
 
     void ContentManager::Detach(const Microsoft::Terminal::Control::TermControl& control)
@@ -90,16 +95,23 @@ namespace winrt::TerminalApp::implementation
         if (const auto& content{ sender.try_as<winrt::Microsoft::Terminal::Control::ControlInteractivity>() })
         {
             const auto& contentId{ content.Id() };
+            std::vector<winrt::guid> removed;
             {
                 std::lock_guard lock{ _mutex };
                 _content.erase(contentId);
+                std::erase_if(_paneMetadata, [&](const auto& item) {
+                    if (item.second.contentId == contentId)
+                    {
+                        removed.emplace_back(item.first);
+                        return true;
+                    }
+                    return false;
+                });
             }
-            LOG_HR_IF(E_ABORT, !_dispatcher.TryEnqueue([weak = get_weak(), contentId]() {
-                if (const auto self = weak.get())
-                {
-                    self->_agentBindings.erase(contentId);
-                }
-            }));
+            for (const auto& paneId : removed)
+            {
+                PaneMetadataChanged.raise(*this, paneId);
+            }
         }
     }
 
@@ -111,8 +123,174 @@ namespace winrt::TerminalApp::implementation
     winrt::hstring ContentManager::AgentSessionEvent(const uint64_t contentId)
     {
         _CheckThread();
-        const auto it = _agentBindings.find(contentId);
-        return it == _agentBindings.end() ? winrt::hstring{} : it->second.eventJson;
+        std::lock_guard lock{ _mutex };
+        for (const auto& [_, metadata] : _paneMetadata)
+        {
+            if (metadata.contentId == contentId)
+            {
+                return metadata.eventJson;
+            }
+        }
+        return {};
+    }
+
+    std::optional<ContentManager::PaneMetadata> ContentManager::MetadataForPane(const winrt::guid& paneId) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _paneMetadata.find(paneId);
+        return it == _paneMetadata.end() ? std::nullopt : std::optional{ it->second };
+    }
+
+    void ContentManager::ResetPaneConnection(const uint64_t contentId, const winrt::guid& paneId)
+    {
+        winrt::guid previousId{};
+        {
+            std::lock_guard lock{ _mutex };
+            const auto it = std::ranges::find_if(_paneMetadata, [&](const auto& item) {
+                return item.second.contentId == contentId;
+            });
+            THROW_HR_IF(E_INVALIDARG, it == _paneMetadata.end());
+            previousId = it->first;
+            PaneMetadata metadata;
+            metadata.contentId = contentId;
+            metadata.launchProvider = it->second.launchProvider;
+            metadata.session.agent = metadata.launchProvider;
+            metadata.state = metadata.launchProvider.empty() ? PaneAgentState::Unknown : PaneAgentState::Starting;
+            _paneMetadata.erase(it);
+            _paneMetadata.insert_or_assign(paneId, std::move(metadata));
+        }
+        PaneMetadataChanged.raise(*this, previousId);
+        if (previousId != paneId)
+        {
+            PaneMetadataChanged.raise(*this, paneId);
+        }
+    }
+
+    void ContentManager::BindPaneSession(const winrt::guid& paneId, const PaneAgentSession& session, const winrt::hstring& source, const winrt::hstring& distro, const winrt::hstring& universe, const bool interactiveResume)
+    {
+        {
+            std::lock_guard lock{ _mutex };
+            const auto it = _paneMetadata.find(paneId);
+            THROW_HR_IF(E_INVALIDARG, it == _paneMetadata.end());
+            auto& metadata = it->second;
+            if (!metadata.session.sessionId.empty() && metadata.session.sessionId != session.sessionId)
+            {
+                metadata.supersededSessionIds.emplace_back(metadata.session.sessionId);
+            }
+            auto resolved = session;
+            if (resolved.resumeCommandline.empty() && metadata.session.sessionId == session.sessionId)
+            {
+                resolved.resumeCommandline = metadata.session.resumeCommandline;
+            }
+            metadata.session = std::move(resolved);
+            std::erase(metadata.supersededSessionIds, session.sessionId);
+            metadata.state = session.sessionId.empty() ? PaneAgentState::Starting : PaneAgentState::Running;
+            metadata.source = source;
+            metadata.wslDistro = distro;
+            metadata.universe = universe;
+            metadata.identityQualified = !source.empty();
+            metadata.interactiveResume = interactiveResume;
+        }
+        PaneMetadataChanged.raise(*this, paneId);
+    }
+
+    void ContentManager::EndPaneSession(const winrt::guid& paneId, const winrt::hstring& sessionId, const winrt::hstring& agent)
+    {
+        {
+            std::lock_guard lock{ _mutex };
+            const auto it = _paneMetadata.find(paneId);
+            if (it == _paneMetadata.end())
+            {
+                return;
+            }
+            auto& metadata = it->second;
+            if (!agent.empty() && !metadata.session.agent.empty() && metadata.session.agent != agent)
+            {
+                return;
+            }
+            if (!sessionId.empty() &&
+                ((!metadata.session.sessionId.empty() && metadata.session.sessionId != sessionId) ||
+                 (metadata.session.sessionId.empty() &&
+                  std::ranges::find(metadata.supersededSessionIds, sessionId) != metadata.supersededSessionIds.end())))
+            {
+                return;
+            }
+            if (!metadata.session.sessionId.empty())
+            {
+                metadata.supersededSessionIds.emplace_back(metadata.session.sessionId);
+            }
+            metadata.state = PaneAgentState::Ended;
+            metadata.session = {};
+            metadata.activity.clear();
+            metadata.source.clear();
+            metadata.wslDistro.clear();
+            metadata.universe.clear();
+            metadata.identityQualified = false;
+            metadata.interactiveResume = false;
+            metadata.eventJson.clear();
+        }
+        PaneMetadataChanged.raise(*this, paneId);
+    }
+
+    void ContentManager::SetPaneConnectionState(const winrt::guid& paneId, const bool failed)
+    {
+        if (!failed)
+        {
+            EndPaneSession(paneId);
+            return;
+        }
+        {
+            std::lock_guard lock{ _mutex };
+            const auto it = _paneMetadata.find(paneId);
+            if (it == _paneMetadata.end() || !it->second.HasAgent())
+            {
+                return;
+            }
+            it->second.state = PaneAgentState::Failed;
+            it->second.activity = L"Error";
+        }
+        PaneMetadataChanged.raise(*this, paneId);
+    }
+
+    void ContentManager::UpdatePaneSessionIdentity(const winrt::guid& paneId, const PaneAgentSession& session, const winrt::hstring& source, const winrt::hstring& distro, const winrt::hstring& universe)
+    {
+        {
+            std::lock_guard lock{ _mutex };
+            const auto it = _paneMetadata.find(paneId);
+            if (it == _paneMetadata.end())
+            {
+                return;
+            }
+            auto& metadata = it->second;
+            if ((!metadata.HasAgent() && metadata.state != PaneAgentState::Unknown) ||
+                (!metadata.session.sessionId.empty() && metadata.session.sessionId != session.sessionId) ||
+                (!metadata.session.sessionId.empty() && !metadata.session.agent.empty() && metadata.session.agent != session.agent) ||
+                (metadata.identityQualified &&
+                 (metadata.source != source || metadata.wslDistro != distro || metadata.universe != universe)))
+            {
+                return;
+            }
+            auto resolved = session;
+            if (resolved.resumeCommandline.empty())
+            {
+                resolved.resumeCommandline = metadata.session.resumeCommandline;
+            }
+            if (metadata.identityQualified && metadata.session.sessionId == resolved.sessionId &&
+                metadata.session.agent == resolved.agent && metadata.session.resumeCommandline == resolved.resumeCommandline)
+            {
+                return;
+            }
+            metadata.session = std::move(resolved);
+            if (metadata.state != PaneAgentState::Failed)
+            {
+                metadata.state = PaneAgentState::Running;
+            }
+            metadata.source = source;
+            metadata.wslDistro = distro;
+            metadata.universe = universe;
+            metadata.identityQualified = !source.empty();
+        }
+        PaneMetadataChanged.raise(*this, paneId);
     }
 
     void ContentManager::OnPaneAgentSessionChanged(const winrt::hstring& eventJson)
@@ -131,7 +309,12 @@ namespace winrt::TerminalApp::implementation
         const auto ended = name == "agent.session.end" || name == "agent.session.stopped";
         const auto started = name == "agent.session.start" || name == "agent.session.started";
         const auto prompt = name == "agent.prompt.submit";
-        if (!ended && !started && !prompt)
+        const auto activity = name == "agent.stop"          ? L"Idle" :
+                              name == "agent.error"         ? L"Error" :
+                              name == "agent.notification"  ? L"Attention" :
+                              name == "agent.tool.starting" ? L"Working" :
+                                                              L"";
+        if (!ended && !started && !prompt && !*activity && !name.empty())
         {
             return;
         }
@@ -146,48 +329,103 @@ namespace winrt::TerminalApp::implementation
                                           ::Microsoft::Console::Utils::GuidFromPlainString(text.c_str());
         const auto agentSessionId = winrt::to_hstring(params.get("agent_session_id", "").asString());
         const auto agent = winrt::to_hstring(params.get("agent", params.get("cli_source", "")).asString());
-        if (!ended && (agentSessionId.empty() || std::wstring_view{ agentSessionId }.starts_with(L"sidekick-") || agent.empty()))
+        if (std::wstring_view{ agentSessionId }.starts_with(L"sidekick-") ||
+            (!ended && agent.empty()))
         {
             return;
         }
 
-        uint64_t contentId{};
+        if (ended)
+        {
+            EndPaneSession(sessionId, agentSessionId, agent);
+            return;
+        }
         {
             std::lock_guard lock{ _mutex };
-            for (const auto& [id, content] : _content)
+            const auto it = _paneMetadata.find(sessionId);
+            if (it == _paneMetadata.end())
             {
-                const auto connection = content.core.Core().Connection();
-                if (connection && connection.SessionId() == sessionId)
+                return;
+            }
+            auto& metadata = it->second;
+            if (!started &&
+                ((!agentSessionId.empty() &&
+                  ((!metadata.session.sessionId.empty() && metadata.session.sessionId != agentSessionId) ||
+                   std::ranges::find(metadata.supersededSessionIds, agentSessionId) != metadata.supersededSessionIds.end())) ||
+                 (!metadata.session.sessionId.empty() && !metadata.session.agent.empty() && metadata.session.agent != agent)))
+            {
+                return;
+            }
+            const auto hadSession = !metadata.session.sessionId.empty();
+            const auto source = winrt::to_hstring(params.get("agent_source", "").asString());
+            const auto distro = winrt::to_hstring(params.get("wsl_distro", "").asString());
+            const auto universe = winrt::to_hstring(params.get("session_universe", "").asString());
+            if (!started && !source.empty() && metadata.identityQualified &&
+                (metadata.source != source || metadata.wslDistro != distro || metadata.universe != universe))
+            {
+                return;
+            }
+            if (started || prompt || name.empty())
+            {
+                if (started)
                 {
-                    contentId = id;
-                    break;
+                    std::erase(metadata.supersededSessionIds, agentSessionId);
+                }
+                if (started && (metadata.session.sessionId != agentSessionId || metadata.session.agent != agent))
+                {
+                    if (!metadata.session.sessionId.empty() && metadata.session.sessionId != agentSessionId)
+                    {
+                        metadata.supersededSessionIds.emplace_back(metadata.session.sessionId);
+                    }
+                    metadata.session = {};
+                    metadata.source.clear();
+                    metadata.wslDistro.clear();
+                    metadata.universe.clear();
+                    metadata.identityQualified = false;
+                    metadata.interactiveResume = false;
+                }
+                if (!agentSessionId.empty() &&
+                    std::ranges::find(metadata.supersededSessionIds, agentSessionId) == metadata.supersededSessionIds.end())
+                {
+                    metadata.session.sessionId = agentSessionId;
+                    if (const auto resume = winrt::to_hstring(params.get("resume_commandline", "").asString()); !resume.empty())
+                    {
+                        metadata.session.resumeCommandline = resume;
+                    }
+                    if (!(prompt && agent == L"copilot" && hadSession))
+                    {
+                        metadata.eventJson = eventJson;
+                    }
+                }
+                metadata.session.agent = agent;
+                if (!source.empty())
+                {
+                    metadata.source = source;
+                    metadata.wslDistro = distro;
+                    metadata.universe = universe;
+                    metadata.identityQualified = true;
+                }
+                metadata.state = metadata.session.sessionId.empty() ? PaneAgentState::Starting : PaneAgentState::Running;
+                metadata.activity = prompt ? L"Working" : L"Idle";
+                if (!metadata.launchProvider.empty() && !std::wstring_view{ metadata.launchProvider }.starts_with(L"custom:"))
+                {
+                    metadata.launchProvider = agent;
+                }
+            }
+            else if (metadata.HasAgent())
+            {
+                if (name == "agent.notification" &&
+                    params["payload"].get("notification_type", "").asString() == "idle_prompt")
+                {
+                    return;
+                }
+                if (name != "agent.stop" || metadata.activity != L"Error")
+                {
+                    metadata.activity = activity;
                 }
             }
         }
-        if (!contentId)
-        {
-            return;
-        }
-        auto& policy = _agentBindings[contentId];
-        if (ended)
-        {
-            if (agentSessionId.empty() || agentSessionId == policy.agentSessionId)
-            {
-                policy = {};
-            }
-        }
-        else if (!(prompt && agent == L"copilot" && !policy.agentSessionId.empty()))
-        {
-            policy.agentSessionId = agentSessionId;
-            policy.eventJson = eventJson;
-            std::lock_guard lock{ _mutex };
-            if (const auto content = _content.find(contentId);
-                content != _content.end() && !content->second.nativeAgentProviderId.empty() &&
-                !std::wstring_view{ content->second.nativeAgentProviderId }.starts_with(L"custom:"))
-            {
-                content->second.nativeAgentProviderId = agent;
-            }
-        }
+        PaneMetadataChanged.raise(*this, sessionId);
     }
 
     void ContentManager::KeepTab(const winrt::TerminalApp::TerminalPage& owner, const winrt::TerminalApp::Tab& tab)

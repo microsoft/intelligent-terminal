@@ -353,6 +353,10 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring sessionId;
             winrt::hstring agentId;
             winrt::hstring paneSessionId;
+            winrt::hstring source;
+            winrt::hstring wslDistro;
+            winrt::hstring universe;
+            bool identityQualified{};
             bool operator==(const RepresentedHistorySession&) const = default;
         };
         void SetRepresentedHistorySessions(std::vector<RepresentedHistorySession> sessions);

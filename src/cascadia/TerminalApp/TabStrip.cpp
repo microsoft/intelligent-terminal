@@ -1537,13 +1537,20 @@ namespace winrt::TerminalApp::implementation
             background = WUX::Media::SolidColorBrush{ *color };
             foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(*color) };
         }
-        for (uint32_t index = 0; index < _historyItems.Size(); ++index)
-        {
-            const auto item = _historyItems.GetAt(index);
+        const auto applyCurrent = [&](const auto& item) {
             const auto isCurrent = item == current;
             item.IsCurrent(isCurrent);
             item.CurrentBackground(isCurrent ? background : nullptr);
             item.CurrentForeground(isCurrent ? foreground : nullptr);
+        };
+        for (const auto& item : _historySnapshot)
+        {
+            applyCurrent(item);
+        }
+        for (uint32_t index = 0; index < _historyItems.Size(); ++index)
+        {
+            const auto item = _historyItems.GetAt(index);
+            applyCurrent(item);
             if (const auto container = ItemsList().ContainerFromItem(item).try_as<ListViewItem>())
             {
                 _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), item);
@@ -2523,7 +2530,11 @@ namespace winrt::TerminalApp::implementation
                 for (const auto& item : _historySnapshot)
                 {
                     if (item.SessionId() != session.sessionId ||
-                        (!session.agentId.empty() && item.AgentId() != session.agentId))
+                        (!session.agentId.empty() && item.AgentId() != session.agentId) ||
+                        (session.identityQualified &&
+                         (item.AgentSource() != session.source ||
+                          item.WslDistro() != session.wslDistro ||
+                          item.SessionUniverse() != session.universe)))
                     {
                         continue;
                     }
