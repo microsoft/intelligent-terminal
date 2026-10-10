@@ -21,6 +21,7 @@ The menu shows an action rather than a checked state, and refreshes its label,
 icon, tooltip, and accessibility help when the choice changes or the menu opens.
 The RepeatAll icon appears after the title of a tab with keep running enabled,
 including after restore, whole-tab moves, and switching to horizontal layout.
+Its accessibility name is "Headless mode on", separate from the menu action.
 Disabling keep running removes the title icon. Long titles truncate before the
 indicator so it stays visible.
 When Rich Tab metadata is visible, the indicator is vertically centered across

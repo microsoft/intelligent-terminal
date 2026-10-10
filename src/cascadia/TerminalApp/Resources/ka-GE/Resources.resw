@@ -514,7 +514,11 @@
   </data>
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>ინტერფეისის გარეშე რეჟიმის ჩართვა</value>
-    <comment>Command at the top of a vertical terminal tab&apos;s context menu that enables headless mode. Headless mode keeps all existing panes running after the tab or window is closed; it does not immediately hide or pin the tab. Also labels the tab&apos;s headless-mode status indicator.</comment>
+    <comment>Command at the top of a vertical terminal tab&apos;s context menu that enables headless mode. Headless mode keeps all existing panes running after the tab or window is closed; it does not immediately hide or pin the tab.</comment>
+  </data>
+  <data name="HeadlessModeOnName" xml:space="preserve">
+    <value>ინტერფეისის გარეშე რეჟიმი ჩართულია</value>
+    <comment>Accessibility name for the status icon shown on a terminal tab when headless mode is enabled. Describes the current state, not a command. Headless mode keeps existing panes running after the tab or window is closed.</comment>
   </data>
   <data name="PinTabText" xml:space="preserve">
     <value>ჩანართის მიმაგრება</value>

@@ -1574,7 +1574,11 @@ Para todas as opções disponíveis, execute 'wt new-tab --help'.</value>
   </data>
   <data name="KeepTabRunningText" xml:space="preserve">
     <value>Ativar o modo sem interface</value>
-    <comment>Command at the top of a vertical terminal tab&apos;s context menu that enables headless mode. Headless mode keeps all existing panes running after the tab or window is closed; it does not immediately hide or pin the tab. Also labels the tab&apos;s headless-mode status indicator.</comment>
+    <comment>Command at the top of a vertical terminal tab&apos;s context menu that enables headless mode. Headless mode keeps all existing panes running after the tab or window is closed; it does not immediately hide or pin the tab.</comment>
+  </data>
+  <data name="HeadlessModeOnName" xml:space="preserve">
+    <value>Modo sem interface ativado</value>
+    <comment>Accessibility name for the status icon shown on a terminal tab when headless mode is enabled. Describes the current state, not a command. Headless mode keeps existing panes running after the tab or window is closed.</comment>
   </data>
   <data name="PinTabText" xml:space="preserve">
     <value>Fixar guia</value>

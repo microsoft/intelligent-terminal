@@ -1466,7 +1466,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(restored->TabStatus().IsKeepRunning());
             VERIFY_IS_TRUE(restored->IsPinned());
             VERIFY_IS_TRUE(restored->TabStatus().IsPinned());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, restored->_keepRunningMenuItem.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off headless mode" }, restored->_keepRunningMenuItem.Text());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, restored->_keepRunningMenuItem.Icon().as<FontIcon>().Glyph());
             VERIFY_IS_FALSE(page->_manager.HasKeptSessions());
             VERIFY_ARE_EQUAL(0u, kept->CloseCount());
@@ -1483,13 +1483,13 @@ namespace TerminalAppLocalTests
             const auto item = tab->_keepRunningMenuItem;
             const auto menu = tab->TabViewItem().ContextFlyout().as<MenuFlyout>();
             VERIFY_IS_TRUE(menu.Items().GetAt(0) == item);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, item.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn on headless mode" }, item.Text());
             const auto icon = item.Icon().as<FontIcon>();
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, icon.Glyph());
             const auto badge = tab->_headerControl.FindName(L"HeaderKeepRunningIcon").as<FontIcon>();
             VERIFY_ARE_EQUAL(icon.Glyph(), badge.Glyph());
             VERIFY_ARE_EQUAL(icon.FontFamily().Source(), badge.FontFamily().Source());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" },
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Headless mode on" },
                              winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetName(badge));
             const winrt::hstring tooltip{ L"Keep this tab running in the background after closing the tab or window." };
             VERIFY_ARE_EQUAL(tooltip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(item)));
@@ -1500,7 +1500,9 @@ namespace TerminalAppLocalTests
 
             const winrt::guid id{ tab->StableId() };
             page->SetTabKeepRunning(id, true);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, item.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off headless mode" }, item.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Headless mode on" },
+                             winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetName(badge));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, icon.Glyph());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, badge.Glyph());
             const winrt::hstring turnOffTooltip{ L"This tab will no longer stay running after you close the tab or window." };
@@ -1514,10 +1516,10 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(tab->TabStatus().IsKeepRunning());
             tab->SetVerticalTabLayout(true);
             VERIFY_ARE_EQUAL(Visibility::Visible, item.Visibility());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, item.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off headless mode" }, item.Text());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, icon.Glyph());
             page->SetTabKeepRunning(id, false);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, item.Text());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn on headless mode" }, item.Text());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, icon.Glyph());
             VERIFY_ARE_EQUAL(tooltip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(item)));
             VERIFY_ARE_EQUAL(tooltip, winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetHelpText(item));
@@ -1745,16 +1747,16 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(owner != focused);
             const Peers::MenuFlyoutItemAutomationPeer peer{ owner->_keepRunningMenuItem };
             const auto invoke = peer.GetPattern(Peers::PatternInterface::Invoke).as<Provider::IInvokeProvider>();
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, peer.GetName());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn on headless mode" }, peer.GetName());
             invoke.Invoke();
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off keep running" }, peer.GetName());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off headless mode" }, peer.GetName());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, owner->_keepRunningMenuItem.Icon().as<FontIcon>().Glyph());
             VERIFY_IS_TRUE(page->IsTabKeepRunning(winrt::guid{ owner->StableId() }));
             VERIFY_IS_TRUE(owner->TabStatus().IsKeepRunning());
             VERIFY_IS_FALSE(focused->KeepRunning());
             VERIFY_IS_FALSE(focused->TabStatus().IsKeepRunning());
             invoke.Invoke();
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Keep tab running" }, peer.GetName());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn on headless mode" }, peer.GetName());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, owner->_keepRunningMenuItem.Icon().as<FontIcon>().Glyph());
             VERIFY_IS_FALSE(owner->KeepRunning());
             VERIFY_IS_FALSE(owner->TabStatus().IsKeepRunning());
