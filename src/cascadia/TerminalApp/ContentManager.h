@@ -50,6 +50,8 @@ namespace winrt::TerminalApp::implementation
 
         void OnPaneAgentSessionChanged(const winrt::hstring& eventJson);
         winrt::hstring AgentSessionEvent(uint64_t contentId);
+        void UpdateKeepRunningTab(const winrt::TerminalApp::Tab& tab);
+        bool IsPaneKeepRunning(const winrt::guid& paneId) const;
         void KeepTab(const winrt::TerminalApp::TerminalPage& owner, const winrt::TerminalApp::Tab& tab);
         bool HasKeptSessions();
         bool IsKeptContent(uint64_t contentId);
@@ -66,6 +68,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::IPaneContent> KeptPanes();
 
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
+        til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeepRunningTabsChanged;
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::hstring> DetachedSessionEvent;
 
     private:
@@ -95,6 +98,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::System::DispatcherQueue _dispatcher{ winrt::Windows::System::DispatcherQueue::GetForCurrentThread() };
         std::unordered_map<uint64_t, AgentBinding> _agentBindings;
         std::unordered_map<winrt::guid, KeptGroup> _keptGroups;
+        // Only kept groups own retention; the sidebar index must not keep tabs alive.
+        std::unordered_map<winrt::hstring, winrt::weak_ref<winrt::TerminalApp::Tab>> _keepRunningTabs;
         void _CheckThread() const;
         void _NotifyKeptSessionsChanged() noexcept;
 

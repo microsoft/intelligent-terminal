@@ -152,6 +152,13 @@ After C++, XAML, IDL, packaging, resource, or mixed Debug changes, deploy with:
 Do not perform a full package deployment for a `wta.exe`-only change. Static
 assets such as `wt-agent-hooks` do require packaging.
 
+When parallel worktrees need their own Dev deployments, follow
+[`doc/dev-worktree-package.md`](doc/dev-worktree-package.md) and the separate
+worktree manifest template. Use temporary, uncommitted identity, single-instance,
+COM and E2E overrides; never replace another worktree's registered
+Dev layout. Ordinary Dev builds remain unchanged. Package isolation does not
+make foreground keyboard/mouse or other desktop-global tests parallel-safe.
+
 ## Runtime data and diagnostics
 
 Packaged state and cache data are package-private:

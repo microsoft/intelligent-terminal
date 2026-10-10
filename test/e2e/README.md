@@ -4,6 +4,21 @@ A robust, CLI-composition test framework that drives and verifies a **deployed
 (MSIX-packaged)** Intelligent Terminal. Tests are authored in **PowerShell + Pester 5**.
 Design rationale is captured in the inline notes below and in each suite's header comments.
 
+## Parallel worktree Dev verification
+
+To test without replacing another worktree's Dev package, follow
+[`doc/dev-worktree-package.md`](../../doc/dev-worktree-package.md).
+It uses a separate manifest template, temporary local edits, and this existing
+harness. Pin the exact package family and its own CLI paths as described there.
+Normal Dev/Store behavior and pipeline configuration stay unchanged.
+
+Separate apps can use HWND-scoped UIA actions; shared foreground input,
+clipboard, policy, and agent configuration still need serialization. Check the
+suite's requirements rather than assuming all UI tests are parallel-safe.
+The live smoke proved separate hosts, package-local CLIs, and sidebar search
+invoke/filter/clear. It did not validate concurrent full suites or mark release
+checklist items complete.
+
 ## Release-checklist coverage
 
 ### Startup and failure ownership

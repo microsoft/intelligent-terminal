@@ -30,6 +30,14 @@ also truncates before the indicator column.
 The menu icons and title indicator use Segoe Fluent Icons with Segoe MDL2 Assets as a fallback,
 not a bitmap asset.
 
+**Recent agent sessions** also shows the RepeatAll indicator for a session
+whose pane belongs to a Keep running tab, including tabs in another window or
+retained in the background. The indicator follows the tab's runtime choice
+without resetting the session list or changing its restore/switch-window action.
+The indicator represents the tab's choice, not the agent's activity status:
+ending the agent session does not remove it while its pane remains in that tab.
+Sessions without a pane in a Keep running tab do not show this indicator.
+
 **Pin tab** is a separate context-menu action in both tab layouts. It keeps a
 terminal tab before unpinned tabs and can be undone with **Unpin tab**. Pinned
 tabs still close normally, including with bulk close actions; pinning does not
@@ -52,6 +60,9 @@ the mutable tab index or a pane's `WT_SESSION`:
 The choice belongs to the tab, not individual panes. New splits are included
 automatically. Moving a whole tab carries its choice; moving one pane does not
 opt its destination tab in. Agent CLI start/end events do not change the choice.
+After a pane move commits, recent-session indicators immediately reflect the
+receiving tab's choice, including when moving the source tab's last pane removes
+that tab. Moving a whole tab or retaining it in the background preserves its choice.
 
 ## Closing and restoring
 
