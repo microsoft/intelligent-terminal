@@ -64,10 +64,10 @@ flowchart LR
 ## Design: `session/list` as the sole history source
 
 **After — ACP `session/list`.** The helper still asks master; master now seeds
-*and* continuously reconciles its registry from the running agent's own
-`session/list` — one round-trip on the existing connection for the host, a
-per-distro ACP scan for WSL, and the `agent_pane_origin` index for the Class-A
-filter. No disk read:
+and reconciles its registry from the running agent's own `session/list` according
+to each provider's refresh policy—one round-trip on the existing connection for
+the host, a per-distro ACP scan for WSL, and the `agent_pane_origin` index for the
+Class-A filter. No disk read:
 
 ```mermaid
 flowchart LR
