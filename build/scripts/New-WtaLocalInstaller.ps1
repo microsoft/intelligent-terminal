@@ -87,14 +87,25 @@ function Find-CargoPath {
 }
 
 function Get-InstalledRustTargets {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ToolchainRoot
+    )
+
     $rustupPath = Join-Path $env:USERPROFILE '.cargo\bin\rustup.exe'
     if (-not (Test-Path $rustupPath -PathType Leaf)) {
         return @()
     }
 
-    $targets = & $rustupPath target list --installed
-    if ($LASTEXITCODE -ne 0) {
-        throw 'rustup target list --installed failed.'
+    Push-Location $ToolchainRoot
+    try {
+        $targets = & $rustupPath target list --installed
+        if ($LASTEXITCODE -ne 0) {
+            throw 'rustup target list --installed failed.'
+        }
+    }
+    finally {
+        Pop-Location
     }
 
     return @($targets | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -112,19 +123,14 @@ function Invoke-RustBuild {
         [string]$RustTarget,
 
         [Parameter(Mandatory = $true)]
-        [string]$RepoRoot
+        [string]$ToolchainRoot
     )
 
     # Cargo's config discovery walks up from the current working directory,
-    # not from the manifest path. Pin CWD to the repo root so Cargo finds the
-    # repo-root .cargo/config.toml that supplies `+crt-static` — even when
-    # this script is launched from outside the repo.
-    #
-    # Important: do NOT push into the manifest's directory. tools/wta/ has its
-    # own rust-toolchain.toml, so letting rustup discover that file from CWD
-    # can change toolchain resolution compared to the repo-root configuration
-    # this script relies on for local builds.
-    Push-Location $RepoRoot
+    # not from the manifest path. Build both Rust binaries from tools/wta so
+    # rustup discovers the pinned public toolchain and Cargo walks up to the
+    # repo-root .cargo/config.toml that supplies `+crt-static`.
+    Push-Location $ToolchainRoot
     try {
         & $CargoPath build --manifest-path $ManifestPath --release --target $RustTarget
         if ($LASTEXITCODE -ne 0) {
@@ -452,10 +458,11 @@ if ($BuildTerminal -and $installerVersion -ne $expectedManifestIdentity.Version)
 
 $cargoPath = Find-CargoPath
 $rustTarget = Get-RustTarget -PlatformName $Platform
-$installedTargets = Get-InstalledRustTargets
+$wtaRoot = Join-Path $repoRoot 'tools\wta'
+$installedTargets = Get-InstalledRustTargets -ToolchainRoot $wtaRoot
 
 if ($installedTargets.Count -gt 0 -and $installedTargets -notcontains $rustTarget) {
-    throw "Rust target $rustTarget is not installed. Install it with rustup target add $rustTarget."
+    throw "Rust target $rustTarget is not installed for the WTA toolchain. Run rustup target add $rustTarget from tools/wta."
 }
 
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -498,8 +505,8 @@ if ($SkipWtaBuild) {
     $resolvedWtaExePath = Resolve-AbsolutePath -Path $WtaExePath
 } else {
     Write-Status "Building wta.exe for $rustTarget with a static CRT ..."
-    $manifestPath = Join-Path $repoRoot 'tools\wta\Cargo.toml'
-    Invoke-RustBuild -CargoPath $cargoPath -ManifestPath $manifestPath -RustTarget $rustTarget -RepoRoot $repoRoot
+    $manifestPath = Join-Path $wtaRoot 'Cargo.toml'
+    Invoke-RustBuild -CargoPath $cargoPath -ManifestPath $manifestPath -RustTarget $rustTarget -ToolchainRoot $wtaRoot
     $resolvedWtaExePath = Join-Path $repoRoot ("tools\wta\target\{0}\release\wta.exe" -f $rustTarget)
 }
 
@@ -553,7 +560,7 @@ Copy-Item -Path $installerCmd -Destination (Join-Path $installerSourceRoot 'inst
 Copy-Item -Path $payloadZip -Destination (Join-Path $installerSourceRoot 'payload.zip') -Force
 
 Write-Status "Building installer bootstrap for $rustTarget ..."
-Invoke-RustBuild -CargoPath $cargoPath -ManifestPath $installerBootstrapManifest -RustTarget $rustTarget -RepoRoot $repoRoot
+Invoke-RustBuild -CargoPath $cargoPath -ManifestPath $installerBootstrapManifest -RustTarget $rustTarget -ToolchainRoot $wtaRoot
 $bootstrapExePath = Join-Path $repoRoot ("installer\bootstrap\target\{0}\release\intelligent-terminal-installer-bootstrap.exe" -f $rustTarget)
 if (-not (Test-Path $bootstrapExePath -PathType Leaf)) {
     throw "Installer bootstrap not found: $bootstrapExePath"

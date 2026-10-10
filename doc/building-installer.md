@@ -23,9 +23,11 @@ intelligent-terminal-<version>-<arch>-msix.zip
 - Visual Studio 2022 Enterprise with C++ desktop & UWP workloads
 - Windows 10 SDK (10.0.22621.0+)
 - Rust toolchain (`cargo`, `rustup`) with both targets:
-  ```
+  ```powershell
+  Push-Location tools/wta
   rustup target add x86_64-pc-windows-msvc
   rustup target add aarch64-pc-windows-msvc
+  Pop-Location
   ```
 
 ---
@@ -37,7 +39,7 @@ Five lines, in order. Step details below.
 ```powershell
 # 0. Bump manifest + _sign_msix.cmd to the new version
 # 1. (skipped — cert is committed)
-# 2. cargo build --release --target {x86_64,aarch64}-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
+# 2. From tools/wta: cargo build --release --target {x86_64,aarch64}-pc-windows-msvc
 # 3. .\_build_msix_x64.cmd   AND THEN   .\_build_msix_arm64.cmd      # serial — see note
 # 4. .\_sign_msix.cmd
 # 5. powershell -File build\scripts\assemble-msix-zip.ps1 -Version 0.7.0.X -Arch x64
@@ -75,11 +77,15 @@ That script produces `CascadiaPackage_TemporaryKey.pfx` (gitignored) — you'd t
 ### Step 2: Build `wta.exe`
 
 ```powershell
+Push-Location tools/wta
+
 # x64
-cargo build --release --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
+cargo build --release --target x86_64-pc-windows-msvc
 
 # ARM64 (cross-compile)
-cargo build --release --target aarch64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
+cargo build --release --target aarch64-pc-windows-msvc
+
+Pop-Location
 ```
 
 These two are independent — run them in parallel if you want.
@@ -258,8 +264,8 @@ Options (pass to `install.cmd`): `/quiet`, `/nopath`, `/noshortcuts`
 | Goal | Command |
 |------|---------|
 | Generate dev cert (one-time / expired) | [`powershell -File build\scripts\New-DevSigningCert.ps1`](../build/scripts/New-DevSigningCert.ps1) |
-| Build wta (x64) | `cargo build --release --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml` |
-| Build wta (ARM64) | `cargo build --release --target aarch64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml` |
+| Build wta (x64) | From `tools/wta`: `cargo build --release --target x86_64-pc-windows-msvc` |
+| Build wta (ARM64) | From `tools/wta`: `cargo build --release --target aarch64-pc-windows-msvc` |
 | Build MSIX (x64) | [`.\_build_msix_x64.cmd`](../_build_msix_x64.cmd) |
 | Build MSIX (ARM64) | [`.\_build_msix_arm64.cmd`](../_build_msix_arm64.cmd) |
 | Sign both MSIXs | [`.\_sign_msix.cmd`](../_sign_msix.cmd) |
