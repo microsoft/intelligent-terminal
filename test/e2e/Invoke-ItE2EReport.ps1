@@ -40,22 +40,45 @@ param(
     [switch]$UpdateReport,
     [switch]$RequireNoSkips,
     [string]$SourceRoot,
-    [ValidatePattern('^[a-fA-F0-9]{40}$')][string]$ExpectedHead,
+    [string]$ExpectedHead,
     [string]$RecipePath,
     [string]$MsixPath
 )
 
 $ErrorActionPreference = 'Stop'
-if ($SourceRoot -or $ExpectedHead -or $RecipePath -or $MsixPath) {
-    if (-not $SourceRoot -or -not $ExpectedHead -or -not $RecipePath -or -not $MsixPath) {
-        throw 'Provide -SourceRoot, -ExpectedHead, -RecipePath and -MsixPath together for package proof.'
+function Remove-StaleItE2EArtifacts([string]$Root, [string[]]$Names) {
+    foreach ($name in $Names) {
+        $artifact = Join-Path $Root $name
+        if (Test-Path -LiteralPath $artifact -PathType Leaf) {
+            Remove-Item -LiteralPath $artifact -Force -ErrorAction Stop
+        }
     }
-    if ($env:ITE2E_PACKAGE -notin @('Dev', 'IntelligentTerminal_rd9vj3e6a2mbr')) {
-        throw 'Package proof requires an explicitly selected Dev package (ITE2E_PACKAGE=Dev).'
+}
+$proofRequested = $PSBoundParameters.ContainsKey('SourceRoot') -or
+    $PSBoundParameters.ContainsKey('ExpectedHead') -or
+    $PSBoundParameters.ContainsKey('RecipePath') -or
+    $PSBoundParameters.ContainsKey('MsixPath')
+if ($proofRequested) {
+    try {
+        if (-not $SourceRoot -or -not $ExpectedHead -or -not $RecipePath -or -not $MsixPath) {
+            throw 'Provide -SourceRoot, -ExpectedHead, -RecipePath and -MsixPath together for package proof.'
+        }
+        if ($ExpectedHead -notmatch '^[a-fA-F0-9]{40}$') {
+            throw 'ExpectedHead must be a 40-character hexadecimal commit ID.'
+        }
+        if ($env:ITE2E_PACKAGE -notin @('Dev', 'IntelligentTerminal_rd9vj3e6a2mbr')) {
+            throw 'Package proof requires an explicitly selected Dev package (ITE2E_PACKAGE=Dev).'
+        }
+        $proof = & (Join-Path $PSScriptRoot 'Verify-PackageProvenance.ps1') `
+            -SourceRoot $SourceRoot -ExpectedHead $ExpectedHead -RecipePath $RecipePath -MsixPath $MsixPath
+        Write-Host "Package files match recipe/MSIX in clean source HEAD $($proof.SourceHead) ($($proof.RecipeEntryCount) payloads); confirm the build-time source receipt separately." -ForegroundColor Green
     }
-    $proof = & (Join-Path $PSScriptRoot 'Verify-PackageProvenance.ps1') `
-        -SourceRoot $SourceRoot -ExpectedHead $ExpectedHead -RecipePath $RecipePath -MsixPath $MsixPath
-    Write-Host "Package files match recipe/MSIX in clean source HEAD $($proof.SourceHead) ($($proof.RecipeEntryCount) payloads); confirm the build-time source receipt separately." -ForegroundColor Green
+    catch {
+        Remove-StaleItE2EArtifacts -Root $OutDir -Names @(
+            'release-report.md', 'report.html', 'summary.md', 'results.xml'
+        )
+        throw
+    }
 }
 Import-Module Pester -MinimumVersion 5.5.0 -Force
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
@@ -116,12 +139,7 @@ if (-not $SkipReleaseReport) {
         }
         catch {
             Write-BlockedReleaseReport -Path $releaseReport -Reason 'Release report generation failed.'
-            foreach ($name in @('report.html', 'summary.md')) {
-                $staleReport = Join-Path $OutDir $name
-                if (Test-Path -LiteralPath $staleReport -PathType Leaf) {
-                    Remove-Item -LiteralPath $staleReport -Force -ErrorAction Stop
-                }
-            }
+            Remove-StaleItE2EArtifacts -Root $OutDir -Names @('report.html', 'summary.md')
             throw
         }
     }

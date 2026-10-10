@@ -10,6 +10,7 @@ BeforeAll {
             [switch]$GenerateReport,
             [switch]$ObstructReport,
             [switch]$SeedReport,
+            [switch]$SeedPriorArtifacts,
             [switch]$FailGenerator,
             [switch]$UpdateReport,
             [switch]$RequireNoSkips,
@@ -24,7 +25,7 @@ BeforeAll {
         if ($ObstructReport) {
             New-Item -ItemType Directory -Path (Join-Path $out 'release-report.md') | Out-Null
         }
-        if ($UpdateReport -or $SeedReport) {
+        if ($UpdateReport -or $SeedReport -or $SeedPriorArtifacts) {
             @(
                 '# Release Report'
                 '> **Automated: 1 passed, 0 failed. Manual: 0 item(s) left for you.** (total 1)'
@@ -42,9 +43,14 @@ BeforeAll {
                 "throw 'fixture report generator failed'" |
                     Set-Content -LiteralPath (Join-Path $runnerDir $generator)
             }
+        }
+        if ($FailGenerator -or $SeedPriorArtifacts) {
             '<html><body>ALL PASSED</body></html>' |
                 Set-Content -LiteralPath (Join-Path $out 'report.html')
             '# All tests passed' | Set-Content -LiteralPath (Join-Path $out 'summary.md')
+        }
+        if ($SeedPriorArtifacts) {
+            '<test-run result="Passed" />' | Set-Content -LiteralPath (Join-Path $out 'results.xml')
         }
 
         $arguments = @('-NoProfile', '-File', $runner, '-Path', $testFile, '-OutDir', $out)
@@ -68,6 +74,7 @@ BeforeAll {
             ReleaseReport = if (Test-Path -LiteralPath (Join-Path $out 'release-report.md') -PathType Leaf) {
                 Get-Content -LiteralPath (Join-Path $out 'release-report.md') -Raw
             } else { '' }
+            ResultsXmlExists = Test-Path -LiteralPath (Join-Path $out 'results.xml') -PathType Leaf
         }
     }
 }
@@ -239,6 +246,41 @@ Describe 'must not execute' {
         $run.Html | Should -BeNullOrEmpty
     }
 
+    It 'does not run tests or retain old reports for an explicitly empty proof input' {
+        $run = Invoke-ReportFixture -SeedPriorArtifacts -AdditionalArguments @('-SourceRoot', '') -Body @"
+Describe 'must not execute' {
+    It 'would pass' { `$true | Should -BeTrue }
+}
+"@
+
+        $run.ExitCode | Should -Not -Be 0
+        $run.Output | Should -Match 'Provide -SourceRoot, -ExpectedHead, -RecipePath and -MsixPath together'
+        $run.Html | Should -BeNullOrEmpty
+        $run.Summary | Should -BeNullOrEmpty
+        $run.ReleaseReport | Should -BeNullOrEmpty
+        $run.ResultsXmlExists | Should -BeFalse
+    }
+
+    It 'clears old reports when the expected source revision is malformed' {
+        $run = Invoke-ReportFixture -SeedPriorArtifacts -AdditionalArguments @(
+            '-SourceRoot', $TestDrive,
+            '-ExpectedHead', 'bad',
+            '-RecipePath', (Join-Path $TestDrive 'unused.appxrecipe'),
+            '-MsixPath', (Join-Path $TestDrive 'unused.msix')
+        ) -Body @"
+Describe 'must not execute' {
+    It 'would pass' { `$true | Should -BeTrue }
+}
+"@
+
+        $run.ExitCode | Should -Not -Be 0
+        $run.Output | Should -Match 'ExpectedHead'
+        $run.Html | Should -BeNullOrEmpty
+        $run.Summary | Should -BeNullOrEmpty
+        $run.ReleaseReport | Should -BeNullOrEmpty
+        $run.ResultsXmlExists | Should -BeFalse
+    }
+
     It 'runs package proof before Pester and rejects a different source head' {
         $root = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $root | Out-Null
@@ -252,7 +294,7 @@ Describe 'must not execute' {
         $previousPackage = $env:ITE2E_PACKAGE
         try {
             $env:ITE2E_PACKAGE = 'Dev'
-            $run = Invoke-ReportFixture -AdditionalArguments @(
+            $run = Invoke-ReportFixture -SeedPriorArtifacts -AdditionalArguments @(
                 '-SourceRoot', $root,
                 '-ExpectedHead', ('f' * 40),
                 '-RecipePath', (Join-Path $root 'fixture.build.appxrecipe'),
@@ -265,6 +307,9 @@ Describe 'must not execute' {
             $run.ExitCode | Should -Not -Be 0
             $run.Output | Should -Match 'source HEAD'
             $run.Html | Should -BeNullOrEmpty
+            $run.Summary | Should -BeNullOrEmpty
+            $run.ReleaseReport | Should -BeNullOrEmpty
+            $run.ResultsXmlExists | Should -BeFalse
         }
         finally {
             if ($null -eq $previousPackage) { Remove-Item Env:\ITE2E_PACKAGE -ErrorAction SilentlyContinue }

@@ -647,7 +647,10 @@ pwsh -File test\e2e\Invoke-ItE2EReport.ps1 `
 The read-only `Verify-PackageProvenance.ps1` preflight checks the clean Git HEAD,
 the full recipe/MSIX/registered manifest hashes, every recipe source/MSIX/installed
 payload hash, and registered package identity/version. A missing or stale payload stops the run
-**before Pester**.
+**before Pester**. All four proof inputs must be supplied with a 40-character
+commit ID; an explicit empty input cannot bypass the check. A failed provenance
+preflight removes prior HTML, Markdown, checklist, and NUnit success artifacts
+from the selected output directory.
 Only documented MSIX metadata may appear beyond the recipe payloads. Recipe
 paths are separator-normalized before duplicate detection; archive paths are
 URI-decoded before matching (packaging can encode braces in icon names);
