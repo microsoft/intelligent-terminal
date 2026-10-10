@@ -11,7 +11,7 @@ Describe 'Native agent profile settings layout' -Tag 'Unit' {
         $advancedCode = Get-Content -LiteralPath (Join-Path $editorRoot 'Profiles_Advanced.cpp') -Raw
     }
 
-    It 'keeps auxiliary assistant selectors on the shell base page and agent advanced page' {
+    It 'keeps auxiliary assistant selectors only on the shell base page' {
         foreach ($name in @('AgentPaneBackend', 'CommandPaletteAgent')) {
             $baseControls = @($base.SelectNodes('//*') | Where-Object {
                 $_.GetAttribute('Name', $xamlNamespace) -eq $name
@@ -20,21 +20,15 @@ Describe 'Native agent profile settings layout' -Tag 'Unit' {
                 $_.GetAttribute('Name', $xamlNamespace) -eq $name
             })
             $baseControls | Should -HaveCount 1
-            $advancedControls | Should -HaveCount 1
+            $advancedControls | Should -HaveCount 0
             $baseControls[0].GetAttribute('Load', $xamlNamespace) | Should -BeExactly 'false'
-            $advancedControls[0].GetAttribute('Load', $xamlNamespace) | Should -BeExactly 'false'
-            foreach ($attribute in @('Uid', 'ClearSettingValue', 'CurrentValue', 'CurrentValueAccessibleName', 'CurrentValueTemplate', 'HasSettingValue', 'SettingOverrideSource')) {
-                $namespace = if ($attribute -eq 'Uid') { $xamlNamespace } else { '' }
-                $advancedControls[0].GetAttribute($attribute, $namespace) |
-                    Should -BeExactly ($baseControls[0].GetAttribute($attribute, $namespace))
-            }
             $baseCode | Should -Match 'if \(!winrt::get_self<ProfileViewModel>\(_Profile\)->IsAgentProfile\(\)\)\s*\{\s*FindName\(L"AgentPaneBackend"\);\s*FindName\(L"CommandPaletteAgent"\);\s*FindName\(L"Elevate"\);\s*\}'
-            $advancedCode | Should -Match 'if \(winrt::get_self<ProfileViewModel>\(_Profile\)->IsAgentProfile\(\)\)\s*\{\s*FindName\(L"AgentPaneBackend"\);\s*FindName\(L"CommandPaletteAgent"\);\s*\}'
+            $advancedCode | Should -Not -Match "FindName\(L`"$name`"\)"
         }
     }
 
     It 'does not instantiate shell-only controls for native agent profiles' {
-        foreach ($name in @('ShowMarks', 'AutoMarkPrompts', 'RepositionCursorWithMouse', 'RainbowSuggestions')) {
+        foreach ($name in @('AntialiasingMode', 'AltGrAliasing', 'SnapOnInput', 'HistorySize', 'BellStyle', 'BellSound', 'RightClickContextMenu', 'ShowMarks', 'AutoMarkPrompts', 'RepositionCursorWithMouse', 'RainbowSuggestions', 'PathTranslationStyle', 'DragDropDelimiter')) {
             $controls = @($advanced.SelectNodes('//*') | Where-Object {
                 $_.GetAttribute('Name', $xamlNamespace) -eq $name
             })
@@ -42,8 +36,18 @@ Describe 'Native agent profile settings layout' -Tag 'Unit' {
             $controls[0].GetAttribute('Load', $xamlNamespace) | Should -BeExactly 'false'
             $controls[0].GetAttribute('ClearSettingValue') | Should -Not -BeNullOrEmpty
             $controls[0].GetAttribute('HasSettingValue') | Should -Not -BeNullOrEmpty
+            $advancedCode | Should -Match "if \(!winrt::get_self<ProfileViewModel>\(_Profile\)->IsAgentProfile\(\)\)\s*\{[^}]*FindName\(L`"$name`"\);"
         }
-        $advancedCode | Should -Match 'else\s*\{\s*FindName\(L"ShowMarks"\);\s*FindName\(L"AutoMarkPrompts"\);\s*FindName\(L"RepositionCursorWithMouse"\);\s*FindName\(L"RainbowSuggestions"\);\s*\}'
+        $advancedCode | Should -Match 'FindName\(L"BellSound"\);[^}]*Automation::AutomationProperties::SetName\(AddBellSoundButton\(\)'
+    }
+
+    It 'retains only close-on-exit and environment refresh on agent Advanced' {
+        $visibleControls = @($advanced.SelectNodes('//*[local-name()="SettingContainer"]') | Where-Object {
+            $_.GetAttribute('Load', $xamlNamespace) -ne 'false'
+        } | ForEach-Object { $_.GetAttribute('Name', $xamlNamespace) })
+        $visibleControls | Should -HaveCount 2
+        $visibleControls | Should -Contain 'CloseOnExit'
+        $visibleControls | Should -Contain 'ReloadEnvVars'
     }
 
     It 'removes the permission selector while preserving model and argument controls' {

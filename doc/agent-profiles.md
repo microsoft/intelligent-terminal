@@ -59,8 +59,11 @@ Unsupported modes and conflicting arguments produce startup errors.
 The profile editor exposes model and additional startup arguments, but does not
 include a permission-mode selector. Configure approvals through the native CLI;
 existing `agentProfile.permissionMode` JSON values remain supported.
-The separate ACP agent-pane and command-palette delegation selections are in
-the agent profile's Advanced page and do not select or configure its native CLI.
+The agent profile's Advanced page exposes only close-on-exit behavior and
+environment-variable refresh. It omits the separate ACP agent-pane and
+command-palette delegation selectors and the other terminal fine-tuning
+controls; those settings remain available through JSON. Ordinary shell pages
+retain their existing controls and selectors.
 The Run as administrator control is also omitted from agent profile pages.
 Shell prompt marks, automatic prompt marking, shell cursor repositioning, and
 rainbow input suggestions are omitted from agent profile pages, including

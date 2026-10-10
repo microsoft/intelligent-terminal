@@ -19,11 +19,6 @@
                 <ResourceDictionary Source="CommonResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
-            <DataTemplate x:Key="ProfileAgentEntryTemplate"
-                          x:DataType="local:AgentEntry">
-                <TextBlock Text="{x:Bind DisplayLabel}" />
-            </DataTemplate>
-
             <DataTemplate x:Key="EnumComboBoxTemplate"
                           x:DataType="local:EnumEntry">
                 <TextBlock Text="{x:Bind EnumName, Mode=OneWay}" />
@@ -41,41 +36,10 @@
                    Visibility="{x:Bind Profile.IsBaseLayer}" />
         <StackPanel Grid.Row="1"
                     Style="{StaticResource SettingsStackStyle}">
-            <local:SettingContainer x:Name="AgentPaneBackend"
-                                    x:Uid="Profile_AgentPaneBackend"
-                                    x:Load="false"
-                                    ClearSettingValue="{x:Bind Profile.ClearAgentPaneBackend}"
-                                    CurrentValue="{x:Bind Profile.CurrentAgentPaneBackend, Mode=OneWay}"
-                                    CurrentValueAccessibleName="{x:Bind Profile.CurrentAgentPaneBackend.DisplayLabel, Mode=OneWay}"
-                                    CurrentValueTemplate="{StaticResource ProfileAgentEntryTemplate}"
-                                    HasSettingValue="{x:Bind Profile.HasAgentPaneBackend, Mode=OneWay}"
-                                    SettingOverrideSource="{x:Bind Profile.AgentPaneBackendOverrideSource, Mode=OneWay}"
-                                    Style="{StaticResource ExpanderSettingContainerStyle}">
-                <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
-                          ItemsSource="{x:Bind Profile.AgentPaneBackendList, Mode=OneWay}"
-                          SelectedItem="{x:Bind Profile.CurrentAgentPaneBackend, Mode=TwoWay}"
-                          Style="{StaticResource ComboBoxSettingStyle}" />
-            </local:SettingContainer>
-
-            <local:SettingContainer x:Name="CommandPaletteAgent"
-                                    x:Uid="Profile_CommandPaletteAgent"
-                                    x:Load="false"
-                                    ClearSettingValue="{x:Bind Profile.ClearCommandPaletteAgent}"
-                                    CurrentValue="{x:Bind Profile.CurrentCommandPaletteAgent, Mode=OneWay}"
-                                    CurrentValueAccessibleName="{x:Bind Profile.CurrentCommandPaletteAgent.DisplayLabel, Mode=OneWay}"
-                                    CurrentValueTemplate="{StaticResource ProfileAgentEntryTemplate}"
-                                    HasSettingValue="{x:Bind Profile.HasCommandPaletteAgent, Mode=OneWay}"
-                                    SettingOverrideSource="{x:Bind Profile.CommandPaletteAgentOverrideSource, Mode=OneWay}"
-                                    Style="{StaticResource ExpanderSettingContainerStyle}">
-                <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
-                          ItemsSource="{x:Bind Profile.CommandPaletteAgentList, Mode=OneWay}"
-                          SelectedItem="{x:Bind Profile.CurrentCommandPaletteAgent, Mode=TwoWay}"
-                          Style="{StaticResource ComboBoxSettingStyle}" />
-            </local:SettingContainer>
-
             <!--  Antialiasing Mode  -->
             <local:SettingContainer x:Name="AntialiasingMode"
                                     x:Uid="Profile_AntialiasingMode"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearAntialiasingMode}"
                                     HasSettingValue="{x:Bind Profile.HasAntialiasingMode, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.AntialiasingModeOverrideSource, Mode=OneWay}">
@@ -89,6 +53,7 @@
             <!--  AltGr Aliasing  -->
             <local:SettingContainer x:Name="AltGrAliasing"
                                     x:Uid="Profile_AltGrAliasing"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearAltGrAliasing}"
                                     HasSettingValue="{x:Bind Profile.HasAltGrAliasing, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.AltGrAliasingOverrideSource, Mode=OneWay}">
@@ -99,6 +64,7 @@
             <!--  Snap On Input  -->
             <local:SettingContainer x:Name="SnapOnInput"
                                     x:Uid="Profile_SnapOnInput"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearSnapOnInput}"
                                     HasSettingValue="{x:Bind Profile.HasSnapOnInput, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.SnapOnInputOverrideSource, Mode=OneWay}">
@@ -109,6 +75,7 @@
             <!--  History Size  -->
             <local:SettingContainer x:Name="HistorySize"
                                     x:Uid="Profile_HistorySize"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearHistorySize}"
                                     HasSettingValue="{x:Bind Profile.HasHistorySize, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.HistorySizeOverrideSource, Mode=OneWay}">
@@ -136,8 +103,10 @@
             <!--  Bell Style  -->
             <local:SettingContainer x:Name="BellStyle"
                                     x:Uid="Profile_BellStyle"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearBellStyle}"
-                                    CurrentValue="{x:Bind Profile.BellStylePreview, Mode=OneWay}"
+                                    CurrentValue="{Binding BellStylePreview, Mode=OneWay}"
+                                    DataContext="{x:Bind Profile, Mode=OneWay}"
                                     HasSettingValue="{x:Bind Profile.HasBellStyle, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.BellStyleOverrideSource, Mode=OneWay}"
                                     Style="{StaticResource ExpanderSettingContainerStyle}">
@@ -156,8 +125,10 @@
             <!--  Bell Sound  -->
             <local:SettingContainer x:Name="BellSound"
                                     x:Uid="Profile_BellSound"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearBellSound}"
-                                    CurrentValue="{x:Bind Profile.BellSoundPreview, Mode=OneWay}"
+                                    CurrentValue="{Binding BellSoundPreview, Mode=OneWay}"
+                                    DataContext="{x:Bind Profile, Mode=OneWay}"
                                     HasSettingValue="{x:Bind Profile.HasBellSound, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.BellSoundOverrideSource, Mode=OneWay}"
                                     Style="{StaticResource ExpanderSettingContainerStyle}">
@@ -238,6 +209,7 @@
             <!--  RightClickContextMenu  -->
             <local:SettingContainer x:Name="RightClickContextMenu"
                                     x:Uid="Profile_RightClickContextMenu"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearRightClickContextMenu}"
                                     HasSettingValue="{x:Bind Profile.HasRightClickContextMenu, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.RightClickContextMenuOverrideSource, Mode=OneWay}">
@@ -305,6 +277,7 @@
             <!--  Path Translation  -->
             <local:SettingContainer x:Name="PathTranslationStyle"
                                     x:Uid="Profile_PathTranslationStyle"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearPathTranslationStyle}"
                                     HasSettingValue="{x:Bind Profile.HasPathTranslationStyle, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.PathTranslationStyleOverrideSource, Mode=OneWay}">
@@ -318,6 +291,7 @@
             <!--  Drag Drop Delimiter  -->
             <local:SettingContainer x:Name="DragDropDelimiter"
                                     x:Uid="Profile_DragDropDelimiter"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearDragDropDelimiter}"
                                     HasSettingValue="{x:Bind Profile.HasDragDropDelimiter, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.DragDropDelimiterOverrideSource, Mode=OneWay}">
