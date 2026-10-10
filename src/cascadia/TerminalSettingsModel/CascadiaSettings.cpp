@@ -809,7 +809,7 @@ Model::Profile CascadiaSettings::GetProfileForArgs(const Model::NewTerminalArgs&
         const auto provider = ::Microsoft::Terminal::Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(
             std::wstring_view{ savedProvider });
         const auto managedRestore = !newTerminalArgs.Profile().empty() && newTerminalArgs.Commandline().empty() &&
-                                    std::ranges::any_of(::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinDelegateAgents,
+                                    std::ranges::any_of(::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinNativeProfileAgents,
                                                         [&](const auto& agent) { return agent.id == std::wstring_view{ provider }; });
         if (const auto name = newTerminalArgs.Profile(); !name.empty())
         {
@@ -820,13 +820,13 @@ Model::Profile CascadiaSettings::GetProfileForArgs(const Model::NewTerminalArgs&
                 {
                     namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
                     const auto isBuiltin = [](const std::wstring_view id) {
-                        return std::ranges::any_of(Registry::BuiltinDelegateAgents, [&](const auto& agent) { return agent.id == id; });
+                        return std::ranges::any_of(Registry::BuiltinNativeProfileAgents, [&](const auto& agent) { return agent.id == id; });
                     };
                     const auto profileId = profile.AgentProfileId();
                     auto identity = Registry::CanonicalNativeAgentProviderId(std::wstring_view{ profileId });
                     THROW_HR_IF_MSG(E_INVALIDARG, !profileId.empty() && !isBuiltin(identity),
                                     "Invalid orphaned native agent identity");
-                    for (const auto& agent : Registry::BuiltinDelegateAgents)
+                    for (const auto& agent : Registry::BuiltinNativeProfileAgents)
                     {
                         const auto name = std::wstring{ ::Microsoft::Terminal::AgentProfiles::Source } + L":" + std::wstring{ agent.id };
                         const winrt::guid generatedGuid{ Utils::CreateV5Uuid(TERMINAL_PROFILE_NAMESPACE_GUID, std::as_bytes(std::span{ name })) };

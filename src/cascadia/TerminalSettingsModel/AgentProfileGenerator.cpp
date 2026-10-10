@@ -26,34 +26,41 @@ std::wstring_view AgentProfileGenerator::GetIcon() const noexcept
     return L"\uE99A";
 }
 
-void AgentProfileGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implementation::Profile>>& profiles) const
+const AgentProfileGenerator::DiscoveryCache::Snapshot& AgentProfileGenerator::DiscoveryCache::Get(
+    const std::chrono::steady_clock::time_point now, const std::function<Snapshot()>& probe)
 {
-    static std::mutex mutex;
-    static std::optional<std::map<std::wstring, std::filesystem::path>> snapshot;
-    static auto lastProbe = std::chrono::steady_clock::time_point{};
-    std::scoped_lock lock{ mutex };
-    const auto now = std::chrono::steady_clock::now();
-    if (!snapshot || now - lastProbe >= std::chrono::seconds{ 30 })
+    if (!_snapshot || now - _lastProbe >= std::chrono::seconds{ 30 })
     {
         try
         {
-            snapshot = AgentProfiles::Discover(AgentProfiles::NativePath());
-            lastProbe = now;
+            _snapshot = probe();
+            _lastProbe = now;
         }
         catch (...)
         {
             LOG_CAUGHT_EXCEPTION_MSG("Native agent profile discovery failed; retaining the last successful snapshot");
-            if (!snapshot)
+            if (!_snapshot)
             {
                 throw;
             }
         }
     }
+    return *_snapshot;
+}
 
-    for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::FilteredDelegateAgents())
+void AgentProfileGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implementation::Profile>>& profiles) const
+{
+    static std::mutex mutex;
+    static DiscoveryCache cache;
+    std::scoped_lock lock{ mutex };
+    const auto& snapshot = cache.Get(std::chrono::steady_clock::now(), [] {
+        return AgentProfiles::Discover(AgentProfiles::NativePath());
+    });
+    namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+    for (const auto& agent : Registry::BuiltinNativeProfileAgents)
     {
-        const auto found = snapshot->find(std::wstring{ agent.id });
-        if (found == snapshot->end())
+        const auto found = snapshot.find(std::wstring{ agent.id });
+        if (found == snapshot.end() || !::Microsoft::Terminal::Settings::Model::AgentPolicy::IsAgentAllowed(agent.id))
         {
             continue;
         }

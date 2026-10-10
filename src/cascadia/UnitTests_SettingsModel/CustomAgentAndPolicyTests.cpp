@@ -27,6 +27,7 @@
 #include "../TerminalSettingsModel/GlobalAppSettings.h"
 #include "../TerminalSettingsModel/CascadiaSettings.h"
 #include "../TerminalSettingsModel/AcpRuntimeState.h"
+#include "../TerminalSettingsModel/AgentProfileGenerator.h"
 #include "../TerminalSettingsModel/SettingsTelemetry.h"
 #include "../TerminalSettingsModel/ActionArgs.h"
 #include "../TerminalApp/AgentProviderTelemetry.h"
@@ -59,6 +60,9 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileNativeCommands);
         TEST_METHOD(AgentProfileArgumentValidation);
         TEST_METHOD(AgentProfileDiscoveryLifecycle);
+        TEST_METHOD(AgentProfileDiscoveryCacheLifecycle);
+        TEST_METHOD(AgentProfileDiscoveryCacheFirstFailure);
+        TEST_METHOD(AgentProfileNativeAllowlist);
         TEST_METHOD(AgentProfileUninstallPreservesOverrides);
         TEST_METHOD(AgentProfileLaunchPolicy);
         TEST_METHOD(AgentProfileBatchCommand);
@@ -442,7 +446,7 @@ namespace SettingsModelUnitTests
     void CustomAgentAndPolicyTests::AgentProfileNativeCommands()
     {
         namespace Agents = ::Microsoft::Terminal::AgentProfiles;
-        for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinDelegateAgents)
+        for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinNativeProfileAgents)
         {
             const auto executable = L"C:\\Native Tools\\" + std::wstring{ agent.id } + L".exe";
             VERIFY_ARE_EQUAL(L"\"" + executable + L"\"", Agents::BuildCommand(executable, agent.id, {}, {}, {}));
@@ -488,7 +492,7 @@ namespace SettingsModelUnitTests
         namespace Agents = ::Microsoft::Terminal::AgentProfiles;
         GUID guid;
         THROW_IF_FAILED(CoCreateGuid(&guid));
-        const auto root = std::filesystem::temp_directory_path() / (L"Native Agent " + Utils::GuidToString(guid));
+        const auto root = std::filesystem::current_path() / (L"Native Agent " + Utils::GuidToString(guid));
         const auto early = root / L"early";
         const auto late = root / L"late";
         std::filesystem::create_directories(early);
@@ -498,6 +502,8 @@ namespace SettingsModelUnitTests
         const auto exe = late / L"claude.exe";
         std::ofstream{ shim }.put('\n');
         std::ofstream{ exe }.put('\n');
+        std::ofstream{ early / L"antigravity.exe" }.put('\n');
+        std::ofstream{ early / L"agy.exe" }.put('\n');
         const auto path = early.native() + L";" + late.native();
         VERIFY_ARE_EQUAL(exe.native(), Agents::Discover(path).at(L"claude").native());
         std::filesystem::remove(exe);
@@ -507,6 +513,63 @@ namespace SettingsModelUnitTests
         std::ofstream{ shim }.put('\n');
         VERIFY_ARE_EQUAL(shim.native(), Agents::Discover(path).at(L"claude").native());
         VERIFY_IS_TRUE(Agents::Discover(L"").empty());
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileDiscoveryCacheLifecycle()
+    {
+        using Cache = AgentProfileGenerator::DiscoveryCache;
+        Cache cache;
+        const auto start = std::chrono::steady_clock::time_point{};
+        size_t probes = 0;
+        bool fail = false;
+        const auto probe = [&]() -> Cache::Snapshot {
+            ++probes;
+            THROW_HR_IF(E_FAIL, fail);
+            return { { L"claude", probes == 1 ? L"C:\\first.exe" : L"C:\\refreshed.exe" } };
+        };
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\first.exe" }, cache.Get(start, probe).at(L"claude").native());
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\first.exe" }, cache.Get(start + std::chrono::seconds{ 29 }, probe).at(L"claude").native());
+        VERIFY_ARE_EQUAL(size_t{ 1 }, probes);
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\refreshed.exe" }, cache.Get(start + std::chrono::seconds{ 30 }, probe).at(L"claude").native());
+        VERIFY_ARE_EQUAL(size_t{ 2 }, probes);
+        fail = true;
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\refreshed.exe" }, cache.Get(start + std::chrono::seconds{ 60 }, probe).at(L"claude").native());
+        VERIFY_ARE_EQUAL(size_t{ 3 }, probes);
+        fail = false;
+        cache.Get(start + std::chrono::seconds{ 61 }, probe);
+        VERIFY_ARE_EQUAL(size_t{ 4 }, probes);
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileDiscoveryCacheFirstFailure()
+    {
+        using Cache = AgentProfileGenerator::DiscoveryCache;
+        Cache cache;
+        const auto start = std::chrono::steady_clock::time_point{};
+        size_t probes = 0;
+        const auto fail = [&]() -> Cache::Snapshot {
+            ++probes;
+            THROW_HR(E_FAIL);
+        };
+        VERIFY_THROWS(cache.Get(start, fail), wil::ResultException);
+        const auto succeed = [&]() -> Cache::Snapshot {
+            ++probes;
+            return {};
+        };
+        VERIFY_IS_TRUE(cache.Get(start, succeed).empty());
+        VERIFY_IS_TRUE(cache.Get(start + std::chrono::seconds{ 29 }, fail).empty());
+        VERIFY_ARE_EQUAL(size_t{ 2 }, probes);
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileNativeAllowlist()
+    {
+        namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        VERIFY_ARE_EQUAL(size_t{ 5 }, Registry::BuiltinNativeProfileAgents.size());
+        VERIFY_IS_TRUE(Registry::CanonicalNativeAgentProviderId(L"antigravity").empty());
+        VERIFY_IS_TRUE(Registry::CanonicalNativeAgentProviderId(L"ANTIGRAVITY").empty());
+        VERIFY_IS_TRUE(std::ranges::any_of(Registry::BuiltinAcpAgents, [](const auto& agent) { return agent.id == L"antigravity"; }));
+        VERIFY_IS_TRUE(std::ranges::any_of(Registry::BuiltinDelegateAgents, [](const auto& agent) { return agent.id == L"antigravity"; }));
+        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::BuildCommand(L"C:\\agy.exe", L"antigravity", {}, {}, {}), wil::ResultException);
+        VERIFY_IS_FALSE(Registry::IsNativeAgentProviderAllowed(L"antigravity", AgentPolicy::PolicySnapshot{}));
     }
 
     void CustomAgentAndPolicyTests::AgentProfileUninstallPreservesOverrides()

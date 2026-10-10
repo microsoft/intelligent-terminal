@@ -65,7 +65,7 @@ namespace Microsoft::Terminal::AgentProfiles
     inline std::map<std::wstring, std::filesystem::path> Discover(const std::wstring_view path)
     {
         std::map<std::wstring, std::filesystem::path> agents;
-        for (const auto& agent : Settings::Model::AgentRegistry::BuiltinDelegateAgents)
+        for (const auto& agent : Settings::Model::AgentRegistry::BuiltinNativeProfileAgents)
         {
             if (auto executable = ResolveExecutable(agent.id, path); !executable.empty())
             {
@@ -138,7 +138,7 @@ namespace Microsoft::Terminal::AgentProfiles
                                      const std::wstring_view arguments,
                                      const bool validate = true)
     {
-        THROW_HR_IF(E_INVALIDARG, validate && !std::ranges::any_of(Settings::Model::AgentRegistry::BuiltinDelegateAgents, [&](const auto& agent) { return agent.id == id; }));
+        THROW_HR_IF(E_INVALIDARG, validate && !std::ranges::any_of(Settings::Model::AgentRegistry::BuiltinNativeProfileAgents, [&](const auto& agent) { return agent.id == id; }));
         auto values = ParseArguments(arguments);
         if (validate)
         {

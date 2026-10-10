@@ -149,7 +149,7 @@ namespace SettingsModelUnitTests
         VERIFY_IS_TRUE(TerminalSettings::CreateWithNewTerminalArgs(settings, saved).DefaultSettings()->UsesManagedAgentCommand());
         VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::Command(restored, true, L""), wil::ResultException);
         VERIFY_IS_TRUE(orphan.AgentProfileId().empty());
-        for (const auto provider : { L"unknown-agent", L"custom:fixture" })
+        for (const auto provider : { L"unknown-agent", L"custom:fixture", L"antigravity" })
         {
             saved.NativeAgentProviderId(provider);
             VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
@@ -174,7 +174,7 @@ namespace SettingsModelUnitTests
         VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
         saved.NativeAgentProviderId(L"CLAUDE");
         VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, settings.GetProfileForArgs(saved).AgentProfileId());
-        for (const auto profileId : { L"unknown-agent", L"custom:fixture", L"copilot" })
+        for (const auto profileId : { L"unknown-agent", L"custom:fixture", L"copilot", L"antigravity" })
         {
             orphan.AgentProfileId(profileId);
             VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
@@ -183,6 +183,13 @@ namespace SettingsModelUnitTests
         saved.NativeAgentProviderId(L"");
         VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, settings.GetProfileForArgs(saved).AgentProfileId());
         orphan.ClearAgentProfileId();
+        const std::wstring unsupportedIdentity{ L"IntelligentTerminal.AgentProfiles:antigravity" };
+        const auto unsupportedGuid = Utils::CreateV5Uuid(TERMINAL_PROFILE_NAMESPACE_GUID, std::as_bytes(std::span{ unsupportedIdentity }));
+        orphan.Guid(unsupportedGuid);
+        saved.Profile(Utils::GuidToString(unsupportedGuid));
+        VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
+        orphan.Guid(generatedGuid);
+        saved.Profile(Utils::GuidToString(generatedGuid));
         saved.NativeAgentProviderId(L"custom:fixture");
         saved.Commandline(L"cmd.exe /d /c echo explicit");
         const auto explicitSettings = TerminalSettings::CreateWithNewTerminalArgs(settings, saved).DefaultSettings();

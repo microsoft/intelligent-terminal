@@ -66,6 +66,20 @@ Describe 'Native agent profile settings layout' -Tag 'Unit' {
         $header | Should -Match 'bool IsAgentProfile\(\) const \{ return !_profile\.AgentProfileId\(\)\.empty\(\); \}'
     }
 
+    It 'removes unused permission and split picker projections without removing JSON settings' {
+        foreach ($file in @('ProfileViewModel.idl', 'ProfileViewModel.h', 'ProfileViewModel.cpp')) {
+            $viewModel = Get-Content -LiteralPath (Join-Path $editorRoot $file) -Raw
+            $viewModel | Should -Not -Match '\b(AgentProfilePermissionList|CurrentAgentProfilePermission|SplitProfileList|CurrentSplitProfile|AgentProfilePermissionMode|DefaultSplitProfile|_agentProfilePermissionList|_splitProfileList|_InitializeAgentProfileSettings)\b'
+        }
+        $settings = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\TerminalSettingsModel\MTSMSettings.h') -Raw
+        $settings | Should -Match 'AgentProfilePermissionMode,\s*"agentProfile\.permissionMode"'
+        $settings | Should -Match 'DefaultSplitProfile,\s*"defaultSplitProfile"'
+        $idl = Get-Content -LiteralPath (Join-Path $editorRoot 'ProfileViewModel.idl') -Raw
+        foreach ($setting in @('AgentProfileModel', 'AgentProfileArguments')) {
+            $idl | Should -Match "OBSERVABLE_PROJECTED_PROFILE_SETTING\(String, $setting\)"
+        }
+    }
+
     It 'only loads the administrator option for ordinary shell profiles' {
         $controls = @($base.SelectNodes('//*') | Where-Object {
             $_.GetAttribute('Name', $xamlNamespace) -eq 'Elevate'

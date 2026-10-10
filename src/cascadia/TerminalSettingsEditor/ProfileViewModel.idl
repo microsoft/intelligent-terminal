@@ -154,13 +154,7 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean IsManagedAgentProfile { get; };
         Boolean IsAgentProfilePolicyBlocked { get; };
         String LaunchCommandline;
-        Windows.Foundation.Collections.IObservableVector<AgentEntry> AgentProfilePermissionList { get; };
-        AgentEntry CurrentAgentProfilePermission;
-        Windows.Foundation.Collections.IObservableVector<AgentEntry> SplitProfileList { get; };
-        AgentEntry CurrentSplitProfile;
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfileModel);
-        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfilePermissionMode);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfileArguments);
-        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, DefaultSplitProfile);
     }
 }

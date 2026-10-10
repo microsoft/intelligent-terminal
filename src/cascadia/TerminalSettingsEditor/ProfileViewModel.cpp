@@ -16,7 +16,6 @@
 #include "../inc/WslShellIntegration.h"
 #include "../inc/WtaProcess.h"
 #include "../../renderer/base/FontCache.h"
-#include "../../types/inc/utils.hpp"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
 #include <json/json.h>
@@ -57,63 +56,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         return id.empty() ? winrt::hstring{ L"Agent" } : winrt::hstring{ id };
     }
 
-    void ProfileViewModel::_InitializeAgentProfileSettings()
-    {
-        _splitProfileList = winrt::single_threaded_observable_vector<Editor::AgentEntry>();
-        _splitProfileList.Append(winrt::make<implementation::AgentEntry>(L"", hstring{ RS_(L"Profile_SplitSame") }, true));
-        _splitProfileList.Append(winrt::make<implementation::AgentEntry>(L"default", hstring{ RS_(L"Profile_SplitDefault") }, true));
-        for (const auto& profile : _appSettings.ActiveProfiles())
-        {
-            _splitProfileList.Append(winrt::make<implementation::AgentEntry>(
-                hstring{ ::Microsoft::Console::Utils::GuidToString(profile.Guid()) }, profile.Name(), true));
-        }
-        const auto target = _profile.DefaultSplitProfile();
-        if (!std::ranges::any_of(_splitProfileList, [&](const auto& entry) {
-                return til::equals_insensitive_ascii(std::wstring_view{ entry.Id() }, std::wstring_view{ target });
-            }))
-        {
-            _splitProfileList.Append(winrt::make<implementation::AgentEntry>(
-                target, target + RS_(L"Profile_AgentPaneBackend_UnavailableSuffix"), true));
-        }
-
-        _agentProfilePermissionList = winrt::single_threaded_observable_vector<Editor::AgentEntry>();
-        _agentProfilePermissionList.Append(winrt::make<implementation::AgentEntry>(L"", hstring{ RS_(L"Profile_AgentDefault") }, true));
-        const auto addModes = [&](const std::initializer_list<std::wstring_view> modes) {
-            for (const auto mode : modes)
-            {
-                _agentProfilePermissionList.Append(winrt::make<implementation::AgentEntry>(
-                    hstring{ mode }, hstring{ mode }, true));
-            }
-        };
-        const auto id = _profile.AgentProfileId();
-        if (id == L"copilot")
-        {
-            addModes({ L"allow-all-tools", L"allow-all" });
-        }
-        else if (id == L"claude")
-        {
-            addModes({ L"acceptEdits", L"auto", L"bypassPermissions", L"manual", L"dontAsk", L"plan" });
-        }
-        else if (id == L"codex")
-        {
-            addModes({ L"untrusted", L"on-request", L"never" });
-        }
-        else if (id == L"gemini")
-        {
-            addModes({ L"default", L"auto_edit", L"yolo", L"plan" });
-        }
-        else if (id == L"opencode")
-        {
-            addModes({ L"auto" });
-        }
-        const auto permission = _profile.AgentProfilePermissionMode();
-        if (!std::ranges::any_of(_agentProfilePermissionList, [&](const auto& entry) { return entry.Id() == permission; }))
-        {
-            _agentProfilePermissionList.Append(winrt::make<implementation::AgentEntry>(
-                permission, permission + RS_(L"Profile_AgentPaneBackend_UnavailableSuffix"), true));
-        }
-    }
-
     hstring ProfileViewModel::LaunchCommandline() const
     {
         return IsManagedAgentProfile() ?
@@ -139,46 +81,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             _profile.Commandline(value);
             _NotifyChanges(L"HasCommandline", L"Commandline");
-        }
-    }
-
-    Editor::AgentEntry ProfileViewModel::CurrentSplitProfile()
-    {
-        for (const auto& entry : _splitProfileList)
-        {
-            if (til::equals_insensitive_ascii(std::wstring_view{ entry.Id() }, std::wstring_view{ DefaultSplitProfile() }))
-            {
-                return entry;
-            }
-        }
-        return nullptr;
-    }
-
-    void ProfileViewModel::CurrentSplitProfile(const Editor::AgentEntry& value)
-    {
-        if (value)
-        {
-            DefaultSplitProfile(value.Id());
-        }
-    }
-
-    Editor::AgentEntry ProfileViewModel::CurrentAgentProfilePermission()
-    {
-        for (const auto& entry : _agentProfilePermissionList)
-        {
-            if (entry.Id() == AgentProfilePermissionMode())
-            {
-                return entry;
-            }
-        }
-        return nullptr;
-    }
-
-    void ProfileViewModel::CurrentAgentProfilePermission(const Editor::AgentEntry& value)
-    {
-        if (value)
-        {
-            AgentProfilePermissionMode(value.Id());
         }
     }
 
@@ -293,7 +195,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         INITIALIZE_BINDABLE_ENUM_SETTING(PathTranslationStyle, PathTranslationStyle, winrt::Microsoft::Terminal::Control::PathTranslationStyle, L"Profile_PathTranslationStyle", L"Content");
 
         _InitializeCurrentBellSounds();
-        _InitializeAgentProfileSettings();
 
         _agentPaneBackendList = winrt::single_threaded_observable_vector<Editor::AgentEntry>();
         _commandPaletteAgentList = winrt::single_threaded_observable_vector<Editor::AgentEntry>();
@@ -323,17 +224,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             {
                 _NotifyChanges(L"CurrentCommandPaletteAgent");
             }
-            else if (viewModelProperty == L"AgentProfilePermissionMode")
-            {
-                _NotifyChanges(L"CurrentAgentProfilePermission", L"LaunchCommandline");
-            }
             else if (viewModelProperty == L"AgentProfileModel" || viewModelProperty == L"AgentProfileArguments")
             {
                 _NotifyChanges(L"LaunchCommandline");
-            }
-            else if (viewModelProperty == L"DefaultSplitProfile")
-            {
-                _NotifyChanges(L"CurrentSplitProfile");
             }
             else if (viewModelProperty == L"Commandline")
             {

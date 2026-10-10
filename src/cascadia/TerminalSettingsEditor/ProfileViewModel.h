@@ -99,12 +99,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool IsAgentProfilePolicyBlocked() const;
         hstring LaunchCommandline() const;
         void LaunchCommandline(const hstring& value);
-        Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> AgentProfilePermissionList() const { return _agentProfilePermissionList; }
-        Editor::AgentEntry CurrentAgentProfilePermission();
-        void CurrentAgentProfilePermission(const Editor::AgentEntry& value);
-        Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> SplitProfileList() const { return _splitProfileList; }
-        Editor::AgentEntry CurrentSplitProfile();
-        void CurrentSplitProfile(const Editor::AgentEntry& value);
 
         // general profile knowledge
         winrt::guid OriginalProfileGuid() const noexcept;
@@ -147,9 +141,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         OBSERVABLE_PROJECTED_SETTING(_profile, Commandline);
         OBSERVABLE_PROJECTED_SETTING(_profile, StartingDirectory);
         OBSERVABLE_PROJECTED_SETTING(_profile, AgentProfileModel);
-        OBSERVABLE_PROJECTED_SETTING(_profile, AgentProfilePermissionMode);
         OBSERVABLE_PROJECTED_SETTING(_profile, AgentProfileArguments);
-        OBSERVABLE_PROJECTED_SETTING(_profile, DefaultSplitProfile);
         OBSERVABLE_PROJECTED_SETTING(_profile, AgentPaneBackend);
         OBSERVABLE_PROJECTED_SETTING(_profile, CommandPaletteAgent);
         OBSERVABLE_PROJECTED_SETTING(_profile, AntialiasingMode);
@@ -185,9 +177,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     private:
         Model::Profile _profile;
-        Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _agentProfilePermissionList;
-        Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _splitProfileList;
-        void _InitializeAgentProfileSettings();
         winrt::guid _originalProfileGuid{};
         winrt::hstring _lastBgImagePath;
         winrt::hstring _lastStartingDirectoryPath;

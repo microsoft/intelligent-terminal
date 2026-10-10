@@ -8,6 +8,8 @@ or panes, and selected with `wt -p`, just like a shell profile.
 
 The initial providers are GitHub Copilot, Claude, Codex, Gemini, and OpenCode.
 WSL installations and arbitrary custom agents are not automatically generated.
+Native profile discovery uses this dedicated provider list, not the broader
+ACP or delegation provider registry.
 Discovery does not install software, sign in, or start an ACP server. Native CLI
 availability is independent of the adapters needed by the built-in agent pane.
 
@@ -141,7 +143,9 @@ Successful results are cached for 30 seconds. After installing or removing a
 CLI, reload settings after that interval or restart Terminal. There is no
 30-second polling timer. A failed filesystem probe is
 logged and retains the last successful in-process snapshot rather than treating
-the failure as an uninstall.
+the failure as an uninstall. A failed refresh does not renew the cache TTL, so
+the next discovery request retries. With no successful snapshot, the first
+probe failure propagates to the settings loader.
 
 Removing a CLI stops generation after the next successful uncached discovery.
 Its saved profile becomes orphaned and leaves the active profile list, while
