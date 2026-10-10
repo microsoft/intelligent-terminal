@@ -114,10 +114,10 @@ flowchart LR
 
 The helper-facing `intellterm.wta/sessions/list` handler still answers from
 master's registry; what changed is that the registry is now both **seeded** and
-continuously **reconciled** against the agent's `session/list` instead of from
-disk. Each newly initialized pooled connection seeds its own history asynchronously
-(`seed_host_and_broadcast`), so a slow WSL connection does not block host rows.
-See *Reconcile* below.
+**reconciled** on each provider-scheduled refresh against the agent's
+`session/list` instead of from disk. Each newly initialized pooled connection
+seeds its own history asynchronously (`seed_host_and_broadcast`), so a slow WSL
+connection does not block host rows. See *Reconcile* below.
 
 ### WSL
 
@@ -131,9 +131,11 @@ enumerates or starts additional WSL distributions or agent processes.
 
 Born-bound sessions (`?<prompt>` delegates and agent panes) register **live**
 with a *synthetic* title (empty or the cwd basename) before the CLI has written
-its generated name. The 5 s rescan re-fetches `session/list` (which carries the
-real title), but `upsert_if_absent` drops the row for an already-live session —
-so the title is upgraded **in place** instead:
+its generated name. Each refresh—every five seconds for periodic providers, or
+on startup, title-resolution events, failure recovery, and explicit requests for
+Copilot—re-fetches `session/list` (which carries the real title), but
+`upsert_if_absent` drops the row for an already-live session—so the title is
+upgraded **in place** instead:
 
 - `titles_from_listing` consumes **raw, unfiltered** `session/list` rows
   (session-id → title). Raw because Class-A agent-pane rows are excluded from the

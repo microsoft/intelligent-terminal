@@ -257,6 +257,7 @@ conterm
 contsf
 contypes
 conwinuserrefs
+cooldown
 COPYCOLOR
 COPYDATA
 COPYDATASTRUCT
@@ -1435,6 +1436,7 @@ repointing
 reportfileaccesses
 repositorypath
 rerasterize
+rescans
 rescap
 RESETCONTENT
 resheader
