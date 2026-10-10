@@ -134,6 +134,7 @@ if (-not $SkipReleaseReport) {
     $blockedReason = if ($setupFailures.Count) { 'Pester setup or cleanup failed.' }
         elseif ($noTests) { 'No tests were selected.' }
         elseif ($result.PassedCount -eq 0) { 'No tests passed.' }
+        elseif ($unexpectedSkips) { 'Strict run contained skipped tests.' }
     if ($blockedReason) {
         Remove-StaleItE2EArtifacts -Root $OutDir -Names @('report.html', 'summary.md')
         Write-BlockedReleaseReport -Path $releaseReport -Reason $blockedReason

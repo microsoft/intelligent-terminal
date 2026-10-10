@@ -654,6 +654,8 @@ from the selected output directory. An exception or missing result from Pester
 clears the same artifacts before surfacing the original failure. Proof targets
 the configured Dev family, including a worktree PFN after the documented local
 identity substitutions; Store and unconfigured packages are not accepted.
+Temporary identity edits leave that worktree dirty, so retain a separate
+build/source receipt for that flow instead of bypassing the clean-source guard.
 Only documented packaging metadata may appear beyond the recipe payloads in
 either the MSIX or installed layout. Recipe paths are separator-normalized
 before duplicate detection; archive paths are URI-decoded before matching
@@ -947,7 +949,8 @@ Outputs (all under `test/e2e/artifacts/`):
   Zero selected or passing cases and setup/report-generation errors are non-green,
   even with no failing test assertion. A mixture of passes and externally gated
   skips is reported as `PASSED WITH SKIPS`; use `-RequireNoSkips` for strict PR
-  acceptance. An all-skipped run never claims `ALL PASSED`.
+  acceptance. A strict mixed pass/skip run blocks checklist credit in full and
+  incremental modes; an all-skipped run never claims `ALL PASSED`.
 
 Every failure is precise because each `Assert-*` throws a descriptive message — e.g.
 `Assert-Pane: pane <id> never matched /git status/ within 12s. Screenshot: <path>` or

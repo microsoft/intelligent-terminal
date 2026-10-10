@@ -253,6 +253,24 @@ Describe 'ordinary suite' -Tag Unit {
         $run.ReleaseReport | Should -Not -Match '(?m)^- \[x\]'
     }
 
+    It 'blocks checklist credit for mixed pass/skip results in strict <Mode> mode' -ForEach @(
+        @{ Mode = 'full'; UpdateReport = $false }
+        @{ Mode = 'incremental'; UpdateReport = $true }
+    ) {
+        $run = Invoke-ReportFixture -GenerateReport -RequireNoSkips -UpdateReport:$UpdateReport -Body @"
+Describe 'Sidebar startup snapshots preserve the consolidated launch contract' {
+    It 'passes' { `$true | Should -BeTrue }
+    It 'skips' { Set-ItResult -Skipped -Because 'unavailable prerequisite' }
+}
+"@
+
+        $run.ExitCode | Should -Not -Be 0
+        $run.Output | Should -Match 'Passed=1 Failed=0 Skipped=1'
+        $run.Html | Should -Match 'UNEXPECTED SKIPS'
+        $run.ReleaseReport | Should -Match 'AUTOMATION FAILED.*Strict run contained skipped tests'
+        $run.ReleaseReport | Should -Not -Match '(?m)^- \[x\]'
+    }
+
     It 'shows a failed Pester container in the summary, HTML and console' {
         $run = Invoke-ReportFixture -GenerateReport -Body @"
 BeforeDiscovery { throw 'fixture discovery failed' }
