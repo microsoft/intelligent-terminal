@@ -291,7 +291,7 @@ impl App {
             && row < area.y.saturating_add(area.height)
     }
 
-    fn cancel_completed_turn_click(&mut self) {
+    pub(super) fn cancel_completed_turn_click(&mut self) {
         self.pressed_completed_turn = None;
         self.last_completed_turn_click = None;
         self.pressed_input_dialog = None;
@@ -465,11 +465,20 @@ impl App {
         Some(request)
     }
 
-    fn register_born_bound_session(&mut self, event: crate::agent_sessions::SessionEvent) {
+    fn register_born_bound_session(
+        &mut self,
+        event: crate::agent_sessions::SessionEvent,
+        wsl_distro: Option<String>,
+    ) {
         self.agent_sessions.apply(event.clone());
         if self
             .master_request_tx
-            .send(crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event })
+            .send(
+                crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+                    event,
+                    wsl_distro,
+                },
+            )
             .is_err()
         {
             tracing::warn!(
@@ -477,6 +486,13 @@ impl App {
                 "born-bound registration queue is unavailable",
             );
         }
+    }
+
+    pub(super) async fn handle_event_and_capture(&mut self, event: AppEvent) {
+        self.handle_event(event);
+        // Freeze Autofix evidence before queue admission in this event,
+        // before processing another helper event.
+        self.capture_pending_autofix_snapshots().await;
     }
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
@@ -495,6 +511,7 @@ impl App {
             None
         };
         self.handle_event_inner(event);
+        self.dispatch_prompt_queues();
         if let Some(owned_input) = owned_input {
             let owns_input = self.tab_sessions.get(self.active_tab_key()).map(|tab| {
                 self.chat_input_context_has_focus()
@@ -517,6 +534,30 @@ impl App {
             self.current_tab_mut().break_input_undo_group();
         }
         match event {
+            AppEvent::AutofixSnapshotReady { request_id, result } => {
+                self.autofix_snapshot_ready(request_id, result);
+            }
+            AppEvent::RecommendationExecutionSettled {
+                tab_id,
+                prompt_id,
+                success,
+            } => {
+                // Prompt IDs are helper-global. Resolve by the barrier identity
+                // so a tab rename cannot strand the handoff or affect a replacement.
+                let target = self.tab_sessions.iter().find_map(|(key, tab)| {
+                    (tab.pending_queue_action == Some(prompt_id)).then(|| key.clone())
+                });
+                let Some(target) = target else {
+                    tracing::debug!(target: "prompt_queue", %tab_id, prompt_id,
+                        "ignoring stale recommendation completion");
+                    return;
+                };
+                let tab = self.tab_mut(&target);
+                tab.pending_queue_action = None;
+                if !success {
+                    tab.pause_pending_prompts();
+                }
+            }
             AppEvent::Key(key) => {
                 self.cancel_completed_turn_click();
                 if !self.chat_input_has_edit_focus() && !self.current_tab().paste_pending {
@@ -869,6 +910,8 @@ impl App {
             AppEvent::Resize(w, h) => {
                 self.cancel_completed_turn_click();
                 self.text_selection.clear();
+                self.queue_control_hits.clear();
+                self.pressed_queue_control = None;
                 if w != self.terminal_cols {
                     self.invalidate_input_layout();
                 }
@@ -880,13 +923,70 @@ impl App {
             }
             AppEvent::FocusChanged(focused) => {
                 self.cancel_completed_turn_click();
+                self.pressed_queue_control = None;
                 self.pane_focused = focused;
                 if !focused {
                     self.current_tab_mut().input_all_selected = false;
                     self.current_tab_mut().input_vertical_goal = None;
                 }
             }
+            AppEvent::AcpAuthenticationMethods {
+                agent_id,
+                source,
+                methods,
+            } => {
+                if agent_id == self.current_agent_id && source == self.current_agent_source {
+                    self.acp_auth_methods = methods;
+                }
+            }
+            AppEvent::AcpAuthenticationBrowser { attempt_id, url } => {
+                self.handle_acp_authentication_browser(attempt_id, url, super::open_url_in_browser);
+            }
+            AppEvent::SourceLoginProgress {
+                agent_id,
+                source,
+                generation,
+                device_code,
+                verify_url,
+            } => {
+                if source == self.current_agent_source
+                    && generation == self.auth_recovery_generation
+                    && self
+                        .auth
+                        .as_ref()
+                        .is_some_and(|auth| auth.agent_id == agent_id)
+                {
+                    self.handle_event(AppEvent::LoginProgress {
+                        device_code,
+                        verify_url,
+                    });
+                }
+            }
+            AppEvent::SourceLoginComplete {
+                agent_id,
+                source,
+                generation,
+                success,
+                error,
+            } => {
+                if source == self.current_agent_source
+                    && generation == self.auth_recovery_generation
+                    && self
+                        .auth
+                        .as_ref()
+                        .is_some_and(|auth| auth.agent_id == agent_id)
+                {
+                    self.handle_event(AppEvent::LoginComplete {
+                        agent_id,
+                        success,
+                        error,
+                    });
+                }
+            }
             AppEvent::ConnectionStage(stage) => {
+                if self.state == ConnectionState::Connected {
+                    self.invalidate_prompt_queue_sessions();
+                }
                 self.state = ConnectionState::Connecting(stage);
                 self.publish_agent_status();
             }
@@ -926,6 +1026,7 @@ impl App {
                 );
             }
             AppEvent::AgentClientFailed => {
+                self.invalidate_prompt_queue_sessions();
                 if !matches!(&self.agent_reconnect_state, AgentReconnectState::Idle) {
                     self.suppress_next_failed_client_error = true;
                     tracing::info!(target: "agent_rebind", "outgoing ACP client failed during startup; suppressing its terminal error");
@@ -943,6 +1044,7 @@ impl App {
                 session_capabilities_ready,
                 telemetry_byok_binding,
             } => {
+                self.cancel_acp_authentication();
                 self.telemetry_byok_binding = telemetry_byok_binding;
                 self.initial_startup_presentation_eligible = false;
                 self.reconnect_after_transport_retired = false;
@@ -1012,6 +1114,10 @@ impl App {
                     .insert(session_id.clone(), bind_tab.clone());
                 let tab = self.tab_mut(&bind_tab);
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
+                    if tab.session_id.is_some() {
+                        tab.pending_queue_action = None;
+                        tab.invalidate_pending_prompt_session();
+                    }
                     tab.usage = None;
                     tab.usage_staleness = crate::usage::UsageStaleness::default();
                     tab.reattached_session_id = None;
@@ -1102,6 +1208,10 @@ impl App {
                 let tab = self.tab_mut(&tab_id);
                 tab.telemetry_model_pending = None;
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
+                    if tab.session_id.is_some() {
+                        tab.pending_queue_action = None;
+                        tab.invalidate_pending_prompt_session();
+                    }
                     tab.config_picker = ConfigPickerState::Closed;
                     tab.config_pending_id = None;
                     tab.native_yolo_config_pending = false;
@@ -1468,6 +1578,7 @@ impl App {
                 }
             }
             AppEvent::TabError { tab_id, message } => {
+                self.tab_mut(&tab_id).pause_pending_prompts();
                 let failed_load_session_id = self
                     .tab_sessions
                     .get(&tab_id)
@@ -1522,15 +1633,25 @@ impl App {
                 prompt_id,
                 message,
             } => {
-                let prompt_is_current = self
+                let target_tab = self
                     .tab_sessions
                     .get(&tab_id)
-                    .is_some_and(|tab| tab.turn.prompt_id() == Some(prompt_id));
-                if !prompt_is_current {
+                    .filter(|tab| tab.turn.prompt_id() == Some(prompt_id))
+                    .map(|_| tab_id.clone())
+                    .or_else(|| {
+                        self.tab_sessions.iter().find_map(|(key, tab)| {
+                            (tab.turn.prompt_id() == Some(prompt_id)).then(|| key.clone())
+                        })
+                    });
+                let Some(tab_id) = target_tab else {
                     return;
-                }
+                };
                 let tab = self.tab_mut(&tab_id);
+                let was_cancelling = tab.turn.is_cancelling();
                 tab.finish_active_prompt(prompt_id);
+                if !was_cancelling {
+                    tab.pause_pending_prompts();
+                }
                 tab.turn = TurnState::Idle;
                 tab.timing_note = None;
                 tab.messages.push(ChatMessage::Error(message));
@@ -1651,6 +1772,14 @@ impl App {
                     return;
                 }
 
+                if let Some((target_tab, _)) = terminal_target.as_ref() {
+                    if !self.tab_mut(target_tab).turn.is_cancelling() {
+                        self.tab_mut(target_tab).pause_pending_prompts();
+                    }
+                } else {
+                    self.invalidate_prompt_queue_sessions();
+                }
+
                 let session_survives = session_id.is_some()
                     && matches!(
                         &failure,
@@ -1658,6 +1787,7 @@ impl App {
                     );
 
                 let is_auth_error = failure.is_auth();
+                self.cancel_acp_authentication();
                 if is_auth_error && !self.preflight_setup_active {
                     tracing::info!("AgentError auth fallback: showing setup screen");
                     // Use current_agent_id — set at preflight or agent selection time.
@@ -1669,13 +1799,31 @@ impl App {
                     tracing::info!("AgentError: resolved agent_id={}", agent_id);
                     let profile = crate::agent_registry::lookup_profile(&agent_id);
                     let reason = SetupReason::AgentError;
-                    let options = if matches!(
-                        self.current_agent_source,
-                        crate::agent_source::AgentSource::Wsl { .. }
-                    ) {
-                        build_setup_options(&reason, None)
+                    let options = if !self.acp_auth_methods.is_empty()
+                        && (matches!(
+                            profile.acp_auth_flow,
+                            crate::agent_registry::AcpAuthFlow::InProtocol
+                        ) || self.current_agent_id.starts_with("custom:"))
+                    {
+                        vec![
+                            SetupOption::SignIn {
+                                agent_id: self.current_agent_id.clone(),
+                                display_name: profile.display_name.to_string(),
+                            },
+                            SetupOption::ChooseAgentSource,
+                        ]
                     } else {
-                        let agent_status = crate::agent_check::check_agent(profile.id);
+                        // AuthRequired comes from an initialized source-bound ACP
+                        // process; probing Windows here would misclassify WSL login.
+                        let agent_status = crate::agent_check::AgentStatus {
+                            id: profile.id.to_string(),
+                            display_name: profile.display_name.to_string(),
+                            cli_found: true,
+                            cli_path: None,
+                            install_hint: profile.install_hint.to_string(),
+                            auth_hint: profile.auth_hint.to_string(),
+                            auto_installable: false,
+                        };
                         build_setup_options(&reason, Some(&agent_status))
                     };
                     self.mode = AppMode::Setup;
@@ -1699,7 +1847,10 @@ impl App {
                         phase: SetupPhase::Ready,
                         options,
                         title: t!("setup.title.sign_in").into_owned(),
-                        subtitle: if profile.id == "copilot" {
+                        subtitle: if !self.acp_auth_methods.is_empty() && profile.id != "copilot" {
+                            t!("setup.subtitle.protocol_auth", agent = profile.display_name)
+                                .into_owned()
+                        } else if profile.id == "copilot" {
                             t!("setup.subtitle.copilot_auth", agent = profile.display_name)
                                 .into_owned()
                         } else {
@@ -1987,10 +2138,9 @@ impl App {
             AppEvent::AgentSoftStop { session_id, reason } => {
                 use crate::protocol::acp::soft_stop::SoftStopReason;
                 // A soft stop is an *outcome*, not a connection failure — the
-                // session stays Connected and the turn already closed via
-                // AgentMessageEnd. We only append an informational line so the
-                // user knows why the reply ended (truncation / budget / refusal)
-                // instead of silently trailing off.
+                // session stays Connected. This arrives before AgentMessageEnd
+                // so dependent queued requests are discarded before dispatch. Explain
+                // why the reply ended (truncation / budget / refusal).
                 tracing::info!(
                     target: "soft_stop",
                     class = reason.class(),
@@ -2005,7 +2155,14 @@ impl App {
                 let Some(tab) = self.session_tab_mut_if_current(&session_id) else {
                     return;
                 };
+                if tab.turn.is_cancelling() {
+                    tracing::debug!(target: "soft_stop", %session_id,
+                        "ignoring outcome of a cancelled turn");
+                    return;
+                }
                 tab.messages.push(ChatMessage::warning(msg.into_owned()));
+                tab.pause_pending_prompts();
+                tab.scroll_to_bottom();
             }
             AppEvent::ExecutionInfo(message) => {
                 self.push_execution_info(message);
@@ -2699,7 +2856,7 @@ impl App {
                 self.handle_agents_snapshot_failed(request_id);
             }
             AppEvent::RegisterBornBoundSession { event } => {
-                self.register_born_bound_session(event);
+                self.register_born_bound_session(event, None);
             }
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
@@ -2853,6 +3010,11 @@ impl App {
                                 .unwrap_or_default(),
                             title: String::new(),
                         },
+                        params
+                            .get("wsl_distro")
+                            .and_then(serde_json::Value::as_str)
+                            .filter(|distro| !distro.is_empty())
+                            .map(str::to_string),
                     );
                     return;
                 }
@@ -2881,8 +3043,7 @@ impl App {
 
                 if method == "autofix_execute_from_detected" {
                     // User pressed the pill / hotkey in Detected state.
-                    // Replay the trigger as if auto-suggest were on, so
-                    // the LLM call fires and we transition to Pending.
+                    // Queue the requested diagnosis; Pending starts at dispatch.
                     self.handle_autofix_execute_from_detected(&pane_id, tab_id.as_deref());
                     return;
                 }
@@ -3085,6 +3246,18 @@ impl App {
                             "autofix_enabled hot-reloaded from settings change",
                         );
                         self.autofix_enabled = enabled;
+                        if !enabled {
+                            for tab in self.tab_sessions.values_mut() {
+                                tab.prompt_queue.entries.retain(|item| {
+                                    if item.kind == prompt_queue::RequestKind::AutomaticFix {
+                                        item.submission.cancellation_token().cancel();
+                                        false
+                                    } else {
+                                        true
+                                    }
+                                });
+                            }
+                        }
                     }
                     if let Some(policy) =
                         params.get("autofix_policy_state").and_then(|v| v.as_str())
@@ -3419,6 +3592,9 @@ impl App {
                             );
                             return;
                         }
+                    }
+                    if self.queue_blocks_session_change() {
+                        return;
                     }
                     {
                         let tab = self.tab_mut(tab_id);
@@ -3911,18 +4087,8 @@ impl App {
                         }
                     }
                     WtEventSeverity::Informational => {
-                        // "User moved past this prompt" = dismiss. Two signals
-                        // both count as "moved on":
-                        //   * exit-zero (D;0): the user ran any successful
-                        //     command in the failing pane.
-                        //   * prompt-start (A): the shell drew a fresh prompt
-                        //     line (user pressed Enter, switched away, etc.).
-                        // For Pending/Armed/Detected we gate prompt-start on
-                        // `trigger_echo_pane` so the immediate A that
-                        // PowerShell emits ~1ms after every D doesn't
-                        // dismiss the state we just established. Suggested
-                        // fires asynchronously (after the LLM returns), so
-                        // it has no echo to skip and dismisses on any A.
+                        // Command activity invalidates queued evidence. Diagnostic
+                        // visibility separately consumes the error's prompt echo.
                         if method == "vt_sequence" {
                             let seq = params
                                 .get("sequence")
@@ -3935,24 +4101,23 @@ impl App {
                                 .map(|c| c == 0)
                                 .unwrap_or(false);
                             let is_prompt_start = seq == "osc:133;A";
-                            // Resolve the event's owning tab (added in Step 1).
-                            // Older events without tab_id can't be cleanly
-                            // routed; skip the per-tab clear for them.
+                            // Only the event's owning tab may be updated.
                             let event_tab = tab_id.clone();
                             // Consume the trigger-echo flag if this A is the
                             // one PowerShell emits immediately after the
                             // triggering D. `effective_prompt_start` is the
-                            // "user actually moved on" signal for D-synchronous
-                            // states (Pending / Detected). Suggested uses raw
-                            // `is_prompt_start` since it fires post-LLM.
+                            // dismissal signal for D-synchronous diagnostics.
+                            // It is not evidence that a new command ran.
                             let effective_prompt_start = if is_prompt_start {
                                 if let Some(t) = event_tab.as_deref() {
+                                    let queue_echo =
+                                        self.tab_mut(t).prompt_queue.echoes.remove(&pane_id);
                                     let echo = self
                                         .tab_mut(&t.to_string())
                                         .autofix
                                         .trigger_echo_pane
                                         .clone();
-                                    if echo.as_deref() == Some(pane_id.as_str()) {
+                                    if queue_echo || echo.as_deref() == Some(pane_id.as_str()) {
                                         self.tab_mut(&t.to_string()).autofix.trigger_echo_pane =
                                             None;
                                         false
@@ -3965,41 +4130,54 @@ impl App {
                             } else {
                                 false
                             };
+                            // B ends the shell prompt; only C starts a command.
+                            let is_command_activity = seq == "osc:133;C";
+                            if is_exit_zero || is_command_activity {
+                                if let Some(t) = event_tab.as_deref() {
+                                    self.invalidate_pending_autofix(t, &pane_id);
+                                }
+                            }
                             let armed_in_event_tab = event_tab
                                 .as_deref()
                                 .and_then(|t| self.tab_sessions.get(t))
                                 .and_then(|t| t.autofix.pane_id.as_deref())
                                 .map(str::to_string);
-                            if (is_exit_zero || effective_prompt_start)
+                            if (is_exit_zero || effective_prompt_start || is_command_activity)
                                 && armed_in_event_tab.as_deref() == Some(pane_id.as_str())
                             {
                                 let target_tab = event_tab
                                     .clone()
                                     .expect("armed_in_event_tab requires tab_id present");
-                                // This is UI dismissal, not verified fix execution.
-                                // `armed_at` starts at analysis submission and is
-                                // cleared when a recommendation is surfaced/executed.
-                                // Even D;0 here cannot establish that a fix was applied;
-                                // do not emit ErrorFixResolved from this state.
+                                // Dismissing an analysis does not establish that a fix ran.
                                 self.tab_mut(&target_tab).autofix.armed_at = None;
-                                // `turn_cancel` owns the full cleanup: bumps
-                                // the tab's autofix_generation, emits cleared
-                                // (resolving the pane from AutofixContext, or
-                                // `autofix.pane_id` as a fallback), and
-                                // resets `tab.turn` to Idle. Avoid duplicating
-                                // its work.
-                                self.request_turn_cancel_for_tab(&target_tab);
+                                // The turn lifecycle owns cancellation and holds
+                                // dispatch until the producer settles.
+                                let tab = self.tab_mut(&target_tab);
+                                let active_autofix_matches =
+                                    tab.turn.prompt().is_some_and(|prompt| {
+                                        tab.prompt_queue.active_automatic_id == Some(prompt.id)
+                                            && prompt.context.target_pane_id()
+                                                == Some(pane_id.as_str())
+                                    });
+                                if active_autofix_matches {
+                                    self.request_background_turn_cancel_for_tab(&target_tab);
+                                } else {
+                                    self.tab_mut(&target_tab).autofix.pane_id = None;
+                                    self.emit_autofix_state_cleared(&target_tab);
+                                }
                             }
                             // Suggested: dismiss on prompt activity (exit-zero
                             // or a fresh prompt-start) in the event's tab.
                             // Emit cleared so the bar's per-tab snapshot
                             // resets to Idle.
-                            if is_exit_zero || is_prompt_start {
+                            if is_exit_zero || is_prompt_start || is_command_activity {
                                 if let Some(t) = event_tab.as_deref() {
                                     let t_owned = t.to_string();
-                                    let pane_to_clear =
-                                        self.tab_mut(&t_owned).autofix.suggested_pane_id.take();
-                                    if pane_to_clear.is_some() {
+                                    let autofix = &mut self.tab_mut(&t_owned).autofix;
+                                    if autofix.suggested_pane_id.as_deref()
+                                        == Some(pane_id.as_str())
+                                    {
+                                        autofix.suggested_pane_id = None;
                                         self.emit_autofix_state_cleared(&t_owned);
                                     }
                                 }
@@ -4010,7 +4188,7 @@ impl App {
                             // prompt-start that isn't the trigger's echo.
                             // The Detected snapshot has no in-flight turn
                             // to cancel — just clear the bar.
-                            if is_exit_zero || effective_prompt_start {
+                            if is_exit_zero || effective_prompt_start || is_command_activity {
                                 if let Some(t) = event_tab.as_deref() {
                                     let t_owned = t.to_string();
                                     let detected_matches = matches!(
@@ -4195,7 +4373,7 @@ impl App {
                     // its channels), create a fresh DeferredAcpParams so
                     // try_start_acp can spawn a new ACP client.
                     if self.deferred_acp.is_none() {
-                        let new_cmd = self.build_agent_cmd(&agent_id);
+                        let new_cmd = self.build_agent_cmd(&agent_id, &self.current_agent_source);
                         tracing::info!(
                             "LoginComplete: creating deferred_acp for reconnect cmd={}",
                             new_cmd

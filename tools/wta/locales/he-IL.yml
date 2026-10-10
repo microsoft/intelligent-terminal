@@ -143,6 +143,34 @@ agents.status.idle: "לא פעיל"
 # ── רמז ברכה בפריסה (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. להצגה/הסתרה של חלונית הסוכן • Ctrl+Shift+/ להצגה/הסתרה של הפעלת הסוכן)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "הודעות בתור: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "הודעות בתור: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
+queue.full: "התור מלא. הקלט שלך נשמר."
+queue.enqueued: "ההודעה נוספה לתור."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "בוטלו %{count} הודעות בתור. ניתן לשלוח הודעה חדשה."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "ההודעות שבתור שייכות לשיחה זו. שלח או מחק אותן לפני החלפת הפעלה או שינוי התצורה."
+queue.paused_header: "מושהה: %{count} בהמתנה; לא יישלחו אוטומטית"  # Pinned heading: automatic sending is stopped
+queue.recall: "החזרת האחרונה"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "שליחת הנותרות"  # Button: resume sending pending requests
+queue.discard: "מחיקת הנותרות"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "שלח או נקה את הטיוטה הנוכחית לפני החזרת בקשה מהתור."
+queue.enqueued_paused: "נוסף לתור שנעצר. בחר שליחת הנותרות כדי להתחיל אותו."
+queue.resubmit: "נדרשת שליחה מחדש"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "עדיין לא ניתן לשלוח בקשות ממתינות. פתור את בעיית החיבור או השלם את האינטראקציה הפעילה; החזר ושלח מחדש בקשות תיקון שפג תוקפן."
+queue.stopped: "השליחה האוטומטית נעצרה. בקשות המשתמש הממתינות נשמרו."
+queue.capture_failed: "לא ניתן היה לשמור את הקשר השגיאה: %{error}"
+queue.auto: "תיקון אוטומטי"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "איסוף הקשר לתיקון אוטומטי דורש ציון מפורש של חלונית המקור."
+queue.snapshot_source_unavailable: "חלונית המקור %{pane} לתיקון אוטומטי אינה זמינה."
+queue.snapshot_shell_unavailable: "לחלונית המקור %{pane} לתיקון אוטומטי אין הקשר shell."
+queue.snapshot_cwd_unavailable: "לחלונית המקור %{pane} לתיקון אוטומטי אין ספריית עבודה."
+queue.snapshot_output_unavailable: "לחלונית המקור %{pane} לתיקון אוטומטי אין פלט קריא."
+queue.snapshot_context_changed: "הפקודה בחלונית המקור %{pane} השתנתה לפני שניתן היה לשמור את הקשר השגיאה שלה."
+
 # ── מצב חיבור ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "מכין את החיבור לסוכן..."
@@ -267,3 +295,11 @@ system.config_update_failed: "עדכון %{option} נכשל: %{error}"
 system.yolo_disable_pending: "ספק סוכן הבינה המלאכותית לא אישר שההפעלה נמצאת במצב הנדרש ללא הרשאות מורחבות"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: אישור אוטומטי מושבת בהתאם למדיניות הארגון שלך."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "מודל לא ידוע %{model} — הקלד /model כדי לראות את הרשימה הזמינה."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "הסוכן \"%{agent}\" דורש אימות. בחר שיטת כניסה כדי להמשיך כאן."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "השלם את הכניסה בדפדפן שלך. לחץ על Esc כדי לבטל את ההמתנה."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "הדפדפן לא נפתח? השתמש בקישור הכניסה הזה. O: פתיחה · Y: העתקה."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "לא ניתן לפתוח את הדפדפן. פתח את קישור הכניסה באופן ידני."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "לא ניתן להעתיק את קישור הכניסה. בחר אותו והעתק אותו באופן ידני."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "הכניסה לא הושלמה בזמן. נסה שוב כשתהיה מוכן."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "לא הצלחנו למצוא את \"%{agent}\" בסביבת הכניסה של %{distro}. בדוק את ההתקנה, PATH ופרופיל המעטפת של משתמש Linux זה, ולאחר מכן נסה שוב."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

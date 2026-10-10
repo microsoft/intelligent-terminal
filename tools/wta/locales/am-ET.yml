@@ -131,6 +131,34 @@ agents.status.idle: "Idle"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "(Ctrl+Shift+. የኤጅንት ገጽታ ማሳየት/መደበቅ • Ctrl+Shift+/ የኤጅንት ክፍለጥ ማሳየት/መደበቅ)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "በወረፋ ላይ ያሉ መልእክቶች፦ %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "በወረፋ ላይ ያሉ መልእክቶች፦ %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
+queue.full: "ወረፋው ሞልቷል። ያስገቡት ጽሑፍ ተጠብቋል።"
+queue.enqueued: "መልእክቱ ወደ ወረፋ ተጨምሯል።"  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "በወረፋ ላይ ያሉ %{count} መልእክቶች ተሰርዘዋል። አዲስ መልእክት መላክ ይችላሉ።"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "በወረፋ ላይ ያሉ መልእክቶች የዚህ ውይይት ናቸው። ክፍለ ጊዜዎችን ወይም ውቅረትን ከመቀየርዎ በፊት ይላኳቸው ወይም ይሰርዟቸው።"
+queue.paused_header: "ለጊዜው ቆሟል፦ %{count} በመጠባበቅ ላይ፤ በራስ-ሰር አይላኩም"  # Pinned heading: automatic sending is stopped
+queue.recall: "የመጨረሻውን መልስ"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "የቀሩትን ላክ"  # Button: resume sending pending requests
+queue.discard: "የቀሩትን ሰርዝ"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "በወረፋ ላይ ያለ ጥያቄ ከመመለስዎ በፊት የአሁኑን ረቂቅ ያስገቡ ወይም ያጽዱ።"
+queue.enqueued_paused: "ወደ ቆመው ወረፋ ተጨምሯል። ለማስጀመር የቀሩትን ላክ የሚለውን ይምረጡ።"
+queue.resubmit: "እንደገና ማስገባት ያስፈልጋል"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "በመጠባበቅ ላይ ያሉ ጥያቄዎች ገና መላክ አይቻልም። ግንኙነቱን ያስተካክሉ ወይም ንቁውን መስተጋብር ያጠናቅቁ፤ ጊዜያቸው ያለፈባቸውን የማስተካከያ ጥያቄዎች መልሰው እንደገና ያስገቡ።"
+queue.stopped: "ራስ-ሰር መላክ ቆሟል። በመጠባበቅ ላይ ያሉ የተጠቃሚ ጥያቄዎች ተጠብቀዋል።"
+queue.capture_failed: "የስህተት አውዱን ማስቀመጥ አልተቻለም፦ %{error}"
+queue.auto: "ራስ-ሰር ማስተካከያ"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "ለራስ-ሰር ማስተካከያ የስህተት አውድ ለመሰብሰብ በግልጽ የተገለጸ የምንጭ ገጽታ ያስፈልጋል።"
+queue.snapshot_source_unavailable: "ለራስ-ሰር ማስተካከያ የሚጠቀምበት የምንጭ ገጽታ %{pane} አይገኝም።"
+queue.snapshot_shell_unavailable: "ለራስ-ሰር ማስተካከያ የሚጠቀምበት የምንጭ ገጽታ %{pane} የሼል አውድ የለውም።"
+queue.snapshot_cwd_unavailable: "ለራስ-ሰር ማስተካከያ የሚጠቀምበት የምንጭ ገጽታ %{pane} የሥራ ማውጫ የለውም።"
+queue.snapshot_output_unavailable: "ለራስ-ሰር ማስተካከያ የሚጠቀምበት የምንጭ ገጽታ %{pane} ሊነበብ የሚችል ውጤት የለውም።"
+queue.snapshot_context_changed: "በምንጭ ገጽታ %{pane} ያለው ትእዛዝ የስህተት አውዱ መቀመጥ ከመቻሉ በፊት ተቀይሯል።"
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "የኤጅንት ግንኙነትን በማዘጋጀት ላይ..."
@@ -268,3 +296,11 @@ system.config_update_failed: "%{option} ማዘመን አልተሳካም፦ %{err
 system.yolo_disable_pending: "የኤጅንት አቅራቢው ክፍለ ጊዜው በሚፈለገው ልዩ መብት በሌለው ሁኔታ መሆኑን አላረጋገጠም"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: ራስ-ሰር ማጽደቅ በድርጅትዎ መመሪያ ተሰናክሏል።"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "ያልታወቀ ሞዴል %{model} — የሚገኘውን ዝርዝር ለማየት /model ይተይቡ።"  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገዋል። እዚህ ለመቀጠል የመግቢያ ዘዴ ይምረጡ።"  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "በአሳሽዎ ውስጥ መግባቱን ያጠናቅቁ። መጠበቁን ለመሰረዝ Esc ይጫኑ።"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "አሳሹ አልተከፈተም? ይህን የመግቢያ አገናኝ ይጠቀሙ። O: መክፈት · Y: መቅዳት።"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "አሳሹን መክፈት አልተቻለም። የመግቢያ አገናኙን በእጅ ይክፈቱ።"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "የመግቢያ አገናኙን መቅዳት አልተቻለም። በእጅ ይምረጡት እና ይቅዱት።"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "መግባቱ በተፈቀደው ጊዜ አልተጠናቀቀም። ዝግጁ ሲሆኑ እንደገና ይሞክሩ።"  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "በ%{distro} የመግቢያ አካባቢ ውስጥ \"%{agent}\"ን ማግኘት አልቻልንም። የዚህን Linux ተጠቃሚ ጭነት፣ PATH እና የሼል መገለጫ ያረጋግጡ፣ ከዚያ እንደገና ይሞክሩ።"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

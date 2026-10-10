@@ -130,6 +130,34 @@ agents.status.idle: "Inaktiv"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. för att visa/dölja agentpanelen • Ctrl+Shift+/ för att visa/dölja agentsessionen)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Köade meddelanden: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Köade meddelanden: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
+queue.full: "Kön är full. Din inmatning har behållits."
+queue.enqueued: "Meddelandet har köats."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "%{count} köade meddelanden avbröts. Du kan skicka ett nytt meddelande."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Köade meddelanden hör till den här konversationen. Skicka eller kasta dem innan du byter session eller konfiguration."
+queue.paused_header: "Pausat: %{count} väntar; skickas inte automatiskt"  # Pinned heading: automatic sending is stopped
+queue.recall: "Hämta tillbaka senaste"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Skicka återstående"  # Button: resume sending pending requests
+queue.discard: "Kasta återstående"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Skicka eller rensa det aktuella utkastet innan du hämtar tillbaka en begäran från kön."
+queue.enqueued_paused: "Tillagt i den stoppade kön. Välj Skicka återstående för att starta den."
+queue.resubmit: "Behöver skickas igen"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Väntande begäranden kan inte skickas ännu. Lös anslutningsproblemet eller slutför den aktiva interaktionen; hämta tillbaka utgångna korrigeringsbegäranden och skicka dem igen."
+queue.stopped: "Automatisk sändning stoppad. Väntande användarbegäranden har behållits."
+queue.capture_failed: "Det gick inte att bevara felkontexten: %{error}"
+queue.auto: "Automatisk korrigering"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Insamling för automatisk korrigering kräver en uttryckligen angiven källpanel."
+queue.snapshot_source_unavailable: "Källpanelen %{pane} för automatisk korrigering är inte tillgänglig."
+queue.snapshot_shell_unavailable: "Källpanelen %{pane} för automatisk korrigering saknar skalkontext."
+queue.snapshot_cwd_unavailable: "Källpanelen %{pane} för automatisk korrigering saknar arbetskatalog."
+queue.snapshot_output_unavailable: "Källpanelen %{pane} för automatisk korrigering saknar läsbar utdata."
+queue.snapshot_context_changed: "Kommandot i källpanelen %{pane} ändrades innan dess felkontext kunde bevaras."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Förbereder anslutningen till agenten..."
@@ -267,3 +295,11 @@ system.config_update_failed: "Det gick inte att uppdatera %{option}: %{error}"
 system.yolo_disable_pending: "AI-agentleverantören har inte bekräftat att sessionen är i det nödvändiga icke-privilegierade läget"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Automatiskt godkännande är inaktiverat av organisationens policy."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Okänd modell %{model} — skriv /model för att se den tillgängliga listan."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Din agent \"%{agent}\" kräver autentisering. Välj en inloggningsmetod för att fortsätta här."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Slutför inloggningen i din webbläsare. Tryck på Esc för att avbryta väntan."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Öppnades inte webbläsaren? Använd den här inloggningslänken. O: öppna · Y: kopiera."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Det gick inte att öppna webbläsaren. Öppna inloggningslänken manuellt."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Det gick inte att kopiera inloggningslänken. Markera och kopiera den manuellt."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Inloggningen slutfördes inte i tid. Försök igen när du är redo."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Vi kunde inte hitta \"%{agent}\" i inloggningsmiljön för %{distro}. Kontrollera den här Linux-användarens installation, PATH och skalprofil och försök sedan igen."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

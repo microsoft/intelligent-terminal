@@ -927,11 +927,30 @@ function Test-UiElementEnabled {
     process { $el = Get-UiElement -App $App -Selector $Selector; [bool]($el -and $el.isEnabled) }
 }
 
+function Get-ItUiValuePatternPeer {
+    param([Parameter(Mandatory)]$App, [Parameter(Mandatory)][string]$Selector)
+    if (-not $App.Hwnd -or -not $App.Pid) { throw 'ValuePattern requires an exact HWND/PID target.' }
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$App.Hwnd)
+    if ($root.Current.ProcessId -ne $App.Pid) { throw 'ValuePattern window ownership changed.' }
+    $peers = @($root.FindAll([Windows.Automation.TreeScope]::Descendants,
+        [Windows.Automation.PropertyCondition]::new(
+            [Windows.Automation.AutomationElement]::AutomationIdProperty, $Selector)) |
+        Where-Object { -not $_.Current.IsOffscreen -and $_.Current.ProcessId -eq $App.Pid })
+    if ($peers.Count -ne 1) { throw "ValuePattern requires exactly one visible '$Selector' peer; found $($peers.Count)." }
+    $peers[0]
+}
+
 function Get-UiValue {
-    <# Read an element value (smart fallback chain). Returns the text. #>
+    <# Read winapp's display-text fallback, or the exact UIA value with -ValuePattern (AutomationId only). #>
     [CmdletBinding()]
-    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Selector)
+    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Selector, [switch]$ValuePattern)
     process {
+        if ($ValuePattern) {
+            $peer = Get-ItUiValuePatternPeer -App $App -Selector $Selector
+            # winapp get-value substitutes Name for an empty value, including TextBox placeholders.
+            return [string]$peer.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+        }
         $r = Invoke-WinAppUi -App $App -UiArgs @('get-value', $Selector, '--json')
         $j = $r.StdOut | ConvertFrom-JsonSafe
         if ($null -ne $j -and ($j.PSObject.Properties.Name -contains 'text')) { return $j.text }

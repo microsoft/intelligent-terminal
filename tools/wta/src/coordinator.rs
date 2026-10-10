@@ -111,6 +111,8 @@ pub struct ChoiceExecution {
     pub insert_only: bool,
     /// Host-owned context associated with the turn that produced this choice.
     pub context: TurnContext,
+    /// Owning tab and prompt identity for the helper's action handoff barrier.
+    pub completion: Option<(String, u64)>,
 }
 
 pub fn default_supported_delegate_agents() -> Vec<SupportedDelegateAgent> {
@@ -348,6 +350,7 @@ pub async fn run_recommendation_executor(
                 }
                 Err(err) => Err(err),
             };
+        let success = result.is_ok();
         if let Some(run) = exec.run {
             crate::telemetry::log_error_fix_run_result(run.offer_id, run.run_id, result.is_ok());
         }
@@ -364,6 +367,13 @@ pub async fn run_recommendation_executor(
                     .into_owned(),
                 ));
             }
+        }
+        if let Some((tab_id, prompt_id)) = exec.completion {
+            let _ = event_tx.send(AppEvent::RecommendationExecutionSettled {
+                tab_id,
+                prompt_id,
+                success,
+            });
         }
     }
 }
@@ -848,6 +858,16 @@ pub fn build_delegate_launch_commandline_with_session(
     build_delegate_launch_commandline(runtime, input, session_id)
 }
 
+fn ensure_delegate_supported(profile: &agent_registry::AgentProfile) -> Result<()> {
+    if agent_registry::is_known_id(profile.id) && !profile.delegate_supported {
+        bail!(
+            "{} is available through the agent pane, not interactive delegation",
+            profile.display_name
+        );
+    }
+    Ok(())
+}
+
 pub(crate) fn with_windows_delegate_cwd(commandline: &str, cwd: &str) -> Result<String> {
     anyhow::ensure!(
         std::path::Path::new(cwd).is_absolute(),
@@ -914,6 +934,7 @@ fn build_delegate_launch_commandline(
     let profile = agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(
         commandline,
     ));
+    ensure_delegate_supported(profile)?;
 
     // If a model is configured, append --model <value> using the agent's model flags.
     let with_model = if let Some(ref model) = runtime.model {
@@ -1231,12 +1252,25 @@ pub(crate) fn mock_native_delegate_executables() -> TestExecutableResolver {
         assert!(
             matches!(
                 tokens[0].as_str(),
-                "copilot" | "claude" | "codex" | "gemini" | "opencode" | "npx"
+                "copilot"
+                    | "claude"
+                    | "codex"
+                    | "gemini"
+                    | "opencode"
+                    | "antigravity"
+                    | "agy"
+                    | "npx"
             ),
             "mock resolver only accepts known bare launch commands"
         );
         // No executable is created or launched: mock Terminal requests only record commands.
-        tokens[0] = format!("C:\\wta-unit-mock\\{}.exe", tokens[0]);
+        let profile = agent_registry::lookup_profile(&tokens[0]);
+        let executable = if agent_registry::is_known_id(profile.id) {
+            profile.cli_executable
+        } else {
+            tokens[0].as_str()
+        };
+        tokens[0] = format!("C:\\wta-unit-mock\\{executable}.exe");
         let args: Vec<&str> = tokens.iter().map(String::as_str).collect();
         join_windows_commandline(&args)
     })
@@ -1473,6 +1507,7 @@ pub(crate) fn build_wsl_delegate_commandline(
     }
     let profile =
         agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(agent_cmd));
+    ensure_delegate_supported(profile)?;
 
     // Agent invocation: the CLI tokens plus model / session-id flags, each
     // single-quoted for the inner bash.
@@ -1524,6 +1559,24 @@ pub(crate) fn build_wsl_delegate_commandline(
     Ok(escape_for_intermediate_shell(&bash_command))
 }
 
+fn normalize_delegate_resume_alias(
+    commandline: &str,
+    profile: &agent_registry::AgentProfile,
+) -> String {
+    if agent_registry::is_known_id(profile.id) && profile.cli_executable != profile.id {
+        let mut tokens = split_windows_commandline(commandline);
+        if tokens
+            .first()
+            .is_some_and(|executable| executable.eq_ignore_ascii_case(profile.id))
+        {
+            tokens[0] = profile.cli_executable.to_string();
+            let args: Vec<&str> = tokens.iter().map(String::as_str).collect();
+            return join_windows_commandline(&args);
+        }
+    }
+    commandline.to_string()
+}
+
 pub(crate) fn build_delegate_resume_commandline(
     runtime: &DelegateAgentRuntime,
     session_id: &str,
@@ -1535,10 +1588,12 @@ pub(crate) fn build_delegate_resume_commandline(
     let profile = agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(
         commandline,
     ));
+    ensure_delegate_supported(profile)?;
     if profile.resume_flag.is_empty() {
         bail!("delegate agent does not support resume");
     }
-    let resolved = resolve_commandline_executable(commandline);
+    let resolved =
+        resolve_commandline_executable(&normalize_delegate_resume_alias(commandline, profile));
     if needs_shell_launch(&resolved) {
         let mut tokens = split_windows_commandline(&resolved);
         let executable = tokens
@@ -1612,11 +1667,13 @@ pub(crate) fn build_wsl_delegate_resume_commandline(
     }
     let profile =
         agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(agent_cmd));
+    ensure_delegate_supported(profile)?;
     if profile.resume_flag.is_empty() {
         bail!("delegate agent does not support resume");
     }
 
-    let mut parts: Vec<String> = split_windows_commandline(agent_cmd)
+    let commandline = normalize_delegate_resume_alias(agent_cmd, profile);
+    let mut parts: Vec<String> = split_windows_commandline(&commandline)
         .into_iter()
         .map(|token| sh_quote(&token))
         .collect();
@@ -2000,6 +2057,94 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct GatedActionChannel {
+        entered: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+        fail: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl WtChannel for GatedActionChannel {
+        async fn request(
+            &self,
+            method: &str,
+            _params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            if method == "send_input" {
+                self.entered.notify_one();
+                self.release.notified().await;
+                if self.fail {
+                    anyhow::bail!("deterministic action failure");
+                }
+            }
+            Ok(json!({}))
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn recommendation_action_completion_waits_for_execute_choice_result() {
+        for fail in [false, true] {
+            let channel = Arc::new(GatedActionChannel {
+                fail,
+                ..Default::default()
+            });
+            let shell = Arc::new(
+                ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>),
+            );
+            let (tx, rx) = mpsc::unbounded_channel();
+            let (event_tx, mut events) = mpsc::unbounded_channel();
+            let task = tokio::spawn(super::run_recommendation_executor(
+                rx,
+                event_tx,
+                shell,
+                Arc::new(Mutex::new(Vec::new())),
+            ));
+            tx.send(super::ChoiceExecution {
+                run: None,
+                choice: RecommendationChoice {
+                    choice: 1,
+                    title: "Insert".into(),
+                    rationale: String::new(),
+                    actions: vec![RecommendedAction::Send {
+                        parent: "pane".into(),
+                        input: "echo test".into(),
+                    }],
+                },
+                insert_only: true,
+                context: crate::turn_context::TurnContext::with_target_pane("pane"),
+                completion: Some(("tab".into(), 42)),
+            })
+            .unwrap();
+            drop(tx);
+            channel.entered.notified().await;
+            while let Ok(event) = events.try_recv() {
+                assert!(!matches!(
+                    event,
+                    crate::app_contracts::AppEvent::RecommendationExecutionSettled { .. }
+                ));
+            }
+            channel.release.notify_one();
+            task.await.unwrap();
+            let mut settled = Vec::new();
+            while let Ok(event) = events.try_recv() {
+                if let crate::app_contracts::AppEvent::RecommendationExecutionSettled {
+                    tab_id,
+                    prompt_id,
+                    success,
+                } = event
+                {
+                    settled.push((tab_id, prompt_id, success));
+                }
+            }
+            assert_eq!(settled, vec![("tab".into(), 42, !fail)]);
+        }
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn recommendation_executor_preserves_configured_native_provider_at_creation() {
         use crate::agent_tools::action_proposal::schema::{
@@ -2073,6 +2218,7 @@ mod tests {
                     choice: set.choices[0].clone(),
                     insert_only: false,
                     context: crate::turn_context::TurnContext::with_target_pane("host-pane"),
+                    completion: None,
                 })
                 .unwrap();
                 drop(tx);
@@ -2151,6 +2297,7 @@ mod tests {
                 },
                 insert_only: false,
                 context: crate::turn_context::TurnContext::with_target_pane("host-pane"),
+                completion: None,
             })
             .unwrap();
             drop(tx);
@@ -2347,6 +2494,7 @@ mod tests {
                 },
                 insert_only,
                 context: TurnContext::with_target_pane("target-pane"),
+                completion: None,
             })
             .unwrap();
             drop(tx);
@@ -3536,6 +3684,47 @@ mod tests {
     }
 
     #[test]
+    fn antigravity_delegate_uses_interactive_cli_in_each_shell() {
+        let mut runtime = default_delegate_agent_runtimes(
+            Some("antigravity"),
+            None,
+            Some("gemini-3.7-flash-high"),
+        )
+        .remove(0);
+        let prompt = "hi\nthere";
+        let cmd = build_wsl_delegate_commandline(&runtime, Some(prompt), None).unwrap();
+        let b64 = crate::osc52::base64_encode(prompt.as_bytes());
+        assert_eq!(
+            cmd,
+            format!(
+                "prompt=\\$(base64 -d <<< '{b64}'); exec 'agy' '--model' 'gemini-3.7-flash-high' '-i' \"\\$prompt\""
+            )
+        );
+
+        let profile = crate::agent_registry::lookup_profile_by_id("antigravity");
+        let cmd = build_pwsh_base64_launch("agy", profile, runtime.model.as_deref(), None, prompt);
+        assert!(
+            cmd.contains("& 'agy' '--model' 'gemini-3.7-flash-high' '-i' $p; exit $LASTEXITCODE")
+        );
+        let cmd = build_windows_powershell_base64_launch(
+            "agy",
+            profile,
+            runtime.model.as_deref(),
+            None,
+            prompt,
+        );
+        assert!(
+            cmd.contains("& 'agy' '--model' 'gemini-3.7-flash-high' '-i' $p;exit $LASTEXITCODE")
+        );
+
+        runtime.commandline = r#""C:\Agent Tools\agy.exe""#.to_string();
+        assert_eq!(
+            build_delegate_launch_commandline(&runtime, Some("hi there"), None).unwrap(),
+            r#""C:\Agent Tools\agy.exe" --model gemini-3.7-flash-high -i "hi there""#
+        );
+    }
+
+    #[test]
     fn delegate_launch_rejects_commandline_without_executable() {
         let mut runtime = base64_runtime("opencode");
         runtime.commandline = "\"\"".to_string();
@@ -3568,6 +3757,24 @@ mod tests {
             build_delegate_resume_commandline(&codex, "abc").expect("cmd"),
             "codex.exe resume abc"
         );
+
+        let _resolver = super::mock_native_delegate_executables();
+        for commandline in ["antigravity --model cli-model", "agy --model cli-model"] {
+            let runtime = base64_runtime(commandline);
+            assert_eq!(
+                super::resolve_commandline_executable(commandline),
+                r"C:\wta-unit-mock\agy.exe --model cli-model"
+            );
+            assert_eq!(
+                build_delegate_resume_commandline(&runtime, "session id").expect("native resume"),
+                r#"C:\wta-unit-mock\agy.exe --model cli-model --conversation "session id""#
+            );
+            assert_eq!(
+                build_wsl_delegate_resume_commandline(&runtime, "session's id")
+                    .expect("WSL resume"),
+                r"exec 'agy' '--model' 'cli-model' '--conversation' 'session'\\''s id'"
+            );
+        }
     }
 
     #[test]

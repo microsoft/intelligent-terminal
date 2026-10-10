@@ -139,6 +139,34 @@ agents.status.idle: "Неактивен"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. прикажи/скриј панел на агентот • Ctrl+Shift+/ прикажи/скриј сесија на агентот)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Пораки во редицата: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Пораки во редицата: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
+queue.full: "Редицата е полна. Вашиот внес е зачуван."
+queue.enqueued: "Пораката е додадена во редицата."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Откажани се %{count} пораки во редицата. Можете да испратите нова порака."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Пораките во редицата припаѓаат на овој разговор. Испратете ги или отфрлете ги пред да ја промените сесијата или конфигурацијата."
+queue.paused_header: "Паузирано: %{count} чекаат; не се испраќаат автоматски"  # Pinned heading: automatic sending is stopped
+queue.recall: "Врати го последното"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Испрати ги преостанатите"  # Button: resume sending pending requests
+queue.discard: "Отфрли ги преостанатите"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Испратете го или исчистете го тековниот нацрт пред да вратите барање од редицата."
+queue.enqueued_paused: "Додадено во запрената редица. Изберете Испрати ги преостанатите за да ја стартувате."
+queue.resubmit: "Потребно е повторно испраќање"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Барањата што чекаат сè уште не може да се испратат. Решете го проблемот со врската или завршете ја активната интеракција; вратете ги истечените барања за поправка и испратете ги повторно."
+queue.stopped: "Автоматското испраќање е запрено. Корисничките барања што чекаат се зачувани."
+queue.capture_failed: "Не можеше да се зачува контекстот на грешката: %{error}"
+queue.auto: "Автоматска поправка"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "За собирање податоци за автоматска поправка мора експлицитно да се наведе изворен панел."
+queue.snapshot_source_unavailable: "Изворниот панел %{pane} за автоматска поправка е недостапен."
+queue.snapshot_shell_unavailable: "Изворниот панел %{pane} за автоматска поправка нема контекст на командната обвивка."
+queue.snapshot_cwd_unavailable: "Изворниот панел %{pane} за автоматска поправка нема работен директориум."
+queue.snapshot_output_unavailable: "Изворниот панел %{pane} за автоматска поправка нема излез што може да се прочита."
+queue.snapshot_context_changed: "Командата во изворниот панел %{pane} се промени пред да може да се зачува контекстот на нејзината грешка."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Подготовка на врската со агентот..."
@@ -267,3 +295,11 @@ system.config_update_failed: "Не успеа да се ажурира %{option}
 system.yolo_disable_pending: "давателот не ја потврди потребната непривилегирана состојба на сесијата"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Автоматското одобрување е оневозможено од политиката на вашата организација."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Непознат модел %{model} — внесете /model за да ја видите достапната листа."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Вашиот агент \"%{agent}\" бара автентикација. Изберете начин на најавување за да продолжите тука."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Завршете го најавувањето во прелистувачот. Притиснете Esc за да го откажете чекањето."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Прелистувачот не се отвори? Користете ја оваа врска за најавување. O: отвори · Y: копирај."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Не може да се отвори прелистувачот. Рачно отворете ја врската за најавување."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Не може да се копира врската за најавување. Рачно изберете ја и копирајте ја."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Најавувањето не заврши навреме. Обидете се повторно кога ќе бидете подготвени."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Не можевме да го најдеме \"%{agent}\" во околината за најавување на %{distro}. Проверете ги инсталацијата, PATH и профилот на школката на овој корисник на Linux, па обидете се повторно."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

@@ -130,6 +130,34 @@ agents.status.idle: "Inattivo"
 # ── Suggerimento di benvenuto del layout (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. per mostrare/nascondere il riquadro agente • Ctrl+Shift+/ per mostrare/nascondere la sessione dell'agente)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Messaggi in coda: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Messaggi in coda: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
+queue.full: "La coda è piena. Il testo immesso è stato conservato."
+queue.enqueued: "Messaggio aggiunto alla coda."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Annullati %{count} messaggi in coda. Puoi inviare un nuovo messaggio."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "I messaggi in coda appartengono a questa conversazione. Inviali o eliminali prima di cambiare sessione o configurazione."
+queue.paused_header: "In pausa: %{count} in attesa; nessun invio automatico"  # Pinned heading: automatic sending is stopped
+queue.recall: "Recupera ultima"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Invia rimanenti"  # Button: resume sending pending requests
+queue.discard: "Elimina rimanenti"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Invia o cancella la bozza corrente prima di recuperare una richiesta dalla coda."
+queue.enqueued_paused: "Aggiunto alla coda interrotta. Scegli Invia rimanenti per avviarla."
+queue.resubmit: "Richiede un nuovo invio"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Le richieste in attesa non possono ancora essere inviate. Risolvi il problema di connessione o completa l'interazione attiva; recupera e invia di nuovo le richieste di correzione scadute."
+queue.stopped: "Invio automatico interrotto. Le richieste in attesa dell'utente sono state conservate."
+queue.capture_failed: "Impossibile conservare il contesto dell'errore: %{error}"
+queue.auto: "Correzione automatica"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "La raccolta dei dati diagnostici per la correzione automatica richiede un riquadro di origine specificato esplicitamente."
+queue.snapshot_source_unavailable: "Il riquadro di origine %{pane} per la correzione automatica non è disponibile."
+queue.snapshot_shell_unavailable: "Il riquadro di origine %{pane} per la correzione automatica non ha un contesto della shell."
+queue.snapshot_cwd_unavailable: "Il riquadro di origine %{pane} per la correzione automatica non ha una directory di lavoro."
+queue.snapshot_output_unavailable: "Il riquadro di origine %{pane} per la correzione automatica non ha output leggibile."
+queue.snapshot_context_changed: "Il comando nel riquadro di origine %{pane} è cambiato prima che fosse possibile conservarne il contesto di errore."
+
 # ── Stato della connessione ────────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Preparazione della connessione all'agente..."
@@ -267,3 +295,11 @@ system.config_update_failed: "Aggiornamento di %{option} non riuscito: %{error}"
 system.yolo_disable_pending: "il provider non ha confermato lo stato di sessione non privilegiato richiesto"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: L'approvazione automatica è disabilitata dai criteri della tua organizzazione."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Modello sconosciuto %{model} — digita /model per visualizzare l'elenco disponibile."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "L'agente \"%{agent}\" richiede l'autenticazione. Seleziona un metodo di accesso per continuare qui."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Completa l'accesso nel browser. Premi Esc per annullare l'attesa."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Il browser non si è aperto? Usa questo link di accesso. O: apri · Y: copia."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Impossibile aprire il browser. Apri il link di accesso manualmente."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Impossibile copiare il link di accesso. Selezionalo e copialo manualmente."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "L'accesso non è stato completato in tempo. Riprova quando sei pronto."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Non abbiamo trovato \"%{agent}\" nell'ambiente di accesso di %{distro}. Controlla l'installazione, PATH e il profilo della shell di questo utente Linux, quindi riprova."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

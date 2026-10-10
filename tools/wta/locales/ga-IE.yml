@@ -130,6 +130,34 @@ agents.status.idle: "Díomhaoin"
 # ── Leid fáilte leagan amach (src/ui/layout.rs) ──────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. chun pána gníomhaire a thaispeáint/a cheilt • Ctrl+Shift+/ chun seisiún gníomhaire a thaispeáint/a cheilt)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Teachtaireachtaí sa scuaine: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Teachtaireachtaí sa scuaine: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
+queue.full: "Tá an scuaine lán. Coinníodh d'ionchur."
+queue.enqueued: "Cuireadh an teachtaireacht sa scuaine."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Cealaíodh %{count} teachtaireacht sa scuaine. Is féidir leat teachtaireacht nua a sheoladh."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Baineann na teachtaireachtaí sa scuaine leis an gcomhrá seo. Seol nó scrios iad sula n-athróidh tú seisiún nó cumraíocht."
+queue.paused_header: "Ar sos: %{count} ar feitheamh; ní sheoltar go huathoibríoch iad"  # Pinned heading: automatic sending is stopped
+queue.recall: "Aisghabh an ceann deireanach"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Seol an chuid eile"  # Button: resume sending pending requests
+queue.discard: "Scrios an chuid eile"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Cuir isteach nó glan an dréacht reatha sula n-aisghabhfaidh tú iarratas ón scuaine."
+queue.enqueued_paused: "Cuireadh leis an scuaine stoptha é. Roghnaigh Seol an chuid eile chun í a thosú."
+queue.resubmit: "Is gá é a chur isteach arís"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Ní féidir iarratais ar feitheamh a sheoladh fós. Réitigh fadhb an naisc nó críochnaigh an idirghníomhaíocht ghníomhach; aisghabh agus cuir isteach arís aon iarratais cheartúcháin atá imithe in éag."
+queue.stopped: "Stopadh seoladh uathoibríoch. Coinníodh iarratais úsáideora ar feitheamh."
+queue.capture_failed: "Níorbh fhéidir comhthéacs na hearráide a choinneáil: %{error}"
+queue.auto: "Ceartú uathoibríoch"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Ní mór pána foinse a shonrú go follasach chun comhthéacs a bhailiú don cheartú uathoibríoch."
+queue.snapshot_source_unavailable: "Níl pána foinse %{pane} don cheartú uathoibríoch ar fáil."
+queue.snapshot_shell_unavailable: "Níl comhthéacs shell ag pána foinse %{pane} don cheartú uathoibríoch."
+queue.snapshot_cwd_unavailable: "Níl eolaire oibre ag pána foinse %{pane} don cheartú uathoibríoch."
+queue.snapshot_output_unavailable: "Níl aschur inléite ag pána foinse %{pane} don cheartú uathoibríoch."
+queue.snapshot_context_changed: "D'athraigh an t-ordú i bpána foinse %{pane} sula bhféadfaí a chomhthéacs earráide a chaomhnú."
+
 # ── Staid ceangail ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Ceangal leis an ngníomhaire á ullmhú..."
@@ -266,3 +294,11 @@ system.config_update_failed: "Theip ar nuashonrú %{option}: %{error}"
 system.yolo_disable_pending: "níor dheimhnigh soláthraí an ghníomhaire staid neamhphribhléideach riachtanach an tseisiúin"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Tá ceadú uathoibríoch díchumasaithe ag polasaí d’eagraíochta."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Samhail anaithnid %{model} — clóscríobh /model chun an liosta atá ar fáil a fheiceáil."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Roghnaigh modh sínithe isteach chun leanúint ar aghaidh anseo."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Críochnaigh an síniú isteach i do bhrabhsálaí. Brúigh Esc chun an fanacht a chealú."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Níor osclaíodh an brabhsálaí? Úsáid an nasc sínithe isteach seo. O: oscail · Y: cóipeáil."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Níorbh fhéidir an brabhsálaí a oscailt. Oscail an nasc sínithe isteach de láimh."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Níorbh fhéidir an nasc sínithe isteach a chóipeáil. Roghnaigh é agus cóipeáil é de láimh."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Níor críochnaíodh an síniú isteach in am. Bain triail eile as nuair atá tú réidh."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Níorbh fhéidir linn \"%{agent}\" a aimsiú i dtimpeallacht logála isteach %{distro}. Seiceáil suiteáil, PATH agus próifíl bhlaoisce an úsáideora Linux seo, ansin bain triail eile as."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

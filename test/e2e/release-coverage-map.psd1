@@ -12,6 +12,8 @@
 
     # §2 agent pane open/hide/focus + slash
     'Different positions work'          = 'at all four pane positions'
+    # The short position title must not match unrelated names such as "Stopping".
+    'Top'                              = 'at all four pane positions'
     'Focus hotkey works'                = 'Focus hotkey / focus works'
     '/model works'                      = '/model opens the model picker'
     '/agent picker works'               = '/agent appears in the slash menu and opens a keyboard-operable picker'

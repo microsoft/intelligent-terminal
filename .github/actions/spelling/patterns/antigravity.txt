@@ -1,0 +1,7 @@
+\bintellterm_0123456789abcdefextra(?=_)
+
+# authentication.rs: lowercase JWT redaction prefix, not a prose word.
+^\s*"eyj",\s*$
+
+# Authentication URL fixtures: promote the URL-escape candidate, retaining following words.
+%[0-9A-F][A-F](?=[A-Za-z])

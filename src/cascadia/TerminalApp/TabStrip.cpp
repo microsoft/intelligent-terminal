@@ -13,6 +13,7 @@
 #include "Utils.h"
 
 #include "TabStrip.g.cpp"
+#include "SidebarFiltersViewModel.g.cpp"
 #include "TabStripSelectionChangedEventArgs.g.cpp"
 #include "TabStripCloseRequestedEventArgs.g.cpp"
 #include "TabStripDragStartingEventArgs.g.cpp"
@@ -41,6 +42,38 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    void SidebarFiltersViewModel::ShowAgentsOnly(const bool value)
+    {
+        if (_showAgentsOnly != value)
+        {
+            _showAgentsOnly = value;
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"ShowAgentsOnly" });
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"AgentsOnlyEffective" });
+        }
+    }
+
+    void SidebarFiltersViewModel::ShowRecentAgentSessions(const bool value)
+    {
+        if (_showRecentAgentSessions != value)
+        {
+            _showRecentAgentSessions = value;
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"ShowRecentAgentSessions" });
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"RecentAgentSessionsVisible" });
+        }
+    }
+
+    void SidebarFiltersViewModel::SearchQuery(winrt::hstring const& value)
+    {
+        if (_searchQuery != value)
+        {
+            _searchQuery = value;
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"SearchQuery" });
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"HasSearchQuery" });
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"AgentsOnlyEffective" });
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"RecentAgentSessionsVisible" });
+        }
+    }
+
     bool TabStripHistoryItem::RefreshAge(const uint64_t nowMs)
     {
         const auto lastActivityAtMs = LastActivityAtMs();
@@ -549,6 +582,7 @@ namespace winrt::TerminalApp::implementation
         _viewportItems = single_threaded_observable_vector<IInspectable>();
 
         InitializeComponent();
+        _sidebarFiltersChanged = _sidebarFilters.PropertyChanged(auto_revoke, { get_weak(), &TabStrip::_onSidebarFiltersChanged });
 
         // ItemsControl handles a UIElement item as its own content; it must not
         // also be the data item for the section's DataTemplate.
@@ -610,6 +644,39 @@ namespace winrt::TerminalApp::implementation
         }
         _applyRailState();
         _updateRichTabMetadataSelectionState();
+    }
+
+    void TabStrip::_onSidebarFiltersChanged(IInspectable const&, WUX::Data::PropertyChangedEventArgs const& args)
+    {
+        const auto queryChanged = args.PropertyName() == L"SearchQuery";
+        const auto recentSessionsChanged = args.PropertyName() == L"ShowRecentAgentSessions";
+        const auto filterChanged = args.PropertyName() == L"ShowAgentsOnly" || recentSessionsChanged;
+        if (!queryChanged && !filterChanged)
+        {
+            return;
+        }
+        if (recentSessionsChanged)
+        {
+            _agentFilterTelemetryPending = _sidebarFilters.ShowRecentAgentSessions();
+        }
+        if (queryChanged)
+        {
+            _syncingSearchState = true;
+            SearchTextBox().Text(SearchQuery());
+            _syncingSearchState = false;
+            _updateSearchVisualState();
+        }
+        _applyHistoryProjection(true);
+        if (queryChanged)
+        {
+            SearchChanged.raise(*this, nullptr);
+        }
+        else
+        {
+            FilterChanged.raise(*this, nullptr);
+        }
+        _updateHistoryAgeTimer();
+        TryCompleteAgentFilterTelemetry();
     }
 
     IInspectable TabStrip::SelectedItem()
@@ -675,7 +742,7 @@ namespace winrt::TerminalApp::implementation
                                     RS_(L"VerticalTabsFilterStatusSingle") :
                                     winrt::hstring{ RS_fmt(L"VerticalTabsFilterStatusPlural", visibleTabCount) });
         HiddenCurrentTabIndicator().Visibility(selectedTabVisible ? Visibility::Collapsed : Visibility::Visible);
-        FilterStatusBar().Visibility(!_historyActive && _filterMode != TerminalApp::TabStripFilterMode::AllTabs ?
+        FilterStatusBar().Visibility(_sidebarFilters.AgentsOnlyEffective() ?
                                          Visibility::Visible :
                                          Visibility::Collapsed);
     }
@@ -811,10 +878,6 @@ namespace winrt::TerminalApp::implementation
                 }
                 if (realize)
                 {
-                    if (_historyActive)
-                    {
-                        HistoryClosed.raise(*this, nullptr);
-                    }
                     if (_isRailCollapsed)
                     {
                         RailCollapseRequested.raise(*this, nullptr);
@@ -822,7 +885,7 @@ namespace winrt::TerminalApp::implementation
                     ItemsList().ScrollIntoView(display);
                     ItemsList().UpdateLayout();
                 }
-                if (_isRailCollapsed || _historyActive || ItemsList().Visibility() != Visibility::Visible ||
+                if (_isRailCollapsed || ItemsList().Visibility() != Visibility::Visible ||
                     Visibility() != WUX::Visibility::Visible)
                 {
                     return nullptr;
@@ -1269,7 +1332,7 @@ namespace winrt::TerminalApp::implementation
         if (_tabsVisible != value)
         {
             _tabsVisible = value;
-            const auto historyVisible = _historyActive && !_isRailCollapsed;
+            const auto historyVisible = _sidebarFilters.RecentAgentSessionsVisible() && !_isRailCollapsed;
             ItemsList().Visibility(value || historyVisible ? Visibility::Visible : Visibility::Collapsed);
         }
     }
@@ -1298,15 +1361,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::FilterMode(TerminalApp::TabStripFilterMode value)
     {
-        const auto changed = _filterMode != value;
-        _filterMode = value;
-        FilterStatusBar().Visibility(!_historyActive && value != TerminalApp::TabStripFilterMode::AllTabs ?
-                                         Visibility::Visible :
-                                         Visibility::Collapsed);
-        if (changed)
-        {
-            FilterChanged.raise(*this, nullptr);
-        }
+        _sidebarFilters.ShowAgentsOnly(value == TerminalApp::TabStripFilterMode::AgentsOnly);
     }
 
     void TabStrip::SearchActive(bool value)
@@ -1315,20 +1370,20 @@ namespace winrt::TerminalApp::implementation
         {
             _searchActive = value;
             _updateSearchVisualState();
+            if (!value && !SearchQuery().empty())
+            {
+                SearchQuery(L"");
+            }
+            else
+            {
+                SearchChanged.raise(*this, nullptr);
+            }
         }
     }
 
     void TabStrip::SearchQuery(winrt::hstring const& value)
     {
-        if (_searchQuery != value)
-        {
-            _searchQuery = value;
-            _syncingSearchState = true;
-            SearchTextBox().Text(value);
-            _syncingSearchState = false;
-            _updateSearchVisualState();
-            _applyHistoryProjection();
-        }
+        _sidebarFilters.SearchQuery(value);
     }
 
     bool TabStrip::FocusTabSearch()
@@ -1358,6 +1413,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, const bool ready)
     {
+        _historySnapshotReady = ready;
         _historySnapshot = std::move(items);
         // WTA supplies newest-activity-first rows; preserve that order within each group.
         std::stable_partition(_historySnapshot.begin(), _historySnapshot.end(), [](const auto& item) {
@@ -1381,7 +1437,14 @@ namespace winrt::TerminalApp::implementation
             _historySearchTerms.emplace_back(_buildHistorySearchTerms(item));
         }
         _applyHistoryProjection(true);
-        if (ready && _historyActive && _agentFilterTelemetryPending)
+        TryCompleteAgentFilterTelemetry();
+    }
+
+    void TabStrip::TryCompleteAgentFilterTelemetry()
+    {
+        if (_historySnapshotReady && !_historyLoading &&
+            _historyError.empty() && _historyRefreshError.empty() &&
+            _sidebarFilters.RecentAgentSessionsVisible() && _agentFilterTelemetryPending)
         {
             _agentFilterTelemetryPending = false;
             TraceLoggingWrite(
@@ -1396,7 +1459,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::_updateHistoryAgeTimer()
     {
-        if (!_historyActive || _isRailCollapsed || !IsLoaded())
+        if (!_sidebarFilters.RecentAgentSessionsVisible() || !_isVerticalPresentation || _isRailCollapsed || !IsLoaded())
         {
             if (_historyAgeTimer)
             {
@@ -1427,7 +1490,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::_refreshHistoryAges(const uint64_t nowMs)
     {
-        if (!_historyActive || _isRailCollapsed)
+        if (!_sidebarFilters.RecentAgentSessionsVisible() || !_isVerticalPresentation || _isRailCollapsed)
         {
             return;
         }
@@ -1446,7 +1509,7 @@ namespace winrt::TerminalApp::implementation
         {
             winrt::get_self<TabStripHistoryItem>(item)->RefreshAge(nowMs);
         }
-        if (changed && !_searchQuery.empty())
+        if (changed && _sidebarFilters.HasSearchQuery())
         {
             _applyHistoryProjection(true);
         }
@@ -1457,7 +1520,7 @@ namespace winrt::TerminalApp::implementation
         if (_representedHistorySessions != sessions)
         {
             _representedHistorySessions = std::move(sessions);
-            if (_historyActive)
+            if (_sidebarFilters.RecentAgentSessionsVisible())
             {
                 _applyHistoryProjection(true);
             }
@@ -1537,51 +1600,24 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::ClearHistorySnapshot()
     {
+        InvalidateHistorySnapshotReadiness();
         _historySnapshot.clear();
         _historySearchTerms.clear();
         _historyItems.Clear();
         _updateHistoryVisualState();
     }
 
-    void TabStrip::ClearHistorySearch()
-    {
-        if (_searchQuery.empty())
-        {
-            return;
-        }
-
-        _searchQuery.clear();
-        _syncingSearchState = true;
-        SearchTextBox().Text(L"");
-        _syncingSearchState = false;
-        _applyHistoryProjection();
-        _updateSearchVisualState();
-        SearchChanged.raise(*this, nullptr);
-    }
-
     void TabStrip::HistoryActive(bool value)
     {
-        if (!value)
-        {
-            _agentFilterTelemetryPending = false;
-        }
-        const auto changed = _historyActive != value;
-        _historyActive = value;
-        FilterMode(value ? TerminalApp::TabStripFilterMode::AgentsOnly :
-                           TerminalApp::TabStripFilterMode::AllTabs);
-
-        if (changed)
-        {
-            _historyActivating = false;
-            _applyHistoryProjection(true);
-            _updateSearchVisualState();
-            _updateHistoryVisualState();
-            _updateHistoryAgeTimer();
-        }
+        _sidebarFilters.ShowRecentAgentSessions(value);
     }
 
     void TabStrip::HistoryLoading(bool value)
     {
+        if (value)
+        {
+            InvalidateHistorySnapshotReadiness();
+        }
         if (_historyLoading != value)
         {
             _historyLoading = value;
@@ -1600,6 +1636,10 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::HistoryError(winrt::hstring const& value)
     {
+        if (!value.empty())
+        {
+            InvalidateHistorySnapshotReadiness();
+        }
         if (_historyError != value)
         {
             _historyError = value;
@@ -1609,6 +1649,10 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::HistoryRefreshError(winrt::hstring const& value)
     {
+        if (!value.empty())
+        {
+            InvalidateHistorySnapshotReadiness();
+        }
         if (_historyRefreshError != value)
         {
             _historyRefreshError = value;
@@ -1619,7 +1663,6 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::ProjectionControlsEnabled(bool value)
     {
         _projectionControlsEnabled = value;
-        VerticalTabsHeaderButton().IsEnabled(value && !_isRailCollapsed);
         SearchTabsButton().IsEnabled(value);
         FilterTabsButton().IsEnabled(value && !_isRailCollapsed);
     }
@@ -1665,6 +1708,7 @@ namespace winrt::TerminalApp::implementation
             {
                 winrt::get_self<TabStripDisplayItem>(display)->SyncTabPresentation(_isRailCollapsed, _isVerticalPresentation);
             }
+            _updateHistoryAgeTimer();
         }
     }
 
@@ -1852,34 +1896,13 @@ namespace winrt::TerminalApp::implementation
         OpenHistory();
     }
 
-    void TabStrip::OnHeaderToggleClick(IInspectable const&, WUX::RoutedEventArgs const&)
-    {
-        if (_isRailCollapsed || !_projectionControlsEnabled)
-        {
-            return;
-        }
-        if (_historyActive)
-        {
-            HistoryClosed.raise(*this, nullptr);
-        }
-        else
-        {
-            OpenHistory();
-        }
-    }
-
     void TabStrip::OpenHistory()
     {
         if (_isRailCollapsed || !_projectionControlsEnabled)
         {
             return;
         }
-        if (!_historyActive)
-        {
-            _agentFilterTelemetryPending = true;
-        }
         HistoryActive(true);
-        HistoryRequested.raise(*this, nullptr);
         if (_searchActive)
         {
             SearchTextBox().Focus(WUX::FocusState::Programmatic);
@@ -1888,7 +1911,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnHistoryCloseClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
-        HistoryClosed.raise(*this, nullptr);
+        HistoryActive(false);
     }
 
     void TabStrip::OnRichTabRepositoryVisibleClick(IInspectable const&, WUX::RoutedEventArgs const&)
@@ -1939,14 +1962,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnShowAllTabsClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
-        if (_historyActive)
-        {
-            HistoryClosed.raise(*this, nullptr);
-        }
-        else
-        {
-            FilterMode(TerminalApp::TabStripFilterMode::AllTabs);
-        }
+        FilterMode(TerminalApp::TabStripFilterMode::AllTabs);
     }
 
     void TabStrip::OnSearchToggleClick(IInspectable const&, WUX::RoutedEventArgs const&)
@@ -1962,17 +1978,7 @@ namespace winrt::TerminalApp::implementation
             SearchTabsButton().IsChecked(true);
         }
 
-        _searchActive = SearchTabsButton().IsChecked().GetBoolean();
-        if (!_searchActive)
-        {
-            _searchQuery.clear();
-            _syncingSearchState = true;
-            SearchTextBox().Text(L"");
-            _syncingSearchState = false;
-            _applyHistoryProjection();
-        }
-        _updateSearchVisualState();
-        SearchChanged.raise(*this, nullptr);
+        SearchActive(SearchTabsButton().IsChecked().GetBoolean());
 
         if (_searchActive)
         {
@@ -1995,27 +2001,14 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        _searchQuery = SearchTextBox().Text();
-        _updateSearchVisualState();
-        if (_historyActive)
-        {
-            _applyHistoryProjection();
-        }
-        SearchChanged.raise(*this, nullptr);
+        SearchQuery(SearchTextBox().Text());
     }
 
     void TabStrip::OnSearchBoxKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)
     {
         if (e.OriginalKey() == Windows::System::VirtualKey::Escape)
         {
-            _searchActive = false;
-            _searchQuery.clear();
-            _syncingSearchState = true;
-            SearchTextBox().Text(L"");
-            _syncingSearchState = false;
-            _updateSearchVisualState();
-            _applyHistoryProjection();
-            SearchChanged.raise(*this, nullptr);
+            SearchActive(false);
             e.Handled(true);
         }
     }
@@ -2199,8 +2192,7 @@ namespace winrt::TerminalApp::implementation
         MinWidth(_isRailCollapsed ? 40.0 : 180.0);
         CompactNewTabToolbar().Visibility(collapsedVisibility);
         VerticalTabsHeader().Visibility(expandedVisibility);
-        VerticalTabsHeaderButton().Visibility(expandedVisibility);
-        VerticalTabsHeaderButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
+        VerticalTabsHeader().Visibility(expandedVisibility);
         SearchTabsButton().IsHitTestVisible(true);
         SearchTabsButton().IsEnabled(_projectionControlsEnabled);
         FilterTabsButton().Visibility(_richTabMetadataControlsVisible ? expandedVisibility : Visibility::Collapsed);
@@ -2402,16 +2394,16 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::_updateSearchVisualState()
     {
-        const auto agentsLabel = _historyActive ? RS_(L"VerticalTabsAgentsSearch/Text") : winrt::hstring{};
-        SearchTextBox().PlaceholderText(_historyActive ? agentsLabel : RS_(L"VerticalTabsSearchBox/PlaceholderText"));
+        const auto searchLabel = RS_(L"VerticalTabsAgentsSearch/Text");
+        SearchTextBox().PlaceholderText(searchLabel);
         WUX::Automation::AutomationProperties::SetName(
-            SearchTextBox(), _historyActive ? agentsLabel : RS_(L"VerticalTabsSearchBox/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name"));
+            SearchTextBox(), searchLabel);
         WUX::Automation::AutomationProperties::SetName(
-            SearchTabsButton(), _historyActive ? agentsLabel : RS_(L"VerticalTabsSearchButton/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name"));
+            SearchTabsButton(), searchLabel);
         ToolTipService::SetToolTip(
-            SearchTabsButton(), box_value(_historyActive ? agentsLabel : RS_(L"VerticalTabsSearchButton/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip")));
+            SearchTabsButton(), box_value(searchLabel));
         WUX::Automation::AutomationProperties::SetHelpText(
-            SearchTabsButton(), _historyActive ? agentsLabel : RS_(L"VerticalTabsSearchButton/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip"));
+            SearchTabsButton(), searchLabel);
 
         _syncingSearchState = true;
         SearchTabsButton().IsChecked(_searchActive);
@@ -2458,12 +2450,13 @@ namespace winrt::TerminalApp::implementation
 
     bool TabStrip::_matchesHistorySearch(const size_t index) const
     {
-        if (_searchQuery.empty())
+        const auto searchQuery = SearchQuery();
+        if (searchQuery.empty())
         {
             return true;
         }
 
-        const std::wstring_view query{ _searchQuery.c_str(), _searchQuery.size() };
+        const std::wstring_view query{ searchQuery.c_str(), searchQuery.size() };
         for (const auto& value : _historySearchTerms.at(index))
         {
             const std::wstring_view candidate{ value.c_str(), value.size() };
@@ -2519,7 +2512,7 @@ namespace winrt::TerminalApp::implementation
                    left.SessionUniverse() == right.SessionUniverse();
         };
         std::vector<TerminalApp::TabStripHistoryItem> representedKeys;
-        if (_historyActive)
+        if (_sidebarFilters.RecentAgentSessionsVisible())
         {
             for (const auto& session : _representedHistorySessions)
             {
@@ -2575,7 +2568,7 @@ namespace winrt::TerminalApp::implementation
         visibleItems.reserve(_historySnapshot.size());
         for (size_t index = 0; index < _historySnapshot.size(); ++index)
         {
-            _historySnapshot[index].SearchQuery(_searchQuery);
+            _historySnapshot[index].SearchQuery(SearchQuery());
             const auto& item = _historySnapshot[index];
             if (std::ranges::any_of(representedKeys, [&](const auto& represented) {
                     return sameHistoryKey(represented, item);
@@ -2622,25 +2615,21 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::_updateHistoryVisualState()
     {
-        const auto visible = _historyActive && !_isRailCollapsed;
+        const auto visible = _sidebarFilters.RecentAgentSessionsVisible() && !_isRailCollapsed;
+        const auto expanded = _historyExpanded || _sidebarFilters.HasSearchQuery();
         const auto section = HistorySection();
         if (section)
         {
             section.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
         }
         TabsToolbar().Visibility(Visibility::Visible);
-        VerticalTabsHeader().Text(visible ? RS_(L"VerticalTabsHistoryHeader/Text") :
-                                           RS_(L"VerticalTabsHeader/Text"));
-        const auto switchLabel = _historyActive ? RS_(L"VerticalTabsSwitchToTabs") : RS_(L"VerticalTabsSwitchToAgents");
-        ToolTipService::SetToolTip(VerticalTabsHeaderButton(), box_value(switchLabel));
-        WUX::Automation::AutomationProperties::SetName(VerticalTabsHeaderButton(), switchLabel);
-        WUX::Automation::AutomationProperties::SetHelpText(VerticalTabsHeaderButton(), switchLabel);
+        VerticalTabsHeader().Text(RS_(L"VerticalTabsHeader/Text"));
         const auto detailsLabel = RS_(L"VerticalTabsFilterButton/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip");
         ToolTipService::SetToolTip(FilterTabsButton(), box_value(detailsLabel));
         WUX::Automation::AutomationProperties::SetName(FilterTabsButton(), detailsLabel);
         WUX::Automation::AutomationProperties::SetHelpText(FilterTabsButton(), detailsLabel);
         ItemsList().Visibility(visible || _tabsVisible ? Visibility::Visible : Visibility::Collapsed);
-        FilterStatusBar().Visibility(!visible && _filterMode != TerminalApp::TabStripFilterMode::AllTabs ?
+        FilterStatusBar().Visibility(_sidebarFilters.AgentsOnlyEffective() ?
                                          Visibility::Visible :
                                          Visibility::Collapsed);
         ItemsList().IsItemClickEnabled(visible && !_historyActivating && !_historyLoading);
@@ -2648,13 +2637,14 @@ namespace winrt::TerminalApp::implementation
         {
             const auto previousSync = std::exchange(_syncingHistorySection, true);
             const auto endSync = wil::scope_exit([&]() noexcept { _syncingHistorySection = previousSync; });
-            HistoryHeaderButton().IsChecked(_historyExpanded);
-            HistoryChevron().Glyph(_historyExpanded ? L"\xE70D" : L"\xE76C");
-            HistoryStatusPanel().Visibility(_historyExpanded ? Visibility::Visible : Visibility::Collapsed);
-            HistoryLoadingIndicator().IsActive(visible && _historyExpanded && _historyLoading);
+            HistoryHeaderButton().IsChecked(expanded);
+            HistoryHeaderButton().IsEnabled(!_sidebarFilters.HasSearchQuery());
+            HistoryChevron().Glyph(expanded ? L"\xE70D" : L"\xE76C");
+            HistoryStatusPanel().Visibility(expanded ? Visibility::Visible : Visibility::Collapsed);
+            HistoryLoadingIndicator().IsActive(visible && expanded && _historyLoading);
             HistoryLoadingIndicator().Visibility(visible && _historyLoading ? Visibility::Visible : Visibility::Collapsed);
             WUX::Automation::AutomationProperties::SetName(HistoryHeaderButton(), HistoryHeader().Text());
-            const auto historyAction = _historyExpanded ?
+            const auto historyAction = expanded ?
                                            RS_(L"VerticalTabsCollapseRecentSessions") : RS_(L"VerticalTabsExpandRecentSessions");
             ToolTipService::SetToolTip(HistoryHeaderButton(), box_value(historyAction));
             WUX::Automation::AutomationProperties::SetHelpText(HistoryHeaderButton(), historyAction);
@@ -2669,7 +2659,8 @@ namespace winrt::TerminalApp::implementation
             }
             else if (_historyItems.Size() == 0)
             {
-                const std::wstring_view query{ _searchQuery.c_str(), _searchQuery.size() };
+                const auto searchQuery = SearchQuery();
+                const std::wstring_view query{ searchQuery.c_str(), searchQuery.size() };
                 const auto hasSearchQuery = query.find_first_not_of(L" \t\r\n") != std::wstring_view::npos;
                 HistoryMessage().Text(_historySnapshot.empty() || !hasSearchQuery ?
                                           RS_(L"VerticalTabsHistoryEmpty") :
@@ -2689,7 +2680,7 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::_syncViewportItems()
     {
-        const auto combined = _historyActive && !_isRailCollapsed;
+        const auto combined = _sidebarFilters.RecentAgentSessionsVisible() && !_isRailCollapsed;
         const auto selection = SelectedItem();
         const auto previousSync = std::exchange(_syncingViewportSelection, true);
         const auto endSync = wil::scope_exit([&]() noexcept { _syncingViewportSelection = previousSync; });
@@ -2744,7 +2735,7 @@ namespace winrt::TerminalApp::implementation
                     ++headerIndex;
                 }
             }
-            const auto historyCount = _historyExpanded ? _historyItems.Size() : 0;
+            const auto historyCount = (_historyExpanded || _sidebarFilters.HasSearchQuery()) ? _historyItems.Size() : 0;
             for (uint32_t index = 0; index < historyCount; ++index)
             {
                 const auto slot = headerIndex + 1 + index;
@@ -3460,7 +3451,7 @@ namespace winrt::TerminalApp::implementation
                 const auto item = _tabItems.GetAt(sourceIndex);
                 _tabItems.RemoveAt(sourceIndex);
                 _tabItems.InsertAt(*destinationIndex, item);
-                if (_historyActive && !_isRailCollapsed)
+                if (_sidebarFilters.RecentAgentSessionsVisible() && !_isRailCollapsed)
                 {
                     const auto display = _displayItems.GetAt(sourceIndex);
                     _displayItems.RemoveAt(sourceIndex);

@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Inspect, install, or remove the wt-agent-hooks bridge for one or all
-    supported agent CLIs (Copilot, Claude, Gemini, Codex).
+    supported agent CLIs (Copilot, Claude, Gemini, Codex, OpenCode, Antigravity).
 
 .DESCRIPTION
     Wrapper around `wta hooks status --json` / `wta hooks install` /
@@ -24,8 +24,7 @@
 
 .PARAMETER CliFilter
     Restrict Uninstall (and the SmokeTest) to one CLI. Defaults to `all`.
-    Has no effect on Check / Install (Install always installs all four;
-    Check always reports all four).
+    Has no effect on Check / Install (these inspect all supported CLIs).
 
 .PARAMETER SmokeTest
     After Check / Install, verify that the installed wtcli exposes the native
@@ -55,7 +54,7 @@ param(
     [string]$Mode = 'Check',
 
     [Parameter()]
-    [ValidateSet('all', 'copilot', 'claude', 'gemini', 'codex')]
+    [ValidateSet('all', 'copilot', 'claude', 'gemini', 'codex', 'opencode', 'antigravity')]
     [string]$CliFilter = 'all',
 
     [Parameter()]
@@ -73,13 +72,15 @@ Set-StrictMode -Version Latest
 
 # Schema version this script understands. Mirrors STATUS_SCHEMA_VERSION
 # in tools/wta/src/agent_hooks_installer.rs. Bump in lockstep.
-$script:SupportedStatusSchemaVersion = 4
+$script:SupportedStatusSchemaVersion = 5
 
 $script:CliDisplayNames = @{
     copilot = 'Copilot CLI'
     claude  = 'Claude Code'
     gemini  = 'Gemini CLI'
     codex   = 'Codex CLI'
+    opencode = 'OpenCode'
+    antigravity = 'Google Antigravity'
 }
 
 # ── Helpers ──────────────────────────────────────────────────────────

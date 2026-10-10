@@ -130,6 +130,34 @@ agents.status.idle: "Walang ginagawa"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. para ipakita/itago ang agent pane • Ctrl+Shift+/ para ipakita/itago ang agent session)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Mga mensahe sa pila: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Mga mensahe sa pila: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
+queue.full: "Puno na ang pila. Napanatili ang iyong input."
+queue.enqueued: "Naidagdag sa pila ang mensahe."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Kinansela ang %{count} mensahe sa pila. Maaari kang magpadala ng bagong mensahe."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Ang mga mensahe sa pila ay para sa pag-uusap na ito. Ipadala o itapon ang mga ito bago magpalit ng session o configuration."
+queue.paused_header: "Pansamantalang nakahinto: %{count} naghihintay; hindi awtomatikong ipapadala"  # Pinned heading: automatic sending is stopped
+queue.recall: "Ibalik ang huli"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Ipadala ang natitira"  # Button: resume sending pending requests
+queue.discard: "Itapon ang natitira"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Isumite o burahin ang kasalukuyang draft bago ibalik ang isang kahilingan mula sa pila."
+queue.enqueued_paused: "Idinagdag sa nakahintong pila. Piliin ang Ipadala ang natitira para simulan ito."
+queue.resubmit: "Kailangang isumite muli"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Hindi pa maipadala ang mga naghihintay na kahilingan. Ayusin ang koneksyon o tapusin ang aktibong pakikipag-ugnayan; ibalik at isumite muli ang mga nag-expire na kahilingan sa pag-aayos."
+queue.stopped: "Itinigil ang awtomatikong pagpapadala. Pinanatili ang mga naghihintay na kahilingan ng user."
+queue.capture_failed: "Hindi mapanatili ang konteksto ng error: %{error}"
+queue.auto: "Awtomatikong pag-aayos"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Kailangang tahasang tukuyin ang pinagmulang pane para makuha ang konteksto para sa awtomatikong pag-aayos."
+queue.snapshot_source_unavailable: "Hindi available ang pinagmulang pane %{pane} para sa awtomatikong pag-aayos."
+queue.snapshot_shell_unavailable: "Walang konteksto ng shell ang pinagmulang pane %{pane} para sa awtomatikong pag-aayos."
+queue.snapshot_cwd_unavailable: "Walang working directory ang pinagmulang pane %{pane} para sa awtomatikong pag-aayos."
+queue.snapshot_output_unavailable: "Walang nababasang output ang pinagmulang pane %{pane} para sa awtomatikong pag-aayos."
+queue.snapshot_context_changed: "Nagbago ang command sa pinagmulang pane %{pane} bago na-save ang konteksto ng error nito."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Inihahanda ang koneksyon sa agent..."
@@ -267,3 +295,11 @@ system.config_update_failed: "Bigo sa pag-update ng %{option}: %{error}"
 system.yolo_disable_pending: "hindi pa kinukumpirma ng tagapagbigay ng agent ang kinakailangang hindi pribilehiyadong estado ng session"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Naka-disable ang awtomatikong pag-apruba ayon sa patakaran ng iyong organisasyon."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Hindi kilalang modelo %{model} — i-type ang /model para makita ang available na listahan."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Pumili ng paraan ng pag-sign in para magpatuloy dito."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Kumpletuhin ang pag-sign in sa iyong browser. Pindutin ang Esc para kanselahin ang paghihintay."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Hindi bumukas ang browser? Gamitin ang link na ito para mag-sign in. O: buksan · Y: kopyahin."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Hindi mabuksan ang browser. Manu-manong buksan ang link para mag-sign in."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Hindi makopya ang link para mag-sign in. Manu-manong piliin at kopyahin ito."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Hindi natapos sa oras ang pag-sign in. Subukang muli kapag handa ka na."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Hindi namin makita ang \"%{agent}\" sa kapaligiran ng pag-login ng %{distro}. Suriin ang pagkaka-install, PATH, at profile ng shell ng Linux user na ito, pagkatapos ay subukang muli."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

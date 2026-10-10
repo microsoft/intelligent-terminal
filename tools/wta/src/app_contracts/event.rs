@@ -9,10 +9,42 @@ pub enum AppEvent {
     Key(KeyEvent),
     Mouse(MouseEvent),
     Tick,
+    AutofixSnapshotReady {
+        request_id: u64,
+        result: Result<crate::protocol::acp::client::AutofixSnapshot, String>,
+    },
+    RecommendationExecutionSettled {
+        tab_id: String,
+        prompt_id: u64,
+        success: bool,
+    },
     RevealTick,
     Resize(u16, u16),
     FocusChanged(bool),
     ConnectionStage(String),
+    AcpAuthenticationMethods {
+        agent_id: String,
+        source: crate::agent_source::AgentSource,
+        methods: Vec<agent_client_protocol::schema::v1::AuthMethod>,
+    },
+    AcpAuthenticationBrowser {
+        attempt_id: uuid::Uuid,
+        url: String,
+    },
+    SourceLoginProgress {
+        agent_id: String,
+        source: crate::agent_source::AgentSource,
+        generation: u64,
+        device_code: String,
+        verify_url: String,
+    },
+    SourceLoginComplete {
+        agent_id: String,
+        source: crate::agent_source::AgentSource,
+        generation: u64,
+        success: bool,
+        error: Option<String>,
+    },
     /// Native cloud catalog carried over the private helper↔master channel.
     /// Kept separate from the current session's ACP-advertised models so a
     /// BYOK session that reports no selector cannot erase clean-probed models.

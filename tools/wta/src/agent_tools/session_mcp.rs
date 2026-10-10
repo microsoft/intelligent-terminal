@@ -76,6 +76,7 @@ impl SessionMcpTool {
                 suffix
                     .strip_prefix('/')
                     .or_else(|| suffix.strip_prefix('-'))
+                    .or_else(|| suffix.strip_prefix('_'))
             })
             .or_else(|| {
                 title

@@ -1,11 +1,12 @@
-# Per-tab keep running
+# Per-tab headless mode
 
-Keep running is an explicit, runtime-only choice for an entire terminal tab.
+Headless mode (internally called keep running) is an explicit, runtime-only
+choice for an entire terminal tab.
 It is available to ordinary shell tabs without an agent CLI or lifecycle hooks,
 and is independent of startup-layout restoration.
 
-In vertical layout, right-click a terminal tab and select **Keep tab running**,
-the first menu item. When enabled, that action changes to **Turn off keep running**;
+In vertical layout, right-click a terminal tab and select **Turn on headless mode**,
+the first menu item. When enabled, that action changes to **Turn off headless mode**;
 selecting it disables background retention without closing the tab or stopping
 its current processes. It targets the clicked tab even when another
 tab has focus. The item is absent from horizontal-tab and pane context menus,
@@ -20,6 +21,7 @@ The menu shows an action rather than a checked state, and refreshes its label,
 icon, tooltip, and accessibility help when the choice changes or the menu opens.
 The RepeatAll icon appears after the title of a tab with keep running enabled,
 including after restore, whole-tab moves, and switching to horizontal layout.
+Its accessibility name is "Headless mode on", separate from the menu action.
 Disabling keep running removes the title icon. Long titles truncate before the
 indicator so it stays visible.
 When Rich Tab metadata is visible, the indicator is vertically centered across
@@ -97,6 +99,8 @@ windows. Restoration waits for host registration and a nonzero content layout,
 then runs on a later UI turn. A failed tab remains available in the tray and
 does not close the receiver before other tabs in the batch can restore.
 Explicit profile launches keep their normal new-tab behavior.
+Initial and re-armed layout callbacks hold a weak page reference, so a queued
+layout notification cannot dereference a page that was destroyed before delivery.
 
 Startup-layout restoration remains independent of background retention. With
 **Restore window layout** or **Restore window layout and content** enabled,
@@ -168,3 +172,6 @@ Focused coverage lives in `TabTests::KeepRunning*` in
 `src/cascadia/LocalTests_TerminalApp/TabTests.cpp`. The shared history/session
 focus boundary also has the `Feature.KeepRunningFocus` ItE2E suite, covering
 real UI detachment and protocol reattachment without launching a second session.
+Native fixtures initialize mock controls through actual XAML layout before parking
+them; UI coverage activates the selected package and checks retained pane/process
+identity rather than relying on tab-title text as a readiness signal.

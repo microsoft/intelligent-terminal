@@ -3,6 +3,7 @@ use super::failure::{AgentFailure, HandshakeStage};
 use super::prompt_builder::{
     acp_log_built_prompt, build_prompt_text, log_turn_trace, TemplateKind, TemplateMemo,
 };
+pub(crate) use super::prompt_context::{capture_autofix_snapshot, AutofixSnapshot};
 use super::soft_stop::SoftStopReason;
 use super::turn_metrics::{now_unix_s, prompt_preview, PromptTimingState};
 use agent_client_protocol as acp;
@@ -81,6 +82,7 @@ pub struct PromptSubmission {
     /// inputs. Automatic summaries are untrusted diagnostic context, while
     /// text supplied to `/fix` is user intent.
     pub autofix_text_kind: Option<AutofixTextKind>,
+    pub(crate) autofix_snapshot: Option<AutofixSnapshot>,
     /// Agent-advertised slash commands are sent verbatim, without planner
     /// templates or terminal context.
     agent_command: bool,
@@ -361,6 +363,7 @@ pub enum MasterExtRequest {
     },
     SessionBornBound {
         event: crate::agent_sessions::SessionEvent,
+        wsl_distro: Option<String>,
     },
     SessionResumeDispatched {
         request_id: u64,
@@ -522,6 +525,7 @@ impl PromptSubmission {
             pane_context,
             submitted_at_unix_s: now_unix_s(),
             autofix_text_kind,
+            autofix_snapshot: None,
             agent_command: false,
             images: Vec::new(),
             is_byok: false,
@@ -620,17 +624,18 @@ async fn complete_prompt_request<T>(
             //
             // Once Copilot honors the spec, this delay can be removed.
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            let _ = event_tx.send(AppEvent::AgentMessageEnd {
-                session_id: session_id.clone(),
-            });
             // A successful turn can still end on a soft stop (truncation /
             // request-budget / refusal). It is NOT a connection failure — the
-            // session stays Connected — so it rides its own event and only
-            // appends an informational line AFTER `AgentMessageEnd` has flushed
-            // the agent's streamed content.
+            // session stays Connected. Publish the outcome before the terminal
+            // boundary so dependent queued requests are discarded before End
+            // can dispatch another prompt. The warning joins that transcript.
             if let Some(reason) = soft_stop {
-                let _ = event_tx.send(AppEvent::AgentSoftStop { session_id, reason });
+                let _ = event_tx.send(AppEvent::AgentSoftStop {
+                    session_id: session_id.clone(),
+                    reason,
+                });
             }
+            let _ = event_tx.send(AppEvent::AgentMessageEnd { session_id });
         }
         Err(e) => {
             let error_message = e.to_string();
@@ -2461,6 +2466,22 @@ impl WtaClient {
     /// surfacing the error here would tear down the connection on what
     /// is by definition optional, advisory data.
     async fn ext_notification(&self, args: acp::schema::v1::ExtNotification) -> acp::Result<()> {
+        if let Some(progress) =
+            crate::protocol::acp::authentication::parse_browser_notification(&args)
+        {
+            match progress {
+                Ok((attempt_id, url)) => {
+                    let _ = self
+                        .state
+                        .event_tx
+                        .send(AppEvent::AcpAuthenticationBrowser { attempt_id, url });
+                }
+                Err(reason) => {
+                    tracing::warn!(target: "auth", reason, "rejected authentication browser notification");
+                }
+            }
+            return Ok(());
+        }
         if let Some(catalog) =
             crate::protocol::acp::model_select::parse_wta_cloud_catalog_notification(&args)
         {
@@ -3019,6 +3040,9 @@ pub async fn run_acp_client_over_pipe(
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     post_login_reconnect: bool,
+    requested_authentication: Option<
+        crate::protocol::acp::authentication::AcpAuthenticationAttempt,
+    >,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) -> Result<AcpClientExit> {
     let startup_probe = StartupProbe::new();
@@ -3437,6 +3461,51 @@ pub async fn run_acp_client_over_pipe(
         "Agent init response received (over pipe): {:?}",
         init_resp
     ));
+    let _ = event_tx.send(AppEvent::AcpAuthenticationMethods {
+        agent_id: agent_id.clone().unwrap_or_else(|| "copilot".to_string()),
+        source: agent_source.clone(),
+        methods: init_resp.auth_methods.clone(),
+    });
+
+    let mut explicit_authentication_completed = false;
+    if let Some(attempt) = requested_authentication.as_ref() {
+        if !init_resp
+            .auth_methods
+            .iter()
+            .any(|method| method.id() == &attempt.method_id)
+        {
+            anyhow::bail!("selected authentication method is not advertised by this agent");
+        }
+        let _ = event_tx.send(AppEvent::ConnectionStage(
+            t!("connection.authenticating").into_owned(),
+        ));
+        let request = acp::schema::v1::AuthenticateRequest::new(attempt.method_id.clone()).meta(
+            serde_json::json!({"wta": {"auth_attempt_id": attempt.attempt_id.to_string()}})
+                .as_object()
+                .cloned(),
+        );
+        let result = tokio::select! {
+            biased;
+            _ = attempt.cancelled.cancelled() => return Ok(AcpClientExit::ChannelsClosed),
+            result = tokio::time::timeout(std::time::Duration::from_secs(300), conn.authenticate(request)) => result,
+        };
+        match result {
+            Ok(Ok(_)) => explicit_authentication_completed = true,
+            Ok(Err(error)) => {
+                tracing::warn!(target: "auth", error_code = Into::<i32>::into(error.code), "agent authentication failed");
+                return Err(anyhow::Error::new(AgentFailure::HandshakeFailed {
+                    stage: crate::protocol::acp::failure::HandshakeStage::Authenticate,
+                    detail: crate::protocol::acp::authentication::safe_auth_error_message(&error),
+                }));
+            }
+            Err(_) => {
+                return Err(anyhow::Error::new(AgentFailure::HandshakeFailed {
+                    stage: crate::protocol::acp::failure::HandshakeStage::Authenticate,
+                    detail: t!("auth.failure_wait_timeout").into_owned(),
+                }));
+            }
+        }
+    }
 
     // ── Post-login authenticate ──────────────────────────────────────────
     // If this is a reconnect after LoginComplete (the user just completed
@@ -3632,6 +3701,12 @@ pub async fn run_acp_client_over_pipe(
             );
             let mut session = new_session_result.map_err(|e| {
                 let failure = AgentFailure::from_acp_error(&e);
+                if explicit_authentication_completed && failure.is_auth() {
+                    return anyhow::Error::new(AgentFailure::HandshakeFailed {
+                        stage: crate::protocol::acp::failure::HandshakeStage::NewSession,
+                        detail: crate::protocol::acp::authentication::safe_auth_error_message(&e),
+                    });
+                }
                 // If we just completed post-login authenticate successfully
                 // but new_session STILL returns AuthRequired, do NOT route
                 // back to the login screen (that would recreate the auth
@@ -4169,9 +4244,14 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                     }
                 }
             }
-            MasterExtRequest::SessionBornBound { event } => {
+            MasterExtRequest::SessionBornBound { event, wsl_distro } => {
                 const BORN_BOUND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
-                let wire = crate::session_registry::build_born_bound_request(&event);
+                let wire = match wsl_distro.as_deref() {
+                    Some(distro) => {
+                        crate::session_registry::build_born_bound_request_wsl(&event, distro)
+                    }
+                    None => crate::session_registry::build_born_bound_request(&event),
+                };
                 match tokio::time::timeout(BORN_BOUND_TIMEOUT, conn.ext_method(wire)).await {
                     Ok(Ok(response)) => tracing::debug!(
                         target: "session_hook",
@@ -5837,6 +5917,7 @@ async fn dispatch_prompt_body(
             &shell_mgr_task,
             wt_connected,
             prompt.pane_context.as_ref(),
+            prompt.autofix_snapshot.as_ref(),
             Some(&conn_task),
         )
         .await;
@@ -6759,6 +6840,7 @@ mod tests {
                 format!("intellterm_0123456789abcdef/{}", tool.name()),
                 format!("Use MCP tool: intellterm_0123456789abcdef/{}", tool.name()),
                 format!("intellterm_0123456789abcdef-{}", tool.name()),
+                format!("intellterm_0123456789abcdef_{}", tool.name()),
                 format!("mcp__intellterm_0123456789abcdef__{}", tool.name()),
             ] {
                 let manager = Arc::new(
@@ -6848,6 +6930,7 @@ mod tests {
                 format!("{server_name}/{name}"),
                 format!("Use MCP tool: {server_name}/{name}"),
                 format!("{server_name}-{name}"),
+                format!("{server_name}_{name}"),
                 format!("mcp__{server_name}__{name}"),
             ] {
                 for source in ["permission", "tool-call", "tool-call-update"] {
@@ -7493,6 +7576,7 @@ mod tests {
             for title in [
                 format!("{dynamic}/{name}"),
                 format!("{dynamic}-{name}"),
+                format!("{dynamic}_{name}"),
                 format!("Use MCP tool: {dynamic}/{name}"),
                 format!("mcp__{dynamic}__{name}"),
             ] {
@@ -7522,6 +7606,11 @@ mod tests {
             "intellterm_01234567890123456789/run_command_in_current_shell",
             "intellterm_0123456789abcde/run_command_in_current_shell",
             "intellterm_0123456789abcdeA/run_command_in_current_shell",
+            "intellterm_0123456789abcde_run_command_in_current_shell",
+            "intellterm_0123456789abcdefextra_run_command_in_current_shell",
+            "intellterm_0123456789abcdeA_run_command_in_current_shell",
+            "intellterm_0123456789abcdef__run_command_in_current_shell",
+            "intellterm_0123456789abcdef_request_terminal_actions",
             "Use MCP tool: other/run_command_in_current_shell",
             "Use MCP tool: intelligent_terminal/terminal_send",
             "Use MCP tool: intelligent_terminal/terminal_open",
@@ -7828,7 +7917,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn soft_stop_emits_message_end_then_soft_stop() {
+    async fn soft_stop_prompt_completion_emits_outcome_before_message_end() {
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
         let prompt_timing = PromptTimingState::default();
 
@@ -7841,22 +7930,21 @@ mod tests {
         )
         .await;
 
-        // Order matters: the turn-closing AgentMessageEnd must land first so the
-        // soft-stop notice appends after the agent's streamed content.
-        match event_rx.try_recv() {
-            Ok(AppEvent::AgentMessageEnd { session_id }) => {
-                assert_eq!(session_id, "test-session");
-            }
-            Ok(_) => panic!("expected AgentMessageEnd first"),
-            Err(err) => panic!("expected AgentMessageEnd first, got channel error: {err}"),
-        }
+        // The queue must observe the outcome before End releases the turn.
         match event_rx.try_recv() {
             Ok(AppEvent::AgentSoftStop { session_id, reason }) => {
                 assert_eq!(session_id, "test-session");
                 assert_eq!(reason, SoftStopReason::Refusal);
             }
-            Ok(_) => panic!("expected AgentSoftStop second"),
-            Err(err) => panic!("expected AgentSoftStop second, got channel error: {err}"),
+            Ok(_) => panic!("expected AgentSoftStop first"),
+            Err(err) => panic!("expected AgentSoftStop first, got channel error: {err}"),
+        }
+        match event_rx.try_recv() {
+            Ok(AppEvent::AgentMessageEnd { session_id }) => {
+                assert_eq!(session_id, "test-session");
+            }
+            Ok(_) => panic!("expected AgentMessageEnd second"),
+            Err(err) => panic!("expected AgentMessageEnd second, got channel error: {err}"),
         }
         assert!(event_rx.try_recv().is_err());
     }

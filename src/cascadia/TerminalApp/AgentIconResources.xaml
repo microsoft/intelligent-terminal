@@ -50,6 +50,15 @@
                         UriSource="ms-appx:///AgentIcons/Masks/opencode.png" />
         </Viewbox>
     </DataTemplate>
+    <DataTemplate x:Key="AgentIcon.antigravity">
+        <Viewbox>
+            <BitmapIcon Width="16"
+                        Height="16"
+                        Foreground="{Binding}"
+                        ShowAsMonochrome="True"
+                        UriSource="ms-appx:///AgentIcons/Masks/antigravity.png" />
+        </Viewbox>
+    </DataTemplate>
     <DataTemplate x:Key="AgentIcon.generic">
         <Viewbox>
             <BitmapIcon Width="16"

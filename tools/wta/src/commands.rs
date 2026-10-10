@@ -428,6 +428,18 @@ mod tests {
     }
 
     #[test]
+    fn queue_is_not_a_builtin_command() {
+        assert!(lookup("queue").is_none());
+        assert!(matches("queue").is_empty());
+        for args in [
+            "", "pause", "resume", "clear", "edit 2", "remove 1", "up 3", "down 1", "list",
+            "show 4",
+        ] {
+            assert!(parse(&format!("/queue {args}")).is_none());
+        }
+    }
+
+    #[test]
     fn rest_is_captured() {
         let p = parse("/help me please").unwrap();
         assert_eq!(p.kind, CommandKind::Help);

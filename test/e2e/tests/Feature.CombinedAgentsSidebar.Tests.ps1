@@ -12,6 +12,19 @@ function Invoke-CombinedCheckedCleanup {
         throw
     }
 }
+function Initialize-CombinedRuntimeBackup {
+    $script:runtimeStatePath = Join-Path $script:target.LocalStateDir 'IntelligentTerminal'
+    $script:runtimeStateBackup = Join-Path $script:evidence 'original-runtime-state'
+    $script:runtimeStateExisted = Test-Path -LiteralPath $script:runtimeStatePath
+    $script:runtimeStateHashes = @{}
+    if ($script:runtimeStateExisted) {
+        foreach ($file in @(Get-ChildItem -LiteralPath $script:runtimeStatePath -File -Recurse -Force)) {
+            $relative = [IO.Path]::GetRelativePath($script:runtimeStatePath, $file.FullName)
+            $script:runtimeStateHashes[$relative] = (Get-FileHash -LiteralPath $file.FullName).Hash
+        }
+        Copy-Item -LiteralPath $script:runtimeStatePath -Destination $script:runtimeStateBackup -Recurse -Force
+    }
+}
 
 function Initialize-CombinedCleanupNative {
     if ('ItE2ECombinedCleanup.Native' -as [type]) { return }
@@ -208,6 +221,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             initial_process_check_at = $script:initialProcessCheckAt
             initial_package_process_ids = @($script:initialProcesses.Id)
         } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence 'package-before-launch.json')
+        Initialize-CombinedRuntimeBackup
         $script:historyPath = Join-Path $script:evidence 'history.json'
         $script:fixtureLog = Join-Path $script:evidence 'fixture.log'
         $script:releasePromptPath = Join-Path $script:evidence 'release-prompt'
@@ -276,38 +290,17 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         }
         function Assert-CombinedHeaderCue {
             param([string]$Name)
-            $away = (Get-CombinedElement ItemsList).Current.BoundingRectangle
-            if (-not [ItE2E.ItWtWin32Input]::SetCursorPos(
-                [int]($away.Left + $away.Width / 2), [int]($away.Top + $away.Height / 2))) {
-                throw 'Cannot move the pointer away from the owned header before capturing it.'
+            $label = Get-CombinedElement VerticalTabsHeader
+            $label.Current.Name | Should -Be 'Tabs'
+            $label.Current.ControlType | Should -Be ([Windows.Automation.ControlType]::Text)
+            $label.Current.IsOffscreen | Should -BeFalse
+            $label.Current.IsKeyboardFocusable | Should -BeFalse
+            foreach ($patternId in @([Windows.Automation.InvokePattern]::Pattern,
+                [Windows.Automation.TogglePattern]::Pattern)) {
+                $pattern = $null
+                $label.TryGetCurrentPattern($patternId, [ref]$pattern) | Should -BeFalse
             }
-            Start-Sleep -Milliseconds 250
-            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence "header-cue-$Name.png") | Out-Null
-            Get-UiTree -App $script:app -Selector VerticalTabsHeaderButton -Depth 6 |
-                Set-Content -LiteralPath (Join-Path $script:evidence "header-cue-$Name.tree.txt")
-            $button = Get-CombinedElement VerticalTabsHeaderButton
-            $action = if ($Name -eq 'Tabs') { 'Switch to Agents' } else { 'Switch to Tabs' }
-            $button.Current.Name | Should -Be $action
-            $button.Current.HelpText | Should -Be $action
-            $button.Current.IsOffscreen | Should -BeFalse
-            $button.Current.IsEnabled | Should -BeTrue
-            $label = Get-CombinedVisiblePart $button VerticalTabsHeader
-            $label.Current.Name | Should -Be $Name
-            $bounds = $button.Current.BoundingRectangle
-            $textBounds = $label.Current.BoundingRectangle
-            $bounds.Width | Should -BeGreaterThan 0
-            $bounds.Height | Should -BeGreaterThan 0
-            $textBounds.Left | Should -BeGreaterOrEqual $bounds.Left
-            $textBounds.Right | Should -BeLessOrEqual $bounds.Right
-            $textBounds.Top | Should -BeGreaterOrEqual $bounds.Top
-            $textBounds.Bottom | Should -BeLessOrEqual $bounds.Bottom
-            # Decorative PathIcon visuals need not expose a UIA peer; pixels require screenshot review.
-            @{
-                name = $Name; button = $bounds.ToString()
-                label = $textBounds.ToString()
-                screenshot = "header-cue-$Name.png"; visual_review = 'pending'; action = $action
-            } | ConvertTo-Json -Compress |
-                Add-Content -LiteralPath (Join-Path $script:evidence 'header-cue.jsonl')
+            Get-CombinedElement VerticalTabsHeaderButton | Should -BeNullOrEmpty
         }
         function Assert-CombinedHistoryMetadata {
             param([string]$Title, [string]$Status, [string]$Provider, [switch]$OtherWindow)
@@ -549,17 +542,89 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                     $pipe.Dispose()
                 }
             }
+        function Get-CombinedFilterState {
+            Invoke-UiClick -App $script:app -Selector FilterTabsButton | Out-Null
+            try {
+                $state = @{}
+                foreach ($id in @('AgentsOnlyFilterMenuItem', 'RecentAgentSessionsFilterMenuItem')) {
+                    $item = Wait-Until -TimeoutSec 30 -Because "$id is visible in the owned filter flyout" -Condition {
+                        $peer = Get-CombinedElement $id
+                        if ($peer -and -not $peer.Current.IsOffscreen) { $peer }
+                    }
+                    $item.Current.ProcessId | Should -Be $script:app.Pid
+                    $item.Current.ControlType | Should -Be ([Windows.Automation.ControlType]::MenuItem)
+                    $state[$id] = $item.GetCurrentPattern(
+                        [Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq
+                        [Windows.Automation.ToggleState]::On
+                }
+                $state
+            }
+            finally { Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null }
+        }
+        function Set-CombinedFilters {
+            param([bool]$AgentsOnly, [bool]$Recent)
+            foreach ($entry in @(
+                @{ Id = 'AgentsOnlyFilterMenuItem'; Value = $AgentsOnly },
+                @{ Id = 'RecentAgentSessionsFilterMenuItem'; Value = $Recent }
+            )) {
+                $state = Get-CombinedFilterState
+                if ($state[$entry.Id] -ne $entry.Value) {
+                    Invoke-UiClick -App $script:app -Selector FilterTabsButton | Out-Null
+                    $item = Get-CombinedElement $entry.Id
+                    $item.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+                }
+            }
+            $state = Get-CombinedFilterState
+            $state.AgentsOnlyFilterMenuItem | Should -Be $AgentsOnly
+            $state.RecentAgentSessionsFilterMenuItem | Should -Be $Recent
+            Assert-CombinedHeaderCue Tabs
+        }
         function Set-CombinedView {
             param([bool]$Agents)
-            $active = (Get-CombinedElement VerticalTabsHeader).Current.Name -eq 'Agents'
-            if ([bool]$active -ne $Agents) {
-                Invoke-UiClick -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
+            # Preserve the old tests' two fixture scopes, not the retired header navigation.
+            Set-CombinedFilters -AgentsOnly $Agents -Recent $Agents
+        }
+        function Assert-CombinedScopeRows {
+            param([string[]]$Expected)
+            if ($script:scopeClock -and $script:scopeClock.Elapsed.TotalSeconds -ge 300) {
+                throw 'Independent scope/search smoke exceeded its 300-second bound.'
             }
-            Wait-Until -TimeoutSec 10 -Because 'the requested sidebar view renders' -Condition {
-                $header = Get-CombinedElement VerticalTabsHeader
-                $expected = if ($Agents) { 'Agents' } else { 'Tabs' }
-                $header -and $header.Current.Name -eq $expected
-            } | Out-Null
+            $found = @{}
+            $scroll = Get-CombinedScroll ItemsList
+            $percent = 0.0
+            $clock = [Diagnostics.Stopwatch]::StartNew()
+            do {
+                if ($clock.Elapsed.TotalSeconds -ge 30) { throw 'Visible ItemsList sweep exceeded 30 seconds.' }
+                if ($scroll.Current.VerticallyScrollable) {
+                    $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, $percent)
+                    Start-Sleep -Milliseconds 100
+                }
+                $list = Get-CombinedElement ItemsList
+                $viewport = $list.Current.BoundingRectangle
+                foreach ($kind in @('Live', 'Recent')) {
+                    foreach ($row in @(Get-CombinedRows $kind)) {
+                        if ($row.Current.IsOffscreen -or -not $viewport.IntersectsWith($row.Current.BoundingRectangle)) { continue }
+                        $row.Current.ProcessId | Should -Be $script:app.Pid
+                        $leaves = @(Get-CombinedRawChildren $row -ContentView | Where-Object {
+                            -not $_.Current.IsOffscreen -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text
+                        })
+                        $text = $row.Current.Name + (@($leaves | ForEach-Object { $_.Current.Name }) -join '')
+                        foreach ($id in $script:scopeTitles.Keys) {
+                            if ($text.Contains($script:scopeTitles[$id])) {
+                                if (-not $found.ContainsKey($id)) { $found[$id] = [Collections.Generic.HashSet[string]]::new() }
+                                [void]$found[$id].Add(($row.GetRuntimeId() -join ','))
+                            }
+                        }
+                    }
+                }
+                if (-not $scroll.Current.VerticallyScrollable -or $percent -ge 100) { break }
+                $percent = [Math]::Min(100, $percent + [Math]::Max(1, $scroll.Current.VerticalViewSize / 2))
+            } while ($true)
+            @($found.Keys | Sort-Object) | Should -Be @($Expected | Sort-Object)
+            foreach ($id in $found.Keys) { $found[$id].Count | Should -Be 1 -Because "$id has one rendered qualified row, not a retained or duplicate peer" }
+            if ($scroll.Current.VerticallyScrollable) {
+                $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 0)
+            }
         }
         function Assert-CombinedSearchState {
             param([bool]$Active)
@@ -631,7 +696,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         function Save-CombinedActionEvidence {
             param([string]$Phase, [switch]$Screenshot, [string]$SessionId = '')
             $focused = [Windows.Automation.AutomationElement]::FocusedElement
-            $historyVisible = (Get-CombinedElement VerticalTabsHeader).Current.Name -eq 'Agents'
+            $historyVisible = [bool](Get-CombinedElement HistoryHeaderButton)
             @{
                 phase = $Phase; at = [DateTimeOffset]::UtcNow.ToString('o')
                 owned_sessions = @((Get-CombinedSnapshot).sessions | Where-Object {
@@ -642,7 +707,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 history_rows = if ($historyVisible) { @(Get-CombinedRows Recent | ForEach-Object { Get-CombinedRowText $_ }) } else { @() }
                 upper_rows = @(Get-CombinedRows Live | ForEach-Object { Get-CombinedRowText $_ })
                 attached_tabs = Get-CombinedAttachedTabCount
-                search = Get-UiValue -App $script:app -Selector SearchTextBox
+                search = Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern
                 header = (Get-CombinedElement VerticalTabsHeader).Current.Name
                 active_pane = Get-ActivePane -App $script:app
                 helpers = @(Get-AgentPaneSessions -App $script:app)
@@ -672,7 +737,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                     $rectangle.Top -ge $viewport.Top -and $rectangle.Bottom -le $viewport.Bottom
             }
             $getTarget = {
-                (Get-UiValue -App $script:app -Selector SearchTextBox) | Should -Be $Title
+                (Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern) | Should -Be $Title
                 $rows = @(Get-CombinedRows Recent)
                 $rows.Count | Should -Be 1 -Because 'a history action must have exactly one filtered target'
                 $rows[0].Current.ProcessId | Should -Be $script:app.Pid
@@ -724,7 +789,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                     $hasScroll = $list.TryGetCurrentPattern([Windows.Automation.ScrollPattern]::Pattern, [ref]$scroll)
                     @{
                         title = $Title; session_id = $SessionId; pane_id = $PaneId; status = $Status
-                        query = Get-UiValue -App $script:app -Selector SearchTextBox
+                        query = Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern
                         viewport = $list.Current.BoundingRectangle.ToString()
                         scroll = if ($hasScroll) { ([Windows.Automation.ScrollPattern]$scroll).Current.VerticalScrollPercent }
                         rows = @(Get-CombinedRows Recent | ForEach-Object {
@@ -944,23 +1009,39 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 Invoke-RunCommand -App $script:app -SessionId $Tab.session_id -Command $command -SettleSec 5 | Out-Null
             }
         }
-        $script:ownsConfig = $true
-        $script:app = Start-Terminal -Package Dev -PassFre $true -TimeoutSec 60 -State @{
+        $startupState = @{
             sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
-        } -Settings @{
+        }
+        $startupSettings = @{
             language = 'en-US'; tabLayout = 'vertical'; tabLayoutVerticalWidth = 320
             startupActions = ''; firstWindowPreference = 'defaultProfile'; windowingBehavior = 'useNew'
             acpAgent = 'custom:combined-sidebar-fixture'; acpCustomCommand = $command; acpModel = ''
             autoFixEnabled = $false; actions = @(); keybindings = @(); 'warning.confirmOnClose' = 'never'
         }
+        if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
+            throw 'Dev started during preparation; refusing configuration mutation or adoption.'
+        }
+        foreach ($path in @($script:target.SettingsPath, $script:target.StatePath)) {
+            if ((Test-Path "$path.e2ebak") -or (Test-Path "$path.e2ebak.missing")) {
+                throw "Configuration markers changed during preparation; never replay them: $path"
+            }
+        }
+        Backup-WtConfig -App $script:target
+        $script:ownsConfig = $true
+        Clear-WtConfig -App $script:target
+        foreach ($key in $startupState.Keys) {
+            Set-WtState -App $script:target -Key $key -Value $startupState[$key] | Out-Null
+        }
+        $script:app = Start-Terminal -Package Dev -PassFre $true -TimeoutSec 60 `
+            -Backup $false -CleanSettings $false -Settings $startupSettings
         $script:app.Launched | Should -BeTrue -Because 'only a test-owned Dev window may be driven'
         $script:app | Add-Member -NotePropertyName RequireOwnedForeground -NotePropertyValue $true
         Test-WtWindowKeyFocusable -App $script:app | Should -BeTrue -Because 'desktop ownership is required'
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue
         (Get-AgentPaneSession -App $script:app).AcpSessionId | Should -Match '^chat-fixture-'
         Set-CombinedView $true
-        (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
-        (Get-CombinedElement HistoryHeader).Current.Name | Should -Be 'Recent Sessions'
+        (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
+        (Get-CombinedElement HistoryHeader).Current.Name | Should -Be 'Recent agent sessions'
         Set-CombinedView $false
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence 'startup-header.png') | Out-Null
@@ -1041,6 +1122,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
     }
 
     AfterAll {
+        $script:scopeClock = $null
         $cleanupError = $null
         try {
             if ($script:app) {
@@ -1090,6 +1172,22 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                         throw 'Dev remains active; retaining backups instead of touching unowned processes or racing configuration writes.'
                     }
                     Restore-WtConfig -App $script:target
+                    if ($script:runtimeStateExisted) {
+                        foreach ($relative in $script:runtimeStateHashes.Keys) {
+                            (Get-FileHash -LiteralPath (Join-Path $script:runtimeStateBackup $relative)).Hash |
+                                Should -Be $script:runtimeStateHashes[$relative] -Because 'only this run fresh hash-backed snapshot may be restored'
+                        }
+                    }
+                    if (Test-Path -LiteralPath $script:runtimeStatePath) {
+                        Remove-Item -LiteralPath $script:runtimeStatePath -Recurse -Force
+                    }
+                    if ($script:runtimeStateExisted) {
+                        Copy-Item -LiteralPath $script:runtimeStateBackup -Destination $script:runtimeStatePath -Recurse -Force
+                        foreach ($relative in $script:runtimeStateHashes.Keys) {
+                            (Get-FileHash -LiteralPath (Join-Path $script:runtimeStatePath $relative)).Hash |
+                                Should -Be $script:runtimeStateHashes[$relative]
+                        }
+                    }
                     foreach ($path in $script:originalHashes.Keys) {
                         $hash = if (Test-Path -LiteralPath $path) { (Get-FileHash -LiteralPath $path).Hash } else { $null }
                         $hash | Should -Be $script:originalHashes[$path] -Because 'restore original configuration bytes'
@@ -1103,7 +1201,220 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         }
     }
 
-    It 'Combined sidebar header switches Tabs and Agents' {
+    Context 'Independent scope filters and global search' {
+        BeforeAll {
+            $script:scopeClock = [Diagnostics.Stopwatch]::StartNew()
+            $script:scopeQuery = "scope-$script:marker"
+            $script:scopeTitles = @{
+                ordinary = "$script:scopeQuery ordinary copilot"
+                agent = "$script:scopeQuery live Copilot"
+                history = "$script:scopeQuery saved conversation"
+                nonmatch = $script:history[1].title
+            }
+            $script:scopeOriginalHistoryTitle = $script:history[0].title
+            $script:scopeTabs = [Collections.Generic.List[object]]::new()
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabs[0].session_id
+            foreach ($kind in @('ordinary', 'agent')) {
+                $arguments = @('new-tab', '-c', 'cmd.exe /d /k', '-d', $script:evidence, '-n', $script:scopeTitles[$kind])
+                if ($kind -eq 'agent') { $arguments += @('--agent-provider', 'copilot') }
+                $tab = Invoke-WtCli -App $script:app -Arguments $arguments -TimeoutSec 30
+                $script:scopeTabs.Add($tab)
+                $owned = @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $tab.tab_id |
+                    Where-Object session_id -eq $tab.session_id)
+                $owned | Should -HaveCount 1
+                [string]$owned[0].native_agent_provider_id | Should -Be $(if ($kind -eq 'agent') { 'copilot' } else { '' })
+            }
+            $script:history[0].title = $script:scopeTitles.history
+            @{ sessions = $script:history } | ConvertTo-Json -Depth 6 |
+                Set-Content -LiteralPath $script:historyPath -Encoding utf8
+            Invoke-Wta -App $script:app -TimeoutSec 30 -Arguments @('sessions', 'refresh', '--master', $script:pipe, '--json') | Out-Null
+            Wait-Until -TimeoutSec 30 -Because 'the same ACP history fixture reaches the native projection' -Condition {
+                @((Get-CombinedSnapshot).sessions | Where-Object {
+                    $_.session_id -eq $script:history[0].sessionId -and $_.title -eq $script:scopeTitles.history
+                }).Count -eq 1
+            } | Out-Null
+        }
+        AfterAll {
+            $script:scopeClock = $null
+            foreach ($tab in @($script:scopeTabs)) {
+                $owned = @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $tab.tab_id |
+                    Where-Object session_id -eq $tab.session_id)
+                $owned | Should -HaveCount 1
+                Invoke-WtCli -App $script:app -Arguments @('kill-pane', '-t', $tab.session_id) | Out-Null
+            }
+            $script:history[0].title = $script:scopeOriginalHistoryTitle
+            @{ sessions = $script:history } | ConvertTo-Json -Depth 6 |
+                Set-Content -LiteralPath $script:historyPath -Encoding utf8
+            Invoke-Wta -App $script:app -TimeoutSec 30 -Arguments @('sessions', 'refresh', '--master', $script:pipe, '--json') | Out-Null
+        }
+        It 'Sidebar scope filters are independent (<Combination>)' -ForEach @(
+            @{ Combination = '00'; Agents = $false; Recent = $false; Expected = @('ordinary', 'agent') },
+            @{ Combination = '10'; Agents = $true; Recent = $false; Expected = @('agent') },
+            @{ Combination = '01'; Agents = $false; Recent = $true; Expected = @('ordinary', 'agent', 'history', 'nonmatch') },
+            @{ Combination = '11'; Agents = $true; Recent = $true; Expected = @('agent', 'history', 'nonmatch') }
+        ) {
+            Set-CombinedFilters -AgentsOnly $Agents -Recent $Recent
+            Assert-CombinedScopeRows $Expected
+            Open-CombinedSearch
+            Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be ''
+            Assert-CombinedScopeRows $Expected
+            Assert-CombinedHeaderCue Tabs
+        }
+        It 'Sidebar search bypasses both scope filters' {
+            foreach ($agents in @($false, $true)) {
+                foreach ($recent in @($false, $true)) {
+                    Set-CombinedFilters -AgentsOnly $agents -Recent $recent
+                    Set-CombinedQuery $script:scopeQuery
+                    Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
+                    $state = Get-CombinedFilterState
+                    $state.AgentsOnlyFilterMenuItem | Should -Be $agents
+                    $state.RecentAgentSessionsFilterMenuItem | Should -Be $recent
+                    Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $script:scopeQuery
+                    Assert-CombinedHeaderCue Tabs
+                }
+            }
+        }
+        It 'Sidebar history appears only for recent scope or search' {
+            foreach ($agents in @($false, $true)) {
+                Set-CombinedQuery ''
+                Set-CombinedFilters -AgentsOnly $agents -Recent $false
+                $expected = if ($agents) { @('agent') } else { @('ordinary', 'agent') }
+                Assert-CombinedScopeRows $expected
+                Set-CombinedQuery $script:scopeTitles.history
+                Assert-CombinedScopeRows @('history')
+                (Get-CombinedFilterState).RecentAgentSessionsFilterMenuItem | Should -BeFalse
+                Set-CombinedQuery ''
+                Assert-CombinedScopeRows $expected
+            }
+        }
+        It 'Clearing sidebar search restores selected scope' {
+            foreach ($agents in @($false, $true)) {
+                foreach ($recent in @($false, $true)) {
+                    $expected = @('agent')
+                    if (-not $agents) { $expected += 'ordinary' }
+                    if ($recent) { $expected += @('history', 'nonmatch') }
+                    Set-CombinedFilters -AgentsOnly $agents -Recent $recent
+                    foreach ($clearButton in @($false, $true)) {
+                        Set-CombinedQuery $script:scopeQuery
+                        Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
+                        if ($clearButton) {
+                            $box = Get-CombinedElement SearchTextBox
+                            $clear = @($box.FindAll([Windows.Automation.TreeScope]::Descendants,
+                                [Windows.Automation.PropertyCondition]::new(
+                                    [Windows.Automation.AutomationElement]::ControlTypeProperty,
+                                    [Windows.Automation.ControlType]::Button)) | Where-Object { -not $_.Current.IsOffscreen })
+                            $clear | Should -HaveCount 1 -Because 'the standard TextBox exposes its one visible clear button'
+                            $clear[0].GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+                        } else { Set-CombinedQuery '' }
+                        Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be ''
+                        Assert-CombinedScopeRows $expected
+                        $state = Get-CombinedFilterState
+                        $state.AgentsOnlyFilterMenuItem | Should -Be $agents
+                        $state.RecentAgentSessionsFilterMenuItem | Should -Be $recent
+                    }
+                }
+            }
+        }
+        It 'Closing sidebar search restores selected scope' {
+            foreach ($agents in @($false, $true)) {
+                foreach ($recent in @($false, $true)) {
+                    Set-CombinedFilters -AgentsOnly $agents -Recent $recent
+                    Set-CombinedQuery $script:scopeQuery
+                    Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+                    Assert-CombinedSearchState $false
+                    $expected = @('agent')
+                    if (-not $agents) { $expected += 'ordinary' }
+                    if ($recent) { $expected += @('history', 'nonmatch') }
+                    Assert-CombinedScopeRows $expected
+                    Open-CombinedSearch
+                    Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be ''
+                    Assert-CombinedScopeRows $expected
+                    $state = Get-CombinedFilterState
+                    $state.AgentsOnlyFilterMenuItem | Should -Be $agents
+                    $state.RecentAgentSessionsFilterMenuItem | Should -Be $recent
+                }
+            }
+        }
+        It 'Sidebar scope choices persist during global search' {
+            Set-CombinedQuery $script:scopeQuery
+            foreach ($pair in @(@($false, $false), @($true, $false), @($true, $true),
+                @($false, $true), @($false, $false), @($true, $true))) {
+                Set-CombinedFilters -AgentsOnly $pair[0] -Recent $pair[1]
+                Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
+                Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $script:scopeQuery
+            }
+            Set-CombinedQuery ''
+            Assert-CombinedScopeRows @('agent', 'history', 'nonmatch')
+        }
+        It 'Sidebar search forces history expanded and restores its collapsed preference' {
+            Set-CombinedQuery ''
+            Set-CombinedFilters -AgentsOnly $false -Recent $true
+            $header = Get-CombinedElement HistoryHeaderButton
+            $pattern = $header.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
+            $pattern.Collapse()
+            Assert-CombinedScopeRows @('ordinary', 'agent')
+            Set-CombinedQuery $script:scopeQuery
+            (Get-CombinedElement HistoryHeaderButton).Current.IsEnabled | Should -BeFalse
+            (Get-CombinedElement HistoryHeaderButton).GetCurrentPattern(
+                [Windows.Automation.ExpandCollapsePattern]::Pattern).Current.ExpandCollapseState |
+                Should -Be ([Windows.Automation.ExpandCollapseState]::Expanded)
+            Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
+            Set-CombinedQuery ''
+            (Get-CombinedElement HistoryHeaderButton).Current.IsEnabled | Should -BeTrue
+            (Get-CombinedElement HistoryHeaderButton).GetCurrentPattern(
+                [Windows.Automation.ExpandCollapsePattern]::Pattern).Current.ExpandCollapseState |
+                Should -Be ([Windows.Automation.ExpandCollapseState]::Collapsed)
+            Assert-CombinedScopeRows @('ordinary', 'agent')
+            (Get-CombinedElement HistoryHeaderButton).GetCurrentPattern(
+                [Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+        }
+        It 'Sidebar scope menus expose standard checked states and preserve keyboard focus' {
+            if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+                Set-ItResult -Skipped -Because 'External desktop restrictions prevent the harness owned-foreground physical-input gate'
+                return
+            }
+            Set-CombinedFilters -AgentsOnly $false -Recent $false
+            Set-CombinedQuery $script:scopeQuery
+            $capture = @(foreach ($tab in $script:scopeTabs) { Get-WtCapture -App $script:app -SessionId $tab.session_id })
+            foreach ($entry in @(
+                @{ Id = 'AgentsOnlyFilterMenuItem'; Name = 'Agents only'; Key = 0x47 },
+                @{ Id = 'RecentAgentSessionsFilterMenuItem'; Name = 'Recent agent sessions'; Key = 0x52 }
+            )) {
+                Send-WtWindowKey -App $script:app -Vk $entry.Key -Ctrl -Shift -RequireForeground | Out-Null
+                (Get-CombinedFilterState)[$entry.Id] | Should -BeTrue
+                Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
+                (Get-CombinedElement SearchTextBox).SetFocus()
+                Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+                (Get-CombinedElement FilterTabsButton).Current.HasKeyboardFocus | Should -BeTrue
+                Send-WtWindowKey -App $script:app -Vk 0x0D -RequireForeground | Out-Null
+                if ($entry.Id -eq 'RecentAgentSessionsFilterMenuItem') {
+                    Send-WtWindowKey -App $script:app -Vk 0x28 -RequireForeground | Out-Null
+                }
+                Wait-Until -TimeoutSec 30 -Because 'physical menu navigation focuses the intended standard item' -Condition {
+                    $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                    $focused -and $focused.Current.ProcessId -eq $script:app.Pid -and
+                        $focused.Current.AutomationId -eq $entry.Id
+                } | Out-Null
+                $item = Get-CombinedElement $entry.Id
+                $item.Current.Name | Should -Be $entry.Name
+                $item.Current.ControlType | Should -Be ([Windows.Automation.ControlType]::MenuItem)
+                "$($item.Current.AcceleratorKey) $($item.Current.HelpText)" |
+                    Should -Match ('(?i)Ctrl.*Shift.*' + [char]$entry.Key)
+                $item.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState |
+                    Should -Be ([Windows.Automation.ToggleState]::On)
+                $item.Current.HasKeyboardFocus | Should -BeTrue
+                $activationKey = if ($entry.Id -eq 'AgentsOnlyFilterMenuItem') { 0x20 } else { 0x0D }
+                Send-WtWindowKey -App $script:app -Vk $activationKey -RequireForeground | Out-Null
+                (Get-CombinedFilterState)[$entry.Id] | Should -BeFalse
+                (Get-CombinedElement FilterTabsButton).Current.HasKeyboardFocus | Should -BeTrue
+                Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
+            }
+            Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $script:scopeQuery
+            @(foreach ($tab in $script:scopeTabs) { Get-WtCapture -App $script:app -SessionId $tab.session_id }) | Should -Be $capture
+        }
+    }
+
+    It 'Sidebar heading is static accessible text' {
         Assert-CombinedSearchState $false
         Set-CombinedView $false
         Assert-CombinedSearchState $false
@@ -1115,7 +1426,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         foreach ($id in @('TabHistoryButton', 'HistoryCloseButton', 'HistorySearchTextBox')) {
             Get-CombinedElement $id | Should -BeNullOrEmpty -Because 'retired independent history controls must not remain'
         }
-        (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         @((Get-CombinedRows Live) | Where-Object {
             (Get-CombinedRowText $_).Contains("$script:marker-open-")
         }).Count | Should -BeGreaterThan 0
@@ -1128,7 +1439,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Assert-CombinedSearchState $false
         Set-CombinedView $true
-        (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Assert-CombinedSearchState $false
         Assert-CombinedBounds
     }
@@ -1640,7 +1951,9 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         }
     }
 
-    It 'History Enter resumes an unbound native session in the current window' {
+    It 'History Enter resumes an unbound native session in the current window (<RecentScope>)' -ForEach @(
+        @{ RecentScope = $true }, @{ RecentScope = $false }
+    ) {
         $sid = [guid]::NewGuid().ToString()
         $fixture = New-CombinedCliFixture 'external-resume' -ResumeSession $sid
         $external = $null
@@ -1704,7 +2017,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             $admitted[0].location | Should -Be 'Host'
             $admitted[0] | ConvertTo-Json -Depth 8 |
                 Set-Content (Join-Path $script:evidence 'external-master-admitted-row.json')
-            Set-CombinedView $true
+            Set-CombinedFilters -AgentsOnly $true -Recent $RecentScope
             Set-CombinedQuery (Split-Path $fixture.Folder -Leaf)
             Wait-Until -TimeoutSec 15 -Condition { @(Get-CombinedRows Recent).Count -eq 1 } | Out-Null
             Assert-CombinedOwnershipButton None
@@ -1828,18 +2141,18 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
     It 'Combined sidebar search filters both sections and preserves the query' {
         Assert-CombinedSearchState $false
         Open-CombinedSearch
-        (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Set-CombinedQuery "$script:marker-open-00"
         Wait-Until -TimeoutSec 10 -Because 'one open row and no unrelated historical rows remain' -Condition {
             @(Get-CombinedRows Live).Count -eq 1 -and @(Get-CombinedRows Recent).Count -eq 0
         } | Out-Null
-        (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+        (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Set-CombinedView $false
         Assert-CombinedSearchState $true
-        (Get-UiValue -App $script:app -Selector SearchTextBox) | Should -Be "$script:marker-open-00"
+        (Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern) | Should -Be "$script:marker-open-00"
         Set-CombinedView $true
         Assert-CombinedSearchState $true
-        (Get-UiValue -App $script:app -Selector SearchTextBox) | Should -Be "$script:marker-open-00"
+        (Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern) | Should -Be "$script:marker-open-00"
         Set-CombinedQuery "$script:marker-history-00"
         Wait-Until -TimeoutSec 10 -Because 'history-only search leaves Agents active' -Condition {
             @(Get-CombinedRows Live).Count -eq 0 -and @(Get-CombinedRows Recent).Count -eq 1
@@ -1881,7 +2194,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Wait-Until -TimeoutSec 10 -Because 'clear or close restores both real lists' -Condition {
                 @(Get-CombinedRows Live).Count -gt 1 -and @(Get-CombinedRows Recent).Count -gt 1
             } | Out-Null
-            (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+            (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
             if (-not $close) {
                 Set-CombinedQuery 'no-match-combined-sidebar'
                 Wait-Until -TimeoutSec 10 -Condition {
@@ -1917,11 +2230,11 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
     }
 
     It 'Recent Sessions collapses without hiding live agents' {
-        Set-CombinedQuery $script:marker
+        Set-CombinedQuery ''
         $scroll = Get-CombinedScroll ItemsList
         $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 100)
         $header = Get-CombinedElement HistoryHeaderButton
-        $header.Current.Name | Should -Be 'Recent Sessions'
+        $header.Current.Name | Should -Be 'Recent agent sessions'
         $pattern = $header.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
         $pattern.Current.ExpandCollapseState | Should -Be ([Windows.Automation.ExpandCollapseState]::Expanded)
         $sessions = @((Get-CombinedSnapshot).sessions.session_id | Sort-Object)
@@ -1942,8 +2255,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
     }
 
     It 'Recent Sessions native expansion events match Content view' {
-        Set-CombinedQuery $script:history[0].title
-        Wait-Until -TimeoutSec 10 -Condition { @(Get-CombinedRows Recent).Count -eq 1 } | Out-Null
+        Set-CombinedQuery ''
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-CombinedRows Recent).Count -gt 0 } | Out-Null
         $header = Get-CombinedElement HistoryHeaderButton
         $header.Current.ControlType | Should -Be ([Windows.Automation.ControlType]::Button)
         $pattern = $header.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
@@ -1962,11 +2275,13 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Get-CombinedElement HistoryHeaderButton | Should -Not -BeNullOrEmpty
             $pattern.Expand()
             Wait-Until -TimeoutSec 5 -Condition {
-                $events.Snapshot() -contains 'Expanded' -and @(Get-CombinedRows Recent).Count -eq 1
+                $events.Snapshot() -contains 'Expanded' -and @(Get-CombinedRows Recent).Count -gt 0
             } | Out-Null
             $pattern.Expand()
             Start-Sleep -Milliseconds 300
             @($events.Snapshot() | Where-Object { $_ -eq 'Expanded' }) | Should -HaveCount 1
+            Set-CombinedQuery $script:history[0].title
+            Wait-Until -TimeoutSec 10 -Condition { @(Get-CombinedRows Recent).Count -eq 1 } | Out-Null
             $row = @(Get-CombinedRows Recent)[0]
             $scrollItem = $row.GetCurrentPattern([Windows.Automation.ScrollItemPattern]::Pattern)
             $scrollItem.ScrollIntoView()
@@ -1978,15 +2293,17 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         }
         finally {
             $events.Dispose()
-            $pattern.Expand()
+            Set-CombinedQuery ''
+            (Get-CombinedElement HistoryHeaderButton).GetCurrentPattern(
+                [Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
         }
     }
 
     It 'Collapsing focused Recent Sessions preserves the active shell' {
         Set-WtPaneFocus -App $script:app -SessionId $script:tabs[0].session_id
         $active = Get-ActivePane -App $script:app
-        Set-CombinedQuery $script:history[0].title
-        Wait-Until -TimeoutSec 10 -Condition { @(Get-CombinedRows Recent).Count -eq 1 } | Out-Null
+        Set-CombinedQuery ''
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-CombinedRows Recent).Count -gt 0 } | Out-Null
         $row = @(Get-CombinedRows Recent)[0]
         $row.GetCurrentPattern([Windows.Automation.ScrollItemPattern]::Pattern).ScrollIntoView()
         $row.SetFocus()
@@ -2007,12 +2324,12 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             (Get-ActivePane -App $script:app).session_id | Should -Be $active.session_id
             @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId | ForEach-Object { "$($_.tab_id):$($_.title)" }) | Should -Be $tabs
             @((Get-CombinedSnapshot).sessions.session_id | Sort-Object) | Should -Be $snapshot
-            (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be Agents
-            Get-UiValue -App $script:app -Selector SearchTextBox | Should -Be $script:history[0].title
+            (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
+            Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be ''
             $newLog = (Get-Content -LiteralPath $script:fixtureLog -Raw).Substring($fixtureBefore.Length)
             $newLog | Should -Not -Match '\|(prompt|new|resume|load)\|'
             $pattern.Expand()
-            Wait-Until -TimeoutSec 5 -Condition { @(Get-CombinedRows Recent).Count -eq 1 } | Out-Null
+            Wait-Until -TimeoutSec 5 -Condition { @(Get-CombinedRows Recent).Count -gt 0 } | Out-Null
             (Get-CombinedRowText (Get-CombinedRows Recent)[0]) | Should -Match ([regex]::Escape($script:history[0].title))
             (Get-ActivePane -App $script:app).session_id | Should -Be $active.session_id
         }
@@ -2054,8 +2371,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             (Get-ActivePane -App $script:app).session_id | Should -Be $selected.session_id
             @((Get-CombinedSnapshot).sessions | Where-Object { $_.session_id -in $script:history.sessionId } |
                 ForEach-Object { "$($_.session_id):$($_.title)" } | Sort-Object) | Should -Be $snapshot
-            Get-UiValue -App $script:app -Selector SearchTextBox | Should -Be $script:marker
-            (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be Agents
+            Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $script:marker
+            (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         }
         finally {
             if ($created -and @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId | Where-Object { $_.title -like "$script:marker-mutation*" }).Count) {
@@ -2109,10 +2426,10 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             foreach ($view in @($false, $true)) {
                 Set-CombinedView $view
                 $targets = @(
-                    @{ Id = 'VerticalTabsHeaderButton'; Text = $(if ($view) { 'Switch to Tabs' } else { 'Switch to Agents' }) },
                     @{ Id = 'FilterTabsButton'; Text = 'Sidebar display options' }
                 )
-                if ($view) { $targets += @{ Id = 'SearchTabsButton'; Text = 'Search active and recent agent sessions' } }
+                $targets += @{ Id = 'SearchTabsButton'; Text = (Get-CombinedElement SearchTabsButton).Current.Name }
+                Assert-CombinedHeaderCue Tabs
                 foreach ($target in $targets) {
                     $element = Get-CombinedElement $target.Id
                     $element.Current.Name | Should -Be $target.Text

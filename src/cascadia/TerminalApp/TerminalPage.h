@@ -362,13 +362,6 @@ namespace winrt::TerminalApp::implementation
         uint64_t _historyActivationSerial{ 0 };
         std::unordered_map<std::wstring, winrt::hstring> _historyUnresolvedActivations;
         bool _preserveSidebarHistory{ false };
-        struct _SidebarHistoryEntryState
-        {
-            bool railWasCollapsed{ false };
-            bool tabSearchHadFocus{ false };
-            winrt::weak_ref<Microsoft::Terminal::Control::TermControl> sourceControl;
-        };
-        std::optional<_SidebarHistoryEntryState> _historyEntryState;
         Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
         bool _historyRefreshInFlight{ false };
         bool _historyRefreshPending{ false };
@@ -1014,6 +1007,7 @@ namespace winrt::TerminalApp::implementation
         bool _IsAgentScopeEffective() const noexcept
         {
             return _isVerticalLayout &&
+                   _tabSearchQuery.empty() &&
                    _tabFilterMode != TerminalApp::TabStripFilterMode::AllTabs;
         }
         bool _IsTabSearchEffective() const noexcept
@@ -1021,12 +1015,18 @@ namespace winrt::TerminalApp::implementation
             return _isVerticalLayout &&
                    _isVerticalRailVisible &&
                    !_isVerticalRailCollapsed &&
-                   _tabSearchActive;
+                   (_tabSearchActive || !_tabSearchQuery.empty());
         }
         bool _IsTabListProjectionActive() const noexcept
         {
             return _IsAgentScopeEffective() || _IsTabSearchEffective();
         }
+        bool _AreRecentAgentSessionsVisible() const
+        {
+            return _isVerticalLayout && _isVerticalRailVisible && !_isVerticalRailCollapsed &&
+                   _tabStrip && _tabStrip.SidebarFilters().RecentAgentSessionsVisible();
+        }
+        void _UpdateRecentAgentSessionsVisibility();
         bool _IsTabListPositionOperationBlocked() const noexcept
         {
             return _IsTabListProjectionActive();
@@ -1037,7 +1037,6 @@ namespace winrt::TerminalApp::implementation
         void _ClearTabSearch();
         void _StartSidebarHistoryRefreshTimer();
         void _StopSidebarHistoryRefreshTimer();
-        void _CaptureSidebarHistoryEntry();
         Windows::UI::Xaml::Controls::Control _SidebarFocusedControl() const;
         bool _TryFocusSidebarInput(const Microsoft::Terminal::Control::TermControl& control);
         void _FocusSidebarTerminalFallback();
@@ -1146,6 +1145,8 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring sessionId;
             winrt::hstring agent;
             winrt::hstring resumeCommandline;
+            winrt::hstring backend;
+            winrt::hstring cwd;
         };
         // Most recent resumable agent session observed in each shell pane.
         // Retained after the CLI exits so a persisted-layout restore can
@@ -1169,6 +1170,7 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring sessionId;
             winrt::hstring agent;
             winrt::hstring cwd;
+            winrt::hstring backend;
         };
         // Layout replay precedes WTA startup. Keep births until the owning
         // helper acknowledges its COM subscription, not merely ACP readiness.
@@ -1361,10 +1363,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _DetectWtaPath() const;
         std::optional<uint32_t> _FindSourceOfAgentPaneId(const std::shared_ptr<Pane>& root);
         void _DelegatePromptToAgent(const winrt::hstring& prompt);
-        void _OpenDefaultNewTab();
-        safe_void_coroutine _RunSidebarDelegate(std::wstring wtaPath, std::wstring args);
-        void _OpenBackgroundAgentTab(bool preserveSidebarView = false);
-        void _LaunchDelegate(const std::optional<winrt::hstring>& prompt, bool preserveSidebarView = false);
+        void _OpenBackgroundAgentTab();
+        void _LaunchDelegate(const std::optional<winrt::hstring>& prompt);
 
         // Note (Phase 5): the per-pane wta-process watch + Job Object members
         // and their setup/teardown methods were removed when the legacy

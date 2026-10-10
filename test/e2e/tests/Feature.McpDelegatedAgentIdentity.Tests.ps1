@@ -12,6 +12,7 @@
 Describe 'Feature: MCP delegated agent identity' -Tag @('Feature', 'McpDelegatedAgentIdentity') {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\SidebarExpansionEvents.ps1')
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
         $script:app = $null
@@ -104,12 +105,9 @@ Describe 'Feature: MCP delegated agent identity' -Tag @('Feature', 'McpDelegated
         }
         function Set-IdentityView {
             param([bool]$Agents)
-            $expected = if ($Agents) { 'Agents' } else { 'Tabs' }
-            if ((Get-IdentityElement VerticalTabsHeader).Current.Name -ne $expected) {
-                Invoke-UiClick -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
-            }
+            Set-TestSidebarScope -App $script:app -AgentsOnly $Agents -Recent $Agents
             Wait-Until -TimeoutSec 10 -Because 'requested sidebar projection is visible' -Condition {
-                (Get-IdentityElement VerticalTabsHeader).Current.Name -eq $expected
+                (Get-IdentityElement VerticalTabsHeader).Current.Name -eq 'Tabs'
             } | Out-Null
         }
         function Get-IdentityRows {

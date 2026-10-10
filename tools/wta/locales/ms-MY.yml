@@ -130,6 +130,34 @@ agents.status.idle: "Menganggur"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. untuk tunjuk/sembunyikan anak tetingkap ejen AI • Ctrl+Shift+/ untuk tunjuk/sembunyikan sesi ejen AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Mesej dalam baris gilir: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Mesej dalam baris gilir: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
+queue.full: "Baris gilir penuh. Input anda telah disimpan."
+queue.enqueued: "Mesej ditambahkan ke baris gilir."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "%{count} mesej dalam baris gilir dibatalkan. Anda boleh menghantar mesej baharu."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Mesej dalam baris gilir adalah milik perbualan ini. Hantar atau buang mesej tersebut sebelum menukar sesi atau konfigurasi."
+queue.paused_header: "Dijeda: %{count} menunggu; tidak dihantar secara automatik"  # Pinned heading: automatic sending is stopped
+queue.recall: "Kembalikan yang terakhir"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Hantar yang selebihnya"  # Button: resume sending pending requests
+queue.discard: "Buang yang selebihnya"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Hantar atau kosongkan draf semasa sebelum mengembalikan permintaan daripada baris gilir."
+queue.enqueued_paused: "Ditambahkan ke baris gilir yang dihentikan. Pilih Hantar yang selebihnya untuk memulakannya."
+queue.resubmit: "Perlu dihantar semula"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Permintaan yang menunggu belum boleh dihantar. Selesaikan masalah sambungan atau lengkapkan interaksi aktif; kembalikan dan hantar semula permintaan pembaikan yang telah tamat tempoh."
+queue.stopped: "Penghantaran automatik dihentikan. Permintaan pengguna yang menunggu telah dikekalkan."
+queue.capture_failed: "Tidak dapat menyimpan konteks ralat: %{error}"
+queue.auto: "Pembaikan automatik"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Pengumpulan data untuk pembaikan automatik memerlukan anak tetingkap sumber yang dinyatakan secara jelas."
+queue.snapshot_source_unavailable: "Anak tetingkap sumber %{pane} untuk pembaikan automatik tidak tersedia."
+queue.snapshot_shell_unavailable: "Anak tetingkap sumber %{pane} untuk pembaikan automatik tiada konteks shell."
+queue.snapshot_cwd_unavailable: "Anak tetingkap sumber %{pane} untuk pembaikan automatik tiada direktori kerja."
+queue.snapshot_output_unavailable: "Anak tetingkap sumber %{pane} untuk pembaikan automatik tiada output yang boleh dibaca."
+queue.snapshot_context_changed: "Perintah dalam anak tetingkap sumber %{pane} berubah sebelum konteks ralatnya dapat disimpan."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Menyediakan sambungan ejen AI..."
@@ -267,3 +295,11 @@ system.config_update_failed: "Gagal mengemas kini %{option}: %{error}"
 system.yolo_disable_pending: "penyedia ejen AI belum mengesahkan bahawa sesi berada dalam keadaan tanpa keistimewaan seperti yang diperlukan"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Kelulusan automatik dilumpuhkan oleh dasar organisasi anda."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Model tidak diketahui %{model} — taip /model untuk melihat senarai yang tersedia."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Pilih kaedah daftar masuk untuk meneruskan di sini."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Lengkapkan daftar masuk dalam pelayar anda. Tekan Esc untuk membatalkan penantian."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Pelayar tidak terbuka? Gunakan pautan daftar masuk ini. O: buka · Y: salin."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Tidak dapat membuka pelayar. Buka pautan daftar masuk secara manual."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Tidak dapat menyalin pautan daftar masuk. Pilih dan salin secara manual."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Daftar masuk tidak selesai dalam masa yang ditetapkan. Cuba lagi apabila anda bersedia."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Kami tidak dapat menemui \"%{agent}\" dalam persekitaran log masuk %{distro}. Semak pemasangan, PATH dan profil shell pengguna Linux ini, kemudian cuba lagi."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

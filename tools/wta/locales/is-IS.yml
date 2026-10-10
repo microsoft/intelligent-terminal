@@ -130,6 +130,34 @@ agents.status.idle: "Aðgerðarlaus"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. til að sýna/fela agentspjald • Ctrl+Shift+/ til að sýna/fela agentlotu)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Skilaboð í biðröð: %{count}"  # Single-line pending count above input; includes user and automatic requests; hidden when empty
+queue.header_one: "Skilaboð í biðröð: %{count}"  # Same count indicator when exactly one request is waiting; %{count} is 1
+queue.full: "Biðröðin er full. Innslátturinn þinn hefur verið varðveittur."
+queue.enqueued: "Skilaboðin voru sett í biðröð."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Hætt var við %{count} skilaboð í biðröð. Þú getur sent ný skilaboð."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Skilaboð í biðröð tilheyra þessu samtali. Sendu þau eða fleygðu þeim áður en þú skiptir um lotu eða stillingar."
+queue.paused_header: "Gert hlé: %{count} í bið; ekki sent sjálfkrafa"  # Pinned heading: automatic sending is stopped
+queue.recall: "Endurheimta síðustu"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Senda það sem eftir er"  # Button: resume sending pending requests
+queue.discard: "Fleygja því sem eftir er"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Sendu eða hreinsaðu núverandi drög áður en þú endurheimtir beiðni úr biðröðinni."
+queue.enqueued_paused: "Bætt við stöðvaða biðröð. Veldu Senda það sem eftir er til að ræsa hana."
+queue.resubmit: "Þarf að senda aftur"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Ekki er enn hægt að senda beiðnir í bið. Leystu tengivandann eða ljúktu virkum samskiptum; endurheimtu útrunnar viðgerðarbeiðnir og sendu þær aftur."
+queue.stopped: "Sjálfvirk sending stöðvuð. Beiðnir notanda í bið hafa verið varðveittar."
+queue.capture_failed: "Ekki tókst að varðveita samhengi villunnar: %{error}"
+queue.auto: "Sjálfvirk lagfæring"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Söfnun greiningargagna fyrir sjálfvirka lagfæringu krefst þess að upprunaspjald sé tilgreint sérstaklega."
+queue.snapshot_source_unavailable: "Upprunaspjaldið %{pane} fyrir sjálfvirka lagfæringu er ekki tiltækt."
+queue.snapshot_shell_unavailable: "Upprunaspjaldið %{pane} fyrir sjálfvirka lagfæringu hefur ekkert skeljarsamhengi."
+queue.snapshot_cwd_unavailable: "Upprunaspjaldið %{pane} fyrir sjálfvirka lagfæringu hefur enga vinnumöppu."
+queue.snapshot_output_unavailable: "Upprunaspjaldið %{pane} fyrir sjálfvirka lagfæringu hefur ekkert læsilegt úttak."
+queue.snapshot_context_changed: "Skipunin á upprunaspjaldinu %{pane} breyttist áður en hægt var að varðveita villusamhengi hennar."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Undirbý tengingu við agent..."
@@ -267,3 +295,11 @@ system.config_update_failed: "Tókst ekki að uppfæra %{option}: %{error}"
 system.yolo_disable_pending: "veitandi agentsins hefur ekki staðfest að lotan sé í nauðsynlegri stöðu án aukinna réttinda"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Sjálfvirkt samþykki er óvirkt samkvæmt stefnu fyrirtækis þíns."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Óþekkt líkan %{model} — sláðu inn /model til að sjá tiltækan lista."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Agentinn þinn \"%{agent}\" krefst auðkenningar. Veldu innskráningaraðferð til að halda áfram hér."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Ljúktu innskráningu í vafranum þínum. Ýttu á Esc til að hætta að bíða."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Opnaðist vafrinn ekki? Notaðu þennan innskráningartengil. O: opna · Y: afrita."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Ekki tókst að opna vafrann. Opnaðu innskráningartengilinn handvirkt."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Ekki tókst að afrita innskráningartengilinn. Veldu hann og afritaðu handvirkt."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Innskráningu lauk ekki í tæka tíð. Reyndu aftur þegar þú ert tilbúinn."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Við fundum ekki \"%{agent}\" í innskráningarumhverfi %{distro}. Athugaðu uppsetningu, PATH og skeljarprófíl þessa Linux-notanda og reyndu síðan aftur."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

@@ -5,6 +5,7 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
         $script:ownsConfig = $false
         $script:app = $null
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\SidebarExpansionEvents.ps1')
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
         if ((Get-ItTestPackage) -ne 'Dev') { throw 'This PR validation requires an explicitly selected Dev build.' }
@@ -82,14 +83,14 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
                 $matches = [regex]::Matches((Get-HelperTrace), '"sessions_in_sidebar":(true|false)')
                 $matches.Count -gt 0 -and $matches[$matches.Count - 1].Groups[1].Value -eq $expected
             } | Out-Null
-            $selector = if ($Layout -eq 'vertical') { 'VerticalTabsHeaderButton' } else { 'SessionToggleButton' }
+            $selector = if ($Layout -eq 'vertical') { 'VerticalTabsHeader' } else { 'SessionToggleButton' }
             Wait-Until -TimeoutSec 15 -Because "$Layout session entry point is visible" -Condition {
                 Test-NativeVisible -Id $selector
             } | Out-Null
         }
         function Open-TestSidebar {
             if (-not (Test-NativeVisible -Id HistoryHeaderButton)) {
-                Invoke-UiClick -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
+                Set-TestSidebarScope -App $script:app -Recent $true
             }
             Wait-Until -TimeoutSec 15 -Because 'native history panel is open' -Condition {
                 Test-NativeVisible -Id HistoryHeaderButton
@@ -97,7 +98,7 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
             $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
             $header = $window.FindFirst([Windows.Automation.TreeScope]::Descendants,
                 [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, 'VerticalTabsHeader'))
-            $header.Current.Name | Should -Be 'Agents'
+            $header.Current.Name | Should -Be 'Tabs'
             $search = $window.FindFirst([Windows.Automation.TreeScope]::Descendants,
                 [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, 'SearchTabsButton'))
             $search.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState |

@@ -246,7 +246,7 @@ event's table are emitted; an empty string or `unknown` is a value, not an
 omitted field. Agent/provider session identifiers are not emitted.
 
 The agent category set is `copilot`, `claude`, `codex`, `gemini`,
-`opencode`, and `custom`. WTA and the App snapshot bucket unrecognized agent
+`opencode`, `antigravity`, and `custom`. WTA and the App snapshot bucket unrecognized agent
 identifiers as `custom` in session snapshots; Editor probes bucket custom-provider IDs as
 `custom`. `DelegateAgentId` additionally permits `none` when no delegate
 is resolved. Startup configuration and provider-change events distinguish
@@ -341,13 +341,13 @@ the same entry remains active can complete the pending measurement.
 
 ### App.SidebarTabPinned
 
-**Trigger:** the user enables **Keep tab running** through the sidebar tab
+**Trigger:** the user selects **Turn on headless mode** through the sidebar tab
 context menu. The telemetry name uses "pinned" terminology;
 it does not mean tab-order pinning or a Windows taskbar pin.
 
 | Field | Type | Meaning / values |
 |---|---|---|
-| `pinned_count` | UInt32 | Attached terminal tabs in the owning window with Keep tab running enabled, after the action |
+| `pinned_count` | UInt32 | Attached terminal tabs in the owning window with headless mode enabled, after the action |
 
 Count includes tabs hidden by search/filter, but excludes detached retained
 tabs, other windows, and individual panes. Turning keep-running off does not
@@ -372,7 +372,7 @@ or routing identifier is recorded.
 
 ### App.KeepRunningMarked
 
-**Trigger:** Keep tab running is enabled by the sidebar menu or the explicit
+**Trigger:** Headless mode is enabled by the sidebar menu or the explicit
 tab-control API. The event captures the counts after the false-to-true
 transition. Disabling, repeated enable requests, startup, and copying the
 choice into a transferred tab do not emit.
@@ -480,7 +480,7 @@ the same process and windows that never connect an agent session.
 | Field | Type | Meaning / values |
 |---|---|---|
 | `TabsInTitlebar` | Bool | Existing configured tabs-in-titlebar field |
-| `PrimaryProvider` | String | Configured primary provider: `copilot`, `claude`, `codex`, `gemini`, `opencode`, `custom`, `unknown`, or `none` |
+| `PrimaryProvider` | String | Configured primary provider: `copilot`, `claude`, `codex`, `gemini`, `opencode`, `antigravity`, `custom`, `unknown`, or `none` |
 | `PrimaryEffectiveProvider` | String | Settings-layer effective primary provider in the same bucket set, after fallback/policy resolution |
 | `PrimaryCustomConfiguredCount` | UInt32 | Distinct executable-derived custom IDs in the primary role's plural and legacy command settings |
 | `PrimaryCustomSelectedCommandConfigured` | Bool | Whether that selected custom ID has a matching configured command entry |
@@ -925,7 +925,7 @@ CLI.
 | Field | Type | Meaning / values |
 |---|---|---|
 | `Operation` | String | `Install` or `Uninstall` |
-| `Cli` | String | `copilot`, `claude`, `gemini`, `codex`, or `opencode` |
+| `Cli` | String | `copilot`, `claude`, `gemini`, `codex`, `opencode`, or `antigravity` |
 | `Outcome` | String | Install: `installed`, `skipped`, `failed`; uninstall: `succeeded`, `skipped`, `failed` |
 
 One command can affect multiple CLIs and emit multiple events.
@@ -951,7 +951,7 @@ actually applied, so a later valid provider change is still counted.
 | Field | Type | Meaning / values |
 |---|---|---|
 | `role` | String | `primary` or `delegate` |
-| `from` | String | Previous configured provider: `copilot`, `claude`, `codex`, `gemini`, `opencode`, `custom`, `unknown`, or `none` |
+| `from` | String | Previous configured provider: `copilot`, `claude`, `codex`, `gemini`, `opencode`, `antigravity`, `custom`, `unknown`, or `none` |
 | `to` | String | New configured provider, using the same bucket set |
 
 This covers accepted Settings UI saves and external settings-file changes,
