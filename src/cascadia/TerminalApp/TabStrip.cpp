@@ -997,7 +997,7 @@ namespace winrt::TerminalApp::implementation
         }
         const auto foreground = isCurrent ? item.CurrentForeground() : nullptr;
         const auto palette = root.FindName(L"HistorySelectionPalette").try_as<Control>();
-        for (const auto name : { L"HistoryTitleText", L"HistorySubtitleText", L"HistoryStatusText", L"HistoryProviderNameText" })
+        for (const auto name : { L"HistoryTitleText", L"HistoryCwdText", L"HistorySubtitleText", L"HistoryStatusText" })
         {
             if (const auto control = root.FindName(name).try_as<Control>())
             {
@@ -2425,6 +2425,7 @@ namespace winrt::TerminalApp::implementation
         };
 
         append(item.Title());
+        append(item.Cwd());
         append(item.Subtitle() + item.StatusText());
         append(item.Subtitle() + L" \u00b7 " + item.StatusText());
         auto providerLabel = item.ProviderDisplayName();

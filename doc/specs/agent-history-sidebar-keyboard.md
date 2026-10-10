@@ -110,12 +110,14 @@ agent action, not an override of the normal new-tab control.
 - The display-options button uses **Sidebar display options** for its tooltip
   and accessible name regardless of filters. Its menu configures visible tab details and
   any available tab filters; opening it does not itself filter tabs.
-- History rows use a leading 16px provider icon, vertically centered across the
-  title and metadata rows, with both text rows aligned to its right. Metadata is
-  ordered as timestamp, meaningful status, and provider display name.
-  Ended/historical rows omit the redundant
-  Historical status; live Idle/Working/Attention/Error statuses remain visible.
-  An outlined window with an upward restore arrow after the provider name
+- History rows have three text lines aligned to the right of a leading 16px
+  provider icon: title, working directory, then status or time. The icon is
+  vertically centered across all three lines. The third line shows only **In use**
+  for live sessions without an IT registration, the detailed
+  Idle/Active/Waiting for input/Error status for live IT registrations, or the
+  relative timestamp for ended/historical sessions. Live rows do not display a
+  timestamp, and historical rows do not display the redundant Historical status.
+  An outlined window with an upward restore arrow beside the third line
   identifies a confirmed background tab; clicking restores the whole original
   tab. Two overlapping windows identify a session attached to another visible
   window; clicking focuses its original tab and pane. The status remains plain
@@ -128,10 +130,10 @@ agent action, not an override of the normal new-tab control.
   Bare Enter activates the focused History row even with selection disabled;
   modified Enter is ignored. A focused ownership button retains its native
   activation, rather than also activating its containing row.
-  Provider identity remains available through the icon tooltip, highlighted
-  provider-name text, and shared search.
-  Time and provider text share bounded metadata space and may truncate with an ellipsis at the
-  minimum sidebar width; status and the ownership action retain reserved space.
+  Provider identity remains available through the icon tooltip and shared search.
+  The working directory supports search highlighting and a full-path tooltip.
+  Text may truncate with an ellipsis at the minimum sidebar width; the ownership
+  action retains reserved space.
 - History ages use Windows ICU's standard, locale-aware **short numeric relative
   time** format (CLDR), using the UI resource language rather than private unit
   abbreviations. For example, English uses `2 min. ago`, `2 hr. ago`, `2 wk. ago`,
