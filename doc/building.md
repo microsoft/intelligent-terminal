@@ -102,39 +102,11 @@ The Terminal is bundled as an `.msix`, which is produced by the `CascadiaPackage
 "%msbuild%" "%OPENCON%\OpenConsole.slnx" /p:Configuration=%_LAST_BUILD_CONF% /p:Platform=%ARCH% /p:AppxSymbolPackageEnabled=false /t:Terminal\CascadiaPackage /m
 ```
 
-This takes quite some time, and only generates an `msix`. It does not install the msix. To deploy the package:
-
-```powershell
-# If you haven't already:
-Import-Module .\tools\OpenConsole.psm1;
-Set-MsBuildDevEnvironment;
-
-# The Set-MsBuildDevEnvironment call is needed for finding the path to
-# makeappx. It also takes a little longer to run. If you're sticking in powershell, best to do that.
-
-Set-Location -Path src\cascadia\CascadiaPackage\AppPackages\CascadiaPackage_0.0.1.0_x64_Debug_Test;
-if ((Get-AppxPackage -Name 'WindowsTerminalDev*') -ne $null) {
-Remove-AppxPackage 'WindowsTerminalDev_0.0.1.0_x64__8wekyb3d8bbwe'
-};
-New-Item ..\loose -Type Directory -Force;
-makeappx unpack /v /o /p .\CascadiaPackage_0.0.1.0_x64_Debug.msix /d ..\loose\;
-Add-AppxPackage -Path ..\loose\AppxManifest.xml -Register -ForceUpdateFromAnyVersion -ForceApplicationShutdown
-```
-
-Or the cmd.exe version:
-```cmd
-@rem razzle.cmd doesn't set:
-@rem set WindowsSdkDir=C:\Program Files (x86)\Windows Kits\10\
-@rem vsdevcmd.bat does a lot of logic to find that.
-@rem
-@rem I'm gonna hard code it below:
-
-powershell -Command Set-Location -Path %OPENCON%\src\cascadia\CascadiaPackage\AppPackages\CascadiaPackage_0.0.1.0_x64_Debug_Test;if ((Get-AppxPackage -Name 'WindowsTerminalDev*') -ne $null) { Remove-AppxPackage 'WindowsTerminalDev_0.0.1.0_x64__8wekyb3d8bbwe'};New-Item ..\loose -Type Directory -Force;C:\'Program Files (x86)'\'Windows Kits'\10\bin\10.0.19041.0\x64\makeappx unpack /v /o /p .\CascadiaPackage_0.0.1.0_x64_Debug.msix /d ..\Loose\;Add-AppxPackage -Path ..\loose\AppxManifest.xml -Register -ForceUpdateFromAnyVersion -ForceApplicationShutdown
-```
-
-(yes, the cmd version is just calling powershell to do the powershell version. Too lazy to convert the rest by hand, I'm already copying from `.vscode\tasks.json`)
-
-Building the package from VS generates the loose layout to begin with, and then registers the loose manifest, skipping the msix stop. It's a lot faster than the commandline inner loop here, unfortunately.
+This generates an `msix`; it does not install it. For repeatable same-version
+Debug/Dev deployment, use [Loose Debug/Dev deployment](#loose-debugdev-deployment)
+below rather than uninstalling and unpacking the MSIX into another layout.
+For signing and distributing an MSIX, see [Building Installers](building-installer.md);
+that distribution workflow is separate from the loose Dev inner loop.
 
 ### Loose Debug/Dev deployment
 
