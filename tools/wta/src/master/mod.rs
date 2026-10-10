@@ -7309,6 +7309,7 @@ async fn refresh_agent_history(
     if matches!(trigger, HistoryRefreshTrigger::Periodic)
         && !uses_periodic_polling
         && refresh.failures == 0
+        && refresh.last_count.is_some()
         && !agent.history_refresh.event_pending.load(Ordering::Acquire)
     {
         return refresh.last_count;
