@@ -75,6 +75,54 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
+    void ContentManager::UpdateKeepRunningTab(const winrt::TerminalApp::Tab& tab)
+    {
+        _CheckThread();
+        std::erase_if(_keepRunningTabs, [](const auto& entry) {
+            return !entry.second.get();
+        });
+        const auto impl = winrt::get_self<implementation::Tab>(tab);
+        if (impl->KeepRunning() && impl->CanKeepRunning())
+        {
+            _keepRunningTabs.insert_or_assign(impl->StableId(), winrt::make_weak(tab));
+        }
+        else
+        {
+            const auto it = _keepRunningTabs.find(impl->StableId());
+            if (it != _keepRunningTabs.end() && it->second.get() == tab)
+            {
+                _keepRunningTabs.erase(it);
+            }
+        }
+        try
+        {
+            KeepRunningTabsChanged.raise(*this, nullptr);
+        }
+        CATCH_LOG()
+    }
+
+    bool ContentManager::IsPaneKeepRunning(const winrt::guid& paneId) const
+    {
+        _CheckThread();
+        if (paneId == winrt::guid{})
+        {
+            return false;
+        }
+        for (const auto& [_, weakTab] : _keepRunningTabs)
+        {
+            if (const auto tab = weakTab.get())
+            {
+                const auto impl = winrt::get_self<implementation::Tab>(tab);
+                if (const auto root = impl->GetRootPane();
+                    impl->KeepRunning() && root && root->FindPaneBySessionId(paneId))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     void ContentManager::Detach(const Microsoft::Terminal::Control::TermControl& control)
     {
         const auto contentId{ control.ContentId() };
@@ -369,6 +417,7 @@ namespace winrt::TerminalApp::implementation
         CATCH_LOG()
         auto group = std::move(_keptGroups.at(groupId));
         _keptGroups.erase(groupId);
+        _keepRunningTabs.erase(winrt::get_self<Tab>(group.tab)->StableId());
         const auto notify = wil::scope_exit([&]() noexcept {
             group.lease.Retire();
             _NotifyKeptSessionsChanged();
@@ -400,6 +449,11 @@ namespace winrt::TerminalApp::implementation
         try
         {
             KeptSessionsChanged.raise(*this, nullptr);
+        }
+        CATCH_LOG()
+        try
+        {
+            KeepRunningTabsChanged.raise(*this, nullptr);
         }
         CATCH_LOG()
     }
