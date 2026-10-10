@@ -443,8 +443,8 @@
     <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
   </data>
   <data name="SplitProfileUnavailableMessage" xml:space="preserve">
-    <value>Təyin edilmiş bölmə profili əlçatan deyil. Əvəzində qlobal standart profil istifadə ediləcək. Bölmə üçün hədəf profili bu profilin parametrlərində dəyişə bilərsiniz.</value>
-    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+    <value>Təyin edilmiş bölmə profili əlçatan deyil. Əvəzində qlobal standart profil istifadə ediləcək. Bölmə üçün hədəf profili dəyişmək üçün settings.json faylında bu profilin defaultSplitProfile parametrini redaktə edin.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
   </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>Aşağıdakı tabları bağla</value>

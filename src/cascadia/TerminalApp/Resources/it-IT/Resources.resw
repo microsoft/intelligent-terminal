@@ -1545,8 +1545,8 @@ Per tutte le opzioni disponibili, esegui 'wt new-tab --help'.</value>
     <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
   </data>
   <data name="SplitProfileUnavailableMessage" xml:space="preserve">
-    <value>Il profilo configurato per la divisione non è disponibile. Verrà usato il profilo predefinito globale. Puoi cambiare il profilo di destinazione della divisione nelle impostazioni di questo profilo.</value>
-    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+    <value>Il profilo configurato per la divisione non è disponibile. Verrà usato il profilo predefinito globale. Per cambiare il profilo di destinazione della divisione, modifica defaultSplitProfile di questo profilo in settings.json.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
   </data>
   <data name="NotificationIconRestoreKeptTab" xml:space="preserve">
     <value>Ripristina</value>

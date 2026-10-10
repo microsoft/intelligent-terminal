@@ -263,8 +263,8 @@
     <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
   </data>
   <data name="SplitProfileUnavailableMessage" xml:space="preserve">
-    <value>O perfil de división configurado non está dispoñible. No seu lugar usarase o perfil predeterminado global. Podes cambiar o perfil de destino da división na configuración deste perfil.</value>
-    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+    <value>O perfil de división configurado non está dispoñible. No seu lugar usarase o perfil predeterminado global. Para cambiar o perfil de destino da división, edita defaultSplitProfile deste perfil en settings.json.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
   </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>Pechar as pestanas de abaixo</value>

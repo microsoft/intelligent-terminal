@@ -426,8 +426,8 @@
     <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
   </data>
   <data name="SplitProfileUnavailableMessage" xml:space="preserve">
-    <value>విభజన కోసం కాన్ఫిగర్ చేసిన ప్రొఫైల్ అందుబాటులో లేదు. బదులుగా గ్లోబల్ డిఫాల్ట్ ప్రొఫైల్ ఉపయోగించబడుతుంది. మీరు ఈ ప్రొఫైల్ సెట్టింగ్‌లలో విభజన లక్ష్య ప్రొఫైల్‌ను మార్చవచ్చు.</value>
-    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+    <value>విభజన కోసం కాన్ఫిగర్ చేసిన ప్రొఫైల్ అందుబాటులో లేదు. బదులుగా గ్లోబల్ డిఫాల్ట్ ప్రొఫైల్ ఉపయోగించబడుతుంది. విభజన లక్ష్య ప్రొఫైల్‌ను మార్చడానికి, settings.json లో ఈ ప్రొఫైల్ యొక్క defaultSplitProfile ను సవరించండి.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
   </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>కింద ఉన్న ట్యాబ్‌లను మూసివేయండి</value>

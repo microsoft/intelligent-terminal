@@ -444,8 +444,8 @@
     <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
   </data>
   <data name="SplitProfileUnavailableMessage" xml:space="preserve">
-    <value>Конфигурираният профил за разделяне не е наличен. Вместо него ще се използва глобалният профил по подразбиране. Можете да промените целевия профил за разделяне в настройките на този профил.</value>
-    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+    <value>Конфигурираният профил за разделяне не е наличен. Вместо него ще се използва глобалният профил по подразбиране. За да промените целевия профил за разделяне, редактирайте defaultSplitProfile на този профил в settings.json.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
   </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>Затваряне на разделите отдолу</value>

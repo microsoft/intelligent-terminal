@@ -427,8 +427,8 @@
     <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
   </data>
   <data name="SplitProfileUnavailableMessage" xml:space="preserve">
-    <value>تقسیم کے لیے تشکیل دیا گیا پروفائل دستیاب نہیں ہے۔ اس کی جگہ عالمی طے شدہ پروفائل استعمال کیا جائے گا۔ آپ اس پروفائل کی ترتیبات میں تقسیم کا ہدف پروفائل تبدیل کر سکتے ہیں۔</value>
-    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+    <value>تقسیم کے لیے تشکیل دیا گیا پروفائل دستیاب نہیں ہے۔ اس کی جگہ عالمی طے شدہ پروفائل استعمال کیا جائے گا۔ تقسیم کا ہدف پروفائل تبدیل کرنے کے لیے، settings.json میں اس پروفائل کے defaultSplitProfile میں ترمیم کریں۔</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
   </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>نیچے موجود ٹیبز بند کریں</value>

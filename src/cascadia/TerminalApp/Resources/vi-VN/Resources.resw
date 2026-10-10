@@ -355,8 +355,8 @@
     <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
   </data>
   <data name="SplitProfileUnavailableMessage" xml:space="preserve">
-    <value>Hồ sơ chia ngăn đã định cấu hình không khả dụng. Hồ sơ mặc định chung sẽ được dùng thay thế. Bạn có thể thay đổi hồ sơ đích để chia ngăn trong phần cài đặt của hồ sơ này.</value>
-    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+    <value>Hồ sơ chia ngăn đã định cấu hình không khả dụng. Hồ sơ mặc định chung sẽ được dùng thay thế. Để thay đổi hồ sơ đích để chia ngăn, hãy chỉnh sửa defaultSplitProfile của hồ sơ này trong settings.json.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
   </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>Đóng các tab bên dưới</value>

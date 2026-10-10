@@ -444,8 +444,8 @@
     <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
   </data>
   <data name="SplitProfileUnavailableMessage" xml:space="preserve">
-    <value>Het ingestelde splitsingsprofiel is niet beschikbaar. In plaats daarvan wordt het globale standaardprofiel gebruikt. U kunt het doelprofiel voor de splitsing wijzigen in de instellingen van dit profiel.</value>
-    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+    <value>Het ingestelde splitsingsprofiel is niet beschikbaar. In plaats daarvan wordt het globale standaardprofiel gebruikt. Als u het doelprofiel voor de splitsing wilt wijzigen, bewerkt u defaultSplitProfile van dit profiel in settings.json.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
   </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>Tabbladen hieronder sluiten</value>

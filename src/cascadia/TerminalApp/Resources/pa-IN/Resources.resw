@@ -447,8 +447,8 @@
     <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
   </data>
   <data name="SplitProfileUnavailableMessage" xml:space="preserve">
-    <value>ਵੰਡ ਲਈ ਕੌਂਫਿਗਰ ਕੀਤਾ ਪ੍ਰੋਫਾਈਲ ਉਪਲਬਧ ਨਹੀਂ ਹੈ। ਇਸ ਦੀ ਥਾਂ ਗਲੋਬਲ ਡਿਫੌਲਟ ਪ੍ਰੋਫਾਈਲ ਵਰਤਿਆ ਜਾਵੇਗਾ। ਤੁਸੀਂ ਇਸ ਪ੍ਰੋਫਾਈਲ ਦੀਆਂ ਸੈਟਿੰਗਾਂ ਵਿੱਚ ਵੰਡ ਦਾ ਟੀਚਾ ਪ੍ਰੋਫਾਈਲ ਬਦਲ ਸਕਦੇ ਹੋ।</value>
-    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+    <value>ਵੰਡ ਲਈ ਕੌਂਫਿਗਰ ਕੀਤਾ ਪ੍ਰੋਫਾਈਲ ਉਪਲਬਧ ਨਹੀਂ ਹੈ। ਇਸ ਦੀ ਥਾਂ ਗਲੋਬਲ ਡਿਫੌਲਟ ਪ੍ਰੋਫਾਈਲ ਵਰਤਿਆ ਜਾਵੇਗਾ। ਵੰਡ ਦਾ ਟੀਚਾ ਪ੍ਰੋਫਾਈਲ ਬਦਲਣ ਲਈ, settings.json ਵਿੱਚ ਇਸ ਪ੍ਰੋਫਾਈਲ ਦਾ defaultSplitProfile ਸੰਪਾਦਿਤ ਕਰੋ।</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
   </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>ਹੇਠਾਂ ਦੀਆਂ ਟੈਬਾਂ ਬੰਦ ਕਰੋ</value>

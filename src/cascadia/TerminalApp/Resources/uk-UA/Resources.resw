@@ -1517,8 +1517,8 @@
     <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
   </data>
   <data name="SplitProfileUnavailableMessage" xml:space="preserve">
-    <value>Налаштований профіль для розділення недоступний. Замість нього буде використано глобальний основний профіль. Цільовий профіль для розділення можна змінити в налаштуваннях цього профілю.</value>
-    <comment>Warning for a default split target that is missing, hidden, or invalid.</comment>
+    <value>Налаштований профіль для розділення недоступний. Замість нього буде використано глобальний основний профіль. Щоб змінити цільовий профіль для розділення, відредагуйте значення defaultSplitProfile цього профілю в settings.json.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
   </data>
   <data name="NotificationIconRestoreKeptTab" xml:space="preserve">
     <value>Відновити</value>
