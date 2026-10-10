@@ -48,6 +48,11 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
             } | Out-Null
         }
 
+        function Get-QueueToastRegex {
+            '(?m)^\s*(?:[^\p{L}\p{N}\s]+\s*)?(?:' +
+                (Get-QueueTextRegex -Key 'queue.enqueued') + ')\s*[.!。]?\s*$'
+        }
+
         function Send-QueueInput {
             param([Parameter(Mandatory)][string]$Text)
             Send-WtInput -App $script:app -SessionId $script:agentPaneId -Text $Text
@@ -235,7 +240,7 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
             Send-QueueInput $Text
             Wait-QueueRecordCount -Count 1
             Wait-QueueText ([regex]::Escape("START_$Marker"))
-            (Get-QueueText) | Should -Not -Match (Get-QueueTextRegex -Key 'queue.enqueued')
+            (Get-QueueText) | Should -Not -Match (Get-QueueToastRegex)
         }
     }
 
@@ -272,7 +277,7 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
         $failure = "QUEUE_ERROR_$script:token"
         Invoke-QueueShellCommand $failure -Failure
         Assert-QueueSize 1
-        (Get-QueueText) | Should -Not -Match (Get-QueueTextRegex -Key 'queue.enqueued')
+        (Get-QueueText) | Should -Not -Match (Get-QueueToastRegex)
         @(Get-QueueRecords -Kind session_ready) | Should -HaveCount 0
         Assert-QueuePromptCountStable 0
 
@@ -438,7 +443,7 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
         $automatic = Get-QueueTextRegex -Key 'queue.auto'
         (Get-QueueText) | Should -Not -Match ("1\.\s+" + $automatic)
         Assert-QueueControlsAbsent
-        (Get-QueueText) | Should -Not -Match (Get-QueueTextRegex -Key 'queue.enqueued')
+        (Get-QueueText) | Should -Not -Match (Get-QueueToastRegex)
 
         Send-QueueInput $second
         Assert-QueueSize 2

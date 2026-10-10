@@ -295,3 +295,11 @@ system.config_update_failed: "%{option} konnt net aktualiséiert ginn: %{error}"
 system.yolo_disable_pending: "den Agent-Ubidder huet den erfuerderlechen net privilegéierte Sessiounszoustand net bestätegt"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Automatesch Genehmegung ass duerch d'Politik vun Ärer Organisatioun deaktivéiert."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Onbekannte Modell %{model} — tippt /model fir d'verfügbar Lëscht ze gesinn."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Ären Agent \"%{agent}\" brauch eng Authentifizéierung. Wielt eng Umeldemethod fir hei weiderzefueren."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Schléisst d'Umeldung an Ärem Browser of. Dréckt Esc fir d'Waarden ofzebriechen."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "De Browser ass net opgaangen? Benotzt dësen Umeldelink. O: opmaachen · Y: kopéieren."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "De Browser konnt net opgemaach ginn. Maacht den Umeldelink manuell op."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Den Umeldelink konnt net kopéiert ginn. Wielt en aus a kopéiert en manuell."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "D'Umeldung gouf net mat Zäit ofgeschloss. Probéiert nach eng Kéier, wann Dir prett sidd."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Mir konnten \"%{agent}\" net am Umeldëmfeld vu %{distro} fannen. Kontrolléiert d'Installatioun, PATH an de Shell-Profil vun dësem Linux-Benotzer a probéiert dann nach eng Kéier."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

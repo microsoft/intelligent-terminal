@@ -295,3 +295,11 @@ system.config_update_failed: "Ažuriranje opcije %{option} nije uspelo: %{error}
 system.yolo_disable_pending: "dobavljač nije potvrdio zahtevano neprivilegovano stanje sesije"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Automatsko odobravanje je onemogućeno politikom vaše organizacije."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Nepoznat model %{model} — unesite /model da vidite dostupnu listu."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Izaberite način prijavljivanja da biste nastavili ovde."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Dovršite prijavljivanje u pregledaču. Pritisnite Esc da otkažete čekanje."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Pregledač se nije otvorio? Koristite ovu vezu za prijavljivanje. O: otvori · Y: kopiraj."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Nije moguće otvoriti pregledač. Ručno otvorite vezu za prijavljivanje."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Nije moguće kopirati vezu za prijavljivanje. Ručno je izaberite i kopirajte."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Prijavljivanje nije završeno na vreme. Pokušajte ponovo kada budete spremni."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Nismo mogli da pronađemo \"%{agent}\" u okruženju za prijavljivanje distribucije %{distro}. Proverite instalaciju, PATH i profil ljuske ovog Linux korisnika, a zatim pokušajte ponovo."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

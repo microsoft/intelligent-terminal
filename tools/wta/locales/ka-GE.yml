@@ -295,3 +295,11 @@ system.config_update_failed: "%{option}-ის განახლება ვ�
 system.yolo_disable_pending: "აგენტის პროვაიდერს არ დაუდასტურებია, რომ სესია მოთხოვნილ არაპრივილეგირებულ მდგომარეობაშია"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: ავტომატური დადასტურება გამორთულია თქვენი ორგანიზაციის პოლიტიკით."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "უცნობი მოდელი %{model} — აკრიფეთ /model ხელმისაწვდომი სიის სანახავად."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. აქ გასაგრძელებლად აირჩიეთ შესვლის მეთოდი."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "დაასრულეთ შესვლა თქვენს ბრაუზერში. ლოდინის გასაუქმებლად დააჭირეთ Esc-ს."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ბრაუზერი არ გაიხსნა? გამოიყენეთ შესვლის ეს ბმული. O: გახსნა · Y: კოპირება."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ბრაუზერის გახსნა ვერ მოხერხდა. ხელით გახსენით შესვლის ბმული."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "შესვლის ბმულის კოპირება ვერ მოხერხდა. ხელით მონიშნეთ და დააკოპირეთ."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "შესვლა დროულად ვერ დასრულდა. ხელახლა სცადეთ, როცა მზად იქნებით."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro}-ის შესვლის გარემოში \"%{agent}\" ვერ ვიპოვეთ. შეამოწმეთ Linux-ის ამ მომხმარებლის ინსტალაცია, PATH და გარსის პროფილი, შემდეგ ხელახლა სცადეთ."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

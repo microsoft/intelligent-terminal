@@ -295,3 +295,11 @@ system.config_update_failed: "Error al actualizar %{option}: %{error}"
 system.yolo_disable_pending: "el proveedor no ha confirmado el estado de sesión sin privilegios requerido"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: La aprobación automática está deshabilitada por la política de tu organización."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Modelo desconocido %{model} — escribe /model para ver la lista disponible."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Tu agente \"%{agent}\" requiere autenticación. Selecciona un método de inicio de sesión para continuar aquí."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Completa el inicio de sesión en tu navegador. Presiona Esc para cancelar la espera."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "¿No se abrió el navegador? Usa este vínculo de inicio de sesión. O: abrir · Y: copiar."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "No se pudo abrir el navegador. Abre el vínculo de inicio de sesión manualmente."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "No se pudo copiar el vínculo de inicio de sesión. Selecciónalo y cópialo manualmente."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "El inicio de sesión no se completó a tiempo. Inténtalo de nuevo cuando estés listo."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "No pudimos encontrar \"%{agent}\" en el entorno de inicio de sesión de %{distro}. Revisa la instalación, PATH y el perfil del intérprete de comandos de este usuario de Linux y vuelve a intentarlo."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

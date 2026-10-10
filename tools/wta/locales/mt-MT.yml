@@ -294,3 +294,11 @@ system.config_update_failed: "Naqas milli jaġġorna %{option}: %{error}"
 system.yolo_disable_pending: "il-fornitur tal-aġent għadu ma kkonfermax l-istat meħtieġ tas-sessjoni mingħajr privileġġi"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: L-approvazzjoni awtomatika hija diżattivata mill-politika tal-organizzazzjoni tiegħek."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Agħżel metodu ta' dħul biex tkompli hawn."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Imla d-dħul fil-browser tiegħek. Agħfas Esc biex tikkanċella l-istennija."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Il-browser ma nfetaħx? Uża din il-link tad-dħul. O: iftaħ · Y: ikkopja."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Ma setax jinfetaħ il-browser. Iftaħ il-link tad-dħul manwalment."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Ma setgħetx tiġi kkupjata l-link tad-dħul. Agħżilha u kkopjaha manwalment."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Id-dħul ma tlestiex fil-ħin. Erġa' pprova meta tkun lest."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Ma stajniex insibu \"%{agent}\" fl-ambjent tad-dħul ta' %{distro}. Iċċekkja l-installazzjoni, PATH u l-profil tax-shell ta' dan l-utent ta' Linux, imbagħad erġa' pprova."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

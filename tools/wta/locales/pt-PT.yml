@@ -295,3 +295,11 @@ system.config_update_failed: "Falha ao atualizar %{option}: %{error}"
 system.yolo_disable_pending: "o fornecedor não confirmou o estado de sessão não privilegiado exigido"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: A aprovação automática está desativada pela política da sua organização."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Modelo desconhecido %{model} — escreva /model para ver a lista disponível."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "O seu agente \"%{agent}\" requer autenticação. Selecione um método de início de sessão para continuar aqui."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Conclua o início de sessão no seu navegador. Prima Esc para cancelar a espera."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "O navegador não abriu? Utilize esta ligação de início de sessão. O: abrir · Y: copiar."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Não foi possível abrir o navegador. Abra a ligação de início de sessão manualmente."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Não foi possível copiar a ligação de início de sessão. Selecione-a e copie-a manualmente."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "O início de sessão não foi concluído a tempo. Tente novamente quando estiver pronto."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Não foi possível encontrar \"%{agent}\" no ambiente de início de sessão de %{distro}. Verifique a instalação, PATH e o perfil da shell deste utilizador Linux e tente novamente."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

@@ -290,3 +290,11 @@ system.config_update_failed: "%{option} 업데이트 실패: %{error}"
 system.yolo_disable_pending: "에이전트 공급자가 필요한 비특권 세션 상태를 아직 확인하지 않았습니다"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: 조직의 정책에 따라 자동 승인이 비활성화되어 있습니다."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "알 수 없는 모델 %{model} — 사용 가능한 목록을 보려면 /model을 입력하세요."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "에이전트 \"%{agent}\"에 인증이 필요합니다. 여기에서 계속하려면 로그인 방법을 선택하세요."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "브라우저에서 로그인을 완료하세요. 대기를 취소하려면 Esc를 누르세요."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "브라우저가 열리지 않았나요? 이 로그인 링크를 사용하세요. O: 열기 · Y: 복사."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "브라우저를 열 수 없습니다. 로그인 링크를 직접 여세요."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "로그인 링크를 복사할 수 없습니다. 직접 선택하여 복사하세요."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "로그인이 시간 내에 완료되지 않았습니다. 준비가 되면 다시 시도하세요."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} 로그인 환경에서 \"%{agent}\"을(를) 찾을 수 없습니다. 이 Linux 사용자의 설치 상태, PATH 및 셸 프로필을 확인한 후 다시 시도하세요."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

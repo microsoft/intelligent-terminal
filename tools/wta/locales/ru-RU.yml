@@ -295,3 +295,11 @@ system.config_update_failed: "Не удалось обновить %{option}: %{
 system.yolo_disable_pending: "поставщик не подтвердил требуемое непривилегированное состояние сеанса"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Автоматическое одобрение отключено политикой вашей организации."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Неизвестная модель %{model} — введите /model, чтобы увидеть доступный список."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Ваш агент \"%{agent}\" требует аутентификации. Выберите способ входа, чтобы продолжить здесь."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Завершите вход в браузере. Нажмите Esc, чтобы отменить ожидание."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Браузер не открылся? Используйте эту ссылку для входа. O: открыть · Y: копировать."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Не удалось открыть браузер. Откройте ссылку для входа вручную."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Не удалось скопировать ссылку для входа. Выделите и скопируйте её вручную."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Вход не был завершён вовремя. Повторите попытку, когда будете готовы."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Не удалось найти \"%{agent}\" в среде входа %{distro}. Проверьте установку, PATH и профиль оболочки этого пользователя Linux, затем повторите попытку."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

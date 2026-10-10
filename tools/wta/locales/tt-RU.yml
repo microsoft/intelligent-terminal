@@ -295,3 +295,11 @@ system.config_update_failed: "%{option} яңарту уңышсыз булды: 
 system.yolo_disable_pending: "агент провайдеры сеансның таләп ителгәнчә өстен хокукларсыз булуын расламады"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Автоматик раслау оешмагыз сәясәте буенча сүндерелгән."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Билгесез модель %{model} — мөмкин булган исемлекне күрү өчен /model языгыз."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Сезнең \"%{agent}\" агентыгыз аутентификация таләп итә. Монда дәвам итү өчен керү ысулын сайлагыз."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Браузерыгызда керүне тәмамлагыз. Көтүне туктату өчен Esc төймәсенә басыгыз."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Браузер ачылмадымы? Бу керү сылтамасын кулланыгыз. O: ачу · Y: күчерү."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Браузерны ачып булмады. Керү сылтамасын кулдан ачыгыз."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Керү сылтамасын күчереп булмады. Аны сайлап, кулдан күчерегез."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Керү вакытында тәмамланмады. Әзер булгач, кабатлап карагыз."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} керү мохитендә \"%{agent}\" табылмады. Бу Linux кулланучысының урнаштыруын, PATH үзгәрешлесен һәм тышча профилен тикшерегез, аннары кабатлап карагыз."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

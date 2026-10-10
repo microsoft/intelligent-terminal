@@ -465,11 +465,20 @@ impl App {
         Some(request)
     }
 
-    fn register_born_bound_session(&mut self, event: crate::agent_sessions::SessionEvent) {
+    fn register_born_bound_session(
+        &mut self,
+        event: crate::agent_sessions::SessionEvent,
+        wsl_distro: Option<String>,
+    ) {
         self.agent_sessions.apply(event.clone());
         if self
             .master_request_tx
-            .send(crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event })
+            .send(
+                crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+                    event,
+                    wsl_distro,
+                },
+            )
             .is_err()
         {
             tracing::warn!(
@@ -921,6 +930,59 @@ impl App {
                     self.current_tab_mut().input_vertical_goal = None;
                 }
             }
+            AppEvent::AcpAuthenticationMethods {
+                agent_id,
+                source,
+                methods,
+            } => {
+                if agent_id == self.current_agent_id && source == self.current_agent_source {
+                    self.acp_auth_methods = methods;
+                }
+            }
+            AppEvent::AcpAuthenticationBrowser { attempt_id, url } => {
+                self.handle_acp_authentication_browser(attempt_id, url, super::open_url_in_browser);
+            }
+            AppEvent::SourceLoginProgress {
+                agent_id,
+                source,
+                generation,
+                device_code,
+                verify_url,
+            } => {
+                if source == self.current_agent_source
+                    && generation == self.auth_recovery_generation
+                    && self
+                        .auth
+                        .as_ref()
+                        .is_some_and(|auth| auth.agent_id == agent_id)
+                {
+                    self.handle_event(AppEvent::LoginProgress {
+                        device_code,
+                        verify_url,
+                    });
+                }
+            }
+            AppEvent::SourceLoginComplete {
+                agent_id,
+                source,
+                generation,
+                success,
+                error,
+            } => {
+                if source == self.current_agent_source
+                    && generation == self.auth_recovery_generation
+                    && self
+                        .auth
+                        .as_ref()
+                        .is_some_and(|auth| auth.agent_id == agent_id)
+                {
+                    self.handle_event(AppEvent::LoginComplete {
+                        agent_id,
+                        success,
+                        error,
+                    });
+                }
+            }
             AppEvent::ConnectionStage(stage) => {
                 if self.state == ConnectionState::Connected {
                     self.invalidate_prompt_queue_sessions();
@@ -982,6 +1044,7 @@ impl App {
                 session_capabilities_ready,
                 telemetry_byok_binding,
             } => {
+                self.cancel_acp_authentication();
                 self.telemetry_byok_binding = telemetry_byok_binding;
                 self.initial_startup_presentation_eligible = false;
                 self.reconnect_after_transport_retired = false;
@@ -1724,6 +1787,7 @@ impl App {
                     );
 
                 let is_auth_error = failure.is_auth();
+                self.cancel_acp_authentication();
                 if is_auth_error && !self.preflight_setup_active {
                     tracing::info!("AgentError auth fallback: showing setup screen");
                     // Use current_agent_id — set at preflight or agent selection time.
@@ -1735,13 +1799,31 @@ impl App {
                     tracing::info!("AgentError: resolved agent_id={}", agent_id);
                     let profile = crate::agent_registry::lookup_profile(&agent_id);
                     let reason = SetupReason::AgentError;
-                    let options = if matches!(
-                        self.current_agent_source,
-                        crate::agent_source::AgentSource::Wsl { .. }
-                    ) {
-                        build_setup_options(&reason, None)
+                    let options = if !self.acp_auth_methods.is_empty()
+                        && (matches!(
+                            profile.acp_auth_flow,
+                            crate::agent_registry::AcpAuthFlow::InProtocol
+                        ) || self.current_agent_id.starts_with("custom:"))
+                    {
+                        vec![
+                            SetupOption::SignIn {
+                                agent_id: self.current_agent_id.clone(),
+                                display_name: profile.display_name.to_string(),
+                            },
+                            SetupOption::ChooseAgentSource,
+                        ]
                     } else {
-                        let agent_status = crate::agent_check::check_agent(profile.id);
+                        // AuthRequired comes from an initialized source-bound ACP
+                        // process; probing Windows here would misclassify WSL login.
+                        let agent_status = crate::agent_check::AgentStatus {
+                            id: profile.id.to_string(),
+                            display_name: profile.display_name.to_string(),
+                            cli_found: true,
+                            cli_path: None,
+                            install_hint: profile.install_hint.to_string(),
+                            auth_hint: profile.auth_hint.to_string(),
+                            auto_installable: false,
+                        };
                         build_setup_options(&reason, Some(&agent_status))
                     };
                     self.mode = AppMode::Setup;
@@ -1765,7 +1847,10 @@ impl App {
                         phase: SetupPhase::Ready,
                         options,
                         title: t!("setup.title.sign_in").into_owned(),
-                        subtitle: if profile.id == "copilot" {
+                        subtitle: if !self.acp_auth_methods.is_empty() && profile.id != "copilot" {
+                            t!("setup.subtitle.protocol_auth", agent = profile.display_name)
+                                .into_owned()
+                        } else if profile.id == "copilot" {
                             t!("setup.subtitle.copilot_auth", agent = profile.display_name)
                                 .into_owned()
                         } else {
@@ -2771,7 +2856,7 @@ impl App {
                 self.handle_agents_snapshot_failed(request_id);
             }
             AppEvent::RegisterBornBoundSession { event } => {
-                self.register_born_bound_session(event);
+                self.register_born_bound_session(event, None);
             }
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
@@ -2925,6 +3010,11 @@ impl App {
                                 .unwrap_or_default(),
                             title: String::new(),
                         },
+                        params
+                            .get("wsl_distro")
+                            .and_then(serde_json::Value::as_str)
+                            .filter(|distro| !distro.is_empty())
+                            .map(str::to_string),
                     );
                     return;
                 }
@@ -4283,7 +4373,7 @@ impl App {
                     // its channels), create a fresh DeferredAcpParams so
                     // try_start_acp can spawn a new ACP client.
                     if self.deferred_acp.is_none() {
-                        let new_cmd = self.build_agent_cmd(&agent_id);
+                        let new_cmd = self.build_agent_cmd(&agent_id, &self.current_agent_source);
                         tracing::info!(
                             "LoginComplete: creating deferred_acp for reconnect cmd={}",
                             new_cmd

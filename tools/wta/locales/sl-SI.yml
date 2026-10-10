@@ -295,3 +295,11 @@ system.config_update_failed: "Posodobitev možnosti %{option} ni uspela: %{error
 system.yolo_disable_pending: "ponudnik ni potrdil zahtevanega neprivilegiranega stanja seje"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Samodejno odobravanje je onemogočeno s pravilnikom vaše organizacije."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Neznan model %{model} — vnesite /model za prikaz razpoložljivega seznama."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristnosti. Izberite način prijave, da nadaljujete tukaj."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Dokončajte prijavo v brskalniku. Pritisnite Esc, da prekličete čakanje."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Brskalnik se ni odprl? Uporabite to povezavo za prijavo. O: odpri · Y: kopiraj."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Brskalnika ni bilo mogoče odpreti. Ročno odprite povezavo za prijavo."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Povezave za prijavo ni bilo mogoče kopirati. Ročno jo izberite in kopirajte."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Prijava ni bila dokončana pravočasno. Poskusite znova, ko boste pripravljeni."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "V prijavnem okolju distribucije %{distro} ni bilo mogoče najti \"%{agent}\". Preverite namestitev, PATH in profil lupine tega uporabnika Linuxa, nato poskusite znova."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

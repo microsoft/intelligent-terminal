@@ -210,7 +210,7 @@ namespace SettingsModelUnitTests
     void CustomAgentAndPolicyTests::AgentTelemetryProviderBuckets()
     {
         using namespace implementation::AgentSettingsTelemetry;
-        for (const auto id : { L"copilot", L"claude", L"codex", L"gemini", L"opencode" })
+        for (const auto id : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"antigravity" })
         {
             VERIFY_ARE_EQUAL(winrt::to_string(id), std::string{ ProviderId(id) });
         }
@@ -218,6 +218,7 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(std::string{ "custom" }, std::string{ ProviderId(L"custom:private-agent --secret") });
         VERIFY_ARE_EQUAL(std::string{ "unknown" }, std::string{ ProviderId(L"private-agent --secret") });
         VERIFY_ARE_EQUAL(std::string{ "unknown" }, std::string{ ProviderId(L"custom") });
+        VERIFY_ARE_EQUAL(std::string{ "unknown" }, std::string{ ProviderId(L"agy --model private") });
     }
 
     void CustomAgentAndPolicyTests::AgentTelemetryProviderTransitions()

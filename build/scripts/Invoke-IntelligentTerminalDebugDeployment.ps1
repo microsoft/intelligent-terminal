@@ -221,7 +221,7 @@ if ($package -and
         [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "The installed dev package points to '$($package.InstallLocation)', not this recipe's Debug layout '$debugLayout'."
 }
-if ($package -and ([version]$package.Version -gt $buildVersion)) {
+if ($package -and [version]::Parse([string]$package.Version) -gt $buildVersion) {
     throw "Refusing to deploy Dev version $buildVersion over installed version $($package.Version). Rebuild with a newer Package-Dev.appxmanifest version to avoid unregistering the working package."
 }
 
