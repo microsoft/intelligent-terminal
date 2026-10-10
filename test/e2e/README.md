@@ -650,10 +650,12 @@ payload hash, and registered package identity/version. A missing or stale payloa
 **before Pester**. All four proof inputs must be supplied with a 40-character
 commit ID; an explicit empty input cannot bypass the check. A failed provenance
 preflight removes prior HTML, Markdown, checklist, and NUnit success artifacts
-from the selected output directory.
-Only documented MSIX metadata may appear beyond the recipe payloads. Recipe
-paths are separator-normalized before duplicate detection; archive paths are
-URI-decoded before matching (packaging can encode braces in icon names);
+from the selected output directory. An exception or missing result from Pester
+clears the same artifacts before surfacing the original failure.
+Only documented packaging metadata may appear beyond the recipe payloads in
+either the MSIX or installed layout. Recipe paths are separator-normalized
+before duplicate detection; archive paths are URI-decoded before matching
+(packaging can encode braces in icon names);
 scale-qualified profile icons may be absent, but must still match the recipe in
 the installed layout. Recipe sources must be inside the selected worktree except
 the Windows SDK debug `ucrtbased.dll`, which is reported with its source path and

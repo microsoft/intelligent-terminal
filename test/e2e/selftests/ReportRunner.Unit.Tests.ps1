@@ -12,6 +12,8 @@ BeforeAll {
             [switch]$SeedReport,
             [switch]$SeedPriorArtifacts,
             [switch]$FailGenerator,
+            [switch]$FailPester,
+            [switch]$NoPesterResult,
             [switch]$UpdateReport,
             [switch]$RequireNoSkips,
             [string[]]$AdditionalArguments
@@ -34,17 +36,28 @@ BeforeAll {
         }
 
         $runner = $script:runner
-        if ($FailGenerator) {
+        if ($FailGenerator -or $FailPester -or $NoPesterResult) {
             $runnerDir = Join-Path $root 'runner'
             New-Item -ItemType Directory -Path $runnerDir | Out-Null
             $runner = Join-Path $runnerDir 'Invoke-ItE2EReport.ps1'
-            Copy-Item -LiteralPath $script:runner -Destination $runner
-            foreach ($generator in @('New-ReleaseReport.ps1', 'Update-ReleaseReport.ps1')) {
-                "throw 'fixture report generator failed'" |
-                    Set-Content -LiteralPath (Join-Path $runnerDir $generator)
+            if ($FailPester -or $NoPesterResult) {
+                $source = Get-Content -LiteralPath $script:runner -Raw
+                $invocation = '$pesterOutput = @(Invoke-Pester -Configuration $cfg)'
+                if (-not $source.Contains($invocation)) { throw 'Pester invocation not found in runner fixture.' }
+                $stub = if ($FailPester) { "function Invoke-Pester { throw 'fixture Invoke-Pester failed' }" }
+                    else { 'function Invoke-Pester { return $null }' }
+                $source.Replace($invocation, "$stub`n$invocation") |
+                    Set-Content -LiteralPath $runner -Encoding utf8
+            }
+            else { Copy-Item -LiteralPath $script:runner -Destination $runner }
+            if ($FailGenerator) {
+                foreach ($generator in @('New-ReleaseReport.ps1', 'Update-ReleaseReport.ps1')) {
+                    "throw 'fixture report generator failed'" |
+                        Set-Content -LiteralPath (Join-Path $runnerDir $generator)
+                }
             }
         }
-        if ($FailGenerator -or $SeedPriorArtifacts) {
+        if ($FailGenerator -or $SeedPriorArtifacts -or $ObstructReport) {
             '<html><body>ALL PASSED</body></html>' |
                 Set-Content -LiteralPath (Join-Path $out 'report.html')
             '# All tests passed' | Set-Content -LiteralPath (Join-Path $out 'summary.md')
@@ -112,6 +125,41 @@ Describe 'ordinary suite' {
 
         $run.ExitCode | Should -Not -Be 0
         $run.Output | Should -Not -Match 'release-report.md : SKIPPED'
+        $run.Html | Should -BeNullOrEmpty
+        $run.Summary | Should -BeNullOrEmpty
+    }
+
+    It 'removes stale summaries even when a blocked release checklist cannot be written' {
+        $run = Invoke-ReportFixture -GenerateReport -ObstructReport -Body @"
+Describe 'cleanup failure' {
+    It 'runs' { `$true | Should -BeTrue }
+    AfterAll { throw 'fixture AfterAll failed' }
+}
+"@
+
+        $run.ExitCode | Should -Not -Be 0
+        $run.Html | Should -BeNullOrEmpty
+        $run.Summary | Should -BeNullOrEmpty
+    }
+
+    It 'invalidates previous green artifacts when Pester <Mode>' -ForEach @(
+        @{ Mode = 'throws'; FailPester = $true; NoPesterResult = $false }
+        @{ Mode = 'returns no result'; FailPester = $false; NoPesterResult = $true }
+    ) {
+        $run = Invoke-ReportFixture -SeedPriorArtifacts -FailPester:$FailPester `
+            -NoPesterResult:$NoPesterResult -Body @"
+Describe 'never reached' {
+    It 'passes' { `$true | Should -BeTrue }
+}
+"@
+
+        $run.ExitCode | Should -Not -Be 0
+        $run.Output | Should -Match $(if ($FailPester) { 'fixture Invoke-Pester failed' }
+            else { 'Pester did not return a test result object' })
+        $run.ReleaseReport | Should -BeNullOrEmpty
+        $run.Html | Should -BeNullOrEmpty
+        $run.Summary | Should -BeNullOrEmpty
+        $run.ResultsXmlExists | Should -BeFalse
     }
 
     It 'invalidates an earlier green checklist when a <Mode> generator fails' -ForEach @(

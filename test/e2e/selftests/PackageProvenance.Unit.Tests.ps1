@@ -7,6 +7,7 @@ BeforeAll {
         param(
             [switch]$WrongArchive,
             [switch]$WrongInstalled,
+            [switch]$ExtraInstalledDll,
             [switch]$DifferentManifest,
             [switch]$StaleManifest,
             [switch]$ExtraArchiveDll,
@@ -50,6 +51,9 @@ BeforeAll {
         'current-binary' | Set-Content -LiteralPath $sourceDll -NoNewline
         Copy-Item -LiteralPath $sourceDll -Destination $installedDll
         if ($WrongInstalled) { 'previous-binary' | Set-Content -LiteralPath $installedDll -NoNewline }
+        if ($ExtraInstalledDll) {
+            'stale-binary' | Set-Content -LiteralPath (Join-Path $installed 'old.dll') -NoNewline
+        }
         'scale-icon' | Set-Content -LiteralPath $sourceIcon -NoNewline
         Copy-Item -LiteralPath $sourceIcon -Destination (Join-Path $installed $iconPackagePath)
         $sourceManifest = Join-Path $sourceRoot 'AppxManifest.xml'
@@ -114,6 +118,15 @@ BeforeAll {
             }
         }
         finally { $zip.Dispose() }
+
+        if ($WithMetadata) {
+            foreach ($path in @('AppxBlockMap.xml', '[Content_Types].xml',
+                'AppxSignature.p7x', 'AppxMetadata\CodeIntegrity.cat')) {
+                $file = Join-Path $installed $path
+                New-Item -ItemType Directory -Path (Split-Path $file -Parent) -Force | Out-Null
+                'metadata' | Set-Content -LiteralPath $file -NoNewline
+            }
+        }
 
         & git -C $sourceRoot init --quiet
         & git -C $sourceRoot config user.name 'Offline provenance test'
@@ -221,6 +234,13 @@ Describe 'Offline package provenance' -Tag 'Unit' {
         { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
                 -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
             Should -Throw '*Unexpected MSIX payload*old.dll*'
+    }
+
+    It 'rejects a stale installed DLL missing from the recipe and MSIX' {
+        $f = New-ProvenanceFixture -ExtraInstalledDll
+        { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
+                -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
+            Should -Throw '*Unexpected installed payload*old.dll*'
     }
 
     It 'rejects a matching non-binary payload sourced outside the clean source worktree' {

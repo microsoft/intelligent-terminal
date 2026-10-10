@@ -208,6 +208,12 @@ try {
         if ($path -ieq 'AppxManifest.xml' -or $metadata.Contains($path) -or $seen.Contains($path)) { continue }
         throw "Unexpected MSIX payload not in the recipe: $path"
     }
+    foreach ($installedFile in Get-ChildItem -LiteralPath $layout -Recurse -File -ErrorAction Stop) {
+        $relative = [IO.Path]::GetRelativePath($layout, $installedFile.FullName).Replace('/', '\')
+        if ($relative -ieq 'AppxManifest.xml' -or $metadata.Contains($relative) -or
+            $seen.Contains($relative)) { continue }
+        throw "Unexpected installed payload not in the recipe: $relative"
+    }
 }
 finally { $archive.Dispose() }
 

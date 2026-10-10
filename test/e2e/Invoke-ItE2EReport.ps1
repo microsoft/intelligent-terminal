@@ -80,24 +80,32 @@ if ($proofRequested) {
         throw
     }
 }
-Import-Module Pester -MinimumVersion 5.5.0 -Force
-New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+try {
+    Import-Module Pester -MinimumVersion 5.5.0 -Force
+    New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-$cfg = New-PesterConfiguration
-$cfg.Run.Path = $Path
-$cfg.Run.PassThru = $true
-if ($Tag) { $cfg.Filter.Tag = $Tag }
-$cfg.Output.Verbosity = 'Detailed'
-$cfg.TestResult.Enabled = $true
-$cfg.TestResult.OutputFormat = 'NUnitXml'
-$cfg.TestResult.OutputPath = (Join-Path $OutDir 'results.xml')
+    $cfg = New-PesterConfiguration
+    $cfg.Run.Path = $Path
+    $cfg.Run.PassThru = $true
+    if ($Tag) { $cfg.Filter.Tag = $Tag }
+    $cfg.Output.Verbosity = 'Detailed'
+    $cfg.TestResult.Enabled = $true
+    $cfg.TestResult.OutputFormat = 'NUnitXml'
+    $cfg.TestResult.OutputPath = (Join-Path $OutDir 'results.xml')
 
-$pesterOutput = @(Invoke-Pester -Configuration $cfg)
-$result = $pesterOutput |
-    Where-Object { $_.PSObject.Properties.Name -contains 'Tests' -and $_.PSObject.Properties.Name -contains 'FailedCount' } |
-    Select-Object -Last 1
-if (-not $result) {
-    throw 'Pester did not return a test result object.'
+    $pesterOutput = @(Invoke-Pester -Configuration $cfg)
+    $result = $pesterOutput |
+        Where-Object { $_.PSObject.Properties.Name -contains 'Tests' -and $_.PSObject.Properties.Name -contains 'FailedCount' } |
+        Select-Object -Last 1
+    if (-not $result) {
+        throw 'Pester did not return a test result object.'
+    }
+}
+catch {
+    Remove-StaleItE2EArtifacts -Root $OutDir -Names @(
+        'release-report.md', 'report.html', 'summary.md', 'results.xml'
+    )
+    throw
 }
 
 $setupFailures = @(@($result.FailedContainers) + @($result.FailedBlocks) | Where-Object { $_ })
@@ -122,6 +130,7 @@ if (-not $SkipReleaseReport) {
         elseif ($noTests) { 'No tests were selected.' }
         elseif ($result.PassedCount -eq 0) { 'No tests passed.' }
     if ($blockedReason) {
+        Remove-StaleItE2EArtifacts -Root $OutDir -Names @('report.html', 'summary.md')
         Write-BlockedReleaseReport -Path $releaseReport -Reason $blockedReason
         $releaseReportKind = 'blocked by incomplete test run'
     }
@@ -138,8 +147,8 @@ if (-not $SkipReleaseReport) {
             }
         }
         catch {
-            Write-BlockedReleaseReport -Path $releaseReport -Reason 'Release report generation failed.'
             Remove-StaleItE2EArtifacts -Root $OutDir -Names @('report.html', 'summary.md')
+            Write-BlockedReleaseReport -Path $releaseReport -Reason 'Release report generation failed.'
             throw
         }
     }
