@@ -13,9 +13,11 @@ ACP or delegation provider registry.
 Discovery does not install software, sign in, or start an ACP server. Native CLI
 availability is independent of the adapters needed by the built-in agent pane.
 
-The generated profile icons use transparent SVG artwork. The new-tab menu
-renders the SVG's original colors without foreground tinting, preserving them
-when hovering, pressing, or switching between light and dark themes.
+The generated profile icons use transparent SVG artwork. Copilot, Claude,
+Codex, and OpenCode use dark artwork on light surfaces and their original
+artwork on dark surfaces. Menus render the artwork without foreground tinting,
+including hover and pressed states. Gemini and custom SVG icons retain their
+original colors.
 
 ## Launch and configuration
 

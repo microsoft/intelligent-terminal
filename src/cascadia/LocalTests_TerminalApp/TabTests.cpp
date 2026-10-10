@@ -354,7 +354,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SidebarRailHintsTrackBindings);
         TEST_METHOD(VerticalTabChromeBackgroundTracksTheme);
         TEST_METHOD(NewTabButtonSharesChromeBackdrop);
-        TEST_METHOD(NewTabFlyoutAgentIconsKeepSvgColors);
+        TEST_METHOD(NewTabFlyoutAgentIconsAdaptToTheme);
         TEST_METHOD(AgentProfileCommandlineCopies);
         TEST_METHOD(VerticalTabStripBindsBackground);
         TEST_METHOD(VerticalTabHistorySharesBackdrop);
@@ -5887,7 +5887,7 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::NewTabFlyoutAgentIconsKeepSvgColors()
+    void TabTests::NewTabFlyoutAgentIconsAdaptToTheme()
     {
         auto page = _commonSetup();
         UIElement previousContent{ nullptr };
@@ -5958,6 +5958,9 @@ namespace TerminalAppLocalTests
                         loaded.Set();
                     });
                     flyout = MenuFlyout{};
+                    Style presenterStyle{ winrt::xaml_typename<MenuFlyoutPresenter>() };
+                    presenterStyle.Setters().Append(Setter{ FrameworkElement::RequestedThemeProperty(), winrt::box_value(theme) });
+                    flyout.MenuFlyoutPresenterStyle(presenterStyle);
                     flyout.Items().Append(item);
                     flyout.ShowAt(host);
                 });
@@ -5980,22 +5983,26 @@ namespace TerminalAppLocalTests
                     std::vector<uint8_t> pixels(buffer.Length());
                     winrt::Windows::Storage::Streams::DataReader::FromBuffer(buffer).ReadBytes(pixels);
                     VERIFY_IS_FALSE(pixels.empty());
-                    if (!originalPixels.contains(id))
+                    const auto key = std::wstring{ id } + (theme == ElementTheme::Light ? L"-light" : L"-dark");
+                    if (!originalPixels.contains(key))
                     {
                         bool hasTransparentBackground = false;
                         bool hasGlyph = false;
                         for (size_t offset = 0; offset + 3 < pixels.size(); offset += 4)
                         {
                             hasTransparentBackground |= pixels[offset + 3] == 0;
-                            hasGlyph |= pixels[offset] >= 200 && pixels[offset + 1] >= 200 &&
-                                        pixels[offset + 2] >= 200 && pixels[offset + 3] == 255;
+                            const auto lightArtwork = theme == ElementTheme::Light && std::wstring_view{ id } != L"gemini";
+                            hasGlyph |= pixels[offset + 3] == 255 &&
+                                        (lightArtwork ?
+                                             pixels[offset] <= 80 && pixels[offset + 1] <= 80 && pixels[offset + 2] <= 80 :
+                                             pixels[offset] >= 200 && pixels[offset + 1] >= 200 && pixels[offset + 2] >= 200);
                         }
                         VERIFY_IS_TRUE(hasTransparentBackground);
                         VERIFY_ARE_EQUAL(uint8_t{ 0 }, pixels[3]);
                         VERIFY_IS_TRUE(hasGlyph);
-                        originalPixels.emplace(id, pixels);
+                        originalPixels.emplace(key, pixels);
                     }
-                    VERIFY_IS_TRUE(originalPixels.at(id) == pixels);
+                    VERIFY_IS_TRUE(originalPixels.at(key) == pixels);
                 }
             }
         }

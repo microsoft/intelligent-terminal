@@ -5,6 +5,7 @@
 #include "Utils.h"
 
 #include "../types/inc/utils.hpp"
+#include "../inc/AgentIconUtils.h"
 
 #include <Shlobj.h>
 #include <Shlobj_core.h>
@@ -324,6 +325,7 @@ namespace winrt::Microsoft::Terminal::UI::implementation
                 imageSource.RasterizePixelHeight(64);
                 MUX::Controls::ImageIcon icon;
                 icon.Source(imageSource);
+                ::Microsoft::Terminal::BindAgentIconTheme(icon, imageSource);
                 icon.Width(16);
                 icon.Height(16);
                 return icon;

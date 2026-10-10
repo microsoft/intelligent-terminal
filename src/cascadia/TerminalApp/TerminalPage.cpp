@@ -24,6 +24,7 @@
 #include "../inc/AcpModelUtils.h"
 #include "../inc/AgentAvailability.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentIconUtils.h"
 #include "../inc/AgentProfileUtils.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
@@ -8543,6 +8544,7 @@ namespace winrt::TerminalApp::implementation
                         const auto host = root.FindName(L"IconContent").as<ContentPresenter>();
                         WUX::Controls::Image artwork;
                         artwork.Source(source);
+                        ::Microsoft::Terminal::BindAgentIconTheme(artwork, source);
                         artwork.Width(16);
                         artwork.Height(16);
                         artwork.Stretch(WUX::Media::Stretch::Uniform);
