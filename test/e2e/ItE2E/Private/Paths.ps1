@@ -15,6 +15,10 @@ $script:ItKnownFamilies = [ordered]@{
     Dev   = 'IntelligentTerminal_rd9vj3e6a2mbr'
 }
 
+function Get-ItDevPackageFamilyName {
+    $script:ItKnownFamilies.Dev
+}
+
 # Which brand CLSID a known package family registers (TerminalProtocolComServer.h brands).
 # The Store package ships the Release brand; the dev sideload ships the Dev brand. This lets
 # Resolve-WtComClsid probe the CORRECT brand for the package under test instead of blindly

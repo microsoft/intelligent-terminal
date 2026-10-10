@@ -651,7 +651,9 @@ payload hash, and registered package identity/version. A missing or stale payloa
 commit ID; an explicit empty input cannot bypass the check. A failed provenance
 preflight removes prior HTML, Markdown, checklist, and NUnit success artifacts
 from the selected output directory. An exception or missing result from Pester
-clears the same artifacts before surfacing the original failure.
+clears the same artifacts before surfacing the original failure. Proof targets
+the configured Dev family, including a worktree PFN after the documented local
+identity substitutions; Store and unconfigured packages are not accepted.
 Only documented packaging metadata may appear beyond the recipe payloads in
 either the MSIX or installed layout. Recipe paths are separator-normalized
 before duplicate detection; archive paths are URI-decoded before matching
@@ -939,8 +941,8 @@ Outputs (all under `test/e2e/artifacts/`):
   If Pester reports a structural setup/cleanup failure or no test passes, both full and incremental
   runner modes replace the release report with a blocked notice and **no checked
   items**, rather than crediting test cases that passed before the failure. A
-  report-generator error also removes HTML and Markdown summaries from earlier
-  runs after blocking the checklist; the runner exits nonzero.
+  report-generator error clears earlier HTML and Markdown summaries before
+  attempting the blocked checklist; the runner exits nonzero.
 - Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).
   Zero selected or passing cases and setup/report-generation errors are non-green,
   even with no failing test assertion. A mixture of passes and externally gated

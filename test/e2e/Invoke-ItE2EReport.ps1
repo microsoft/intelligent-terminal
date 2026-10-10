@@ -66,11 +66,16 @@ if ($proofRequested) {
         if ($ExpectedHead -notmatch '^[a-fA-F0-9]{40}$') {
             throw 'ExpectedHead must be a 40-character hexadecimal commit ID.'
         }
-        if ($env:ITE2E_PACKAGE -notin @('Dev', 'IntelligentTerminal_rd9vj3e6a2mbr')) {
-            throw 'Package proof requires an explicitly selected Dev package (ITE2E_PACKAGE=Dev).'
+        Import-Module (Join-Path $PSScriptRoot 'ItE2E\ItE2E.psd1') -Force
+        $devFamily = Get-ItDevPackageFamilyName
+        if (-not $devFamily) { throw 'The configured Dev package family is unavailable.' }
+        $selectedFamily = if ($env:ITE2E_PACKAGE -eq 'Dev') { $devFamily } else { $env:ITE2E_PACKAGE }
+        if ($selectedFamily -cne $devFamily) {
+            throw 'Package proof requires an explicitly selected configured Dev package.'
         }
         $proof = & (Join-Path $PSScriptRoot 'Verify-PackageProvenance.ps1') `
-            -SourceRoot $SourceRoot -ExpectedHead $ExpectedHead -RecipePath $RecipePath -MsixPath $MsixPath
+            -SourceRoot $SourceRoot -ExpectedHead $ExpectedHead -RecipePath $RecipePath -MsixPath $MsixPath `
+            -PackageFamilyName $devFamily
         Write-Host "Package files match recipe/MSIX in clean source HEAD $($proof.SourceHead) ($($proof.RecipeEntryCount) payloads); confirm the build-time source receipt separately." -ForegroundColor Green
     }
     catch {

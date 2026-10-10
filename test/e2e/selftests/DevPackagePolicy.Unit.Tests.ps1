@@ -509,6 +509,27 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
 }
 
 Describe 'Feature suites honor Dev-only cold start policy' -Tag Unit {
+    It 'keeps PromptQueue failure recovery refusal-only after the preflight' {
+        $path = Join-Path $PSScriptRoot '..\tests\Feature.PromptQueue.Tests.ps1'
+        $tokens = $null
+        $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)
+        @($errors) | Should -HaveCount 0
+        $recovery = @($ast.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.CatchClauseAst] -and
+                $node.Extent.Text -match 'Restore-WtConfig -App \$recoveryApp'
+        }, $true))
+        $recovery | Should -HaveCount 1
+        $commands = @($recovery[0].FindAll({
+            param($node) $node -is [Management.Automation.Language.CommandAst]
+        }, $true) | ForEach-Object { $_.GetCommandName() })
+        $commands | Should -Contain 'Assert-WtPackageInactive'
+        $commands | Should -Not -Contain 'Stop-StaleItInstances'
+        [array]::IndexOf($commands, 'Assert-WtPackageInactive') |
+            Should -BeLessThan ([array]::IndexOf($commands, 'Restore-WtConfig'))
+    }
+
     It '<Suite> enters shared cleanup before its own setup' -ForEach @(
         @{ Suite = 'Feature.AcpAuthentication.Tests.ps1' }
         @{ Suite = 'Feature.AgentInputMouseCursor.Tests.ps1' }

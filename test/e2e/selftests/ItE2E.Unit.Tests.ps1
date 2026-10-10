@@ -639,6 +639,19 @@ Describe 'Live test package selection' -Tag 'Unit' {
 }
 
 Describe 'Package-scoped process cleanup' -Tag 'Unit' {
+    It 'reads the Dev family configured for the current worktree' {
+        InModuleScope ItE2E {
+            $original = $script:ItKnownFamilies.Dev
+            try {
+                $script:ItKnownFamilies.Dev = 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr'
+                Get-ItDevPackageFamilyName | Should -Be $script:ItKnownFamilies.Dev
+            }
+            finally { $script:ItKnownFamilies.Dev = $original }
+        }
+        (Get-Command Get-ItDevPackageFamilyName -Module ItE2E).Name |
+            Should -Be 'Get-ItDevPackageFamilyName'
+    }
+
     It 'finds WindowsTerminal processes only under the selected package install location' {
         InModuleScope ItE2E {
             $app = [pscustomobject]@{

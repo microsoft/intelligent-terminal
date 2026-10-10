@@ -14,6 +14,7 @@ BeforeAll {
             [switch]$FailGenerator,
             [switch]$FailPester,
             [switch]$NoPesterResult,
+            [switch]$IsolatedDevProof,
             [switch]$UpdateReport,
             [switch]$RequireNoSkips,
             [string[]]$AdditionalArguments
@@ -36,7 +37,7 @@ BeforeAll {
         }
 
         $runner = $script:runner
-        if ($FailGenerator -or $FailPester -or $NoPesterResult) {
+        if ($FailGenerator -or $FailPester -or $NoPesterResult -or $IsolatedDevProof) {
             $runnerDir = Join-Path $root 'runner'
             New-Item -ItemType Directory -Path $runnerDir | Out-Null
             $runner = Join-Path $runnerDir 'Invoke-ItE2EReport.ps1'
@@ -55,6 +56,28 @@ BeforeAll {
                     "throw 'fixture report generator failed'" |
                         Set-Content -LiteralPath (Join-Path $runnerDir $generator)
                 }
+            }
+            if ($IsolatedDevProof) {
+                $pfn = 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr'
+                $moduleDir = Join-Path $runnerDir 'ItE2E'
+                New-Item -ItemType Directory -Path $moduleDir | Out-Null
+                @(
+                    '@{'
+                    "RootModule = 'ItE2E.psm1'"
+                    "ModuleVersion = '0.1.0'"
+                    "GUID = '$([guid]::NewGuid())'"
+                    "FunctionsToExport = @('Get-ItDevPackageFamilyName')"
+                    '}'
+                ) | Set-Content -LiteralPath (Join-Path $moduleDir 'ItE2E.psd1')
+                "function Get-ItDevPackageFamilyName { '$pfn' }`nExport-ModuleMember -Function Get-ItDevPackageFamilyName" |
+                    Set-Content -LiteralPath (Join-Path $moduleDir 'ItE2E.psm1')
+                @'
+param([string]$SourceRoot, [string]$ExpectedHead, [string]$RecipePath,
+    [string]$MsixPath, [string]$PackageFamilyName)
+if ($PackageFamilyName -ne '__PFN__') { throw 'wrong configured Dev family reached verifier' }
+throw 'fixture verifier received configured isolated Dev family'
+'@.Replace('__PFN__', $pfn) |
+                    Set-Content -LiteralPath (Join-Path $runnerDir 'Verify-PackageProvenance.ps1')
             }
         }
         if ($FailGenerator -or $SeedPriorArtifacts -or $ObstructReport) {
@@ -363,5 +386,61 @@ Describe 'must not execute' {
             if ($null -eq $previousPackage) { Remove-Item Env:\ITE2E_PACKAGE -ErrorAction SilentlyContinue }
             else { $env:ITE2E_PACKAGE = $previousPackage }
         }
+    }
+
+    It 'routes <Selector> proof through the configured isolated Dev family' -ForEach @(
+        @{ Selector = 'Dev' }
+        @{ Selector = 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr' }
+    ) {
+        $previous = $env:ITE2E_PACKAGE
+        try {
+            $env:ITE2E_PACKAGE = $Selector
+            $run = Invoke-ReportFixture -SeedPriorArtifacts -IsolatedDevProof -AdditionalArguments @(
+                '-SourceRoot', $TestDrive, '-ExpectedHead', ('f' * 40),
+                '-RecipePath', (Join-Path $TestDrive 'unused.appxrecipe'),
+                '-MsixPath', (Join-Path $TestDrive 'unused.msix')
+            ) -Body @"
+Describe 'unreachable test' {
+    It 'must not run' { `$true | Should -BeFalse }
+}
+"@
+        }
+        finally {
+            if ($null -eq $previous) { Remove-Item Env:\ITE2E_PACKAGE -ErrorAction SilentlyContinue }
+            else { $env:ITE2E_PACKAGE = $previous }
+        }
+
+        $run.ExitCode | Should -Not -Be 0
+        $run.Output | Should -Match 'fixture verifier received configured isolated Dev family'
+        $run.Html | Should -BeNullOrEmpty
+        $run.Summary | Should -BeNullOrEmpty
+        $run.ReleaseReport | Should -BeNullOrEmpty
+        $run.ResultsXmlExists | Should -BeFalse
+    }
+
+    It 'refuses Store proof even when its package is explicitly selected' {
+        $previous = $env:ITE2E_PACKAGE
+        try {
+            $env:ITE2E_PACKAGE = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe'
+            $run = Invoke-ReportFixture -SeedPriorArtifacts -AdditionalArguments @(
+                '-SourceRoot', $TestDrive, '-ExpectedHead', ('f' * 40),
+                '-RecipePath', (Join-Path $TestDrive 'unused.appxrecipe'),
+                '-MsixPath', (Join-Path $TestDrive 'unused.msix')
+            ) -Body @"
+Describe 'unreachable test' {
+    It 'must not run' { `$true | Should -BeFalse }
+}
+"@
+        }
+        finally {
+            if ($null -eq $previous) { Remove-Item Env:\ITE2E_PACKAGE -ErrorAction SilentlyContinue }
+            else { $env:ITE2E_PACKAGE = $previous }
+        }
+
+        $run.ExitCode | Should -Not -Be 0
+        $run.Output | Should -Match 'configured Dev package'
+        $run.Html | Should -BeNullOrEmpty
+        $run.ReleaseReport | Should -BeNullOrEmpty
+        $run.ResultsXmlExists | Should -BeFalse
     }
 }
