@@ -42,6 +42,9 @@ BeforeAll {
                 "throw 'fixture report generator failed'" |
                     Set-Content -LiteralPath (Join-Path $runnerDir $generator)
             }
+            '<html><body>ALL PASSED</body></html>' |
+                Set-Content -LiteralPath (Join-Path $out 'report.html')
+            '# All tests passed' | Set-Content -LiteralPath (Join-Path $out 'summary.md')
         }
 
         $arguments = @('-NoProfile', '-File', $runner, '-Path', $testFile, '-OutDir', $out)
@@ -119,6 +122,8 @@ Describe 'ordinary suite' {
         $run.Output | Should -Match 'fixture report generator failed'
         $run.ReleaseReport | Should -Match 'AUTOMATION FAILED.*report generation failed'
         $run.ReleaseReport | Should -Not -Match '(?m)^- \[x\]'
+        $run.Html | Should -BeNullOrEmpty
+        $run.Summary | Should -BeNullOrEmpty
     }
 
     It 'withholds all checklist credit after a structural cleanup failure in <Mode> mode' -ForEach @(

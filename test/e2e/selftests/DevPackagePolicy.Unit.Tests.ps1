@@ -69,7 +69,7 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
             Should -Invoke Get-WtProcessesForApp -ParameterFilter { $IncludePackageExecutables } -Times 6 -Exactly
         }
 
-        It 'accepts a verified isolated Dev family without weakening full-name validation' {
+        It 'accepts the documented isolated Dev identity substitution without weakening full-name validation' {
             $priorFamily = $script:ItKnownFamilies.Dev
             try {
                 $script:ItKnownFamilies.Dev = 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr'

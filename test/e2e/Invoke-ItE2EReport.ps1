@@ -116,6 +116,12 @@ if (-not $SkipReleaseReport) {
         }
         catch {
             Write-BlockedReleaseReport -Path $releaseReport -Reason 'Release report generation failed.'
+            foreach ($name in @('report.html', 'summary.md')) {
+                $staleReport = Join-Path $OutDir $name
+                if (Test-Path -LiteralPath $staleReport -PathType Leaf) {
+                    Remove-Item -LiteralPath $staleReport -Force -ErrorAction Stop
+                }
+            }
             throw
         }
     }

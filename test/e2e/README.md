@@ -677,8 +677,11 @@ Invoke-Pester test/e2e/selftests              # all self-tests
 The self-tests are the framework's own proof: every primitive is exercised against a
 running terminal (`selftests/ItE2E.Live.Tests.ps1`) and the core helpers are unit-tested
 in `selftests/ItE2E.Unit.Tests.ps1` (hermetic, no terminal needed).
-The Live fixture pins completed onboarding and a default-profile horizontal tab so
-the same smoke test also works with a newly registered isolated Dev package.
+The Live fixture pins completed onboarding and a default-profile horizontal tab.
+It can smoke-test a newly registered isolated Dev package after applying the
+temporary Dev identity substitutions in the
+[worktree package guide](../../doc/dev-worktree-package.md); selecting its PFN
+alone does not make an unmodified harness treat it as Dev.
 The harness restores the original settings and state once the package is inactive.
 
 ### Deterministic Queue regressions
@@ -930,7 +933,9 @@ Outputs (all under `test/e2e/artifacts/`):
   `pwsh -File test/e2e/Update-ReleaseReport.ps1`.
   If Pester reports a structural setup/cleanup failure or no test passes, both full and incremental
   runner modes replace the release report with a blocked notice and **no checked
-  items**, rather than crediting test cases that passed before the failure.
+  items**, rather than crediting test cases that passed before the failure. A
+  report-generator error also removes HTML and Markdown summaries from earlier
+  runs after blocking the checklist; the runner exits nonzero.
 - Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).
   Zero selected or passing cases and setup/report-generation errors are non-green,
   even with no failing test assertion. A mixture of passes and externally gated
