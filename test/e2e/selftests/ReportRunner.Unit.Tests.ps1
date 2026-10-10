@@ -45,6 +45,9 @@ BeforeAll {
             ExitCode = $exitCode
             Output = Get-Content -LiteralPath $log -Raw
             Html = if (Test-Path -LiteralPath $html) { Get-Content -LiteralPath $html -Raw } else { '' }
+            Summary = if (Test-Path -LiteralPath (Join-Path $out 'summary.md') -PathType Leaf) {
+                Get-Content -LiteralPath (Join-Path $out 'summary.md') -Raw
+            } else { '' }
             ReleaseReport = if (Test-Path -LiteralPath (Join-Path $out 'release-report.md') -PathType Leaf) {
                 Get-Content -LiteralPath (Join-Path $out 'release-report.md') -Raw
             } else { '' }
@@ -101,6 +104,26 @@ Describe 'Sidebar startup snapshots preserve the consolidated launch contract' {
         $run.ExitCode | Should -Not -Be 0
         $run.Output | Should -Match 'Passed=1 Failed=0'
         $run.ReleaseReport | Should -Match 'AUTOMATION FAILED.*setup or cleanup failed'
+        $run.ReleaseReport | Should -Not -Match '(?m)^- \[x\]'
+        $run.Output | Should -Match 'PRECISE FAILURES:'
+        $run.Output | Should -Match 'fixture AfterAll failed'
+        $run.Summary | Should -Match 'fixture AfterAll failed'
+        $run.Html | Should -Match 'fixture AfterAll failed'
+    }
+
+    It 'shows a failed Pester container in the summary, HTML and console' {
+        $run = Invoke-ReportFixture -GenerateReport -Body @"
+BeforeDiscovery { throw 'fixture discovery failed' }
+Describe 'unreachable suite' {
+    It 'never executes' { `$true | Should -BeTrue }
+}
+"@
+
+        $run.ExitCode | Should -Not -Be 0
+        $run.Output | Should -Match 'PRECISE FAILURES:'
+        $run.Output | Should -Match 'fixture discovery failed'
+        $run.Summary | Should -Match 'fixture discovery failed'
+        $run.Html | Should -Match 'fixture discovery failed'
         $run.ReleaseReport | Should -Not -Match '(?m)^- \[x\]'
     }
 

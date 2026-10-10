@@ -13,6 +13,8 @@ BeforeAll {
             [switch]$IncludeEncodedIcon,
             [switch]$WithMetadata,
             [switch]$OmitArchiveDll,
+            [switch]$ExternalResource,
+            [switch]$ExternalSdkUcrt,
             [switch]$DuplicateMixedSeparator,
             [switch]$TraversalPath,
             [switch]$WrongFamily
@@ -29,6 +31,18 @@ BeforeAll {
         $iconName = if ($IncludeEncodedIcon) { '{fixture}.scale-100.png' } else { 'icon.scale-100.png' }
         $iconPackagePath = "ProfileIcons\$iconName"
         $sourceIcon = Join-Path $sourceRoot $iconPackagePath
+        $extraPackagePath = if ($ExternalSdkUcrt) { 'ucrtbased.dll' }
+            elseif ($ExternalResource) { 'fixture-data.txt' } else { '' }
+        $extraSource = if ($ExternalSdkUcrt) {
+            Join-Path ${env:ProgramFiles(x86)} 'Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.UniversalCRT.Debug\10.0.26100.0\redist\Debug\x64\ucrtbased.dll'
+        } elseif ($ExternalResource) {
+            Join-Path $root 'outside\fixture-data.txt'
+        } else { '' }
+        if ($extraPackagePath) {
+            New-Item -ItemType Directory -Path (Split-Path $extraSource -Parent) -Force | Out-Null
+            'external-fixture' | Set-Content -LiteralPath $extraSource -NoNewline
+            Copy-Item -LiteralPath $extraSource -Destination (Join-Path $installed $extraPackagePath)
+        }
         $manifestText = '<Package><Identity Name="IntelligentTerminal" Publisher="CN=Test" Version="0.8.0.2"/></Package>'
         $staleManifestText = if ($StaleManifest) {
             $manifestText.Replace('</Package>', '<Capabilities><Capability Name="privateNetworkClientServer"/></Capabilities></Package>')
@@ -51,6 +65,9 @@ BeforeAll {
         $extraIcon = if ($DuplicateMixedSeparator) {
             "<AppxPackagedFile Include=`"$sourceIcon`"><PackagePath>ProfileIcons/$iconName</PackagePath></AppxPackagedFile>"
         } else { '' }
+        $extraFile = if ($extraPackagePath) {
+            "<AppxPackagedFile Include=`"$extraSource`"><PackagePath>$extraPackagePath</PackagePath></AppxPackagedFile>"
+        } else { '' }
         @"
 <Project>
   <ItemGroup>
@@ -58,6 +75,7 @@ BeforeAll {
     <AppxPackagedFile Include="$sourceDll"><PackagePath>$dllPackagePath</PackagePath></AppxPackagedFile>
     <AppxPackagedFile Include="$sourceIcon"><PackagePath>$iconPackagePath</PackagePath></AppxPackagedFile>
     $extraIcon
+    $extraFile
   </ItemGroup>
 </Project>
 "@ | Set-Content -LiteralPath $recipe
@@ -71,6 +89,9 @@ BeforeAll {
                 @{ Path = 'TerminalApp.dll'; Text = $(if ($WrongArchive) { 'stale-binary' } else { 'current-binary' }) }
             )
             if ($ExtraArchiveDll) { $archiveItems += @{ Path = 'old.dll'; Text = 'stale-binary' } }
+            if ($extraPackagePath) {
+                $archiveItems += @{ Path = $extraPackagePath; Text = 'external-fixture' }
+            }
             if ($IncludeEncodedIcon) {
                 $archiveItems += @{ Path = 'ProfileIcons/%7Bfixture%7D.scale-100.png'; Text = 'scale-icon' }
             }
@@ -131,6 +152,7 @@ Describe 'Offline package provenance' -Tag 'Unit' {
         $proof.MsixEntryCount | Should -Be 1
         $proof.OmittedScaleAssets | Should -Be @('ProfileIcons\icon.scale-100.png')
         $proof.RecipeManifestSha256 | Should -Be $proof.RegisteredManifestSha256
+        $proof.ExternalInputs | Should -HaveCount 0
         (Get-FileHash -LiteralPath $f.InstalledDll -Algorithm SHA256).Hash | Should -Be $prior
     }
 
@@ -182,6 +204,31 @@ Describe 'Offline package provenance' -Tag 'Unit' {
         { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
                 -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
             Should -Throw '*Unexpected MSIX payload*old.dll*'
+    }
+
+    It 'rejects a matching non-binary payload sourced outside the clean source worktree' {
+        $f = New-ProvenanceFixture -ExternalResource
+        { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
+                -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
+            Should -Throw '*Recipe source is outside the selected source worktree: fixture-data.txt*'
+    }
+
+    It 'records the Windows SDK debug UCRT as the sole allowed external recipe input' {
+        $previous = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)', 'Process')
+        [Environment]::SetEnvironmentVariable('ProgramFiles(x86)',
+            (Join-Path $TestDrive 'MockProgramFiles(x86)'), 'Process')
+        try {
+            $f = New-ProvenanceFixture -ExternalSdkUcrt
+            $proof = & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
+                -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package
+            $proof.RecipeEntryCount | Should -Be 3
+            $proof.ExternalInputs | Should -HaveCount 1
+            $proof.ExternalInputs[0].PackagePath | Should -Be 'ucrtbased.dll'
+            $proof.ExternalInputs[0].Sha256 | Should -Be (Get-FileHash -LiteralPath $proof.ExternalInputs[0].SourcePath).Hash
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable('ProgramFiles(x86)', $previous, 'Process')
+        }
     }
 
     It 'matches percent-encoded profile icons to their recipe source' {

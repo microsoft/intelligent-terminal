@@ -241,6 +241,31 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
             Should -Invoke Stop-Process -Times 0
         }
 
+        It 'refuses to close a verified Dev ancestor hosting the current chat' {
+            $script:process = New-FakeTerminalProcess -Id 51002
+            $script:process.StartTime = [datetime]'2026-09-01T00:00:00Z'
+            Mock Get-CimInstance {
+                if ($Filter -eq "ProcessId=$PID") {
+                    [pscustomobject]@{
+                        ProcessId = $PID
+                        ParentProcessId = 51002
+                        CreationDate = [datetime]'2026-09-28T00:00:00Z'
+                    }
+                }
+                elseif ($Filter -eq 'ProcessId=51002') {
+                    [pscustomobject]@{
+                        ProcessId = 51002
+                        ParentProcessId = 0
+                        CreationDate = [datetime]'2026-09-01T00:00:00Z'
+                    }
+                }
+            }
+
+            { Stop-StaleItInstances -App $script:app } | Should -Throw '*current chat process tree*'
+            $script:process.Closed | Should -BeFalse
+            Should -Invoke Stop-Process -Times 0
+        }
+
         It 'refuses an ambiguous chat ancestry instead of guessing it is safe' {
             Mock Get-CimInstance {
                 [pscustomobject]@{

@@ -636,7 +636,9 @@ Only documented MSIX metadata may appear beyond the recipe payloads. Recipe
 paths are separator-normalized before duplicate detection; archive paths are
 URI-decoded before matching (packaging can encode braces in icon names);
 scale-qualified profile icons may be absent, but must still match the recipe in
-the installed layout. Keep build-time source/command evidence
+the installed layout. Recipe sources must be inside the selected worktree except
+the Windows SDK debug `ucrtbased.dll`, which is reported with its source path and
+hash under `ExternalInputs`. Keep build-time source/command evidence
 separately: matching hashes do not themselves prove which source the compiler
 used. These options are not required for an explicitly requested Store baseline.
 
@@ -875,11 +877,11 @@ pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.AutofixP
 
 Outputs (all under `test/e2e/artifacts/`):
 - `report.html` — **self-contained HTML** (open in a browser): green/red pass-fail banner,
-  total/passed/failed/skipped stat cards, one **failure card** per failed test (exact error,
+  total/passed/failed/skipped stat cards, one **failure card** per failed test or setup/cleanup block (exact error,
   `file:line` of the failing assertion, duration, clickable artifact links + inline screenshot
   thumbnails), and a full results table grouped by `Describe > Context`.
 - `results.xml` — **NUnit XML** for CI test reporting (Azure DevOps / GitHub).
-- `summary.md` — Markdown: one block per **failed** test with the **exact error**, **file:line**,
+- `summary.md` — Markdown: one block per **failed** test or setup/cleanup block with the **exact error**, **file:line**,
   and any **artifact paths** (screenshots saved by `Assert-Ui`/`Assert-AgentPaneText`, log slices).
 - `release-report.md` — the **clean, jargon-free release checklist**, auto-generated as the final
   step from `doc/release-check-list.md` + this run's `results.xml` (via `New-ReleaseReport.ps1`).

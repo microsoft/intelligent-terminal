@@ -138,6 +138,8 @@ try {
     }
 
     $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $externalInputs = [Collections.Generic.List[object]]::new()
+    $sdkUcrtRoot = [IO.Path]::GetFullPath((Join-Path ${env:ProgramFiles(x86)} 'Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.UniversalCRT.Debug')).TrimEnd('\') + '\'
     $items = @(
         foreach ($item in $recipeXml.SelectNodes("//*[local-name()='AppxPackagedFile']")) {
             $pathNode = $item.SelectSingleNode("*[local-name()='PackagePath']")
@@ -155,12 +157,22 @@ try {
                 -not (Test-Path -LiteralPath $installed -PathType Leaf)) {
                 throw "Recipe source or installed payload missing: $relative"
             }
-            if ($relative -in @('TerminalApp.dll', 'WindowsTerminal.exe', 'wtcli.exe', 'wta.exe') -and
-                -not $source.StartsWith($sourcePrefix, [StringComparison]::OrdinalIgnoreCase)) {
-                throw "Product binary recipe source is outside the selected source worktree: $relative"
+            $inSource = $source.StartsWith($sourcePrefix, [StringComparison]::OrdinalIgnoreCase)
+            $sdkUcrt = $relative -ieq 'ucrtbased.dll' -and
+                $source.StartsWith($sdkUcrtRoot, [StringComparison]::OrdinalIgnoreCase) -and
+                $source.Substring($sdkUcrtRoot.Length) -match '^\d+\.\d+\.\d+\.\d+\\redist\\Debug\\x64\\ucrtbased\.dll$'
+            if (-not $inSource -and -not $sdkUcrt) {
+                throw "Recipe source is outside the selected source worktree: $relative"
             }
 
             $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+            if ($sdkUcrt) {
+                $externalInputs.Add([pscustomobject]@{
+                    PackagePath = $relative
+                    SourcePath = $source
+                    Sha256 = $sourceHash
+                })
+            }
             $installedHash = (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash
             if ($sourceHash -ne $installedHash) {
                 throw "The installed payload differs from the recipe source: $relative"
@@ -202,5 +214,6 @@ if (-not $items.Count) { throw "Package recipe has no payloads: $recipe" }
     RecipeEntryCount = $items.Count
     MsixEntryCount = @($items | Where-Object IncludedInMsix).Count
     OmittedScaleAssets = @($items | Where-Object { -not $_.IncludedInMsix } | Select-Object -ExpandProperty PackagePath)
+    ExternalInputs = @($externalInputs.ToArray())
     Entries = $items
 }

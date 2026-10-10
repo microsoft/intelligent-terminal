@@ -143,7 +143,22 @@ function Get-FailureArtifacts($msg) {
 function HtmlEnc($s) { if ($null -eq $s) { return '' } [System.Net.WebUtility]::HtmlEncode([string]$s) }
 function FileUri($p) { try { ([uri]([System.IO.Path]::GetFullPath($p))).AbsoluteUri } catch { $p } }
 
-$failed = $result.Tests | Where-Object { $_.Result -eq 'Failed' }
+$failed = @($result.Tests | Where-Object { $_.Result -eq 'Failed' })
+$structuralFailures = @(
+    foreach ($block in $setupFailures) {
+        $path = if ($block.ExpandedPath) { $block.ExpandedPath } elseif ($block.Name) { $block.Name } else { 'Pester container' }
+        $errors = @($block.ErrorRecord)
+        if (-not $errors.Count) { $errors = @($null) }
+        foreach ($errorRecord in $errors) {
+            [pscustomobject]@{
+                ExpandedPath = "SETUP/CLEANUP: $path"
+                Duration = if ($block.Duration) { $block.Duration } else { [TimeSpan]::Zero }
+                ErrorRecord = $errorRecord
+            }
+        }
+    }
+)
+$allFailures = @($failed) + @($structuralFailures)
 
 # ── Markdown summary ────────────────────────────────────────────────────────
 function Format-Failure($t) {
@@ -172,10 +187,10 @@ $md = [System.Text.StringBuilder]::new()
 [void]$md.AppendLine("- HTML report: $(Join-Path $OutDir 'report.html')")
 [void]$md.AppendLine("- NUnit XML: $($cfg.TestResult.OutputPath.Value)")
 [void]$md.AppendLine("")
-if ($failed) {
-    [void]$md.AppendLine("## Failures ($($failed.Count))")
+if ($allFailures) {
+    [void]$md.AppendLine("## Failures ($($allFailures.Count))")
     [void]$md.AppendLine("")
-    foreach ($t in $failed) { [void]$md.Append((Format-Failure $t)) }
+    foreach ($t in $allFailures) { [void]$md.Append((Format-Failure $t)) }
 }
 elseif ($runFailed -or $result.SkippedCount -gt 0) {
     [void]$md.AppendLine("## $bannerText")
@@ -232,9 +247,9 @@ td.dur{color:var(--mut);text-align:right;white-space:nowrap}
 [void]$h.AppendLine('</div>')
 
 # Failure cards
-if ($failed) {
-    [void]$h.AppendLine("<h2>Failures ($($failed.Count))</h2>")
-    foreach ($t in $failed) {
+if ($allFailures) {
+    [void]$h.AppendLine("<h2>Failures ($($allFailures.Count))</h2>")
+    foreach ($t in $allFailures) {
         $err = $t.ErrorRecord
         $msg = if ($err) { ($err.Exception.Message).Trim() } else { '(no error record)' }
         $where = Get-FailureWhere $err
@@ -281,15 +296,16 @@ Write-Host "  report.html : $htmlPath"
 Write-Host "  results.xml : $($cfg.TestResult.OutputPath.Value)"
 Write-Host "  summary.md  : $summaryPath"
 if ($releaseReport) { Write-Host "  release-report.md : $releaseReport ($releaseReportKind)" -ForegroundColor Green }
-if ($failed) {
+if ($allFailures) {
     Write-Host ""
     Write-Host "PRECISE FAILURES:" -ForegroundColor Red
-    foreach ($t in $failed) {
+    foreach ($t in $allFailures) {
         $err = $t.ErrorRecord
         $where = ''
-        if ($err.ScriptStackTrace -match '(?<f>[A-Za-z]:[^,\n]+\.ps1): line (?<l>\d+)') { $where = " @ $($Matches.f.Trim()):$($Matches.l)" }
+        if ($err -and $err.ScriptStackTrace -match '(?<f>[A-Za-z]:[^,\n]+\.ps1): line (?<l>\d+)') { $where = " @ $($Matches.f.Trim()):$($Matches.l)" }
         Write-Host ("  [-] {0}{1}" -f $t.ExpandedPath, $where) -ForegroundColor Red
-        Write-Host ("      {0}" -f ($err.Exception.Message -replace "`r?`n", ' ').Trim()) -ForegroundColor Yellow
+        $message = if ($err) { $err.Exception.Message } else { '(Pester reported no error record)' }
+        Write-Host ("      {0}" -f ($message -replace "`r?`n", ' ').Trim()) -ForegroundColor Yellow
     }
 }
 Write-Host ("=" * 70)
