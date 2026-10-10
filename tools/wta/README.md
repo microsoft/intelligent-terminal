@@ -112,16 +112,36 @@ other-window action. Missing or malformed membership is unknown, not evidence
 that the pane is attached elsewhere. These fields are refreshed per response,
 not stored as registry ownership or lifecycle state.
 
-Historical/Ended native host Copilot rows may receive response-only activity
-from their exact default-universe SDK session directory. This requires a
+Sessions registered as live in master keep their detailed Idle, Active,
+Waiting for input, or Error status. Historical/Ended native host Copilot rows
+are not live IT registrations; they may instead receive the response-only
+`InUse` status, displayed as **In use**, from their exact default-universe SDK
+session directory. This requires a
 matching PID marker, a live native `copilot.exe` created before that marker,
 and an actively held `inuse.<pid>.hold` lease (observed with Copilot SDK
-1.0.80). A stale marker, released lease, inaccessible process, unknown phase,
+1.0.80). A stale marker, released lease, inaccessible process,
 or nonmatching provider/source/universe leaves the original status unchanged.
-The existing turn classifier supplies activity; individual tool completion
-does not imply Idle. Reads use a bounded 4 MiB bootstrap tail and incremental
-cached appends under a two-second budget. This does not mutate registry state,
-infer a window/pane owner, or enable a running-location indicator.
+External sessions do not expose detailed activity: this probe does not read
+`events.jsonl` or infer Idle/Active from turns. Marker and lease reads have a
+two-second budget and share one process-wide nonblocking admission gate.
+The gate remains occupied until the blocking file operation finishes, even
+when its caller times out or disconnects. Busy list reads retain the original
+snapshot.
+
+Activation checks the same qualified native evidence again before any
+resume path; it never trusts the status returned to the sidebar. An actively
+held external lease rejects activation without changing registry ownership.
+Busy, timed-out, or failed verification also rejects activation instead of
+assuming the session is free. Absent or released evidence allows the normal
+historical resume path. A live IT registration observed after the asynchronous
+probe takes precedence over its older evidence and retains detailed activity.
+This does not infer a window/pane owner or enable a running-location indicator.
+
+Session CLI connections retry transient missing/busy named-pipe instances under
+a bounded backoff (up to 1.87 seconds). Concurrent windows can refresh immediately
+after resume without treating a busy master as stopped; final failures preserve
+the underlying Windows error. This retries connection establishment only; it never
+sends an activation request again.
 
 The initial
 discovery stays `loading` until all eligible host providers finish. Providers that

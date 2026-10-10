@@ -128,6 +128,8 @@ agents.status.active: "[Àçţïṽé!!]"
 agents.status.waiting_for_input: "[Ŵåïţïñğ ƒöŕ ïñṗûţ!!!! !!!!]"
 agents.status.error: "[Éŕŕöŕ!!]"
 agents.status.idle: "[Îďĺé!!]"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "[Îñ ûśé!!]"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "[(Ctrl+Shift+. ţö śĥöŵ/ĥïďé åğéñţ ṗåñé • Ctrl+Shift+/ ţö śĥöŵ/ĥïďé åğéñţ śéśśïöñ)!!!! !!!! !!!! !!!!]"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

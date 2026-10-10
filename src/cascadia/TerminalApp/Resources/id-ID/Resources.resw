@@ -603,6 +603,14 @@
     <value>Menganggur</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
+    <value>Sedang digunakan</value>
+    <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
+  </data>
+  <data name="VerticalTabsHistoryInUseToolTip" xml:space="preserve">
+    <value>Sesi ini terbuka di aplikasi lain.</value>
+    <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
     <value>Aktif</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>
@@ -680,16 +688,8 @@
     <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
-    <value>{0} · jendela lain</value>
+    <value>{0} · Di jendela lain</value>
     <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
-  </data>
-  <data name="VerticalTabsHistoryRestoreBackgroundTab" xml:space="preserve">
-    <value>Pulihkan tab latar belakang</value>
-    <comment>Action for a live agent session in a kept-running background tab. Restores the entire original tab, with all its panes, to the foreground. This does not resume a new conversation or focus another visible window.</comment>
-  </data>
-  <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
-    <value>Beralih ke jendela lain</value>
-    <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
   <data name="TabColorChoose"><value>Ubah warna tab</value></data>
   <data name="RenameTabText"><value>Ganti nama tab</value></data>

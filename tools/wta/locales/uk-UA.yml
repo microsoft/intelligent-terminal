@@ -135,6 +135,8 @@ agents.status.active: "Активний"
 agents.status.waiting_for_input: "Очікування введення"
 agents.status.error: "Помилка"
 agents.status.idle: "Бездіяльний"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Використовується"
 
 # ── Підказка привітання макету (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. — показати/сховати панель агента • Ctrl+Shift+/ — показати/сховати сеанс агента)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

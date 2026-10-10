@@ -110,38 +110,56 @@ agent action, not an override of the normal new-tab control.
 - The display-options button uses **Sidebar display options** for its tooltip
   and accessible name regardless of filters. Its menu configures visible tab details and
   any available tab filters; opening it does not itself filter tabs.
-- History rows use a leading 16px provider icon, vertically centered across the
-  title and metadata rows, with both text rows aligned to its right. Metadata is
-  ordered as timestamp, meaningful status, and provider display name.
-  Ended/historical rows omit the redundant
-  Historical status; live Idle/Working/Attention/Error statuses remain visible.
-  An outlined window with an upward restore arrow after the provider name
-  identifies a confirmed background tab; clicking restores the whole original
-  tab. Two overlapping windows identify a session attached to another visible
-  window; clicking focuses its original tab and pane. The status remains plain
-  activity text. Kept-tab membership takes precedence over an old window ID.
-  Unknown ownership leaves the activity status visible without either indicator.
+- History rows have three text lines aligned to the right of a leading 16px
+  provider icon: title, working directory, then status or time. The icon is
+  vertically centered across all three lines. The third line shows only **In use**
+  for live sessions without an IT registration, the detailed
+  Idle/Active/Waiting for input/Error status for live IT registrations, or the
+  relative timestamp for ended/historical sessions. Live rows do not display a
+  timestamp, and historical rows do not display the redundant Historical status.
+  A session attached to another visible IT window ends its detailed status
+  with **In another window**, separated by a middle dot (for example,
+  `Idle · In another window`). This requires confirmed different-window
+  ownership; current-window, external **In use**, historical, and unknown-owner
+  rows do not receive the annotation. Kept-tab membership takes precedence
+  over an old window ID and does not show the other-window annotation.
+  Activity colors apply only to the status label; the window annotation retains
+  the ordinary metadata foreground and opacity through status changes.
+  Entering headless mode clears a stale window annotation immediately from
+  locally known retained rows, without waiting for the next master snapshot.
+  Successful reattachment into a different window migrates locally tracked
+  session bindings even when no hook binding is available. The restored session
+  is excluded from that window's recent rows immediately; existing rows in other
+  windows update their ownership annotation at the committed content handoff.
+  Failed transfers retain the original bindings and headless ownership.
+  There are no dedicated switch-window or restore-background-tab action buttons
+  or icons in recent-session rows. The passive Keep Running badge is unchanged.
+  Unknown ownership leaves the activity status visible without a window annotation.
   Enter uses the same activation: focus or restore an existing bound pane, or
   attempt supported resume in the current window for an explicitly activated
   known-provider shell session with no bound pane. A failed bound-pane focus
   never falls back to creating a new resumed session.
   Bare Enter activates the focused History row even with selection disabled;
-  modified Enter is ignored. A focused ownership button retains its native
-  activation, rather than also activating its containing row.
-  Provider identity remains available through the icon tooltip, highlighted
-  provider-name text, and shared search.
-  Time and provider text share bounded metadata space and may truncate with an ellipsis at the
-  minimum sidebar width; status and the ownership action retain reserved space.
-- History ages use Windows ICU's standard, locale-aware **short numeric relative
-  time** format (CLDR), using the UI resource language rather than private unit
-  abbreviations. For example, English uses `2 min. ago`, `2 hr. ago`, `2 wk. ago`,
-  `2 mo. ago`, and `2 yr. ago`; translations and grammar come from the platform.
-  Below a minute, the existing localized “just now” text remains. Whole elapsed
-  minutes, hours, days, and seven-day weeks are floored; older timestamps use
-  completed Gregorian UTC calendar months and years, including month-end and
-  leap-year adjustment, rather than fixed 30-day/365-day approximations.
+  modified Enter is ignored.
+  Provider identity remains available through the icon tooltip, the focused
+  history row's accessible name (alongside its title), and shared search.
+  The working directory supports search highlighting and a full-path tooltip.
+  For **In use** sessions, hovering the row, working directory, or provider icon
+  instead explains: **This session is open in another application.**
+  The focused history row exposes the same explanation as accessible help text.
+  Both follow status changes without replacing the row, and the help text clears
+  when the session returns to IT or becomes historical.
+  Text may truncate with an ellipsis at the minimum sidebar width.
+- History ages match the original session-management view: localized,
+  unabbreviated numeric relative time below seven days, such as `2 minutes ago`,
+  `2 hours ago`, and `2 days ago`. Below a minute, the existing localized
+  “just now” text remains. Whole elapsed minutes, hours, and days are floored.
+  At exactly seven days and beyond, display the session's UTC calendar date
+  using a localized year/month/day date without a weekday, rather than weeks,
+  months, or years ago (for example, `September 21, 2026` in English).
+  Relative-time translations, plural grammar, date ordering, and month names
+  come from Windows ICU's long CLDR formats, using the UI resource language.
   Missing or unsupported timestamps, or timestamps that cannot be formatted, retain localized “unknown.”
-  ICU's normal locale fallback applies, including for unsupported pseudo-locales.
 - The sidebar has exactly one vertical scrolling viewport containing the
   eligible open tabs followed by **Recent agent sessions** when requested.
   The live section grows or shrinks with its tab, group, and pane rows; this does
@@ -431,7 +449,7 @@ These are required checks for this contract, not claims of completed validation:
   override filters.
 - Change filters during search, then clear and close the query separately.
   Verify restoration of the exact checked preferences, not default values.
-- Verify existing recent-row resume/ownership actions and live tab/group/pane
+- Verify existing recent-row activation and live tab/group/pane
   actions remain available when their rows are visible.
 - For sidebar-hotkey entry from collapsed and expanded rails, verify restoration
   to Agent Pane chat and the exact originating terminal split when available.

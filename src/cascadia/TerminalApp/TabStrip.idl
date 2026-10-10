@@ -75,6 +75,8 @@ namespace TerminalApp
         Windows.UI.Xaml.Media.Brush CurrentBackground;
         Windows.UI.Xaml.Media.Brush CurrentForeground;
         Boolean IsKeepRunning;
+        String StatusLabelText;
+        String WindowHintText;
     };
 
     [default_interface] runtimeclass TabStripHistoryActivationEventArgs

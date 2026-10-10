@@ -96,6 +96,30 @@ namespace winrt::TerminalApp::implementation
         return changed;
     }
 
+    void TabStripHistoryItem::UpdateStatusText(winrt::hstring const& text)
+    {
+        const auto status = Status();
+        const auto liveIt = status == L"Idle" || status == L"Working" ||
+                            status == L"Attention" || status == L"Error";
+        const auto hint = liveIt && OtherWindow() && !BackgroundTab() && !_locallyHeadless ?
+                              winrt::hstring{ RS_fmt(L"VerticalTabsHistoryOtherWindowStatusFormat", L"") } :
+                              winrt::hstring{};
+        StatusText(text + hint);
+        StatusLabelText(text);
+        WindowHintText(hint);
+    }
+
+    bool TabStripHistoryItem::UpdateHeadlessState(const bool headless)
+    {
+        if (_locallyHeadless != headless)
+        {
+            _locallyHeadless = headless;
+            UpdateStatusText(TerminalPage::_SidebarHistoryStatusText(winrt::to_string(Status())));
+            return true;
+        }
+        return false;
+    }
+
     DataTemplate TabStripItemTemplateSelector::SelectTemplateCore(IInspectable const& item)
     {
         return item.try_as<TerminalApp::TabStripDisplayItem>() ? LiveTemplate :
@@ -974,30 +998,24 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto isCurrent = item && item.IsCurrent();
-        const auto nativeItem = item ? winrt::get_self<TabStripHistoryItem>(item) : nullptr;
-        const auto background = nativeItem && nativeItem->BackgroundTab();
-        const auto otherWindow = nativeItem && nativeItem->OtherWindow();
-        if (const auto button = root.FindName(L"HistoryOwnershipButton").try_as<Button>())
+        const auto external = item && item.Status() == L"InUse";
+        const auto externalTip = external ? RS_(L"VerticalTabsHistoryInUseToolTip") : winrt::hstring{};
+        ToolTipService::SetToolTip(root, external ? box_value(externalTip) : nullptr);
+        if (const auto cwd = root.FindName(L"HistoryCwdText").try_as<Control>())
         {
-            const auto label = background ? RS_(L"VerticalTabsHistoryRestoreBackgroundTab") :
-                               otherWindow ? RS_(L"VerticalTabsHistorySwitchOtherWindow") : winrt::hstring{};
-            button.Tag(background || otherWindow ? item : nullptr);
-            button.Visibility(background || otherWindow ? Visibility::Visible : Visibility::Collapsed);
-            button.IsEnabled(background || otherWindow);
-            WUX::Automation::AutomationProperties::SetName(button, label);
-            ToolTipService::SetToolTip(button, label.empty() ? nullptr : box_value(label));
+            const auto tip = external ? externalTip : item ? item.Cwd() :
+                                                             winrt::hstring{};
+            ToolTipService::SetToolTip(cwd, tip.empty() ? nullptr : box_value(tip));
         }
-        for (const auto& [name, visible] : { std::pair{ L"HistoryBackgroundIcon", background },
-                                            std::pair{ L"HistoryOtherWindowIcon", otherWindow } })
+        if (const auto icon = root.FindName(L"HistoryProviderIcon").try_as<Control>())
         {
-            if (const auto icon = root.FindName(name).try_as<UIElement>())
-            {
-                icon.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
-            }
+            const auto tip = external ? externalTip : item ? item.ProviderDisplayName() :
+                                                             winrt::hstring{};
+            ToolTipService::SetToolTip(icon, tip.empty() ? nullptr : box_value(tip));
         }
         const auto foreground = isCurrent ? item.CurrentForeground() : nullptr;
         const auto palette = root.FindName(L"HistorySelectionPalette").try_as<Control>();
-        for (const auto name : { L"HistoryTitleText", L"HistorySubtitleText", L"HistoryStatusText", L"HistoryProviderNameText" })
+        for (const auto name : { L"HistoryTitleText", L"HistoryCwdText", L"HistorySubtitleText", L"HistoryStatusText", L"HistoryWindowHintText" })
         {
             if (const auto control = root.FindName(name).try_as<Control>())
             {
@@ -1020,6 +1038,19 @@ namespace winrt::TerminalApp::implementation
 
     static void _applyHistoryRowAutomation(DependencyObject const& container, TerminalApp::TabStripHistoryItem const& item)
     {
+        if (item)
+        {
+            const auto provider = item.ProviderDisplayName();
+            WUX::Automation::AutomationProperties::SetName(
+                container, provider.empty() ? item.Title() : item.Title() + L" \u00b7 " + provider);
+            WUX::Automation::AutomationProperties::SetHelpText(
+                container, item.Status() == L"InUse" ? RS_(L"VerticalTabsHistoryInUseToolTip") : winrt::hstring{});
+        }
+        else
+        {
+            container.ClearValue(WUX::Automation::AutomationProperties::NameProperty());
+            container.ClearValue(WUX::Automation::AutomationProperties::HelpTextProperty());
+        }
         WUX::Automation::AutomationProperties::SetItemStatus(
             container, item && item.IsCurrent() ? RS_(L"VerticalTabsHistoryCurrentSession") : winrt::hstring{});
     }
@@ -1424,6 +1455,10 @@ namespace winrt::TerminalApp::implementation
         _historySearchTerms.reserve(_historySnapshot.size());
         for (const auto& item : _historySnapshot)
         {
+            if (item.StatusLabelText().empty())
+            {
+                winrt::get_self<TabStripHistoryItem>(item)->UpdateStatusText(item.StatusText());
+            }
             item.IsCurrent(false);
             item.CurrentBackground(nullptr);
             item.CurrentForeground(nullptr);
@@ -1552,10 +1587,14 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TabStrip::UpdateHistoryKeepRunning(const std::function<bool(const winrt::hstring&)>& isPaneKeepRunning)
+    void TabStrip::UpdateHistoryKeepRunning(const std::function<bool(const winrt::hstring&)>& isPaneKeepRunning,
+                                            const std::function<bool(const winrt::hstring&)>& isPaneHeadless)
     {
+        bool changed = false;
         const auto update = [&](const TerminalApp::TabStripHistoryItem& item) {
             item.IsKeepRunning(!item.PaneSessionId().empty() && isPaneKeepRunning(item.PaneSessionId()));
+            changed |= winrt::get_self<TabStripHistoryItem>(item)->UpdateHeadlessState(
+                !item.PaneSessionId().empty() && isPaneHeadless(item.PaneSessionId()));
         };
         for (const auto& item : _historySnapshot)
         {
@@ -1566,6 +1605,56 @@ namespace winrt::TerminalApp::implementation
         {
             update(item);
         }
+        if (changed)
+        {
+            for (size_t index = 0; index < _historySnapshot.size(); ++index)
+            {
+                _historySearchTerms[index] = _buildHistorySearchTerms(_historySnapshot[index]);
+            }
+            if (_sidebarFilters.HasSearchQuery())
+            {
+                _applyHistoryProjection(true);
+            }
+        }
+    }
+
+    void TabStrip::UpdateHistoryPaneOwnership(const std::function<std::optional<bool>(const winrt::hstring&)>& otherWindow)
+    {
+        bool changed = false;
+        const auto update = [&](const TerminalApp::TabStripHistoryItem& item) {
+            const auto status = item.Status();
+            if (status != L"Idle" && status != L"Working" && status != L"Attention" && status != L"Error")
+            {
+                return;
+            }
+            if (const auto ownership = otherWindow(item.PaneSessionId()))
+            {
+                const auto native = winrt::get_self<TabStripHistoryItem>(item);
+                native->BackgroundTab(false);
+                native->OtherWindow(*ownership);
+                native->UpdateStatusText(item.StatusLabelText());
+                changed = true;
+            }
+        };
+        for (const auto& item : _historySnapshot)
+        {
+            update(item);
+        }
+        for (const auto& item : _historyItems)
+        {
+            update(item);
+        }
+        if (changed)
+        {
+            for (size_t index = 0; index < _historySnapshot.size(); ++index)
+            {
+                _historySearchTerms[index] = _buildHistorySearchTerms(_historySnapshot[index]);
+            }
+            if (_sidebarFilters.HasSearchQuery())
+            {
+                _applyHistoryProjection(true);
+            }
+        }
     }
 
     bool TabStrip::ApplyHistoryStatusDelta(winrt::hstring const& sessionId,
@@ -1575,14 +1664,23 @@ namespace winrt::TerminalApp::implementation
     {
         bool updated = false;
         const auto applyStatus = [&](TerminalApp::TabStripHistoryItem const& item) {
+            const auto nativeItem = winrt::get_self<TabStripHistoryItem>(item);
+            const auto liveIt = status == L"Idle" || status == L"Working" ||
+                                status == L"Attention" || status == L"Error";
+            if (!liveIt || item.PaneSessionId() != paneSessionId)
+            {
+                nativeItem->OtherWindow(false);
+                nativeItem->BackgroundTab(false);
+            }
             item.PaneSessionId(paneSessionId);
             item.Status(status);
-            item.StatusText(statusText);
+            nativeItem->UpdateStatusText(statusText);
             item.StatusTextStyle(_historyStatusTextStyle(status));
             item.IsLive(status == L"Idle" ||
                         status == L"Working" ||
                         status == L"Attention" ||
-                        status == L"Error");
+                        status == L"Error" ||
+                        status == L"InUse");
             item.IsHistorical(status == L"Ended" || status == L"Historical");
         };
         for (size_t index = 0; index < _historySnapshot.size(); ++index)
@@ -1607,6 +1705,11 @@ namespace winrt::TerminalApp::implementation
                 if (item.SessionId() == sessionId)
                 {
                     applyStatus(item);
+                    if (const auto container = ItemsList().ContainerFromItem(item).try_as<ListViewItem>())
+                    {
+                        _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), item);
+                        _applyHistoryRowAutomation(container, item);
+                    }
                 }
             }
             _applyHistoryProjection(true);
@@ -2103,21 +2206,6 @@ namespace winrt::TerminalApp::implementation
         _applyHistoryRowForeground(root, item);
     }
 
-    void TabStrip::OnHistoryOwnershipClick(IInspectable const& sender, RoutedEventArgs const&)
-    {
-        if (_historyActivating || _historyLoading)
-        {
-            return;
-        }
-        if (const auto button = sender.try_as<Button>())
-        {
-            if (const auto item = button.Tag().try_as<TerminalApp::TabStripHistoryItem>())
-            {
-                HistoryActivationRequested.raise(*this, winrt::make<TabStripHistoryActivationEventArgs>(item));
-            }
-        }
-    }
-
     void TabStrip::OnContainerContentChanging(ListViewBase const&,
                                                ContainerContentChangingEventArgs const& e)
     {
@@ -2179,13 +2267,7 @@ namespace winrt::TerminalApp::implementation
         else
         {
             _rowAutomationSubscriptions.erase(winrt::get_abi(container));
-            container.ClearValue(WUX::Automation::AutomationProperties::NameProperty());
             container.ClearValue(WUX::Automation::AutomationProperties::AcceleratorKeyProperty());
-            container.ClearValue(WUX::Automation::AutomationProperties::HelpTextProperty());
-            if (history)
-            {
-                WUX::Automation::AutomationProperties::SetName(container, history.Title());
-            }
         }
 
         if (e.InRecycleQueue())
@@ -2447,6 +2529,7 @@ namespace winrt::TerminalApp::implementation
         };
 
         append(item.Title());
+        append(item.Cwd());
         append(item.Subtitle() + item.StatusText());
         append(item.Subtitle() + L" \u00b7 " + item.StatusText());
         auto providerLabel = item.ProviderDisplayName();

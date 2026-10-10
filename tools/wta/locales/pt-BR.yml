@@ -126,6 +126,8 @@ agents.status.active: "Ativo"
 agents.status.waiting_for_input: "Aguardando entrada"
 agents.status.error: "Erro"
 agents.status.idle: "Ocioso"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Em uso"
 
 # ── Dica de boas-vindas do layout (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. para mostrar/ocultar o painel do agente • Ctrl+Shift+/ para mostrar/ocultar a sessão do agente)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

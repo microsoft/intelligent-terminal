@@ -274,11 +274,28 @@ namespace winrt::TerminalApp::implementation
                     page->_UpdateSidebarHistoryCurrentSession();
                 }
             });
+        _paneWindowChangedToken = winrt::get_self<implementation::ContentManager>(_manager)->PaneWindowChanged(
+            [weakThis{ get_weak() }](const winrt::guid& paneId, const uint64_t ownerWindowId) {
+                if (const auto page = weakThis.get(); page && page->_tabStrip)
+                {
+                    const auto currentWindowId = page->_WindowProperties.WindowId();
+                    const auto strip = winrt::get_self<implementation::TabStrip>(page->_tabStrip);
+                    strip->UpdateHistoryPaneOwnership([&](const winrt::hstring& rowPaneId) -> std::optional<bool> {
+                        if (_TryParsePaneSessionId(winrt::to_string(rowPaneId)) == paneId)
+                        {
+                            return currentWindowId != 0 && ownerWindowId != 0 && currentWindowId != ownerWindowId;
+                        }
+                        return std::nullopt;
+                    });
+                    page->_ApplyTabListProjection();
+                }
+            });
     }
 
     TerminalPage::~TerminalPage()
     {
         winrt::get_self<implementation::ContentManager>(_manager)->KeepRunningTabsChanged(_keepRunningTabsChangedToken);
+        winrt::get_self<implementation::ContentManager>(_manager)->PaneWindowChanged(_paneWindowChangedToken);
         _sidebarIntroductionShuttingDown = true;
         _ReleaseSidebarIntroduction(false);
         if (_sidebarIntroductionTimer)
@@ -3550,6 +3567,7 @@ namespace winrt::TerminalApp::implementation
              status != "Working" &&
              status != "Attention" &&
              status != "Error" &&
+             status != "InUse" &&
              status != "Ended" &&
              status != "Historical"))
         {
@@ -6611,10 +6629,15 @@ namespace winrt::TerminalApp::implementation
 
         const auto strip = winrt::get_self<implementation::TabStrip>(_tabStrip);
         const auto manager = winrt::get_self<implementation::ContentManager>(_manager);
-        strip->UpdateHistoryKeepRunning([&](const winrt::hstring& paneSessionId) {
-            const auto paneId = _TryParsePaneSessionId(winrt::to_string(paneSessionId));
-            return paneId && manager->IsPaneKeepRunning(*paneId);
-        });
+        strip->UpdateHistoryKeepRunning(
+            [&](const winrt::hstring& paneSessionId) {
+                const auto paneId = _TryParsePaneSessionId(winrt::to_string(paneSessionId));
+                return paneId && manager->IsPaneKeepRunning(*paneId);
+            },
+            [&](const winrt::hstring& paneSessionId) {
+                const auto paneId = _TryParsePaneSessionId(winrt::to_string(paneSessionId));
+                return paneId && manager->KeptGroupForPane(*paneId) != winrt::guid{};
+            });
 
         TerminalApp::TabStripHistoryItem current{ nullptr };
         MUX::Controls::TabViewItem tabItem{ nullptr };
@@ -6736,6 +6759,10 @@ namespace winrt::TerminalApp::implementation
         {
             return RS_(L"VerticalTabsHistoryStatusIdle");
         }
+        if (status == "InUse")
+        {
+            return RS_(L"VerticalTabsHistoryStatusInUse");
+        }
         if (status == "Working")
         {
             return RS_(L"VerticalTabsHistoryStatusWorking");
@@ -6819,6 +6846,7 @@ namespace winrt::TerminalApp::implementation
         }
         try
         {
+            const auto effectiveLanguage = languageTag.empty() ? _SidebarHistoryLanguageTag() : winrt::hstring{ languageTag };
             auto unit = UDAT_REL_UNIT_MINUTE;
             auto count = static_cast<double>(seconds / 60);
             if (seconds >= 3600)
@@ -6832,35 +6860,6 @@ namespace winrt::TerminalApp::implementation
                 count = static_cast<double>(seconds / 86400);
             }
             UErrorCode status = U_ZERO_ERROR;
-            if (seconds >= 7 * 86400)
-            {
-                unit = UDAT_REL_UNIT_WEEK;
-                count = static_cast<double>(seconds / (7 * 86400));
-
-                // Completed Gregorian UTC months/years, not fixed 30/365-day approximations.
-                using Calendar = wistd::unique_ptr<UCalendar, wil::function_deleter<decltype(&ucal_close), &ucal_close>>;
-                const UChar utc[]{ u'U', u'T', u'C' };
-                Calendar calendar{ ucal_open(utc, ARRAYSIZE(utc), "en_US", UCAL_GREGORIAN, &status) };
-                THROW_HR_IF_MSG(E_FAIL, U_FAILURE(status) != 0, "ICU calendar: %hs", u_errorName(status));
-                const auto completed = [&](UCalendarDateFields field) {
-                    ucal_setMillis(calendar.get(), static_cast<UDate>(*lastActivityAtMs), &status);
-                    const auto difference = ucal_getFieldDifference(calendar.get(), static_cast<UDate>(nowMs), field, &status);
-                    THROW_HR_IF_MSG(E_FAIL, U_FAILURE(status) != 0, "ICU calendar difference: %hs", u_errorName(status));
-                    return difference;
-                };
-                if (const auto years = completed(UCAL_YEAR); years > 0)
-                {
-                    unit = UDAT_REL_UNIT_YEAR;
-                    count = years;
-                }
-                else if (const auto months = completed(UCAL_MONTH); months > 0)
-                {
-                    unit = UDAT_REL_UNIT_MONTH;
-                    count = months;
-                }
-            }
-
-            const auto effectiveLanguage = languageTag.empty() ? _SidebarHistoryLanguageTag() : winrt::hstring{ languageTag };
             const auto tag = winrt::to_string(effectiveLanguage);
             std::string locale(ULOC_FULLNAME_CAPACITY, '\0');
             if (!tag.empty())
@@ -6876,8 +6875,26 @@ namespace winrt::TerminalApp::implementation
                 THROW_HR_IF_MSG(E_INVALIDARG, U_FAILURE(status) || parsedLength != static_cast<int32_t>(tag.size()), "Invalid ICU language tag: %hs", u_errorName(status));
                 locale.resize(length);
             }
+            if (seconds >= 7 * 86400)
+            {
+                using DateFormatter = wistd::unique_ptr<UDateFormat, wil::function_deleter<decltype(&udat_close), &udat_close>>;
+                const UChar utc[]{ u'U', u'T', u'C' };
+                DateFormatter formatter{ udat_open(UDAT_NONE, UDAT_LONG, tag.empty() ? nullptr : locale.c_str(), utc, ARRAYSIZE(utc), nullptr, 0, &status) };
+                THROW_HR_IF_MSG(E_FAIL, U_FAILURE(status) != 0, "ICU calendar date formatter: %hs", u_errorName(status));
+                std::vector<UChar> buffer(128);
+                auto length = udat_format(formatter.get(), static_cast<UDate>(*lastActivityAtMs), buffer.data(), static_cast<int32_t>(buffer.size()), nullptr, &status);
+                if (status == U_BUFFER_OVERFLOW_ERROR)
+                {
+                    status = U_ZERO_ERROR;
+                    buffer.resize(static_cast<size_t>(length) + 1);
+                    length = udat_format(formatter.get(), static_cast<UDate>(*lastActivityAtMs), buffer.data(), static_cast<int32_t>(buffer.size()), nullptr, &status);
+                }
+                THROW_HR_IF_MSG(E_FAIL, U_FAILURE(status) != 0, "ICU calendar date: %hs", u_errorName(status));
+                return winrt::hstring{ std::wstring{ buffer.data(), buffer.data() + length } };
+            }
+
             using Formatter = wistd::unique_ptr<URelativeDateTimeFormatter, wil::function_deleter<decltype(&ureldatefmt_close), &ureldatefmt_close>>;
-            Formatter formatter{ ureldatefmt_open(tag.empty() ? nullptr : locale.c_str(), nullptr, UDAT_STYLE_SHORT, UDISPCTX_CAPITALIZATION_NONE, &status) };
+            Formatter formatter{ ureldatefmt_open(tag.empty() ? nullptr : locale.c_str(), nullptr, UDAT_STYLE_LONG, UDISPCTX_CAPITALIZATION_NONE, &status) };
             THROW_HR_IF_MSG(E_FAIL, U_FAILURE(status) != 0, "ICU relative formatter: %hs", u_errorName(status));
             std::vector<UChar> buffer(128);
             auto length = ureldatefmt_formatNumeric(formatter.get(), -count, unit, buffer.data(), static_cast<int32_t>(buffer.size()), &status);
@@ -7071,7 +7088,6 @@ namespace winrt::TerminalApp::implementation
             const auto otherWindow = isLive && backgroundTab.isBool() && !backgroundTab.asBool() &&
                 currentWindowId != 0 && ownerWindow.isUInt64() &&
                 ownerWindow.asUInt64() != 0 && ownerWindow.asUInt64() != currentWindowId;
-            item.StatusText(statusText);
             item.Cwd(winrt::to_hstring(cwd));
             item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));
             item.AgentId(winrt::to_hstring(providerId));
@@ -7080,13 +7096,14 @@ namespace winrt::TerminalApp::implementation
             item.WslDistro(winrt::to_hstring(wslDistro));
             item.SessionUniverse(winrt::to_hstring(row.get("session_universe", "").asString()));
             item.Status(winrt::to_hstring(status));
-            item.IsLive(isLive);
+            item.IsLive(isLive || status == "InUse");
             item.IsHistorical(isHistorical);
             item.IsAgentPane(isAgentPane);
             const auto nativeItem = winrt::get_self<TerminalApp::implementation::TabStripHistoryItem>(item);
             nativeItem->LastActivityAtMs(lastActivityAtMs);
             nativeItem->BackgroundTab(background);
             nativeItem->OtherWindow(otherWindow);
+            nativeItem->UpdateStatusText(statusText);
             snapshot.items.emplace_back(std::move(item));
         }
         return snapshot;
@@ -13445,10 +13462,12 @@ namespace winrt::TerminalApp::implementation
         };
         transfer.firstContentId = firstArgs ? firstArgs.ContentId() : 0;
         std::vector<TermControl> sourceControls;
+        std::vector<winrt::guid> sourcePaneIds;
         sourcePane->WalkTree([&](const auto& pane) {
             if (const auto control = pane->GetTerminalControl())
             {
                 sourceControls.push_back(control);
+                sourcePaneIds.push_back(pane->GetSessionId());
                 if (const auto sessionId = source._FindSessionIdForControl(control); !sessionId.empty())
                 {
                     transfer.sessionIds.emplace(sessionId);
@@ -13667,6 +13686,23 @@ namespace winrt::TerminalApp::implementation
                 destinationTab->AllowAgentPrewarm();
             }
         }
+        if (&source != this)
+        {
+            const auto moveBindings = [&](auto& sourceBindings, auto& destinationBindings) {
+                for (const auto& paneId : sourcePaneIds)
+                {
+                    if (const auto binding = sourceBindings.find(paneId); binding != sourceBindings.end())
+                    {
+                        destinationBindings.insert_or_assign(paneId, binding->second);
+                        sourceBindings.erase(binding);
+                    }
+                }
+            };
+            moveBindings(source._paneAgentSessions, _paneAgentSessions);
+            moveBindings(source._interactiveResumeSessions, _interactiveResumeSessions);
+            moveBindings(source._pendingRestoredSessionBindings, _pendingRestoredSessionBindings);
+            moveBindings(source._activeCliAgentPanes, _activeCliAgentPanes);
+        }
         try
         {
             if (sourceTab->GetRootPane() == sourcePane)
@@ -13726,6 +13762,14 @@ namespace winrt::TerminalApp::implementation
                 {
                     OnPaneAgentSessionChanged(binding);
                 }
+            }
+            CATCH_LOG()
+        }
+        for (const auto& paneId : sourcePaneIds)
+        {
+            try
+            {
+                winrt::get_self<implementation::ContentManager>(_manager)->NotifyPaneWindowChanged(paneId, _WindowProperties.WindowId());
             }
             CATCH_LOG()
         }

@@ -888,6 +888,7 @@ namespace winrt::TerminalApp::implementation
 
         TerminalApp::ContentManager _manager{ nullptr };
         winrt::event_token _keepRunningTabsChangedToken{};
+        winrt::event_token _paneWindowChangedToken{};
 
         std::shared_ptr<TerminalSettingsCache> _terminalSettingsCache{};
 

@@ -127,6 +127,8 @@ agents.status.active: "Gweithredol"
 agents.status.waiting_for_input: "Yn aros am fewnbwn"
 agents.status.error: "Gwall"
 agents.status.idle: "Segur"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Yn cael ei ddefnyddio"
 
 # ── Awgrym croeso cynllun (src/ui/layout.rs) ──────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. i ddangos/cuddio'r paen asiant • Ctrl+Shift+/ i ddangos/cuddio'r sesiwn asiant)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

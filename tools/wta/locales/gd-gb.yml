@@ -126,6 +126,8 @@ agents.status.active: "Gnìomhach"
 agents.status.waiting_for_input: "A' feitheamh ri ion-chur"
 agents.status.error: "Mearachd"
 agents.status.idle: "Na thàmh"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Ga chleachdadh"
 
 # ── Sanas fàilte cruth (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. gus panail àidseant a shealltainn/fhalach • Ctrl+Shift+/ gus seisean àidseant a shealltainn/fhalach)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

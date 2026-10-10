@@ -140,6 +140,8 @@ agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Giriş gözlənilir"
 agents.status.error: "Xəta"
 agents.status.idle: "Boş"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "İstifadədə"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. agent panelini göstər/gizlə • Ctrl+Shift+/ agent sessiyasını göstər/gizlə)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
