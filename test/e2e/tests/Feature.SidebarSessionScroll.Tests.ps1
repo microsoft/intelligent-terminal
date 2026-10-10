@@ -16,9 +16,7 @@ Describe 'Feature: Sidebar Agents status updates preserve scroll' -Tag @('Featur
         $script:ownsConfigBackup = $false
         $script:target = Resolve-ItApp -Package (Get-ItTestPackage)
         if ((Get-ItTestPackage) -ne 'Dev') { throw 'This regression suite requires explicitly selected Dev.' }
-        if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
-            throw 'Close the selected Dev package before running the Sidebar scroll regression.'
-        }
+        Stop-StaleItInstances -App $script:target
         if (-not $env:ITE2E_EXPECTED_APP_SHA256 -or -not $env:ITE2E_EXPECTED_WTA_SHA256) {
             throw 'Supply TerminalApp and WTA hashes from the intended build receipt.'
         }
@@ -75,9 +73,7 @@ namespace ItE2E
         $title = "ItE2E $script:marker"
         $arguments = '-w new new-tab --title "' + $title + '" --startingDirectory "' +
             $script:evidence + '" pwsh -NoLogo -NoProfile -NoExit'
-        if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
-            throw 'Dev was opened during preparation; refusing to adopt it.'
-        }
+        Stop-StaleItInstances -App $script:target
         $script:ownsConfigBackup = $true
         Backup-WtConfig -App $script:target
         [ItE2E.SidebarScrollActivation]::Launch($script:target.AppUserModelId, $arguments)

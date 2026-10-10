@@ -33,7 +33,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             throw 'Supply exact-source build receipt hashes for TerminalApp.dll and wta.exe.'
         }
         $target = Resolve-ItApp -Package Dev
-        @(Get-WtProcessesForApp -App $target -IncludePackageExecutables) | Should -HaveCount 0
+        Stop-StaleItInstances -App $target
         foreach ($path in @($target.SettingsPath, $target.StatePath)) {
             if ((Test-Path "$path.e2ebak") -or (Test-Path "$path.e2ebak.missing")) { throw "Recover existing backup first: $path" }
         }

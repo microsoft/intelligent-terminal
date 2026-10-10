@@ -11,7 +11,13 @@ Describe 'ItE2E live primitives' -Tag 'Live' -Skip:(-not $script:HasPackage) {
 
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{
+            sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+        } -Settings @{
+            language = 'en-US'; tabLayout = 'horizontal'; startupActions = ''
+            firstWindowPreference = 'defaultProfile'; windowingBehavior = 'useNew'
+            'warning.confirmOnClose' = 'never'; acpAgent = ''; delegateAgent = ''
+        }
     }
     AfterAll {
         if ($script:app) { Stop-Terminal -App $script:app }
@@ -63,8 +69,13 @@ Describe 'ItE2E live primitives' -Tag 'Live' -Skip:(-not $script:HasPackage) {
         It 'sees the AgentToggleButton AutomationId' {
             Assert-Ui -App $script:app -Selector 'AgentToggleButton' -TimeoutSec 10
         }
-        It 'sees the NewTabButton AutomationId' {
-            Assert-Ui -App $script:app -Selector 'NewTabButton' -TimeoutSec 10
+        It 'sees tab chrome for the active layout' {
+            $selector = if ((Get-WtSetting -App $script:app -Key tabLayout) -eq 'vertical') {
+                'SearchTabsButton'
+            } else {
+                'NewTabButton'
+            }
+            Assert-Ui -App $script:app -Selector $selector -TimeoutSec 10
         }
     }
 

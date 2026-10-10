@@ -31,7 +31,7 @@ function Stop-TelemetryOwnedTerminal {
     }
     Stop-Terminal -App $App -RestoreSettings $false
     Wait-Until -TimeoutSec 45 -Because 'the owned package finishes asynchronous shutdown before the next launch' -Condition {
-        @(Get-WtProcessesForApp -App $App).Count -eq 0
+        @(Get-WtProcessesForApp -App $App -IncludePackageExecutables).Count -eq 0
     } | Out-Null
 }
 
@@ -470,7 +470,7 @@ function Invoke-TelemetryStartupCase {
         Stop-TelemetryOwnedTerminal -App $script:app
         $script:app = $null
     }
-    @(Get-WtProcessesForApp -App $script:target) | Should -HaveCount 0
+    @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables) | Should -HaveCount 0
     $script:app = Start-Terminal -Package Dev -Backup $false -CleanSettings $false -PassFre $true -Settings $Settings
     Save-TelemetryOwnedProcesses -App $script:app
     $script:startupCases[$Name] = [int]$script:app.Pid

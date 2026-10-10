@@ -203,10 +203,6 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
         }
         $script:StartLayoutApp = {
             param([ValidateSet('horizontal', 'vertical')][string]$Layout)
-            $target = Resolve-ItApp -Package (Get-ItTestPackage)
-            if (@(Get-WtProcessesForApp -App $target -IncludePackageExecutables).Count) {
-                throw 'Refusing to replace an existing selected-package window for layout hotkey tests.'
-            }
             Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{
                 sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
             } -Settings @{

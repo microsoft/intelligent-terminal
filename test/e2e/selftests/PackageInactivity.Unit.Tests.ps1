@@ -23,6 +23,15 @@ Describe 'Package inactivity limited identity query' -Tag Unit {
         @(Get-WtProcessesForApp -App $script:app -IncludePackageExecutables).Count | Should -Be 1
     }
 
+    It 'refuses a late Dev process during recovery without shutting it down' {
+        Mock Get-ItProcessImagePath { 'C:\owned-dev\AppX\OpenConsole.exe' }
+        Mock Stop-Process { throw 'Recovery must not terminate a late arrival.' }
+
+        { Assert-WtPackageInactive -App $script:app } | Should -Throw '*pre-existing or unknown package processes*'
+
+        Should -Invoke Stop-Process -Times 0
+    }
+
     It 'Still fails closed if the read-only identity cannot be established' {
         Mock Get-ItProcessImagePath { throw 'Access denied.' }
         { Get-WtProcessesForApp -App $script:app -IncludePackageExecutables } |

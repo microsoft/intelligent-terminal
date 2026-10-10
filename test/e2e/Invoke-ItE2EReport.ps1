@@ -15,8 +15,10 @@
       - release-report.md  Clean, jargon-free RELEASE CHECKLIST driven by the results
                            ([x] = automation verified it; plain [ ] = verify manually).
                            Generated via New-ReleaseReport.ps1; suppress with -SkipReleaseReport.
-    Prints the same failure blocks to the console and returns a CI exit code
-    (0 = all passed, 1 = any failure).
+    Prints the same failure blocks to the console and returns a CI exit code.
+    Zero selected/passed tests, setup failures, and report-generation errors are
+    non-green. Mixed external-prerequisite skips remain allowed unless -RequireNoSkips
+    is set for strict PR validation.
 
 .EXAMPLE
     pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Tag Feature
@@ -35,28 +37,149 @@ param(
     # item this run didn't cover), OVERLAY just this run's results onto the EXISTING report — only
     # the items this run covered change. Use for single-suite runs so you don't need a full-suite
     # run to refresh one area. No-op if the report doesn't exist yet (falls back to full generate).
-    [switch]$UpdateReport
+    [switch]$UpdateReport,
+    [switch]$RequireNoSkips,
+    [string]$SourceRoot,
+    [string]$ExpectedHead,
+    [string]$RecipePath,
+    [string]$MsixPath
 )
 
 $ErrorActionPreference = 'Stop'
-Import-Module Pester -MinimumVersion 5.5.0 -Force
-New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+function Remove-StaleItE2EArtifacts([string]$Root, [string[]]$Names) {
+    foreach ($name in $Names) {
+        $artifact = Join-Path $Root $name
+        if (Test-Path -LiteralPath $artifact -PathType Leaf) {
+            Remove-Item -LiteralPath $artifact -Force -ErrorAction Stop
+        }
+    }
+}
+$proofRequested = $PSBoundParameters.ContainsKey('SourceRoot') -or
+    $PSBoundParameters.ContainsKey('ExpectedHead') -or
+    $PSBoundParameters.ContainsKey('RecipePath') -or
+    $PSBoundParameters.ContainsKey('MsixPath')
+if ($proofRequested) {
+    try {
+        if (-not $SourceRoot -or -not $ExpectedHead -or -not $RecipePath -or -not $MsixPath) {
+            throw 'Provide -SourceRoot, -ExpectedHead, -RecipePath and -MsixPath together for package proof.'
+        }
+        if ($ExpectedHead -notmatch '^[a-fA-F0-9]{40}$') {
+            throw 'ExpectedHead must be a 40-character hexadecimal commit ID.'
+        }
+        Import-Module (Join-Path $PSScriptRoot 'ItE2E\ItE2E.psd1') -Force
+        $devFamily = Get-ItDevPackageFamilyName
+        if (-not $devFamily) { throw 'The configured Dev package family is unavailable.' }
+        $selectedFamily = if ($env:ITE2E_PACKAGE -eq 'Dev') { $devFamily } else { $env:ITE2E_PACKAGE }
+        if ($selectedFamily -cne $devFamily) {
+            throw 'Package proof requires an explicitly selected configured Dev package.'
+        }
+        $proof = & (Join-Path $PSScriptRoot 'Verify-PackageProvenance.ps1') `
+            -SourceRoot $SourceRoot -ExpectedHead $ExpectedHead -RecipePath $RecipePath -MsixPath $MsixPath `
+            -PackageFamilyName $devFamily
+        Write-Host "Package files match recipe/MSIX in clean source HEAD $($proof.SourceHead) ($($proof.RecipeEntryCount) payloads); confirm the build-time source receipt separately." -ForegroundColor Green
+    }
+    catch {
+        Remove-StaleItE2EArtifacts -Root $OutDir -Names @(
+            'release-report.md', 'report.html', 'summary.md', 'results.xml'
+        )
+        throw
+    }
+}
+try {
+    Import-Module Pester -MinimumVersion 5.5.0 -Force
+    New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-$cfg = New-PesterConfiguration
-$cfg.Run.Path = $Path
-$cfg.Run.PassThru = $true
-if ($Tag) { $cfg.Filter.Tag = $Tag }
-$cfg.Output.Verbosity = 'Detailed'
-$cfg.TestResult.Enabled = $true
-$cfg.TestResult.OutputFormat = 'NUnitXml'
-$cfg.TestResult.OutputPath = (Join-Path $OutDir 'results.xml')
+    $cfg = New-PesterConfiguration
+    $cfg.Run.Path = $Path
+    $cfg.Run.PassThru = $true
+    if ($Tag) { $cfg.Filter.Tag = $Tag }
+    $cfg.Output.Verbosity = 'Detailed'
+    $cfg.TestResult.Enabled = $true
+    $cfg.TestResult.OutputFormat = 'NUnitXml'
+    $cfg.TestResult.OutputPath = (Join-Path $OutDir 'results.xml')
 
-$pesterOutput = @(Invoke-Pester -Configuration $cfg)
-$result = $pesterOutput |
-    Where-Object { $_.PSObject.Properties.Name -contains 'Tests' -and $_.PSObject.Properties.Name -contains 'FailedCount' } |
-    Select-Object -Last 1
-if (-not $result) {
-    throw 'Pester did not return a test result object.'
+    $pesterOutput = @(Invoke-Pester -Configuration $cfg)
+    $result = $pesterOutput |
+        Where-Object { $_.PSObject.Properties.Name -contains 'Tests' -and $_.PSObject.Properties.Name -contains 'FailedCount' } |
+        Select-Object -Last 1
+    if (-not $result) {
+        throw 'Pester did not return a test result object.'
+    }
+}
+catch {
+    Remove-StaleItE2EArtifacts -Root $OutDir -Names @(
+        'release-report.md', 'report.html', 'summary.md', 'results.xml'
+    )
+    throw
+}
+
+$setupFailures = @(@($result.FailedContainers) + @($result.FailedBlocks) | Where-Object { $_ })
+$noTests = ($result.TotalCount - $result.NotRunCount) -eq 0
+$unexpectedSkips = $RequireNoSkips -and $result.SkippedCount -gt 0
+$runFailed = $result.FailedCount -gt 0 -or $setupFailures.Count -gt 0 -or
+    $noTests -or $result.PassedCount -eq 0 -or $unexpectedSkips
+
+$releaseReport = $null
+$releaseReportKind = $null
+function Write-BlockedReleaseReport([string]$Path, [string]$Reason) {
+    @(
+        '# Release Report'
+        ''
+        "> ⚠️ **AUTOMATION FAILED** — $Reason No checklist item is credited."
+        '> See the test output and report.html for diagnostics; rerun after fixing the failure.'
+    ) | Set-Content -LiteralPath $Path -Encoding utf8
+}
+if (-not $SkipReleaseReport) {
+    $releaseReport = Join-Path $OutDir 'release-report.md'
+    $blockedReason = if ($setupFailures.Count) { 'Pester setup or cleanup failed.' }
+        elseif ($noTests) { 'No tests were selected.' }
+        elseif ($result.PassedCount -eq 0) { 'No tests passed.' }
+        elseif ($unexpectedSkips) { 'Strict run contained skipped tests.' }
+    if ($blockedReason) {
+        Remove-StaleItE2EArtifacts -Root $OutDir -Names @('report.html', 'summary.md')
+        Write-BlockedReleaseReport -Path $releaseReport -Reason $blockedReason
+        $releaseReportKind = 'blocked by incomplete test run'
+    }
+    else {
+        try {
+            if ($UpdateReport -and (Test-Path $releaseReport)) {
+                & (Join-Path $PSScriptRoot 'Update-ReleaseReport.ps1') -Report $releaseReport -ResultsXml $cfg.TestResult.OutputPath.Value
+                $releaseReportKind = 'incrementally updated'
+            }
+            else {
+                if ($UpdateReport) { Write-Host "  (-UpdateReport: no existing report at $releaseReport; generating fresh)" -ForegroundColor DarkGray }
+                & (Join-Path $PSScriptRoot 'New-ReleaseReport.ps1') -ResultsXml $cfg.TestResult.OutputPath.Value -OutFile $releaseReport
+                $releaseReportKind = 'clean release checklist'
+            }
+        }
+        catch {
+            Remove-StaleItE2EArtifacts -Root $OutDir -Names @('report.html', 'summary.md')
+            Write-BlockedReleaseReport -Path $releaseReport -Reason 'Release report generation failed.'
+            throw
+        }
+    }
+}
+
+$bannerText = if ($result.FailedCount -gt 0) {
+    "$($result.FailedCount) FAILED"
+}
+elseif ($setupFailures.Count) {
+    'SETUP/CLEANUP FAILED'
+}
+elseif ($noTests) {
+    'NO TESTS SELECTED'
+}
+elseif ($result.PassedCount -eq 0) {
+    'NO TESTS PASSED'
+}
+elseif ($unexpectedSkips) {
+    'UNEXPECTED SKIPS'
+}
+elseif ($result.SkippedCount -gt 0) {
+    'PASSED WITH SKIPS'
+}
+else {
+    'ALL PASSED'
 }
 
 # ── Shared helpers ──────────────────────────────────────────────────────────
@@ -73,7 +196,22 @@ function Get-FailureArtifacts($msg) {
 function HtmlEnc($s) { if ($null -eq $s) { return '' } [System.Net.WebUtility]::HtmlEncode([string]$s) }
 function FileUri($p) { try { ([uri]([System.IO.Path]::GetFullPath($p))).AbsoluteUri } catch { $p } }
 
-$failed = $result.Tests | Where-Object { $_.Result -eq 'Failed' }
+$failed = @($result.Tests | Where-Object { $_.Result -eq 'Failed' })
+$structuralFailures = @(
+    foreach ($block in $setupFailures) {
+        $path = if ($block.ExpandedPath) { $block.ExpandedPath } elseif ($block.Name) { $block.Name } else { 'Pester container' }
+        $errors = @($block.ErrorRecord)
+        if (-not $errors.Count) { $errors = @($null) }
+        foreach ($errorRecord in $errors) {
+            [pscustomobject]@{
+                ExpandedPath = "SETUP/CLEANUP: $path"
+                Duration = if ($block.Duration) { $block.Duration } else { [TimeSpan]::Zero }
+                ErrorRecord = $errorRecord
+            }
+        }
+    }
+)
+$allFailures = @($failed) + @($structuralFailures)
 
 # ── Markdown summary ────────────────────────────────────────────────────────
 function Format-Failure($t) {
@@ -102,19 +240,20 @@ $md = [System.Text.StringBuilder]::new()
 [void]$md.AppendLine("- HTML report: $(Join-Path $OutDir 'report.html')")
 [void]$md.AppendLine("- NUnit XML: $($cfg.TestResult.OutputPath.Value)")
 [void]$md.AppendLine("")
-if ($failed) {
-    [void]$md.AppendLine("## Failures ($($failed.Count))")
+if ($allFailures) {
+    [void]$md.AppendLine("## Failures ($($allFailures.Count))")
     [void]$md.AppendLine("")
-    foreach ($t in $failed) { [void]$md.Append((Format-Failure $t)) }
+    foreach ($t in $allFailures) { [void]$md.Append((Format-Failure $t)) }
+}
+elseif ($runFailed -or $result.SkippedCount -gt 0) {
+    [void]$md.AppendLine("## $bannerText")
 }
 else { [void]$md.AppendLine("## All tests passed ✅") }
 $summaryPath = Join-Path $OutDir 'summary.md'
 $md.ToString() | Set-Content -LiteralPath $summaryPath -Encoding utf8
 
 # ── HTML report ─────────────────────────────────────────────────────────────
-$allPass = ($result.FailedCount -eq 0)
-$bannerClass = if ($allPass) { 'ok' } else { 'bad' }
-$bannerText = if ($allPass) { "ALL PASSED" } else { "$($result.FailedCount) FAILED" }
+$bannerClass = if ($runFailed) { 'bad' } elseif ($result.SkippedCount -gt 0) { 'warn' } else { 'ok' }
 
 $h = [System.Text.StringBuilder]::new()
 [void]$h.AppendLine('<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">')
@@ -126,6 +265,7 @@ $h = [System.Text.StringBuilder]::new()
 .wrap{max-width:1100px;margin:0 auto;padding:24px}
 .banner{border-radius:10px;padding:18px 22px;color:#fff;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
 .banner.ok{background:var(--ok)}.banner.bad{background:var(--bad)}
+.banner.warn{background:var(--skip)}
 .banner h1{font-size:22px;margin:0}.banner .meta{opacity:.92;font-size:13px}
 .stats{display:flex;gap:10px;margin:18px 0;flex-wrap:wrap}
 .stat{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:10px 16px;min-width:96px}
@@ -160,9 +300,9 @@ td.dur{color:var(--mut);text-align:right;white-space:nowrap}
 [void]$h.AppendLine('</div>')
 
 # Failure cards
-if ($failed) {
-    [void]$h.AppendLine("<h2>Failures ($($failed.Count))</h2>")
-    foreach ($t in $failed) {
+if ($allFailures) {
+    [void]$h.AppendLine("<h2>Failures ($($allFailures.Count))</h2>")
+    foreach ($t in $allFailures) {
         $err = $t.ErrorRecord
         $msg = if ($err) { ($err.Exception.Message).Trim() } else { '(no error record)' }
         $where = Get-FailureWhere $err
@@ -208,38 +348,19 @@ Write-Host "ItE2E REPORT  Passed=$($result.PassedCount) Failed=$($result.FailedC
 Write-Host "  report.html : $htmlPath"
 Write-Host "  results.xml : $($cfg.TestResult.OutputPath.Value)"
 Write-Host "  summary.md  : $summaryPath"
-
-# ── Release checklist (clean, jargon-free) ──────────────────────────────────
-# Final workflow step: turn the raw test outcomes into doc/release-check-list.md with each
-# box filled by what automation verified ([x] = passed, plain [ ] = verify manually). This is
-# the human-facing "what's tested / what you still need to run" artifact.
-if (-not $SkipReleaseReport) {
-    $releaseReport = Join-Path $OutDir 'release-report.md'
-    try {
-        if ($UpdateReport -and (Test-Path $releaseReport)) {
-            # Incremental: overlay only this run's rows onto the existing report.
-            & (Join-Path $PSScriptRoot 'Update-ReleaseReport.ps1') -Report $releaseReport -ResultsXml $cfg.TestResult.OutputPath.Value
-            Write-Host "  release-report.md : $releaseReport (incrementally updated)" -ForegroundColor Green
-        }
-        else {
-            if ($UpdateReport) { Write-Host "  (-UpdateReport: no existing report at $releaseReport; generating fresh)" -ForegroundColor DarkGray }
-            & (Join-Path $PSScriptRoot 'New-ReleaseReport.ps1') -ResultsXml $cfg.TestResult.OutputPath.Value -OutFile $releaseReport
-            Write-Host "  release-report.md : $releaseReport (clean release checklist)" -ForegroundColor Green
-        }
-    }
-    catch { Write-Host "  release-report.md : SKIPPED ($($_.Exception.Message))" -ForegroundColor Yellow }
-}
-if ($failed) {
+if ($releaseReport) { Write-Host "  release-report.md : $releaseReport ($releaseReportKind)" -ForegroundColor Green }
+if ($allFailures) {
     Write-Host ""
     Write-Host "PRECISE FAILURES:" -ForegroundColor Red
-    foreach ($t in $failed) {
+    foreach ($t in $allFailures) {
         $err = $t.ErrorRecord
         $where = ''
-        if ($err.ScriptStackTrace -match '(?<f>[A-Za-z]:[^,\n]+\.ps1): line (?<l>\d+)') { $where = " @ $($Matches.f.Trim()):$($Matches.l)" }
+        if ($err -and $err.ScriptStackTrace -match '(?<f>[A-Za-z]:[^,\n]+\.ps1): line (?<l>\d+)') { $where = " @ $($Matches.f.Trim()):$($Matches.l)" }
         Write-Host ("  [-] {0}{1}" -f $t.ExpandedPath, $where) -ForegroundColor Red
-        Write-Host ("      {0}" -f ($err.Exception.Message -replace "`r?`n", ' ').Trim()) -ForegroundColor Yellow
+        $message = if ($err) { $err.Exception.Message } else { '(Pester reported no error record)' }
+        Write-Host ("      {0}" -f ($message -replace "`r?`n", ' ').Trim()) -ForegroundColor Yellow
     }
 }
 Write-Host ("=" * 70)
 
-exit ([int]($result.FailedCount -gt 0))
+exit ([int]$runFailed)

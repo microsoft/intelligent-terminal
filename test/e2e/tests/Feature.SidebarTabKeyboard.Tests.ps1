@@ -13,29 +13,15 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         Add-Type -AssemblyName UIAutomationTypes
 
         $script:app = $null
-        $target = Resolve-ItApp -Package (Get-ItTestPackage)
-        # Start-Terminal closes selected-package processes; never replace an existing user's window.
-        if (@(Get-WtProcessesForApp -App $target -IncludePackageExecutables).Count -ne 0) {
-            throw "The selected $($target.Package) package is already running; close it before the Sidebar keyboard test."
-        }
-        try {
-            $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{
-                sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
-            } -Settings @{
-                language = 'en-US'
-                tabLayout = 'vertical'
-                startupActions = ''
-                firstWindowPreference = 'defaultProfile'
-                windowingBehavior = 'useNew'
-                'warning.confirmOnClose' = 'never'
-            }
-        }
-        catch {
-            if (@(Get-WtProcessesForApp -App $target -IncludePackageExecutables).Count) {
-                throw "Sidebar test launch failed with Dev processes still running; configuration backups were preserved: $($_.Exception.Message)"
-            }
-            Restore-WtConfig -App $target
-            throw
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{
+            sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+        } -Settings @{
+            language = 'en-US'
+            tabLayout = 'vertical'
+            startupActions = ''
+            firstWindowPreference = 'defaultProfile'
+            windowingBehavior = 'useNew'
+            'warning.confirmOnClose' = 'never'
         }
 
         function Get-SidebarElement {

@@ -45,7 +45,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             throw 'Run this policy-free suite without ITE2E_TELEMETRY_POLICY_APPROVED.'
         }
         $script:target = Resolve-ItApp -Package Dev
-        @(Get-WtProcessesForApp -App $script:target) | Should -HaveCount 0 -Because 'user Dev processes must not be adopted or stopped'
+        Stop-StaleItInstances -App $script:target
         (Get-FileHash -LiteralPath (Join-Path $script:target.InstallLocation 'TerminalApp.dll')).Hash |
             Should -Be $env:ITE2E_EXPECTED_APP_SHA256
         (Get-FileHash -LiteralPath $script:target.WtaPath).Hash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256

@@ -23,15 +23,26 @@ checklist items complete.
 
 ### Startup and failure ownership
 
-`Stop-AppInstances` and `Stop-StaleItInstances` are legacy **refusal-only**
-entry points: existing or unknown selected-package processes block startup.
-They never close or kill package members; `GraceSec` is compatibility-only.
-Use `Stop-Terminal` only for the captured creation-proven app and its proven
-descendants. `Start-Terminal` owns recovery of its completed configuration backup
-and rethrows the original startup error. Callers must not add package-wide
-shutdown or unconditional restoration in outer catches. If inactivity cannot
-be proven, keep the raw backups and fail explicitly; a resolve-only descriptor
-is never backup ownership.
+`Stop-AppInstances` and `Stop-StaleItInstances` prepare a cold start by
+automatically closing **only** processes verified against the exact Dev package
+family, installation path and package identity. The current chat ancestry is
+never a target, even if it belongs to Dev. An active non-Dev Intelligent Terminal
+package remains protected, and ordinary Windows Terminal is not an ItE2E target.
+Unknown process identities fail closed. Every cold start requires a one-second
+quiet window, checking all package executables every 200 ms. Dev cleanup retries
+bounded late respawns; protected packages fail if any process appears. Suites
+that read or change configuration
+before `Start-Terminal` use this same Dev-only cleanup rather than requiring the
+developer to close a pre-existing Dev window. `Stop-Terminal` still uses the
+captured creation-proof process and descendants only; cleanup after a test must
+confirm package inactivity before restoring configuration. `Start-Terminal` owns
+backup recovery; outer catches must not add package-wide shutdown or unconditional
+restoration.
+
+Verified Dev is intentionally disposable during unattended test preflight, even
+if a later read-only build receipt or hash check rejects the run. This permission
+does not extend to Store, ordinary Windows Terminal, the current chat ancestry,
+or unowned processes encountered during failure recovery and teardown.
 
 The `tests/` folder implements the `[E2E]` items from
 `doc/release-check-list.md` that are automatable on one machine. Copilot drives
@@ -51,13 +62,13 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE automatic CurrentUser execution-policy remediation (**Dev**, auto-skips) | 4 (1 conditional skip) |
 | `Feature.FreHooks.Tests.ps1` | §0 FRE progressive setup ordering, session hook installation, failure, and retry (**Dev**, auto-skips) | 3 |
 | `Feature.SidebarTabKeyboard.Tests.ps1` | Issue #1045: physical Tab/Up/Down navigate unfiltered and filtered Sidebar tabs without terminal focus; bare Enter activates, Ctrl+Enter does not, pointer selection still works, and Ctrl+Shift+S entry/exit preserves the originating shell while Tab visits a row | 3 |
-| `Feature.SidebarSessionScroll.Tests.ps1` | Real shell hooks update the same visible Agents row through Idle/Active/Waiting for input/Idle without changing the search query or scrolling unchanged history order; status filters and genuine activity-time reordering still update. All three cases gate C374. Deterministic seeded rows, no model quota or test settings changes; teardown closes only recorded fixture pane GUIDs in the verified logical window after rechecking HWND/PID, never the shared process or unrelated windows/tabs. Original state is recovered only after the package is inactive, even on screenshot/settings failure; unrelated package activity or unconfirmed ownership/inactivity retains backups and fails explicitly. Changed, missing or unreadable settings and their recovery backup are retained and fail explicitly. Requires inactive Dev, Sidebar mode, completed FRE, and exact-build App/WTA hashes | 3 |
-| `Feature.PaneProgress.Tests.ps1` | PR #1043: one-shot OSC progress across real tab right-click moves/layout round trips, shared group-chevron/icon slot and aligned top-level titles, layout-specific Move submenu order/direction, and fixture-owned native hook identity/icon restoration with OSC3/OSC0; six-frame rendered ring evidence, no model quota | 4 checklist cases plus literal one-shot coverage (explicit Dev, exact-source `ITE2E_EXPECTED_APP_SHA256` / `ITE2E_EXPECTED_WTA_SHA256`, inactive package and interactive desktop required) |
-| `Feature.PinnedTabSelection.Tests.ps1` | PRs #1043/#1052: the primary two-pinned-plus-one-ordinary Horizontal/Sidebar round trip first verifies Alpha's active shell, exactly one selected Alpha Sidebar row, terminal focus, canonical order, shell identities and retained pin menus. A separate visual round trip verifies canonical accessibility labels and matched same-profile title-leading offsets; Beta unpin removes its extra Sidebar slot and keeps first-ordinary positioning. FontIcon peers are diagnostic only. A passing test credits C372's automated selection, identity, accessibility and geometry contracts. Full-header compositor crops and `acceptance.json` leave actual Sidebar glyph presence/Horizontal absence pending independent sign-off under the separate C373 MANUAL item **Pinned tab glyphs render only in Sidebar**, which has no automated coverage mapping | 1 (deterministic ACP fixture, no model quota; explicit Dev, exact-source `ITE2E_EXPECTED_APP_SHA256` / `ITE2E_EXPECTED_WTA_SHA256`, inactive package and interactive desktop required) |
-| `Feature.CombinedAgentsSidebar.Tests.ps1` | Updated Sidebar UX: static Tabs text; standard independent Agents only/Recent agent sessions toggles; four rendered scope combinations; global search; clear/close and collapse-preference restoration; toggle-during-search; UIA checked states and foreground-gated Ctrl+Shift+G/R. Only visible owned ItemsList descendants count. Existing native CLI resume (Recent preference On/Off), live/group actions, metadata, identity, retention, ownership, scroll, expansion events, focus, mutations and resize protections remain. C367/C381/C397/C408 retain their IDs; C382/C383 remain retired. Explicit feature-head Dev hashes and inactive package required; deterministic ACP history/provider-labelled cmd tabs, no model quota. Fresh hash-backed settings/state/runtime snapshots restore only after package inactivity. Authored, not live accepted | 32 |
+| `Feature.SidebarSessionScroll.Tests.ps1` | Real shell hooks update the same visible Agents row through Idle/Active/Waiting for input/Idle without changing the search query or scrolling unchanged history order; status filters and genuine activity-time reordering still update. All three cases gate C374. Deterministic seeded rows, no model quota or test settings changes; teardown closes only recorded fixture pane GUIDs in the verified logical window after rechecking HWND/PID, never the shared process or unrelated windows/tabs. Original state is recovered only after the package is inactive, even on screenshot/settings failure; unrelated package activity or unconfirmed ownership/inactivity retains backups and fails explicitly. Changed, missing or unreadable settings and their recovery backup are retained and fail explicitly. Existing Dev is closed during preflight; Sidebar mode, completed FRE, and exact-build App/WTA hashes are required | 3 |
+| `Feature.PaneProgress.Tests.ps1` | PR #1043: one-shot OSC progress across real tab right-click moves/layout round trips, shared group-chevron/icon slot and aligned top-level titles, layout-specific Move submenu order/direction, and fixture-owned native hook identity/icon restoration with OSC3/OSC0; six-frame rendered ring evidence, no model quota | 4 checklist cases plus literal one-shot coverage (explicit Dev, exact-source `ITE2E_EXPECTED_APP_SHA256` / `ITE2E_EXPECTED_WTA_SHA256`, automatic Dev preflight and interactive desktop required) |
+| `Feature.PinnedTabSelection.Tests.ps1` | PRs #1043/#1052: the primary two-pinned-plus-one-ordinary Horizontal/Sidebar round trip first verifies Alpha's active shell, exactly one selected Alpha Sidebar row, terminal focus, canonical order, shell identities and retained pin menus. A separate visual round trip verifies canonical accessibility labels and matched same-profile title-leading offsets; Beta unpin removes its extra Sidebar slot and keeps first-ordinary positioning. FontIcon peers are diagnostic only. A passing test credits C372's automated selection, identity, accessibility and geometry contracts. Full-header compositor crops and `acceptance.json` leave actual Sidebar glyph presence/Horizontal absence pending independent sign-off under the separate C373 MANUAL item **Pinned tab glyphs render only in Sidebar**, which has no automated coverage mapping | 1 (deterministic ACP fixture, no model quota; explicit Dev, exact-source `ITE2E_EXPECTED_APP_SHA256` / `ITE2E_EXPECTED_WTA_SHA256`, automatic Dev preflight and interactive desktop required) |
+| `Feature.CombinedAgentsSidebar.Tests.ps1` | Updated Sidebar UX: static Tabs text; standard independent Agents only/Recent agent sessions toggles; four rendered scope combinations; global search; clear/close and collapse-preference restoration; toggle-during-search; UIA checked states and foreground-gated Ctrl+Shift+G/R. Only visible owned ItemsList descendants count. Existing native CLI resume (Recent preference On/Off), live/group actions, metadata, identity, retention, ownership, scroll, expansion events, focus, mutations and resize protections remain. C367/C381/C397/C408 retain their IDs; C382/C383 remain retired. Explicit feature-head Dev hashes and automatic verified Dev preflight required; deterministic ACP history/provider-labelled cmd tabs, no model quota. Fresh hash-backed settings/state/runtime snapshots restore only after package inactivity. Authored, not live accepted | 32 |
 | `Feature.AgentsModeActions.Tests.ps1` | Original plus opens the configured default profile across filters, search and layout; splits retain the source profile without view-specific delegation, assistant panes stay fixed, and explicit native-provider fixtures retain held-hook identity; exact Dev hashes, no provider prompts | 7 |
 | `Feature.SidebarRelativeTime.Tests.ps1` | PR #1070: six-unit English/Arabic compact ages, readable RTL geometry, and provider accessibility; deterministic history fixture | 2 |
-| `Feature.SidebarUpgrade.Tests.ps1` | Superseding PM/UX: persisted once-only Horizontal migration and later explicit Horizontal restart, independently pending introduction, absent flags/fresh FRE gate, real palette collapse deferral, exact-shell owned second-window suppression, actual rendered tip/restart suppression; real state.json sharing fault, visible warning, Horizontal memory/disk rollback and released-lock retry. No ACL/registry changes, provider quota or callback fault proxies; exact Dev hashes and inactive package required | 6 (authored, not live accepted) |
+| `Feature.SidebarUpgrade.Tests.ps1` | Superseding PM/UX: persisted once-only Horizontal migration and later explicit Horizontal restart, independently pending introduction, absent flags/fresh FRE gate, real palette collapse deferral, exact-shell owned second-window suppression, actual rendered tip/restart suppression; real state.json sharing fault, visible warning, Horizontal memory/disk rollback and released-lock retry. No ACL/registry changes, provider quota or callback fault proxies; exact Dev hashes and automatic Dev preflight required | 6 (authored, not live accepted) |
 | `Feature.SidebarProviderAppearance.Tests.ps1` | PR #1070: horizontal-first provider creation, native identity/layout preservation, and scoped Light/Dark header evidence; rendered foreground requires independent visual review | 2 |
 | `Feature.McpDelegatedAgentIdentity.Tests.ps1` | PR #1070: canonical provider bootstrap and identity-only hot updates across session MCP, helper, and native creation; controlled agent fixtures and ordinary-shell negative control | 1 |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 14 |
@@ -77,7 +88,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.AgentSelectAll.Tests.ps1` | Physical Ctrl+A selects only the focused nonempty draft: exact source copy, cut/delete/replace, repeat/Esc/caret collapse, and pending-turn safety; empty input and history focus retain pane copy and stale-selection clearing. Deterministic ACP fixture; unique evidence under `ITE2E_ARTIFACT_ROOT` (default `artifacts`) | 6 |
 | `Feature.AgentInputNavigation.Tests.ps1` | Physical Up/Down edits explicit and soft-wrapped input rows, preserves preferred display columns and viewport following, collapses full-input selection safely, and retains deterministic prompt-history boundary behavior | 5 |
 | `Feature.AgentInputMouseCursor.Tests.ps1` | Physical mouse clicks move the draft caret across ASCII, scrolled multiline, soft-wrapped and wide Unicode text; exact clipboard insertion oracles and a deterministic ACP fixture | 4 |
-| `Feature.AgentInputUndoRedo.Tests.ps1` | Physical Ctrl+Z/Ctrl+Y: grouped typing, atomic edits, multiline Unicode, real clipboard image payload restoration, redo branching, and submission/history boundaries. Deterministic ACP fixture; exact clipboard/capture evidence under `ITE2E_ARTIFACT_ROOT`; requires an English (US) layout and an unused explicitly selected package | 6 |
+| `Feature.AgentInputUndoRedo.Tests.ps1` | Physical Ctrl+Z/Ctrl+Y: grouped typing, atomic edits, multiline Unicode, real clipboard image payload restoration, redo branching, and submission/history boundaries. Deterministic ACP fixture; exact clipboard/capture evidence under `ITE2E_ARTIFACT_ROOT`; requires an English (US) layout and an explicitly selected package (existing Dev closes automatically; non-Dev stays protected) | 6 |
 | `Feature.PromptHistory.Tests.ps1` | PR #478: per-tab Up/Down prompt recall, draft restoration, and multiline preservation; PR #614: completed-turn collapse/expand rendering | 4 |
 | `Feature.CompletedTurnSelection.Tests.ps1` | Completed-turn Tab/Up/Down selection keeps focused history inside the chat viewport | 1 |
 | `Feature.AutofixPane.Tests.ps1` | Direct Helper Autofix proposal card render/insert/run/reject/target/stashed + across layout + WSL shell identity and Linux fixes | 12 (2 WSL-gated) |
@@ -87,7 +98,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.CommandResolution.Tests.ps1` | PR #418: packaged WTA resolves PowerShell profile-only aliases to their real targets | 1 |
 | `Feature.AutofixCommandResolution.Tests.ps1` | Issue #844: Debug Dev, deterministic ACP fixture; no startup/tab-selection probes, first/later Autofix contracts without enumeration, and explicit local-candidate lookup | 3 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
-| `Feature.SessionRefresh.Tests.ps1` | Master-owned history synchronization with closed views, read-only snapshots, real 60-second layout-specific fallback, live layout switching, and explicit refresh; deterministic listing-capable ACP fixture, no model quota, explicit Dev hashes and inactive package required | 4 |
+| `Feature.SessionRefresh.Tests.ps1` | Master-owned history synchronization with closed views, read-only snapshots, real 60-second layout-specific fallback, live layout switching, and explicit refresh; deterministic listing-capable ACP fixture, no model quota, explicit Dev hashes and automatic Dev preflight required | 4 |
 | `Feature.KeepRunningFocus.Tests.ps1` | Explicit history/session `focus-pane` reattachment; ordinary Start-menu and profile launches create a new tab while two kept tabs remain detached; original shell/helper identity and stale-target safety; deterministic ACP fixture | 2 |
 | `Feature.NonAsciiCwd.Tests.ps1` | issue #641: a non-ASCII starting directory survives `wtcli` argv → COM → `CreateProcessW`, so the resume launch path connects and starts in that directory | 2 |
 | `Feature.AgentPaneCwd.Tests.ps1` | agent-pane source workspace reaches ACP `session/new` and remains stable across `/new` without a model prompt | 1 |
@@ -461,11 +472,14 @@ tabs repeat their title in child rows; context-menu targeting selects the
 shallowest matching tab header. The elevated ETW collector runs with its window
 hidden so it does not compete with the unelevated UI runner for foreground.
 
-`Feature.TelemetryFunnels` requires an unused **Dev** package built from the target revision,
+`Feature.TelemetryFunnels` requires a **Dev** package built from the target revision,
 the build receipt's `ITE2E_EXPECTED_WTA_SHA256` and `ITE2E_EXPECTED_APP_SHA256`
 (`TerminalApp.dll`), explicit UAC approval, and permission for temporary HKCU policy
-changes (`ITE2E_TELEMETRY_POLICY_APPROVED=1`). It refuses existing Dev processes
-rather than adopting or closing user windows. Set `ITE2E_TELEMETRY=1` and
+changes (`ITE2E_TELEMETRY_POLICY_APPROVED=1`). Its preflight closes existing
+verified Dev processes before the policy transaction; other installed Intelligent
+Terminal packages (including headless helpers) must remain inactive because HKCU
+policy affects them too.
+Set `ITE2E_TELEMETRY=1` and
 `ITE2E_PACKAGE=Dev`, then pass the suite to `Invoke-ItE2EReport.ps1`.
 
 One bounded elevated `Collect-TelemetryTrace.ps1` capture covers the suite: only the Win32Host,
@@ -613,6 +627,51 @@ To make a build selectable:
   `DeployAppRecipe.exe bin\x64\Debug\CascadiaPackage.build.appxrecipe`.
 - **Store**: install the shipped MSIX.
 
+`Start-Terminal -Package Dev` may close an existing Dev window or helper, including
+its unsaved input and in-progress commands. Run Dev tests from another terminal;
+the current chat process tree is always protected. The Store build remains
+fail-closed when it already has a process, and ordinary Windows Terminal is never
+an ItE2E target. At teardown `Stop-Terminal` still stops only the process this run
+proved it created; it does not treat every same-package process as test-owned.
+
+For an opt-in **Dev PR package consistency check**, run the report driver against
+a clean worktree at the intended source HEAD and provide all four proof inputs:
+
+```powershell
+$env:ITE2E_PACKAGE = 'Dev'
+$sourceRoot = (Get-Location).Path # clean worktree for the PR head
+$expectedHead = '<FULL_40_CHARACTER_PR_HEAD>'
+$recipe = Join-Path $sourceRoot 'src\cascadia\CascadiaPackage\bin\x64\Debug\CascadiaPackage.build.appxrecipe'
+$msix = Join-Path $sourceRoot 'src\cascadia\CascadiaPackage\AppPackages\<FRESH_PACKAGE>.msix'
+pwsh -File test\e2e\Invoke-ItE2EReport.ps1 `
+  -Path test\e2e\tests\<Feature>.Tests.ps1 -RequireNoSkips `
+  -SourceRoot $sourceRoot -ExpectedHead $expectedHead `
+  -RecipePath $recipe -MsixPath $msix
+```
+
+The read-only `Verify-PackageProvenance.ps1` preflight checks the clean Git HEAD,
+the full recipe/MSIX/registered manifest hashes, every recipe source/MSIX/installed
+payload hash, and registered package identity/version. A missing or stale payload stops the run
+**before Pester**. All four proof inputs must be supplied with a 40-character
+commit ID; an explicit empty input cannot bypass the check. A failed provenance
+preflight removes prior HTML, Markdown, checklist, and NUnit success artifacts
+from the selected output directory. An exception or missing result from Pester
+clears the same artifacts before surfacing the original failure. Proof targets
+the configured Dev family, including a worktree PFN after the documented local
+identity substitutions; Store and unconfigured packages are not accepted.
+Temporary identity edits leave that worktree dirty, so retain a separate
+build/source receipt for that flow instead of bypassing the clean-source guard.
+Only documented packaging metadata may appear beyond the recipe payloads in
+either the MSIX or installed layout. Recipe paths are separator-normalized
+before duplicate detection; archive paths are URI-decoded before matching
+(packaging can encode braces in icon names);
+scale-qualified profile icons may be absent, but must still match the recipe in
+the installed layout. Recipe sources must be inside the selected worktree except
+the Windows SDK debug `ucrtbased.dll`, which is reported with its source path and
+hash under `ExternalInputs`. Keep build-time source/command evidence
+separately: matching hashes do not themselves prove which source the compiler
+used. These options are not required for an explicitly requested Store baseline.
+
 A suite that asserts on diagnostics only present in a particular build should pin
 its `-Package` and **`-Skip`** itself when that package isn't installed (see
 `Feature.FreExecutionPolicy.Tests.ps1`, which targets `Dev` and skips when the
@@ -626,12 +685,18 @@ Invoke-Pester test/e2e/selftests -Tag Unit    # hermetic, no terminal needed
 Invoke-Pester test/e2e/selftests -Tag Live    # launches/closes the real terminal
 Invoke-Pester test/e2e/selftests -Tag AI      # AI oracle (needs an agent CLI, e.g. copilot)
 Invoke-Pester test/e2e/selftests -Tag Agent   # agent pane + autofix (needs copilot auth)
-Invoke-Pester test/e2e/selftests              # everything (30 tests)
+Invoke-Pester test/e2e/selftests              # all self-tests
 ```
 
 The self-tests are the framework's own proof: every primitive is exercised against a
 running terminal (`selftests/ItE2E.Live.Tests.ps1`) and the core helpers are unit-tested
 in `selftests/ItE2E.Unit.Tests.ps1` (hermetic, no terminal needed).
+The Live fixture pins completed onboarding and a default-profile horizontal tab.
+It can smoke-test a newly registered isolated Dev package after applying the
+temporary Dev identity substitutions in the
+[worktree package guide](../../doc/dev-worktree-package.md); selecting its PFN
+alone does not make an unmodified harness treat it as Dev.
+The harness restores the original settings and state once the package is inactive.
 
 ### Deterministic Queue regressions
 
@@ -848,11 +913,11 @@ pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.AutofixP
 
 Outputs (all under `test/e2e/artifacts/`):
 - `report.html` — **self-contained HTML** (open in a browser): green/red pass-fail banner,
-  total/passed/failed/skipped stat cards, one **failure card** per failed test (exact error,
+  total/passed/failed/skipped stat cards, one **failure card** per failed test or setup/cleanup block (exact error,
   `file:line` of the failing assertion, duration, clickable artifact links + inline screenshot
   thumbnails), and a full results table grouped by `Describe > Context`.
 - `results.xml` — **NUnit XML** for CI test reporting (Azure DevOps / GitHub).
-- `summary.md` — Markdown: one block per **failed** test with the **exact error**, **file:line**,
+- `summary.md` — Markdown: one block per **failed** test or setup/cleanup block with the **exact error**, **file:line**,
   and any **artifact paths** (screenshots saved by `Assert-Ui`/`Assert-AgentPaneText`, log slices).
 - `release-report.md` — the **clean, jargon-free release checklist**, auto-generated as the final
   step from `doc/release-check-list.md` + this run's `results.xml` (via `New-ReleaseReport.ps1`).
@@ -880,7 +945,17 @@ Outputs (all under `test/e2e/artifacts/`):
   (runs the suite, then overlays only its items onto the existing report; falls back to a fresh
   generate if no report exists yet). Or standalone after a run wrote `results.xml`:
   `pwsh -File test/e2e/Update-ReleaseReport.ps1`.
+  If Pester reports a structural setup/cleanup failure or no test passes, both full and incremental
+  runner modes replace the release report with a blocked notice and **no checked
+  items**, rather than crediting test cases that passed before the failure. A
+  report-generator error clears earlier HTML and Markdown summaries before
+  attempting the blocked checklist; the runner exits nonzero.
 - Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).
+  Zero selected or passing cases and setup/report-generation errors are non-green,
+  even with no failing test assertion. A mixture of passes and externally gated
+  skips is reported as `PASSED WITH SKIPS`; use `-RequireNoSkips` for strict PR
+  acceptance. A strict mixed pass/skip run blocks checklist credit in full and
+  incremental modes; an all-skipped run never claims `ALL PASSED`.
 
 Every failure is precise because each `Assert-*` throws a descriptive message — e.g.
 `Assert-Pane: pane <id> never matched /git status/ within 12s. Screenshot: <path>` or

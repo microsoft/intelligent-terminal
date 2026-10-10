@@ -27,12 +27,7 @@ Describe 'Feature: agent input mouse cursor' -Tag 'Feature', 'AgentInputMouseCur
         if ($env:ITE2E_EXPECTED_WTA_SHA256) {
             $binaryHash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256
         }
-        $installRoot = [IO.Path]::GetDirectoryName($target.WtaPath).TrimEnd('\') + '\'
-        if (@(Get-Process | Where-Object {
-            $_.Path -and $_.Path.StartsWith($installRoot, [StringComparison]::OrdinalIgnoreCase)
-        }).Count) {
-            throw 'This physical suite requires an unused selected package; it will not close user sessions.'
-        }
+        Stop-StaleItInstances -App $target
         $root = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
         $script:evidence = Join-Path ([IO.Path]::GetFullPath($root)) "agent-input-mouse-cursor\$([guid]::NewGuid().ToString('N'))"
         $script:fixtureDir = Join-Path $script:evidence 'fixture'

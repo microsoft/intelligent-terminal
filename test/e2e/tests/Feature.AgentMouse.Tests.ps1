@@ -264,9 +264,7 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         $script:caseNumber = 0
         $target = Resolve-ItApp -Package (Get-ItTestPackage)
         $script:target = $target
-        if (@(Get-WtProcessesForApp -App $target -IncludePackageExecutables).Count) {
-            throw 'The mouse suite requires an unused selected package; it will not close user sessions.'
-        }
+        Stop-StaleItInstances -App $target
         $binaryHash = (Get-FileHash -LiteralPath $target.WtaPath).Hash
         if ($env:ITE2E_EXPECTED_WTA_SHA256) {
             $binaryHash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256 -Because 'the selected package must contain the intended source build'

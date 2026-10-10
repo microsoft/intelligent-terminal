@@ -151,7 +151,7 @@ Describe 'Feature: Sidebar provider appearance' -Tag @('Feature', 'SidebarProvid
         $script:cursor = $null
         $env:ITE2E_PACKAGE | Should -Be Dev
         $script:target = Resolve-ItApp -Package Dev
-        @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables) | Should -HaveCount 0
+        Stop-StaleItInstances -App $script:target
         $head = (& git -C (Join-Path $PSScriptRoot '..\..\..') rev-parse HEAD).Trim()
         if ($LASTEXITCODE -ne 0 -or -not $head) { throw 'Cannot resolve test worktree revision.' }
         if (-not $env:ITE2E_SOURCE_COMMIT -or -not $env:ITE2E_SOURCE_COMMIT.StartsWith($head, [StringComparison]::Ordinal)) {
