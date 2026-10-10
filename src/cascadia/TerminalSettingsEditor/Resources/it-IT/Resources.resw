@@ -3002,14 +3002,6 @@ Alt+Shift+/ inserisci un prompt; Alt+Shift+B avvia senza un prompt iniziale.</va
     <value>Immetti un identificatore di modello supportato da questo agente. Lascia il campo vuoto per usare la configurazione dell’agente. Si applica alle nuove sessioni.</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
-  <data name="Profile_AgentPermission.Header" xml:space="preserve">
-    <value>Modalità di autorizzazione dell’agente</value>
-    <comment>Selects a native AI agent permission or approval mode, not Windows file permissions.</comment>
-  </data>
-  <data name="Profile_AgentPermission.HelpText" xml:space="preserve">
-    <value>Scegli una modalità supportata dall’agente. Le modalità controllano le approvazioni dell’agente o le impostazioni della sandbox e non concedono né revocano autorizzazioni per i file di Windows. L’opzione predefinita lascia invariata la configurazione dell’agente.</value>
-    <comment>{Locked="Windows"} Explains that AI agent approval policies and operating system permissions differ.</comment>
-  </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
     <value>Argomenti aggiuntivi dell’agente</value>
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
@@ -3017,26 +3009,6 @@ Alt+Shift+/ inserisci un prompt; Alt+Shift+B avvia senza un prompt iniziale.</va
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
     <value>Per i valori contenenti spazi, usa le regole per le virgolette della riga di comando di Windows. Gli argomenti in conflitto con le impostazioni gestite o i criteri vengono rifiutati. I comandi della shell non sono supportati.</value>
     <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
-  </data>
-  <data name="Profile_DefaultSplitProfile.Header" xml:space="preserve">
-    <value>Profilo predefinito per la divisione</value>
-    <comment>The profile to launch when using the default pane-splitting action from this profile.</comment>
-  </data>
-  <data name="Profile_DefaultSplitProfile.HelpText" xml:space="preserve">
-    <value>Scegli il profilo aperto dalle azioni di divisione predefinite. Le azioni esplicite di duplicazione continuano a usare il profilo corrente. Viene mantenuta la directory di lavoro segnalata, se valida; altrimenti viene usata la directory iniziale del profilo di destinazione.</value>
-    <comment>Explains profile-aware pane splitting. Duplicate means starting another process, not copying chat history.</comment>
-  </data>
-  <data name="Profile_AgentDefault" xml:space="preserve">
-    <value>Valore predefinito dell’agente</value>
-    <comment>Permission option that leaves the AI agent's existing configuration unchanged.</comment>
-  </data>
-  <data name="Profile_SplitSame" xml:space="preserve">
-    <value>Stesso profilo</value>
-    <comment>Default split choice: launch another process using the current pane's profile.</comment>
-  </data>
-  <data name="Profile_SplitDefault" xml:space="preserve">
-    <value>Profilo predefinito globale</value>
-    <comment>Default split choice: launch the profile configured as the application's global default.</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Usa la preferenza di divisione del profilo</value>

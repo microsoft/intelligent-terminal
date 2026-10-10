@@ -3038,14 +3038,6 @@ Alt+Shift+/ 输入提示词；Alt+Shift+B 不带初始提示词启动。</value>
     <value>输入此智能体支持的模型标识符。留空则使用智能体自身的配置。适用于新会话。</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
-  <data name="Profile_AgentPermission.Header" xml:space="preserve">
-    <value>智能体权限模式</value>
-    <comment>Selects a native AI agent permission or approval mode, not Windows file permissions.</comment>
-  </data>
-  <data name="Profile_AgentPermission.HelpText" xml:space="preserve">
-    <value>选择智能体支持的模式。这些模式控制智能体的审批或沙盒设置，不会授予或撤销 Windows 文件权限。默认选项会保持智能体自身的配置不变。</value>
-    <comment>{Locked="Windows"} Explains that AI agent approval policies and operating system permissions differ.</comment>
-  </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
     <value>智能体附加参数</value>
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
@@ -3053,26 +3045,6 @@ Alt+Shift+/ 输入提示词；Alt+Shift+B 不带初始提示词启动。</value>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
     <value>对于包含空格的值，请使用 Windows 命令行的引号规则。与托管设置或策略冲突的参数会被拒绝。不支持 shell 命令。</value>
     <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
-  </data>
-  <data name="Profile_DefaultSplitProfile.Header" xml:space="preserve">
-    <value>默认拆分配置文件</value>
-    <comment>The profile to launch when using the default pane-splitting action from this profile.</comment>
-  </data>
-  <data name="Profile_DefaultSplitProfile.HelpText" xml:space="preserve">
-    <value>选择默认拆分操作打开的配置文件。显式复制操作仍使用当前配置文件。如果报告的工作目录有效，则保留该目录；否则使用目标配置文件的启动目录。</value>
-    <comment>Explains profile-aware pane splitting. Duplicate means starting another process, not copying chat history.</comment>
-  </data>
-  <data name="Profile_AgentDefault" xml:space="preserve">
-    <value>智能体默认值</value>
-    <comment>Permission option that leaves the AI agent's existing configuration unchanged.</comment>
-  </data>
-  <data name="Profile_SplitSame" xml:space="preserve">
-    <value>相同配置文件</value>
-    <comment>Default split choice: launch another process using the current pane's profile.</comment>
-  </data>
-  <data name="Profile_SplitDefault" xml:space="preserve">
-    <value>全局默认配置文件</value>
-    <comment>Default split choice: launch the profile configured as the application's global default.</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>使用配置文件的拆分首选项</value>

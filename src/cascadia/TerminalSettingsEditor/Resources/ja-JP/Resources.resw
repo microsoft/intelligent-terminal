@@ -3002,14 +3002,6 @@ Alt+Shift+/ プロンプトを入力; Alt+Shift+B 初期プロンプトなしで
     <value>このエージェントがサポートするモデル識別子を入力してください。空欄にすると、エージェント独自の構成が使用されます。新しいセッションに適用されます。</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
-  <data name="Profile_AgentPermission.Header" xml:space="preserve">
-    <value>エージェントのアクセス許可モード</value>
-    <comment>Selects a native AI agent permission or approval mode, not Windows file permissions.</comment>
-  </data>
-  <data name="Profile_AgentPermission.HelpText" xml:space="preserve">
-    <value>エージェントがサポートするモードを選択してください。モードはエージェントの承認やサンドボックスの設定を制御するもので、Windows のファイルのアクセス許可を付与または取り消すものではありません。既定の設定では、エージェント独自の構成は変更されません。</value>
-    <comment>{Locked="Windows"} Explains that AI agent approval policies and operating system permissions differ.</comment>
-  </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
     <value>エージェントの追加の引数</value>
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
@@ -3017,26 +3009,6 @@ Alt+Shift+/ プロンプトを入力; Alt+Shift+B 初期プロンプトなしで
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
     <value>スペースを含む値には、Windows コマンド ラインの引用符の規則を使用してください。管理対象の設定やポリシーと競合する引数は拒否されます。シェル コマンドはサポートされていません。</value>
     <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
-  </data>
-  <data name="Profile_DefaultSplitProfile.Header" xml:space="preserve">
-    <value>分割時の既定のプロファイル</value>
-    <comment>The profile to launch when using the default pane-splitting action from this profile.</comment>
-  </data>
-  <data name="Profile_DefaultSplitProfile.HelpText" xml:space="preserve">
-    <value>既定の分割アクションで開くプロファイルを選択してください。明示的な複製アクションでは、引き続き現在のプロファイルが使用されます。報告された作業ディレクトリが有効な場合は保持され、それ以外の場合は分割先のプロファイルの開始ディレクトリが使用されます。</value>
-    <comment>Explains profile-aware pane splitting. Duplicate means starting another process, not copying chat history.</comment>
-  </data>
-  <data name="Profile_AgentDefault" xml:space="preserve">
-    <value>エージェントの既定値</value>
-    <comment>Permission option that leaves the AI agent's existing configuration unchanged.</comment>
-  </data>
-  <data name="Profile_SplitSame" xml:space="preserve">
-    <value>同じプロファイル</value>
-    <comment>Default split choice: launch another process using the current pane's profile.</comment>
-  </data>
-  <data name="Profile_SplitDefault" xml:space="preserve">
-    <value>グローバルな既定のプロファイル</value>
-    <comment>Default split choice: launch the profile configured as the application's global default.</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>プロファイルの分割設定を使用する</value>

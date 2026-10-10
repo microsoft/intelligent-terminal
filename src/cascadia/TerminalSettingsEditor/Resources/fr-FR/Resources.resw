@@ -3003,14 +3003,6 @@ Alt+Shift+/ saisir une requête ; Alt+Shift+B lancer sans requête initiale.</va
     <value>Entrez un identifiant de modèle pris en charge par cet agent. Laissez ce champ vide pour utiliser la configuration propre à l’agent. S’applique aux nouvelles sessions.</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
-  <data name="Profile_AgentPermission.Header" xml:space="preserve">
-    <value>Mode d’autorisation de l’agent</value>
-    <comment>Selects a native AI agent permission or approval mode, not Windows file permissions.</comment>
-  </data>
-  <data name="Profile_AgentPermission.HelpText" xml:space="preserve">
-    <value>Choisissez un mode pris en charge par l’agent. Les modes contrôlent les approbations de l’agent ou les paramètres du bac à sable et n’accordent ni ne révoquent les autorisations de fichiers Windows. Le mode par défaut conserve la configuration propre à l’agent.</value>
-    <comment>{Locked="Windows"} Explains that AI agent approval policies and operating system permissions differ.</comment>
-  </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
     <value>Arguments supplémentaires de l’agent</value>
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
@@ -3018,26 +3010,6 @@ Alt+Shift+/ saisir une requête ; Alt+Shift+B lancer sans requête initiale.</va
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
     <value>Utilisez les règles de mise entre guillemets de la ligne de commande Windows pour les valeurs contenant des espaces. Les arguments en conflit avec les paramètres gérés ou les stratégies sont rejetés. Les commandes shell ne sont pas prises en charge.</value>
     <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
-  </data>
-  <data name="Profile_DefaultSplitProfile.Header" xml:space="preserve">
-    <value>Profil de fractionnement par défaut</value>
-    <comment>The profile to launch when using the default pane-splitting action from this profile.</comment>
-  </data>
-  <data name="Profile_DefaultSplitProfile.HelpText" xml:space="preserve">
-    <value>Choisissez le profil ouvert par les actions de fractionnement par défaut. Les actions explicites de duplication utilisent toujours le profil actuel. Un répertoire de travail signalé valide est conservé ; sinon, le répertoire de démarrage du profil cible est utilisé.</value>
-    <comment>Explains profile-aware pane splitting. Duplicate means starting another process, not copying chat history.</comment>
-  </data>
-  <data name="Profile_AgentDefault" xml:space="preserve">
-    <value>Valeur par défaut de l’agent</value>
-    <comment>Permission option that leaves the AI agent's existing configuration unchanged.</comment>
-  </data>
-  <data name="Profile_SplitSame" xml:space="preserve">
-    <value>Même profil</value>
-    <comment>Default split choice: launch another process using the current pane's profile.</comment>
-  </data>
-  <data name="Profile_SplitDefault" xml:space="preserve">
-    <value>Profil par défaut global</value>
-    <comment>Default split choice: launch the profile configured as the application's global default.</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Utiliser la préférence de fractionnement du profil</value>

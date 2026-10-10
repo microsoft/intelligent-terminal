@@ -1008,7 +1008,7 @@
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="AgentProfileGeneratorDisplayName" xml:space="preserve">
     <value>KI-Agenten</value>
-    <comment>Name of the dynamic profile source and new-tab menu folder containing installed native AI agent command-line applications.</comment>
+    <comment>Display name of the native AI agent profile generator source shown in Settings > Extensions. This source generates profiles for installed native AI agent command-line applications.</comment>
   </data>
   <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
     <value>Befehlspalette im Agentendelegierungsmodus ein/aus</value>

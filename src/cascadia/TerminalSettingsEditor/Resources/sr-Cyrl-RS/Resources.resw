@@ -3042,14 +3042,6 @@ Alt+Shift+/ унесите упит; Alt+Shift+B покрените без по�
     <value>Унесите идентификатор модела који овај агент подржава. Оставите празно да бисте користили сопствену конфигурацију агента. Примењује се на нове сесије.</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
-  <data name="Profile_AgentPermission.Header" xml:space="preserve">
-    <value>Режим дозвола агента</value>
-    <comment>Selects a native AI agent permission or approval mode, not Windows file permissions.</comment>
-  </data>
-  <data name="Profile_AgentPermission.HelpText" xml:space="preserve">
-    <value>Изаберите режим који агент подржава. Режими контролишу одобрења агента или подешавања изолованог окружења и не додељују нити укидају дозволе за Windows датотеке. Подразумевана опција оставља сопствену конфигурацију агента непромењеном.</value>
-    <comment>{Locked="Windows"} Explains that AI agent approval policies and operating system permissions differ.</comment>
-  </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
     <value>Додатни аргументи агента</value>
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
@@ -3057,26 +3049,6 @@ Alt+Shift+/ унесите упит; Alt+Shift+B покрените без по�
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
     <value>За вредности које садрже размаке користите правила за наводнике у Windows командној линији. Аргументи који су у сукобу са управљаним подешавањима или смерницама се одбијају. Команде љуске нису подржане.</value>
     <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
-  </data>
-  <data name="Profile_DefaultSplitProfile.Header" xml:space="preserve">
-    <value>Подразумевани профил за поделу</value>
-    <comment>The profile to launch when using the default pane-splitting action from this profile.</comment>
-  </data>
-  <data name="Profile_DefaultSplitProfile.HelpText" xml:space="preserve">
-    <value>Изаберите профил који отварају подразумеване радње поделе. Изричите радње дуплирања и даље користе тренутни профил. Пријављени радни директоријум се задржава ако је важећи; у супротном се користи почетни директоријум циљног профила.</value>
-    <comment>Explains profile-aware pane splitting. Duplicate means starting another process, not copying chat history.</comment>
-  </data>
-  <data name="Profile_AgentDefault" xml:space="preserve">
-    <value>Подразумевано за агента</value>
-    <comment>Permission option that leaves the AI agent's existing configuration unchanged.</comment>
-  </data>
-  <data name="Profile_SplitSame" xml:space="preserve">
-    <value>Исти профил</value>
-    <comment>Default split choice: launch another process using the current pane's profile.</comment>
-  </data>
-  <data name="Profile_SplitDefault" xml:space="preserve">
-    <value>Глобални подразумевани профил</value>
-    <comment>Default split choice: launch the profile configured as the application's global default.</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Користи подешавање поделе профила</value>
