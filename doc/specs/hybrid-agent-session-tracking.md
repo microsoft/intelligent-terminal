@@ -387,6 +387,25 @@ and activation errors are independent: a successful refresh clears only the
 refresh warning, not a failed focus/resume result. Existing localized error
 messages are reused.
 
+Provider ACP history queries are separate from these short-lived sidebar list
+commands. Each pooled command/source owns a reusable history-only ACP process;
+chat, Autofix and session restoration keep using the original shared chat agent.
+Only one provider query is outstanding, even after a soft timeout. Its response
+receiver survives the 5/10/20/40/60-second absolute wait checkpoints; after 60
+seconds, checks continue once a minute. Three consecutive responses under five
+seconds reduce the wait budget by one step. Successful queries impose five
+seconds from completion before another send. Completed failures impose
+5/10/20/40/60-second backoff; neither manual refresh nor initialization bypasses
+or resets it.
+
+A query still unresolved after 300 seconds retires the history instance. Its
+Windows launcher and descendants are contained in a private Job Object; WSL
+queries have an identity-checked process group and stdin-EOF cleanup guardian.
+Replacement waits for confirmed exit and failure backoff. Unconfirmed cleanup
+keeps the old instance quarantined across chat-agent replacement. Late retired
+responses cannot mutate the registry, and cached rows remain usable. Hooks only
+schedule the existing worker and never await a slow history response.
+
 Consecutive list failures impose a 5, 10, 20, 40, then 60-second retry delay,
 measured from completion. Both registry notifications and the 60-second timer
 respect it; the timer retries on its first eligible tick. Failed requests discard
