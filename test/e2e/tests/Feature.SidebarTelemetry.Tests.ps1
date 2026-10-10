@@ -173,11 +173,11 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             param([string]$Title, [bool]$Enable)
             Open-SidebarContextMenu -Title $Title
             (Get-UiElement -App $script:app -Selector KeepTabRunningMenuItem).name |
-                Should -Be $(if ($Enable) { 'Keep tab running' } else { 'Turn off keep running' })
+                Should -Be $(if ($Enable) { 'Turn on headless mode' } else { 'Turn off headless mode' })
             Invoke-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
             Open-SidebarContextMenu -Title $Title
             (Get-UiElement -App $script:app -Selector KeepTabRunningMenuItem).name |
-                Should -Be $(if ($Enable) { 'Turn off keep running' } else { 'Keep tab running' })
+                Should -Be $(if ($Enable) { 'Turn off headless mode' } else { 'Turn on headless mode' })
             Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
         }
         function Assert-SidebarRowFields {

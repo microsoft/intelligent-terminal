@@ -341,13 +341,13 @@ the same entry remains active can complete the pending measurement.
 
 ### App.SidebarTabPinned
 
-**Trigger:** the user enables **Keep tab running** through the sidebar tab
+**Trigger:** the user selects **Turn on headless mode** through the sidebar tab
 context menu. The telemetry name uses "pinned" terminology;
 it does not mean tab-order pinning or a Windows taskbar pin.
 
 | Field | Type | Meaning / values |
 |---|---|---|
-| `pinned_count` | UInt32 | Attached terminal tabs in the owning window with Keep tab running enabled, after the action |
+| `pinned_count` | UInt32 | Attached terminal tabs in the owning window with headless mode enabled, after the action |
 
 Count includes tabs hidden by search/filter, but excludes detached retained
 tabs, other windows, and individual panes. Turning keep-running off does not
@@ -372,7 +372,7 @@ or routing identifier is recorded.
 
 ### App.KeepRunningMarked
 
-**Trigger:** Keep tab running is enabled by the sidebar menu or the explicit
+**Trigger:** Headless mode is enabled by the sidebar menu or the explicit
 tab-control API. The event captures the counts after the false-to-true
 transition. Disabling, repeated enable requests, startup, and copying the
 choice into a transferred tab do not emit.
