@@ -104,6 +104,8 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Media::Brush, CurrentBackground, PropertyChanged.raise, nullptr);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Media::Brush, CurrentForeground, PropertyChanged.raise, nullptr);
         WINRT_OBSERVABLE_PROPERTY(bool, IsKeepRunning, PropertyChanged.raise, false);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, StatusLabelText, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, WindowHintText, PropertyChanged.raise);
 
     public:
         bool RefreshAge(uint64_t nowMs);
@@ -364,6 +366,7 @@ namespace winrt::TerminalApp::implementation
                                    winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& tab);
         void UpdateHistoryKeepRunning(const std::function<bool(const winrt::hstring&)>& isPaneKeepRunning,
                                       const std::function<bool(const winrt::hstring&)>& isPaneHeadless);
+        void UpdateHistoryPaneOwnership(const std::function<std::optional<bool>(const winrt::hstring&)>& otherWindow);
         bool ApplyHistoryStatusDelta(winrt::hstring const& sessionId,
                                      winrt::hstring const& paneSessionId,
                                      winrt::hstring const& status,

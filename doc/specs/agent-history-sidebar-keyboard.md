@@ -123,8 +123,15 @@ agent action, not an override of the normal new-tab control.
   ownership; current-window, external **In use**, historical, and unknown-owner
   rows do not receive the annotation. Kept-tab membership takes precedence
   over an old window ID and does not show the other-window annotation.
+  Activity colors apply only to the status label; the window annotation retains
+  the ordinary metadata foreground and opacity through status changes.
   Entering headless mode clears a stale window annotation immediately from
   locally known retained rows, without waiting for the next master snapshot.
+  Successful reattachment into a different window migrates locally tracked
+  session bindings even when no hook binding is available. The restored session
+  is excluded from that window's recent rows immediately; existing rows in other
+  windows update their ownership annotation at the committed content handoff.
+  Failed transfers retain the original bindings and headless ownership.
   There are no dedicated switch-window or restore-background-tab action buttons
   or icons in recent-session rows. The passive Keep Running badge is unchanged.
   Unknown ownership leaves the activity status visible without a window annotation.

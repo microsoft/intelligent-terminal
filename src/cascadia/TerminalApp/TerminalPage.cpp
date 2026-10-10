@@ -274,11 +274,28 @@ namespace winrt::TerminalApp::implementation
                     page->_UpdateSidebarHistoryCurrentSession();
                 }
             });
+        _paneWindowChangedToken = winrt::get_self<implementation::ContentManager>(_manager)->PaneWindowChanged(
+            [weakThis{ get_weak() }](const winrt::guid& paneId, const uint64_t ownerWindowId) {
+                if (const auto page = weakThis.get(); page && page->_tabStrip)
+                {
+                    const auto currentWindowId = page->_WindowProperties.WindowId();
+                    const auto strip = winrt::get_self<implementation::TabStrip>(page->_tabStrip);
+                    strip->UpdateHistoryPaneOwnership([&](const winrt::hstring& rowPaneId) -> std::optional<bool> {
+                        if (_TryParsePaneSessionId(winrt::to_string(rowPaneId)) == paneId)
+                        {
+                            return currentWindowId != 0 && ownerWindowId != 0 && currentWindowId != ownerWindowId;
+                        }
+                        return std::nullopt;
+                    });
+                    page->_ApplyTabListProjection();
+                }
+            });
     }
 
     TerminalPage::~TerminalPage()
     {
         winrt::get_self<implementation::ContentManager>(_manager)->KeepRunningTabsChanged(_keepRunningTabsChangedToken);
+        winrt::get_self<implementation::ContentManager>(_manager)->PaneWindowChanged(_paneWindowChangedToken);
         _sidebarIntroductionShuttingDown = true;
         _ReleaseSidebarIntroduction(false);
         if (_sidebarIntroductionTimer)
@@ -13445,10 +13462,12 @@ namespace winrt::TerminalApp::implementation
         };
         transfer.firstContentId = firstArgs ? firstArgs.ContentId() : 0;
         std::vector<TermControl> sourceControls;
+        std::vector<winrt::guid> sourcePaneIds;
         sourcePane->WalkTree([&](const auto& pane) {
             if (const auto control = pane->GetTerminalControl())
             {
                 sourceControls.push_back(control);
+                sourcePaneIds.push_back(pane->GetSessionId());
                 if (const auto sessionId = source._FindSessionIdForControl(control); !sessionId.empty())
                 {
                     transfer.sessionIds.emplace(sessionId);
@@ -13667,6 +13686,23 @@ namespace winrt::TerminalApp::implementation
                 destinationTab->AllowAgentPrewarm();
             }
         }
+        if (&source != this)
+        {
+            const auto moveBindings = [&](auto& sourceBindings, auto& destinationBindings) {
+                for (const auto& paneId : sourcePaneIds)
+                {
+                    if (const auto binding = sourceBindings.find(paneId); binding != sourceBindings.end())
+                    {
+                        destinationBindings.insert_or_assign(paneId, binding->second);
+                        sourceBindings.erase(binding);
+                    }
+                }
+            };
+            moveBindings(source._paneAgentSessions, _paneAgentSessions);
+            moveBindings(source._interactiveResumeSessions, _interactiveResumeSessions);
+            moveBindings(source._pendingRestoredSessionBindings, _pendingRestoredSessionBindings);
+            moveBindings(source._activeCliAgentPanes, _activeCliAgentPanes);
+        }
         try
         {
             if (sourceTab->GetRootPane() == sourcePane)
@@ -13726,6 +13762,14 @@ namespace winrt::TerminalApp::implementation
                 {
                     OnPaneAgentSessionChanged(binding);
                 }
+            }
+            CATCH_LOG()
+        }
+        for (const auto& paneId : sourcePaneIds)
+        {
+            try
+            {
+                winrt::get_self<implementation::ContentManager>(_manager)->NotifyPaneWindowChanged(paneId, _WindowProperties.WindowId());
             }
             CATCH_LOG()
         }

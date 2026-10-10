@@ -101,9 +101,12 @@ namespace winrt::TerminalApp::implementation
         const auto status = Status();
         const auto liveIt = status == L"Idle" || status == L"Working" ||
                             status == L"Attention" || status == L"Error";
-        StatusText(liveIt && OtherWindow() && !BackgroundTab() && !_locallyHeadless ?
-                       winrt::hstring{ RS_fmt(L"VerticalTabsHistoryOtherWindowStatusFormat", text) } :
-                       text);
+        const auto hint = liveIt && OtherWindow() && !BackgroundTab() && !_locallyHeadless ?
+                              winrt::hstring{ RS_fmt(L"VerticalTabsHistoryOtherWindowStatusFormat", L"") } :
+                              winrt::hstring{};
+        StatusText(text + hint);
+        StatusLabelText(text);
+        WindowHintText(hint);
     }
 
     bool TabStripHistoryItem::UpdateHeadlessState(const bool headless)
@@ -1012,7 +1015,7 @@ namespace winrt::TerminalApp::implementation
         }
         const auto foreground = isCurrent ? item.CurrentForeground() : nullptr;
         const auto palette = root.FindName(L"HistorySelectionPalette").try_as<Control>();
-        for (const auto name : { L"HistoryTitleText", L"HistoryCwdText", L"HistorySubtitleText", L"HistoryStatusText" })
+        for (const auto name : { L"HistoryTitleText", L"HistoryCwdText", L"HistorySubtitleText", L"HistoryStatusText", L"HistoryWindowHintText" })
         {
             if (const auto control = root.FindName(name).try_as<Control>())
             {
@@ -1452,6 +1455,10 @@ namespace winrt::TerminalApp::implementation
         _historySearchTerms.reserve(_historySnapshot.size());
         for (const auto& item : _historySnapshot)
         {
+            if (item.StatusLabelText().empty())
+            {
+                winrt::get_self<TabStripHistoryItem>(item)->UpdateStatusText(item.StatusText());
+            }
             item.IsCurrent(false);
             item.CurrentBackground(nullptr);
             item.CurrentForeground(nullptr);
@@ -1594,6 +1601,45 @@ namespace winrt::TerminalApp::implementation
             update(item);
         }
         // Equal snapshots can retain distinct visible row objects.
+        for (const auto& item : _historyItems)
+        {
+            update(item);
+        }
+        if (changed)
+        {
+            for (size_t index = 0; index < _historySnapshot.size(); ++index)
+            {
+                _historySearchTerms[index] = _buildHistorySearchTerms(_historySnapshot[index]);
+            }
+            if (_sidebarFilters.HasSearchQuery())
+            {
+                _applyHistoryProjection(true);
+            }
+        }
+    }
+
+    void TabStrip::UpdateHistoryPaneOwnership(const std::function<std::optional<bool>(const winrt::hstring&)>& otherWindow)
+    {
+        bool changed = false;
+        const auto update = [&](const TerminalApp::TabStripHistoryItem& item) {
+            const auto status = item.Status();
+            if (status != L"Idle" && status != L"Working" && status != L"Attention" && status != L"Error")
+            {
+                return;
+            }
+            if (const auto ownership = otherWindow(item.PaneSessionId()))
+            {
+                const auto native = winrt::get_self<TabStripHistoryItem>(item);
+                native->BackgroundTab(false);
+                native->OtherWindow(*ownership);
+                native->UpdateStatusText(item.StatusLabelText());
+                changed = true;
+            }
+        };
+        for (const auto& item : _historySnapshot)
+        {
+            update(item);
+        }
         for (const auto& item : _historyItems)
         {
             update(item);

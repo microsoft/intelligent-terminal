@@ -398,6 +398,12 @@ namespace winrt::TerminalApp::implementation
         _NotifyKeptSessionsChanged();
     }
 
+    void ContentManager::NotifyPaneWindowChanged(const winrt::guid& paneId, const uint64_t windowId)
+    {
+        _CheckThread();
+        PaneWindowChanged.raise(paneId, windowId);
+    }
+
     void ContentManager::DiscardKeptGroup(const winrt::guid& groupId)
     {
         _CheckThread();

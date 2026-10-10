@@ -254,17 +254,25 @@
                           Grid.Column="1"
                           Margin="0,2,0,0">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <local:HighlightedTextControl x:Name="HistorySubtitleText"
+                                                      Grid.ColumnSpan="2"
                                                       SearchText="{x:Bind SearchQuery}"
                                                       Text="{x:Bind Subtitle, Mode=OneWay}"
                                                       TextBlockStyle="{StaticResource HistorySubtitleTextStyle}"
                                                       Visibility="{x:Bind IsHistorical, Mode=OneWay}" />
                         <local:HighlightedTextControl x:Name="HistoryStatusText"
                                                       SearchText="{x:Bind SearchQuery}"
-                                                      Text="{x:Bind StatusText, Mode=OneWay}"
+                                                      Text="{x:Bind StatusLabelText, Mode=OneWay}"
                                                       TextBlockStyle="{x:Bind StatusTextStyle, Mode=OneWay}"
+                                                      Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(IsHistorical), Mode=OneWay}" />
+                        <local:HighlightedTextControl x:Name="HistoryWindowHintText"
+                                                      Grid.Column="1"
+                                                      SearchText="{x:Bind SearchQuery}"
+                                                      Text="{x:Bind WindowHintText, Mode=OneWay}"
+                                                      TextBlockStyle="{StaticResource HistorySubtitleTextStyle}"
                                                       Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(IsHistorical), Mode=OneWay}" />
                     </Grid>
                     <FontIcon x:Name="HistoryKeepRunningIcon"

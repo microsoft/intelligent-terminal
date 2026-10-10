@@ -63,6 +63,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::Rect KeptGroupBounds(const winrt::guid& groupId);
         winrt::TerminalApp::Tab BeginReattachKeptGroup(const winrt::guid& groupId);
         void CompleteKeptGroupReattach(const winrt::guid& groupId, bool committed);
+        void NotifyPaneWindowChanged(const winrt::guid& paneId, uint64_t windowId);
         void DiscardKeptGroup(const winrt::guid& groupId);
         void DiscardAllKeptGroups();
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::IPaneContent> KeptPanes();
@@ -70,6 +71,7 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeepRunningTabsChanged;
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::hstring> DetachedSessionEvent;
+        til::event<winrt::delegate<winrt::guid, uint64_t>> PaneWindowChanged;
 
     private:
         mutable std::mutex _mutex;
