@@ -450,6 +450,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryIgnoresStaleLoadingResult);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesCollection);
         TEST_METHOD(VerticalTabHistoryStatusDeltaPreservesCollection);
+        TEST_METHOD(VerticalTabHistoryOtherWindowStatusDelta);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryDeduplicatedEmptyState);
@@ -9150,7 +9151,14 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(wsl.state == Page::_SidebarHistorySnapshot::State::Ready);
             VERIFY_ARE_EQUAL(size_t{ 1 }, wsl.items.size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Ubuntu" }, wsl.items.front().WslDistro());
-            for (const auto status : { "Idle", "Working", "Attention", "Error", "Ended", "Historical" })
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            const auto otherWindowFormat = resources.GetValue(L"VerticalTabsHistoryOtherWindowStatusFormat").ValueAsString();
+            const auto annotate = [&](const winrt::hstring& status) {
+                return winrt::hstring{ fmt::format(fmt::runtime(std::wstring_view{ otherWindowFormat }), std::wstring_view{ status }) };
+            };
+            for (const auto status : { "Idle", "Working", "Attention", "Error", "InUse", "Ended", "Historical" })
             {
                 Json::Value response;
                 response["history_status"] = "ready";
@@ -9167,8 +9175,8 @@ namespace TerminalAppLocalTests
                     const auto parsed = Page::_ParseSidebarHistorySnapshot(output, 1);
                     VERIFY_ARE_EQUAL(size_t{ 1 }, parsed.items.size());
                     const auto base = Page::_SidebarHistoryStatusText(status);
-                    const auto foreignLive = owner == 2 && parsed.items.front().IsLive();
-                    VERIFY_ARE_EQUAL(base, parsed.items.front().StatusText());
+                    const auto foreignLive = owner == 2 && parsed.items.front().IsLive() && std::string_view{ status } != "InUse";
+                    VERIFY_ARE_EQUAL(foreignLive ? annotate(base) : base, parsed.items.front().StatusText());
                     const auto native = winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(parsed.items.front());
                     VERIFY_IS_FALSE(native->BackgroundTab());
                     VERIFY_ARE_EQUAL(foreignLive, native->OtherWindow());
@@ -9186,9 +9194,11 @@ namespace TerminalAppLocalTests
                     const auto parsed = Page::_ParseSidebarHistorySnapshot(
                         Json::writeString(Json::StreamWriterBuilder{}, response), 1);
                     const auto native = winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(parsed.items.front());
-                    const auto live = parsed.items.front().IsLive();
+                    const auto live = parsed.items.front().IsLive() && std::string_view{ status } != "InUse";
                     VERIFY_ARE_EQUAL(live && membership.isBool() && membership.asBool(), native->BackgroundTab());
                     VERIFY_ARE_EQUAL(live && membership.isBool() && !membership.asBool(), native->OtherWindow());
+                    const auto base = Page::_SidebarHistoryStatusText(status);
+                    VERIFY_ARE_EQUAL(native->OtherWindow() ? annotate(base) : base, parsed.items.front().StatusText());
                     if (native->BackgroundTab())
                     {
                         VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText(status), parsed.items.front().StatusText());
@@ -9207,7 +9217,7 @@ namespace TerminalAppLocalTests
                     {"session_id":"same","provider_id":"claude","location":"Host","status":"Working","owner_window_id":2,"background_tab":false}]})", 1);
             VERIFY_ARE_EQUAL(size_t{ 2 }, collision.items.size());
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Working"), collision.items[0].StatusText());
-            VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Working"), collision.items[1].StatusText());
+            VERIFY_ARE_EQUAL(annotate(Page::_SidebarHistoryStatusText("Working")), collision.items[1].StatusText());
             VERIFY_IS_FALSE(winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(collision.items[0])->OtherWindow());
             VERIFY_IS_TRUE(winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(collision.items[1])->OtherWindow());
             const auto external = Page::_ParseSidebarHistorySnapshot(
@@ -9546,6 +9556,61 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, items.Size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"live-session" }, items.GetAt(0).SessionId());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"InUse" }, items.GetAt(0).Status());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryOtherWindowStatusDelta()
+    {
+        HistoryTestView view;
+        const auto strip = view.strip;
+        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            const auto otherWindowFormat = resources.GetValue(L"VerticalTabsHistoryOtherWindowStatusFormat").ValueAsString();
+            const auto annotate = [&](const winrt::hstring& status) {
+                return winrt::hstring{ fmt::format(fmt::runtime(std::wstring_view{ otherWindowFormat }), std::wstring_view{ status }) };
+            };
+            const auto snapshot = [&]() {
+                return Page::_ParseSidebarHistorySnapshot(
+                    R"({"history_status":"ready","sessions":[
+                        {"session_id":"other-session","provider_id":"copilot","location":"Host","title":"Other session",
+                         "pane_session_id":"other-pane","status":"Idle","owner_window_id":2,"background_tab":false}]})",
+                    1);
+            };
+            impl->CommitHistorySnapshot(snapshot().items);
+            const auto item = strip.HistoryItems().GetAt(0);
+            impl->CommitHistorySnapshot(snapshot().items);
+            VERIFY_IS_TRUE(strip.HistoryItems().GetAt(0) == item);
+            strip.Width(360);
+            strip.Height(400);
+            strip.UpdateLayout();
+            const auto container = impl->ItemsList().ContainerFromItem(item);
+            for (const auto status : { "Idle", "Working", "Attention", "Error" })
+            {
+                const auto text = Page::_SidebarHistoryStatusText(status);
+                VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"other-session", L"other-pane", winrt::to_hstring(status), text));
+                VERIFY_ARE_EQUAL(annotate(text), item.StatusText());
+                VERIFY_IS_TRUE(winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item)->OtherWindow());
+                VERIFY_IS_TRUE(impl->ItemsList().ContainerFromItem(item) == container);
+            }
+            const auto idle = Page::_SidebarHistoryStatusText("Idle");
+            VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"other-session", L"local-pane", L"Idle", idle));
+            VERIFY_ARE_EQUAL(idle, item.StatusText());
+            VERIFY_IS_FALSE(winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item)->OtherWindow());
+            const auto nativeItem = winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item);
+            for (const auto status : { "InUse", "Ended", "Historical" })
+            {
+                nativeItem->OtherWindow(true);
+                const auto text = Page::_SidebarHistoryStatusText(status);
+                VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"other-session", L"local-pane", winrt::to_hstring(status), text));
+                VERIFY_ARE_EQUAL(text, item.StatusText());
+                VERIFY_IS_FALSE(nativeItem->OtherWindow());
+                VERIFY_IS_FALSE(nativeItem->BackgroundTab());
+            }
+            VERIFY_IS_TRUE(impl->ItemsList().ContainerFromItem(item) == container);
         });
     }
 

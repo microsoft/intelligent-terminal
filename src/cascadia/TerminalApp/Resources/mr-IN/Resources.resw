@@ -759,7 +759,7 @@
     <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
-    <value>{0} · दुसरी विंडो</value>
+    <value>{0} · दुसऱ्या विंडोमध्ये</value>
     <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
   </data>
   <data name="VerticalTabsHistoryRestoreBackgroundTab" xml:space="preserve">

@@ -96,6 +96,16 @@ namespace winrt::TerminalApp::implementation
         return changed;
     }
 
+    void TabStripHistoryItem::UpdateStatusText(winrt::hstring const& text)
+    {
+        const auto status = Status();
+        const auto liveIt = status == L"Idle" || status == L"Working" ||
+                            status == L"Attention" || status == L"Error";
+        StatusText(liveIt && OtherWindow() && !BackgroundTab() ?
+                       winrt::hstring{ RS_fmt(L"VerticalTabsHistoryOtherWindowStatusFormat", text) } :
+                       text);
+    }
+
     DataTemplate TabStripItemTemplateSelector::SelectTemplateCore(IInspectable const& item)
     {
         return item.try_as<TerminalApp::TabStripDisplayItem>() ? LiveTemplate :
@@ -1603,9 +1613,17 @@ namespace winrt::TerminalApp::implementation
     {
         bool updated = false;
         const auto applyStatus = [&](TerminalApp::TabStripHistoryItem const& item) {
+            const auto nativeItem = winrt::get_self<TabStripHistoryItem>(item);
+            const auto liveIt = status == L"Idle" || status == L"Working" ||
+                                status == L"Attention" || status == L"Error";
+            if (!liveIt || item.PaneSessionId() != paneSessionId)
+            {
+                nativeItem->OtherWindow(false);
+                nativeItem->BackgroundTab(false);
+            }
             item.PaneSessionId(paneSessionId);
             item.Status(status);
-            item.StatusText(statusText);
+            nativeItem->UpdateStatusText(statusText);
             item.StatusTextStyle(_historyStatusTextStyle(status));
             item.IsLive(status == L"Idle" ||
                         status == L"Working" ||

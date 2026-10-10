@@ -7066,7 +7066,6 @@ namespace winrt::TerminalApp::implementation
             const auto otherWindow = isLive && backgroundTab.isBool() && !backgroundTab.asBool() &&
                 currentWindowId != 0 && ownerWindow.isUInt64() &&
                 ownerWindow.asUInt64() != 0 && ownerWindow.asUInt64() != currentWindowId;
-            item.StatusText(statusText);
             item.Cwd(winrt::to_hstring(cwd));
             item.PaneSessionId(winrt::to_hstring(row.get("pane_session_id", "").asString()));
             item.AgentId(winrt::to_hstring(providerId));
@@ -7082,6 +7081,7 @@ namespace winrt::TerminalApp::implementation
             nativeItem->LastActivityAtMs(lastActivityAtMs);
             nativeItem->BackgroundTab(background);
             nativeItem->OtherWindow(otherWindow);
+            nativeItem->UpdateStatusText(statusText);
             snapshot.items.emplace_back(std::move(item));
         }
         return snapshot;

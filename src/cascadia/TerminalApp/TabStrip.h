@@ -107,6 +107,7 @@ namespace winrt::TerminalApp::implementation
 
     public:
         bool RefreshAge(uint64_t nowMs);
+        void UpdateStatusText(winrt::hstring const& text);
         til::property_changed_event PropertyChanged;
 
     private:

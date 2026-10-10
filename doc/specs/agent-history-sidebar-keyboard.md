@@ -120,8 +120,12 @@ agent action, not an override of the normal new-tab control.
   An outlined window with an upward restore arrow beside the third line
   identifies a confirmed background tab; clicking restores the whole original
   tab. Two overlapping windows identify a session attached to another visible
-  window; clicking focuses its original tab and pane. The status remains plain
-  activity text. Kept-tab membership takes precedence over an old window ID.
+  window; clicking focuses its original tab and pane. Its detailed status also
+  ends with **In another window**, separated by a middle dot (for example,
+  `Idle · In another window`). This requires confirmed different-window
+  ownership; current-window, external **In use**, historical, and unknown-owner
+  rows do not receive the annotation. Kept-tab membership takes precedence
+  over an old window ID and does not show the other-window annotation.
   Unknown ownership leaves the activity status visible without either indicator.
   Enter uses the same activation: focus or restore an existing bound pane, or
   attempt supported resume in the current window for an explicitly activated
