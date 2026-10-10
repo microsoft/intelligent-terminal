@@ -93,9 +93,10 @@ flowchart LR
    The master-owned refresh calls `session/list` on initialized connections,
    including WSL/custom connections already in the pool. Most providers use the
    five-second periodic loop; Copilot uses startup, event-driven title, failure-
-   recovery, and explicit refreshes. A per-connection gate coalesces concurrent
-   triggers. Reconciliation and title updates use the same response directly; no
-   TTL result cache or additional process spawn is needed.
+   recovery, and explicit refreshes. Copilot lifecycle-event bursts set one pending
+   refresh and the existing scheduler runs it after the cooldown. A per-connection
+   gate coalesces concurrent triggers. Reconciliation and title updates use the same
+   response directly; no TTL result cache or additional process spawn is needed.
 2. **Capability gate, no disk fallback.** Gated on
    `cached_init_resp.agent_capabilities.session_capabilities.list`. `None`
    (Gemini, non-ACP `custom:` agents) ⇒ **empty history** — there is no on-disk
@@ -151,7 +152,8 @@ upgraded **in place** instead:
     scan;
   - **per-connection refresh gate** — concurrent triggers share an in-flight
     refresh; periodic providers respect the five-second cadence and failed queries
-    back off up to 60 seconds. Each response updates both history and titles;
+    back off up to 60 seconds. Copilot event triggers are coalesced into one pending
+    trailing refresh per cooldown. Each response updates both history and titles;
   - **cli-source gate** (`row_refreshable_by_connected_agent`) — the connected
     agent enumerates only *its own* CLI's sessions, so a row stamped with a
     *different* known CLI (e.g. a watched `claude` shell session while the agent

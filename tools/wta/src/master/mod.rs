@@ -1872,6 +1872,7 @@ struct AgentHistoryRefresh {
     mutation_gate: Mutex<()>,
     generation: std::sync::atomic::AtomicU64,
     retired: std::sync::atomic::AtomicBool,
+    event_pending: std::sync::atomic::AtomicBool,
     failure: Mutex<Option<HistoryRefreshFailure>>,
 }
 
@@ -7283,6 +7284,7 @@ async fn refresh_agent_history(
     trigger: HistoryRefreshTrigger,
 ) -> Option<usize> {
     use std::sync::atomic::Ordering;
+    let uses_periodic_polling = uses_periodic_history_polling(&agent.resolved_agent_id);
     if agent.history_refresh.retired.load(Ordering::Acquire)
         || agent
             .cached_init_resp
@@ -7293,14 +7295,21 @@ async fn refresh_agent_history(
     {
         return None;
     }
+    if matches!(trigger, HistoryRefreshTrigger::Event) && !uses_periodic_polling {
+        agent
+            .history_refresh
+            .event_pending
+            .store(true, Ordering::Release);
+    }
     let generation = agent.history_refresh.generation.load(Ordering::Acquire);
     let mut refresh = agent.history_refresh.gate.lock().await;
     if agent.history_refresh.retired.load(Ordering::Acquire) {
         return None;
     }
     if matches!(trigger, HistoryRefreshTrigger::Periodic)
-        && !uses_periodic_history_polling(&agent.resolved_agent_id)
+        && !uses_periodic_polling
         && refresh.failures == 0
+        && !agent.history_refresh.event_pending.load(Ordering::Acquire)
     {
         return refresh.last_count;
     }
@@ -7308,10 +7317,8 @@ async fn refresh_agent_history(
     // again would skip ticks whenever the previous dispatch started slightly late.
     let honor_delay = match trigger {
         HistoryRefreshTrigger::Immediate => false,
-        HistoryRefreshTrigger::Periodic => refresh.failures != 0,
-        HistoryRefreshTrigger::Event => {
-            refresh.failures != 0 || uses_periodic_history_polling(&agent.resolved_agent_id)
-        }
+        HistoryRefreshTrigger::Periodic => !uses_periodic_polling || refresh.failures != 0,
+        HistoryRefreshTrigger::Event => true,
     };
     // Waiters share the completed refresh rather than queueing another ACP call.
     if agent.history_refresh.generation.load(Ordering::Acquire) != generation
@@ -7322,6 +7329,12 @@ async fn refresh_agent_history(
     {
         return refresh.last_count;
     }
+    if !uses_periodic_polling {
+        agent
+            .history_refresh
+            .event_pending
+            .swap(false, Ordering::AcqRel);
+    }
     let started_at = tokio::time::Instant::now();
     let result = sync_host_history(state, agent).await;
     let delay = if result.is_ok() {
@@ -7331,7 +7344,11 @@ async fn refresh_agent_history(
         refresh.record_failure()
     };
     refresh.next_refresh_at = Some(if result.is_ok() {
-        started_at + delay
+        if uses_periodic_polling {
+            started_at + delay
+        } else {
+            tokio::time::Instant::now() + delay
+        }
     } else {
         tokio::time::Instant::now() + delay
     });
@@ -7437,8 +7454,13 @@ fn start_history_refresh_loop(state: &Arc<MasterStateInner>) {
                 let Ok(refresh) = agent.history_refresh.gate.try_lock() else {
                     continue;
                 };
-                let should_refresh = uses_periodic_history_polling(&agent.resolved_agent_id)
-                    || (refresh.failures != 0 && refresh.retry_due());
+                let uses_periodic_polling = uses_periodic_history_polling(&agent.resolved_agent_id);
+                let event_pending = agent
+                    .history_refresh
+                    .event_pending
+                    .load(std::sync::atomic::Ordering::Acquire);
+                let should_refresh = uses_periodic_polling
+                    || ((refresh.failures != 0 || event_pending) && refresh.retry_due());
                 drop(refresh);
                 if !should_refresh {
                     continue;

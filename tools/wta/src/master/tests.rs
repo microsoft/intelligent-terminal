@@ -14014,17 +14014,99 @@ async fn history_refresh_does_not_periodically_poll_copilot() {
             };
             assert_eq!(tokio::join!(refresh, reply).0, Some(0));
 
-            let event_refresh =
-                refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Event);
-            let event_reply = async {
-                copilot_requests
-                    .recv()
+            for _ in 0..3 {
+                assert_eq!(
+                    refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Event).await,
+                    Some(0)
+                );
+            }
+            assert!(
+                copilot_requests.try_recv().is_err(),
+                "lifecycle events wait for the Copilot refresh cooldown"
+            );
+
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            custom_requests
+                .recv()
+                .await
+                .unwrap()
+                .send(Ok(vec![]))
+                .unwrap();
+            copilot_requests
+                .recv()
+                .await
+                .expect("the event burst schedules one trailing refresh")
+                .send(Ok(vec![]))
+                .unwrap();
+            while copilot
+                .history_refresh
+                .generation
+                .load(std::sync::atomic::Ordering::Acquire)
+                < 2
+            {
+                tokio::task::yield_now().await;
+            }
+
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            custom_requests
+                .recv()
+                .await
+                .unwrap()
+                .send(Ok(vec![]))
+                .unwrap();
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(1), copilot_requests.recv())
                     .await
-                    .expect("Copilot lifecycle events bypass the periodic cooldown")
-                    .send(Ok(vec![]))
-                    .unwrap();
+                    .is_err(),
+                "the trailing refresh returns Copilot to idle"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn history_refresh_preserves_copilot_events_that_arrive_during_a_scan() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (copilot, mut requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            add_test_agent_to_pool(&state, &copilot).await;
+            start_history_refresh_loop(&state);
+            tokio::task::yield_now().await;
+
+            let initial = refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Immediate);
+            tokio::pin!(initial);
+            let first_reply = tokio::select! {
+                request = requests.recv() => request.unwrap(),
+                _ = &mut initial => panic!("initial refresh completed before its reply"),
             };
-            assert_eq!(tokio::join!(event_refresh, event_reply).0, Some(0));
+            let first_event = refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Event);
+            tokio::pin!(first_event);
+            assert!(futures::poll!(&mut first_event).is_pending());
+            first_reply.send(Ok(vec![])).unwrap();
+            assert_eq!(initial.await, Some(0));
+            assert_eq!(first_event.await, Some(0));
+
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            let trailing_reply = requests
+                .recv()
+                .await
+                .expect("an event during the initial scan schedules a trailing refresh");
+            let trailing_event =
+                refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Event);
+            tokio::pin!(trailing_event);
+            assert!(futures::poll!(&mut trailing_event).is_pending());
+            trailing_reply.send(Ok(vec![])).unwrap();
+            assert_eq!(trailing_event.await, Some(0));
+
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            requests
+                .recv()
+                .await
+                .expect("an event during the trailing scan remains pending")
+                .send(Ok(vec![]))
+                .unwrap();
         })
         .await;
 }
