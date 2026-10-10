@@ -31,8 +31,8 @@ Describe 'Feature: ACP first-login authentication' -Tag 'Feature', 'AcpAuthentic
         $script:setupPhase = 'Verify packaged WTA hash'
         (Get-FileHash -LiteralPath $script:target.WtaPath -Algorithm SHA256).Hash |
             Should -Be $env:ITE2E_EXPECTED_WTA_SHA256 -Because 'a different deployed build cannot establish RED/GREEN'
-        $script:setupPhase = 'Refuse active or unknown package processes'
-        Assert-WtPackageInactive -App $script:target
+        $script:setupPhase = 'Close verified Dev processes before setup'
+        Stop-StaleItInstances -App $script:target
         $script:setupPhase = 'Resolve deterministic fixture'
         $script:fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpAuthenticationAgent.ps1')).Path
         $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
@@ -209,7 +209,7 @@ Describe 'Feature: ACP first-login authentication' -Tag 'Feature', 'AcpAuthentic
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation))
         $command = "pwsh -NoLogo -NoProfile -EncodedCommand $encoded"
         $profileId = "{$([guid]::NewGuid())}"
-        Assert-WtPackageInactive -App $script:target
+        Stop-StaleItInstances -App $script:target
         $script:app = Start-Terminal -Package Dev -PassFre $true -State @{
             sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
         } -Settings @{

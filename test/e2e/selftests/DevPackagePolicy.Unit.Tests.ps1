@@ -407,6 +407,7 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
 
 Describe 'Feature suites honor Dev-only cold start policy' -Tag Unit {
     It '<Suite> enters shared cleanup before its own setup' -ForEach @(
+        @{ Suite = 'Feature.AcpAuthentication.Tests.ps1' }
         @{ Suite = 'Feature.AgentInputMouseCursor.Tests.ps1' }
         @{ Suite = 'Feature.AgentInputUndoRedo.Tests.ps1' }
         @{ Suite = 'Feature.AgentMouse.Tests.ps1' }
