@@ -66,7 +66,7 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
             $script:process.Closed | Should -BeTrue
             $script:process.HasExited | Should -BeTrue
             Should -Invoke Stop-Process -Times 0
-            Should -Invoke Get-WtProcessesForApp -ParameterFilter { $IncludePackageExecutables } -Times 1
+            Should -Invoke Get-WtProcessesForApp -ParameterFilter { $IncludePackageExecutables } -Times 6 -Exactly
         }
 
         It 'accepts a verified isolated Dev family without weakening full-name validation' {
@@ -276,6 +276,33 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
             $script:process.HasExited | Should -BeFalse
             Should -Invoke Stop-Process -Times 0
             Should -Invoke Get-WtProcessesForApp -Times 1 -ParameterFilter { $IncludePackageExecutables }
+        }
+
+        It 'waits for a protected package to remain idle throughout preflight' {
+            $script:app.Package = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe'
+            $script:process.HasExited = $true
+            Mock Get-WtProcessesForApp {}
+
+            Stop-StaleItInstances -App $script:app
+
+            Should -Invoke Get-WtProcessesForApp -Times 6 -Exactly -ParameterFilter { $IncludePackageExecutables }
+        }
+
+        It 'refuses a protected package that appears during its quiet window' {
+            $script:app.Package = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe'
+            $script:app.InstallLocation = 'C:\StorePackage\AppX'
+            $script:process = New-FakeTerminalProcess -Root $script:app.InstallLocation
+            $script:queries = 0
+            Mock Get-WtProcessesForApp {
+                $script:queries++
+                if ($script:queries -ge 3) { $script:process }
+            }
+
+            { Stop-StaleItInstances -App $script:app } | Should -Throw '*protected*'
+
+            $script:queries | Should -Be 3
+            $script:process.Closed | Should -BeFalse
+            Should -Invoke Stop-Process -Times 0
         }
 
         It 'never treats an unverified Dev alias as the authorized family' {

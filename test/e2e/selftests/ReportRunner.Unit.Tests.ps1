@@ -9,6 +9,8 @@ BeforeAll {
             [string]$Tag,
             [switch]$GenerateReport,
             [switch]$ObstructReport,
+            [switch]$SeedReport,
+            [switch]$FailGenerator,
             [switch]$UpdateReport,
             [switch]$RequireNoSkips,
             [string[]]$AdditionalArguments
@@ -22,7 +24,7 @@ BeforeAll {
         if ($ObstructReport) {
             New-Item -ItemType Directory -Path (Join-Path $out 'release-report.md') | Out-Null
         }
-        if ($UpdateReport) {
+        if ($UpdateReport -or $SeedReport) {
             @(
                 '# Release Report'
                 '> **Automated: 1 passed, 0 failed. Manual: 0 item(s) left for you.** (total 1)'
@@ -30,7 +32,19 @@ BeforeAll {
             ) | Set-Content -LiteralPath (Join-Path $out 'release-report.md')
         }
 
-        $arguments = @('-NoProfile', '-File', $script:runner, '-Path', $testFile, '-OutDir', $out)
+        $runner = $script:runner
+        if ($FailGenerator) {
+            $runnerDir = Join-Path $root 'runner'
+            New-Item -ItemType Directory -Path $runnerDir | Out-Null
+            $runner = Join-Path $runnerDir 'Invoke-ItE2EReport.ps1'
+            Copy-Item -LiteralPath $script:runner -Destination $runner
+            foreach ($generator in @('New-ReleaseReport.ps1', 'Update-ReleaseReport.ps1')) {
+                "throw 'fixture report generator failed'" |
+                    Set-Content -LiteralPath (Join-Path $runnerDir $generator)
+            }
+        }
+
+        $arguments = @('-NoProfile', '-File', $runner, '-Path', $testFile, '-OutDir', $out)
         if (-not $GenerateReport) { $arguments += '-SkipReleaseReport' }
         if ($UpdateReport) { $arguments += '-UpdateReport' }
         if ($Tag) { $arguments += @('-Tag', $Tag) }
@@ -88,6 +102,23 @@ Describe 'ordinary suite' {
 
         $run.ExitCode | Should -Not -Be 0
         $run.Output | Should -Not -Match 'release-report.md : SKIPPED'
+    }
+
+    It 'invalidates an earlier green checklist when a <Mode> generator fails' -ForEach @(
+        @{ Mode = 'full'; UpdateReport = $false }
+        @{ Mode = 'incremental'; UpdateReport = $true }
+    ) {
+        $run = Invoke-ReportFixture -GenerateReport -SeedReport -FailGenerator `
+            -UpdateReport:$UpdateReport -Body @"
+Describe 'ordinary suite' {
+    It 'passes' { `$true | Should -BeTrue }
+}
+"@
+
+        $run.ExitCode | Should -Not -Be 0
+        $run.Output | Should -Match 'fixture report generator failed'
+        $run.ReleaseReport | Should -Match 'AUTOMATION FAILED.*report generation failed'
+        $run.ReleaseReport | Should -Not -Match '(?m)^- \[x\]'
     }
 
     It 'withholds all checklist credit after a structural cleanup failure in <Mode> mode' -ForEach @(

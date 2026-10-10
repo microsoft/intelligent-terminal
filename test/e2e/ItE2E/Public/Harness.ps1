@@ -271,7 +271,7 @@ function Assert-ItDevProcessesNotChat {
     }
 }
 
-function Test-ItDevPackageQuietWindow {
+function Test-ItPackageQuietWindow {
     param([Parameter(Mandatory)]$App)
     foreach ($sample in 1..5) {
         Start-Sleep -Milliseconds 200
@@ -282,17 +282,17 @@ function Test-ItDevPackageQuietWindow {
 
 function Stop-ItDevPackageProcesses {
     param([Parameter(Mandatory)]$App, [int]$GraceSec = 6)
+    $separator = ([string]$App.Package).LastIndexOf('_')
+    if ($separator -lt 1 -or -not $App.PackageFullName -or
+        $App.PackageFullName -cnotlike "$($App.Package.Substring(0, $separator))_*__rd9vj3e6a2mbr") {
+        throw 'The registered Dev package identity is missing or unexpected.'
+    }
     $root = [IO.Path]::GetFullPath([string]$App.InstallLocation).TrimEnd('\') + '\'
     for ($pass = 1; $pass -le 3; $pass++) {
         $processes = @(Get-WtProcessesForApp -App $App -IncludePackageExecutables)
         if (-not $processes.Count) {
-            if (Test-ItDevPackageQuietWindow -App $App) { return }
+            if (Test-ItPackageQuietWindow -App $App) { return }
             continue
-        }
-        $separator = ([string]$App.Package).LastIndexOf('_')
-        if ($separator -lt 1 -or -not $App.PackageFullName -or
-            $App.PackageFullName -cnotlike "$($App.Package.Substring(0, $separator))_*__rd9vj3e6a2mbr") {
-            throw 'The registered Dev package identity is missing or unexpected.'
         }
         Assert-ItDevProcessesNotChat -Processes $processes
 
@@ -359,7 +359,7 @@ function Stop-ItDevPackageProcesses {
                 }
             }
         }
-        if (Test-ItDevPackageQuietWindow -App $App) { return }
+        if (Test-ItPackageQuietWindow -App $App) { return }
     }
     throw 'Dev package is still active after three verified cleanup passes.'
 }
@@ -380,7 +380,8 @@ function Stop-StaleItInstances {
     if ($App.Package -ceq $script:ItKnownFamilies.Dev) {
         Stop-ItDevPackageProcesses -App $App -GraceSec $GraceSec
     }
-    elseif (@(Get-WtProcessesForApp -App $App -IncludePackageExecutables).Count) {
+    elseif (@(Get-WtProcessesForApp -App $App -IncludePackageExecutables).Count -or
+        -not (Test-ItPackageQuietWindow -App $App)) {
         throw 'Refusing cold start: protected package processes are not test-owned.'
     }
 }

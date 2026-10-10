@@ -85,28 +85,39 @@ $runFailed = $result.FailedCount -gt 0 -or $setupFailures.Count -gt 0 -or
 
 $releaseReport = $null
 $releaseReportKind = $null
+function Write-BlockedReleaseReport([string]$Path, [string]$Reason) {
+    @(
+        '# Release Report'
+        ''
+        "> ⚠️ **AUTOMATION FAILED** — $Reason No checklist item is credited."
+        '> See the test output and report.html for diagnostics; rerun after fixing the failure.'
+    ) | Set-Content -LiteralPath $Path -Encoding utf8
+}
 if (-not $SkipReleaseReport) {
     $releaseReport = Join-Path $OutDir 'release-report.md'
     $blockedReason = if ($setupFailures.Count) { 'Pester setup or cleanup failed.' }
         elseif ($noTests) { 'No tests were selected.' }
         elseif ($result.PassedCount -eq 0) { 'No tests passed.' }
     if ($blockedReason) {
-        @(
-            '# Release Report'
-            ''
-            "> ⚠️ **AUTOMATION FAILED** — $blockedReason No checklist item is credited."
-            '> See the test output and report.html for diagnostics; rerun after fixing the failure.'
-        ) | Set-Content -LiteralPath $releaseReport -Encoding utf8
+        Write-BlockedReleaseReport -Path $releaseReport -Reason $blockedReason
         $releaseReportKind = 'blocked by incomplete test run'
     }
-    elseif ($UpdateReport -and (Test-Path $releaseReport)) {
-        & (Join-Path $PSScriptRoot 'Update-ReleaseReport.ps1') -Report $releaseReport -ResultsXml $cfg.TestResult.OutputPath.Value
-        $releaseReportKind = 'incrementally updated'
-    }
     else {
-        if ($UpdateReport) { Write-Host "  (-UpdateReport: no existing report at $releaseReport; generating fresh)" -ForegroundColor DarkGray }
-        & (Join-Path $PSScriptRoot 'New-ReleaseReport.ps1') -ResultsXml $cfg.TestResult.OutputPath.Value -OutFile $releaseReport
-        $releaseReportKind = 'clean release checklist'
+        try {
+            if ($UpdateReport -and (Test-Path $releaseReport)) {
+                & (Join-Path $PSScriptRoot 'Update-ReleaseReport.ps1') -Report $releaseReport -ResultsXml $cfg.TestResult.OutputPath.Value
+                $releaseReportKind = 'incrementally updated'
+            }
+            else {
+                if ($UpdateReport) { Write-Host "  (-UpdateReport: no existing report at $releaseReport; generating fresh)" -ForegroundColor DarkGray }
+                & (Join-Path $PSScriptRoot 'New-ReleaseReport.ps1') -ResultsXml $cfg.TestResult.OutputPath.Value -OutFile $releaseReport
+                $releaseReportKind = 'clean release checklist'
+            }
+        }
+        catch {
+            Write-BlockedReleaseReport -Path $releaseReport -Reason 'Release report generation failed.'
+            throw
+        }
     }
 }
 

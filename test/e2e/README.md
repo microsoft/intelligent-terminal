@@ -28,9 +28,10 @@ automatically closing **only** processes verified against the exact Dev package
 family, installation path and package identity. The current chat ancestry is
 never a target, even if it belongs to Dev. An active non-Dev Intelligent Terminal
 package remains protected, and ordinary Windows Terminal is not an ItE2E target.
-Unknown process identities fail closed. Shutdown requires a one-second quiet
-window, rechecking all package executables every 200 ms and retrying bounded
-late respawns. Suites that read or change configuration
+Unknown process identities fail closed. Every cold start requires a one-second
+quiet window, checking all package executables every 200 ms. Dev cleanup retries
+bounded late respawns; protected packages fail if any process appears. Suites
+that read or change configuration
 before `Start-Terminal` use this same Dev-only cleanup rather than requiring the
 developer to close a pre-existing Dev window. `Stop-Terminal` still uses the
 captured creation-proof process and descendants only; cleanup after a test must

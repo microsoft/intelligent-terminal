@@ -660,6 +660,7 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
         InModuleScope ItE2E {
             $app = [pscustomobject]@{
                 Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                PackageFullName = 'IntelligentTerminal_0.8.0.3_x64__rd9vj3e6a2mbr'
                 InstallLocation = 'C:\DevPackage\AppX'
             }
             Mock Get-CimInstance { $null }
@@ -668,7 +669,7 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
 
             Stop-StaleItInstances -App $app
 
-            Should -Invoke Get-WtProcessesForApp -Times 1 -ParameterFilter { $App -eq $app }
+            Should -Invoke Get-WtProcessesForApp -Times 6 -Exactly -ParameterFilter { $App -eq $app }
             Should -Invoke Get-AppxPackage -Times 0
         }
     }
@@ -717,7 +718,37 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
 
             Should -Invoke Stop-Process -Times 0
             Should -Invoke Backup-WtConfig -Times 0
-            Should -Invoke Get-WtProcessesForApp -Times 1 -ParameterFilter { $IncludePackageExecutables }
+            Should -Invoke Get-WtProcessesForApp -Times 0 -Exactly -ParameterFilter { $IncludePackageExecutables }
+        }
+    }
+
+    It 'rejects an idle Dev descriptor before settings backup or launch' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                Version = '0.8.0.3'
+                InstallLocation = 'C:\DevPackage\AppX'
+                WtcliPath = 'wtcli.exe'
+            }
+            Mock Resolve-ItApp { $app }
+            Mock Get-WtProcessesForApp { @() }
+            Mock Initialize-LogOffsets {}
+            Mock Backup-WtConfig { throw 'configuration was touched' }
+            Mock Start-ItCreatedDevTerminal { throw 'launch was reached' }
+            Mock Write-ItLog {}
+            $saved = $env:ITE2E_ARTIFACT_ROOT
+            try {
+                $env:ITE2E_ARTIFACT_ROOT = $TestDrive
+                { Start-Terminal -Package Dev } | Should -Throw '*Dev package identity*'
+            }
+            finally {
+                if ($null -eq $saved) { Remove-Item Env:\ITE2E_ARTIFACT_ROOT -ErrorAction SilentlyContinue }
+                else { $env:ITE2E_ARTIFACT_ROOT = $saved }
+            }
+
+            Should -Invoke Get-WtProcessesForApp -Times 0 -Exactly
+            Should -Invoke Backup-WtConfig -Times 0
+            Should -Invoke Start-ItCreatedDevTerminal -Times 0
         }
     }
 
