@@ -223,6 +223,7 @@
                             Margin="0,12,0,12">
                     <ComboBox x:Name="AcpAgentComboBox"
                               AutomationProperties.AccessibilityView="Content"
+                              AutomationProperties.LabeledBy="{Binding ElementName=AcpAgentHeaderText}"
                               ItemTemplate="{StaticResource AgentEntryTemplate}"
                               ItemsSource="{x:Bind ViewModel.AcpAgentList, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.CurrentAcpAgent, Mode=TwoWay}"
@@ -501,6 +502,7 @@
                                     x:Uid="AIAgents_SessionManagement">
                 <StackPanel>
                     <ToggleSwitch AutomationProperties.AccessibilityView="Content"
+                                  AutomationProperties.Name="{Binding Header, ElementName=AgentSessionManagement}"
                                   IsOn="{x:Bind ViewModel.AgentSessionManagementEnabled, Mode=TwoWay}"
                                   IsEnabled="{x:Bind ViewModel.CanConfigureAgentSessionManagement, Mode=OneWay}"
                                   Style="{StaticResource ToggleSwitchInExpanderStyle}" />
@@ -527,6 +529,7 @@
                 <StackPanel>
                     <ToggleSwitch AutomationProperties.AutomationId="AgentPaneYoloModeToggle"
                                   AutomationProperties.AccessibilityView="Content"
+                                  AutomationProperties.Name="{Binding Header, ElementName=AgentPaneYoloMode}"
                                   IsOn="{x:Bind ViewModel.AgentPaneYoloMode, Mode=TwoWay}"
                                   IsEnabled="{x:Bind ViewModel.CanEnableAgentPaneYoloMode, Mode=OneWay}"
                                   Style="{StaticResource ToggleSwitchInExpanderStyle}" />
@@ -557,6 +560,7 @@
                 <StackPanel Margin="0,12,0,12">
                     <ComboBox x:Name="DelegateAgentComboBox"
                               AutomationProperties.AccessibilityView="Content"
+                              AutomationProperties.Name="{Binding Header, ElementName=DelegateAgent}"
                               ItemTemplate="{StaticResource AgentEntryTemplate}"
                               ItemsSource="{x:Bind ViewModel.DelegateAgentList, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.CurrentDelegateAgent, Mode=TwoWay}"

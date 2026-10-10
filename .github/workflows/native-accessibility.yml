@@ -1,0 +1,199 @@
+# Caller telemetry environment and secrets are intentionally not inherited.
+name: Native accessibility smoke
+on:
+  workflow_call:
+    inputs:
+      head-repository:
+        required: true
+        type: string
+      head-sha:
+        required: true
+        type: string
+      trusted-repository:
+        required: true
+        type: string
+      trusted-sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  native-smoke:
+    name: Native Axe.Windows smoke
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ inputs.head-repository }}
+          ref: ${{ inputs.head-sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify immutable head
+        shell: pwsh
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.head-sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD) -ne $env:EXPECTED_HEAD_SHA) {
+            throw 'Checked-out revision does not match the immutable PR head.'
+          }
+      - name: Build accessibility test host
+        shell: cmd
+        run: |
+          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          call tools\razzle.cmd
+          if errorlevel 1 exit /b 1
+          cd src\cascadia\LocalTests_TerminalApp\TestHostApp
+          if errorlevel 1 exit /b 1
+          call bx
+      - name: Acquire pinned Axe.Windows CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $uri = 'https://github.com/microsoft/axe-windows/releases/download/v2.4.2/AxeWindowsCLI-2.4.2.zip'
+          $expectedHash = 'AECA43F41C89B3FFB1DB84011539E609ECD7CB3BADD6E78FADA2ADA327D10A64'
+          $zip = Join-Path $env:RUNNER_TEMP 'AxeWindowsCLI-2.4.2.zip'
+          Invoke-WebRequest -Uri $uri -OutFile $zip
+          $actualHash = (Get-FileHash -Algorithm SHA256 $zip).Hash
+          if ($actualHash -ne $expectedHash) {
+            throw "Axe.Windows archive hash mismatch: $actualHash"
+          }
+          $destination = Join-Path $env:RUNNER_TEMP 'axe-windows'
+          Expand-Archive -LiteralPath $zip -DestinationPath $destination
+          "AXE_WINDOWS_PATH=$(Join-Path $destination 'AxeWindowsCLI.exe')" |
+            Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Checkout trusted native harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ inputs.trusted-repository }}
+          ref: ${{ inputs.trusted-sha }}
+          path: trusted-accessibility
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: |
+            test/accessibility
+            build/scripts/Get-DependenciesFromAppxRecipe.ps1
+          sparse-checkout-cone-mode: false
+      - name: Install test host framework dependencies
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $recipe = 'bin\x64\Debug\TestHostApp\TestHostApp.build.appxrecipe'
+          $dependencies = @(& trusted-accessibility\build\scripts\Get-DependenciesFromAppxRecipe.ps1 -Path $recipe)
+          if ($dependencies.Count -eq 0) {
+            throw 'The test host recipe contains no framework dependencies.'
+          }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $expectedFrameworks = @('Microsoft.UI.Xaml.2.8', 'Microsoft.VCLibs.140.00.Debug')
+          $expectedPublisher = 'CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US'
+          foreach ($dependency in $dependencies) {
+            $archive = [IO.Compression.ZipFile]::OpenRead($dependency.FullName)
+            try {
+              $entry = $archive.GetEntry('AppxManifest.xml')
+              if (-not $entry) { throw "Framework package has no manifest: $dependency" }
+              $reader = [IO.StreamReader]::new($entry.Open())
+              try { [xml]$framework = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            } finally { $archive.Dispose() }
+            $identity = $framework.Package.Identity
+            if ($identity.Name -notin $expectedFrameworks -or
+                $identity.Publisher -ne $expectedPublisher -or
+                $identity.ProcessorArchitecture -ne 'x64' -or
+                -not [Xml.XmlConvert]::ToBoolean([string]$framework.Package.Properties.Framework)) {
+              throw "Recipe dependency is not an expected Microsoft x64 test host framework: $dependency"
+            }
+            $installed = @(Get-AppxPackage -Name $identity.Name | Where-Object {
+              $_.Architecture -eq $identity.ProcessorArchitecture -and
+              [version]$_.Version -ge [version]$identity.Version -and
+              $_.Publisher -eq $identity.Publisher
+            })
+            if ($installed.Count -gt 0) { continue }
+            Add-AppxPackage -Path $dependency.FullName -ErrorAction Stop
+          }
+      - name: Scan FRE
+        id: fre
+        continue-on-error: true
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ inputs.head-sha }}
+        run: |
+          & trusted-accessibility\test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
+            -Surface fre `
+            -ManifestPath bin/x64/Debug/TestHostApp/AppxManifest.xml `
+            -AxePath $env:AXE_WINDOWS_PATH `
+            -OutputDirectory "$env:RUNNER_TEMP/accessibility-results" `
+            -SourceSha $env:SOURCE_SHA
+      - name: Scan Agents settings
+        id: agents
+        continue-on-error: true
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ inputs.head-sha }}
+        run: |
+          & trusted-accessibility\test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
+            -Surface agents `
+            -ManifestPath bin/x64/Debug/TestHostApp/AppxManifest.xml `
+            -AxePath $env:AXE_WINDOWS_PATH `
+            -OutputDirectory "$env:RUNNER_TEMP/accessibility-results" `
+            -SourceSha $env:SOURCE_SHA
+      - name: Scan FRE settings
+        id: fre-settings
+        continue-on-error: true
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ inputs.head-sha }}
+        run: |
+          & trusted-accessibility\test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
+            -Surface fre-settings `
+            -ManifestPath bin\x64\Debug\TestHostApp\AppxManifest.xml `
+            -AxePath $env:AXE_WINDOWS_PATH `
+            -OutputDirectory "$env:RUNNER_TEMP\accessibility-results" `
+            -SourceSha $env:SOURCE_SHA
+      - name: Upload native accessibility evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-accessibility-${{ inputs.head-sha }}
+          path: ${{ runner.temp }}/accessibility-results
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Enforce native scan results
+        if: always()
+        shell: pwsh
+        env:
+          FRE_OUTCOME: ${{ steps.fre.outcome }}
+          AGENTS_OUTCOME: ${{ steps.agents.outcome }}
+          FRE_SETTINGS_OUTCOME: ${{ steps.fre-settings.outcome }}
+          SOURCE_SHA: ${{ inputs.head-sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:FRE_OUTCOME -ne 'success' -or $env:AGENTS_OUTCOME -ne 'success' -or $env:FRE_SETTINGS_OUTCOME -ne 'success') {
+            throw "Native accessibility scan failed or was blocked: FRE=$env:FRE_OUTCOME Agents=$env:AGENTS_OUTCOME FRE-settings=$env:FRE_SETTINGS_OUTCOME"
+          }
+          $markers = @{ fre = 'NextButton'; 'fre-settings' = 'TabModeComboBox'; agents = 'AcpAgentComboBox' }
+          foreach ($surface in @('fre', 'fre-settings', 'agents')) {
+            $directory = Join-Path "$env:RUNNER_TEMP\accessibility-results" $surface
+            $result = Get-Content -LiteralPath (Join-Path $directory 'result.json') -Raw | ConvertFrom-Json
+            if ($result.status -ne 'PASS' -or $result.source_sha -ne $env:SOURCE_SHA -or
+                $result.surface -ne $surface -or $result.process_id -le 0) {
+              throw "Native $surface result has missing or inconsistent identity/status evidence."
+            }
+            $scanPath = Join-Path $directory 'axe-results.json'
+            $treePath = Join-Path $directory 'uia-tree.json'
+            if ($result.axe_results -ne $scanPath) { throw "Native $surface scan path is inconsistent." }
+            $scan = Get-Content -LiteralPath $scanPath -Raw | ConvertFrom-Json
+            if ($scan.scan_id -ne $surface -or $scan.process_id -ne $result.process_id -or
+                $scan.window_count -le 0 -or $scan.error_count -ne 0 -or
+                $scan.visible_state_marker -ne $markers[$surface] -or $scan.uia_tree -ne $treePath) {
+              throw "Native $surface scan has missing or inconsistent state evidence."
+            }
+            $tree = @(Get-Content -LiteralPath $treePath -Raw | ConvertFrom-Json)
+            $visibleMarker = @($tree | Where-Object {
+              $_.automation_id -eq $markers[$surface] -and
+              $_.is_offscreen -eq $false -and $_.process_id -eq $result.process_id
+            })
+            if ($visibleMarker.Count -eq 0) { throw "Native $surface hierarchy lacks its visible state marker." }
+          }

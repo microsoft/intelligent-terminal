@@ -20,11 +20,11 @@
                             review", not "never reviewed")
       - ReviewAtHead       : true iff latest Copilot review's commit.oid == HeadOid
       - NoNewComments      : true iff the latest review body matches
-                             "generated no new comments" / "generated 0 comments",
-                             or a summary line "Findings: None" /
-                             "Comments generated: 0 new" (optionally bold labels),
-                             or "**0 open findings**" with only known resolved
-                             sections and no remaining actionable finding
+                             a legacy zero-comment summary or current
+                             "Findings: None" / "Comments generated: 0 new",
+                             with every present structured summary zero
+                             and no remaining actionable finding; an explicit
+                             "0 open findings" permits only known resolved sections
       - OpenThreadCount    : number of unresolved review threads (from all
                              reviewers); informational — convergence does
                              NOT require this to be zero
@@ -127,6 +127,54 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Test-CopilotReviewHasNoNewFindings {
+    param([AllowEmptyString()][string]$Body)
+
+    $fenceCharacter = $null
+    $fenceLength = 0
+    $summaryLines = foreach ($line in ($Body -split '\r?\n')) {
+        if ($fenceCharacter) {
+            if ($line -match ('^\s*' + [regex]::Escape($fenceCharacter) + '{' + $fenceLength + ',}\s*$')) {
+                $fenceCharacter = $null
+            }
+            continue
+        }
+        if ($line -match '^\s*>') { continue }
+        if ($line -match '^\s*(`{3,}|~{3,})') {
+            $fenceCharacter = $Matches[1].Substring(0, 1)
+            $fenceLength = $Matches[1].Length
+            continue
+        }
+        $line
+    }
+    $summary = ($summaryLines -join "`n") -replace '\*\*', ''
+    $fields = [regex]::Matches($summary, '(?im)^[ \t]*(?:[-+*][ \t]+)?(?:Findings:[ \t]*(?<count>None|\d+)\b|Comments generated:[ \t]*(?<count>\d+)[ \t]+new\b|(?<openCount>\d+)[ \t]+open[ \t]+findings?\b)(?<tail>[^\r\n]*)$')
+    # Every explicit summary constrains the result; none can override another.
+    foreach ($field in $fields) {
+        $count = if ($field.Groups['openCount'].Success) { $field.Groups['openCount'].Value } else { $field.Groups['count'].Value }
+        if ($count -notmatch '^(?:None|0+)$' -or $field.Groups['tail'].Value.Trim()) { return $false }
+    }
+    # Only a known, non-nested resolved section may hide historical finding links.
+    $findingPattern = '(?i)\b[1-9]\d*\s+(?:open|new|unresolved)\s+findings?\b|Previously missed\s*\(0*[1-9]\d*\)|\b(?:critical|high|medium|low)(?: severity)?(?:\s+|:\s*)(?:unresolved|open)\b|\b(?:unresolved|open)(?:\s+|:\s*)(?:critical|high|medium|low)\b'
+    $withoutResolved = $summary
+    $resolvedSections = [regex]::Matches($summary,
+        '(?is)<details\b[^>]*>\s*<summary>\s*<strong>\d+ resolved since last review</strong>\s*</summary>(?:(?!</?details\b).)*</details\s*>')
+    foreach ($section in $resolvedSections) {
+        $sectionText = [regex]::Replace($section.Value, '<[^>]+>', ' ')
+        if ($sectionText -notmatch $findingPattern) {
+            $withoutResolved = $withoutResolved.Replace($section.Value, '')
+        }
+    }
+    $summaryText = [regex]::Replace($withoutResolved, '<[^>]+>', ' ')
+    if ($withoutResolved -match '(?i)alt=["''](?:critical|high|medium|low) severity["'']|#discussion_r\d+' -or
+        $summaryText -match $findingPattern) { return $false }
+    if (@($fields | Where-Object { $_.Groups['openCount'].Success }).Count -gt 0 -and
+        $withoutResolved -match '(?i)<(?:details|summary)\b') { return $false }
+    if ($fields.Count -gt 0) { return $true }
+    return $summary -match '(?i)generated no new comments|generated\s+0\s+comments'
+}
+
 . "$PSScriptRoot/_lib.ps1"
 
 $coords = Resolve-RepoCoords -Owner $Owner -Repo $Repo
@@ -229,30 +277,7 @@ if ($latest) {
         $reviewAtHead = ($latestCommitOid -eq $pr.headRefOid)
     }
     $bodyText = if ($latest.body) { $latest.body } else { '' }
-    # Only the observed, non-nested resolved section is non-actionable.
-    # Unknown/nested sections must not hide a body-only finding.
-    $findingPattern = '(?i)\b[1-9]\d*\s+(?:open|new|unresolved)\s+findings?\b|Previously missed\s*\([1-9]\d*\)|\b(?:critical|high|medium|low)(?: severity)?(?:\s+|:\s*)(?:unresolved|open)\b|\b(?:unresolved|open)(?:\s+|:\s*)(?:critical|high|medium|low)\b'
-    $withoutResolved = $bodyText
-    $resolvedSections = [regex]::Matches($bodyText,
-        '(?is)<details\b[^>]*>\s*<summary>\s*<strong>\d+ resolved since last review</strong>\s*</summary>(?:(?!</?details\b).)*</details\s*>')
-    foreach ($section in $resolvedSections) {
-        $sectionText = [regex]::Replace($section.Value, '<[^>]+>', ' ')
-        $sectionText = [regex]::Replace($sectionText, '\*\*|__', '')
-        if ($sectionText -notmatch $findingPattern) {
-            $withoutResolved = $withoutResolved.Replace($section.Value, '')
-        }
-    }
-    $summaryText = [regex]::Replace($withoutResolved, '<[^>]+>', ' ')
-    $summaryText = [regex]::Replace($summaryText, '\*\*|__', '')
-    $hasActionableFinding = ($withoutResolved -match '(?i)alt=["''](?:critical|high|medium|low) severity["'']|#discussion_r\d+') -or
-                            ($summaryText -match $findingPattern)
-    $zeroOpenSummary = ($withoutResolved -match '(?im)^[ \t]*\*\*0 open findings\*\*[ \t]*\r?$') -and
-                       ($withoutResolved -notmatch '(?i)<(?:details|summary)\b')
-    $noNewComments = -not $hasActionableFinding -and (
-        ($bodyText -match '(?i)generated no new comments|generated\s+0\s+comments|reviewed\s+\d+\s+out\s+of\s+\d+\s+changed\s+files\s+in\s+this\s+pull\s+request\s+and\s+generated\s+no\s+new\s+comments') -or
-        ($bodyText -match '(?im)^[ \t]*(?:\*\*)?Findings:(?:\*\*)?[ \t]+None[ \t]*\r?$') -or
-        ($bodyText -match '(?im)^[ \t]*(?:[-+*][ \t]+)?(?:\*\*)?Comments generated:(?:\*\*)?[ \t]+0 new[ \t]*\r?$') -or
-        $zeroOpenSummary)
+    $noNewComments = Test-CopilotReviewHasNoNewFindings -Body $bodyText
     $bodyHead = if ($bodyText.Length -gt 300) { $bodyText.Substring(0, 300) } else { $bodyText }
 }
 
