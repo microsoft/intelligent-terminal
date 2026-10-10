@@ -64,10 +64,10 @@ flowchart LR
 ## Design: `session/list` as the sole history source
 
 **After — ACP `session/list`.** The helper still asks master; master now seeds
-*and* continuously reconciles its registry from the running agent's own
-`session/list` — one round-trip on the existing connection for the host, a
-per-distro ACP scan for WSL, and the `agent_pane_origin` index for the Class-A
-filter. No disk read:
+and reconciles its registry from the running agent's own `session/list` according
+to each provider's refresh policy—one round-trip on the existing connection for
+the host, a per-distro ACP scan for WSL, and the `agent_pane_origin` index for the
+Class-A filter. No disk read:
 
 ```mermaid
 flowchart LR
@@ -78,7 +78,7 @@ flowchart LR
     Index[("agent_pane_origin<br/>Class-A index")]
 
     Helper -->|"sessions/list"| Master
-    Master -->|"ACP session/list<br/>seed + reconcile: startup + 5s"| Agent
+    Master -->|"ACP session/list<br/>startup + provider refresh policy"| Agent
     Agent -->|"rows: id, cwd, title, updatedAt"| Master
     Master -->|"per-distro ACP scan"| Wsl
     Wsl -->|"rows"| Master
@@ -90,8 +90,11 @@ flowchart LR
 
 1. **Reuse the running agent — no extra spawn.** `wta-master` already spawns the
    agent CLIs in its pool and stores each connection and handshake in `AgentCli`.
-   The master-owned five-second refresh calls `session/list` on initialized
-   connections, including WSL/custom connections already in the pool. A per-connection
+   The master-owned refresh calls `session/list` on initialized connections,
+   including WSL/custom connections already in the pool. Most providers use the
+   five-second periodic loop; Copilot uses startup, event-driven title, failure-
+   recovery, and explicit refreshes. Copilot lifecycle-event bursts set one pending
+   refresh and the existing scheduler runs it after the cooldown. A per-connection
    gate coalesces concurrent triggers. Reconciliation and title updates use the same
    response directly; no TTL result cache or additional process spawn is needed.
 2. **Capability gate, no disk fallback.** Gated on
@@ -112,10 +115,10 @@ flowchart LR
 
 The helper-facing `intellterm.wta/sessions/list` handler still answers from
 master's registry; what changed is that the registry is now both **seeded** and
-continuously **reconciled** against the agent's `session/list` instead of from
-disk. Each newly initialized pooled connection seeds its own history asynchronously
-(`seed_host_and_broadcast`), so a slow WSL connection does not block host rows.
-See *Reconcile* below.
+**reconciled** on each provider-scheduled refresh against the agent's
+`session/list` instead of from disk. Each newly initialized pooled connection
+seeds its own history asynchronously (`seed_host_and_broadcast`), so a slow WSL
+connection does not block host rows. See *Reconcile* below.
 
 ### WSL
 
@@ -129,9 +132,11 @@ enumerates or starts additional WSL distributions or agent processes.
 
 Born-bound sessions (`?<prompt>` delegates and agent panes) register **live**
 with a *synthetic* title (empty or the cwd basename) before the CLI has written
-its generated name. The 5 s rescan re-fetches `session/list` (which carries the
-real title), but `upsert_if_absent` drops the row for an already-live session —
-so the title is upgraded **in place** instead:
+its generated name. Each refresh—every five seconds for periodic providers, or
+on startup, title-resolution events, failure recovery, and explicit requests for
+Copilot—re-fetches `session/list` (which carries the real title), but
+`upsert_if_absent` drops the row for an already-live session—so the title is
+upgraded **in place** instead:
 
 - `titles_from_listing` consumes **raw, unfiltered** `session/list` rows
   (session-id → title). Raw because Class-A agent-pane rows are excluded from the
@@ -140,11 +145,15 @@ so the title is upgraded **in place** instead:
   row; `refresh_titles_from_listing` also adopts changed summaries for existing rows.
 - Three guards keep this cheap:
   - **synthetic-gate** — only request an event-driven title refresh when a row is
-    still synthetic. This does not suppress the master's periodic queries: healthy,
-    listing-capable pooled connections are still synchronized every five seconds;
+    still synthetic. This does not suppress the master's periodic queries for
+    other listing-capable providers. Copilot is refreshed at startup, from
+    lifecycle events that need title resolution, and on explicit rescan instead
+    because each `session/list` call performs a multi-second CPU-intensive history
+    scan;
   - **per-connection refresh gate** — concurrent triggers share an in-flight
-    refresh; background requests respect the five-second cadence and failed queries
-    back off up to 60 seconds. Each response updates both history and titles;
+    refresh; periodic providers respect the five-second cadence and failed queries
+    back off up to 60 seconds. Copilot event triggers are coalesced into one pending
+    trailing refresh per cooldown. Each response updates both history and titles;
   - **cli-source gate** (`row_refreshable_by_connected_agent`) — the connected
     agent enumerates only *its own* CLI's sessions, so a row stamped with a
     *different* known CLI (e.g. a watched `claude` shell session while the agent
@@ -157,8 +166,14 @@ CLI generated, surfaced by the CLI itself.
 ### `session/list` is authoritative: reconcile, not just seed
 
 `session/list` isn't only the startup seed — it is the ongoing source of truth.
-On every 5 s poll the master reconciles the connected agent's own history against the latest
-`session/list` (`sync_host_history`):
+The master periodically reconciles listing-capable connections against the latest
+`session/list` (`sync_host_history`). Copilot is excluded from the five-second
+periodic loop because one listing consumes several CPU-seconds even with no active
+session; its startup seed, event-driven title refreshes, and explicit user rescans
+use the same reconciliation path. A Copilot session deleted outside Terminal is
+therefore pruned on the next explicit rescan or master restart rather than within
+five seconds. Failed startup listings still retry with the existing exponential
+backoff until one succeeds:
 
 - **Add** any newly-listed session not yet in the registry.
 - **Drop** a stale row only when that connection previously listed its ID and no
@@ -305,10 +320,10 @@ cross-check a WSL CLI with `probe` (pipe stdin, held open) before concluding it
 
 ACP 0.10's Client trait has **no** "session-list-changed" push — only
 `session_notification` (updates *within* an existing session) and
-`ext_notification`. But the session view does not depend on a push: a 5 s periodic
-tick already fans out `AppEvent::SessionsChanged` →
-`schedule_agents_refetch_for_open_views`. The host and WSL `session/list` scans
-simply participate in that tick; no ACP push exists or is needed.
+`ext_notification`. Other listing-capable providers use the master's periodic
+refresh. Copilot instead relies on its startup seed, WT lifecycle hooks and watcher
+events for live rows/title resolution, plus explicit refresh for full reconciliation.
+No ACP list-change push exists or is required.
 
 ## Appendix A: how `session/list` was wired before this change
 

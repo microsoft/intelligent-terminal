@@ -12897,6 +12897,58 @@ async fn sidebar_history_discovery_isolates_failed_and_unsupported_agents() {
 // ── refresh_synthetic_titles_from ───────────────────────────────
 
 #[tokio::test(start_paused = true)]
+async fn sidebar_history_retry_initializes_only_agents_with_due_failures() {
+    use std::sync::{Arc as StdArc, Mutex as StdMutex};
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let attempts = StdArc::new(StdMutex::new(Vec::new()));
+            let initialize = |_: String, id: String| {
+                let attempts = StdArc::clone(&attempts);
+                async move {
+                    attempts.lock().unwrap().push(id);
+                    Err(anyhow!("mock initialization failure"))
+                }
+            };
+
+            assert!(
+                refresh_host_history_agents_with(
+                    &state,
+                    &["copilot", "claude"],
+                    HistoryRefreshTrigger::Periodic,
+                    &initialize
+                )
+                .await
+            );
+            assert!(attempts.lock().unwrap().is_empty());
+
+            let copilot_key = agent_cmd_key(
+                &crate::agent_registry::build_acp_command("copilot", None),
+                Some("copilot"),
+                &crate::agent_source::AgentSource::Host,
+            );
+            state
+                .history_discovery_retries
+                .lock()
+                .await
+                .insert(copilot_key, HistoryRefreshState::default());
+
+            assert!(
+                !refresh_host_history_agents_with(
+                    &state,
+                    &["copilot", "claude"],
+                    HistoryRefreshTrigger::Periodic,
+                    &initialize
+                )
+                .await
+            );
+            assert_eq!(attempts.lock().unwrap().as_slice(), ["copilot"]);
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn sidebar_history_startup_retry_recovers_without_respawning_healthy_agents() {
     use crate::agent_sessions::CliSource;
     use crate::session_registry::HistoryLoadStatus;
@@ -13039,14 +13091,14 @@ async fn sidebar_history_startup_retry_uses_capped_backoff_and_explicit_override
                 &crate::agent_source::AgentSource::Host,
             );
             for (index, delay) in [5, 10, 20, 40, 60, 60].into_iter().enumerate() {
+                let trigger = if index == 0 {
+                    HistoryRefreshTrigger::Immediate
+                } else {
+                    HistoryRefreshTrigger::Periodic
+                };
                 assert!(
-                    !refresh_host_history_agents_with(
-                        &state,
-                        &["copilot"],
-                        HistoryRefreshTrigger::Periodic,
-                        &initialize
-                    )
-                    .await
+                    !refresh_host_history_agents_with(&state, &["copilot"], trigger, &initialize)
+                        .await
                 );
                 assert_eq!(attempts.load(Ordering::SeqCst), index + 1);
                 let expected = tokio::time::Instant::now() + std::time::Duration::from_secs(delay);
@@ -13840,7 +13892,7 @@ async fn history_refresh_runs_without_views_and_does_not_block_on_a_slow_connect
         .run_until(async {
             let state = make_state();
             let (slow, mut slow_requests) =
-                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+                controlled_history_agent("claude", crate::agent_source::AgentSource::Host);
             let (fast, mut fast_requests) = controlled_history_agent(
                 "custom:local",
                 crate::agent_source::AgentSource::Wsl {
@@ -13925,12 +13977,239 @@ async fn history_refresh_runs_without_views_and_does_not_block_on_a_slow_connect
 }
 
 #[tokio::test(start_paused = true)]
+async fn history_refresh_does_not_periodically_poll_copilot() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (copilot, mut copilot_requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            let (custom, mut custom_requests) =
+                controlled_history_agent("custom:local", crate::agent_source::AgentSource::Host);
+            add_test_agent_to_pool(&state, &copilot).await;
+            add_test_agent_to_pool(&state, &custom).await;
+
+            start_history_refresh_loop(&state);
+            tokio::task::yield_now().await;
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+
+            custom_requests
+                .recv()
+                .await
+                .expect("other agents keep periodic history refreshes")
+                .send(Ok(vec![]))
+                .unwrap();
+            assert!(
+                copilot_requests.try_recv().is_err(),
+                "Copilot history refreshes are startup-, event-, or user-driven"
+            );
+
+            let refresh = refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Immediate);
+            let reply = async {
+                copilot_requests
+                    .recv()
+                    .await
+                    .expect("explicit Copilot refresh remains available")
+                    .send(Ok(vec![]))
+                    .unwrap();
+            };
+            assert_eq!(tokio::join!(refresh, reply).0, Some(0));
+
+            for _ in 0..3 {
+                assert_eq!(
+                    refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Event).await,
+                    Some(0)
+                );
+            }
+            assert!(
+                copilot_requests.try_recv().is_err(),
+                "lifecycle events wait for the Copilot refresh cooldown"
+            );
+
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            custom_requests
+                .recv()
+                .await
+                .unwrap()
+                .send(Ok(vec![]))
+                .unwrap();
+            copilot_requests
+                .recv()
+                .await
+                .expect("the event burst schedules one trailing refresh")
+                .send(Ok(vec![]))
+                .unwrap();
+            while copilot
+                .history_refresh
+                .generation
+                .load(std::sync::atomic::Ordering::Acquire)
+                < 2
+            {
+                tokio::task::yield_now().await;
+            }
+
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            custom_requests
+                .recv()
+                .await
+                .unwrap()
+                .send(Ok(vec![]))
+                .unwrap();
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(1), copilot_requests.recv())
+                    .await
+                    .is_err(),
+                "the trailing refresh returns Copilot to idle"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn history_refresh_preserves_copilot_events_that_arrive_during_a_scan() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (copilot, mut requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            add_test_agent_to_pool(&state, &copilot).await;
+            start_history_refresh_loop(&state);
+            tokio::task::yield_now().await;
+
+            let initial = refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Immediate);
+            tokio::pin!(initial);
+            let first_reply = tokio::select! {
+                request = requests.recv() => request.unwrap(),
+                _ = &mut initial => panic!("initial refresh completed before its reply"),
+            };
+            let first_event = refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Event);
+            tokio::pin!(first_event);
+            assert!(futures::poll!(&mut first_event).is_pending());
+            first_reply.send(Ok(vec![])).unwrap();
+            assert_eq!(initial.await, Some(0));
+            assert_eq!(first_event.await, Some(0));
+
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            let trailing_reply = requests
+                .recv()
+                .await
+                .expect("an event during the initial scan schedules a trailing refresh");
+            let trailing_event =
+                refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Event);
+            tokio::pin!(trailing_event);
+            assert!(futures::poll!(&mut trailing_event).is_pending());
+            trailing_reply.send(Ok(vec![])).unwrap();
+            assert_eq!(trailing_event.await, Some(0));
+
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            requests
+                .recv()
+                .await
+                .expect("an event during the trailing scan remains pending")
+                .send(Ok(vec![]))
+                .unwrap();
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn history_refresh_retries_failed_copilot_listing_then_stops_periodic_polling() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (copilot, mut requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            add_test_agent_to_pool(&state, &copilot).await;
+
+            let initial = refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Immediate);
+            let fail = async {
+                requests
+                    .recv()
+                    .await
+                    .unwrap()
+                    .send(Err(acp::Error::internal_error()))
+                    .unwrap();
+            };
+            assert!(tokio::join!(initial, fail).0.is_none());
+
+            start_history_refresh_loop(&state);
+            tokio::task::yield_now().await;
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            requests
+                .recv()
+                .await
+                .expect("a failed Copilot startup listing is retried")
+                .send(Ok(vec![]))
+                .unwrap();
+            while copilot
+                .history_refresh
+                .generation
+                .load(std::sync::atomic::Ordering::Acquire)
+                < 2
+            {
+                tokio::task::yield_now().await;
+            }
+
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(1), requests.recv())
+                    .await
+                    .is_err(),
+                "successful recovery returns Copilot to event-driven refresh"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn history_refresh_queued_copilot_retry_rechecks_success_before_requesting() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (copilot, mut requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+
+            let failed = refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Immediate);
+            let fail_reply = async {
+                requests
+                    .recv()
+                    .await
+                    .unwrap()
+                    .send(Err(acp::Error::internal_error()))
+                    .unwrap();
+            };
+            assert!(tokio::join!(failed, fail_reply).0.is_none());
+
+            let recovered =
+                refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Immediate);
+            let recovery_reply = async {
+                requests.recv().await.unwrap().send(Ok(vec![])).unwrap();
+            };
+            assert_eq!(tokio::join!(recovered, recovery_reply).0, Some(0));
+
+            assert_eq!(
+                tokio::time::timeout(
+                    std::time::Duration::from_millis(1),
+                    refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Periodic)
+                )
+                .await
+                .expect("a queued retry must observe that Copilot already recovered"),
+                Some(0)
+            );
+            assert!(
+                requests.try_recv().is_err(),
+                "recovery suppresses the stale queued session/list request"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn history_refresh_periodic_dispatch_jitter_does_not_skip_the_next_tick() {
     tokio::task::LocalSet::new()
         .run_until(async {
             let state = make_state();
             let (agent, mut requests) =
-                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+                controlled_history_agent("claude", crate::agent_source::AgentSource::Host);
             add_test_agent_to_pool(&state, &agent).await;
             start_history_refresh_loop(&state);
             tokio::task::yield_now().await;

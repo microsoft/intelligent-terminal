@@ -1872,6 +1872,7 @@ struct AgentHistoryRefresh {
     mutation_gate: Mutex<()>,
     generation: std::sync::atomic::AtomicU64,
     retired: std::sync::atomic::AtomicBool,
+    event_pending: std::sync::atomic::AtomicBool,
     failure: Mutex<Option<HistoryRefreshFailure>>,
 }
 
@@ -7260,6 +7261,14 @@ enum HistoryRefreshTrigger {
     Event,
 }
 
+fn uses_periodic_history_polling(agent_id: &str) -> bool {
+    // Copilot's session/list performs a full history scan that consumes several
+    // CPU-seconds per call even when the ACP server has no active session.
+    // Startup seeding, lifecycle-event title refreshes, and explicit rescans
+    // retain the useful update paths without continuously repeating that work.
+    !agent_id.eq_ignore_ascii_case(crate::agent_registry::COPILOT_AGENT_ID)
+}
+
 fn row_belongs_to_agent(row: &crate::session_registry::SessionInfo, agent: &AgentCli) -> bool {
     row.location == agent.source.session_location()
         && row.session_universe.is_none()
@@ -7275,6 +7284,7 @@ async fn refresh_agent_history(
     trigger: HistoryRefreshTrigger,
 ) -> Option<usize> {
     use std::sync::atomic::Ordering;
+    let uses_periodic_polling = uses_periodic_history_polling(&agent.resolved_agent_id);
     if agent.history_refresh.retired.load(Ordering::Acquire)
         || agent
             .cached_init_resp
@@ -7285,16 +7295,30 @@ async fn refresh_agent_history(
     {
         return None;
     }
+    if matches!(trigger, HistoryRefreshTrigger::Event) && !uses_periodic_polling {
+        agent
+            .history_refresh
+            .event_pending
+            .store(true, Ordering::Release);
+    }
     let generation = agent.history_refresh.generation.load(Ordering::Acquire);
     let mut refresh = agent.history_refresh.gate.lock().await;
     if agent.history_refresh.retired.load(Ordering::Acquire) {
         return None;
     }
+    if matches!(trigger, HistoryRefreshTrigger::Periodic)
+        && !uses_periodic_polling
+        && refresh.failures == 0
+        && refresh.last_count.is_some()
+        && !agent.history_refresh.event_pending.load(Ordering::Acquire)
+    {
+        return refresh.last_count;
+    }
     // The interval already paces periodic work. Applying the success delay
     // again would skip ticks whenever the previous dispatch started slightly late.
     let honor_delay = match trigger {
         HistoryRefreshTrigger::Immediate => false,
-        HistoryRefreshTrigger::Periodic => refresh.failures != 0,
+        HistoryRefreshTrigger::Periodic => !uses_periodic_polling || refresh.failures != 0,
         HistoryRefreshTrigger::Event => true,
     };
     // Waiters share the completed refresh rather than queueing another ACP call.
@@ -7306,6 +7330,12 @@ async fn refresh_agent_history(
     {
         return refresh.last_count;
     }
+    if !uses_periodic_polling {
+        agent
+            .history_refresh
+            .event_pending
+            .swap(false, Ordering::AcqRel);
+    }
     let started_at = tokio::time::Instant::now();
     let result = sync_host_history(state, agent).await;
     let delay = if result.is_ok() {
@@ -7315,7 +7345,11 @@ async fn refresh_agent_history(
         refresh.record_failure()
     };
     refresh.next_refresh_at = Some(if result.is_ok() {
-        started_at + delay
+        if uses_periodic_polling {
+            started_at + delay
+        } else {
+            tokio::time::Instant::now() + delay
+        }
     } else {
         tokio::time::Instant::now() + delay
     });
@@ -7418,7 +7452,18 @@ fn start_history_refresh_loop(state: &Arc<MasterStateInner>) {
                 .filter_map(|cell| cell.get().cloned())
                 .collect();
             for agent in agents {
-                if agent.history_refresh.gate.try_lock().is_err() {
+                let Ok(refresh) = agent.history_refresh.gate.try_lock() else {
+                    continue;
+                };
+                let uses_periodic_polling = uses_periodic_history_polling(&agent.resolved_agent_id);
+                let event_pending = agent
+                    .history_refresh
+                    .event_pending
+                    .load(std::sync::atomic::Ordering::Acquire);
+                let should_refresh = uses_periodic_polling
+                    || ((refresh.failures != 0 || event_pending) && refresh.retry_due());
+                drop(refresh);
+                if !should_refresh {
                     continue;
                 }
                 let state = Arc::clone(&state);
@@ -7489,20 +7534,25 @@ where
             Some(agent_id),
             &crate::agent_source::AgentSource::Host,
         );
-        if !matches!(trigger, HistoryRefreshTrigger::Immediate)
-            && state
+        if matches!(trigger, HistoryRefreshTrigger::Periodic) {
+            let retry_due = state
                 .history_discovery_retries
                 .lock()
                 .await
                 .get(&key)
-                .is_some_and(|retry| !retry.retry_due())
-        {
-            state
-                .history_discovery_errors
-                .lock()
-                .await
-                .insert(key, HistoryRefreshFailure::Other);
-            return false;
+                .map(HistoryRefreshState::retry_due);
+            match retry_due {
+                None => return true,
+                Some(false) => {
+                    state
+                        .history_discovery_errors
+                        .lock()
+                        .await
+                        .insert(key, HistoryRefreshFailure::Other);
+                    return false;
+                }
+                Some(true) => {}
+            }
         }
         let agent = match initialize(command, agent_id.to_string()).await {
             Ok(agent) => agent,
