@@ -142,10 +142,10 @@ agent action, not an override of the normal new-tab control.
   `2 hours ago`, and `2 days ago`. Below a minute, the existing localized
   “just now” text remains. Whole elapsed minutes, hours, and days are floored.
   At exactly seven days and beyond, display the session's UTC calendar date
-  using Windows' localized long-date format, rather than weeks, months, or years
-  ago. Relative-time translations and plural grammar come from Windows ICU's
-  long CLDR format; date ordering and month names come from `GetDateFormatEx`,
-  using the UI resource language.
+  using a localized year/month/day date without a weekday, rather than weeks,
+  months, or years ago (for example, `September 21, 2026` in English).
+  Relative-time translations, plural grammar, date ordering, and month names
+  come from Windows ICU's long CLDR formats, using the UI resource language.
   Missing or unsupported timestamps, or timestamps that cannot be formatted, retain localized “unknown.”
 - The sidebar has exactly one vertical scrolling viewport containing the
   eligible open tabs followed by **Recent agent sessions** when requested.

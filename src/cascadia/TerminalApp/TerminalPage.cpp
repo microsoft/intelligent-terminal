@@ -6813,29 +6813,6 @@ namespace winrt::TerminalApp::implementation
         try
         {
             const auto effectiveLanguage = languageTag.empty() ? _SidebarHistoryLanguageTag() : winrt::hstring{ languageTag };
-            if (seconds >= 7 * 86400)
-            {
-                const auto date = std::chrono::year_month_day{
-                    std::chrono::floor<std::chrono::days>(std::chrono::sys_time<std::chrono::milliseconds>{
-                        std::chrono::milliseconds{ static_cast<int64_t>(*lastActivityAtMs) } })
-                };
-                SYSTEMTIME time{};
-                time.wYear = static_cast<WORD>(static_cast<int>(date.year()));
-                time.wMonth = static_cast<WORD>(static_cast<unsigned>(date.month()));
-                time.wDay = static_cast<WORD>(static_cast<unsigned>(date.day()));
-                wchar_t buffer[256]{};
-                const auto length = GetDateFormatEx(
-                    effectiveLanguage.empty() ? nullptr : effectiveLanguage.c_str(),
-                    DATE_LONGDATE,
-                    &time,
-                    nullptr,
-                    buffer,
-                    ARRAYSIZE(buffer),
-                    nullptr);
-                THROW_IF_WIN32_BOOL_FALSE(length);
-                return winrt::hstring{ std::wstring_view{ buffer, static_cast<size_t>(length - 1) } };
-            }
-
             auto unit = UDAT_REL_UNIT_MINUTE;
             auto count = static_cast<double>(seconds / 60);
             if (seconds >= 3600)
@@ -6864,6 +6841,24 @@ namespace winrt::TerminalApp::implementation
                 THROW_HR_IF_MSG(E_INVALIDARG, U_FAILURE(status) || parsedLength != static_cast<int32_t>(tag.size()), "Invalid ICU language tag: %hs", u_errorName(status));
                 locale.resize(length);
             }
+            if (seconds >= 7 * 86400)
+            {
+                using DateFormatter = wistd::unique_ptr<UDateFormat, wil::function_deleter<decltype(&udat_close), &udat_close>>;
+                const UChar utc[]{ u'U', u'T', u'C' };
+                DateFormatter formatter{ udat_open(UDAT_NONE, UDAT_LONG, tag.empty() ? nullptr : locale.c_str(), utc, ARRAYSIZE(utc), nullptr, 0, &status) };
+                THROW_HR_IF_MSG(E_FAIL, U_FAILURE(status) != 0, "ICU calendar date formatter: %hs", u_errorName(status));
+                std::vector<UChar> buffer(128);
+                auto length = udat_format(formatter.get(), static_cast<UDate>(*lastActivityAtMs), buffer.data(), static_cast<int32_t>(buffer.size()), nullptr, &status);
+                if (status == U_BUFFER_OVERFLOW_ERROR)
+                {
+                    status = U_ZERO_ERROR;
+                    buffer.resize(static_cast<size_t>(length) + 1);
+                    length = udat_format(formatter.get(), static_cast<UDate>(*lastActivityAtMs), buffer.data(), static_cast<int32_t>(buffer.size()), nullptr, &status);
+                }
+                THROW_HR_IF_MSG(E_FAIL, U_FAILURE(status) != 0, "ICU calendar date: %hs", u_errorName(status));
+                return winrt::hstring{ std::wstring{ buffer.data(), buffer.data() + length } };
+            }
+
             using Formatter = wistd::unique_ptr<URelativeDateTimeFormatter, wil::function_deleter<decltype(&ureldatefmt_close), &ureldatefmt_close>>;
             Formatter formatter{ ureldatefmt_open(tag.empty() ? nullptr : locale.c_str(), nullptr, UDAT_STYLE_LONG, UDISPCTX_CAPITALIZATION_NONE, &status) };
             THROW_HR_IF_MSG(E_FAIL, U_FAILURE(status) != 0, "ICU relative formatter: %hs", u_errorName(status));

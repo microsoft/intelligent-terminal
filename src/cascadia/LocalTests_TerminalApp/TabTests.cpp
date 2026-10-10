@@ -7269,8 +7269,8 @@ namespace TerminalAppLocalTests
                 { 172'799'999, L"1 day ago" },
                 { 172'800'000, L"2 days ago" },
                 { 7ULL * 86'400'000 - 1, L"6 days ago" },
-                { 7ULL * 86'400'000, L"Saturday, April 4, 1970" },
-                { 14ULL * 86'400'000, L"Saturday, March 28, 1970" },
+                { 7ULL * 86'400'000, L"April 4, 1970" },
+                { 14ULL * 86'400'000, L"March 28, 1970" },
                 { nowMs, unknown },
             };
             for (const auto& test : cases)
@@ -7296,6 +7296,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(std::wstring_view{ arabic }.find(L"ago") == std::wstring_view::npos);
 
             const auto calendarNow = utcMs(2026, 9, 28);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"September 21, 2026" }, Page::_SidebarHistoryAgeText(utcMs(2026, 9, 21), calendarNow, L"en-US"));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"February 29, 2024" }, Page::_SidebarHistoryAgeText(utcMs(2024, 2, 29), calendarNow, L"en-US"));
             struct UnitCase
             {
                 URelativeDateTimeUnit unit;
@@ -7329,15 +7331,16 @@ namespace TerminalAppLocalTests
                          std::tuple{ 2024, 2u, 29u },
                      })
                 {
-                    SYSTEMTIME date{};
-                    date.wYear = static_cast<WORD>(year);
-                    date.wMonth = static_cast<WORD>(month);
-                    date.wDay = static_cast<WORD>(day);
-                    wchar_t buffer[256]{};
-                    const auto length = GetDateFormatEx(locale, DATE_LONGDATE, &date, nullptr, buffer, ARRAYSIZE(buffer), nullptr);
-                    VERIFY_IS_TRUE(length > 0);
-                    const winrt::hstring expected{ std::wstring_view{ buffer, static_cast<size_t>(length - 1) } };
                     const auto last = utcMs(year, month, day);
+                    using DateFormatter = wistd::unique_ptr<UDateFormat, wil::function_deleter<decltype(&udat_close), &udat_close>>;
+                    const UChar utc[]{ u'U', u'T', u'C' };
+                    DateFormatter dateFormatter{ udat_open(UDAT_NONE, UDAT_LONG, winrt::to_string(locale).c_str(), utc, ARRAYSIZE(utc), nullptr, 0, &status) };
+                    VERIFY_IS_FALSE(U_FAILURE(status) != 0);
+                    UChar buffer[128]{};
+                    const auto length = udat_format(dateFormatter.get(), static_cast<UDate>(last), buffer, ARRAYSIZE(buffer), nullptr, &status);
+                    VERIFY_IS_FALSE(U_FAILURE(status) != 0);
+                    VERIFY_IS_TRUE(length > 0 && length < ARRAYSIZE(buffer));
+                    const winrt::hstring expected{ std::wstring{ buffer, buffer + length } };
                     VERIFY_ARE_EQUAL(expected, Page::_SidebarHistoryAgeText(last, calendarNow, locale));
                     VERIFY_ARE_EQUAL(expected, Page::_SidebarHistoryAgeText(last, calendarNow + 10 * 86'400'000ULL, locale));
                 }
