@@ -36,6 +36,13 @@ D2D
 # tools/wta/build.rs: Rust stdlib char predicate
 \bis_ascii_hexdigit\b
 
+# tools/wta/src/cli/native_agent.rs: Rust stdlib error variant
+\bstd::io::ErrorKind::NotADirectory\b
+
+# Native agent tests: joined Codex configuration flag and Rust test output flag
+-capproval_policy=never\b
+--nocapture\b
+
 # Windows ICU relative-time APIs and constants
 \b(?:URelativeDateTime(?:Formatter|Unit)|UCalendar(?:DateFields)?|UDate)\b
 \b(?:ureldatefmt_(?:open|close|formatNumeric)|ucal_(?:open|close|setMillis|getFieldDifference)|uloc_forLanguageTag|u_errorName)\b

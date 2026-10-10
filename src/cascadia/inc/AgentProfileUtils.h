@@ -228,12 +228,12 @@ namespace Microsoft::Terminal::AgentProfiles
     }
 
     template<typename Profile>
-    std::wstring Command(const Profile& profile, const bool requireExecutable = false)
+    std::wstring Command(const Profile& profile, const bool requireExecutable = false, const std::wstring_view path = NativePath())
     {
         std::filesystem::path executable;
         try
         {
-            executable = ResolveExecutable(profile.AgentProfileId(), NativePath());
+            executable = ResolveExecutable(profile.AgentProfileId(), path);
         }
         catch (const std::filesystem::filesystem_error&)
         {

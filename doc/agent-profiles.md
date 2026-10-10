@@ -90,7 +90,10 @@ longer apply and are hidden in Settings. Reset the command-line setting to
 restore generated native commands and the structured controls. Simply opening
 Settings or leaving the displayed command unchanged does not create an override.
 Copying a generated profile retains its structured settings; copying an edited
-profile retains its explicit command. An explicit command supplied in a new-tab
+profile retains its explicit command. Both copies retain their agent identity,
+including settings inherited from the generated parent. Editing the command
+does not turn the profile into a shell profile or remove its native provider
+metadata. An explicit command supplied in a new-tab
 action also overrides the managed launch, following ordinary Terminal action
 precedence. An edited command is not a managed launcher or an operating-system
 security boundary.
@@ -98,7 +101,8 @@ security boundary.
 ## Splitting panes
 
 The default split shortcuts and tab split action use `splitMode: "profile"`.
-The source profile's `defaultSplitProfile` determines the target:
+Configure the source profile's `defaultSplitProfile` in `settings.json`; there
+is no default split target control in the profile editor. It determines the target:
 
 | Value | Result |
 | --- | --- |
@@ -121,7 +125,11 @@ profile's split preference.
 Splitting an agent profile starts a new CLI instance. It does not clone chat
 history or automatically resume the source session. Moving a pane keeps its
 running process. Managed layout restoration resolves the launcher again instead
-of persisting a package-version-specific executable path.
+of persisting a package-version-specific executable path. If the CLI has been
+removed and the profile is orphaned, restoration recovers its native provider
+identity and reports the unavailable CLI instead of opening a default shell.
+Invalid or mismatched saved provider identities fail explicitly. Explicit
+command-line overrides retain ordinary Terminal launch precedence.
 
 ## Discovery and lifetime
 

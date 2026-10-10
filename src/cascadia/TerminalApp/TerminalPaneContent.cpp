@@ -10,7 +10,6 @@
 #include "TerminalSettingsCache.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../../types/inc/utils.hpp"
-#include "../inc/AgentProfileUtils.h"
 
 #include "BellEventArgs.g.cpp"
 #include "TerminalPaneContent.g.cpp"
@@ -33,6 +32,10 @@ namespace winrt::TerminalApp::implementation
         _manager{ manager }
     {
         _usesManagedAgentCommand = winrt::get_self<winrt::Microsoft::Terminal::Settings::TerminalSettings>(_control.Settings())->UsesManagedAgentCommand();
+        if (_usesManagedAgentCommand)
+        {
+            _managedAgentProviderId = _profile.AgentProfileId();
+        }
         _setupControlEvents();
     }
 
@@ -114,9 +117,13 @@ namespace winrt::TerminalApp::implementation
             args.StartingDirectory(controlSettings.StartingDirectory());
         }
         args.TabTitle(controlSettings.StartingTitle());
-        if (!_usesManagedAgentCommand || !::Microsoft::Terminal::AgentProfiles::IsManaged(_profile))
+        if (!_usesManagedAgentCommand)
         {
             args.Commandline(controlSettings.Commandline());
+        }
+        else
+        {
+            args.NativeAgentProviderId(_managedAgentProviderId);
         }
         args.SuppressApplicationTitle(controlSettings.SuppressApplicationTitle());
         if (controlSettings.TabColor() || controlSettings.StartingTabColor())

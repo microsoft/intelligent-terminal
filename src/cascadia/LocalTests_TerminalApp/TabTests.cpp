@@ -5691,13 +5691,23 @@ namespace TerminalAppLocalTests
     {
         auto page = _commonSetup();
         TestOnUIThread([&]() {
-            const auto settings = winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings::LoadDefaults();
-            const auto profile = settings.CreateNewProfile();
-            profile.AgentProfileId(L"claude");
-            profile.AgentProfileModel(L"chosen");
+            const CascadiaSettings settings{
+                LR"({"defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+                     "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Claude",
+                                  "source":"IntelligentTerminal.AgentProfiles","agentProfile.model":"chosen"}]})",
+                LR"({"profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Claude",
+                                  "source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"claude",
+                                  "agentProfile.permissionMode":"plan","agentProfile.arguments":"--continue",
+                                  "defaultSplitProfile":"Shell"}]})"
+            };
+            const auto profile = settings.ActiveProfiles().GetAt(0);
+            VERIFY_IS_FALSE(profile.HasAgentProfileId());
             const auto copy = settings.DuplicateProfile(profile);
             VERIFY_ARE_EQUAL(profile.AgentProfileId(), copy.AgentProfileId());
             VERIFY_ARE_EQUAL(profile.AgentProfileModel(), copy.AgentProfileModel());
+            VERIFY_ARE_EQUAL(profile.AgentProfilePermissionMode(), copy.AgentProfilePermissionMode());
+            VERIFY_ARE_EQUAL(profile.AgentProfileArguments(), copy.AgentProfileArguments());
+            VERIFY_ARE_EQUAL(profile.DefaultSplitProfile(), copy.DefaultSplitProfile());
             VERIFY_IS_FALSE(copy.HasCommandline());
             VERIFY_IS_TRUE(winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, copy).DefaultSettings()->UsesManagedAgentCommand());
             const winrt::hstring edited{ L"claude --model handwritten --custom-option" };
@@ -5707,6 +5717,57 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(edited, winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, editedCopy).DefaultSettings()->Commandline());
             profile.ClearCommandline();
             VERIFY_IS_TRUE(winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings()->UsesManagedAgentCommand());
+
+            page->_settings = settings;
+            using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            for (const auto& launchProfile : { profile, copy, editedCopy })
+            {
+                NewTerminalArgs launch;
+                launch.Profile(Utils::GuidToString(launchProfile.Guid()));
+                GUID connectionId{};
+                VERIFY_SUCCEEDED(CoCreateGuid(&connectionId));
+                const auto connection = winrt::make_self<TestConnection>(winrt::guid{ connectionId }, State::Connected);
+                const auto pane = page->_MakePane(launch, nullptr, *connection);
+                VERIFY_IS_NOT_NULL(pane);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, manager->NativeAgentProviderId(pane->GetTerminalControl().ContentId()));
+                const auto saved = pane->GetContent().GetNewTerminalArgs(BuildStartupKind::Persist).as<NewTerminalArgs>();
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, saved.NativeAgentProviderId());
+                if (launchProfile == editedCopy)
+                {
+                    VERIFY_ARE_EQUAL(edited, saved.Commandline());
+                }
+                else
+                {
+                    VERIFY_IS_TRUE(saved.Commandline().empty());
+                }
+                for (const auto split : { false, true })
+                {
+                    ActionAndArgs action;
+                    if (split)
+                    {
+                        action = ActionAndArgs{ ShortcutAction::SplitPane, SplitPaneArgs{ SplitDirection::Right, 0.5f, saved } };
+                    }
+                    else
+                    {
+                        action = ActionAndArgs{ ShortcutAction::NewTab, NewTabArgs{ saved } };
+                    }
+                    const auto json = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>({ action }));
+                    const auto restoredAction = ActionAndArgs::Deserialize(json).GetAt(0);
+                    const auto restored = (split ? restoredAction.Args().as<SplitPaneArgs>().ContentArgs() :
+                                                   restoredAction.Args().as<NewTabArgs>().ContentArgs()).as<NewTerminalArgs>();
+                    VERIFY_ARE_EQUAL(saved.NativeAgentProviderId(), restored.NativeAgentProviderId());
+                    VERIFY_ARE_EQUAL(saved.Commandline(), restored.Commandline());
+                    GUID restoredConnectionId{};
+                    VERIFY_SUCCEEDED(CoCreateGuid(&restoredConnectionId));
+                    const auto restoredConnection = winrt::make_self<TestConnection>(winrt::guid{ restoredConnectionId }, State::Connected);
+                    const auto restoredPane = page->_MakePane(restored, nullptr, *restoredConnection);
+                    VERIFY_IS_NOT_NULL(restoredPane);
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, manager->NativeAgentProviderId(restoredPane->GetTerminalControl().ContentId()));
+                    restoredPane->Close();
+                }
+                pane->Close();
+            }
         });
     }
 

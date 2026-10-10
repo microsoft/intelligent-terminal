@@ -81,13 +81,6 @@ namespace Microsoft.Terminal.Settings.Editor
         AgentEntry CurrentAgentPaneBackend;
         Windows.Foundation.Collections.IObservableVector<AgentEntry> CommandPaletteAgentList { get; };
         AgentEntry CurrentCommandPaletteAgent;
-        Boolean IsManagedAgentProfile { get; };
-        Boolean IsAgentProfilePolicyBlocked { get; };
-        String LaunchCommandline;
-        Windows.Foundation.Collections.IObservableVector<AgentEntry> AgentProfilePermissionList { get; };
-        AgentEntry CurrentAgentProfilePermission;
-        Windows.Foundation.Collections.IObservableVector<AgentEntry> SplitProfileList { get; };
-        AgentEntry CurrentSplitProfile;
 
         Boolean CanDeleteProfile { get; };
         Boolean FocusDeleteButton;
@@ -135,10 +128,6 @@ namespace Microsoft.Terminal.Settings.Editor
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, Padding);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, Commandline);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, StartingDirectory);
-        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfileModel);
-        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfilePermissionMode);
-        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfileArguments);
-        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, DefaultSplitProfile);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentPaneBackend);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, CommandPaletteAgent);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(Microsoft.Terminal.Control.TextAntialiasingMode, AntialiasingMode);
@@ -162,5 +151,16 @@ namespace Microsoft.Terminal.Settings.Editor
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, DragDropDelimiter);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(Boolean, AllowVtClipboardWrite);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(Boolean, AllowOscNotifications);
+        Boolean IsManagedAgentProfile { get; };
+        Boolean IsAgentProfilePolicyBlocked { get; };
+        String LaunchCommandline;
+        Windows.Foundation.Collections.IObservableVector<AgentEntry> AgentProfilePermissionList { get; };
+        AgentEntry CurrentAgentProfilePermission;
+        Windows.Foundation.Collections.IObservableVector<AgentEntry> SplitProfileList { get; };
+        AgentEntry CurrentSplitProfile;
+        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfileModel);
+        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfilePermissionMode);
+        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfileArguments);
+        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, DefaultSplitProfile);
     }
 }

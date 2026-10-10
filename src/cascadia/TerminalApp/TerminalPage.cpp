@@ -14977,8 +14977,11 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        const auto nativeAgentProvider = controlSettings.DefaultSettings()->UsesManagedAgentCommand() ?
-                                             profile.AgentProfileId() :
+        const auto profileAgentId = profile.AgentProfileId();
+        const auto profileProvider = ::Microsoft::Terminal::Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(
+            std::wstring_view{ profileAgentId });
+        const auto nativeAgentProvider = !profileProvider.empty() ?
+                                             winrt::hstring{ profileProvider } :
                                              newTerminalArgs ? newTerminalArgs.NativeAgentProviderId() : winrt::hstring{};
         const auto control = _CreateNewControlAndContent(controlSettings, connection, nativeAgentProvider);
 
@@ -16229,9 +16232,11 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
-        if (newTerminalArgs.NativeAgentProviderId().empty() && controlSettings.DefaultSettings()->UsesManagedAgentCommand())
+        if (newTerminalArgs.NativeAgentProviderId().empty())
         {
-            newTerminalArgs.NativeAgentProviderId(profile.AgentProfileId());
+            newTerminalArgs.NativeAgentProviderId(winrt::hstring{
+                ::Microsoft::Terminal::Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(
+                    std::wstring_view{ profile.AgentProfileId() }) });
         }
         if (newTerminalArgs.NativeAgentProviderId().empty())
         {

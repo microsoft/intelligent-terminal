@@ -125,7 +125,7 @@ Everything is configurable through Intelligent Terminal settings, under "Agent" 
 
 You can also pin a specific agent to a profile. Open a profile in Settings (for example, "PowerShell" or "Ubuntu") and set the agent you want its agent pane to use. For a WSL profile, the picker also lists agents installed inside that distro, so an Ubuntu profile can run a Linux-side agent. Profiles you don't configure keep using the global agent.
 
-Installed Windows agent CLIs also appear as individual profiles in the new-tab dropdown, alongside shells and with their own agent icons. These launch the agent's native interactive interface, independently of the built-in agent pane. Configure their working directory, appearance, supported agent options, and default split target in the profile editor. See [Native agent profiles](doc/agent-profiles.md).
+Installed Windows agent CLIs also appear as individual profiles in the new-tab dropdown, alongside shells and with their own agent icons. These launch the agent's native interactive interface, independently of the built-in agent pane. Configure their working directory, appearance, and supported agent options in the profile editor. To change the default split target, edit the profile's `defaultSplitProfile` in `settings.json`; this setting is not available in the profile editor. See [Native agent profiles](doc/agent-profiles.md).
 
 When **Settings > Agents > Sessions** is off, session management shows a subtle reminder below its title to turn it on for the best experience. Existing hooks are not removed and may continue to report activity; the setting controls their installation and updates. The reminder disappears when Sessions is enabled and is not shown when organization policy prevents enabling it.
 

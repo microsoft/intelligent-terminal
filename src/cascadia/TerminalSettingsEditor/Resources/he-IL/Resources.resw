@@ -3070,7 +3070,7 @@ Alt+Shift+/ הזן הנחיה; Alt+Shift+B הפעל ללא הנחיה התחלת
     <comment>Selects a native AI agent permission or approval mode, not Windows file permissions.</comment>
   </data>
   <data name="Profile_AgentPermission.HelpText" xml:space="preserve">
-    <value>בחר מצב שהסוכן תומך בו. המצבים שולטים באישורי הסוכן או בהגדרות הארגז החול (sandbox) ואינם מעניקים או שוללים הרשאות קובץ של Windows. ברירת המחדל משאירה את תצורת הסוכן עצמו ללא שינוי.</value>
+    <value>בחר מצב שהסוכן תומך בו. המצבים שולטים באישורי הסוכן או בהגדרות ארגז החול (sandbox) ואינם מעניקים או שוללים הרשאות קובץ של Windows. ברירת המחדל משאירה את תצורת הסוכן עצמו ללא שינוי.</value>
     <comment>{Locked="Windows"} Explains that AI agent approval policies and operating system permissions differ.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">

@@ -78,6 +78,7 @@ namespace winrt::TerminalApp::implementation
         winrt::TerminalApp::ContentManager _manager{ nullptr };
         bool _isDefTermSession{ false };
         bool _usesManagedAgentCommand{ false };
+        winrt::hstring _managedAgentProviderId;
 
         struct ControlEventTokens
         {
