@@ -1435,6 +1435,131 @@ async fn cancelled_pool_initializer_wakes_waiters_into_a_fresh_cell() {
         .await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn history_refresh_pool_admission_retires_empty_cell_reaper_results() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            use std::sync::atomic::Ordering;
+
+            // Also cover a reaper paused before removal: an unlocked pool
+            // membership check alone would still accept its dead generation.
+            for blocked_reaper in [false, true] {
+                let state = make_state();
+                let (stale, mut requests) =
+                    controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+                let key = stale.cmd_key.clone();
+                let mut fresh = listing_agent(crate::agent_sessions::CliSource::Copilot, &[]);
+                let inner = Arc::get_mut(&mut fresh).unwrap();
+                inner.cmd_key = key.clone();
+                inner.history_refresh.gate = Arc::clone(&stale.history_refresh.gate);
+                let authentication_guard = if blocked_reaper {
+                    Some(state.agent_authentication.lock().await)
+                } else {
+                    None
+                };
+                let reaper = Arc::new(Mutex::new(None));
+                let mut attempts = 0;
+                let acquired = acquire_agent_from_pool(&state, &key, {
+                    let state = Arc::clone(&state);
+                    let stale = Arc::clone(&stale);
+                    let fresh = Arc::clone(&fresh);
+                    let reaper = Arc::clone(&reaper);
+                    let key = key.clone();
+                    move |cell| {
+                        attempts += 1;
+                        let first = attempts == 1;
+                        let state = Arc::clone(&state);
+                        let stale = Arc::clone(&stale);
+                        let fresh = Arc::clone(&fresh);
+                        let reaper = Arc::clone(&reaper);
+                        let key = key.clone();
+                        async move {
+                            if !first {
+                                return Ok(fresh);
+                            }
+                            assert!(cell.get().is_none());
+                            if blocked_reaper {
+                                let instance_id = stale.instance_id;
+                                *reaper.lock().await = Some(tokio::task::spawn_local(async move {
+                                    reap_agent(&state, &key, &cell, instance_id).await;
+                                }));
+                                tokio::task::yield_now().await;
+                            } else {
+                                reap_agent(&state, &key, &cell, stale.instance_id).await;
+                            }
+                            Ok(stale)
+                        }
+                    }
+                })
+                .await
+                .unwrap();
+                assert!(Arc::ptr_eq(&acquired, &fresh));
+                assert!(stale.history_refresh.retired.load(Ordering::Acquire));
+                assert!(stale.history_refresh.cancelled.is_cancelled());
+                assert!(!stale.history_refresh.worker_started.load(Ordering::Acquire));
+                start_agent_history_worker(&state, &stale);
+                assert_eq!(
+                    refresh_agent_history(&state, &stale, HistoryRefreshTrigger::Immediate).await,
+                    None
+                );
+                assert_eq!(stale.history_refresh.generation.load(Ordering::Acquire), 0);
+                assert!(state.registry.snapshot().await.is_empty());
+
+                drop(authentication_guard);
+                if let Some(reaper) = reaper.lock().await.take() {
+                    reaper.await.unwrap();
+                }
+                let reused = acquire_agent_from_pool(&state, &key, |_| async {
+                    panic!("accepted generation must be reused");
+                })
+                .await
+                .unwrap();
+                assert!(Arc::ptr_eq(&reused, &fresh));
+                start_agent_history_worker(&state, &fresh);
+                let reply =
+                    tokio::time::timeout(std::time::Duration::from_secs(2), requests.recv())
+                        .await
+                        .unwrap()
+                        .unwrap();
+                tokio::task::yield_now().await;
+                assert!(
+                    requests.try_recv().is_err(),
+                    "only one worker issues a query"
+                );
+                assert_eq!(
+                    fresh.history_refresh.gate.try_lock().is_err(),
+                    true,
+                    "the accepted worker owns the held query"
+                );
+                reply
+                    .send(Ok(vec![history_row("accepted", "Accepted history")]))
+                    .unwrap();
+                tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                    while fresh.history_refresh.generation.load(Ordering::Acquire) == 0 {
+                        tokio::task::yield_now().await;
+                    }
+                })
+                .await
+                .unwrap();
+                assert_eq!(
+                    fresh.history_refresh.gate.lock().await.owner,
+                    Some(fresh.instance_id)
+                );
+                assert_eq!(state.registry.snapshot().await.len(), 1);
+                let cell = state.agents.lock().await[&key].clone();
+                reap_agent(&state, &key, &cell, fresh.instance_id).await;
+                tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                    while fresh.history_refresh.worker_started.load(Ordering::Acquire) {
+                        tokio::task::yield_now().await;
+                    }
+                })
+                .await
+                .unwrap();
+            }
+        })
+        .await;
+}
+
 #[test]
 fn id_is_case_insensitive() {
     let (cmd, id) = resolve(Some(&allow_set(&["gemini"])), Some("GeMiNi"), None);

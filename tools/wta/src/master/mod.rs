@@ -5683,7 +5683,7 @@ async fn remove_agent_cell_if_current(
 }
 
 async fn acquire_agent_from_pool<F, Fut>(
-    state: &MasterStateInner,
+    state: &Arc<MasterStateInner>,
     key: &AgentCmdKey,
     mut initialize: F,
 ) -> Result<Arc<AgentCli>>
@@ -5733,13 +5733,25 @@ where
             .await;
 
         match initialized {
-            Ok(agent) if agent_cell_is_current(state, key, &cell).await => {
-                return Ok(Arc::clone(agent));
-            }
             Ok(agent) => {
+                {
+                    let agents = state.agents.lock().await;
+                    if !agent_cell_is_retired(state, &cell)
+                        && agents
+                            .get(key)
+                            .is_some_and(|current| Arc::ptr_eq(current, &cell))
+                    {
+                        // OnceCell has published the agent, so every subsequent
+                        // reaper can retire it. Start history while pool ownership
+                        // is still confirmed, including for warmed/switched agents.
+                        start_agent_history_worker(state, agent);
+                        return Ok(Arc::clone(agent));
+                    }
+                }
                 // The process initialized after its generation was retired.
                 // Do not leave an untracked provider running outside the pool.
                 agent.conn.shutdown();
+                retire_agent_history(agent).await;
             }
             Err(error) if error.is::<RetiredAgentCell>() => {}
             Err(error) => return Err(error),
@@ -6192,15 +6204,6 @@ async fn spawn_one_agent(
         }),
     );
 
-    // Seed THIS CLI's history. Every agent entering the pool seeds, not just
-    // the first: master outlives a Settings agent switch (the helper
-    // reconnects and the pool spawns the new CLI without a master restart), so
-    // gating this on "first agent wins" left the registry holding only the
-    // launch agent's rows. The session view filters by the helper's current
-    // CLI, so every switched-to agent then rendered an empty list until the
-    // user restarted Terminal.
-    start_agent_history_worker(state, &agent);
-
     if start_clean_probe {
         let command = agent_cmd.to_string();
         start_clean_cloud_catalog_probe(
@@ -6225,25 +6228,18 @@ async fn reap_agent(
     cell: &AgentCell,
     instance_id: AgentInstanceId,
 ) {
+    // Record retirement before any await, even when initialize has not yet
+    // published into the cell. Admission rechecks this marker under the pool
+    // lock; an empty-cell reaper therefore cannot lose its generation.
+    if cell
+        .get()
+        .is_none_or(|agent| agent.instance_id == instance_id)
+    {
+        retire_agent_cell(state, cell);
+    }
     state.agent_authentication.lock().await.remove(&instance_id);
     if let Some(agent) = cell.get().filter(|agent| agent.instance_id == instance_id) {
-        // Retirement and registry publication share a boundary, without holding
-        // the pool lock or waiting for an ACP network request.
-        let _mutation = agent.history_refresh.mutation_gate.lock().await;
-        let first_retirement = !agent
-            .history_refresh
-            .retired
-            .swap(true, std::sync::atomic::Ordering::AcqRel);
-        agent.history_refresh.cancelled.cancel();
-        drop(_mutation);
-        if first_retirement {
-            let mut refresh = agent.history_refresh.gate.lock().await;
-            if refresh.owner == Some(instance_id) {
-                if let Err(error) = refresh.query.stop().await {
-                    tracing::error!(target: "master_history", %error, "retired history process cleanup failed; replacement remains gated");
-                }
-            }
-        }
+        retire_agent_history(agent).await;
     }
     #[cfg(test)]
     let cleanup_pause = state.reap_agent_orphan_cleanup_pause.lock().await.clone();
@@ -6287,6 +6283,26 @@ async fn reap_agent(
         capabilities_removed,
         "dead agent reaped; replacement pool entry preserved when present"
     );
+}
+
+async fn retire_agent_history(agent: &AgentCli) {
+    // Retirement and registry publication share a boundary, without holding
+    // the pool lock or waiting for an ACP network request.
+    let mutation = agent.history_refresh.mutation_gate.lock().await;
+    let first_retirement = !agent
+        .history_refresh
+        .retired
+        .swap(true, std::sync::atomic::Ordering::AcqRel);
+    agent.history_refresh.cancelled.cancel();
+    drop(mutation);
+    if first_retirement {
+        let mut refresh = agent.history_refresh.gate.lock().await;
+        if refresh.owner == Some(agent.instance_id) {
+            if let Err(error) = refresh.query.stop().await {
+                tracing::error!(target: "master_history", %error, "retired history process cleanup failed; replacement remains gated");
+            }
+        }
+    }
 }
 
 /// Per-helper-connection task. Wraps the named pipe in an
@@ -7423,6 +7439,7 @@ fn start_history_refresh_loop(state: &Arc<MasterStateInner>) {
                 .lock()
                 .await
                 .values()
+                .filter(|cell| !agent_cell_is_retired(&state, cell))
                 .filter_map(|cell| cell.get().cloned())
                 .collect();
             for agent in agents {
