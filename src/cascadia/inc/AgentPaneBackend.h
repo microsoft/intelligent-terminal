@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #pragma once
+#include "WslDistroName.h"
 
 #include <optional>
 #include <string>
@@ -46,7 +47,8 @@ namespace Microsoft::Terminal::Settings::Model
                 const auto separator = payload.rfind(L':');
                 if (separator != std::wstring_view::npos &&
                     separator > 0 &&
-                    separator + 1 < payload.size())
+                    separator + 1 < payload.size() &&
+                    ::Microsoft::Terminal::WslDistroName::IsSafe(payload.substr(0, separator)))
                 {
                     return AgentPaneBackend{
                         AgentPaneBackendSource::Wsl,

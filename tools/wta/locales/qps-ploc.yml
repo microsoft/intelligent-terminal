@@ -298,3 +298,11 @@ system.config_update_failed: "[ƒåïĺéď ţö ûṗďåţé %{option}: %{erro
 system.yolo_disable_pending: "[ţĥé ṗŕöṽïďéŕ ĥåś ñöţ åçķñöŵĺéďğéď ţĥé ŕéǫûïŕéď ñöñṗŕïṽïĺéğéď śéśśïöñ śţåţé!!!! !!!! !!!! !!!!]"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: [Åûţöḿåţïç åṗṗŕöṽåĺ ïś ďïśåƀĺéď ƀÿ ÿöûŕ öŕğåñïžåţïöñ'ś ṗöĺïçÿ.!!!! !!!! !!!!]"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "[Ûñķñöŵñ ḿöďéĺ %{model} — ţÿṗé /model ţö śéé ţĥé åṽåïĺåƀĺé ĺïśţ.!!!! !!!! !!!! !!!!]"  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "[Ÿöûŕ åğéñţ \"%{agent}\" ŕéqûïŕéś åûţĥéñţïçåţïöñ. Ŝéĺéçţ å śïğñ-ïñ ḿéţĥöď ţö çöñţïñûé ĥéŕé.!!!! !!!! !!!!]"  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "[Çöḿṗĺéţé śïğñ-ïñ ïñ ÿöûŕ ƀŕöŵśéŕ. Ṗŕéśś Esc ţö çåñçéĺ ŵåïţïñğ.!!!! !!!!]"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "[Ɓŕöŵśéŕ ñöţ öṗéñ? Ûśé ţĥïś śïğñ-ïñ ĺïñķ. O: öṗéñ · Y: çöṗÿ.!!!! !!!!]"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "[Çöûĺď ñöţ öṗéñ ţĥé ƀŕöŵśéŕ. Öṗéñ ţĥé śïğñ-ïñ ĺïñķ ḿåñûåĺĺÿ.!!!! !!!!]"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "[Çöûĺď ñöţ çöṗÿ ţĥé śïğñ-ïñ ĺïñķ. Ŝéĺéçţ åñď çöṗÿ ïţ ḿåñûåĺĺÿ.!!!! !!!!]"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "[Ŝïğñ-ïñ ďïď ñöţ ƒïñïśĥ ïñ ţïḿé. Ţŕÿ åğåïñ ŵĥéñ ÿöû åŕé ŕéåďÿ.!!!! !!!!]"  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "[Ŵé çöûĺď ñöţ ƒïñď \"%{agent}\" ïñ ţĥé %{distro} ĺöğïñ éñṽïŕöñḿéñţ. Çĥéçķ ţĥïś Linux ûśéŕ'ś ïñśţåĺĺåţïöñ, PATH, åñď śĥéĺĺ ṗŕöƒïĺé, ţĥéñ ţŕÿ åğåïñ.!!!! !!!! !!!! !!!! !!!!]"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

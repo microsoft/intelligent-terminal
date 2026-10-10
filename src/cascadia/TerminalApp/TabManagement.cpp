@@ -206,6 +206,10 @@ namespace winrt::TerminalApp::implementation
             if (page && tab)
             {
                 page->_ApplyTabListProjection(*tab);
+                if (tab->KeepRunning())
+                {
+                    winrt::get_self<implementation::ContentManager>(page->_manager)->UpdateKeepRunningTab(*tab);
+                }
             }
         });
         newTabImpl->TabColorChanged([weakTab, weakThis{ get_weak() }]() {
@@ -786,8 +790,9 @@ namespace winrt::TerminalApp::implementation
             auto resume = binding->second.agent.empty() ?
                               winrt::hstring{} :
                               winrt::hstring{ Restore::BuildResumeCommandline(
-                                  binding->second.agent,
-                                  binding->second.sessionId) };
+                                  binding->second.backend.empty() ? binding->second.agent : binding->second.backend,
+                                  binding->second.sessionId,
+                                  binding->second.cwd) };
             if (resume.empty())
             {
                 resume = binding->second.resumeCommandline;
@@ -1096,6 +1101,7 @@ namespace winrt::TerminalApp::implementation
                 if (movingAway)
                 {
                     tab.Shutdown();
+                    winrt::get_self<implementation::ContentManager>(_manager)->UpdateKeepRunningTab(tab);
                 }
                 else
                 {
@@ -1172,6 +1178,10 @@ namespace winrt::TerminalApp::implementation
         if (!keepAlive)
         {
             tab.Shutdown();
+            if (const auto impl = _GetTabImpl(tab); impl && impl->KeepRunning())
+            {
+                winrt::get_self<implementation::ContentManager>(_manager)->UpdateKeepRunningTab(tab);
+            }
         }
         else
         {

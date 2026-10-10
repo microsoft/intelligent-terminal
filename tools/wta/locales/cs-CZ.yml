@@ -299,3 +299,11 @@ system.config_update_failed: "Aktualizace %{option} se nezdařila: %{error}"
 system.yolo_disable_pending: "poskytovatel nepotvrdil požadovaný neprivilegovaný stav relace"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Automatické schvalování je zakázáno zásadami vaší organizace."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Neznámý model %{model} — zadáním /model zobrazíte dostupný seznam."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Vyberte způsob přihlášení a pokračujte zde."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Dokončete přihlášení v prohlížeči. Stisknutím Esc zrušíte čekání."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Prohlížeč se neotevřel? Použijte tento odkaz pro přihlášení. O: otevřít · Y: kopírovat."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Prohlížeč se nepodařilo otevřít. Otevřete odkaz pro přihlášení ručně."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Odkaz pro přihlášení se nepodařilo zkopírovat. Vyberte ho a zkopírujte ručně."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Přihlášení nebylo dokončeno včas. Až budete připraveni, zkuste to znovu."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "V přihlašovacím prostředí distribuce %{distro} se nepodařilo najít \"%{agent}\". Zkontrolujte instalaci, PATH a profil shellu tohoto uživatele Linuxu a zkuste to znovu."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

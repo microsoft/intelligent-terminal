@@ -305,3 +305,11 @@ system.config_update_failed: "%{option} نى يېڭىلاش مەغلۇپ بول�
 system.yolo_disable_pending: "AI ئاگېنتى تەمىنلىگۈچىسى تەلەپ قىلىنغان ئىمتىيازسىز ئولتۇرۇش ھالىتىنى جەزملەشتۈرمىدى"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: ئاپتوماتىك تەستىقلاش تەشكىلاتىڭىزنىڭ سىياسىتى بىلەن چەكلەنگەن."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "نامەلۇم مودېل %{model} — ئىشلەتكىلى بولىدىغان تىزىملىكنى كۆرۈش ئۈچۈن /model نى كىرگۈزۈڭ."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. بۇ يەردە داۋاملاشتۇرۇش ئۈچۈن كىرىش ئۇسۇلىنى تاللاڭ."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "توركۆرگۈڭىزدە كىرىشنى تاماملاڭ. ساقلاشنى بىكار قىلىش ئۈچۈن Esc نى بېسىڭ."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "توركۆرگۈ ئېچىلمىدىمۇ؟ بۇ كىرىش ئۇلانمىسىنى ئىشلىتىڭ. O: ئېچىش · Y: كۆچۈرۈش."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "توركۆرگۈنى ئاچالمىدۇق. كىرىش ئۇلانمىسىنى قولدا ئېچىڭ."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "كىرىش ئۇلانمىسىنى كۆچۈرەلمىدۇق. ئۇنى قولدا تاللاپ كۆچۈرۈڭ."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "كىرىش بەلگىلەنگەن ۋاقىتتا تاماملانمىدى. تەييار بولغاندا قايتا سىناڭ."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} كىرىش مۇھىتىدا \"%{agent}\" نى تاپالمىدۇق. بۇ Linux ئىشلەتكۈچىسىنىڭ قاچىلاش ھالىتىنى، PATH ۋە shell ئارخىپىنى تەكشۈرۈپ، ئاندىن قايتا سىناڭ."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

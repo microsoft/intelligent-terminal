@@ -299,3 +299,11 @@ system.config_update_failed: "فشل تحديث %{option}: %{error}"
 system.yolo_disable_pending: "لم يؤكد موفّر عامل الذكاء الاصطناعي أن الجلسة في الحالة المطلوبة دون امتيازات"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: تم تعطيل الموافقة التلقائية بواسطة سياسة مؤسستك."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "نموذج غير معروف %{model} — اكتب /model لعرض القائمة المتاحة."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة. حدد طريقة لتسجيل الدخول للمتابعة هنا."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "أكمل تسجيل الدخول في المتصفح. اضغط على Esc لإلغاء الانتظار."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "لم يفتح المتصفح؟ استخدم رابط تسجيل الدخول هذا. O: فتح · Y: نسخ."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "تعذر فتح المتصفح. افتح رابط تسجيل الدخول يدويًا."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "تعذر نسخ رابط تسجيل الدخول. حدده وانسخه يدويًا."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "لم يكتمل تسجيل الدخول في الوقت المحدد. أعد المحاولة عندما تكون مستعدًا."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "تعذر العثور على \"%{agent}\" في بيئة تسجيل الدخول إلى %{distro}. تحقق من التثبيت وPATH وملف تعريف الصدفة لدى مستخدم Linux هذا، ثم أعد المحاولة."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

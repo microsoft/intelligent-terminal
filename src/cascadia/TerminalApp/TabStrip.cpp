@@ -1580,6 +1580,22 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::UpdateHistoryKeepRunning(const std::function<bool(const winrt::hstring&)>& isPaneKeepRunning)
+    {
+        const auto update = [&](const TerminalApp::TabStripHistoryItem& item) {
+            item.IsKeepRunning(!item.PaneSessionId().empty() && isPaneKeepRunning(item.PaneSessionId()));
+        };
+        for (const auto& item : _historySnapshot)
+        {
+            update(item);
+        }
+        // Equal snapshots can retain distinct visible row objects.
+        for (const auto& item : _historyItems)
+        {
+            update(item);
+        }
+    }
+
     bool TabStrip::ApplyHistoryStatusDelta(winrt::hstring const& sessionId,
                                            winrt::hstring const& paneSessionId,
                                            winrt::hstring const& status,
@@ -2111,6 +2127,13 @@ namespace winrt::TerminalApp::implementation
     {
         const auto root = sender.as<FrameworkElement>();
         const auto item = root.DataContext().try_as<TerminalApp::TabStripHistoryItem>();
+        if (const auto icon = root.FindName(L"HistoryKeepRunningIcon").try_as<FontIcon>())
+        {
+            const auto help = RS_(L"KeepTabRunningToolTip");
+            WUX::Automation::AutomationProperties::SetName(icon, RS_(L"KeepTabRunningText"));
+            WUX::Automation::AutomationProperties::SetHelpText(icon, help);
+            ToolTipService::SetToolTip(icon, box_value(help));
+        }
         _applyHistoryRowForeground(root, item);
     }
 

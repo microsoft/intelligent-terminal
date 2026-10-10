@@ -299,3 +299,11 @@ system.config_update_failed: "No s’ha pogut actualitzar %{option}: %{error}"
 system.yolo_disable_pending: "el proveïdor no ha confirmat l’estat de sessió sense privilegis requerit"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: L'aprovació automàtica està deshabilitada per la política de la vostra organització."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Model desconegut %{model} — escriviu /model per veure la llista disponible."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "El vostre agent \"%{agent}\" requereix autenticació. Seleccioneu un mètode d'inici de sessió per continuar aquí."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Completeu l'inici de sessió al navegador. Premeu Esc per cancel·lar l'espera."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "No s'ha obert el navegador? Feu servir aquest enllaç d'inici de sessió. O: obre · Y: copia."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "No s'ha pogut obrir el navegador. Obriu l'enllaç d'inici de sessió manualment."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "No s'ha pogut copiar l'enllaç d'inici de sessió. Seleccioneu-lo i copieu-lo manualment."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "L'inici de sessió no s'ha completat a temps. Torneu-ho a provar quan estigueu a punt."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "No hem pogut trobar \"%{agent}\" a l'entorn d'inici de sessió de %{distro}. Comproveu la instal·lació, PATH i el perfil de l'intèrpret d'ordres d'aquest usuari de Linux i torneu-ho a provar."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

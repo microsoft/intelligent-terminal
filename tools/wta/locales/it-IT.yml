@@ -297,3 +297,11 @@ system.config_update_failed: "Aggiornamento di %{option} non riuscito: %{error}"
 system.yolo_disable_pending: "il provider non ha confermato lo stato di sessione non privilegiato richiesto"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: L'approvazione automatica è disabilitata dai criteri della tua organizzazione."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Modello sconosciuto %{model} — digita /model per visualizzare l'elenco disponibile."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "L'agente \"%{agent}\" richiede l'autenticazione. Seleziona un metodo di accesso per continuare qui."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Completa l'accesso nel browser. Premi Esc per annullare l'attesa."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Il browser non si è aperto? Usa questo link di accesso. O: apri · Y: copia."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Impossibile aprire il browser. Apri il link di accesso manualmente."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Impossibile copiare il link di accesso. Selezionalo e copialo manualmente."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "L'accesso non è stato completato in tempo. Riprova quando sei pronto."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Non abbiamo trovato \"%{agent}\" nell'ambiente di accesso di %{distro}. Controlla l'installazione, PATH e il profilo della shell di questo utente Linux, quindi riprova."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

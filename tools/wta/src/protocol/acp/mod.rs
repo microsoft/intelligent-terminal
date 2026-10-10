@@ -1,3 +1,4 @@
+pub(crate) mod authentication;
 pub mod client;
 pub mod conn;
 pub mod failure;

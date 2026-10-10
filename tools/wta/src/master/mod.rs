@@ -61,6 +61,9 @@ use tokio::sync::{mpsc, watch, Mutex, OnceCell};
 use tokio::task::LocalSet;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+use crate::protocol::acp::authentication::{
+    authentication_result_for_helper, browser_notification, take_auth_attempt_id, AUTH_TIMEOUT,
+};
 use crate::protocol::acp::conn;
 use crate::protocol::acp::spawn::{
     spawn_agent_process_for_source_with_provider, AgentStderrLog, ChildEnvironmentPolicy,
@@ -579,6 +582,7 @@ struct MasterStateInner {
     /// of the registry.
     pub(crate) helper_ext_subscribers:
         Mutex<HashMap<HelperId, mpsc::UnboundedSender<acp::schema::v1::ExtNotification>>>,
+    agent_authentication: Mutex<HashMap<AgentInstanceId, Arc<AgentAuthenticationBridge>>>,
     /// Shared `WtChannel` for outbound wtcli/COM calls — currently
     /// used only for `intellterm.wta/focus_session` (resolves a
     /// SessionId → pane_session_id via `registry`, then issues
@@ -1960,6 +1964,90 @@ struct AgentCli {
     bound_helpers: Mutex<HashSet<HelperId>>,
 }
 
+struct AgentAuthenticationBridge {
+    gate: Mutex<()>,
+    stderr: AgentStderrLog,
+}
+
+type AuthenticationResult = acp::Result<acp::schema::v1::AuthenticateResponse>;
+type PrivateAuthSubscriber = mpsc::UnboundedSender<acp::schema::v1::ExtNotification>;
+
+async fn auth_subscriber_closed(subscriber: &Option<PrivateAuthSubscriber>) {
+    if let Some(subscriber) = subscriber {
+        subscriber.closed().await;
+    } else {
+        futures::future::pending::<()>().await;
+    }
+}
+
+async fn forward_shared_authentication(
+    bridge: Arc<AgentAuthenticationBridge>,
+    attempt_id: Option<uuid::Uuid>,
+    subscriber: Option<PrivateAuthSubscriber>,
+    request: impl Future<Output = AuthenticationResult>,
+    mut response: tokio::sync::oneshot::Sender<AuthenticationResult>,
+) {
+    let result = tokio::time::timeout(AUTH_TIMEOUT, async {
+        let _guard = tokio::select! {
+            biased;
+            _ = auth_subscriber_closed(&subscriber) =>
+                return Err(acp::Error::internal_error().data("authentication helper disconnected")),
+            _ = response.closed() =>
+                return Err(acp::Error::internal_error().data("authentication request cancelled")),
+            guard = bridge.gate.lock() => guard,
+        };
+        let (mut progress_guard, mut progress) = if attempt_id.is_some() {
+            let (guard, receiver) = bridge.stderr.subscribe_auth_browser();
+            (Some(guard), Some(receiver))
+        } else {
+            (None, None)
+        };
+        tokio::pin!(request);
+        let mut sent_browser = false;
+        loop {
+            tokio::select! {
+                biased;
+                result = &mut request => return result,
+                _ = auth_subscriber_closed(&subscriber) => {
+                    drop(progress_guard.take());
+                    drop(progress.take());
+                    // Standard ACP has no authenticate cancellation. Keep the
+                    // same process serialized until its reply or the deadline,
+                    // but immediately retire the disconnected owner's progress.
+                    return request.await;
+                }
+                _ = response.closed() => {
+                    drop(progress_guard.take());
+                    drop(progress.take());
+                    return request.await;
+                }
+                Some(url) = async {
+                    match &mut progress {
+                        Some(receiver) => receiver.recv().await,
+                        None => futures::future::pending().await,
+                    }
+                }, if !sent_browser && progress.is_some() => {
+                    if let (Some(attempt_id), Some(subscriber)) = (attempt_id, &subscriber) {
+                        let notification = browser_notification(attempt_id, &url)?;
+                        if subscriber.send(notification).is_err() {
+                            drop(progress_guard.take());
+                            drop(progress.take());
+                            return request.await;
+                        }
+                        sent_browser = true;
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .unwrap_or_else(|_| {
+        Err(acp::Error::internal_error().data("authentication timed out after 300 seconds"))
+    });
+    // The requesting pipe may already have gone away.
+    let _ = response.send(result);
+}
+
 fn update_model_switch_channel_from_load(
     session_id: &acp::schema::v1::SessionId,
     response: &acp::schema::v1::LoadSessionResponse,
@@ -3309,7 +3397,7 @@ impl HelperHandler {
             wta_meta.agent_source.as_deref(),
             wta_meta.wsl_distro.as_deref(),
             self.helper_id,
-        );
+        )?;
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -3422,8 +3510,44 @@ impl HelperHandler {
 
     async fn authenticate(
         &self,
-        args: acp::schema::v1::AuthenticateRequest,
+        mut args: acp::schema::v1::AuthenticateRequest,
     ) -> acp::Result<acp::schema::v1::AuthenticateResponse> {
+        let agent = self.resolved_agent("authenticate")?;
+        if !agent
+            .cached_init_resp
+            .auth_methods
+            .iter()
+            .any(|method| method.id() == &args.method_id)
+        {
+            return Err(
+                acp::Error::invalid_params().data("authentication method was not advertised")
+            );
+        }
+        let attempt_id = take_auth_attempt_id(&mut args)?;
+        let subscriber = self
+            .state
+            .helper_ext_subscribers
+            .lock()
+            .await
+            .get(&self.helper_id)
+            .cloned();
+        if attempt_id.is_some() && subscriber.is_none() {
+            return Err(acp::Error::internal_error().data("authentication helper disconnected"));
+        }
+        let bridge = {
+            let mut bridges = self.state.agent_authentication.lock().await;
+            Arc::clone(bridges.entry(agent.instance_id).or_insert_with(|| {
+                Arc::new(AgentAuthenticationBridge {
+                    gate: Mutex::new(()),
+                    stderr: AgentStderrLog::new("agent"),
+                })
+            }))
+        };
+        let browser_attempt =
+            (matches!(agent.resolved_agent_id.as_str(), "antigravity" | "gemini")
+                || agent.resolved_agent_id.starts_with("custom:"))
+            .then_some(attempt_id)
+            .flatten();
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -3431,10 +3555,20 @@ impl HelperHandler {
             helper_id = ?self.helper_id,
             "forwarding authenticate"
         );
-        self.resolved_agent("authenticate")?
-            .conn
-            .authenticate(args)
-            .await
+        let (response, result) = tokio::sync::oneshot::channel();
+        tokio::task::spawn_local(forward_shared_authentication(
+            bridge,
+            browser_attempt,
+            subscriber,
+            async move {
+                authentication_result_for_helper(
+                    agent.conn.authenticate(args).await,
+                    attempt_id.is_some(),
+                )
+            },
+            response,
+        ));
+        result.await.map_err(|_| acp::Error::internal_error())?
     }
 
     async fn close_session(
@@ -4943,6 +5077,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         registry: crate::session_registry::InMemoryRegistry::shared(),
         session_activation_receipts: Mutex::new(HashMap::new()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
+        agent_authentication: Mutex::new(HashMap::new()),
         wt,
         agents: Mutex::new(HashMap::new()),
         history_refresh: Arc::new(Mutex::new(())),
@@ -5243,6 +5378,7 @@ fn helper_initialize_error(
 /// *unknown* id (not in [`agent_registry::KNOWN_AGENTS`] — e.g. a
 /// `custom:` agent, which the global default already covers), or an id
 /// the host's GPO allowlist excludes.
+/// Malformed explicit WSL source metadata is rejected before any fallback.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ExplicitAgentSelection {
     ImplicitDefault,
@@ -5266,7 +5402,18 @@ fn resolve_agent_selection(
     requested_source: Option<&str>,
     requested_wsl_distro: Option<&str>,
     helper_id: HelperId,
-) -> ResolvedAgentSelection {
+) -> acp::Result<ResolvedAgentSelection> {
+    let source =
+        crate::agent_source::AgentSource::from_wire(requested_source, requested_wsl_distro)
+            .map_err(|error| {
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?helper_id,
+                    %error,
+                    "rejecting invalid helper execution source"
+                );
+                acp::Error::invalid_params().data(error.to_string())
+            })?;
     let requested = requested_id
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -5286,15 +5433,14 @@ fn resolve_agent_selection(
             let model = requested_model.map(str::trim).filter(|s| !s.is_empty());
             let launch_model =
                 model.filter(|_| !crate::agent_registry::supports_live_model_switch(id));
-            let cmd = crate::agent_registry::build_acp_command(id, launch_model);
-            let source =
-                crate::agent_source::AgentSource::from_wire(requested_source, requested_wsl_distro);
-            return ResolvedAgentSelection {
+            let cmd =
+                crate::agent_registry::build_acp_command_for_source(id, launch_model, &source);
+            return Ok(ResolvedAgentSelection {
                 command: cmd,
                 agent_id: Some(id.to_string()),
                 source,
                 explicit_selection: ExplicitAgentSelection::Accepted,
-            };
+            });
         }
 
         // A real selection we refused — surface why, then fall back.
@@ -5309,7 +5455,7 @@ fn resolve_agent_selection(
         );
     }
 
-    ResolvedAgentSelection {
+    Ok(ResolvedAgentSelection {
         command: default_cmd.to_string(),
         agent_id: default_id.map(str::to_string),
         source: crate::agent_source::AgentSource::Host,
@@ -5318,7 +5464,7 @@ fn resolve_agent_selection(
         } else {
             ExplicitAgentSelection::ImplicitDefault
         },
-    }
+    })
 }
 
 async fn resolve_provider_binding(
@@ -6010,6 +6156,13 @@ async fn spawn_one_agent(
         history_refresh: AgentHistoryRefresh::default(),
         listed_ever: Mutex::new(HashSet::new()),
     });
+    state.agent_authentication.lock().await.insert(
+        instance_id,
+        Arc::new(AgentAuthenticationBridge {
+            gate: Mutex::new(()),
+            stderr: stderr_log,
+        }),
+    );
 
     // Seed THIS CLI's history. Every agent entering the pool seeds, not just
     // the first: master outlives a Settings agent switch (the helper
@@ -6063,6 +6216,7 @@ async fn reap_agent(
     cell: &AgentCell,
     instance_id: AgentInstanceId,
 ) {
+    state.agent_authentication.lock().await.remove(&instance_id);
     if let Some(agent) = cell.get().filter(|agent| agent.instance_id == instance_id) {
         // Retirement and registry publication share a boundary, without holding
         // the pool lock or waiting for an ACP network request.
@@ -6349,6 +6503,9 @@ async fn serve_helper(
         }
     };
 
+    // Close the private subscriber before any potentially slow session cleanup.
+    // This retires auth progress even while the provider's RPC remains pending.
+    drop(ext_rx);
     // Unregister BEFORE dropping sessions: prevents a race where
     // `drop_sessions_for_helper` would broadcast `session_removed`
     // to ourselves (harmless but pointless, and our `ext_rx` is
@@ -7978,6 +8135,8 @@ where
         cli_source: cli_source.clone(),
         load_session_capability: crate::session_mgmt::LoadSessionCapability::Unknown,
         cli_supports_resume_flag: profile.is_some_and(|profile| !profile.resume_flag.is_empty()),
+        cli_can_resume_acp_sessions: profile
+            .is_some_and(|profile| profile.cli_can_resume_acp_sessions),
         is_wsl: row.location.is_wsl(),
     });
     if matches!(
@@ -8008,6 +8167,13 @@ where
             let (agent_source, wsl_distro) = match &row.location {
                 crate::agent_sessions::SessionLocation::Host => ("host", None),
                 crate::agent_sessions::SessionLocation::Wsl { distro } => {
+                    if !crate::agent_source::is_safe_wsl_distro_name(distro) {
+                        return respond!(
+                            "resume_agent_pane",
+                            false,
+                            Some("The selected session has an invalid WSL source.".to_string())
+                        );
+                    }
                     ("wsl", Some(distro.as_str()))
                 }
                 crate::agent_sessions::SessionLocation::Unknown => {
@@ -8039,7 +8205,7 @@ where
                     "cwd": row.cwd.to_string_lossy(),
                     "agent_id": provider_id,
                     "agent_source": agent_source,
-                    "wsl_distro": wsl_distro,
+                    "wsl_distro": wsl_distro.unwrap_or_default(),
                 }
             });
             crate::wt_protocol_events::send(event.to_string());
@@ -8054,6 +8220,15 @@ where
                 );
             };
             let provider_id = provider_id.expect("known provider was checked above");
+            if provider_id == crate::agent_registry::ANTIGRAVITY_AGENT_ID
+                && !crate::agent_sessions::is_safe_cli_resume_id(row.session_id.0.as_ref())
+            {
+                return respond!(
+                    "resume_cli",
+                    false,
+                    Some("The selected session has an invalid CLI resume identifier.".to_string())
+                );
+            }
             if state
                 .allowed_agent_ids
                 .as_ref()
@@ -8076,6 +8251,15 @@ where
                     )
                 }
                 crate::agent_sessions::SessionLocation::Wsl { distro } => {
+                    if provider_id == crate::agent_registry::ANTIGRAVITY_AGENT_ID
+                        && !crate::agent_source::is_safe_wsl_distro_name(distro)
+                    {
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some("The selected session has an invalid WSL source.".to_string())
+                        );
+                    }
                     if distro.trim().is_empty() || !row.cwd.to_string_lossy().starts_with('/') {
                         return respond!(
                             "resume_cli",
@@ -8182,6 +8366,7 @@ where
                         row.session_id.0.as_ref(),
                         &pane_session_id,
                         &row.location,
+                        Some(row.cwd.to_string_lossy().as_ref()),
                     ) {
                         crate::wt_protocol_events::send(binding);
                     }
@@ -9951,6 +10136,148 @@ async fn handle_retire_agent_sessions_event(
     });
 }
 
+async fn validate_master_hook_source(
+    state: &MasterStateInner,
+    params: &serde_json::Value,
+    key: &str,
+    pane_id: &str,
+    cli_source: &crate::agent_sessions::CliSource,
+) -> Result<Option<crate::agent_sessions::SessionLocation>, &'static str> {
+    use crate::agent_sessions::{pane_key, AgentStatus, CliSource, SessionLocation, SessionOrigin};
+
+    let distro = params
+        .get("wsl_distro")
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|distro| crate::agent_source::is_safe_wsl_distro_name(distro))
+                .ok_or("invalid WSL distro metadata")
+        })
+        .transpose()?;
+    let pane = pane_key(pane_id);
+    let provider_id = cli_source.canonical_provider_id();
+    let mut known_location = None;
+    for row in state.registry.snapshot().await {
+        let same_provider = match row
+            .provider_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+        {
+            Some(id) => provider_id
+                .as_deref()
+                .is_some_and(|incoming| id.eq_ignore_ascii_case(incoming)),
+            None => row.cli_source.as_ref() == Some(cli_source),
+        };
+        let same_session = row.session_id.0.as_ref() == key;
+        // Reducer events and hook ownership still use raw IDs. Matching pane
+        // provenance cannot make a cross-provider collision safe to reduce.
+        if same_session && !same_provider {
+            return Err("agent hook raw session ID conflicts with another provider");
+        }
+        // Antigravity CLI hooks describe a different conversation store from ACP.
+        if same_session
+            && matches!(cli_source, CliSource::Antigravity)
+            && row.origin == Some(SessionOrigin::AgentPane)
+        {
+            return Err("Antigravity CLI hook raw session ID conflicts with an ACP conversation");
+        }
+        let Some(distro) = distro else {
+            continue;
+        };
+        let owner = row.pane_session_id.as_deref().map(pane_key);
+        let live = matches!(
+            row.status,
+            Some(
+                AgentStatus::Idle
+                    | AgentStatus::Working
+                    | AgentStatus::Attention
+                    | AgentStatus::Error
+            )
+        );
+        if same_session
+            && live
+            && !pane.is_empty()
+            && owner.as_ref().is_some_and(|owner| owner != &pane)
+        {
+            return Err("WSL hook does not match the session's owning pane");
+        }
+        if !same_session && !(live && !pane.is_empty() && owner.as_deref() == Some(pane.as_str())) {
+            continue;
+        }
+        match &row.location {
+            SessionLocation::Host => return Err("WSL hook contradicts known host source"),
+            SessionLocation::Wsl { distro: known } => {
+                if !known.eq_ignore_ascii_case(distro) {
+                    return Err("WSL hook contradicts known distro");
+                }
+                known_location = Some(row.location.clone());
+            }
+            SessionLocation::Unknown => {}
+        }
+    }
+    if let Some(location) = known_location {
+        return Ok(Some(location));
+    }
+    let Some(distro) = distro else {
+        return Ok(None);
+    };
+
+    // Reuse registry provenance on subsequent hooks. For a new source, request
+    // metadata only, never terminal output or a WSL process. Missing interactive
+    // shell metadata is normal for forwarded hooks and is not evidence of Host.
+    if let Some(wt) = state.wt.as_ref().filter(|wt| wt.is_available()) {
+        if !pane.is_empty() {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(250),
+                wt.request(
+                    "get_pane_context",
+                    serde_json::json!({
+                        "session_id": pane_id,
+                        "max_lines": 0,
+                        "max_chars": 0,
+                    }),
+                ),
+            )
+            .await
+            {
+                Ok(Ok(context)) => {
+                    let context_pane = context.get("pane");
+                    if let Some(owner) = context_pane
+                        .and_then(|pane| pane.get("session_id"))
+                        .and_then(serde_json::Value::as_str)
+                    {
+                        if pane_key(owner) != pane {
+                            return Err("WSL hook context belongs to another pane");
+                        }
+                    }
+                    if let Some(shell) = context_pane
+                        .and_then(|pane| pane.get("shell"))
+                        .and_then(serde_json::Value::as_str)
+                        .filter(|shell| !shell.is_empty())
+                    {
+                        if !shell
+                            .strip_prefix("wsl:")
+                            .is_some_and(|known| known.eq_ignore_ascii_case(distro))
+                        {
+                            return Err("WSL hook contradicts owning pane source");
+                        }
+                    }
+                }
+                Ok(Err(_)) | Err(_) => {
+                    tracing::debug!(
+                        target: "master_wt_event",
+                        "hook pane source unavailable; retaining validated WSL metadata"
+                    );
+                }
+            }
+        }
+    }
+    Ok(Some(SessionLocation::Wsl {
+        distro: distro.to_string(),
+    }))
+}
+
 /// Route one COM `agent_event` hook into master's authoritative registry.
 ///
 /// Master subscribes to the COM broadcast directly, so this runs once per hook
@@ -10001,6 +10328,15 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         return;
     };
 
+    let location =
+        match validate_master_hook_source(state, params, &key, pane_id, &cli_source).await {
+            Ok(location) => location,
+            Err(reason) => {
+                tracing::warn!(target: "master_wt_event", reason, "rejected agent hook source");
+                return;
+            }
+        };
+
     let payload = params
         .get("payload")
         .cloned()
@@ -10049,6 +10385,15 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         if let Some(key) = refresh_key {
             refresh_keys.insert(key);
         }
+    }
+    if let Some(location) = location {
+        changed |= state
+            .registry
+            .set_location(
+                &acp::schema::v1::SessionId::new(session_key.clone()),
+                location,
+            )
+            .await;
     }
     let final_row = state
         .registry

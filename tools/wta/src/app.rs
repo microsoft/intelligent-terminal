@@ -68,6 +68,23 @@ struct PendingAgentInstall {
     agent_source: crate::agent_source::AgentSource,
 }
 
+#[derive(Clone)]
+struct PendingAcpAuthentication {
+    attempt: crate::protocol::acp::authentication::AcpAuthenticationAttempt,
+    agent_id: String,
+    source: crate::agent_source::AgentSource,
+    browser_opened: bool,
+    browser_url: Option<String>,
+    browser_feedback: Option<AcpAuthenticationBrowserFeedback>,
+}
+
+#[derive(Clone, Copy)]
+enum AcpAuthenticationBrowserFeedback {
+    OpenFailed,
+    CopyFailed,
+    Copied,
+}
+
 fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Option<ParsedCommand> {
     commands::agent_id_prefix(input)?;
     Some(ParsedCommand {
@@ -250,6 +267,10 @@ pub enum SetupOption {
         agent_id: String,
         display_name: String,
     },
+    Authenticate {
+        method_id: String,
+        display_name: String,
+    },
     /// Re-run executable/prerequisite discovery without starting an installer.
     Recheck,
     /// Preflight: retry connection (custom agent)
@@ -353,7 +374,12 @@ fn build_setup_options_with_uncertainty(
             opts.push(SetupOption::Recheck);
         } else if *reason == SetupReason::AgentError {
             // CLI found but auth missing or known to have failed
-            if status.id == "copilot" {
+            if status.id == "copilot"
+                || matches!(
+                    crate::agent_registry::lookup_profile_by_id(&status.id).acp_auth_flow,
+                    crate::agent_registry::AcpAuthFlow::InProtocol
+                )
+            {
                 // Copilot: we can drive the device-flow sign-in
                 opts.push(SetupOption::SignIn {
                     agent_id: status.id.clone(),
@@ -1170,6 +1196,8 @@ pub struct App {
     /// on agent-switch / retry / install-complete reconnects that also go
     /// through try_start_acp.
     needs_post_login_authenticate: bool,
+    acp_auth_methods: Vec<agent_client_protocol::schema::v1::AuthMethod>,
+    pending_acp_authentication: Option<PendingAcpAuthentication>,
     /// Monotonic id for the in-flight post-login auth recovery. Bumped each
     /// time `PostLoginAuthRecovery` arms its 8s dead-man timer, and bumped
     /// again on a successful `AgentConnected`. The `AuthRecoveryTimedOut`
@@ -1498,6 +1526,7 @@ pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'s
         CliSource::Copilot => Some("copilot"),
         CliSource::Gemini => Some("gemini"),
         CliSource::OpenCode => Some("opencode"),
+        CliSource::Antigravity => Some("antigravity"),
         CliSource::Unknown(_) => None,
     }
 }
@@ -1577,6 +1606,8 @@ impl App {
             agent_binding_generation: 0,
             auto_install_selected_agent: false,
             needs_post_login_authenticate: false,
+            acp_auth_methods: Vec::new(),
+            pending_acp_authentication: None,
             auth_recovery_generation: 0,
             auth_recovery_state: AuthRecoveryState::Idle,
             restart_without_acp_pending: false,
@@ -1782,6 +1813,15 @@ impl App {
         self.pending_acp_start = false;
         let post_login_auth = self.needs_post_login_authenticate;
         self.needs_post_login_authenticate = false;
+        let requested_auth = self
+            .pending_acp_authentication
+            .as_ref()
+            .filter(|pending| {
+                pending.agent_id == self.current_agent_id
+                    && pending.source == self.current_agent_source
+                    && !pending.attempt.cancelled.is_cancelled()
+            })
+            .map(|pending| pending.attempt.clone());
         tracing::info!(target: "acp", has_event_tx = self.event_tx.is_some(), has_deferred = self.deferred_acp.is_some(), post_login_auth, "try_start_acp triggered");
 
         let cloud_models = self.cloud_models.clone();
@@ -1919,6 +1959,7 @@ impl App {
                             shell_mgr,
                             wt_connected,
                             post_login_auth, // only true on genuine LoginComplete reconnects
+                            requested_auth,
                             proposal_channels,
                         )
                         .await
@@ -2391,7 +2432,7 @@ impl App {
             .filter(|profile| {
                 (!self.host_agent_allowlist_present
                     || self.allowed_agent_ids.iter().any(|id| id == profile.id))
-                    && crate::agent_check::find_exe(profile.id).is_some()
+                    && crate::agent_check::find_acp_exe(profile.id).is_some()
             })
             .map(|profile| {
                 let source = crate::agent_source::AgentSource::Host;
@@ -3054,12 +3095,9 @@ impl App {
         // spelling differs per agent (`--resume`, the `resume`
         // subcommand, `--session`), which is why it comes from the
         // profile rather than a hard-coded flag.
-        let cli_supports_resume_flag = match known_cli_id(&s.cli_source) {
-            Some(id) => !crate::agent_registry::lookup_profile_by_id(id)
-                .resume_flag
-                .is_empty(),
-            None => false,
-        };
+        let profile = known_cli_id(&s.cli_source).map(crate::agent_registry::lookup_profile_by_id);
+        let cli_supports_resume_flag =
+            profile.is_some_and(|profile| !profile.resume_flag.is_empty());
         let selected_agent_id = known_cli_id(&s.cli_source);
         let targets_current_agent = selected_agent_id
             .is_some_and(|id| id.eq_ignore_ascii_case(&self.current_agent_id))
@@ -3080,6 +3118,8 @@ impl App {
             cli_source: s.cli_source.clone(),
             load_session_capability,
             cli_supports_resume_flag,
+            cli_can_resume_acp_sessions: profile
+                .is_some_and(|profile| profile.cli_can_resume_acp_sessions),
             is_wsl: s.location.is_wsl(),
         };
         let action = decide_enter_action(&row);
@@ -3242,7 +3282,24 @@ impl App {
         }
 
         let key = s.key.clone();
-        let resume_invocation = format!("{} {} {}", cli_id, profile.resume_flag, key);
+        if !crate::agent_sessions::is_safe_cli_resume_id(&key) {
+            tracing::warn!(
+                target: "agents_view",
+                cli = cli_id,
+                "refusing CLI resume with an unsafe session identifier"
+            );
+            return;
+        }
+        if let crate::agent_sessions::SessionLocation::Wsl { distro } = &s.location {
+            if !crate::agent_source::is_safe_wsl_distro_name(distro) {
+                tracing::warn!(target: "agents_view", "refusing CLI resume with an unsafe WSL source");
+                return;
+            }
+        }
+        let resume_invocation =
+            format!("{} {} {}", profile.cli_executable, profile.resume_flag, key);
+        let direct_wsl_resume =
+            cli_id == crate::agent_registry::ANTIGRAVITY_AGENT_ID && s.location.is_wsl();
         // WSL rows run the distro's own CLI *inside* the distro. Two
         // WSL/cmd quirks shape this command line:
         //   * The distro name is **not** quoted. `wsl -d "Ubuntu"` fails with
@@ -3268,11 +3325,43 @@ impl App {
                     );
                     return;
                 }
-                match linux_cwd_arg(&s.cwd) {
-                    Some(cwd) => {
-                        format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}")
+                if direct_wsl_resume {
+                    let runtimes = crate::coordinator::default_delegate_agent_runtimes(
+                        Some(cli_id),
+                        None,
+                        None,
+                    );
+                    let command = match crate::coordinator::build_wsl_delegate_resume_commandline(
+                        &runtimes[0],
+                        &key,
+                    ) {
+                        Ok(command) => command,
+                        Err(error) => {
+                            tracing::warn!(target: "agents_view", %error, "could not build WSL CLI resume");
+                            return;
+                        }
+                    };
+                    let cwd = s.cwd.to_string_lossy();
+                    let cwd_arg = if cwd.starts_with('/') {
+                        format!(
+                            " --cd {}",
+                            crate::coordinator::quote_windows_commandline_arg(&cwd)
+                        )
+                    } else {
+                        String::new()
+                    };
+                    format!(
+                        "wsl.exe -d {}{cwd_arg} -- bash -lc {}",
+                        crate::coordinator::quote_windows_commandline_arg(distro),
+                        crate::coordinator::quote_windows_commandline_arg(&command)
+                    )
+                } else {
+                    match linux_cwd_arg(&s.cwd) {
+                        Some(cwd) => {
+                            format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}")
+                        }
+                        None => format!("wsl -d {distro} -- {login_invocation}"),
                     }
-                    None => format!("wsl -d {distro} -- {login_invocation}"),
                 }
             }
             crate::agent_sessions::SessionLocation::Host => resume_invocation,
@@ -3352,7 +3441,12 @@ impl App {
             }
             crate::agent_sessions::SessionLocation::Unknown => return,
         };
-        let launch_commandline = format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
+        // Keep Linux cwd metadata out of cmd.exe expansion for Antigravity.
+        let launch_commandline = if direct_wsl_resume {
+            commandline.clone()
+        } else {
+            format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}")
+        };
         let mut argv = vec![
             "new-tab".to_string(),
             "--agent-provider".to_string(),
@@ -3387,6 +3481,7 @@ impl App {
         // so the existing helper handles both.
         let cb_key = key.clone();
         let cb_location = s.location.clone();
+        let cb_cwd = s.cwd.to_string_lossy().into_owned();
         let event_tx = self.agent_event_tx.clone();
         let on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>> =
             Some(Box::new(move |pane_session_id| {
@@ -3395,6 +3490,7 @@ impl App {
                     &cb_key,
                     &pane_session_id,
                     &cb_location,
+                    Some(&cb_cwd),
                 ) {
                     send_wt_protocol_event(binding);
                 }
@@ -3504,11 +3600,11 @@ impl App {
             crate::agent_sessions::SessionLocation::Host => ("host", None),
             crate::agent_sessions::SessionLocation::Wsl { distro } => {
                 let distro = distro.trim();
-                if distro.is_empty() {
+                if !crate::agent_source::is_safe_wsl_distro_name(distro) {
                     tracing::warn!(
                         target: "agents_view",
                         key = %s.key,
-                        "dispatch_resume_in_agent_pane: WSL session has an empty distro",
+                        "dispatch_resume_in_agent_pane: WSL session has an invalid distro",
                     );
                     return;
                 }
@@ -3526,7 +3622,11 @@ impl App {
 
         let key = s.key.clone();
         let raw_cwd_string = s.cwd.to_string_lossy().to_string();
-        let valid_cwd = crate::cwd_util::validate_starting_directory(&s.cwd);
+        let valid_cwd = if s.location.is_wsl() {
+            linux_cwd_arg(&s.cwd)
+        } else {
+            crate::cwd_util::validate_starting_directory(&s.cwd)
+        };
         if valid_cwd.is_none() && !raw_cwd_string.is_empty() {
             tracing::warn!(
                 target: "agents_view",
@@ -3565,6 +3665,16 @@ impl App {
             params.insert(
                 "wsl_distro".to_string(),
                 serde_json::Value::String(distro.to_string()),
+            );
+        }
+        if let Some(tab_id) = self
+            .owner_tab_id
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            params.insert(
+                "tab_id".to_string(),
+                serde_json::Value::String(tab_id.to_string()),
             );
         }
         if !cwd_string.is_empty() {
@@ -3898,21 +4008,12 @@ impl App {
     }
 
     /// Build the resolved ACP command string for an agent (e.g. "C:\...\claude.exe --acp").
-    fn build_agent_cmd(&self, agent_id: &str) -> String {
-        let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
-        let cmd = if !profile.acp_launch_command.is_empty() {
-            profile.acp_launch_command.to_string()
-        } else {
-            let exe =
-                crate::agent_check::find_exe(agent_id).unwrap_or_else(|| agent_id.to_string());
-            let mut cmd = exe;
-            for flag in profile.acp_flags {
-                cmd.push(' ');
-                cmd.push_str(flag);
-            }
-            cmd
-        };
-        resolve_agent_cmd(&cmd)
+    fn build_agent_cmd(&self, agent_id: &str, source: &crate::agent_source::AgentSource) -> String {
+        let cmd = crate::agent_registry::build_acp_command_for_source(agent_id, None, source);
+        match source {
+            crate::agent_source::AgentSource::Host => resolve_agent_cmd(&cmd),
+            crate::agent_source::AgentSource::Wsl { .. } => cmd,
+        }
     }
 
     /// Update the deferred ACP params to use the selected agent's command.
@@ -3920,21 +4021,12 @@ impl App {
         if agent_id.is_empty() {
             return;
         }
-        let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
-        let new_cmd = if !profile.acp_launch_command.is_empty() {
-            profile.acp_launch_command.to_string()
-        } else {
-            let exe =
-                crate::agent_check::find_exe(agent_id).unwrap_or_else(|| agent_id.to_string());
-            let mut cmd = exe;
-            for flag in profile.acp_flags {
-                cmd.push(' ');
-                cmd.push_str(flag);
-            }
-            cmd
-        };
-        // Resolve to full path
-        let resolved = resolve_agent_cmd(&new_cmd);
+        let source = self
+            .deferred_acp
+            .as_ref()
+            .map(|params| &params.agent_source)
+            .unwrap_or(&self.current_agent_source);
+        let resolved = self.build_agent_cmd(agent_id, source);
         if let Some(ref mut params) = self.deferred_acp {
             tracing::info!(
                 "Updating ACP agent command: {} -> {}",
@@ -4002,7 +4094,7 @@ impl App {
         self.agent_binding_generation = self.agent_binding_generation.wrapping_add(1);
         self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
         self.auth_recovery_state = AuthRecoveryState::Idle;
-        let new_cmd = self.build_agent_cmd(&request.agent_id);
+        let new_cmd = self.build_agent_cmd(&request.agent_id, &request.agent_source);
         if let Some(ref mut params) = self.deferred_acp {
             params.agent_cmd.clone_from(&new_cmd);
             params.agent_id = Some(request.agent_id.clone());
@@ -4028,6 +4120,8 @@ impl App {
     }
 
     fn reset_agent_scoped_state(&mut self) {
+        self.cancel_acp_authentication();
+        self.acp_auth_methods.clear();
         self.pending_acp_start = false;
         self.reconnect_after_transport_retired = false;
         self.pending_agent_selection = None;
@@ -4203,18 +4297,26 @@ impl App {
         };
         let options = build_setup_options(&reason, current_status.as_ref());
         let title = reason.title().to_string();
-        let subtitle = if current_status
-            .as_ref()
-            .is_some_and(crate::agent_check::AgentStatus::can_auto_install)
-        {
-            t!(
-                "setup.subtitle.copilot_missing",
-                agent = &result.display_name
-            )
-            .into_owned()
-        } else {
-            t!("setup.subtitle.agent_missing", agent = &result.display_name).into_owned()
-        };
+        let subtitle =
+            if let crate::agent_source::AgentSource::Wsl { distro } = &self.current_agent_source {
+                t!(
+                    "setup.subtitle.wsl_agent_missing",
+                    agent = &result.display_name,
+                    distro = distro
+                )
+                .into_owned()
+            } else if current_status
+                .as_ref()
+                .is_some_and(crate::agent_check::AgentStatus::can_auto_install)
+            {
+                t!(
+                    "setup.subtitle.copilot_missing",
+                    agent = &result.display_name
+                )
+                .into_owned()
+            } else {
+                t!("setup.subtitle.agent_missing", agent = &result.display_name).into_owned()
+            };
         self.mode = AppMode::Setup;
         self.preflight_setup_active = true;
         self.setup = Some(SetupState {
@@ -4256,7 +4358,22 @@ impl App {
                 kind: SetupFailureKind::Connection,
                 message,
             },
-            options: vec![SetupOption::RetryConnection, SetupOption::ChooseAgentSource],
+            options: if !self.acp_auth_methods.is_empty()
+                && (matches!(
+                    profile.acp_auth_flow,
+                    crate::agent_registry::AcpAuthFlow::InProtocol
+                ) || self.current_agent_id.starts_with("custom:"))
+            {
+                vec![
+                    SetupOption::SignIn {
+                        agent_id: self.current_agent_id.clone(),
+                        display_name: profile.display_name.into(),
+                    },
+                    SetupOption::ChooseAgentSource,
+                ]
+            } else {
+                vec![SetupOption::RetryConnection, SetupOption::ChooseAgentSource]
+            },
             title: reason.title(),
             subtitle: t!(
                 "setup.subtitle.connection_failed",
@@ -4276,10 +4393,202 @@ impl App {
     /// leak into the checking view, which treats a non-empty status as live
     /// device-flow progress and would otherwise render a phantom "code copied".
     fn begin_auth_checking(&mut self) {
+        self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
         if let Some(ref mut auth) = self.auth {
             auth.checking = true;
             auth.status_message.clear();
         }
+    }
+
+    fn cancel_acp_authentication(&mut self) {
+        if let Some(pending) = self.pending_acp_authentication.take() {
+            pending.attempt.cancelled.cancel();
+        }
+    }
+
+    pub(crate) fn acp_authentication_pending(&self) -> bool {
+        self.pending_acp_authentication
+            .as_ref()
+            .is_some_and(|pending| {
+                pending.agent_id == self.current_agent_id
+                    && pending.source == self.current_agent_source
+                    && !pending.attempt.cancelled.is_cancelled()
+            })
+    }
+
+    pub(crate) fn acp_authentication_browser_url(&self) -> Option<&str> {
+        self.pending_acp_authentication
+            .as_ref()
+            .filter(|_| self.acp_authentication_pending())
+            .and_then(|pending| pending.browser_url.as_deref())
+    }
+
+    pub(crate) fn acp_authentication_browser_feedback(&self) -> Option<(String, bool)> {
+        let feedback = self
+            .pending_acp_authentication
+            .as_ref()
+            .filter(|_| self.acp_authentication_pending())?
+            .browser_feedback?;
+        Some(match feedback {
+            AcpAuthenticationBrowserFeedback::OpenFailed => {
+                (t!("auth.browser_open_failed").into_owned(), true)
+            }
+            AcpAuthenticationBrowserFeedback::CopyFailed => {
+                (t!("auth.browser_copy_failed").into_owned(), true)
+            }
+            AcpAuthenticationBrowserFeedback::Copied => {
+                (t!("system.selection_copied").into_owned(), false)
+            }
+        })
+    }
+
+    fn handle_acp_authentication_browser(
+        &mut self,
+        attempt_id: uuid::Uuid,
+        url: String,
+        open_browser: impl FnOnce(&str) -> io::Result<()>,
+    ) {
+        if !self.acp_authentication_pending() {
+            return;
+        }
+        let Some(pending) = self.pending_acp_authentication.as_mut() else {
+            return;
+        };
+        if pending.attempt.attempt_id != attempt_id || pending.browser_url.is_some() {
+            return;
+        }
+        if !crate::protocol::acp::authentication::valid_browser_url(&url) {
+            tracing::warn!(target: "auth", "refusing an unsafe authentication browser link");
+            return;
+        }
+        pending.browser_url = Some(url);
+        if !pending.browser_opened {
+            self.open_acp_authentication_browser(open_browser);
+        }
+    }
+
+    fn open_acp_authentication_browser(
+        &mut self,
+        open_browser: impl FnOnce(&str) -> io::Result<()>,
+    ) {
+        if !self.acp_authentication_pending() {
+            return;
+        }
+        let Some(pending) = self.pending_acp_authentication.as_mut() else {
+            return;
+        };
+        let Some(url) = pending.browser_url.as_deref() else {
+            return;
+        };
+        match open_browser(url) {
+            Ok(()) => {
+                pending.browser_opened = true;
+                pending.browser_feedback = None;
+            }
+            Err(error) => {
+                pending.browser_feedback = Some(AcpAuthenticationBrowserFeedback::OpenFailed);
+                // Opener errors may contain the URL. Only persist the error category.
+                tracing::warn!(target: "auth", error_kind = ?error.kind(), "could not open authentication browser; manual sign-in remains available");
+            }
+        }
+    }
+
+    fn copy_acp_authentication_browser_url(
+        &mut self,
+        copy_text: impl FnOnce(&str) -> io::Result<()>,
+    ) {
+        if !self.acp_authentication_pending() {
+            return;
+        }
+        let Some(pending) = self.pending_acp_authentication.as_mut() else {
+            return;
+        };
+        let Some(url) = pending.browser_url.as_deref() else {
+            return;
+        };
+        pending.browser_feedback = Some(match copy_text(url) {
+            Ok(()) => AcpAuthenticationBrowserFeedback::Copied,
+            Err(error) => {
+                tracing::warn!(target: "clipboard", error_kind = ?error.kind(), "could not copy authentication browser link");
+                AcpAuthenticationBrowserFeedback::CopyFailed
+            }
+        });
+    }
+
+    fn handle_acp_authentication_browser_key(
+        &mut self,
+        key: KeyEvent,
+        open_browser: impl FnOnce(&str) -> io::Result<()>,
+        copy_text: impl FnOnce(&str) -> io::Result<()>,
+    ) -> bool {
+        if !matches!(key.modifiers, KeyModifiers::NONE | KeyModifiers::SHIFT)
+            || self.acp_authentication_browser_url().is_none()
+        {
+            return false;
+        }
+        match key.code {
+            KeyCode::Char('o') | KeyCode::Char('O') => {
+                self.open_acp_authentication_browser(open_browser);
+                true
+            }
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                self.copy_acp_authentication_browser_url(copy_text);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn show_acp_authentication_methods(&mut self) {
+        let profile = crate::agent_registry::lookup_profile_by_id(&self.current_agent_id);
+        let mut options: Vec<_> = self
+            .acp_auth_methods
+            .iter()
+            .filter(|method| !method.id().0.is_empty())
+            .map(|method| SetupOption::Authenticate {
+                method_id: method.id().to_string(),
+                display_name: format!("{} · {}", profile.display_name, method.name()),
+            })
+            .collect();
+        if options.is_empty() {
+            self.show_connection_failure_setup(t!("system.authentication_failed").into_owned());
+            return;
+        }
+        options.push(SetupOption::ChooseAgentSource);
+        if let Some(setup) = self.setup.as_mut() {
+            setup.options = options;
+            setup.selected_index = 0;
+            setup.phase = SetupPhase::Ready;
+            setup.title = t!("setup.title.sign_in").into_owned();
+            setup.subtitle =
+                t!("setup.subtitle.protocol_auth", agent = profile.display_name).into_owned();
+        }
+    }
+
+    fn start_acp_authentication(&mut self, method_id: String) {
+        if !self
+            .acp_auth_methods
+            .iter()
+            .any(|method| method.id().0.as_ref() == method_id)
+        {
+            tracing::warn!(target: "auth", "refusing an unadvertised authentication method");
+            return;
+        }
+        self.cancel_acp_authentication();
+        self.pending_acp_authentication = Some(PendingAcpAuthentication {
+            attempt: crate::protocol::acp::authentication::AcpAuthenticationAttempt {
+                attempt_id: uuid::Uuid::new_v4(),
+                method_id: agent_client_protocol::schema::v1::AuthMethodId::new(method_id),
+                cancelled: tokio_util::sync::CancellationToken::new(),
+            },
+            agent_id: self.current_agent_id.clone(),
+            source: self.current_agent_source.clone(),
+            browser_opened: false,
+            browser_url: None,
+            browser_feedback: None,
+        });
+        let agent_id = self.current_agent_id.clone();
+        self.reconnect_confirmed_available_agent(&agent_id);
     }
 
     fn spawn_login(&self, agent_id: &str, login_command: &str) {
@@ -4287,36 +4596,24 @@ impl App {
             let tx = tx.clone();
             let cmd = login_command.to_string();
             let id = agent_id.to_string();
+            let source = self.current_agent_source.clone();
+            let login_source = source.clone();
+            let generation = self.auth_recovery_generation;
+            let enterprise_host = self
+                .auth
+                .as_ref()
+                .filter(|auth| auth.enterprise_mode)
+                .map(|auth| auth.enterprise_host.clone());
             tokio::task::spawn_local(async move {
                 let progress_tx = tx.clone();
                 let result = tokio::task::spawn_blocking(move || {
                     use std::io::BufRead;
 
-                    // Parse command into exe + args (e.g. "C:\path\copilot.exe login")
-                    // Handle quoted paths: "C:\path with spaces\copilot.exe" login
-                    let (exe, args) = if cmd.starts_with('"') {
-                        // Quoted path: find closing quote
-                        if let Some(end) = cmd[1..].find('"') {
-                            let exe = &cmd[1..end + 1];
-                            let rest = cmd[end + 2..].trim();
-                            (
-                                exe.to_string(),
-                                rest.split_whitespace()
-                                    .map(String::from)
-                                    .collect::<Vec<_>>(),
-                            )
-                        } else {
-                            (cmd.clone(), vec![])
-                        }
-                    } else {
-                        let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
-                        (
-                            parts[0].to_string(),
-                            parts
-                                .get(1)
-                                .map(|s| s.split_whitespace().map(String::from).collect())
-                                .unwrap_or_default(),
-                        )
+                    let invocation = match crate::agent_check::build_login_invocation(
+                        "copilot", &source, enterprise_host.as_deref(),
+                    ) {
+                        Ok(invocation) => invocation,
+                        Err(error) => return (false, Some(error)),
                     };
 
                     // The device-verification URL follows the (optional)
@@ -4324,8 +4621,8 @@ impl App {
                     let verify_url = device_verify_url(&cmd);
                     let verify_url_stderr = verify_url.clone();
 
-                    let mut child = match std::process::Command::new(&exe)
-                        .args(&args)
+                    let mut child = match std::process::Command::new(&invocation.program)
+                        .args(&invocation.args)
                         .stdout(std::process::Stdio::piped())
                         .stderr(std::process::Stdio::piped())
                         .stdin(std::process::Stdio::null())
@@ -4333,8 +4630,8 @@ impl App {
                     {
                         Ok(c) => c,
                         Err(e) => {
-                            tracing::warn!("spawn_login: failed to spawn '{}': {}", exe, e);
-                            return (false, None);
+                            tracing::warn!(target: "login", %e, "could not start source-bound login");
+                            return (false, Some(e.to_string()));
                         }
                     };
 
@@ -4344,6 +4641,7 @@ impl App {
                     let stderr = child.stderr.take();
 
                     let progress_tx2 = progress_tx.clone();
+                    let stderr_source = source.clone();
                     let stderr_handle = std::thread::spawn(move || {
                         let mut found_success = false;
                         let mut error_line: Option<String> = None;
@@ -4355,7 +4653,10 @@ impl App {
                                 if line.contains("enter code") {
                                     if let Some(code) = line.split("enter code ").nth(1) {
                                         let code = code.trim_end_matches('.');
-                                        let _ = progress_tx2.send(AppEvent::LoginProgress {
+                                        let _ = progress_tx2.send(AppEvent::SourceLoginProgress {
+                                            agent_id: "copilot".into(),
+                                            source: stderr_source.clone(),
+                                            generation,
                                             device_code: code.to_string(),
                                             verify_url: verify_url_stderr.clone(),
                                         });
@@ -4386,7 +4687,10 @@ impl App {
                             if line.contains("enter code") {
                                 if let Some(code) = line.split("enter code ").nth(1) {
                                     let code = code.trim_end_matches('.');
-                                    let _ = progress_tx.send(AppEvent::LoginProgress {
+                                    let _ = progress_tx.send(AppEvent::SourceLoginProgress {
+                                        agent_id: "copilot".into(),
+                                        source: source.clone(),
+                                        generation,
                                         device_code: code.to_string(),
                                         verify_url: verify_url.clone(),
                                     });
@@ -4453,7 +4757,9 @@ impl App {
                     "login: spawn_blocking returned, sending LoginComplete success={}",
                     success
                 );
-                let send_result = tx.send(AppEvent::LoginComplete {
+                let send_result = tx.send(AppEvent::SourceLoginComplete {
+                    source: login_source,
+                    generation,
                     agent_id: id,
                     success,
                     error,
@@ -4464,16 +4770,37 @@ impl App {
     }
 
     pub(crate) fn show_copilot_auth_screen(&mut self) {
+        let invocation =
+            crate::agent_check::build_login_invocation("copilot", &self.current_agent_source, None);
+        self.show_copilot_auth_screen_with_invocation(invocation);
+    }
+
+    fn show_copilot_auth_screen_with_invocation(
+        &mut self,
+        invocation: Result<crate::agent_check::LoginInvocation, String>,
+    ) {
+        self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
         let agent_id = "copilot";
         let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
         let (enterprise_mode, enterprise_host) = copilot_enterprise_prefill(agent_id);
         self.current_agent_id = agent_id.to_string();
         self.mode = AppMode::Auth;
         self.setup = None;
+        let login_command = match invocation {
+            Ok(invocation) => std::iter::once(invocation.program.as_str())
+                .chain(invocation.args.iter().map(String::as_str))
+                .map(crate::coordinator::quote_windows_commandline_arg)
+                .collect::<Vec<_>>()
+                .join(" "),
+            Err(error) => {
+                self.show_connection_failure_setup(error);
+                return;
+            }
+        };
         self.auth = Some(AuthState {
             agent_id: agent_id.to_string(),
             agent_name: profile.display_name.to_string(),
-            login_command: crate::agent_check::build_login_cmd(agent_id, None),
+            login_command,
             checking: false,
             status_message: String::new(),
             enterprise_mode,
@@ -4489,12 +4816,27 @@ impl App {
         let is_busy = self.setup.as_ref().is_some_and(SetupState::is_busy);
         tracing::debug!(target: "setup_key", code = ?key.code, is_busy, selected = ?self.setup.as_ref().map(|s| s.selected_index), options_count = ?self.setup.as_ref().map(|s| s.options.len()), "handle_setup_key");
 
+        if self.handle_acp_authentication_browser_key(
+            key,
+            open_url_in_browser,
+            crate::win32::copy_text_to_clipboard,
+        ) {
+            return;
+        }
+
         match key.code {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.cancel_acp_authentication();
                 self.should_quit = true;
             }
             KeyCode::Esc => {
-                self.should_quit = true;
+                if self.pending_acp_authentication.is_some() {
+                    self.cancel_acp_authentication();
+                    self.state = ConnectionState::Disconnected;
+                    self.show_acp_authentication_methods();
+                } else {
+                    self.should_quit = true;
+                }
             }
             _ if is_busy => {
                 return;
@@ -4561,12 +4903,11 @@ impl App {
                 if agent_id == "copilot" {
                     self.show_copilot_auth_screen();
                 } else {
-                    tracing::warn!(
-                        target: "setup_key",
-                        agent_id = %agent_id,
-                        "ignoring SignIn option for non-Copilot agent"
-                    );
+                    self.show_acp_authentication_methods();
                 }
+            }
+            SetupOption::Authenticate { method_id, .. } => {
+                self.start_acp_authentication(method_id);
             }
             SetupOption::Recheck | SetupOption::Retry | SetupOption::RetryConnection => {
                 // Re-run preflight detection and try to reconnect
@@ -5004,6 +5345,10 @@ impl App {
             AppEvent::Resize(_, _) => "resize",
             AppEvent::FocusChanged(_) => "focus_changed",
             AppEvent::ConnectionStage(_) => "connection_stage",
+            AppEvent::AcpAuthenticationMethods { .. } => "acp_authentication_methods",
+            AppEvent::AcpAuthenticationBrowser { .. } => "acp_authentication_browser",
+            AppEvent::SourceLoginProgress { .. } => "source_login_progress",
+            AppEvent::SourceLoginComplete { .. } => "source_login_complete",
             AppEvent::CloudModelsAvailable(_) => "cloud_models_available",
             AppEvent::AgentConnected { .. } => "agent_connected",
             AppEvent::AgentReconnectReady(_) => "agent_reconnect_ready",
@@ -7157,7 +7502,7 @@ impl App {
 /// Linux path (starts with `/`). A Windows path, empty cwd, or a path
 /// containing a double-quote (which would break the quoted `--cd "…"`
 /// argument) yields `None`, so WSL falls back to the distro's `$HOME`.
-fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
+pub(crate) fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
     let s = cwd.to_string_lossy();
     let s = s.trim();
     (s.starts_with('/') && !s.contains('"')).then(|| s.to_string())
@@ -7281,7 +7626,8 @@ fn resolve_agent_cmd(cmd: &str) -> String {
 
     // Use agent_check::find_exe which reads fresh PATH from registry
     let profile = crate::agent_registry::lookup_profile(exe);
-    if let Some(full_path) = crate::agent_check::find_exe(profile.id) {
+    if let Some(full_path) = crate::agent_check::find_acp_exe(profile.id) {
+        let full_path = crate::coordinator::join_windows_commandline(&[full_path.as_str()]);
         return if rest.is_empty() {
             full_path
         } else {

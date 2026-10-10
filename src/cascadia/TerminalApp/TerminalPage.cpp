@@ -267,10 +267,18 @@ namespace winrt::TerminalApp::implementation
     {
         InitializeComponent();
         _WindowProperties.PropertyChanged({ get_weak(), &TerminalPage::_windowPropertyChanged });
+        _keepRunningTabsChangedToken = winrt::get_self<implementation::ContentManager>(_manager)->KeepRunningTabsChanged(
+            [weakThis{ get_weak() }](auto&&, auto&&) {
+                if (const auto page = weakThis.get())
+                {
+                    page->_UpdateSidebarHistoryCurrentSession();
+                }
+            });
     }
 
     TerminalPage::~TerminalPage()
     {
+        winrt::get_self<implementation::ContentManager>(_manager)->KeepRunningTabsChanged(_keepRunningTabsChangedToken);
         _sidebarIntroductionShuttingDown = true;
         _ReleaseSidebarIntroduction(false);
         if (_sidebarIntroductionTimer)
@@ -867,7 +875,7 @@ namespace winrt::TerminalApp::implementation
         // window will be, so they can subdivide that space.
         //
         // _OnFirstLayout will remove this handler so it doesn't get called more than once.
-        _layoutUpdatedRevoker = _tabContent.LayoutUpdated(winrt::auto_revoke, { this, &TerminalPage::_OnFirstLayout });
+        _layoutUpdatedRevoker = _tabContent.LayoutUpdated(winrt::auto_revoke, { get_weak(), &TerminalPage::_OnFirstLayout });
 
         _isAlwaysOnTop = _settings.GlobalSettings().AlwaysOnTop();
         _showTabsFullscreen = _settings.GlobalSettings().ShowTabsFullscreen();
@@ -1671,7 +1679,8 @@ namespace winrt::TerminalApp::implementation
     static winrt::hstring _ResolveAgentCliPathForId(
         const winrt::hstring& agentId,
         const winrt::hstring& model,
-        const winrt::hstring& customCommand)
+        const winrt::hstring& customCommand,
+        const bool runsInWsl = false)
     {
         if (agentId.empty())
         {
@@ -1692,7 +1701,8 @@ namespace winrt::TerminalApp::implementation
         return winrt::hstring{
             ::Microsoft::Terminal::AcpModels::BuildAgentCommandLine(
                 std::wstring_view{ agentId },
-                std::wstring_view{ model })
+                std::wstring_view{ model },
+                runsInWsl)
         };
     }
 
@@ -2423,14 +2433,7 @@ namespace winrt::TerminalApp::implementation
         if (current.agentSessionManagementEnabled &&
             previous.acpAgent != current.acpAgent)
         {
-            const auto builtIn = std::ranges::any_of(
-                ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents,
-                [&](const auto& agent) {
-                    return ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(
-                        agent.id,
-                        current.acpAgent);
-                });
-            if (builtIn)
+            if (::Microsoft::Terminal::Settings::Model::AgentRegistry::SupportsSessionHooks(current.acpAgent))
             {
                 return AgentHooksReconciliationScope::SelectedAgent;
             }
@@ -2613,7 +2616,8 @@ namespace winrt::TerminalApp::implementation
             agentCliPath = _ResolveAgentCliPathForId(
                 winrt::hstring{ binding.agentId },
                 winrt::hstring{ binding.acpModel },
-                winrt::hstring{ request.agentCustomCommandOverride });
+                winrt::hstring{ request.agentCustomCommandOverride },
+                binding.agentSource == L"wsl");
             validSource =
                 binding.agentSource == L"host" ||
                 (binding.agentSource == L"wsl" && !binding.agentWslDistro.empty());
@@ -2629,14 +2633,15 @@ namespace winrt::TerminalApp::implementation
 
                 const auto allowedAgents = Registry::FilteredAcpAgents();
                 const auto knownAndAllowed = std::ranges::any_of(allowedAgents, [&](const auto& agent) {
-                    return agent.id == binding.agentId;
+                    return Registry::AgentIdEquals(agent.id, binding.agentId);
                 });
                 if (knownAndAllowed)
                 {
                     agentCliPath = _ResolveAgentCliPathForId(
                         winrt::hstring{ binding.agentId },
                         {},
-                        {});
+                        {},
+                        binding.agentSource == L"wsl");
                 }
 
                 if (backend->source == Backend::AgentPaneBackendSource::Wsl)
@@ -3961,7 +3966,7 @@ namespace winrt::TerminalApp::implementation
             {
                 effectiveModel = globals.AcpModel();
             }
-            agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, tab->AgentCustomCommandOverride());
+            agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, tab->AgentCustomCommandOverride(), effectiveAgentSource == L"wsl");
         }
         else if (sourceProfile)
         {
@@ -3982,11 +3987,11 @@ namespace winrt::TerminalApp::implementation
                     allowedAgents.begin(),
                     allowedAgents.end(),
                     [&](const auto& agent) {
-                        return agent.id == std::wstring_view{ effectiveAgentId };
+                        return Registry::AgentIdEquals(agent.id, std::wstring_view{ effectiveAgentId });
                     });
                 if (knownAndAllowed)
                 {
-                    agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, {});
+                    agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, {}, effectiveAgentSource == L"wsl");
                 }
                 if (backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl)
                 {
@@ -5765,7 +5770,7 @@ namespace winrt::TerminalApp::implementation
                         (self->_tabContent.ActualHeight() <= 0 && self->ActualHeight() <= 0))
                     {
                         self->_restoringStartupKeptGroups = false;
-                        self->_layoutUpdatedRevoker = self->_tabContent.LayoutUpdated(winrt::auto_revoke, { self.get(), &TerminalPage::_OnFirstLayout });
+                        self->_layoutUpdatedRevoker = self->_tabContent.LayoutUpdated(winrt::auto_revoke, { self->get_weak(), &TerminalPage::_OnFirstLayout });
                         return;
                     }
                     self->_layoutUpdatedRevoker.revoke();
@@ -6605,6 +6610,13 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const auto strip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        const auto manager = winrt::get_self<implementation::ContentManager>(_manager);
+        strip->UpdateHistoryKeepRunning([&](const winrt::hstring& paneSessionId) {
+            const auto paneId = _TryParsePaneSessionId(winrt::to_string(paneSessionId));
+            return paneId && manager->IsPaneKeepRunning(*paneId);
+        });
+
         TerminalApp::TabStripHistoryItem current{ nullptr };
         MUX::Controls::TabViewItem tabItem{ nullptr };
         if (const auto tab = _GetFocusedTabImpl())
@@ -6632,7 +6644,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
-        winrt::get_self<implementation::TabStrip>(_tabStrip)->SetCurrentHistoryItem(current, tabItem);
+        strip->SetCurrentHistoryItem(current, tabItem);
     }
 
     void TerminalPage::_StartSidebarHistoryRefreshTimer()
@@ -10402,9 +10414,10 @@ namespace winrt::TerminalApp::implementation
         targetTab->SetAgentChipOverride(sessionId);
     }
 
+    // Resume requests preserve their ACP owner, execution source, and caller.
     // Inbound event from WTA: {method:"resume_in_new_agent_tab",
     //                          params:{window_id, session_id, cwd, agent_id,
-    //                                  agent_model, agent_source, wsl_distro}}.
+    //                                  agent_model, agent_source, wsl_distro, tab_id?}}.
     // Sent by the session view's Enter handler on a Historical/Ended row
     // (Plan-C ResumeInAgentPane path). We:
     //   1. Reserve the exact Agent provider and load request before creating
@@ -10424,12 +10437,6 @@ namespace winrt::TerminalApp::implementation
     // the new helper's pipe attach hadn't completed yet when the
     // broadcast fired.
     //
-    // The shared-agent-pane model means we can't actually have two
-    // independent ACP connections on one window. If the running WTA was
-    // launched with a CLI that doesn't match the historical session's
-    // origin, `session/load` will return an error that surfaces as an
-    // AgentError in the new tab's chat view (best-effort by design — see
-    // plan.md "Constraints established with user").
     void TerminalPage::OnResumeInNewAgentTabRequested(hstring eventJson)
     {
         _agentPaneLog("OnResumeInNewAgentTabRequested: received from wta");
@@ -10450,6 +10457,19 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto& params = evt["params"];
+        for (const auto* key : { "session_id", "cwd", "agent_id", "agent_model", "agent_source", "wsl_distro", "tab_id", "window_id" })
+        {
+            if (params.isMember(key) && !params[key].isString())
+            {
+                _agentPaneLog("OnResumeInNewAgentTabRequested: non-string field " + std::string{ key });
+                return;
+            }
+        }
+        if (params.isMember("tab_id") &&
+            !_FindTabByStableId(winrt::to_hstring(params["tab_id"].asString())))
+        {
+            return;
+        }
         const std::string sessionIdStr = params.get("session_id", "").asString();
         const std::string cwdStr = params.get("cwd", "").asString();
         const std::string windowIdStr = params.get("window_id", "").asString();
@@ -10478,27 +10498,63 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Reserve the next tab before constructing it so `_InitializeTab`
-        // suppresses ordinary pre-warm and binds the exact resume provider
-        // before its deferred initialization callback can run.
+        namespace Model = ::Microsoft::Terminal::Settings::Model;
+        auto backend = Model::AgentPaneBackend::Parse(
+            agentSourceStr == "wsl" ?
+                Model::AgentPaneBackend::Wsl(winrt::to_hstring(agentWslDistroStr), winrt::to_hstring(agentIdStr)) :
+                Model::AgentPaneBackend::Host(winrt::to_hstring(agentIdStr)));
+        if (!backend)
+        {
+            _agentPaneLog("OnResumeInNewAgentTabRequested: invalid agent backend");
+            return;
+        }
+        const auto allowed = Model::AgentRegistry::FilteredAcpAgents();
+        const auto agent = std::find_if(allowed.begin(), allowed.end(), [&](const auto& candidate) {
+            return Model::AgentRegistry::AgentIdEquals(candidate.id, backend->agentId);
+        });
+        if (agent == allowed.end())
+        {
+            _agentPaneLog("OnResumeInNewAgentTabRequested: unknown or policy-blocked agent");
+            return;
+        }
+        backend->agentId = agent->id;
+
+        // Step 1: create a new tab.
+        Settings::Model::NewTerminalArgs newTerminalArgs{};
+        if (backend->source == Model::AgentPaneBackendSource::Wsl)
+        {
+            if (!cwdStr.empty() && cwdStr.front() != '/')
+            {
+                _agentPaneLog("OnResumeInNewAgentTabRequested: WSL cwd must be an absolute Linux path");
+                return;
+            }
+            namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
+            std::wstring command{ L"wsl.exe -d " };
+            Restore::AppendArgument(command, backend->wslDistro);
+            if (!cwdStr.empty())
+            {
+                Restore::AppendFlag(command, L"--cd", winrt::to_hstring(cwdStr));
+            }
+            command.append(L" --exec bash -l");
+            newTerminalArgs.Commandline(winrt::hstring{ command });
+        }
+        else if (!cwdStr.empty())
+        {
+            newTerminalArgs.StartingDirectory(winrt::to_hstring(cwdStr));
+        }
+
+        // Reserve the provider before `_InitializeTab` queues ordinary pre-warm.
         _pendingNewTabLoadSession = _PendingLoadSession{
             sessionIdStr,
             cwdStr,
-            winrt::to_hstring(agentIdStr),
+            winrt::hstring{ backend->agentId },
             winrt::to_hstring(agentModelStr),
             winrt::to_hstring(agentSourceStr),
-            winrt::to_hstring(agentWslDistroStr),
+            winrt::hstring{ backend->wslDistro },
         };
         const auto clearReservation = wil::scope_exit([&]() {
             _pendingNewTabLoadSession.reset();
         });
-
-        // Step 1: create a new tab.
-        Settings::Model::NewTerminalArgs newTerminalArgs{};
-        if (!cwdStr.empty())
-        {
-            newTerminalArgs.StartingDirectory(winrt::to_hstring(cwdStr));
-        }
         const auto hr = _OpenNewTab(newTerminalArgs, /*openInBackground*/ false);
         if (FAILED(hr))
         {
@@ -10580,6 +10636,12 @@ namespace winrt::TerminalApp::implementation
             params["agent_session_id"] = winrt::to_string(it->second.sessionId);
             params["agent"] = winrt::to_string(it->second.agent);
             params["cwd"] = winrt::to_string(it->second.cwd);
+            if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
+                    std::wstring_view{ it->second.backend });
+                backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl)
+            {
+                params["wsl_distro"] = winrt::to_string(winrt::hstring{ backend->wslDistro });
+            }
             params["tab_id"] = winrt::to_string(tab->StableId());
             params["window_id"] = std::to_string(_WindowProperties.WindowId());
             it = _pendingRestoredSessionBindings.erase(it);
@@ -10834,6 +10896,55 @@ namespace winrt::TerminalApp::implementation
                                                           _paneAgentSessions.contains(*paneSessionId);
                         if (!preserveCopilotOwner)
                         {
+                            namespace Backend = ::Microsoft::Terminal::Settings::Model;
+                            const auto ownerPane = rootPane->FindPaneBySessionId(*paneSessionId);
+                            const auto control = ownerPane ? ownerPane->GetTerminalControl() : nullptr;
+                            winrt::hstring bindingBackend;
+                            if (params.isMember("wsl_distro"))
+                            {
+                                if (!params["wsl_distro"].isString() || params["wsl_distro"].asString().empty())
+                                {
+                                    _agentPaneLog("OnPaneAgentSessionChanged: invalid WSL distro");
+                                    return;
+                                }
+                                bindingBackend = winrt::hstring{ Backend::AgentPaneBackend::Wsl(
+                                    winrt::to_hstring(params["wsl_distro"].asString()),
+                                    winrt::to_hstring(agent)) };
+                            }
+                            if (params.isMember("agent_backend"))
+                            {
+                                if (!params["agent_backend"].isString())
+                                {
+                                    _agentPaneLog("OnPaneAgentSessionChanged: invalid agent backend type");
+                                    return;
+                                }
+                                const auto parsed = Backend::AgentPaneBackend::Parse(
+                                    std::wstring_view{ winrt::to_hstring(params["agent_backend"].asString()) });
+                                if (!parsed || !Backend::AgentRegistry::AgentIdEquals(parsed->agentId, winrt::to_hstring(agent)))
+                                {
+                                    _agentPaneLog("OnPaneAgentSessionChanged: backend does not match the CLI owner");
+                                    return;
+                                }
+                                bindingBackend = winrt::to_hstring(params["agent_backend"].asString());
+                            }
+                            const auto shellName = control ? control.ShellName() : winrt::hstring{};
+                            const std::wstring_view shell{ shellName };
+                            if (shell.starts_with(L"wsl:"))
+                            {
+                                bindingBackend = winrt::hstring{ Backend::AgentPaneBackend::Wsl(
+                                    shell.substr(4), std::wstring_view{ winrt::to_hstring(agent) }) };
+                            }
+                            const auto& payload = params["payload"];
+                            const auto cwd = params.isMember("cwd") ? params["cwd"] :
+                                             payload.isObject()     ? payload.get("cwd", Json::Value{}) :
+                                                                      Json::Value{};
+                            const winrt::hstring bindingCwd = cwd.isString() ? winrt::to_hstring(cwd.asString()) : winrt::hstring{};
+                            if (!bindingBackend.empty())
+                            {
+                                resumeCommandline = winrt::to_string(winrt::hstring{
+                                    ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(
+                                        bindingBackend, winrt::to_hstring(agentSessionId), bindingCwd) });
+                            }
                             if (sessionStarted)
                             {
                                 _pendingRestoredSessionBindings.erase(*paneSessionId);
@@ -10843,7 +10954,9 @@ namespace winrt::TerminalApp::implementation
                                 _PaneAgentSession{
                                     winrt::to_hstring(agentSessionId),
                                     winrt::to_hstring(agent),
-                                    winrt::to_hstring(resumeCommandline) });
+                                    winrt::to_hstring(resumeCommandline),
+                                    bindingBackend,
+                                    bindingCwd });
                             _agentPaneLog("OnPaneAgentSessionChanged: bound pane " + paneId + " to session " + agentSessionId);
                         }
                         else
@@ -12089,6 +12202,21 @@ namespace winrt::TerminalApp::implementation
     {
         auto weakTab{ hostingTab.get_weak() };
         auto weakThis{ get_weak() };
+        hostingTab.TabStatus().PropertyChanged([weakTab, weakThis](auto&&, const WUX::Data::PropertyChangedEventArgs& args) {
+            if (args.PropertyName() == L"IsKeepRunning")
+            {
+                const auto page = weakThis.get();
+                const auto tab = weakTab.get();
+                if (page && tab)
+                {
+                    winrt::get_self<implementation::ContentManager>(page->_manager)->UpdateKeepRunningTab(*tab);
+                }
+            }
+        });
+        if (hostingTab.KeepRunning())
+        {
+            winrt::get_self<implementation::ContentManager>(_manager)->UpdateKeepRunningTab(hostingTab);
+        }
         // PropertyChanged is the generic mechanism by which the Tab
         // communicates changes to any of its observable properties, including
         // the Title
@@ -14973,10 +15101,19 @@ namespace winrt::TerminalApp::implementation
             {
                 _paneAgentSessions.insert_or_assign(
                     sessionId,
-                    _PaneAgentSession{ winrt::hstring{ target.sessionId }, winrt::hstring{ target.agent }, newTerminalArgs.Commandline() });
+                    _PaneAgentSession{
+                        winrt::hstring{ target.sessionId },
+                        winrt::hstring{ target.agent },
+                        newTerminalArgs.Commandline(),
+                        winrt::hstring{ target.backend },
+                        winrt::hstring{ target.cwd } });
                 _pendingRestoredSessionBindings.insert_or_assign(
                     sessionId,
-                    _PendingRestoredSessionBinding{ winrt::hstring{ target.sessionId }, winrt::hstring{ target.agent }, newTerminalArgs.StartingDirectory() });
+                    _PendingRestoredSessionBinding{
+                        winrt::hstring{ target.sessionId },
+                        winrt::hstring{ target.agent },
+                        target.cwd.empty() ? newTerminalArgs.StartingDirectory() : winrt::hstring{ target.cwd },
+                        winrt::hstring{ target.backend } });
             }
         }
 

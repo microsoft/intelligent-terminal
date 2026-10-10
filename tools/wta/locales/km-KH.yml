@@ -312,3 +312,11 @@ system.config_update_failed: "បរាជ័យក្នុងការធ្�
 system.yolo_disable_pending: "អ្នកផ្តល់សេវាភ្នាក់ងារ AI មិនទាន់បានបញ្ជាក់ថាវគ្គស្ថិតក្នុងស្ថានភាពគ្មានសិទ្ធិពិសេសតាមតម្រូវការនៅឡើយទេ"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: ការអនុម័តដោយស្វ័យប្រវត្តិត្រូវបានបិទដោយគោលការណ៍របស់ស្ថាប័នអ្នក។"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "មិនស្គាល់ម៉ូដែល %{model} — វាយ /model ដើម្បីមើលបញ្ជីដែលមាន។"  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "AI អេជេន្ត់របស់អ្នក \"%{agent}\" ត្រូវការផ្ទៀងផ្ទាត់។ សូមជ្រើសរើសវិធីចូល ដើម្បីបន្តនៅទីនេះ។"  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "សូមបញ្ចប់ការចូលក្នុងកម្មវិធីរុករករបស់អ្នក។ ចុច Esc ដើម្បីបោះបង់ការរង់ចាំ។"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "កម្មវិធីរុករកមិនបានបើកមែនទេ? សូមប្រើតំណចូលនេះ។ O: បើក · Y: ចម្លង។"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "មិនអាចបើកកម្មវិធីរុករកបានទេ។ សូមបើកតំណចូលដោយខ្លួនឯង។"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "មិនអាចចម្លងតំណចូលបានទេ។ សូមជ្រើសរើស និងចម្លងវាដោយខ្លួនឯង។"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "ការចូលមិនបានបញ្ចប់ទាន់ពេលទេ។ សូមព្យាយាមម្តងទៀត នៅពេលអ្នករួចរាល់។"  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "យើងរកមិនឃើញ \"%{agent}\" ក្នុងបរិស្ថានចូលរបស់ %{distro} ទេ។ សូមពិនិត្យការដំឡើង PATH និងទម្រង់សែលរបស់អ្នកប្រើ Linux នេះ រួចព្យាយាមម្តងទៀត។"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

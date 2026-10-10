@@ -298,3 +298,11 @@ system.config_update_failed: "%{option} अपडेट करण्यात �
 system.yolo_disable_pending: "एजंट प्रदात्याने विशेषाधिकार मोड बंद असलेली आवश्यक सत्र स्थिती अद्याप मान्य केलेली नाही"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: तुमच्या संस्थेच्या धोरणामुळे स्वयंचलित मंजुरी अक्षम केली आहे."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "अज्ञात मॉडेल %{model} — उपलब्ध यादी पाहण्यासाठी /model टाइप करा."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "आपल्या एजंट \"%{agent}\" ला प्रमाणीकरण आवश्यक आहे. येथे पुढे जाण्यासाठी साइन इन करण्याची पद्धत निवडा."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "तुमच्या ब्राउझरमध्ये साइन इन पूर्ण करा. प्रतीक्षा रद्द करण्यासाठी Esc दाबा."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ब्राउझर उघडला नाही? साइन इन करण्यासाठी ही लिंक वापरा. O: उघडा · Y: कॉपी करा."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ब्राउझर उघडता आला नाही. साइन इन करण्याची लिंक स्वतः उघडा."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "साइन इन करण्याची लिंक कॉपी करता आली नाही. ती निवडून स्वतः कॉपी करा."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "साइन इन वेळेत पूर्ण झाले नाही. तुम्ही तयार असाल तेव्हा पुन्हा प्रयत्न करा."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} च्या लॉगिन वातावरणात \"%{agent}\" सापडले नाही. या Linux वापरकर्त्याचे इन्स्टॉलेशन, PATH आणि शेल प्रोफाइल तपासा, नंतर पुन्हा प्रयत्न करा."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

@@ -30,6 +30,14 @@ also truncates before the indicator column.
 The menu icons and title indicator use Segoe Fluent Icons with Segoe MDL2 Assets as a fallback,
 not a bitmap asset.
 
+**Recent agent sessions** also shows the RepeatAll indicator for a session
+whose pane belongs to a Keep running tab, including tabs in another window or
+retained in the background. The indicator follows the tab's runtime choice
+without resetting the session list or changing its restore/switch-window action.
+The indicator represents the tab's choice, not the agent's activity status:
+ending the agent session does not remove it while its pane remains in that tab.
+Sessions without a pane in a Keep running tab do not show this indicator.
+
 **Pin tab** is a separate context-menu action in both tab layouts. It keeps a
 terminal tab before unpinned tabs and can be undone with **Unpin tab**. Pinned
 tabs still close normally, including with bulk close actions; pinning does not
@@ -52,6 +60,9 @@ the mutable tab index or a pane's `WT_SESSION`:
 The choice belongs to the tab, not individual panes. New splits are included
 automatically. Moving a whole tab carries its choice; moving one pane does not
 opt its destination tab in. Agent CLI start/end events do not change the choice.
+After a pane move commits, recent-session indicators immediately reflect the
+receiving tab's choice, including when moving the source tab's last pane removes
+that tab. Moving a whole tab or retaining it in the background preserves its choice.
 
 ## Closing and restoring
 
@@ -99,6 +110,8 @@ windows. Restoration waits for host registration and a nonzero content layout,
 then runs on a later UI turn. A failed tab remains available in the tray and
 does not close the receiver before other tabs in the batch can restore.
 Explicit profile launches keep their normal new-tab behavior.
+Initial and re-armed layout callbacks hold a weak page reference, so a queued
+layout notification cannot dereference a page that was destroyed before delivery.
 
 Startup-layout restoration remains independent of background retention. With
 **Restore window layout** or **Restore window layout and content** enabled,
@@ -170,3 +183,6 @@ Focused coverage lives in `TabTests::KeepRunning*` in
 `src/cascadia/LocalTests_TerminalApp/TabTests.cpp`. The shared history/session
 focus boundary also has the `Feature.KeepRunningFocus` ItE2E suite, covering
 real UI detachment and protocol reattachment without launching a second session.
+Native fixtures initialize mock controls through actual XAML layout before parking
+them; UI coverage activates the selected package and checks retained pane/process
+identity rather than relying on tab-title text as a readiness signal.

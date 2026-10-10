@@ -298,3 +298,11 @@ system.config_update_failed: "%{option} अद्ययावत करपाक
 system.yolo_disable_pending: "एजंट प्रदात्यान विशेषाधिकार मोड बंद आशिल्ली गरजेची सत्र स्थिती अजून मान्य केल्ली ना"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: तुमच्या संघटनेच्या धोरणान स्वयंचलित मान्यताय बंद केल्या आसात."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "अज्ञात मॉडेल %{model} — उपलब्ध वळेरी पळोवपाक /model टायप करात."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "तुमच्या एजंट \"%{agent}\" खातीर प्रमाणीकरण जाय. हांगा फुडें वचपाक साइन इन करपाची पद्दत वेंचात."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "तुमच्या ब्राउझरांत साइन इन पुराय करात. वाट पळोवप रद्द करपाक Esc दामात."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ब्राउझर उगडलो ना? साइन इन करपाखातीर ही लिंक वापरात. O: उगडात · Y: प्रत काडात."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ब्राउझर उगडपाक शक्य जालें ना. साइन इन करपाची लिंक तुमीच उगडात."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "साइन इन करपाच्या लिंकाची प्रत काडपाक शक्य जालें ना. ती वेंचून तुमीच प्रत काडात."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "साइन इन वेळार पुराय जालें ना. तुमी तयार जातकच परत यत्न करात."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} च्या लॉगिन वातावरणांत \"%{agent}\" मेळ्ळो ना. ह्या Linux वापरप्याचें इन्स्टॉलेशन, PATH आनी शेल प्रोफायल तपासात, मागीर परत यत्न करात."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

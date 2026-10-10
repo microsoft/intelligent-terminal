@@ -298,3 +298,11 @@ system.config_update_failed: "%{option} ಅಪ್‌ಡೇಟ್ ಮಾಡಲು
 system.yolo_disable_pending: "ಏಜೆಂಟ್ ಪೂರೈಕೆದಾರರು ವಿಶೇಷಾಧಿಕಾರ ಮೋಡ್ ನಿಷ್ಕ್ರಿಯವಾಗಿರುವ ಅಗತ್ಯ ಸೆಷನ್ ಸ್ಥಿತಿಯನ್ನು ಇನ್ನೂ ದೃಢೀಕರಿಸಿಲ್ಲ"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: ನಿಮ್ಮ ಸಂಸ್ಥೆಯ ನೀತಿಯ ಪ್ರಕಾರ ಸ್ವಯಂಚಾಲಿತ ಅನುಮೋದನೆಯನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "ಅಪರಿಚಿತ ಮಾದರಿ %{model} — ಲಭ್ಯವಿರುವ ಪಟ್ಟಿಯನ್ನು ನೋಡಲು /model ಟೈಪ್ ಮಾಡಿ."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "ನಿಮ್ಮ ಏಜೆಂಟ್ \"%{agent}\" ಗೆ ದೃಢೀಕರಣ ಅಗತ್ಯವಿದೆ. ಇಲ್ಲಿ ಮುಂದುವರಿಯಲು ಸೈನ್ ಇನ್ ವಿಧಾನವನ್ನು ಆಯ್ಕೆಮಾಡಿ."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "ನಿಮ್ಮ ಬ್ರೌಸರ್‌ನಲ್ಲಿ ಸೈನ್ ಇನ್ ಪೂರ್ಣಗೊಳಿಸಿ. ಕಾಯುವುದನ್ನು ರದ್ದುಗೊಳಿಸಲು Esc ಒತ್ತಿ."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ಬ್ರೌಸರ್ ತೆರೆಯಲಿಲ್ಲವೇ? ಸೈನ್ ಇನ್ ಮಾಡಲು ಈ ಲಿಂಕ್ ಬಳಸಿ. O: ತೆರೆಯಿರಿ · Y: ನಕಲಿಸಿ."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ಬ್ರೌಸರ್ ತೆರೆಯಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ಸೈನ್ ಇನ್ ಲಿಂಕ್ ಅನ್ನು ನೀವೇ ತೆರೆಯಿರಿ."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "ಸೈನ್ ಇನ್ ಲಿಂಕ್ ನಕಲಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ಅದನ್ನು ಆಯ್ಕೆಮಾಡಿ ನೀವೇ ನಕಲಿಸಿ."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "ಸೈನ್ ಇನ್ ಸಮಯಕ್ಕೆ ಪೂರ್ಣಗೊಳ್ಳಲಿಲ್ಲ. ನೀವು ಸಿದ್ಧರಾದಾಗ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} ಲಾಗಿನ್ ಪರಿಸರದಲ್ಲಿ \"%{agent}\" ಕಂಡುಬಂದಿಲ್ಲ. ಈ Linux ಬಳಕೆದಾರರ ಸ್ಥಾಪನೆ, PATH ಮತ್ತು ಶೆಲ್ ಪ್ರೊಫೈಲ್ ಪರಿಶೀಲಿಸಿ, ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

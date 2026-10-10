@@ -292,3 +292,11 @@ system.config_update_failed: "更新 %{option} 失败：%{error}"
 system.yolo_disable_pending: "智能体提供商尚未确认所需的非特权会话状态"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: 你所在组织的策略已禁用自动批准。"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "未知模型 %{model} — 键入 /model 查看可用列表。"  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "您的智能体 \"%{agent}\" 需要身份验证。请选择一种登录方式以在此处继续。"  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "请在浏览器中完成登录。按 Esc 取消等待。"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "浏览器未打开？请使用此登录链接。O: 打开 · Y: 复制。"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "无法打开浏览器。请手动打开登录链接。"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "无法复制登录链接。请选中该链接并手动复制。"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "登录未在规定时间内完成。准备好后请重试。"  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "未能在 %{distro} 的登录环境中找到 \"%{agent}\"。请检查此 Linux 用户的安装情况、PATH 和 shell 配置文件，然后重试。"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

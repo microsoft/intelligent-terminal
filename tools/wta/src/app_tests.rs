@@ -960,7 +960,7 @@ fn restored_session_birth_is_forwarded_only_by_the_owning_helper() {
             }),
         });
         if expected {
-            let crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event } = rx
+            let crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event, .. } = rx
                 .try_recv()
                 .expect("owning helper forwards the restored birth")
             else {
@@ -3755,7 +3755,9 @@ fn born_bound_registration_uses_current_master_request_sender() {
         .try_recv()
         .expect("registration should use the replacement sender")
     {
-        crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event: actual } => {
+        crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+            event: actual, ..
+        } => {
             assert_eq!(actual, event)
         }
         other => panic!("expected SessionBornBound, got {other:?}"),
@@ -3801,6 +3803,7 @@ fn restored_shell_agent_session_registers_as_born_bound() {
                 pane_session_id,
                 ..
             },
+            ..
         }) if key == agent_session_id && pane_session_id == pane_id
     ));
 }
@@ -10082,7 +10085,13 @@ if exist "%~dp0attempted" goto ready
 echo attempted>"%~dp0attempted"
 exit /b 1
 :ready
-echo {"_wtcli":"listener_ready","token":"%~7"}
+if "%~1"=="" exit /b 2
+if "%~1"=="--ready-token" goto token
+shift
+goto ready
+:token
+shift
+echo {"_wtcli":"listener_ready","token":"%~1"}
 echo {"method":"vt_sequence","params":{"pane_id":"shell-after-recovery","tab_id":"test-tab","sequence":"osc:133;D;1"}}
 exit /b 0
 "#.replace('\n', "\r\n")).unwrap();
@@ -13125,6 +13134,360 @@ fn diagnostic_setup_options_route_auth_by_agent() {
     );
 }
 
+#[test]
+fn protocol_auth_onboarding_offers_product_sign_in_instead_of_external_retry() {
+    for (id, name) in [("antigravity", "Google Antigravity"), ("gemini", "Gemini")] {
+        let status = agent_status_for_test(id, name, true);
+        let options =
+            build_setup_options_with_uncertainty(&SetupReason::AgentError, Some(&status), false);
+        assert!(
+            options.iter().any(|option| matches!(
+                option, SetupOption::SignIn { agent_id, .. } if agent_id == id
+            )),
+            "{id} must offer a real product sign-in action, not an external-login retry"
+        );
+        assert!(!options
+            .iter()
+            .any(|option| matches!(option, SetupOption::Retry)));
+    }
+}
+
+#[test]
+fn protocol_auth_onboarding_copilot_login_preserves_selected_wsl_source() {
+    let mut app = test_app();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu-24.04".into(),
+    };
+    app.show_copilot_auth_screen();
+    let command = &app.auth.as_ref().unwrap().login_command;
+    assert!(command.contains("wsl.exe"), "{command}");
+    assert!(command.contains("Ubuntu-24.04"), "{command}");
+    assert!(!command.contains("-u root"), "{command}");
+}
+
+#[test]
+fn protocol_auth_onboarding_selects_advertised_method_and_cancels_without_quitting() {
+    let mut app = test_app();
+    app.current_agent_id = "antigravity".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu-24.04".into(),
+    };
+    app.handle_event(AppEvent::AcpAuthenticationMethods {
+        agent_id: "antigravity".into(),
+        source: app.current_agent_source.clone(),
+        methods: vec![agent_client_protocol::schema::v1::AuthMethod::Agent(
+            agent_client_protocol::schema::v1::AuthMethodAgent::new(
+                "oauth-personal",
+                "Personal OAuth",
+            ),
+        )],
+    });
+    app.handle_event(AppEvent::AgentError {
+        session_id: None,
+        failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+            message: "No authentication method selected".into(),
+        },
+        message: "No authentication method selected".into(),
+    });
+    assert!(matches!(
+        app.setup.as_ref().unwrap().options[0],
+        SetupOption::SignIn { .. }
+    ));
+    app.handle_setup_enter(app.setup.as_ref().unwrap().options[0].clone());
+    assert!(matches!(
+        &app.setup.as_ref().unwrap().options[0],
+        SetupOption::Authenticate { method_id, .. } if method_id == "oauth-personal"
+    ));
+    app.handle_setup_enter(app.setup.as_ref().unwrap().options[0].clone());
+    let attempt = app
+        .pending_acp_authentication
+        .as_ref()
+        .unwrap()
+        .attempt
+        .clone();
+    assert_eq!(attempt.method_id.0.as_ref(), "oauth-personal");
+    assert_eq!(
+        app.pending_acp_authentication.as_ref().unwrap().source,
+        app.current_agent_source
+    );
+    assert!(app.setup.as_ref().unwrap().is_busy());
+    app.handle_setup_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert!(attempt.cancelled.is_cancelled());
+    assert!(!app.should_quit);
+    assert!(!app.acp_authentication_pending());
+    assert_eq!(app.setup.as_ref().unwrap().phase, SetupPhase::Ready);
+}
+
+#[test]
+fn protocol_auth_onboarding_ignores_foreign_source_methods_and_late_cancelled_links() {
+    let mut app = test_app();
+    app.current_agent_id = "antigravity".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu-24.04".into(),
+    };
+    app.handle_event(AppEvent::AcpAuthenticationMethods {
+        agent_id: "antigravity".into(),
+        source: crate::agent_source::AgentSource::Host,
+        methods: vec![agent_client_protocol::schema::v1::AuthMethod::Agent(
+            agent_client_protocol::schema::v1::AuthMethodAgent::new("foreign", "Foreign"),
+        )],
+    });
+    assert!(app.acp_auth_methods.is_empty());
+    // No active attempt means this untrusted late link cannot open a browser.
+    app.handle_event(AppEvent::AcpAuthenticationBrowser {
+        attempt_id: uuid::Uuid::new_v4(),
+        url: "file:///must-not-open".into(),
+    });
+    assert!(app.pending_acp_authentication.is_none());
+}
+
+fn pending_protocol_auth_app_for_browser_tests() -> App {
+    let mut app = test_app();
+    app.current_agent_id = "antigravity".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu-24.04".into(),
+    };
+    app.handle_event(AppEvent::AcpAuthenticationMethods {
+        agent_id: app.current_agent_id.clone(),
+        source: app.current_agent_source.clone(),
+        methods: vec![agent_client_protocol::schema::v1::AuthMethod::Agent(
+            agent_client_protocol::schema::v1::AuthMethodAgent::new(
+                "oauth-personal",
+                "Log in with Google",
+            ),
+        )],
+    });
+    app.handle_event(AppEvent::AgentError {
+        session_id: None,
+        failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+            message: "Authentication required".into(),
+        },
+        message: "Authentication required".into(),
+    });
+    app.handle_setup_enter(app.setup.as_ref().unwrap().options[0].clone());
+    app.handle_setup_enter(app.setup.as_ref().unwrap().options[0].clone());
+    app
+}
+
+#[test]
+fn protocol_auth_onboarding_renders_manual_link_even_after_browser_launch_reports_success() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = pending_protocol_auth_app_for_browser_tests();
+    let pending = app.pending_acp_authentication.as_mut().unwrap();
+    // A successful platform launch does not prove that the user saw a browser.
+    // Avoid actually launching a browser from this deterministic render test.
+    pending.browser_opened = true;
+    let attempt_id = pending.attempt.attempt_id;
+    let url = "https://accounts.google.com/o/oauth2/v2/auth?client_id=fixture&redirect_uri=http%3A%2F%2F127.0.0.1%3A43210%2Fcallback&state=fixture-only";
+    app.handle_event(AppEvent::AcpAuthenticationBrowser {
+        attempt_id,
+        url: url.into(),
+    });
+
+    let text = render_to_text(&mut app, 180, 24);
+    assert!(
+        text.contains(url),
+        "The waiting page must show the full current sign-in link even when the browser launch reports success."
+    );
+    assert!(app.acp_authentication_pending());
+    assert!(app.setup.as_ref().unwrap().is_busy());
+}
+
+#[test]
+fn protocol_auth_onboarding_browser_failure_keeps_link_and_explicit_actions_available() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = pending_protocol_auth_app_for_browser_tests();
+    let attempt = app
+        .pending_acp_authentication
+        .as_ref()
+        .unwrap()
+        .attempt
+        .clone();
+    let url = "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2Flocalhost%3A43210%2Fcallback&state=fixture-only";
+    app.handle_acp_authentication_browser(attempt.attempt_id, url.into(), |actual| {
+        assert_eq!(actual, url);
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Fixture browser is unavailable.",
+        ))
+    });
+    assert!(app.acp_authentication_pending());
+    assert!(!attempt.cancelled.is_cancelled());
+    assert_eq!(app.acp_authentication_browser_url(), Some(url));
+    assert!(render_to_text(&mut app, 180, 24).contains("Could not open the browser."));
+
+    assert!(app.handle_acp_authentication_browser_key(
+        KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE),
+        |_| panic!("Copy must not retry the browser."),
+        |actual| {
+            assert_eq!(actual, url);
+            Err(io::Error::new(
+                io::ErrorKind::WouldBlock,
+                "Fixture clipboard is busy.",
+            ))
+        },
+    ));
+    assert!(render_to_text(&mut app, 180, 24).contains("Could not copy the sign-in link."));
+    assert_eq!(app.acp_authentication_browser_url(), Some(url));
+
+    assert!(app.handle_acp_authentication_browser_key(
+        KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::SHIFT),
+        |_| panic!("Copy must not retry the browser."),
+        |actual| {
+            assert_eq!(actual, url);
+            Ok(())
+        },
+    ));
+    assert!(render_to_text(&mut app, 180, 24).contains("Copied"));
+    assert!(app.handle_acp_authentication_browser_key(
+        KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT),
+        |actual| {
+            assert_eq!(actual, url);
+            Ok(())
+        },
+        |_| panic!("Open must not alter the clipboard."),
+    ));
+    assert!(app.acp_authentication_browser_feedback().is_none());
+    assert!(app.acp_authentication_pending());
+    assert!(!attempt.cancelled.is_cancelled());
+    assert!(!app.should_quit);
+    assert!(!app.handle_acp_authentication_browser_key(
+        KeyEvent::new(KeyCode::Char('y'), KeyModifiers::CONTROL),
+        |_| panic!("Modified keys must not open a browser."),
+        |_| panic!("Modified keys must not alter the clipboard."),
+    ));
+}
+
+#[test]
+fn protocol_auth_onboarding_browser_link_rejects_unsafe_foreign_and_duplicate_progress() {
+    let mut app = pending_protocol_auth_app_for_browser_tests();
+    let attempt_id = app
+        .pending_acp_authentication
+        .as_ref()
+        .unwrap()
+        .attempt
+        .attempt_id;
+    let url = "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2Flocalhost%3A43210&state=fixture-only";
+    app.handle_acp_authentication_browser(uuid::Uuid::new_v4(), url.into(), |_| {
+        panic!("Foreign progress must not open a browser.")
+    });
+    for unsafe_url in [
+        "file:///must-not-open",
+        "https://evil.test/?state=fixture",
+        "https://accounts.google.com/o/oauth2/auth?redirect_uri=https%3A%2F%2Fevil.test",
+    ] {
+        app.handle_acp_authentication_browser(attempt_id, unsafe_url.into(), |_| {
+            panic!("Unsafe progress must not open a browser.")
+        });
+        assert!(app.acp_authentication_browser_url().is_none());
+    }
+    app.handle_acp_authentication_browser(attempt_id, url.into(), |_| Ok(()));
+    app.handle_acp_authentication_browser(
+        attempt_id,
+        url.replace("fixture-only", "new-link"),
+        |_| panic!("Duplicate progress must not reopen a browser or replace the current link."),
+    );
+    assert_eq!(app.acp_authentication_browser_url(), Some(url));
+    app.current_agent_source = crate::agent_source::AgentSource::Host;
+    assert!(app.acp_authentication_browser_url().is_none());
+    assert!(!app.handle_acp_authentication_browser_key(
+        KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE),
+        |_| panic!("A link from another source must not open."),
+        |_| panic!("A link from another source must not copy."),
+    ));
+}
+
+#[test]
+fn protocol_auth_onboarding_clears_browser_link_on_cancel_timeout_source_reset_and_quit() {
+    let _locale = crate::test_support::lock_locale();
+    for action in ["cancel", "timeout", "source-reset", "quit"] {
+        let mut app = pending_protocol_auth_app_for_browser_tests();
+        let attempt = app
+            .pending_acp_authentication
+            .as_ref()
+            .unwrap()
+            .attempt
+            .clone();
+        let url = "https://accounts.google.com/o/oauth2/auth?redirect_uri=http%3A%2F%2Flocalhost%3A43210&state=fixture-only";
+        app.handle_acp_authentication_browser(attempt.attempt_id, url.into(), |_| Ok(()));
+        match action {
+            "cancel" => app.handle_setup_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+            "timeout" => app.handle_event(AppEvent::AgentError {
+                session_id: None,
+                failure: crate::protocol::acp::failure::AgentFailure::HandshakeFailed {
+                    stage: crate::protocol::acp::failure::HandshakeStage::Authenticate,
+                    detail: "Authentication timed out".into(),
+                },
+                message: "Authentication timed out".into(),
+            }),
+            "source-reset" => app.reset_agent_scoped_state(),
+            "quit" => {
+                app.handle_setup_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+            }
+            _ => unreachable!(),
+        }
+        assert!(attempt.cancelled.is_cancelled(), "{action}");
+        assert!(app.pending_acp_authentication.is_none(), "{action}");
+        assert!(app.acp_authentication_browser_url().is_none(), "{action}");
+        app.handle_acp_authentication_browser(attempt.attempt_id, url.into(), |_| {
+            panic!("Late progress after {action} must not open a browser.")
+        });
+        assert!(!render_to_text(&mut app, 180, 24).contains(url), "{action}");
+    }
+}
+
+#[test]
+fn protocol_auth_onboarding_long_link_keeps_actions_visible_and_copies_without_wrapping() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = pending_protocol_auth_app_for_browser_tests();
+    let attempt_id = app
+        .pending_acp_authentication
+        .as_ref()
+        .unwrap()
+        .attempt
+        .attempt_id;
+    let url = format!(
+        "https://accounts.google.com/o/oauth2/auth?redirect_uri=http%3A%2F%2Flocalhost%3A43210&state={}",
+        "fixture".repeat(200),
+    );
+    app.handle_acp_authentication_browser(attempt_id, url.clone(), |_| Ok(()));
+    let text = render_to_text(&mut app, 70, 10);
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(normalized.contains("O: open"), "{text}");
+    assert!(normalized.contains("Y: copy"), "{text}");
+    assert!(app.handle_acp_authentication_browser_key(
+        KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE),
+        |_| panic!("Copy must not reopen a browser."),
+        |actual| {
+            assert_eq!(actual, url);
+            assert!(!actual.contains(['\r', '\n']));
+            Ok(())
+        },
+    ));
+}
+
+#[test]
+fn protocol_auth_onboarding_drops_copilot_login_completion_for_another_source() {
+    let mut app = test_app();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu-24.04".into(),
+    };
+    app.show_copilot_auth_screen();
+    app.handle_event(AppEvent::SourceLoginComplete {
+        agent_id: "copilot".into(),
+        source: crate::agent_source::AgentSource::Host,
+        generation: app.auth_recovery_generation,
+        success: true,
+        error: None,
+    });
+    assert_eq!(app.mode, AppMode::Auth);
+    assert!(app.auth.is_some());
+    assert!(!app.pending_acp_start);
+    assert!(!app.needs_post_login_authenticate);
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn fre_auto_install_hint_starts_missing_copilot_install() {
     tokio::task::LocalSet::new()
@@ -13488,7 +13851,10 @@ fn show_copilot_auth_screen_sets_expected_state() {
         subtitle: "sub".into(),
     });
 
-    app.show_copilot_auth_screen();
+    app.show_copilot_auth_screen_with_invocation(Ok(crate::agent_check::LoginInvocation {
+        program: r"C:\Agent Tools\copilot.exe".into(),
+        args: vec!["login".into()],
+    }));
 
     assert_eq!(app.mode, AppMode::Auth);
     assert!(
@@ -13499,9 +13865,30 @@ fn show_copilot_auth_screen_sets_expected_state() {
     let auth = app.auth.as_ref().expect("copilot auth state");
     assert_eq!(auth.agent_id, "copilot");
     assert_eq!(auth.agent_name, "GitHub Copilot");
-    assert!(auth.login_command.contains("copilot"));
+    assert_eq!(auth.login_command, r#""C:\Agent Tools\copilot.exe" login"#);
     assert!(!auth.checking);
     assert!(auth.status_message.is_empty());
+}
+
+#[test]
+fn show_copilot_auth_screen_with_missing_cli_preserves_diagnostic_setup() {
+    let mut app = test_app();
+    let source = app.current_agent_source.clone();
+    let error = "Agent executable was not found on Windows PATH".to_string();
+
+    app.show_copilot_auth_screen_with_invocation(Err(error.clone()));
+
+    assert_eq!(app.mode, AppMode::Setup);
+    assert!(app.auth.is_none());
+    assert_eq!(app.current_agent_source, source);
+    assert_eq!(app.setup.as_ref().unwrap().reason, SetupReason::AgentError);
+    assert!(matches!(
+        &app.setup.as_ref().unwrap().phase,
+        SetupPhase::Failed {
+            kind: SetupFailureKind::Connection,
+            message,
+        } if message == &error
+    ));
 }
 
 #[test]
@@ -25354,6 +25741,7 @@ fn known_cli_id_returns_some_for_all_first_party_clis() {
     assert_eq!(known_cli_id(&CliSource::Copilot), Some("copilot"));
     assert_eq!(known_cli_id(&CliSource::Gemini), Some("gemini"));
     assert_eq!(known_cli_id(&CliSource::OpenCode), Some("opencode"));
+    assert_eq!(known_cli_id(&CliSource::Antigravity), Some("antigravity"));
 }
 
 #[test]
@@ -25363,6 +25751,214 @@ fn known_cli_id_returns_none_for_unknown_variant() {
         known_cli_id(&CliSource::Unknown("anything".to_string())),
         None
     );
+}
+
+#[test]
+fn antigravity_resume_keeps_acp_and_cli_sessions_in_their_own_stores() {
+    use crate::agent_sessions::{
+        AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin,
+    };
+    for origin in [SessionOrigin::AgentPane, SessionOrigin::Unknown] {
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let row = AgentSession {
+            key: "antigravity-history".into(),
+            cli_source: CliSource::Antigravity,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "Antigravity history".into(),
+            cwd: std::path::PathBuf::from("/home/u/project with spaces"),
+            started_at: std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status: AgentStatus::Historical,
+            last_error: None,
+            current_tool: None,
+            attention_reason: None,
+            log_path: None,
+            origin: origin.clone(),
+            location: SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        };
+        let mut app = test_app();
+        app.owner_tab_id = Some("caller-tab".into());
+        app.window_id = Some("41".into());
+        app.current_agent_id = "copilot".into();
+        app.agent_supports_load_session = false;
+        app.agent_sessions.merge_historical(vec![row.clone()]);
+        app.activate_agent_session_routed(&row);
+        let command = app.last_dispatched_command_for_test().unwrap();
+        let events = crate::wt_protocol_events::take_test_published_events();
+        if origin == SessionOrigin::AgentPane {
+            assert_eq!(command.kind, DispatchedCommandKind::ResumeInAgentPane);
+            let event = events
+                .iter()
+                .map(|event| serde_json::from_str::<serde_json::Value>(event).unwrap())
+                .find(|event| event["method"] == "resume_in_new_agent_tab")
+                .expect("ACP resume must publish the actual new-agent-tab event");
+            assert_eq!(event["params"]["agent_id"], "antigravity");
+            assert_eq!(event["params"]["agent_source"], "wsl");
+            assert_eq!(event["params"]["wsl_distro"], "Ubuntu");
+            assert_eq!(event["params"]["cwd"], "/home/u/project with spaces");
+            assert_eq!(event["params"]["session_id"], "antigravity-history");
+            assert_eq!(event["params"]["tab_id"], "caller-tab");
+            assert_eq!(event["params"]["window_id"], "41");
+        } else {
+            assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
+            assert!(command.argv.join(" ").contains(
+                "wsl.exe -d Ubuntu --cd \"/home/u/project with spaces\" -- bash -lc \"exec 'agy' '--conversation' 'antigravity-history'\""
+            ));
+            assert!(!events
+                .iter()
+                .any(|event| event.contains("resume_in_new_agent_tab")));
+        }
+    }
+}
+
+#[test]
+fn antigravity_wsl_cli_resume_preserves_literal_cwd_arguments() {
+    use crate::agent_sessions::{
+        AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin,
+    };
+
+    for (cwd, argument) in [
+        ("/home/u/%CD%", "/home/u/%CD%"),
+        (
+            "/home/u/project with spaces",
+            r#""/home/u/project with spaces""#,
+        ),
+        (r#"/home/u/a"b\"#, r#""/home/u/a\"b\\""#),
+    ] {
+        let row = AgentSession {
+            key: "antigravity-history".into(),
+            cli_source: CliSource::Antigravity,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "Antigravity CLI conversation".into(),
+            cwd: std::path::PathBuf::from(cwd),
+            started_at: std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status: AgentStatus::Historical,
+            last_error: None,
+            current_tool: None,
+            attention_reason: None,
+            log_path: None,
+            origin: SessionOrigin::Unknown,
+            location: SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        };
+        let mut app = test_app();
+        app.window_id = Some("41".into());
+        app.agent_sessions.merge_historical(vec![row.clone()]);
+        app.activate_agent_session_routed(&row);
+        let dispatched = app.last_dispatched_command_for_test().unwrap();
+        assert_eq!(dispatched.kind, DispatchedCommandKind::NewTabResume);
+        let command = dispatched
+            .argv
+            .windows(2)
+            .find(|args| args[0] == "-c")
+            .unwrap();
+        assert_eq!(
+            command[1],
+            format!(
+                "wsl.exe -d Ubuntu --cd {argument} -- bash -lc \"exec 'agy' '--conversation' 'antigravity-history'\""
+            ),
+            "WSL cwd must remain literal without an outer command shell: {cwd:?}"
+        );
+        assert!(!dispatched.argv.iter().any(|arg| arg == "-d"));
+        assert!(dispatched
+            .argv
+            .windows(2)
+            .any(|args| { args[0] == "--title" && args[1] == "Antigravity CLI conversation" }));
+    }
+}
+
+#[test]
+fn cli_resume_rejects_unsafe_session_ids_before_dispatch() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    for key in [
+        "bad;echo marker",
+        "bad&echo marker",
+        "$(echo marker)",
+        "`echo marker`",
+        "id%PATH%",
+        "bad\nid",
+        "",
+        "sidekick-child",
+    ] {
+        for location in [
+            SessionLocation::Host,
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        ] {
+            let mut app = test_app();
+            let event = SessionEvent::SessionStarted {
+                key: key.to_string(),
+                cli_source: CliSource::Antigravity,
+                pane_session_id: "owner-pane".into(),
+                cwd: std::path::PathBuf::from("/tmp/owned"),
+                title: "untrusted identifier".into(),
+            };
+            app.agent_sessions.apply(event);
+            app.agent_sessions.apply(SessionEvent::SessionStopped {
+                key: key.to_string(),
+                reason: "test".into(),
+            });
+            let mut row = app.agent_sessions.get(&key.to_string()).unwrap().clone();
+            row.location = location;
+            app.dispatch_resume(&row);
+            assert!(
+                app.last_dispatched_command_for_test().is_none(),
+                "unsafe id was dispatched: {key:?}"
+            );
+            assert_eq!(
+                app.agent_sessions.get(&key.to_string()).unwrap().status,
+                AgentStatus::Ended
+            );
+        }
+    }
+}
+
+#[test]
+fn cli_resume_rejects_unsafe_wsl_distro_before_dispatch() {
+    use crate::agent_sessions::{CliSource, SessionEvent, SessionLocation};
+    for distro in [
+        "Ubuntu&echo marker",
+        "Ubuntu;echo marker",
+        "Ubuntu extra",
+        "Ubuntu\"x",
+        "$(echo marker)",
+        "",
+    ] {
+        let mut app = test_app();
+        app.agent_sessions.apply(SessionEvent::SessionStarted {
+            key: "safe-session".into(),
+            cli_source: CliSource::Antigravity,
+            pane_session_id: "owner".into(),
+            cwd: std::path::PathBuf::from("/tmp/owned"),
+            title: "source validation".into(),
+        });
+        app.agent_sessions.apply(SessionEvent::SessionStopped {
+            key: "safe-session".into(),
+            reason: "test".into(),
+        });
+        let mut row = app
+            .agent_sessions
+            .get(&"safe-session".to_string())
+            .unwrap()
+            .clone();
+        row.location = SessionLocation::Wsl {
+            distro: distro.into(),
+        };
+        app.dispatch_resume(&row);
+        assert!(
+            app.last_dispatched_command_for_test().is_none(),
+            "{distro:?}"
+        );
+    }
 }
 
 #[test]

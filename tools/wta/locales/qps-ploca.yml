@@ -295,3 +295,11 @@ system.config_update_failed: "[!!_Failed to update %{option}: %{error}_!!]"
 system.yolo_disable_pending: "[!!_the provider has not acknowledged the required nonprivileged session state_!!]"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: [!!_Automatic approval is disabled by your organization's policy._!!]"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "[!!_Unknown model %{model} — type /model to see the available list._!!]"  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "[!!_Ｙｏｕｒ ａｇｅｎｔ \"%{agent}\" ｒｅｑｕｉｒｅｓ ａｕｔｈｅｎｔｉｃａｔｉｏｎ. Ｓｅｌｅｃｔ ａ ｓｉｇｎ-ｉｎ ｍｅｔｈｏｄ ｔｏ ｃｏｎｔｉｎｕｅ ｈｅｒｅ._!!]"  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "[!!_Ｃｏｍｐｌｅｔｅ ｓｉｇｎ-ｉｎ ｉｎ ｙｏｕｒ ｂｒｏｗｓｅｒ. Ｐｒｅｓｓ Esc ｔｏ ｃａｎｃｅｌ ｗａｉｔｉｎｇ._!!]"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "[!!_Ｂｒｏｗｓｅｒ ｎｏｔ ｏｐｅｎ? Ｕｓｅ ｔｈｉｓ ｓｉｇｎ-ｉｎ ｌｉｎｋ. O: ｏｐｅｎ · Y: ｃｏｐｙ._!!]"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "[!!_Ｃｏｕｌｄ ｎｏｔ ｏｐｅｎ ｔｈｅ ｂｒｏｗｓｅｒ. Ｏｐｅｎ ｔｈｅ ｓｉｇｎ-ｉｎ ｌｉｎｋ ｍａｎｕａｌｌｙ._!!]"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "[!!_Ｃｏｕｌｄ ｎｏｔ ｃｏｐｙ ｔｈｅ ｓｉｇｎ-ｉｎ ｌｉｎｋ. Ｓｅｌｅｃｔ ａｎｄ ｃｏｐｙ ｉｔ ｍａｎｕａｌｌｙ._!!]"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "[!!_Ｓｉｇｎ-ｉｎ ｄｉｄ ｎｏｔ ｆｉｎｉｓｈ ｉｎ ｔｉｍｅ. Ｔｒｙ ａｇａｉｎ ｗｈｅｎ ｙｏｕ ａｒｅ ｒｅａｄｙ._!!]"  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "[!!_Ｗｅ ｃｏｕｌｄ ｎｏｔ ｆｉｎｄ \"%{agent}\" ｉｎ ｔｈｅ %{distro} ｌｏｇｉｎ ｅｎｖｉｒｏｎｍｅｎｔ. Ｃｈｅｃｋ ｔｈｉｓ Linux ｕｓｅｒ'ｓ ｉｎｓｔａｌｌａｔｉｏｎ, PATH, ａｎｄ ｓｈｅｌｌ ｐｒｏｆｉｌｅ, ｔｈｅｎ ｔｒｙ ａｇａｉｎ._!!]"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

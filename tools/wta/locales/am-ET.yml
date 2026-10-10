@@ -298,3 +298,11 @@ system.config_update_failed: "%{option} ማዘመን አልተሳካም፦ %{err
 system.yolo_disable_pending: "የኤጅንት አቅራቢው ክፍለ ጊዜው በሚፈለገው ልዩ መብት በሌለው ሁኔታ መሆኑን አላረጋገጠም"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: ራስ-ሰር ማጽደቅ በድርጅትዎ መመሪያ ተሰናክሏል።"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "ያልታወቀ ሞዴል %{model} — የሚገኘውን ዝርዝር ለማየት /model ይተይቡ።"  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገዋል። እዚህ ለመቀጠል የመግቢያ ዘዴ ይምረጡ።"  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "በአሳሽዎ ውስጥ መግባቱን ያጠናቅቁ። መጠበቁን ለመሰረዝ Esc ይጫኑ።"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "አሳሹ አልተከፈተም? ይህን የመግቢያ አገናኝ ይጠቀሙ። O: መክፈት · Y: መቅዳት።"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "አሳሹን መክፈት አልተቻለም። የመግቢያ አገናኙን በእጅ ይክፈቱ።"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "የመግቢያ አገናኙን መቅዳት አልተቻለም። በእጅ ይምረጡት እና ይቅዱት።"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "መግባቱ በተፈቀደው ጊዜ አልተጠናቀቀም። ዝግጁ ሲሆኑ እንደገና ይሞክሩ።"  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "በ%{distro} የመግቢያ አካባቢ ውስጥ \"%{agent}\"ን ማግኘት አልቻልንም። የዚህን Linux ተጠቃሚ ጭነት፣ PATH እና የሼል መገለጫ ያረጋግጡ፣ ከዚያ እንደገና ይሞክሩ።"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

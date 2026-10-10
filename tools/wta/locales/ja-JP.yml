@@ -292,3 +292,11 @@ system.config_update_failed: "%{option} の更新に失敗しました: %{error}
 system.yolo_disable_pending: "エージェント プロバイダーは、必要な非特権セッション状態をまだ確認していません"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: 組織のポリシーにより自動承認が無効になっています。"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "不明なモデル %{model} — 利用可能な一覧を表示するには /model と入力してください。"  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "エージェント \"%{agent}\" には認証が必要です。ここで続行するには、サインイン方法を選択してください。"  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "ブラウザーでサインインを完了してください。待機をキャンセルするには Esc を押してください。"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ブラウザーが開かない場合は、このサインイン用リンクを使用してください。O: 開く · Y: コピー。"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ブラウザーを開けませんでした。サインイン用リンクを手動で開いてください。"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "サインイン用リンクをコピーできませんでした。手動で選択してコピーしてください。"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "サインインが時間内に完了しませんでした。準備ができたら、もう一度お試しください。"  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} のログイン環境で \"%{agent}\" が見つかりませんでした。この Linux ユーザーのインストール状態、PATH、シェルプロファイルを確認してから、もう一度お試しください。"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

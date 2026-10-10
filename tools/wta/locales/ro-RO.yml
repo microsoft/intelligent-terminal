@@ -296,3 +296,11 @@ system.config_update_failed: "Nu s-a putut actualiza %{option}: %{error}"
 system.yolo_disable_pending: "furnizorul nu a confirmat starea neprivilegiată necesară a sesiunii"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Aprobarea automată este dezactivată de politica organizației dumneavoastră."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Model necunoscut %{model} — tastați /model pentru a vedea lista disponibilă."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Agentul \"%{agent}\" necesită autentificare. Selectați o metodă de conectare pentru a continua aici."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Finalizați conectarea în browser. Apăsați Esc pentru a anula așteptarea."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Browserul nu s-a deschis? Folosiți acest link de conectare. O: deschidere · Y: copiere."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Nu s-a putut deschide browserul. Deschideți manual linkul de conectare."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Nu s-a putut copia linkul de conectare. Selectați-l și copiați-l manual."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Conectarea nu s-a finalizat la timp. Încercați din nou când sunteți pregătit."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Nu am putut găsi \"%{agent}\" în mediul de conectare al distribuției %{distro}. Verificați instalarea, PATH și profilul shell al acestui utilizator Linux, apoi încercați din nou."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}
