@@ -54,6 +54,17 @@ modes, not a cross-provider promise of read-only access. Approval policies and
 agent sandbox options do not grant or revoke Windows filesystem permissions.
 Unsupported modes and conflicting arguments produce startup errors.
 
+The profile editor exposes model and additional startup arguments, but does not
+include a permission-mode selector. Configure approvals through the native CLI;
+existing `agentProfile.permissionMode` JSON values remain supported.
+The separate ACP agent-pane and command-palette delegation selections are in
+the agent profile's Advanced page and do not select or configure its native CLI.
+The Run as administrator control is also omitted from agent profile pages.
+Shell prompt marks, automatic prompt marking, shell cursor repositioning, and
+rainbow input suggestions are omitted from agent profile pages, including
+copies and profiles with an edited command line. Ordinary shell profile pages
+and existing JSON settings are unchanged.
+
 Additional arguments use Windows command-line quoting, for example an argument
 containing a space must be quoted. They are arguments, not PowerShell or command
 prompt script text. Supported extras are conservatively allowlisted per provider;

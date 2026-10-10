@@ -90,19 +90,6 @@
                          Text="{x:Bind Profile.AgentProfileModel, Mode=TwoWay}" />
             </local:SettingContainer>
 
-            <local:SettingContainer x:Uid="Profile_AgentPermission"
-                                    ClearSettingValue="{x:Bind Profile.ClearAgentProfilePermissionMode}"
-                                    CurrentValue="{x:Bind Profile.CurrentAgentProfilePermission.DisplayLabel, Mode=OneWay}"
-                                    HasSettingValue="{x:Bind Profile.HasAgentProfilePermissionMode, Mode=OneWay}"
-                                    SettingOverrideSource="{x:Bind Profile.AgentProfilePermissionModeOverrideSource, Mode=OneWay}"
-                                    Style="{StaticResource ExpanderSettingContainerStyle}"
-                                    Visibility="{x:Bind Profile.IsManagedAgentProfile, Mode=OneWay}">
-                <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
-                          ItemsSource="{x:Bind Profile.AgentProfilePermissionList, Mode=OneWay}"
-                          SelectedItem="{x:Bind Profile.CurrentAgentProfilePermission, Mode=TwoWay}"
-                          Style="{StaticResource ComboBoxSettingStyle}" />
-            </local:SettingContainer>
-
             <local:SettingContainer x:Uid="Profile_AgentArguments"
                                     ClearSettingValue="{x:Bind Profile.ClearAgentProfileArguments}"
                                     CurrentValue="{x:Bind Profile.AgentProfileArguments, Mode=OneWay}"
@@ -147,8 +134,11 @@
             <!--  Agent pane backend  -->
             <local:SettingContainer x:Name="AgentPaneBackend"
                                     x:Uid="Profile_AgentPaneBackend"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearAgentPaneBackend}"
-                                    CurrentValue="{x:Bind Profile.CurrentAgentPaneBackend.DisplayLabel, Mode=OneWay}"
+                                    CurrentValue="{x:Bind Profile.CurrentAgentPaneBackend, Mode=OneWay}"
+                                    CurrentValueAccessibleName="{x:Bind Profile.CurrentAgentPaneBackend.DisplayLabel, Mode=OneWay}"
+                                    CurrentValueTemplate="{StaticResource ProfileAgentEntryTemplate}"
                                     HasSettingValue="{x:Bind Profile.HasAgentPaneBackend, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.AgentPaneBackendOverrideSource, Mode=OneWay}"
                                     Style="{StaticResource ExpanderSettingContainerStyle}">
@@ -161,8 +151,11 @@
             <!--  Command palette agent  -->
             <local:SettingContainer x:Name="CommandPaletteAgent"
                                     x:Uid="Profile_CommandPaletteAgent"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearCommandPaletteAgent}"
-                                    CurrentValue="{x:Bind Profile.CurrentCommandPaletteAgent.DisplayLabel, Mode=OneWay}"
+                                    CurrentValue="{x:Bind Profile.CurrentCommandPaletteAgent, Mode=OneWay}"
+                                    CurrentValueAccessibleName="{x:Bind Profile.CurrentCommandPaletteAgent.DisplayLabel, Mode=OneWay}"
+                                    CurrentValueTemplate="{StaticResource ProfileAgentEntryTemplate}"
                                     HasSettingValue="{x:Bind Profile.HasCommandPaletteAgent, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.CommandPaletteAgentOverrideSource, Mode=OneWay}"
                                     Style="{StaticResource ExpanderSettingContainerStyle}">
@@ -233,6 +226,7 @@
             <!--  Elevate  -->
             <local:SettingContainer x:Name="Elevate"
                                     x:Uid="Profile_Elevate"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearElevate}"
                                     HasSettingValue="{x:Bind Profile.HasElevate, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.ElevateOverrideSource, Mode=OneWay}">

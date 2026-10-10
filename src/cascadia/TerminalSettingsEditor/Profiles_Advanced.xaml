@@ -19,6 +19,11 @@
                 <ResourceDictionary Source="CommonResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
+            <DataTemplate x:Key="ProfileAgentEntryTemplate"
+                          x:DataType="local:AgentEntry">
+                <TextBlock Text="{x:Bind DisplayLabel}" />
+            </DataTemplate>
+
             <DataTemplate x:Key="EnumComboBoxTemplate"
                           x:DataType="local:EnumEntry">
                 <TextBlock Text="{x:Bind EnumName, Mode=OneWay}" />
@@ -36,6 +41,38 @@
                    Visibility="{x:Bind Profile.IsBaseLayer}" />
         <StackPanel Grid.Row="1"
                     Style="{StaticResource SettingsStackStyle}">
+            <local:SettingContainer x:Name="AgentPaneBackend"
+                                    x:Uid="Profile_AgentPaneBackend"
+                                    x:Load="false"
+                                    ClearSettingValue="{x:Bind Profile.ClearAgentPaneBackend}"
+                                    CurrentValue="{x:Bind Profile.CurrentAgentPaneBackend, Mode=OneWay}"
+                                    CurrentValueAccessibleName="{x:Bind Profile.CurrentAgentPaneBackend.DisplayLabel, Mode=OneWay}"
+                                    CurrentValueTemplate="{StaticResource ProfileAgentEntryTemplate}"
+                                    HasSettingValue="{x:Bind Profile.HasAgentPaneBackend, Mode=OneWay}"
+                                    SettingOverrideSource="{x:Bind Profile.AgentPaneBackendOverrideSource, Mode=OneWay}"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
+                          ItemsSource="{x:Bind Profile.AgentPaneBackendList, Mode=OneWay}"
+                          SelectedItem="{x:Bind Profile.CurrentAgentPaneBackend, Mode=TwoWay}"
+                          Style="{StaticResource ComboBoxSettingStyle}" />
+            </local:SettingContainer>
+
+            <local:SettingContainer x:Name="CommandPaletteAgent"
+                                    x:Uid="Profile_CommandPaletteAgent"
+                                    x:Load="false"
+                                    ClearSettingValue="{x:Bind Profile.ClearCommandPaletteAgent}"
+                                    CurrentValue="{x:Bind Profile.CurrentCommandPaletteAgent, Mode=OneWay}"
+                                    CurrentValueAccessibleName="{x:Bind Profile.CurrentCommandPaletteAgent.DisplayLabel, Mode=OneWay}"
+                                    CurrentValueTemplate="{StaticResource ProfileAgentEntryTemplate}"
+                                    HasSettingValue="{x:Bind Profile.HasCommandPaletteAgent, Mode=OneWay}"
+                                    SettingOverrideSource="{x:Bind Profile.CommandPaletteAgentOverrideSource, Mode=OneWay}"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
+                          ItemsSource="{x:Bind Profile.CommandPaletteAgentList, Mode=OneWay}"
+                          SelectedItem="{x:Bind Profile.CurrentCommandPaletteAgent, Mode=TwoWay}"
+                          Style="{StaticResource ComboBoxSettingStyle}" />
+            </local:SettingContainer>
+
             <!--  Antialiasing Mode  -->
             <local:SettingContainer x:Name="AntialiasingMode"
                                     x:Uid="Profile_AntialiasingMode"
@@ -211,6 +248,7 @@
             <!--  ShowMarks  -->
             <local:SettingContainer x:Name="ShowMarks"
                                     x:Uid="Profile_ShowMarks"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearShowMarks}"
                                     HasSettingValue="{x:Bind Profile.HasShowMarks, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.ShowMarksOverrideSource, Mode=OneWay}"
@@ -222,6 +260,7 @@
             <!--  AutoMarkPrompts  -->
             <local:SettingContainer x:Name="AutoMarkPrompts"
                                     x:Uid="Profile_AutoMarkPrompts"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearAutoMarkPrompts}"
                                     HasSettingValue="{x:Bind Profile.HasAutoMarkPrompts, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.AutoMarkPromptsOverrideSource, Mode=OneWay}"
@@ -243,6 +282,7 @@
             <!--  RepositionCursorWithMouse  -->
             <local:SettingContainer x:Name="RepositionCursorWithMouse"
                                     x:Uid="Profile_RepositionCursorWithMouse"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearRepositionCursorWithMouse}"
                                     HasSettingValue="{x:Bind Profile.HasRepositionCursorWithMouse, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.RepositionCursorWithMouseOverrideSource, Mode=OneWay}"
@@ -254,6 +294,7 @@
             <!--  RainbowSuggestions  -->
             <local:SettingContainer x:Name="RainbowSuggestions"
                                     x:Uid="Profile_RainbowSuggestions"
+                                    x:Load="false"
                                     ClearSettingValue="{x:Bind Profile.ClearRainbowSuggestions}"
                                     HasSettingValue="{x:Bind Profile.HasRainbowSuggestions, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.RainbowSuggestionsOverrideSource, Mode=OneWay}">

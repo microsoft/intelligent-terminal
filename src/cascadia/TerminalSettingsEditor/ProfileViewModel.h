@@ -94,6 +94,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Editor::AgentEntry CurrentCommandPaletteAgent();
         void CurrentCommandPaletteAgent(const Editor::AgentEntry& value);
         void SetAvailableHostAgents(const std::unordered_set<std::wstring>& availableHostAgents);
+        bool IsAgentProfile() const { return !_profile.AgentProfileId().empty(); }
         bool IsManagedAgentProfile() const;
         bool IsAgentProfilePolicyBlocked() const;
         hstring LaunchCommandline() const;

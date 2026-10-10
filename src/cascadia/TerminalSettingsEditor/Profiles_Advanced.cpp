@@ -28,6 +28,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto args = e.Parameter().as<Editor::NavigateToPageArgs>();
         _Profile = args.ViewModel().as<Editor::ProfileViewModel>();
         _weakWindowRoot = args.WindowRoot();
+        if (winrt::get_self<ProfileViewModel>(_Profile)->IsAgentProfile())
+        {
+            FindName(L"AgentPaneBackend");
+            FindName(L"CommandPaletteAgent");
+        }
+        else
+        {
+            FindName(L"ShowMarks");
+            FindName(L"AutoMarkPrompts");
+            FindName(L"RepositionCursorWithMouse");
+            FindName(L"RainbowSuggestions");
+        }
         BringIntoViewWhenLoaded(args.ElementToFocus());
 
         TraceLoggingWrite(
