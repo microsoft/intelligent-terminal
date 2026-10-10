@@ -13,6 +13,12 @@ public static class ItSidebarAgeOracle {
     [DllImport("icu.dll", CallingConvention=CallingConvention.Cdecl)]
     static extern void ureldatefmt_close(IntPtr f);
     [DllImport("icu.dll", CallingConvention=CallingConvention.Cdecl, CharSet=CharSet.Ansi)]
+    static extern IntPtr udat_open(int timeStyle, int dateStyle, string locale, ushort[] zone, int zoneLength, IntPtr pattern, int patternLength, ref int error);
+    [DllImport("icu.dll", CallingConvention=CallingConvention.Cdecl, CharSet=CharSet.Unicode)]
+    static extern int udat_format(IntPtr f, double time, StringBuilder result, int capacity, IntPtr position, ref int error);
+    [DllImport("icu.dll", CallingConvention=CallingConvention.Cdecl)]
+    static extern void udat_close(IntPtr f);
+    [DllImport("icu.dll", CallingConvention=CallingConvention.Cdecl, CharSet=CharSet.Ansi)]
     static extern IntPtr ucal_open(ushort[] zone, int length, string locale, int type, ref int error);
     [DllImport("icu.dll", CallingConvention=CallingConvention.Cdecl)]
     static extern void ucal_setMillis(IntPtr c, double time, ref int error);
@@ -43,7 +49,7 @@ public static class ItSidebarAgeOracle {
         int enumUnit = unit == "minute" ? 6 : unit == "hour" ? 5 : unit == "day" ? 4 : unit == "week" ? 3 : unit == "month" ? 2 : unit == "year" ? 0 : -1;
         if (enumUnit < 0) throw new ArgumentException("Unknown fixture unit");
         int error = 0;
-        IntPtr f = ureldatefmt_open(locale, IntPtr.Zero, 1, 256, ref error);
+        IntPtr f = ureldatefmt_open(locale, IntPtr.Zero, 0, 256, ref error);
         Check(error);
         if (f == IntPtr.Zero) throw new Exception("No ICU relative formatter");
         try {
@@ -53,6 +59,19 @@ public static class ItSidebarAgeOracle {
             if (length <= 0) throw new Exception("Empty ICU relative time");
             return result.ToString();
         } finally { ureldatefmt_close(f); }
+    }
+    public static string CalendarDate(string locale, DateTimeOffset source) {
+        int error = 0;
+        IntPtr f = udat_open(-1, 1, locale, new ushort[] { 85, 84, 67 }, 3, IntPtr.Zero, 0, ref error);
+        Check(error);
+        if (f == IntPtr.Zero) throw new Exception("No ICU date formatter");
+        try {
+            var result = new StringBuilder(512);
+            int length = udat_format(f, source.ToUnixTimeMilliseconds(), result, result.Capacity, IntPtr.Zero, ref error);
+            Check(error);
+            if (length <= 0) throw new Exception("Empty ICU calendar date");
+            return result.ToString();
+        } finally { udat_close(f); }
     }
 }
 '@

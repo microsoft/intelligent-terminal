@@ -1,8 +1,8 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# PR #1070 contract: six compact ages follow the configured UI language, with
-# real mirrored row geometry and one Content-view provider semantic.
+# Six timestamp fixtures follow the configured UI language: LONG numeric
+# minutes/hours/days, then UTC long dates at seven days and older.
 # Trigger/boundary: listing-capable ACP fixture -> deployed WTA -> native XAML.
-# Oracle: source timestamps + capture interval -> Windows ICU SHORT; actual UIA.
+# Oracle: source timestamps + capture interval -> Windows ICU; actual UIA.
 # Control: unique Demo search excludes private history; exact three text leaves,
 # no ownership action or Content-view decorative icon. The suite submits no
 # hooks or prompts; the fixture supplies only the tested rows. Normal read-only
@@ -70,8 +70,8 @@ Describe 'Feature: Sidebar compact relative time' -Tag @('Feature', 'SidebarRela
         $providerName = $provider
         $now = [DateTimeOffset]::UtcNow
         $units = @('minute', 'hour', 'day', 'week', 'month', 'year')
-        $times = @($now.AddSeconds(-130), $now.AddHours(-3).AddMinutes(-2), $now.AddDays(-4),
-            $now.AddDays(-14), $now.AddMonths(-2).AddDays(-1), $now.AddYears(-1).AddDays(-1))
+        $times = @($now.AddSeconds(-130), $now.AddHours(-3).AddMinutes(-2), $now.AddDays(-6),
+            $now.AddDays(-7), $now.AddMonths(-2).AddDays(-1), $now.AddYears(-1).AddDays(-1))
         $history = @(for ($i = 0; $i -lt 6; $i++) {
             @{ sessionId = "$marker-$i"; title = "$marker $($units[$i])"; cwd = $evidence
                 updatedAt = $times[$i].UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'") }
@@ -147,16 +147,18 @@ Describe 'Feature: Sidebar compact relative time' -Tag @('Feature', 'SidebarRela
                     -not [string]::IsNullOrEmpty($_.Current.Name) -and
                     -not @(Get-AgeParts $_ -Content | Where-Object { $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text }).Count
                 })
-                $leaves.Count | Should -Be 3 -Because 'all named Content-view text leaves must be title, age and provider, including offscreen or zero-size peers'
+                $leaves.Count | Should -Be 3 -Because 'all named Content-view text leaves must be title, cwd and age/date, including offscreen or zero-size peers'
                 foreach ($leaf in $leaves) {
                     $leaf.Current.IsOffscreen | Should -BeFalse
                     $leaf.Current.BoundingRectangle.Width | Should -BeGreaterThan 0
                     $leaf.Current.BoundingRectangle.Height | Should -BeGreaterThan 0
                 }
                 $title = @($leaves | Where-Object { $_.Current.Name -eq $history[$i].title })
-                $providerText = @($leaves | Where-Object { $_.Current.Name -eq $providerName })
-                $title.Count | Should -Be 1; $providerText.Count | Should -Be 1
-                $subtitle = @($leaves | Where-Object { $_ -notin @($title[0], $providerText[0]) })
+                $cwdText = @($leaves | Where-Object { $_.Current.Name -eq $evidence })
+                $title.Count | Should -Be 1; $cwdText.Count | Should -Be 1
+                $row[0].Current.IsKeyboardFocusable | Should -BeTrue
+                $row[0].Current.Name | Should -Be "$($history[$i].title) $([char]0xB7) $providerName"
+                $subtitle = @($leaves | Where-Object { $_ -notin @($title[0], $cwdText[0]) })
                 $subtitle.Count | Should -Be 1
                 $captured = [DateTimeOffset]::UtcNow
                 $source = [DateTimeOffset]::Parse($history[$i].updatedAt)
@@ -169,11 +171,17 @@ Describe 'Feature: Sidebar compact relative time' -Tag @('Feature', 'SidebarRela
                 $counts = @([ItSidebarAgeOracle]::Count($units[$i], $source, $beforeCapture),
                     [ItSidebarAgeOracle]::Count($units[$i], $source, $captured)) | Select-Object -Unique
                 foreach ($count in $counts) {
-                    $count | Should -BeIn $(if ($i -eq 0) { @(2, 3) } else { @(@(2, 3, 4, 2, 2, 1)[$i]) })
+                    $count | Should -BeIn $(if ($i -eq 0) { @(2, 3) } else { @(@(2, 3, 6, 1, 2, 1)[$i]) })
                 }
-                $expected = @($counts | ForEach-Object { [ItSidebarAgeOracle]::Format($Locale, $units[$i], $_) })
+                $expected = if ($i -lt 3) {
+                    @($counts | ForEach-Object { [ItSidebarAgeOracle]::Format($Locale, $units[$i], $_) })
+                } else { @([ItSidebarAgeOracle]::CalendarDate($Locale, $source)) }
                 $subtitle[0].Current.Name | Should -BeIn $expected
-                if ($Rtl) { $subtitle[0].Current.Name | Should -Not -BeIn @($counts | ForEach-Object { [ItSidebarAgeOracle]::Format('en-US', $units[$i], $_) }) }
+                if ($Rtl) {
+                    $english = if ($i -lt 3) { @($counts | ForEach-Object { [ItSidebarAgeOracle]::Format('en-US', $units[$i], $_) }) }
+                    else { @([ItSidebarAgeOracle]::CalendarDate('en-US', $source)) }
+                    $subtitle[0].Current.Name | Should -Not -BeIn $english
+                }
                 $icon = @($parts | Where-Object { $_.Current.AutomationId -eq 'HistoryProviderIcon' -and $_.Current.BoundingRectangle.Width -gt 0 })
                 $icon.Count | Should -Be 1; $icon[0].Current.Name | Should -Be $providerName
                 # A custom provider's Raw-only SymbolIcon has a TextBlock glyph;
@@ -190,13 +198,13 @@ Describe 'Feature: Sidebar compact relative time' -Tag @('Feature', 'SidebarRela
                 }
                 @($content | Where-Object { $_.Current.AutomationId -eq 'HistoryProviderIcon' }).Count | Should -Be 0
                 @($content | Where-Object { $_.Current.Name -eq $providerName -and
-                    -not @(Get-AgeParts $_ -Content | Where-Object { $_.Current.Name -eq $providerName }).Count }).Count | Should -Be 1
+                    -not @(Get-AgeParts $_ -Content | Where-Object { $_.Current.Name -eq $providerName }).Count }).Count | Should -Be 0
                 @($parts | Where-Object { $_.Current.AutomationId -eq 'HistoryOwnershipButton' -and -not $_.Current.IsOffscreen }).Count | Should -Be 0
                 $rb = $row[0].Current.BoundingRectangle; $vb = (Get-AgeElement ItemsList).Current.BoundingRectangle
                 $wb = [Windows.Automation.AutomationElement]::FromHandle([intptr][long]$script:app.Hwnd).Current.BoundingRectangle
                 $tb = $title[0].Current.BoundingRectangle; $sb = $subtitle[0].Current.BoundingRectangle
-                $pb = $providerText[0].Current.BoundingRectangle; $ib = $icon[0].Current.BoundingRectangle
-                foreach ($b in @($rb, $tb, $sb, $pb, $ib)) {
+                $cb = $cwdText[0].Current.BoundingRectangle; $ib = $icon[0].Current.BoundingRectangle
+                foreach ($b in @($rb, $tb, $sb, $cb, $ib)) {
                     $b.Width | Should -BeGreaterThan 0; $b.Height | Should -BeGreaterThan 0
                     $b.Left | Should -BeGreaterOrEqual $vb.Left; $b.Right | Should -BeLessOrEqual $vb.Right
                     $b.Top | Should -BeGreaterOrEqual $vb.Top; $b.Bottom | Should -BeLessOrEqual $vb.Bottom
@@ -205,24 +213,24 @@ Describe 'Feature: Sidebar compact relative time' -Tag @('Feature', 'SidebarRela
                     $b.Left | Should -BeGreaterOrEqual $rb.Left; $b.Right | Should -BeLessOrEqual $rb.Right
                     $b.Top | Should -BeGreaterOrEqual $rb.Top; $b.Bottom | Should -BeLessOrEqual $rb.Bottom
                 }
-                $tb.Bottom | Should -BeLessOrEqual $sb.Top
-                $pb.Top | Should -BeLessThan $sb.Bottom; $pb.Bottom | Should -BeGreaterThan $sb.Top
+                $tb.Bottom | Should -BeLessOrEqual $cb.Top
+                $cb.Bottom | Should -BeLessOrEqual $sb.Top
                 [math]::Abs(($ib.Top + $ib.Bottom - $rb.Top - $rb.Bottom) / 2) | Should -BeLessOrEqual 2
                 [math]::Abs($ib.Width - $ib.Height) | Should -BeLessOrEqual 1
                 if ($Rtl) {
                     $ib.Left | Should -BeGreaterThan $tb.Right
                     [math]::Abs($tb.Right - $sb.Right) | Should -BeLessOrEqual 1
-                    $pb.Right | Should -BeLessOrEqual $sb.Left
+                    [math]::Abs($tb.Right - $cb.Right) | Should -BeLessOrEqual 1
                 } else {
                     $ib.Right | Should -BeLessThan $tb.Left
                     [math]::Abs($tb.Left - $sb.Left) | Should -BeLessOrEqual 1
-                    $sb.Right | Should -BeLessOrEqual $pb.Left
+                    [math]::Abs($tb.Left - $cb.Left) | Should -BeLessOrEqual 1
                 }
                 @{ unit = $units[$i]; source = $history[$i]; beforeCaptureTime = $beforeCapture.ToString('o')
                     captureTime = $captured.ToString('o'); counts = @($counts); expected = $expected
                     rendered = $subtitle[0].Current.Name; row = $rb.ToString(); viewport = $vb.ToString()
-                    title = $tb.ToString(); subtitle = $sb.ToString(); provider = $pb.ToString(); icon = $ib.ToString()
-                    contentProviderCount = 1; locale = $Locale; rtl = $Rtl }
+                    title = $tb.ToString(); subtitle = $sb.ToString(); cwd = $cb.ToString(); icon = $ib.ToString()
+                    containerProviderName = $row[0].Current.Name; contentProviderCount = 0; locale = $Locale; rtl = $Rtl }
             })
             $receipts | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $evidence 'rows.json') -Encoding utf8
             $widthReceipts = @()
