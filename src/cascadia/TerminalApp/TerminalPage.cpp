@@ -24,6 +24,8 @@
 #include "../inc/AcpModelUtils.h"
 #include "../inc/AgentAvailability.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentIconUtils.h"
+#include "../inc/AgentProfileUtils.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
 #include "../inc/AgentSourceUtils.h"
@@ -8546,6 +8548,28 @@ namespace winrt::TerminalApp::implementation
         {
             const auto icon = _CreateNewTabFlyoutIcon(iconPath);
             profileMenuItem.Icon(icon);
+            if (const auto image = icon.try_as<winrt::MUX::Controls::ImageIcon>())
+            {
+                if (const auto source = image.Source().try_as<WUX::Media::Imaging::SvgImageSource>())
+                {
+                    // The menu's IconContent foreground states must not tint SVG artwork.
+                    profileMenuItem.Loaded([source](const auto& sender, const auto&) {
+                        const auto item = sender.template as<WUX::Controls::MenuFlyoutItem>();
+                        const auto root = WUX::Media::VisualTreeHelper::GetChild(item, 0).as<FrameworkElement>();
+                        const auto host = root.FindName(L"IconContent").as<ContentPresenter>();
+                        WUX::Controls::Image artwork;
+                        artwork.Source(source);
+                        ::Microsoft::Terminal::BindAgentIconTheme(artwork, source);
+                        artwork.Width(16);
+                        artwork.Height(16);
+                        artwork.Stretch(WUX::Media::Stretch::Uniform);
+                        artwork.IsHitTestVisible(false);
+                        Automation::AutomationProperties::SetAccessibilityView(artwork, Automation::Peers::AccessibilityView::Raw);
+                        host.Content(artwork);
+                        _agentPaneLog("New-tab SVG image presented: " + winrt::to_string(source.UriSource().AbsoluteUri()), AgentPaneLogLevel::Debug);
+                    });
+                }
+            }
         }
 
         if (profile.Guid() == _settings.GlobalSettings().DefaultProfile())
@@ -8664,6 +8688,26 @@ namespace winrt::TerminalApp::implementation
         }
 
         auto icon = UI::IconPathConverter::IconWUX(iconSource);
+        if (std::wstring_view{ iconSource }.starts_with(L"ms-appx:///AgentIcons/"))
+        {
+            _agentPaneLog("New-tab agent icon: " + winrt::to_string(iconSource) +
+                              " control=" + winrt::to_string(winrt::get_class_name(icon)),
+                          AgentPaneLogLevel::Debug);
+            if (const auto image = icon.try_as<winrt::MUX::Controls::ImageIcon>())
+            {
+                if (const auto svg = image.Source().try_as<winrt::Windows::UI::Xaml::Media::Imaging::SvgImageSource>())
+                {
+                    svg.Opened([iconSource](auto&&, auto&&) {
+                        _agentPaneLog("New-tab agent SVG loaded: " + winrt::to_string(iconSource), AgentPaneLogLevel::Debug);
+                    });
+                    svg.OpenFailed([iconSource](auto&&, auto&& args) {
+                        _agentPaneLog("New-tab agent SVG failed: " + winrt::to_string(iconSource) +
+                                      " status=" + std::to_string(static_cast<int>(args.Status())));
+                        LOG_HR_MSG(E_FAIL, "New-tab agent SVG failed to load");
+                    });
+                }
+            }
+        }
         Automation::AutomationProperties::SetAccessibilityView(icon, Automation::Peers::AccessibilityView::Raw);
 
         return icon;
@@ -8826,6 +8870,13 @@ namespace winrt::TerminalApp::implementation
         {
             auto settingsInternal{ winrt::get_self<Settings::TerminalSettings>(settings) };
             auto environment = settingsInternal->EnvironmentVariables();
+            if (settingsInternal->UsesManagedAgentCommand())
+            {
+                ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
+                ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(
+                    profile.AgentProfileId(), *::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
+                settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(profile, true) });
+            }
 
             // Update the path to be relative to whatever our CWD is.
             //
@@ -8912,6 +8963,9 @@ namespace winrt::TerminalApp::implementation
             // TODO GH#5047 If we cache the NewTerminalArgs, we no longer need to do this.
             profile = GetClosestProfileForDuplicationOfProfile(profile);
             controlSettings = Settings::TerminalSettings::CreateWithProfile(_settings, profile);
+            controlSettings.DefaultSettings()->UsesManagedAgentCommand(
+                controlSettings.DefaultSettings()->UsesManagedAgentCommand() &&
+                winrt::get_self<Settings::TerminalSettings>(control.Settings())->UsesManagedAgentCommand());
 
             // Replace the Starting directory with the CWD, if given
             const auto workingDirectory = control.WorkingDirectory();
@@ -15053,7 +15107,13 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        const auto control = _CreateNewControlAndContent(controlSettings, connection, newTerminalArgs ? newTerminalArgs.NativeAgentProviderId() : winrt::hstring{});
+        const auto profileAgentId = profile.AgentProfileId();
+        const auto profileProvider = ::Microsoft::Terminal::Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(
+            std::wstring_view{ profileAgentId });
+        const auto nativeAgentProvider = !profileProvider.empty() ?
+                                             winrt::hstring{ profileProvider } :
+                                             newTerminalArgs ? newTerminalArgs.NativeAgentProviderId() : winrt::hstring{};
+        const auto control = _CreateNewControlAndContent(controlSettings, connection, nativeAgentProvider);
 
         // Two kinds of pane replay their own history and must not also be
         // seeded from the saved buffer: one running an agent resume command,
@@ -16313,6 +16373,12 @@ namespace winrt::TerminalApp::implementation
 
         if (newTerminalArgs.NativeAgentProviderId().empty())
         {
+            newTerminalArgs.NativeAgentProviderId(winrt::hstring{
+                ::Microsoft::Terminal::Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(
+                    std::wstring_view{ profile.AgentProfileId() }) });
+        }
+        if (newTerminalArgs.NativeAgentProviderId().empty())
+        {
             const auto resume = ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(newTerminalArgs.Commandline());
             if (!resume.agent.empty())
             {
@@ -16328,6 +16394,10 @@ namespace winrt::TerminalApp::implementation
             THROW_HR_IF(E_INVALIDARG, id.empty());
             Policy::Reload();
             THROW_HR_IF(E_ACCESSDENIED, !Registry::IsNativeAgentProviderAllowed(id, *Policy::_GetSnapshot()));
+            if (controlSettings.DefaultSettings()->UsesManagedAgentCommand())
+            {
+                ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(id, *Policy::_GetSnapshot());
+            }
             newTerminalArgs.NativeAgentProviderId(winrt::hstring{ id });
         }
 
@@ -17038,6 +17108,8 @@ namespace winrt::TerminalApp::implementation
         const auto splitPaneUpText = RS_(L"SplitPaneUpText");
         const auto splitPaneLeftText = RS_(L"SplitPaneLeftText");
         const auto splitPaneToolTipText = RS_(L"SplitPaneToolTipText");
+        makeItem(RS_(L"SplitPaneText"), L"\xF246",
+                 ActionAndArgs{ ShortcutAction::SplitPane, SplitPaneArgs{ SplitType::Profile } }, splitPaneMenu);
 
         // GetFocusedProfile can return null if no child of the focused tab
         // was the last control to be focused (e.g. transient focus states).

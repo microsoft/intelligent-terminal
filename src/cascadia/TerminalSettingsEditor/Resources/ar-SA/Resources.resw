@@ -3057,4 +3057,28 @@ Alt+Shift+/ إدخال طلب؛ Alt+Shift+B التشغيل دون طلب أول�
     <value>إزالة</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Profile_AgentModel.Header" xml:space="preserve">
+    <value>نموذج الوكيل</value>
+    <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentModel.HelpText" xml:space="preserve">
+    <value>أدخل معرّف نموذج يدعمه هذا الوكيل. اتركه فارغًا لاستخدام تكوين الوكيل الخاص به. ينطبق على الجلسات الجديدة.</value>
+    <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
+  </data>
+  <data name="Profile_AgentArguments.Header" xml:space="preserve">
+    <value>وسيطات إضافية للوكيل</value>
+    <comment>Additional startup arguments for the native AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
+    <value>استخدم قواعد اقتباس سطر أوامر Windows للقيم التي تحتوي على مسافات. تُرفض الوسيطات التي تتعارض مع الإعدادات المُدارة أو السياسة. أوامر shell غير مدعومة.</value>
+    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+  </data>
+  <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
+    <value>استخدام تفضيل التقسيم لملف التعريف</value>
+    <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
+  </data>
+  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
+    <value>تحظر مؤسستك عمليات تشغيل الوكلاء الأصليين المُدارة. يجب السماح بالوكيل، ويجب أن تسمح السياسة بالموافقة التلقائية لأن الوكلاء الأصليين يتحكمون في إعدادات الموافقة الخاصة بهم.</value>
+    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
+  </data>
 </root>

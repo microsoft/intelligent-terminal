@@ -439,6 +439,14 @@
     <value>عامل · در حال اتصال</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>نمایهٔ تقسیم در دسترس نیست</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>نمایهٔ پیکربندی‌شده برای تقسیم در دسترس نیست. به‌جای آن از نمایهٔ پیش‌فرض سراسری استفاده خواهد شد. برای تغییر نمایهٔ مقصد تقسیم، defaultSplitProfile این نمایه را در settings.json ویرایش کنید.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
+  </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>بستن زبانه‌های زیر</value>
   </data>

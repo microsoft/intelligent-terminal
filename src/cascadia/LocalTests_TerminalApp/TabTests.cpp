@@ -39,6 +39,7 @@
 #include <cmath>
 #include <fstream>
 #include <icu.h>
+#include <map>
 #include <set>
 #include <winrt/Windows.Globalization.NumberFormatting.h>
 #include <winrt/Windows.Storage.Streams.h>
@@ -353,6 +354,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SidebarRailHintsTrackBindings);
         TEST_METHOD(VerticalTabChromeBackgroundTracksTheme);
         TEST_METHOD(NewTabButtonSharesChromeBackdrop);
+        TEST_METHOD(NewTabFlyoutAgentIconsAdaptToTheme);
+        TEST_METHOD(AgentProfileCommandlineCopies);
         TEST_METHOD(VerticalTabStripBindsBackground);
         TEST_METHOD(VerticalTabHistorySharesBackdrop);
         TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
@@ -548,6 +551,7 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
+        TEST_METHOD(ProfileAwareSplitPreservesExplicitTargets);
 
         TEST_METHOD(TryZoomPane);
         TEST_METHOD(MoveFocusFromZoomedPane);
@@ -5802,6 +5806,221 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::AgentProfileCommandlineCopies()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const CascadiaSettings settings{
+                LR"({"defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+                     "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Claude",
+                                  "source":"IntelligentTerminal.AgentProfiles","agentProfile.model":"chosen"}]})",
+                LR"({"profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Claude",
+                                  "source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"claude",
+                                  "agentProfile.permissionMode":"plan","agentProfile.arguments":"--continue",
+                                  "defaultSplitProfile":"Shell"}]})"
+            };
+            const auto profile = settings.ActiveProfiles().GetAt(0);
+            VERIFY_IS_FALSE(profile.HasAgentProfileId());
+            const auto copy = settings.DuplicateProfile(profile);
+            VERIFY_ARE_EQUAL(profile.AgentProfileId(), copy.AgentProfileId());
+            VERIFY_ARE_EQUAL(profile.AgentProfileModel(), copy.AgentProfileModel());
+            VERIFY_ARE_EQUAL(profile.AgentProfilePermissionMode(), copy.AgentProfilePermissionMode());
+            VERIFY_ARE_EQUAL(profile.AgentProfileArguments(), copy.AgentProfileArguments());
+            VERIFY_ARE_EQUAL(profile.DefaultSplitProfile(), copy.DefaultSplitProfile());
+            VERIFY_IS_FALSE(copy.HasCommandline());
+            VERIFY_IS_TRUE(winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, copy).DefaultSettings()->UsesManagedAgentCommand());
+            const winrt::hstring edited{ L"claude --model handwritten --custom-option" };
+            profile.Commandline(edited);
+            const auto editedCopy = settings.DuplicateProfile(profile);
+            VERIFY_IS_TRUE(editedCopy.HasCommandline());
+            VERIFY_ARE_EQUAL(edited, winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, editedCopy).DefaultSettings()->Commandline());
+            profile.ClearCommandline();
+            VERIFY_IS_TRUE(winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings()->UsesManagedAgentCommand());
+
+            page->_settings = settings;
+            using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            for (const auto& launchProfile : { profile, copy, editedCopy })
+            {
+                NewTerminalArgs launch;
+                launch.Profile(Utils::GuidToString(launchProfile.Guid()));
+                GUID connectionId{};
+                VERIFY_SUCCEEDED(CoCreateGuid(&connectionId));
+                const auto connection = winrt::make_self<TestConnection>(winrt::guid{ connectionId }, State::Connected);
+                const auto pane = page->_MakePane(launch, nullptr, *connection);
+                VERIFY_IS_NOT_NULL(pane);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, manager->NativeAgentProviderId(pane->GetTerminalControl().ContentId()));
+                const auto saved = pane->GetContent().GetNewTerminalArgs(BuildStartupKind::Persist).as<NewTerminalArgs>();
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, saved.NativeAgentProviderId());
+                if (launchProfile == editedCopy)
+                {
+                    VERIFY_ARE_EQUAL(edited, saved.Commandline());
+                }
+                else
+                {
+                    VERIFY_IS_TRUE(saved.Commandline().empty());
+                }
+                for (const auto split : { false, true })
+                {
+                    ActionAndArgs action;
+                    if (split)
+                    {
+                        action = ActionAndArgs{ ShortcutAction::SplitPane, SplitPaneArgs{ SplitDirection::Right, 0.5f, saved } };
+                    }
+                    else
+                    {
+                        action = ActionAndArgs{ ShortcutAction::NewTab, NewTabArgs{ saved } };
+                    }
+                    const auto json = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>({ action }));
+                    const auto restoredAction = ActionAndArgs::Deserialize(json).GetAt(0);
+                    const auto restored = (split ? restoredAction.Args().as<SplitPaneArgs>().ContentArgs() :
+                                                   restoredAction.Args().as<NewTabArgs>().ContentArgs()).as<NewTerminalArgs>();
+                    VERIFY_ARE_EQUAL(saved.NativeAgentProviderId(), restored.NativeAgentProviderId());
+                    VERIFY_ARE_EQUAL(saved.Commandline(), restored.Commandline());
+                    GUID restoredConnectionId{};
+                    VERIFY_SUCCEEDED(CoCreateGuid(&restoredConnectionId));
+                    const auto restoredConnection = winrt::make_self<TestConnection>(winrt::guid{ restoredConnectionId }, State::Connected);
+                    const auto restoredPane = page->_MakePane(restored, nullptr, *restoredConnection);
+                    VERIFY_IS_NOT_NULL(restoredPane);
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, manager->NativeAgentProviderId(restoredPane->GetTerminalControl().ContentId()));
+                    restoredPane->Close();
+                }
+                pane->Close();
+            }
+        });
+    }
+
+    void TabTests::NewTabFlyoutAgentIconsAdaptToTheme()
+    {
+        auto page = _commonSetup();
+        UIElement previousContent{ nullptr };
+        StackPanel host{ nullptr };
+        TestOnUIThread([&]() {
+            const auto window = Window::Current();
+            previousContent = window.Content();
+            host = StackPanel{};
+            window.Content(host);
+            window.Activate();
+            host.UpdateLayout();
+        });
+        const auto cleanup = wil::scope_exit([&]() {
+            LOG_IF_FAILED(RunOnUIThread([&]() { Window::Current().Content(previousContent); }));
+        });
+
+        std::map<std::wstring, std::vector<uint8_t>> originalPixels;
+        for (const auto theme : { ElementTheme::Dark, ElementTheme::Light, ElementTheme::Dark })
+        {
+            for (const auto id : { L"copilot", L"claude", L"codex", L"gemini", L"opencode" })
+            {
+                ::details::Event loaded;
+                ::details::Event imageLoaded;
+                MenuFlyout flyout{ nullptr };
+                MenuFlyoutItem item{ nullptr };
+                winrt::MUX::Controls::ImageIcon icon{ nullptr };
+                Image artwork{ nullptr };
+                Media::Imaging::SvgImageSource source{ nullptr };
+                winrt::event_token loadedToken{};
+                winrt::event_token openedToken{};
+                winrt::event_token failedToken{};
+                const auto hide = wil::scope_exit([&]() {
+                    LOG_IF_FAILED(RunOnUIThread([&]() {
+                        if (source)
+                        {
+                            source.Opened(openedToken);
+                            source.OpenFailed(failedToken);
+                        }
+                        if (flyout)
+                        {
+                            item.Loaded(loadedToken);
+                            flyout.Hide();
+                        }
+                    }));
+                });
+                TestOnUIThread([&]() {
+                    host.RequestedTheme(theme);
+                    const auto path = winrt::hstring{ L"ms-appx:///AgentIcons/" } + id + L".svg";
+                    winrt::Microsoft::Terminal::Settings::Model::Profile profile;
+                    profile.Name(id);
+                    profile.Icon(winrt::Microsoft::Terminal::Settings::Model::MediaResourceHelper::FromString(path));
+                    item = page->_CreateNewTabFlyoutProfile(profile, 0, {}).as<MenuFlyoutItem>();
+                    icon = item.Icon().as<winrt::MUX::Controls::ImageIcon>();
+                    source = icon.Source().as<Media::Imaging::SvgImageSource>();
+                    openedToken = source.Opened([&](auto&&, auto&&) { imageLoaded.Set(); });
+                    failedToken = source.OpenFailed([&](auto&&, auto&&) {
+                        Log::Error(L"Agent SVG failed to load");
+                        imageLoaded.Set();
+                    });
+                    VERIFY_ARE_EQUAL(path, source.UriSource().AbsoluteUri());
+                    VERIFY_IS_TRUE(icon.ReadLocalValue(IconElement::ForegroundProperty()) == DependencyProperty::UnsetValue());
+
+                    item.RequestedTheme(theme);
+                    loadedToken = item.Loaded([&](auto&&, auto&&) {
+                        const auto root = Media::VisualTreeHelper::GetChild(item, 0).as<FrameworkElement>();
+                        artwork = root.FindName(L"IconContent").as<ContentPresenter>().Content().as<Image>();
+                        VERIFY_IS_TRUE(artwork.Source() == source);
+                        loaded.Set();
+                    });
+                    flyout = MenuFlyout{};
+                    Style presenterStyle{ winrt::xaml_typename<MenuFlyoutPresenter>() };
+                    presenterStyle.Setters().Append(Setter{ FrameworkElement::RequestedThemeProperty(), winrt::box_value(theme) });
+                    flyout.MenuFlyoutPresenterStyle(presenterStyle);
+                    flyout.Items().Append(item);
+                    flyout.ShowAt(host);
+                });
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(loaded.m_handle, 10000));
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(imageLoaded.m_handle, 10000));
+                for (const auto state : { L"Normal", L"PointerOver", L"Pressed", L"Normal" })
+                {
+                    Media::Imaging::RenderTargetBitmap bitmap{ nullptr };
+                    winrt::Windows::Foundation::IAsyncAction render{ nullptr };
+                    TestOnUIThread([&]() {
+                        VERIFY_IS_TRUE(VisualStateManager::GoToState(item, state, false));
+                        item.UpdateLayout();
+                        bitmap = Media::Imaging::RenderTargetBitmap{};
+                        render = bitmap.RenderAsync(artwork);
+                    });
+                    render.get();
+                    winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Storage::Streams::IBuffer> read{ nullptr };
+                    TestOnUIThread([&]() { read = bitmap.GetPixelsAsync(); });
+                    const auto buffer = read.get();
+                    std::vector<uint8_t> pixels(buffer.Length());
+                    winrt::Windows::Storage::Streams::DataReader::FromBuffer(buffer).ReadBytes(pixels);
+                    VERIFY_IS_FALSE(pixels.empty());
+                    const auto key = std::wstring{ id } + (theme == ElementTheme::Light ? L"-light" : L"-dark");
+                    if (!originalPixels.contains(key))
+                    {
+                        bool hasTransparentBackground = false;
+                        bool hasGlyph = false;
+                        for (size_t offset = 0; offset + 3 < pixels.size(); offset += 4)
+                        {
+                            hasTransparentBackground |= pixels[offset + 3] == 0;
+                            const auto lightArtwork = theme == ElementTheme::Light && std::wstring_view{ id } != L"gemini";
+                            hasGlyph |= pixels[offset + 3] == 255 &&
+                                        (lightArtwork ?
+                                             pixels[offset] <= 80 && pixels[offset + 1] <= 80 && pixels[offset + 2] <= 80 :
+                                             pixels[offset] >= 200 && pixels[offset + 1] >= 200 && pixels[offset + 2] >= 200);
+                        }
+                        VERIFY_IS_TRUE(hasTransparentBackground);
+                        VERIFY_ARE_EQUAL(uint8_t{ 0 }, pixels[3]);
+                        VERIFY_IS_TRUE(hasGlyph);
+                        originalPixels.emplace(key, pixels);
+                    }
+                    VERIFY_IS_TRUE(originalPixels.at(key) == pixels);
+                }
+            }
+        }
+
+        TestOnUIThread([&]() {
+            for (const auto path : { L"ms-appx:///ProfileIcons/pwsh.png" })
+            {
+                const auto icon = page->_CreateNewTabFlyoutIcon(path).as<IconSourceElement>();
+                const auto source = icon.IconSource().as<winrt::Windows::UI::Xaml::Controls::BitmapIconSource>();
+                VERIFY_IS_FALSE(source.ShowAsMonochrome());
+                VERIFY_ARE_EQUAL(winrt::hstring{ path }, source.UriSource().AbsoluteUri());
+            }
+        });
+    }
+
     void TabTests::VerticalTabStripBindsBackground()
     {
         TestOnUIThread([&]() {
@@ -9037,7 +9256,7 @@ namespace TerminalAppLocalTests
             for (const auto state : { "loading", "error" })
             {
                 page->_tabStrip.HistoryError(L"");
-                page->_tabStrip.HistoryRefreshError(L"");
+                strip->HistoryRefreshError(L"");
                 page->_tabStrip.HistoryLoading(false);
                 strip->CommitHistorySnapshot(cached, true);
                 page->_historyRefreshInFlight = true;
@@ -9050,7 +9269,7 @@ namespace TerminalAppLocalTests
                 filters.ShowRecentAgentSessions(true);
                 VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
                 page->_tabStrip.HistoryError(L"");
-                page->_tabStrip.HistoryRefreshError(L"");
+                strip->HistoryRefreshError(L"");
                 page->_tabStrip.HistoryLoading(false);
                 VERIFY_IS_TRUE(strip->_agentFilterTelemetryPending);
                 filters.ShowRecentAgentSessions(false);
@@ -14204,6 +14423,10 @@ namespace TerminalAppLocalTests
             args.NativeAgentProviderId(L"claude");
             VERIFY_IS_FALSE(page->_maybeElevate(args, settings, profile));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, args.NativeAgentProviderId());
+            args.NativeAgentProviderId(L"");
+            args.Commandline(L"agy --conversation agent-session-1");
+            VERIFY_IS_FALSE(page->_maybeElevate(args, settings, profile));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"antigravity" }, args.NativeAgentProviderId());
             VERIFY_IS_TRUE(page->_paneAgentSessions.empty());
             VERIFY_IS_TRUE(page->_activeCliAgentPanes.empty());
             using namespace ::Microsoft::Terminal::Settings::Model;
@@ -14220,7 +14443,7 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(*baseline);
         TestOnUIThread([&]() {
             const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
-            for (const auto provider : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"custom:fixture" })
+            for (const auto provider : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"antigravity", L"custom:fixture" })
             {
                 winrt::guid paneId;
                 VERIFY_SUCCEEDED(CoCreateGuid(reinterpret_cast<GUID*>(&paneId)));
@@ -15782,6 +16005,44 @@ namespace TerminalAppLocalTests
         VERIFY_SUCCEEDED(result);
 
         return page;
+    }
+
+    void TabTests::ProfileAwareSplitPreservesExplicitTargets()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        for (const auto filtered : { false, true })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+            VERIFY_SUCCEEDED(RunOnUIThread([&page, filtered]() {
+                page->_tabStrip.SidebarFilters().ShowAgentsOnly(filtered);
+                page->_tabStrip.SidebarFilters().ShowRecentAgentSessions(filtered);
+                const auto source = page->_settings.ActiveProfiles().GetAt(0);
+                const auto target = page->_settings.ActiveProfiles().GetAt(1);
+                const auto explicitTarget = page->_settings.ActiveProfiles().GetAt(2);
+                source.DefaultSplitProfile(Microsoft::Console::Utils::GuidToString(target.Guid()));
+                target.DefaultSplitProfile(Microsoft::Console::Utils::GuidToString(source.Guid()));
+
+                ActionEventArgs configuredSplit{ SplitPaneArgs{ SplitType::Profile } };
+                page->_HandleSplitPane(nullptr, configuredSplit);
+                VERIFY_IS_TRUE(configuredSplit.Handled());
+                VERIFY_ARE_EQUAL(target.Guid(), page->_GetFocusedTabImpl()->GetFocusedProfile().Guid());
+
+                ActionEventArgs duplicate{ SplitPaneArgs{ SplitType::Duplicate } };
+                page->_HandleSplitPane(nullptr, duplicate);
+                VERIFY_IS_TRUE(duplicate.Handled());
+                VERIFY_ARE_EQUAL(target.Guid(), page->_GetFocusedTabImpl()->GetFocusedProfile().Guid());
+
+                NewTerminalArgs args{};
+                args.Profile(Microsoft::Console::Utils::GuidToString(explicitTarget.Guid()));
+                ActionEventArgs explicitSplit{ SplitPaneArgs{ SplitType::Profile, SplitDirection::Automatic, .5f, args } };
+                page->_HandleSplitPane(nullptr, explicitSplit);
+                VERIFY_IS_TRUE(explicitSplit.Handled());
+                VERIFY_ARE_EQUAL(explicitTarget.Guid(), page->_GetFocusedTabImpl()->GetFocusedProfile().Guid());
+            }));
+        }
     }
 
     void TabTests::TryZoomPane()

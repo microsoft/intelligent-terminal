@@ -77,6 +77,8 @@ namespace winrt::TerminalApp::implementation
         std::shared_ptr<TerminalSettingsCache> _cache{};
         winrt::TerminalApp::ContentManager _manager{ nullptr };
         bool _isDefTermSession{ false };
+        bool _usesManagedAgentCommand{ false };
+        winrt::hstring _managedAgentProviderId;
 
         struct ControlEventTokens
         {

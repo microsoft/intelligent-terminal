@@ -3030,6 +3030,30 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
     <value>제거</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Profile_AgentModel.Header" xml:space="preserve">
+    <value>에이전트 모델</value>
+    <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentModel.HelpText" xml:space="preserve">
+    <value>이 에이전트에서 지원하는 모델 식별자를 입력하세요. 비워 두면 에이전트 자체 구성이 사용됩니다. 새 세션에 적용됩니다.</value>
+    <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
+  </data>
+  <data name="Profile_AgentArguments.Header" xml:space="preserve">
+    <value>추가 에이전트 인수</value>
+    <comment>Additional startup arguments for the native AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
+    <value>공백이 포함된 값에는 Windows 명령줄의 따옴표 규칙을 사용하세요. 관리되는 설정이나 정책과 충돌하는 인수는 거부됩니다. 셸 명령은 지원되지 않습니다.</value>
+    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+  </data>
+  <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
+    <value>프로필의 분할 기본 설정 사용</value>
+    <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
+  </data>
+  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
+    <value>조직에서 관리되는 방식의 네이티브 에이전트 실행을 차단합니다. 네이티브 에이전트는 자체 승인 설정을 제어하므로 에이전트가 허용되어야 하며 정책에서도 자동 승인을 허용해야 합니다.</value>
+    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
+  </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
     <value>새 사이드바 보기와 기존 가로 탭 보기 간에 전환합니다</value>
     <comment>A description for what the &quot;tab layout&quot; setting does. Presented near &quot;Globals_TabLayout.Header&quot;.</comment>

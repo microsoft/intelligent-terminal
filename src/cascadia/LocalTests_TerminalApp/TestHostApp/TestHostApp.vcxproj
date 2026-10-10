@@ -145,9 +145,12 @@
 
   <ItemGroup>
     <TestDll Include="$(OpenConsoleCommonOutDir)\LocalTests_TerminalApp\TerminalApp.LocalTests.dll" />
+    <AgentProfileIcon Include="$(OpenConsoleDir)src\cascadia\CascadiaPackage\AgentIcons\*.svg" />
   </ItemGroup>
 
-  <Target Name="AfterBuild" Inputs="@(TestDll)" Outputs="@(TestDll->'$(TargetDir)'\%(Filename)%(Extension)')">
+  <Target Name="AfterBuild"
+          Inputs="@(TestDll);@(AgentProfileIcon)"
+          Outputs="@(TestDll->'$(TargetDir)%(Filename)%(Extension)');@(AgentProfileIcon->'$(TargetDir)AgentIcons\%(Filename)%(Extension)')">
 
     <!-- Use this to auto-find all the dll's that TerminalConnection produces. We
       don't roll these up automatically, so we'll need to copy them manually
@@ -175,6 +178,10 @@
     <Copy SourceFiles="@(TestDll)"
           DestinationFolder="$(TargetDir)"
           UseHardLinksIfPossible="true"
+          SkipUnchangedFiles="true" />
+
+    <Copy SourceFiles="@(AgentProfileIcon)"
+          DestinationFolder="$(TargetDir)AgentIcons"
           SkipUnchangedFiles="true" />
 
     <!-- Copy some dlls which TerminalConnection is dependent upon that didn't

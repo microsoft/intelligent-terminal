@@ -463,6 +463,22 @@ pub(crate) enum Command {
     /// share WTA's executable resolution with the actual ACP spawn path.
     #[command(hide = true)]
     ProbeHostAgents,
+    /// Discover installed Windows interactive agent CLIs (not ACP adapters).
+    ProbeProfileAgents,
+    /// Run a built-in agent's native interactive CLI in the current console.
+    LaunchAgent {
+        #[arg(long)]
+        agent_id: String,
+        /// Native model identifier. Omit to preserve the CLI default.
+        #[arg(long)]
+        model: Option<String>,
+        /// Provider-native permission mode. Omit to preserve the CLI default.
+        #[arg(long)]
+        permission_mode: Option<String>,
+        /// Additional supported native arguments, after --.
+        #[arg(last = true, allow_hyphen_values = true)]
+        additional_args: Vec<String>,
+    },
     /// Diagnostic: spawn an agent CLI, ACP `initialize`, then call
     /// `session/list` (`list_sessions`) and print what it returns.
     /// Used to evaluate whether ACP session enumeration can replace

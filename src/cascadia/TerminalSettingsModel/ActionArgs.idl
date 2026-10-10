@@ -80,7 +80,8 @@ namespace Microsoft.Terminal.Settings.Model
     enum SplitType
     {
         Manual = 0,
-        Duplicate = 1
+        Duplicate = 1,
+        Profile = 2
     };
 
     enum SettingsTarget

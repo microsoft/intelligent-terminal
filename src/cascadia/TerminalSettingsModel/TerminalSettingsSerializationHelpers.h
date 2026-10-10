@@ -460,9 +460,10 @@ JSON_ENUM_MAPPER(::winrt::Microsoft::Terminal::Settings::Model::SplitDirection)
 // Possible SplitType values
 JSON_ENUM_MAPPER(::winrt::Microsoft::Terminal::Settings::Model::SplitType)
 {
-    JSON_MAPPINGS(2) = {
+    JSON_MAPPINGS(3) = {
         pair_type{ "manual", ValueType::Manual },
         pair_type{ "duplicate", ValueType::Duplicate },
+        pair_type{ "profile", ValueType::Profile },
     };
 };
 

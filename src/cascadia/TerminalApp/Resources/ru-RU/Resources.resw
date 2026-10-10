@@ -1551,6 +1551,14 @@
     <value>Агент · Подключение</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Профиль для разделения недоступен</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>Настроенный профиль для разделения недоступен. Вместо него будет использован глобальный профиль по умолчанию. Чтобы изменить целевой профиль для разделения, отредактируйте значение defaultSplitProfile этого профиля в settings.json.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
+  </data>
   <data name="NotificationIconRestoreKeptTab" xml:space="preserve">
     <value>Восстановить</value>
     <comment>Command in the notification-area menu that brings a background tab and its still-running terminal panes back into a window. It does not restart the processes or restore a file backup.</comment>

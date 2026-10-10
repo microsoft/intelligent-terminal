@@ -418,6 +418,14 @@
     <value>Agent · Ansluter</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Delningsprofilen är inte tillgänglig</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>Den konfigurerade delningsprofilen är inte tillgänglig. Den globala standardprofilen används i stället. Om du vill ändra målprofilen för delning redigerar du den här profilens defaultSplitProfile i settings.json.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
+  </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>Stäng flikarna nedanför</value>
   </data>

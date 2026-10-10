@@ -8,6 +8,8 @@
 
 #include "../TerminalSettingsModel/CascadiaSettings.h"
 #include "../TerminalSettingsModel/ModelSerializationHelpers.h"
+#include "../inc/AgentProfileUtils.h"
+#include "../TerminalSettingsModel/DynamicProfileUtils.h"
 #include "TestUtils.h"
 
 using namespace Microsoft::Console;
@@ -54,7 +56,165 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestLayerProfileOnColorScheme);
         TEST_METHOD(TestCommandlineToTitlePromotion);
         TEST_METHOD(TestInitialPositionParsing);
+        TEST_METHOD(AgentProfileDirectCommandPrecedence);
+        TEST_METHOD(AgentProfileCommandlineOverrides);
+        TEST_METHOD(AgentProfileManagedLayoutOrphan);
     };
+
+    void TerminalSettingsTests::AgentProfileDirectCommandPrecedence()
+    {
+        const auto settings = winrt::make<implementation::CascadiaSettings>(std::string_view{ R"({
+            "defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+            "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Claude",
+                         "agentProfile.id":"claude","agentProfile.model":"chosen"}]})" });
+        const auto profile = settings.ActiveProfiles().GetAt(0);
+        const auto direct = TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings();
+        VERIFY_IS_TRUE(direct->UsesManagedAgentCommand());
+        VERIFY_IS_TRUE(std::wstring_view{ direct->Commandline() }.find(L"wta.exe") == std::wstring_view::npos);
+        VERIFY_IS_TRUE(std::wstring_view{ direct->Commandline() }.find(L"launch-agent") == std::wstring_view::npos);
+        VERIFY_IS_TRUE(std::wstring_view{ direct->Commandline() }.find(L"--model") != std::wstring_view::npos);
+        direct->UsesManagedAgentCommand(false);
+        VERIFY_IS_FALSE(direct->UsesManagedAgentCommand());
+        NewTerminalArgs args;
+        args.Profile(Utils::GuidToString(profile.Guid()));
+        args.Commandline(L"cmd.exe /d /c echo explicit");
+        const auto explicitSettings = TerminalSettings::CreateWithNewTerminalArgs(settings, args).DefaultSettings();
+        VERIFY_IS_FALSE(explicitSettings->UsesManagedAgentCommand());
+        VERIFY_ARE_EQUAL(args.Commandline(), explicitSettings->Commandline());
+        args.AppendCommandLine(true);
+        VERIFY_IS_FALSE(TerminalSettings::CreateWithNewTerminalArgs(settings, args).DefaultSettings()->UsesManagedAgentCommand());
+        profile.Commandline(L"cmd.exe /d /k");
+        const auto custom = TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings();
+        VERIFY_IS_FALSE(custom->UsesManagedAgentCommand());
+        VERIFY_ARE_EQUAL(profile.Commandline(), custom->Commandline());
+        profile.ClearCommandline();
+        profile.AgentProfilePermissionMode(L"invalid-edit-in-progress");
+        VERIFY_IS_TRUE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
+        profile.AgentProfileId(L"unknown-agent");
+        VERIFY_IS_FALSE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
+        profile.AgentProfileId(L"antigravity");
+        VERIFY_IS_FALSE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
+    }
+
+    void TerminalSettingsTests::AgentProfileCommandlineOverrides()
+    {
+        static constexpr std::string_view generated{ R"({"profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}",
+            "name":"Claude","source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"claude",
+            "agentProfile.permissionMode":"plan","agentProfile.arguments":"--continue","defaultSplitProfile":"Shell",
+            "commandline":"C:\\Native\\claude.exe"}]})" };
+        const auto settings = winrt::make<implementation::CascadiaSettings>(
+            std::string_view{ R"({"defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+                "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Claude",
+                             "source":"IntelligentTerminal.AgentProfiles","agentProfile.model":"chosen"}]})" },
+            generated);
+        const auto profile = settings.ActiveProfiles().GetAt(0);
+        winrt::get_self<implementation::Profile>(profile.CommandlineOverrideSource())->Origin(OriginTag::Generated);
+        VERIFY_IS_TRUE(TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings()->UsesManagedAgentCommand());
+        VERIFY_IS_FALSE(profile.HasAgentProfileId());
+        const auto inheritedCommand = profile.Commandline();
+        profile.Commandline(inheritedCommand);
+        const auto sameCommandOverride = TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings();
+        VERIFY_IS_FALSE(sameCommandOverride->UsesManagedAgentCommand());
+        VERIFY_ARE_EQUAL(inheritedCommand, sameCommandOverride->Commandline());
+        profile.ClearCommandline();
+        const winrt::hstring edited{ L"claude --model handwritten --custom-option" };
+        profile.Commandline(edited);
+        const auto custom = TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings();
+        VERIFY_IS_FALSE(custom->UsesManagedAgentCommand());
+        VERIFY_ARE_EQUAL(edited, custom->Commandline());
+        const auto reloaded = winrt::make<implementation::CascadiaSettings>(Json::writeString(
+            Json::StreamWriterBuilder{}, winrt::get_self<implementation::CascadiaSettings>(settings)->ToJson()), generated);
+        VERIFY_ARE_EQUAL(edited, TerminalSettings::CreateWithProfile(reloaded, reloaded.FindProfile(profile.Guid())).DefaultSettings()->Commandline());
+        profile.ClearCommandline();
+        VERIFY_IS_TRUE(TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings()->UsesManagedAgentCommand());
+    }
+
+    void TerminalSettingsTests::AgentProfileManagedLayoutOrphan()
+    {
+        const auto settings = winrt::make<implementation::CascadiaSettings>(
+            std::string_view{ R"({"defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+                "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Shell","commandline":"cmd.exe"},
+                            {"guid":"{00000000-0000-0000-0000-000000000002}","name":"Claude",
+                             "source":"IntelligentTerminal.AgentProfiles","agentProfile.model":"chosen",
+                             "startingDirectory":"C:\\Project"}]})" },
+            std::string_view{ R"({"profiles":[]})" });
+        NewTerminalArgs saved;
+        saved.Profile(L"{00000000-0000-0000-0000-000000000002}");
+        saved.NativeAgentProviderId(L"claude");
+        const auto orphan = settings.FindProfile(winrt::guid{ saved.Profile() });
+        VERIFY_IS_TRUE(orphan.Orphaned());
+        VERIFY_IS_TRUE(orphan.AgentProfileId().empty());
+        const auto restored = settings.GetProfileForArgs(saved);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, restored.AgentProfileId());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"chosen" }, restored.AgentProfileModel());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\Project" }, restored.StartingDirectory());
+        VERIFY_IS_TRUE(TerminalSettings::CreateWithNewTerminalArgs(settings, saved).DefaultSettings()->UsesManagedAgentCommand());
+        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::Command(restored, true, L""), wil::ResultException);
+        VERIFY_IS_TRUE(orphan.AgentProfileId().empty());
+        for (const auto provider : { L"unknown-agent", L"custom:fixture", L"antigravity" })
+        {
+            saved.NativeAgentProviderId(provider);
+            VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
+        }
+        saved.NativeAgentProviderId(L"");
+        VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
+        const std::wstring identity{ L"IntelligentTerminal.AgentProfiles:claude" };
+        const auto generatedGuid = Utils::CreateV5Uuid(TERMINAL_PROFILE_NAMESPACE_GUID, std::as_bytes(std::span{ identity }));
+        orphan.Guid(generatedGuid);
+        saved.Profile(Utils::GuidToString(generatedGuid));
+        const auto recovered = settings.GetProfileForArgs(saved);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, recovered.AgentProfileId());
+        VERIFY_IS_TRUE(TerminalSettings::CreateWithProfile(settings, recovered).DefaultSettings()->UsesManagedAgentCommand());
+        ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot policy;
+        policy.allowedAgents.emplace();
+        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(recovered.AgentProfileId(), policy), wil::ResultException);
+        policy.allowedAgents->insert(L"claude");
+        ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(recovered.AgentProfileId(), policy);
+        policy.yoloMode = ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState::Blocked;
+        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(recovered.AgentProfileId(), policy), wil::ResultException);
+        saved.NativeAgentProviderId(L"copilot");
+        VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
+        saved.NativeAgentProviderId(L"CLAUDE");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, settings.GetProfileForArgs(saved).AgentProfileId());
+        for (const auto profileId : { L"unknown-agent", L"custom:fixture", L"copilot", L"antigravity" })
+        {
+            orphan.AgentProfileId(profileId);
+            VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
+        }
+        orphan.AgentProfileId(L"claude");
+        saved.NativeAgentProviderId(L"");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, settings.GetProfileForArgs(saved).AgentProfileId());
+        orphan.ClearAgentProfileId();
+        const std::wstring unsupportedIdentity{ L"IntelligentTerminal.AgentProfiles:antigravity" };
+        const auto unsupportedGuid = Utils::CreateV5Uuid(TERMINAL_PROFILE_NAMESPACE_GUID, std::as_bytes(std::span{ unsupportedIdentity }));
+        orphan.Guid(unsupportedGuid);
+        saved.Profile(Utils::GuidToString(unsupportedGuid));
+        VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
+        orphan.Guid(generatedGuid);
+        saved.Profile(Utils::GuidToString(generatedGuid));
+        saved.NativeAgentProviderId(L"custom:fixture");
+        saved.Commandline(L"cmd.exe /d /c echo explicit");
+        const auto explicitSettings = TerminalSettings::CreateWithNewTerminalArgs(settings, saved).DefaultSettings();
+        VERIFY_IS_FALSE(explicitSettings->UsesManagedAgentCommand());
+        VERIFY_ARE_EQUAL(saved.Commandline(), explicitSettings->Commandline());
+        saved.Commandline(L"");
+        orphan.Commandline(L"cmd.exe /d /k explicit");
+        VERIFY_ARE_EQUAL(orphan.Commandline(), TerminalSettings::CreateWithNewTerminalArgs(settings, saved).DefaultSettings()->Commandline());
+        orphan.ClearCommandline();
+        saved.Profile(L"{00000000-0000-0000-0000-000000000001}");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"cmd.exe" }, TerminalSettings::CreateWithNewTerminalArgs(settings, saved).DefaultSettings()->Commandline());
+        const auto shell = settings.GetProfileForArgs(saved);
+        shell.AgentProfileId(L"custom:fixture");
+        const auto customSettings = TerminalSettings::CreateWithNewTerminalArgs(settings, saved).DefaultSettings();
+        VERIFY_IS_FALSE(customSettings->UsesManagedAgentCommand());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"cmd.exe" }, customSettings->Commandline());
+        shell.ClearAgentProfileId();
+        saved.NativeAgentProviderId(L"claude");
+        saved.Profile(L"{00000000-0000-0000-0000-000000000003}");
+        VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
+        saved.NativeAgentProviderId(L"");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"cmd.exe" }, TerminalSettings::CreateWithNewTerminalArgs(settings, saved).DefaultSettings()->Commandline());
+    }
 
     // CascadiaSettings::_normalizeCommandLine abuses some aspects from CommandLineToArgvW
     // to simplify the implementation. It assumes that all arguments returned by

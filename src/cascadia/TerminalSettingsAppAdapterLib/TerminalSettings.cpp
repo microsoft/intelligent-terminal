@@ -5,6 +5,7 @@
 #include "TerminalSettings.h"
 #include "winrt/Windows.UI.ViewManagement.h"
 #include "../../types/inc/colorTable.hpp"
+#include "../inc/AgentProfileUtils.h"
 
 using namespace winrt::Microsoft::Terminal::Control;
 using namespace winrt::Microsoft::Terminal::Settings;
@@ -130,6 +131,7 @@ namespace winrt::Microsoft::Terminal::Settings
             // Override commandline, starting directory if they exist in newTerminalArgs
             if (!newTerminalArgs.Commandline().empty())
             {
+                defaultSettings->_UsesManagedAgentCommand = false;
                 if (!newTerminalArgs.AppendCommandLine())
                 {
                     defaultSettings->_Commandline = newTerminalArgs.Commandline();
@@ -303,7 +305,10 @@ namespace winrt::Microsoft::Terminal::Settings
         _CellHeight = fontInfo.CellHeight();
         _Padding = profile.Padding();
 
-        _Commandline = profile.Commandline();
+        _UsesManagedAgentCommand = ::Microsoft::Terminal::AgentProfiles::IsManaged(profile);
+        _Commandline = UsesManagedAgentCommand() ?
+                           winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(profile) } :
+                           profile.Commandline();
 
         _StartingDirectory = profile.EvaluatedStartingDirectory();
 

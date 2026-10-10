@@ -2,6 +2,7 @@ pub(crate) mod agent_tools;
 pub(crate) mod args;
 pub(crate) mod delegate;
 pub(crate) mod hooks;
+pub(crate) mod native_agent;
 pub(crate) mod probes;
 pub(crate) mod sessions;
 pub(crate) mod wt;
@@ -117,6 +118,23 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
         Command::ProbeModels { agent } => probes::run_models(&agent).await,
         Command::ProbeAgentSources { wsl_distro } => probes::run_agent_sources(&wsl_distro).await,
         Command::ProbeHostAgents => probes::run_host_agents(),
+        Command::ProbeProfileAgents => native_agent::probe(),
+        Command::LaunchAgent {
+            agent_id,
+            model,
+            permission_mode,
+            additional_args,
+        } => {
+            let code = native_agent::launch(
+                &agent_id,
+                model.as_deref(),
+                permission_mode.as_deref(),
+                &additional_args,
+            )
+            .await?;
+            crate::logging::shutdown_flush();
+            std::process::exit(code);
+        }
         Command::ProbeSessions { agent } => probes::run_sessions(&agent).await,
         Command::ProbeHostSessions { agent } => probes::run_host_sessions(&agent).await,
     }

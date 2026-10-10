@@ -86,10 +86,10 @@
                                 Style="{StaticResource NewTabMenuEntryControlsWrapper}">
                     <StackPanel Orientation="Horizontal"
                                 Spacing="10">
-                        <IconSourceElement Width="16"
-                                           Height="16"
-                                           VerticalAlignment="Center"
-                                           IconSource="{x:Bind mtu:IconPathConverter.IconSourceWUX(ProfileEntry.Profile.Icon.Resolved), Mode=OneTime}" />
+                        <ContentPresenter Width="16"
+                                          Height="16"
+                                          VerticalAlignment="Center"
+                                          Content="{x:Bind mtu:IconPathConverter.IconWUX(ProfileEntry.Profile.Icon.Resolved), Mode=OneTime}" />
                         <TextBlock VerticalAlignment="Center"
                                    Text="{x:Bind ProfileEntry.Profile.Name, Mode=OneWay}" />
                     </StackPanel>
@@ -485,10 +485,10 @@
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
 
-                                            <IconSourceElement Grid.Column="0"
-                                                               Width="16"
-                                                               Height="16"
-                                                               IconSource="{x:Bind mtu:IconPathConverter.IconSourceWUX(Icon.Resolved), Mode=OneTime}" />
+                                            <ContentPresenter Grid.Column="0"
+                                                              Width="16"
+                                                              Height="16"
+                                                              Content="{x:Bind mtu:IconPathConverter.IconWUX(Icon.Resolved), Mode=OneTime}" />
 
                                             <TextBlock Grid.Column="1"
                                                        Text="{x:Bind Name}" />

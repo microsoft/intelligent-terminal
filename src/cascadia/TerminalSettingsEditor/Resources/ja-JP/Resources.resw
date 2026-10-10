@@ -2994,6 +2994,30 @@ Alt+Shift+/ プロンプトを入力; Alt+Shift+B 初期プロンプトなしで
     <value>削除</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Profile_AgentModel.Header" xml:space="preserve">
+    <value>エージェントのモデル</value>
+    <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentModel.HelpText" xml:space="preserve">
+    <value>このエージェントがサポートするモデル識別子を入力してください。空欄にすると、エージェント独自の構成が使用されます。新しいセッションに適用されます。</value>
+    <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
+  </data>
+  <data name="Profile_AgentArguments.Header" xml:space="preserve">
+    <value>エージェントの追加の引数</value>
+    <comment>Additional startup arguments for the native AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
+    <value>スペースを含む値には、Windows コマンド ラインの引用符の規則を使用してください。管理対象の設定やポリシーと競合する引数は拒否されます。シェル コマンドはサポートされていません。</value>
+    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+  </data>
+  <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
+    <value>プロファイルの分割設定を使用する</value>
+    <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
+  </data>
+  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
+    <value>組織によって、管理された方法でのネイティブ エージェントの起動がブロックされています。ネイティブ エージェントは独自の承認設定を制御するため、エージェントが許可されていることに加え、ポリシーで自動承認が許可されている必要があります。</value>
+    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
+  </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
     <value>新しいサイドバー表示と従来の水平タブ表示を切り替えます</value>
     <comment>A description for what the &quot;tab layout&quot; setting does. Presented near &quot;Globals_TabLayout.Header&quot;.</comment>

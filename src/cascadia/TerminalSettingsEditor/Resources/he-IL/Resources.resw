@@ -3057,4 +3057,28 @@ Alt+Shift+/ הזן הנחיה; Alt+Shift+B הפעל ללא הנחיה התחלת
     <value>הסר</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Profile_AgentModel.Header" xml:space="preserve">
+    <value>מודל הסוכן</value>
+    <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentModel.HelpText" xml:space="preserve">
+    <value>הזן מזהה מודל שהסוכן הזה תומך בו. השאר ריק כדי להשתמש בתצורה של הסוכן עצמו. חל על הפעלות חדשות.</value>
+    <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
+  </data>
+  <data name="Profile_AgentArguments.Header" xml:space="preserve">
+    <value>ארגומנטים נוספים לסוכן</value>
+    <comment>Additional startup arguments for the native AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
+    <value>השתמש בכללי הצבת מרכאות של שורת הפקודה של Windows לערכים המכילים רווחים. ארגומנטים המתנגשים עם הגדרות מנוהלות או עם מדיניות יידחו. פקודות מעטפת (shell) אינן נתמכות.</value>
+    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+  </data>
+  <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
+    <value>השתמש בהעדפת הפיצול של הפרופיל</value>
+    <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
+  </data>
+  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
+    <value>הארגון שלך חוסם הפעלות מנוהלות של סוכנים מקוריים. יש לאשר את הסוכן, והמדיניות חייבת לאפשר אישור אוטומטי מכיוון שסוכנים מקוריים שולטים בהגדרות האישור שלהם בעצמם.</value>
+    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
+  </data>
 </root>
