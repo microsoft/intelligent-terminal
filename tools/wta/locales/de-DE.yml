@@ -297,3 +297,11 @@ system.config_update_failed: "%{option} konnte nicht aktualisiert werden: %{erro
 system.yolo_disable_pending: "der Anbieter hat den erforderlichen nicht privilegierten Sitzungsstatus nicht bestätigt"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Automatische Genehmigung ist durch die Richtlinie Ihrer Organisation deaktiviert."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Unbekanntes Modell %{model} — geben Sie /model ein, um die verfügbare Liste anzuzeigen."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Ihr Agent \"%{agent}\" erfordert eine Authentifizierung. Wählen Sie eine Anmeldemethode aus, um hier fortzufahren."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Schließen Sie die Anmeldung in Ihrem Browser ab. Drücken Sie Esc, um das Warten abzubrechen."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Browser nicht geöffnet? Verwenden Sie diesen Anmeldelink. O: öffnen · Y: kopieren."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Der Browser konnte nicht geöffnet werden. Öffnen Sie den Anmeldelink manuell."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Der Anmeldelink konnte nicht kopiert werden. Markieren und kopieren Sie ihn manuell."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Die Anmeldung wurde nicht rechtzeitig abgeschlossen. Versuchen Sie es erneut, wenn Sie bereit sind."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Wir konnten \"%{agent}\" in der Anmeldeumgebung von %{distro} nicht finden. Überprüfen Sie die Installation, PATH und das Shellprofil dieses Linux-Benutzers, und versuchen Sie es dann erneut."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

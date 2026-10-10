@@ -257,4 +257,50 @@ Describe 'Feature: non-activating hook delivery' -Tag 'Feature', 'HookShutdown' 
         @(Get-TestServers).Count | Should -Be 1
         @((Invoke-WtCli -App $script:app -Arguments @('list-windows')).windows).Count | Should -Be 0
     }
+
+    It 'Passive WTA transports do not activate Terminal' {
+        $process = Start-TestComServer
+        $listener = Start-WtEventListener -App $script:app -ExistingOnly -WaitForReady
+        $marker = [guid]::NewGuid().ToString('N')
+        $json = @{ type = 'event'; method = 'agent_event'; params = @{ event = 'fixture.passive'; marker = $marker } } |
+            ConvertTo-Json -Compress
+        $publish = {
+            param([bool]$ExistingOnly)
+            $flag = if ($ExistingOnly) { ' --existing-only' } else { '' }
+            $command = "'$json' | & '$($script:app.WtcliPath.Replace("'", "''"))' publish$flag --stdin; exit `$LASTEXITCODE"
+            $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+            Invoke-Native -FilePath $script:pwsh -Arguments @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded) `
+                -Environment @{ WT_COM_CLSID = $script:app.ComClsid } -TimeoutSec 15
+        }
+        try {
+            $result = & $publish $true
+            $result.ExitCode | Should -Be 0
+            Wait-WtEvent -Listener $listener -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.event -eq 'fixture.passive' -and $_.params.marker -eq $marker
+            } | Should -Not -BeNullOrEmpty
+            Stop-TestServer -Process $process
+        }
+        finally { Stop-WtEventListener -Listener $listener }
+
+        foreach ($attempt in 1..2) {
+            $result = & $publish $true
+            $result.TimedOut | Should -BeFalse
+            $result.ExitCode | Should -Not -Be 0
+            $result.StdErr | Should -Match 'Connection failed'
+            $retry = Start-WtEventListener -App $script:app -ExistingOnly
+            try {
+                $retry.Process.WaitForExit(5000) | Should -BeTrue
+                $retry.Process.ExitCode | Should -Not -Be 0
+            }
+            finally { Stop-WtEventListener -Listener $retry }
+            Assert-NoTestServer
+        }
+
+        # Explicit public publication still has its normal activation behavior.
+        $result = & $publish $false
+        $result.TimedOut | Should -BeFalse
+        $result.ExitCode | Should -Be 0
+        Register-TestServers
+        @(Get-TestServers).Count | Should -Be 1
+    }
 }

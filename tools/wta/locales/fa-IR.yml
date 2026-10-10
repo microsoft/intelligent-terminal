@@ -295,3 +295,11 @@ system.config_update_failed: "به‌روزرسانی %{option} ناموفق ب�
 system.yolo_disable_pending: "ارائه‌دهندهٔ عامل هوش مصنوعی تأیید نکرده است که نشست در وضعیت الزامیِ بدون امتیاز قرار دارد"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: تأیید خودکار طبق خط‌مشی سازمان شما غیرفعال است."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "مدل ناشناخته %{model} — برای دیدن فهرست در دسترس، /model را تایپ کنید."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. برای ادامه در اینجا، یک روش ورود انتخاب کنید."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "ورود را در مرورگر خود تکمیل کنید. برای لغو انتظار، Esc را فشار دهید."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "مرورگر باز نشده است؟ از این پیوند ورود استفاده کنید. O: باز کردن · Y: کپی کردن."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "باز کردن مرورگر ممکن نشد. پیوند ورود را به‌صورت دستی باز کنید."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "کپی کردن پیوند ورود ممکن نشد. آن را به‌صورت دستی انتخاب و کپی کنید."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "ورود در زمان مقرر تکمیل نشد. هر وقت آماده بودید دوباره تلاش کنید."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "نتوانستیم \"%{agent}\" را در محیط ورود %{distro} پیدا کنیم. نصب، PATH و نمایهٔ پوستهٔ این کاربر Linux را بررسی کنید، سپس دوباره تلاش کنید."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

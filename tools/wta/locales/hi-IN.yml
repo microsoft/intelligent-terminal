@@ -296,3 +296,11 @@ system.config_update_failed: "%{option} को अपडेट करने म�
 system.yolo_disable_pending: "एजेंट प्रदाता ने अभी तक उस आवश्यक सत्र स्थिति की पुष्टि नहीं की है जिसमें विशेषाधिकार मोड बंद है"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: आपके संगठन की नीति के अनुसार स्वचालित अनुमोदन अक्षम है।"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "अज्ञात मॉडल %{model} — उपलब्ध सूची देखने के लिए /model टाइप करें।"  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "आपके एजेंट \"%{agent}\" को प्रमाणीकरण की आवश्यकता है। यहाँ आगे बढ़ने के लिए साइन इन करने का तरीका चुनें।"  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "अपने ब्राउज़र में साइन इन पूरा करें। प्रतीक्षा रद्द करने के लिए Esc दबाएँ।"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ब्राउज़र नहीं खुला? साइन इन के इस लिंक का उपयोग करें। O: खोलें · Y: कॉपी करें।"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ब्राउज़र नहीं खोला जा सका। साइन इन का लिंक स्वयं खोलें।"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "साइन इन का लिंक कॉपी नहीं किया जा सका। इसे चुनकर स्वयं कॉपी करें।"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "साइन इन समय पर पूरा नहीं हुआ। तैयार होने पर फिर से कोशिश करें।"  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} के लॉगिन परिवेश में \"%{agent}\" नहीं मिला। इस Linux उपयोगकर्ता का इंस्टॉलेशन, PATH और शेल प्रोफ़ाइल जाँचें, फिर दोबारा कोशिश करें।"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

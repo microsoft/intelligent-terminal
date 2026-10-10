@@ -296,3 +296,11 @@ system.config_update_failed: "%{option}ను నవీకరించడం వ
 system.yolo_disable_pending: "ప్రత్యేకాధికార మోడ్ నిలిపివేయబడి ఉండాల్సిన సెషన్ స్థితిని ఏజెంట్ ప్రదాత ఇంకా నిర్ధారించలేదు"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: మీ సంస్థ విధానం వల్ల ఆటోమేటిక్ ఆమోదం నిలిపివేయబడింది."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "తెలియని మోడల్ %{model} — అందుబాటులో ఉన్న జాబితాను చూడటానికి /model టైప్ చేయండి."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "మీ ఏజెంట్ \"%{agent}\" కు ప్రామాణీకరణ అవసరం. ఇక్కడ కొనసాగించడానికి సైన్ ఇన్ పద్ధతిని ఎంచుకోండి."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "మీ బ్రౌజర్‌లో సైన్ ఇన్ పూర్తి చేయండి. వేచి ఉండటాన్ని రద్దు చేయడానికి Esc నొక్కండి."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "బ్రౌజర్ తెరుచుకోలేదా? సైన్ ఇన్ కోసం ఈ లింక్‌ను ఉపయోగించండి. O: తెరవండి · Y: కాపీ చేయండి."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "బ్రౌజర్‌ను తెరవడం సాధ్యం కాలేదు. సైన్ ఇన్ లింక్‌ను మీరే తెరవండి."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "సైన్ ఇన్ లింక్‌ను కాపీ చేయడం సాధ్యం కాలేదు. దాన్ని ఎంచుకుని మీరే కాపీ చేయండి."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "సైన్ ఇన్ సమయానికి పూర్తి కాలేదు. మీరు సిద్ధంగా ఉన్నప్పుడు మళ్లీ ప్రయత్నించండి."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} లాగిన్ వాతావరణంలో \"%{agent}\" కనుగొనబడలేదు. ఈ Linux వినియోగదారు ఇన్‌స్టాలేషన్, PATH మరియు షెల్ ప్రొఫైల్‌ను తనిఖీ చేసి, మళ్లీ ప్రయత్నించండి."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

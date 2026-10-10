@@ -55,6 +55,11 @@ No dynamic CLSID, new environment variable, hook-script rewrite, or headless
 timeout is required. Fixed-CLSID discovery prevents hooks from starting Terminal;
 it does not bind a delayed hook to a particular process across a later restart.
 
+WTA's passive `publish` and `listen` transports opt into `--existing-only` as
+well. This covers queued history/status updates and subscription retries during
+shutdown; neither transport falls back to COM activation. Explicit interactive
+clients can still use the default activating command behavior.
+
 ## Design history
 
 This document was first written as a "singleton wta" design (one wta process

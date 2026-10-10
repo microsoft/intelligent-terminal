@@ -1,7 +1,6 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # PR #505: provider-native ACP Yolo modes. This publishable suite is intentionally zero-token:
 # deterministic fixtures and provider handshakes prove product behavior without model prompts.
-# Real model/tool acceptance lives only in local-tdd-kit/Feature.YoloMode.RealUser.Tests.ps1.
 
 BeforeDiscovery {
     Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force

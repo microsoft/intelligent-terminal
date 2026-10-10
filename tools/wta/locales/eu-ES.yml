@@ -295,3 +295,11 @@ system.config_update_failed: "Ezin izan da %{option} eguneratu: %{error}"
 system.yolo_disable_pending: "hornitzaileak ez du berretsi saioa pribilegiorik gabeko beharrezko egoeran dagoela"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Onarpen automatikoa desgaituta dago zure erakundearen politikagatik."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "%{model} modelo ezezaguna — idatzi /model erabilgarri dagoen zerrenda ikusteko."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Hautatu saioa hasteko metodo bat hemen jarraitzeko."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Osatu saio-hasiera zure arakatzailean. Sakatu Esc itxarotea bertan behera uzteko."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Arakatzailea ez da ireki? Erabili saioa hasteko esteka hau. O: ireki · Y: kopiatu."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Ezin izan da arakatzailea ireki. Ireki eskuz saioa hasteko esteka."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Ezin izan da saioa hasteko esteka kopiatu. Hautatu eta kopiatu eskuz."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Saio-hasiera ez da garaiz osatu. Saiatu berriro prest zaudenean."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Ezin izan dugu \"%{agent}\" aurkitu %{distro} saioa hasteko ingurunean. Egiaztatu Linux erabiltzaile honen instalazioa, PATH eta shell-profila, eta saiatu berriro."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

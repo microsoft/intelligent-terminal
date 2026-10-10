@@ -294,3 +294,11 @@ system.config_update_failed: "Theip ar nuashonrú %{option}: %{error}"
 system.yolo_disable_pending: "níor dheimhnigh soláthraí an ghníomhaire staid neamhphribhléideach riachtanach an tseisiúin"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Tá ceadú uathoibríoch díchumasaithe ag polasaí d’eagraíochta."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Samhail anaithnid %{model} — clóscríobh /model chun an liosta atá ar fáil a fheiceáil."  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Roghnaigh modh sínithe isteach chun leanúint ar aghaidh anseo."  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "Críochnaigh an síniú isteach i do bhrabhsálaí. Brúigh Esc chun an fanacht a chealú."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Níor osclaíodh an brabhsálaí? Úsáid an nasc sínithe isteach seo. O: oscail · Y: cóipeáil."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Níorbh fhéidir an brabhsálaí a oscailt. Oscail an nasc sínithe isteach de láimh."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Níorbh fhéidir an nasc sínithe isteach a chóipeáil. Roghnaigh é agus cóipeáil é de láimh."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Níor críochnaíodh an síniú isteach in am. Bain triail eile as nuair atá tú réidh."  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "Níorbh fhéidir linn \"%{agent}\" a aimsiú i dtimpeallacht logála isteach %{distro}. Seiceáil suiteáil, PATH agus próifíl bhlaoisce an úsáideora Linux seo, ansin bain triail eile as."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

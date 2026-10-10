@@ -3,12 +3,18 @@
 
 #pragma once
 
+#include "AgentRegistry.h"
+#include "AgentPaneBackend.h"
+#include "AgentSessionId.h"
+
 #include <algorithm>
 #include <cctype>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <shellapi.h>
+#include <wil/resource.h>
 
 // How an agent session survives a restart.
 //
@@ -126,6 +132,18 @@ namespace Microsoft::Terminal::AgentPaneRestore
         AppendQuoted(out, value);
     }
 
+    inline void AppendArgument(std::wstring& out, const std::wstring_view value)
+    {
+        if (!value.empty() && value.find_first_of(L" \t\r\n\"") == std::wstring_view::npos)
+        {
+            out.append(value);
+        }
+        else
+        {
+            AppendQuoted(out, value);
+        }
+    }
+
     // `executable` is cosmetic — the restore re-detects wta rather than
     // trusting a path baked into saved state — but writing it keeps the value
     // readable as a command line in `state.json`.
@@ -203,19 +221,14 @@ namespace Microsoft::Terminal::AgentPaneRestore
         { L"codex", L"resume" },
         { L"gemini", L"--resume" },
         { L"opencode", L"--session" },
+        { L"antigravity", L"--conversation" },
     };
 
     inline constexpr std::wstring_view ResumeShellPrefix{ L"cmd.exe /d /s /c \"" };
 
     inline bool IsValidSessionId(const std::wstring_view sessionId)
     {
-        return !sessionId.empty() &&
-               !sessionId.starts_with(L"sidekick-") &&
-               sessionId.size() <= 256 &&
-               std::all_of(sessionId.begin(), sessionId.end(), [](const wchar_t ch) {
-                   return (ch < 128 && std::isalnum(static_cast<unsigned char>(ch))) ||
-                          ch == L'-' || ch == L'_' || ch == L'.' || ch == L':';
-               });
+        return ::Microsoft::Terminal::AgentSessionId::IsSafeForCliResume(sessionId);
     }
 
     // The command line that resumes `agentSessionId` under `cliSource`, or
@@ -224,27 +237,49 @@ namespace Microsoft::Terminal::AgentPaneRestore
     // The session id is validated rather than trusted: it may have arrived from
     // an agent hook, and it ends up inside a command line that gets executed.
     inline std::wstring BuildResumeCommandline(const std::wstring_view cliSource,
-                                               const std::wstring_view agentSessionId)
+                                               const std::wstring_view agentSessionId,
+                                               const std::wstring_view cwd = {})
     {
         if (!IsValidSessionId(agentSessionId))
         {
             return {};
         }
 
-        std::wstring cli{ cliSource };
+        const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(cliSource);
+        std::wstring cli{ backend ? std::wstring_view{ backend->agentId } : cliSource };
         std::transform(cli.begin(), cli.end(), cli.begin(), [](const wchar_t ch) {
             return ch < 128 ? static_cast<wchar_t>(std::tolower(static_cast<unsigned char>(ch))) : ch;
         });
 
-        for (const auto& [executable, resumeArg] : ResumeInvocations)
+        for (const auto& [agentId, resumeArg] : ResumeInvocations)
         {
-            if (cli != executable)
+            if (cli != agentId)
             {
                 continue;
             }
 
+            if (backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl)
+            {
+                if (!cwd.empty() && !cwd.starts_with(L'/'))
+                {
+                    return {};
+                }
+                std::wstring invocation{ L"exec " };
+                invocation.append(::Microsoft::Terminal::Settings::Model::AgentRegistry::CliExecutable(agentId));
+                invocation.push_back(L' ');
+                invocation.append(resumeArg);
+                invocation.push_back(L' ');
+                invocation.append(agentSessionId);
+                std::wstring command{ L"wsl.exe -d " };
+                AppendArgument(command, backend->wslDistro);
+                AppendFlag(command, L"--cd", cwd);
+                command.append(L" --exec bash -lc ");
+                AppendQuoted(command, invocation);
+                return command;
+            }
+
             std::wstring cmd{ ResumeShellPrefix };
-            cmd.append(executable);
+            cmd.append(::Microsoft::Terminal::Settings::Model::AgentRegistry::CliExecutable(agentId));
             cmd.push_back(L' ');
             cmd.append(resumeArg);
             cmd.push_back(L' ');
@@ -268,13 +303,12 @@ namespace Microsoft::Terminal::AgentPaneRestore
     {
         std::wstring agent;
         std::wstring sessionId;
+        std::wstring backend;
+        std::wstring cwd;
     };
 
-    // Split a resume invocation back into the agent and session it names.
-    // Empty `agent` means the command line is not one of ours.
-    inline ResumeTarget ParseResumeCommandline(const std::wstring_view commandline)
+    inline ResumeTarget ParseCliResumeInvocation(std::wstring_view inner)
     {
-        auto inner = commandline;
         while (!inner.empty() && std::iswspace(inner.front()))
         {
             inner.remove_prefix(1);
@@ -282,12 +316,6 @@ namespace Microsoft::Terminal::AgentPaneRestore
         while (!inner.empty() && std::iswspace(inner.back()))
         {
             inner.remove_suffix(1);
-        }
-
-        if (inner.starts_with(ResumeShellPrefix) && inner.ends_with(L'"'))
-        {
-            inner = inner.substr(ResumeShellPrefix.size(),
-                                 inner.size() - ResumeShellPrefix.size() - 1);
         }
 
         const auto firstSpace = inner.find_first_of(L" \t");
@@ -303,9 +331,9 @@ namespace Microsoft::Terminal::AgentPaneRestore
             arguments.remove_prefix(1);
         }
 
-        for (const auto& [executable, resumeArg] : ResumeInvocations)
+        for (const auto& [agentId, resumeArg] : ResumeInvocations)
         {
-            if (requestedExecutable != executable)
+            if (requestedExecutable != ::Microsoft::Terminal::Settings::Model::AgentRegistry::CliExecutable(agentId))
             {
                 continue;
             }
@@ -330,10 +358,67 @@ namespace Microsoft::Terminal::AgentPaneRestore
             }
             if (IsValidSessionId(sessionId))
             {
-                return { std::wstring{ executable }, std::wstring{ sessionId } };
+                return { std::wstring{ agentId }, std::wstring{ sessionId } };
             }
         }
         return {};
+    }
+
+    // Recognize native CLI invocations and the source-aware restore wrappers.
+    inline ResumeTarget ParseResumeCommandline(std::wstring_view commandline)
+    {
+        while (!commandline.empty() && std::iswspace(commandline.front()))
+        {
+            commandline.remove_prefix(1);
+        }
+        while (!commandline.empty() && std::iswspace(commandline.back()))
+        {
+            commandline.remove_suffix(1);
+        }
+        if (commandline.starts_with(ResumeShellPrefix) && commandline.ends_with(L'"'))
+        {
+            return ParseCliResumeInvocation(commandline.substr(
+                ResumeShellPrefix.size(), commandline.size() - ResumeShellPrefix.size() - 1));
+        }
+        if (!commandline.starts_with(L"wsl.exe -d "))
+        {
+            return ParseCliResumeInvocation(commandline);
+        }
+        int argc{};
+        const wil::unique_hlocal_ptr<PWSTR[]> argv{
+            ::CommandLineToArgvW(std::wstring{ commandline }.c_str(), &argc)
+        };
+        if (!argv || (argc != 7 && argc != 9))
+        {
+            return {};
+        }
+        const auto execIndex = argc == 9 ? 5 : 3;
+        if (std::wstring_view{ argv.get()[1] } != L"-d" ||
+            (argc == 9 && std::wstring_view{ argv.get()[3] } != L"--cd") ||
+            std::wstring_view{ argv.get()[execIndex] } != L"--exec" ||
+            std::wstring_view{ argv.get()[execIndex + 1] } != L"bash" ||
+            std::wstring_view{ argv.get()[execIndex + 2] } != L"-lc")
+        {
+            return {};
+        }
+        const std::wstring_view invocation{ argv.get()[execIndex + 3] };
+        if (!invocation.starts_with(L"exec "))
+        {
+            return {};
+        }
+        auto target = ParseCliResumeInvocation(invocation.substr(5));
+        if (target.agent.empty())
+        {
+            return {};
+        }
+        target.backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Wsl(argv.get()[2], target.agent);
+        if (argc == 9)
+        {
+            target.cwd = argv.get()[4];
+        }
+        return BuildResumeCommandline(target.backend, target.sessionId, target.cwd) == commandline ?
+                   target :
+                   ResumeTarget{};
     }
 
     inline bool IsResumeCommandline(const std::wstring_view commandline)

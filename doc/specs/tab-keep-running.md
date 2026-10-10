@@ -99,6 +99,8 @@ windows. Restoration waits for host registration and a nonzero content layout,
 then runs on a later UI turn. A failed tab remains available in the tray and
 does not close the receiver before other tabs in the batch can restore.
 Explicit profile launches keep their normal new-tab behavior.
+Initial and re-armed layout callbacks hold a weak page reference, so a queued
+layout notification cannot dereference a page that was destroyed before delivery.
 
 Startup-layout restoration remains independent of background retention. With
 **Restore window layout** or **Restore window layout and content** enabled,
@@ -170,3 +172,6 @@ Focused coverage lives in `TabTests::KeepRunning*` in
 `src/cascadia/LocalTests_TerminalApp/TabTests.cpp`. The shared history/session
 focus boundary also has the `Feature.KeepRunningFocus` ItE2E suite, covering
 real UI detachment and protocol reattachment without launching a second session.
+Native fixtures initialize mock controls through actual XAML layout before parking
+them; UI coverage activates the selected package and checks retained pane/process
+identity rather than relying on tab-title text as a readiness signal.

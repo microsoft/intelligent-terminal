@@ -296,3 +296,11 @@ system.config_update_failed: "%{option} ਨੂੰ ਅੱਪਡੇਟ ਕਰਨ �
 system.yolo_disable_pending: "ਏਜੰਟ ਪ੍ਰਦਾਤਾ ਨੇ ਹਾਲੇ ਉਸ ਲੋੜੀਂਦੀ ਸੈਸ਼ਨ ਸਥਿਤੀ ਦੀ ਪੁਸ਼ਟੀ ਨਹੀਂ ਕੀਤੀ ਜਿਸ ਵਿੱਚ ਵਿਸ਼ੇਸ਼ ਅਧਿਕਾਰ ਮੋਡ ਬੰਦ ਹੈ"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: ਤੁਹਾਡੀ ਸੰਸਥਾ ਦੀ ਨੀਤੀ ਕਾਰਨ ਸਵੈਚਲਿਤ ਮਨਜ਼ੂਰੀ ਅਯੋਗ ਹੈ।"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "ਅਣਜਾਣ ਮਾਡਲ %{model} — ਉਪਲਬਧ ਸੂਚੀ ਵੇਖਣ ਲਈ /model ਟਾਈਪ ਕਰੋ।"  # {Locked="%{model}","/model"}
+
+setup.subtitle.protocol_auth: "ਤੁਹਾਡੇ ਏਜੰਟ \"%{agent}\" ਨੂੰ ਪ੍ਰਮਾਣੀਕਰਨ ਦੀ ਲੋੜ ਹੈ। ਇੱਥੇ ਜਾਰੀ ਰੱਖਣ ਲਈ ਸਾਈਨ ਇਨ ਕਰਨ ਦਾ ਤਰੀਕਾ ਚੁਣੋ।"  # AI-agent sign-in methods; %{agent} is the agent display name.
+auth.browser_wait_hint: "ਆਪਣੇ ਬ੍ਰਾਊਜ਼ਰ ਵਿੱਚ ਸਾਈਨ ਇਨ ਪੂਰਾ ਕਰੋ। ਉਡੀਕ ਰੱਦ ਕਰਨ ਲਈ Esc ਦਬਾਓ।"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ਬ੍ਰਾਊਜ਼ਰ ਨਹੀਂ ਖੁੱਲ੍ਹਿਆ? ਸਾਈਨ ਇਨ ਕਰਨ ਲਈ ਇਹ ਲਿੰਕ ਵਰਤੋ। O: ਖੋਲ੍ਹੋ · Y: ਕਾਪੀ ਕਰੋ।"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ਬ੍ਰਾਊਜ਼ਰ ਖੋਲ੍ਹਿਆ ਨਹੀਂ ਜਾ ਸਕਿਆ। ਸਾਈਨ ਇਨ ਲਿੰਕ ਆਪ ਖੋਲ੍ਹੋ।"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "ਸਾਈਨ ਇਨ ਲਿੰਕ ਕਾਪੀ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਿਆ। ਇਸ ਨੂੰ ਚੁਣ ਕੇ ਆਪ ਕਾਪੀ ਕਰੋ।"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "ਸਾਈਨ ਇਨ ਸਮੇਂ ਸਿਰ ਪੂਰਾ ਨਹੀਂ ਹੋਇਆ। ਜਦੋਂ ਤੁਸੀਂ ਤਿਆਰ ਹੋਵੋ, ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।"  # Sign-in wait timeout; the user can retry later.
+setup.subtitle.wsl_agent_missing: "%{distro} ਦੇ ਲੌਗਇਨ ਵਾਤਾਵਰਣ ਵਿੱਚ \"%{agent}\" ਨਹੀਂ ਮਿਲਿਆ। ਇਸ Linux ਵਰਤੋਂਕਾਰ ਦੀ ਇੰਸਟਾਲੇਸ਼ਨ, PATH ਅਤੇ ਸ਼ੈੱਲ ਪ੍ਰੋਫਾਈਲ ਜਾਂਚੋ, ਫਿਰ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}
