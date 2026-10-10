@@ -7298,6 +7298,12 @@ async fn refresh_agent_history(
     if agent.history_refresh.retired.load(Ordering::Acquire) {
         return None;
     }
+    if matches!(trigger, HistoryRefreshTrigger::Periodic)
+        && !uses_periodic_history_polling(&agent.resolved_agent_id)
+        && refresh.failures == 0
+    {
+        return refresh.last_count;
+    }
     // The interval already paces periodic work. Applying the success delay
     // again would skip ticks whenever the previous dispatch started slightly late.
     let honor_delay = match trigger {

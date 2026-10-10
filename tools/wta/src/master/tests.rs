@@ -14079,6 +14079,49 @@ async fn history_refresh_retries_failed_copilot_listing_then_stops_periodic_poll
 }
 
 #[tokio::test(start_paused = true)]
+async fn history_refresh_queued_copilot_retry_rechecks_success_before_requesting() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (copilot, mut requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+
+            let failed = refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Immediate);
+            let fail_reply = async {
+                requests
+                    .recv()
+                    .await
+                    .unwrap()
+                    .send(Err(acp::Error::internal_error()))
+                    .unwrap();
+            };
+            assert!(tokio::join!(failed, fail_reply).0.is_none());
+
+            let recovered =
+                refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Immediate);
+            let recovery_reply = async {
+                requests.recv().await.unwrap().send(Ok(vec![])).unwrap();
+            };
+            assert_eq!(tokio::join!(recovered, recovery_reply).0, Some(0));
+
+            assert_eq!(
+                tokio::time::timeout(
+                    std::time::Duration::from_millis(1),
+                    refresh_agent_history(&state, &copilot, HistoryRefreshTrigger::Periodic)
+                )
+                .await
+                .expect("a queued retry must observe that Copilot already recovered"),
+                Some(0)
+            );
+            assert!(
+                requests.try_recv().is_err(),
+                "recovery suppresses the stale queued session/list request"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn history_refresh_periodic_dispatch_jitter_does_not_skip_the_next_tick() {
     tokio::task::LocalSet::new()
         .run_until(async {
