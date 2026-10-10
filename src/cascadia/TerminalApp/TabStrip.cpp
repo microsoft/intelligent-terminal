@@ -978,7 +978,6 @@ namespace winrt::TerminalApp::implementation
         const auto external = item && item.Status() == L"InUse";
         const auto externalTip = external ? RS_(L"VerticalTabsHistoryInUseToolTip") : winrt::hstring{};
         ToolTipService::SetToolTip(root, external ? box_value(externalTip) : nullptr);
-        WUX::Automation::AutomationProperties::SetHelpText(root, externalTip);
         if (const auto cwd = root.FindName(L"HistoryCwdText").try_as<Control>())
         {
             const auto tip = external ? externalTip : item ? item.Cwd() :
@@ -1036,6 +1035,19 @@ namespace winrt::TerminalApp::implementation
 
     static void _applyHistoryRowAutomation(DependencyObject const& container, TerminalApp::TabStripHistoryItem const& item)
     {
+        if (item)
+        {
+            const auto provider = item.ProviderDisplayName();
+            WUX::Automation::AutomationProperties::SetName(
+                container, provider.empty() ? item.Title() : item.Title() + L" \u00b7 " + provider);
+            WUX::Automation::AutomationProperties::SetHelpText(
+                container, item.Status() == L"InUse" ? RS_(L"VerticalTabsHistoryInUseToolTip") : winrt::hstring{});
+        }
+        else
+        {
+            container.ClearValue(WUX::Automation::AutomationProperties::NameProperty());
+            container.ClearValue(WUX::Automation::AutomationProperties::HelpTextProperty());
+        }
         WUX::Automation::AutomationProperties::SetItemStatus(
             container, item && item.IsCurrent() ? RS_(L"VerticalTabsHistoryCurrentSession") : winrt::hstring{});
     }
@@ -1611,6 +1623,7 @@ namespace winrt::TerminalApp::implementation
                     if (const auto container = ItemsList().ContainerFromItem(item).try_as<ListViewItem>())
                     {
                         _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), item);
+                        _applyHistoryRowAutomation(container, item);
                     }
                 }
             }
@@ -2177,13 +2190,7 @@ namespace winrt::TerminalApp::implementation
         else
         {
             _rowAutomationSubscriptions.erase(winrt::get_abi(container));
-            container.ClearValue(WUX::Automation::AutomationProperties::NameProperty());
             container.ClearValue(WUX::Automation::AutomationProperties::AcceleratorKeyProperty());
-            container.ClearValue(WUX::Automation::AutomationProperties::HelpTextProperty());
-            if (history)
-            {
-                WUX::Automation::AutomationProperties::SetName(container, history.Title());
-            }
         }
 
         if (e.InRecycleQueue())

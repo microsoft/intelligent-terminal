@@ -7686,6 +7686,8 @@ namespace TerminalAppLocalTests
                                        .GetSubtree(L"TerminalApp/Resources");
             const auto externalTip = resources.GetValue(L"VerticalTabsHistoryInUseToolTip").ValueAsString();
             VERIFY_IS_FALSE(externalTip.empty());
+            const auto currentStatus = resources.GetValue(L"VerticalTabsHistoryCurrentSession").ValueAsString();
+            const auto tab = winrt::MUX::Controls::TabViewItem{};
             strip.Width(360);
             strip.Height(400);
             for (const auto state : { "InUse", "Idle", "Working", "Attention", "Error", "Historical", "Ended" })
@@ -7704,24 +7706,34 @@ namespace TerminalAppLocalTests
                 impl->CommitHistorySnapshot(std::move(snapshot.items));
                 strip.UpdateLayout();
                 const auto item = strip.HistoryItems().GetAt(0);
-                const auto row = impl->ItemsList().ContainerFromItem(item).as<ListViewItem>().ContentTemplateRoot().as<Grid>();
+                const auto container = impl->ItemsList().ContainerFromItem(item).as<ListViewItem>();
+                const auto row = container.ContentTemplateRoot().as<Grid>();
+                VERIFY_ARE_EQUAL(3u, row.RowDefinitions().Size());
+                const auto name = Automation::AutomationProperties::GetName(container);
+                VERIFY_IS_TRUE(std::wstring_view{ name }.find(item.Title()) != std::wstring_view::npos);
+                VERIFY_IS_FALSE(item.ProviderDisplayName().empty());
+                VERIFY_IS_TRUE(std::wstring_view{ name }.find(item.ProviderDisplayName()) != std::wstring_view::npos);
                 const auto title = row.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
                 const auto cwd = row.FindName(L"HistoryCwdText").as<winrt::TerminalApp::HighlightedTextControl>();
                 const auto age = row.FindName(L"HistorySubtitleText").as<winrt::TerminalApp::HighlightedTextControl>();
                 const auto status = row.FindName(L"HistoryStatusText").as<winrt::TerminalApp::HighlightedTextControl>();
                 const auto historical = std::string_view{ state } == "Historical" || std::string_view{ state } == "Ended";
                 const auto external = std::string_view{ state } == "InUse";
+                VERIFY_ARE_EQUAL(external ? externalTip : winrt::hstring{}, Automation::AutomationProperties::GetHelpText(container));
+                impl->SetCurrentHistoryItem(item, tab);
+                VERIFY_ARE_EQUAL(currentStatus, Automation::AutomationProperties::GetItemStatus(container));
+                VERIFY_ARE_EQUAL(external ? externalTip : winrt::hstring{}, Automation::AutomationProperties::GetHelpText(container));
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"Session title" }, title.Text());
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\work\\project" }, cwd.Text());
                 VERIFY_ARE_EQUAL(external ? externalTip : cwd.Text(), winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(cwd)));
                 const auto icon = row.FindName(L"HistoryProviderIcon").as<ContentControl>();
+                VERIFY_ARE_EQUAL(Automation::Peers::AccessibilityView::Raw, Automation::AutomationProperties::GetAccessibilityView(icon));
                 VERIFY_ARE_EQUAL(external ? externalTip : item.ProviderDisplayName(), winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(icon)));
                 VERIFY_ARE_EQUAL(external, ToolTipService::GetToolTip(row) != nullptr);
                 VERIFY_ARE_EQUAL(historical ? Visibility::Visible : Visibility::Collapsed, age.Visibility());
                 VERIFY_ARE_EQUAL(historical ? Visibility::Collapsed : Visibility::Visible, status.Visibility());
                 VERIFY_ARE_EQUAL(item.Subtitle(), age.Text());
                 VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText(state), status.Text());
-                const auto container = impl->ItemsList().ContainerFromItem(item);
                 VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"three-lines", L"", historical ? L"Idle" : L"Historical", historical ? L"Idle" : L"Historical"));
                 strip.UpdateLayout();
                 VERIFY_IS_TRUE(impl->ItemsList().ContainerFromItem(item) == container);
@@ -7730,12 +7742,20 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\work\\project" }, cwd.Text());
                 VERIFY_ARE_EQUAL(cwd.Text(), winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(cwd)));
                 VERIFY_IS_NULL(ToolTipService::GetToolTip(row));
+                VERIFY_IS_TRUE(Automation::AutomationProperties::GetHelpText(container).empty());
+                VERIFY_ARE_EQUAL(currentStatus, Automation::AutomationProperties::GetItemStatus(container));
                 VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"three-lines", L"", L"InUse", L"In use"));
                 strip.UpdateLayout();
                 VERIFY_ARE_EQUAL(externalTip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(row)));
                 VERIFY_ARE_EQUAL(externalTip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(cwd)));
                 VERIFY_ARE_EQUAL(externalTip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(icon)));
-                VERIFY_ARE_EQUAL(externalTip, Automation::AutomationProperties::GetHelpText(row));
+                VERIFY_ARE_EQUAL(externalTip, Automation::AutomationProperties::GetHelpText(container));
+                VERIFY_ARE_EQUAL(currentStatus, Automation::AutomationProperties::GetItemStatus(container));
+                VERIFY_ARE_EQUAL(name, Automation::AutomationProperties::GetName(container));
+                VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"three-lines", L"", L"Idle", L"Idle"));
+                strip.UpdateLayout();
+                VERIFY_IS_TRUE(Automation::AutomationProperties::GetHelpText(container).empty());
+                VERIFY_IS_NULL(ToolTipService::GetToolTip(row));
             }
         });
         view.Search(L"project");
@@ -9291,6 +9311,7 @@ namespace TerminalAppLocalTests
             live = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             live.SessionId(L"live-session");
             live.AgentId(L"copilot");
+            live.ProviderDisplayName(L"GitHub Copilot");
             live.Title(L"Live session");
             live.Status(L"Idle");
             live.StatusText(L"Idle");
@@ -9304,6 +9325,7 @@ namespace TerminalAppLocalTests
             auto refreshed = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             refreshed.SessionId(L"live-session");
             refreshed.AgentId(L"copilot");
+            refreshed.ProviderDisplayName(L"GitHub Copilot");
             refreshed.Title(L"Live session");
             refreshed.Status(L"Idle");
             refreshed.StatusText(L"Idle");
@@ -9385,6 +9407,16 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(projected.IsLive());
             VERIFY_IS_FALSE(projected.IsHistorical());
             VERIFY_IS_TRUE(projected.StatusTextStyle() == strip.Resources().Lookup(winrt::box_value(L"HistorySubtitleTextStyle")).as<Style>());
+            strip.UpdateLayout();
+            const auto container = impl->ItemsList().ContainerFromItem(projected).as<ListViewItem>();
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryInUseToolTip").ValueAsString(),
+                             Automation::AutomationProperties::GetHelpText(container));
+            const auto name = Automation::AutomationProperties::GetName(container);
+            VERIFY_IS_TRUE(std::wstring_view{ name }.find(projected.Title()) != std::wstring_view::npos);
+            VERIFY_IS_TRUE(std::wstring_view{ name }.find(projected.ProviderDisplayName()) != std::wstring_view::npos);
         });
         view.Search(L"In use");
         TestOnUIThread([&]() {
@@ -9754,6 +9786,8 @@ namespace TerminalAppLocalTests
         const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
         winrt::MUX::Controls::TabViewItem tab{ nullptr };
         winrt::TerminalApp::TabStripHistoryItem first{ nullptr }, second{ nullptr };
+        ListViewBase::ContainerContentChanging_revoker recycling;
+        bool recycled = false;
         TestOnUIThread([&]() {
             tab = winrt::MUX::Controls::TabViewItem{};
             first = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
@@ -9761,6 +9795,7 @@ namespace TerminalAppLocalTests
             first.SessionId(L"first-session");
             second.SessionId(L"second-session");
             first.Title(L"First session");
+            first.ProviderDisplayName(L"GitHub Copilot");
             second.Title(L"Second session");
             first.Cwd(L"C:\\work\\first");
             second.Cwd(L"C:\\work\\second");
@@ -9849,7 +9884,20 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(0u, collectionChanges);
 
             tab.Background(nullptr);
+            first.Status(L"InUse");
             impl->SetCurrentHistoryItem(first, tab);
+            const auto currentContainer = impl->ItemsList().ContainerFromItem(first).as<ListViewItem>();
+            VERIFY_ARE_EQUAL(currentStatus, Automation::AutomationProperties::GetItemStatus(currentContainer));
+            VERIFY_IS_FALSE(Automation::AutomationProperties::GetHelpText(currentContainer).empty());
+            recycling = impl->ItemsList().ContainerContentChanging(winrt::auto_revoke, [&, currentContainer](auto&&, const ContainerContentChangingEventArgs& args) {
+                if (args.InRecycleQueue() && args.ItemContainer() == currentContainer)
+                {
+                    VERIFY_IS_TRUE(Automation::AutomationProperties::GetName(currentContainer).empty());
+                    VERIFY_IS_TRUE(Automation::AutomationProperties::GetHelpText(currentContainer).empty());
+                    VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(currentContainer).empty());
+                    recycled = true;
+                }
+            });
             const auto currentRow = impl->ItemsList().ContainerFromItem(first).as<ListViewItem>().ContentTemplateRoot().as<Grid>();
             const auto currentTitle = currentRow.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
             const auto currentCwd = currentRow.FindName(L"HistoryCwdText").as<winrt::TerminalApp::HighlightedTextControl>();
@@ -9863,6 +9911,9 @@ namespace TerminalAppLocalTests
             impl->CommitHistorySnapshot({ replacement });
             strip.UpdateLayout();
             const auto recycledRow = impl->ItemsList().ContainerFromItem(replacement).as<ListViewItem>().ContentTemplateRoot().as<Grid>();
+            const auto recycledContainer = impl->ItemsList().ContainerFromItem(replacement).as<ListViewItem>();
+            VERIFY_ARE_EQUAL(replacement.Title(), Automation::AutomationProperties::GetName(recycledContainer));
+            VERIFY_IS_TRUE(Automation::AutomationProperties::GetHelpText(recycledContainer).empty());
             const auto recycledTitle = recycledRow.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
             VERIFY_IS_TRUE(recycledTitle.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
             VERIFY_IS_TRUE(recycledRow.FindName(L"HistoryCwdText").as<winrt::TerminalApp::HighlightedTextControl>().ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
@@ -9870,6 +9921,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(
                                impl->ItemsList().ContainerFromItem(replacement)).empty());
         });
+        _waitForContentTransferReviewUI([&]() { return recycled; });
+        TestOnUIThread([&]() { recycling.revoke(); });
     }
 
     void TabTests::VerticalTabHistoryWslDistroMetadata()

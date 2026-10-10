@@ -130,11 +130,14 @@ agent action, not an override of the normal new-tab control.
   Bare Enter activates the focused History row even with selection disabled;
   modified Enter is ignored. A focused ownership button retains its native
   activation, rather than also activating its containing row.
-  Provider identity remains available through the icon tooltip and shared search.
+  Provider identity remains available through the icon tooltip, the focused
+  history row's accessible name (alongside its title), and shared search.
   The working directory supports search highlighting and a full-path tooltip.
   For **In use** sessions, hovering the row, working directory, or provider icon
   instead explains: **This session is open in another application.**
-  The tooltip follows status changes without replacing the row.
+  The focused history row exposes the same explanation as accessible help text.
+  Both follow status changes without replacing the row, and the help text clears
+  when the session returns to IT or becomes historical.
   Text may truncate with an ellipsis at the minimum sidebar width; the ownership
   action retains reserved space.
 - History ages match the original session-management view: localized,

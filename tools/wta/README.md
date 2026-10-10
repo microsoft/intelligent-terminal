@@ -123,8 +123,19 @@ and an actively held `inuse.<pid>.hold` lease (observed with Copilot SDK
 or nonmatching provider/source/universe leaves the original status unchanged.
 External sessions do not expose detailed activity: this probe does not read
 `events.jsonl` or infer Idle/Active from turns. Marker and lease reads have a
-two-second budget. This does not mutate registry state,
-infer a window/pane owner, or enable a running-location indicator.
+two-second budget and share one process-wide nonblocking admission gate.
+The gate remains occupied until the blocking file operation finishes, even
+when its caller times out or disconnects. Busy list reads retain the original
+snapshot.
+
+Activation checks the same qualified native evidence again before any
+resume path; it never trusts the status returned to the sidebar. An actively
+held external lease rejects activation without changing registry ownership.
+Busy, timed-out, or failed verification also rejects activation instead of
+assuming the session is free. Absent or released evidence allows the normal
+historical resume path. A live IT registration observed after the asynchronous
+probe takes precedence over its older evidence and retains detailed activity.
+This does not infer a window/pane owner or enable a running-location indicator.
 
 The initial
 discovery stays `loading` until all eligible host providers finish. Providers that

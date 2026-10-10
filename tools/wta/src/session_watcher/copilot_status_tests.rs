@@ -146,6 +146,78 @@ fn released_session_lease_cannot_promote_old_sid_even_with_live_pid() {
     assert!(fixture.read().is_none());
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn blocking_probe_admission_survives_timeout_and_waiter_drop() {
+    use std::future::Future;
+    use std::task::{Context, Poll, Waker};
+
+    for timeout in [false, true] {
+        let gate = Arc::new(tokio::sync::Semaphore::new(1));
+        let (started, started_rx) = tokio::sync::oneshot::channel();
+        let (release, release_rx) = std::sync::mpsc::channel();
+        let mut waiter = Box::pin(run_probe(gate.clone(), move || {
+            started.send(()).unwrap();
+            release_rx.recv().unwrap();
+        }));
+        let mut context = Context::from_waker(Waker::noop());
+        assert!(matches!(waiter.as_mut().poll(&mut context), Poll::Pending));
+        started_rx.await.unwrap();
+        if timeout {
+            tokio::time::pause();
+            tokio::time::advance(Duration::from_secs(3)).await;
+            assert_eq!(waiter.await, Err(ProbeError::Timeout));
+            tokio::time::resume();
+        } else {
+            drop(waiter);
+        }
+        assert_eq!(
+            run_probe(gate.clone(), || panic!("busy probe must not be spawned")).await,
+            Err::<(), _>(ProbeError::Busy)
+        );
+        release.send(()).unwrap();
+        let permit = gate.clone().acquire_owned().await.unwrap();
+        drop(permit);
+        assert_eq!(run_probe(gate.clone(), || 42).await, Ok(42));
+    }
+}
+
+#[test]
+fn activation_probe_distinguishes_absence_release_timeout_and_errors() {
+    let mut fixture = Fixture::new();
+    let lookup = |_: u32| {
+        Ok(Some(Process {
+            created: SystemTime::UNIX_EPOCH,
+            image: PathBuf::from("C:\\native\\copilot.exe"),
+        }))
+    };
+    let read = |fixture: &Fixture| {
+        probe_status(
+            &fixture.row,
+            &fixture.root,
+            &lookup,
+            Instant::now() + Duration::from_secs(2),
+        )
+    };
+    assert_eq!(read(&fixture), Ok(Some(AgentStatus::InUse)));
+    assert_eq!(
+        probe_status(&fixture.row, &fixture.root, &lookup, Instant::now()),
+        Err(ProbeError::Timeout)
+    );
+    assert_eq!(
+        probe_status(
+            &fixture.row,
+            &fixture.root,
+            &|_| Err(ProbeError::Unavailable),
+            Instant::now() + Duration::from_secs(2),
+        ),
+        Err(ProbeError::Unavailable)
+    );
+    fixture.hold.take();
+    assert_eq!(read(&fixture), Ok(None));
+    std::fs::remove_file(fixture.directory.join("inuse.42.lock")).unwrap();
+    assert_eq!(read(&fixture), Ok(None));
+}
+
 #[test]
 fn live_it_registration_keeps_every_detailed_status() {
     let mut fixture = Fixture::new();
@@ -249,7 +321,7 @@ fn current_native_session_read_only_probe() {
     let result = status(
         &row,
         &session_root().unwrap(),
-        &native_process,
+        &|pid| native_process(pid).ok().flatten(),
         Instant::now() + Duration::from_secs(2),
     );
     println!("validated_native_provider_status={result:?}");
