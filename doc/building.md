@@ -136,20 +136,25 @@ powershell -Command Set-Location -Path %OPENCON%\src\cascadia\CascadiaPackage\Ap
 
 Building the package from VS generates the loose layout to begin with, and then registers the loose manifest, skipping the msix stop. It's a lot faster than the commandline inner loop here, unfortunately.
 
-### 2022 Update
+### Loose Debug/Dev deployment
 
-The following command can be used to build the terminal package, and then deploy it.
+After building the package, deploy the canonical Intelligent Terminal Dev layout:
 
-```cmd
-pushd %OPENCON%\src\cascadia\CascadiaPackage
-bx
-"C:\Program Files\Microsoft Visual Studio\2022\Preview\Common7\IDE\DeployAppRecipe.exe" bin\%ARCH%\%_LAST_BUILD_CONF%\CascadiaPackage.build.appxrecipe
-popd
+```powershell
+.\build\scripts\Invoke-IntelligentTerminalDebugDeployment.ps1 `
+    -AppxRecipePath src\cascadia\CascadiaPackage\bin\x64\Debug\CascadiaPackage.build.appxrecipe
 ```
 
-The `bx` will build just the Terminal package, critically, populating the `CascadiaPackage.build.appxrecipe` file. Once that's been built, then the `DeployAppRecipe.exe` command can be used to deploy a loose layout in the same way that Visual Studio does.
+The script uses Visual Studio's `DeployAppRecipe.exe`. With the **same identity,
+version, and registered layout**, it updates changed binaries and can re-register
+manifest changes without uninstalling. Do not automatically bump the version or
+remove the package between iterations; settings are retained. Downgrades remain
+blocked. Verify the deployed binary hashes before testing.
 
-Notably, this method of building the Terminal package can't leverage the FastUpToDate check in Visual Studio, so the builds end up being considerably slower for the whole package, as cppwinrt does a lot of work before confirming that it's up to date and doing nothing.
+Plain `Add-AppxPackage -Register` is not equivalent: Windows can reject a changed
+same-version development manifest. This behavior is for loose Dev deployment,
+not Store/MSIX upgrades. The script refuses another registered layout; follow
+[the worktree guide](dev-worktree-package.md) for isolated packages.
 
 
 ### Elevated Intelligent Terminal agent integration
