@@ -69,6 +69,20 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
             Should -Invoke Get-WtProcessesForApp -ParameterFilter { $IncludePackageExecutables } -Times 1
         }
 
+        It 'accepts a verified isolated Dev family without weakening full-name validation' {
+            $priorFamily = $script:ItKnownFamilies.Dev
+            try {
+                $script:ItKnownFamilies.Dev = 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr'
+                $script:app.Package = $script:ItKnownFamilies.Dev
+                $script:app.PackageFullName = 'IntelligentTerminal.Worktree.fixture_0.8.0.11_x64__rd9vj3e6a2mbr'
+
+                Stop-StaleItInstances -App $script:app
+
+                $script:process.Closed | Should -BeTrue
+            }
+            finally { $script:ItKnownFamilies.Dev = $priorFamily }
+        }
+
         It 'also reaps a Dev embedding process that appears as the first window exits' {
             $first = $script:process
             $second = New-FakeTerminalProcess -Id 51002

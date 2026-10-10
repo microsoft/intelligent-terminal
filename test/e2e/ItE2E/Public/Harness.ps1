@@ -289,8 +289,9 @@ function Stop-ItDevPackageProcesses {
             if (Test-ItDevPackageQuietWindow -App $App) { return }
             continue
         }
-        if (-not $App.PackageFullName -or
-            $App.PackageFullName -cnotlike 'IntelligentTerminal_*__rd9vj3e6a2mbr') {
+        $separator = ([string]$App.Package).LastIndexOf('_')
+        if ($separator -lt 1 -or -not $App.PackageFullName -or
+            $App.PackageFullName -cnotlike "$($App.Package.Substring(0, $separator))_*__rd9vj3e6a2mbr") {
             throw 'The registered Dev package identity is missing or unexpected.'
         }
         Assert-ItDevProcessesNotChat -Processes $processes
