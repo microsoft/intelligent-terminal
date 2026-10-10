@@ -267,10 +267,18 @@ namespace winrt::TerminalApp::implementation
     {
         InitializeComponent();
         _WindowProperties.PropertyChanged({ get_weak(), &TerminalPage::_windowPropertyChanged });
+        _keepRunningTabsChangedToken = winrt::get_self<implementation::ContentManager>(_manager)->KeepRunningTabsChanged(
+            [weakThis{ get_weak() }](auto&&, auto&&) {
+                if (const auto page = weakThis.get())
+                {
+                    page->_UpdateSidebarHistoryCurrentSession();
+                }
+            });
     }
 
     TerminalPage::~TerminalPage()
     {
+        winrt::get_self<implementation::ContentManager>(_manager)->KeepRunningTabsChanged(_keepRunningTabsChangedToken);
         _sidebarIntroductionShuttingDown = true;
         _ReleaseSidebarIntroduction(false);
         if (_sidebarIntroductionTimer)
@@ -6604,6 +6612,13 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const auto strip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        const auto manager = winrt::get_self<implementation::ContentManager>(_manager);
+        strip->UpdateHistoryKeepRunning([&](const winrt::hstring& paneSessionId) {
+            const auto paneId = _TryParsePaneSessionId(winrt::to_string(paneSessionId));
+            return paneId && manager->IsPaneKeepRunning(*paneId);
+        });
+
         TerminalApp::TabStripHistoryItem current{ nullptr };
         MUX::Controls::TabViewItem tabItem{ nullptr };
         if (const auto tab = _GetFocusedTabImpl())
@@ -6631,7 +6646,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
-        winrt::get_self<implementation::TabStrip>(_tabStrip)->SetCurrentHistoryItem(current, tabItem);
+        strip->SetCurrentHistoryItem(current, tabItem);
     }
 
     void TerminalPage::_StartSidebarHistoryRefreshTimer()
@@ -12094,6 +12109,21 @@ namespace winrt::TerminalApp::implementation
     {
         auto weakTab{ hostingTab.get_weak() };
         auto weakThis{ get_weak() };
+        hostingTab.TabStatus().PropertyChanged([weakTab, weakThis](auto&&, const WUX::Data::PropertyChangedEventArgs& args) {
+            if (args.PropertyName() == L"IsKeepRunning")
+            {
+                const auto page = weakThis.get();
+                const auto tab = weakTab.get();
+                if (page && tab)
+                {
+                    winrt::get_self<implementation::ContentManager>(page->_manager)->UpdateKeepRunningTab(*tab);
+                }
+            }
+        });
+        if (hostingTab.KeepRunning())
+        {
+            winrt::get_self<implementation::ContentManager>(_manager)->UpdateKeepRunningTab(hostingTab);
+        }
         // PropertyChanged is the generic mechanism by which the Tab
         // communicates changes to any of its observable properties, including
         // the Title

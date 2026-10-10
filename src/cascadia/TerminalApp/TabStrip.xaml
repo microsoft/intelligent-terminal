@@ -196,13 +196,14 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Border x:Name="HistorySelectionBackground"
-                            Grid.ColumnSpan="2"
+                            Grid.ColumnSpan="3"
                             Grid.RowSpan="2"
                             Margin="-12,-8"
                             Background="{ThemeResource ListViewItemBackgroundSelected}"
@@ -294,6 +295,16 @@
                             </Grid>
                         </Button>
                     </Grid>
+                    <FontIcon x:Name="HistoryKeepRunningIcon"
+                              Grid.RowSpan="2"
+                              Grid.Column="2"
+                              Margin="8,0,0,0"
+                              VerticalAlignment="Center"
+                              FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                              FontSize="12"
+                              Foreground="{Binding Foreground, ElementName=HistoryTitleText}"
+                              Glyph="&#xE8EE;"
+                              Visibility="{x:Bind IsKeepRunning, Mode=OneWay}" />
                 </Grid>
             </DataTemplate>
         </ResourceDictionary>

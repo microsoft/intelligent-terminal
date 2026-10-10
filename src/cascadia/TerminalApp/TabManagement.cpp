@@ -206,6 +206,10 @@ namespace winrt::TerminalApp::implementation
             if (page && tab)
             {
                 page->_ApplyTabListProjection(*tab);
+                if (tab->KeepRunning())
+                {
+                    winrt::get_self<implementation::ContentManager>(page->_manager)->UpdateKeepRunningTab(*tab);
+                }
             }
         });
         newTabImpl->TabColorChanged([weakTab, weakThis{ get_weak() }]() {
