@@ -300,7 +300,12 @@ function Stop-ItDevPackageProcesses {
             foreach ($process in $processes) {
                 if ($process.HasExited) { continue }
                 $null = $process.Handle
-                $path = [IO.Path]::GetFullPath([string]$process.Path)
+                $path = if ($process.Path) { [string]$process.Path }
+                    else { Get-ItProcessImagePath -Id $process.Id }
+                if (-not $path) {
+                    throw "Dev process executable path unavailable (pid=$($process.Id))."
+                }
+                $path = [IO.Path]::GetFullPath($path)
                 if (-not $path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -or
                     (Get-ItCreatedProcessPackage -Process $process) -cne $App.PackageFullName) {
                     throw "Dev process package identity or path does not match the registered Dev package (pid=$($process.Id))."
@@ -334,9 +339,15 @@ function Stop-ItDevPackageProcesses {
                 }
                 $null = $live.Handle
                 # The retained handle prevents Windows from reusing this PID before shutdown.
+                $livePath = if ($live.Path) { [string]$live.Path }
+                    else { Get-ItProcessImagePath -Id $target.Id }
+                if (-not $livePath) {
+                    throw "Dev process executable path unavailable before shutdown (pid=$($target.Id))."
+                }
+                $livePath = [IO.Path]::GetFullPath($livePath)
                 if ($live.HasExited -or
                     $live.StartTime.ToUniversalTime() -ne $target.StartTime -or
-                    [IO.Path]::GetFullPath([string]$live.Path) -cne $target.Path -or
+                    -not $livePath.Equals($target.Path, [StringComparison]::OrdinalIgnoreCase) -or
                     (Get-ItCreatedProcessPackage -Process $live) -cne $App.PackageFullName) {
                     throw "Dev process identity changed before shutdown (pid=$($target.Id))."
                 }

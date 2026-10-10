@@ -194,6 +194,43 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
             Should -Invoke Stop-Process -Times 1 -ParameterFilter { $Id -eq 51001 }
         }
 
+        It 'force-stops a verified Dev helper when its managed Path is unavailable' {
+            $script:process = New-FakeTerminalProcess -Name wta
+            $script:process.Path = $null
+            $script:live = New-FakeTerminalProcess -Name wta
+            $script:live.Path = $null
+            Mock Get-ItProcessImagePath { 'C:\DevPackage\AppX\wta.exe' } -ParameterFilter { $Id -eq 51001 }
+            Mock Get-Process { $script:live } -ParameterFilter { $Id -eq 51001 }
+            Mock Test-Until { $false }
+            Mock Stop-Process { $script:process.HasExited = $true }
+
+            Stop-StaleItInstances -App $script:app -GraceSec 1
+
+            $script:process.HasExited | Should -BeTrue
+            Should -Invoke Get-ItProcessImagePath -Times 2 -ParameterFilter { $Id -eq 51001 }
+            Should -Invoke Stop-Process -Times 1 -ParameterFilter { $Id -eq 51001 }
+        }
+
+        It 'refuses a changed native path at forced shutdown even without a managed Path' {
+            $script:process = New-FakeTerminalProcess -Name wta
+            $script:process.Path = $null
+            $script:live = New-FakeTerminalProcess -Name wta
+            $script:live.Path = $null
+            $script:pathLookups = 0
+            Mock Get-ItProcessImagePath {
+                $script:pathLookups++
+                if ($script:pathLookups -eq 1) { 'C:\DevPackage\AppX\wta.exe' }
+                else { 'C:\StorePackage\AppX\wta.exe' }
+            } -ParameterFilter { $Id -eq 51001 }
+            Mock Get-Process { $script:live } -ParameterFilter { $Id -eq 51001 }
+            Mock Test-Until { $false }
+
+            { Stop-StaleItInstances -App $script:app -GraceSec 1 } | Should -Throw '*identity changed*'
+
+            Should -Invoke Get-ItProcessImagePath -Times 2 -ParameterFilter { $Id -eq 51001 }
+            Should -Invoke Stop-Process -Times 0
+        }
+
         It 'holds the revalidated process handle until its PID-bound stop completes' {
             $script:process = New-FakeTerminalProcess -Name wta
             $script:live = New-FakeTerminalProcess -Name wta

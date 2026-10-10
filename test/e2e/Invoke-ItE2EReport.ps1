@@ -87,14 +87,17 @@ $releaseReport = $null
 $releaseReportKind = $null
 if (-not $SkipReleaseReport) {
     $releaseReport = Join-Path $OutDir 'release-report.md'
-    if ($setupFailures.Count) {
+    $blockedReason = if ($setupFailures.Count) { 'Pester setup or cleanup failed.' }
+        elseif ($noTests) { 'No tests were selected.' }
+        elseif ($result.PassedCount -eq 0) { 'No tests passed.' }
+    if ($blockedReason) {
         @(
             '# Release Report'
             ''
-            '> ⚠️ **AUTOMATION FAILED** — Pester setup or cleanup failed. No checklist item is credited.'
+            "> ⚠️ **AUTOMATION FAILED** — $blockedReason No checklist item is credited."
             '> See the test output and report.html for diagnostics; rerun after fixing the failure.'
         ) | Set-Content -LiteralPath $releaseReport -Encoding utf8
-        $releaseReportKind = 'blocked by setup/cleanup failure'
+        $releaseReportKind = 'blocked by incomplete test run'
     }
     elseif ($UpdateReport -and (Test-Path $releaseReport)) {
         & (Join-Path $PSScriptRoot 'Update-ReleaseReport.ps1') -Report $releaseReport -ResultsXml $cfg.TestResult.OutputPath.Value

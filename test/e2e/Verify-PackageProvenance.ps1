@@ -125,8 +125,17 @@ try {
         $sourceIdentity.Version -ne $msixIdentity.Version -or
         $installedIdentity.Name -ne $msixIdentity.Name -or
         $installedIdentity.Publisher -ne $msixIdentity.Publisher -or
+        $installedIdentity.Version -ne $msixIdentity.Version -or
         $package.Name -ne $installedIdentity.Name) {
-        throw 'Recipe, MSIX and installed package identities disagree.'
+        throw 'Recipe, MSIX and installed package manifest identities disagree.'
+    }
+    $publisherId = $PackageFamilyName.Substring($PackageFamilyName.LastIndexOf('_') + 1)
+    $fullName = [string]$package.PackageFullName
+    if (-not $package.Version -or [string]$package.Version -cne $installedIdentity.Version -or
+        -not $fullName.StartsWith("$($installedIdentity.Name)_$($installedIdentity.Version)_",
+            [StringComparison]::OrdinalIgnoreCase) -or
+        -not $fullName.EndsWith("_$publisherId", [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Registered package version or full name disagrees with its manifest.'
     }
     $msixManifestHash = Get-ArchiveHash $manifestEntry
     if ($sourceManifestHash -ne $msixManifestHash) {

@@ -645,7 +645,7 @@ pwsh -File test\e2e\Invoke-ItE2EReport.ps1 `
 
 The read-only `Verify-PackageProvenance.ps1` preflight checks the clean Git HEAD,
 the full recipe/MSIX/registered manifest hashes, every recipe source/MSIX/installed
-payload hash, and package identity. A missing or stale payload stops the run
+payload hash, and registered package identity/version. A missing or stale payload stops the run
 **before Pester**.
 Only documented MSIX metadata may appear beyond the recipe payloads. Recipe
 paths are separator-normalized before duplicate detection; archive paths are
@@ -676,6 +676,9 @@ Invoke-Pester test/e2e/selftests              # all self-tests
 The self-tests are the framework's own proof: every primitive is exercised against a
 running terminal (`selftests/ItE2E.Live.Tests.ps1`) and the core helpers are unit-tested
 in `selftests/ItE2E.Unit.Tests.ps1` (hermetic, no terminal needed).
+The Live fixture pins completed onboarding and a default-profile horizontal tab so
+the same smoke test also works with a newly registered isolated Dev package.
+The harness restores the original settings and state once the package is inactive.
 
 ### Deterministic Queue regressions
 
@@ -924,7 +927,7 @@ Outputs (all under `test/e2e/artifacts/`):
   (runs the suite, then overlays only its items onto the existing report; falls back to a fresh
   generate if no report exists yet). Or standalone after a run wrote `results.xml`:
   `pwsh -File test/e2e/Update-ReleaseReport.ps1`.
-  If Pester reports a structural setup/cleanup failure, both full and incremental
+  If Pester reports a structural setup/cleanup failure or no test passes, both full and incremental
   runner modes replace the release report with a blocked notice and **no checked
   items**, rather than crediting test cases that passed before the failure.
 - Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).

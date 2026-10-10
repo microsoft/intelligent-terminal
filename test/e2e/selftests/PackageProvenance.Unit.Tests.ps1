@@ -133,6 +133,7 @@ BeforeAll {
                 Name = 'IntelligentTerminal'
                 PackageFamilyName = if ($WrongFamily) { 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe' } else { 'IntelligentTerminal_rd9vj3e6a2mbr' }
                 PackageFullName = 'IntelligentTerminal_0.8.0.2_x64__rd9vj3e6a2mbr'
+                Version = [version]'0.8.0.2'
                 InstallLocation = $installed
             }
         }
@@ -190,6 +191,22 @@ Describe 'Offline package provenance' -Tag 'Unit' {
         { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
                 -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
             Should -Throw '*manifest*'
+    }
+
+    It 'rejects stale registered version metadata even when all manifests and files agree' {
+        $f = New-ProvenanceFixture
+        $f.Package.Version = [version]'0.8.0.3'
+        { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
+                -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
+            Should -Throw '*Registered package version*'
+    }
+
+    It 'rejects a stale package full name even when its Version property is current' {
+        $f = New-ProvenanceFixture
+        $f.Package.PackageFullName = 'IntelligentTerminal_0.8.0.3_x64__rd9vj3e6a2mbr'
+        { & $script:verifier -SourceRoot $f.SourceRoot -ExpectedHead $f.Head `
+                -RecipePath $f.Recipe -MsixPath $f.Msix -InstalledPackage $f.Package } |
+            Should -Throw '*Registered package version*'
     }
 
     It 'rejects an MSIX and installed manifest with stale capabilities but the same identity' {

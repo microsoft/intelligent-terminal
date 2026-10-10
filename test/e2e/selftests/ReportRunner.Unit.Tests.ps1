@@ -111,6 +111,34 @@ Describe 'Sidebar startup snapshots preserve the consolidated launch contract' {
         $run.Html | Should -Match 'fixture AfterAll failed'
     }
 
+    It 'does not preserve checklist credit when all tests skip in <Mode> mode' -ForEach @(
+        @{ Mode = 'full'; UpdateReport = $false }
+        @{ Mode = 'incremental'; UpdateReport = $true }
+    ) {
+        $run = Invoke-ReportFixture -GenerateReport -UpdateReport:$UpdateReport -Body @"
+Describe 'skipped suite' {
+    It 'has an unavailable prerequisite' { Set-ItResult -Skipped -Because 'not installed' }
+}
+"@
+
+        $run.ExitCode | Should -Not -Be 0
+        $run.Output | Should -Match 'Passed=0 Failed=0 Skipped=1'
+        $run.ReleaseReport | Should -Match 'AUTOMATION FAILED.*No tests passed'
+        $run.ReleaseReport | Should -Not -Match '(?m)^- \[x\]'
+    }
+
+    It 'does not preserve earlier checklist ticks when an incremental run selects no tests' {
+        $run = Invoke-ReportFixture -GenerateReport -UpdateReport -Tag NoSuchTag -Body @"
+Describe 'ordinary suite' -Tag Unit {
+    It 'passes if selected' { `$true | Should -BeTrue }
+}
+"@
+
+        $run.ExitCode | Should -Not -Be 0
+        $run.ReleaseReport | Should -Match 'AUTOMATION FAILED.*No tests were selected'
+        $run.ReleaseReport | Should -Not -Match '(?m)^- \[x\]'
+    }
+
     It 'shows a failed Pester container in the summary, HTML and console' {
         $run = Invoke-ReportFixture -GenerateReport -Body @"
 BeforeDiscovery { throw 'fixture discovery failed' }
