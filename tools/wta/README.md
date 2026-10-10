@@ -92,6 +92,9 @@ This only reads the current registry snapshot; it never starts an agent or waits
 for an ACP history query. Each initialized, listing-capable agent command/source
 has a separate, reusable history-only ACP process, including already-connected
 WSL and custom agents. It is never used for chat, Autofix, or session restoration.
+Its ACP transport driver owns a `LocalSet` on the blocking boundary, so ordinary
+`Send` tasks can start the history worker safely. Worker exit releases its
+startup ownership, allowing a later refresh to restart it.
 History and title updates share one response. After success, the next query waits
 five seconds from completion; timer, manual, and hook refreshes share this stream
 and cannot queue additional RPCs. Slow title queries never block hook dispatch.
@@ -111,7 +114,7 @@ At 300 seconds without a response, master recycles only the dedicated history
 process, confirms its exit, then rebuilds after backoff. Windows query launchers
 are assigned to a private kill-on-close Job Object before executing, so their
 descendants are reclaimed too. WSL uses a private process group with a PID/start
-time receipt and an stdin-EOF guardian; recovery checks that the group has exited.
+time receipt and a stdin-EOF guardian; recovery checks that the group has exited.
 WSL needs `bash`, `setsid`, `cat`, `ps`, and `grep`. Cleanup failures retain the
 old instance and block replacement, including across chat-process generations.
 Failed queries and recovery retain cached rows; no chat process is restarted.
@@ -593,13 +596,24 @@ default sustained-busy indicator requires at least 20% of a core in at least
 not a correctness verdict.
 
 Fixed polling is deliberately a stress comparison, not a reproduction of
-current WTA's failure handling. Use `-PollPolicy Backoff` to apply its
-5/10/20/40/60-second failure delays. A local timeout is recorded separately
-from a late response: the probe does not pretend it cancelled server-side
-work. It terminates only processes identified as its own by PID and creation
+current WTA's failure handling. Use `-PollPolicy Backoff` to retain one
+outstanding request, wait five seconds after success, and apply
+5/10/20/40/60-second delays after error responses. A late success is still
+successful, and an unresolved request remains tracked across observation
+phases. CPU sampling continues while it is pending. This is a query-scheduling
+comparison, not a reproduction of WTA's adaptive deadlines or process recovery.
+A local timeout is recorded separately from a late response: the probe does
+not pretend it cancelled server-side work. It terminates only processes
+identified as its own by PID and creation
 time, does not attach to Terminal or restore existing chats, and leaves its
 new test session available for inspection. A quiet short run does not rule
 out a failure specific to a longer or different session history.
+
+Run the focused PowerShell scheduling tests without launching an agent:
+
+```powershell
+Invoke-Pester -Path tools\wta\Measure-CopilotAcpCpu.Tests.ps1 -Output Detailed
+```
 
 ## Project Structure
 

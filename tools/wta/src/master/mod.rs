@@ -7449,7 +7449,18 @@ fn start_agent_history_worker(state: &Arc<MasterStateInner>, agent: &Arc<AgentCl
     }
     let state = Arc::downgrade(state);
     let agent = Arc::clone(agent);
+    struct WorkerOwnership(Arc<AgentCli>);
+    impl Drop for WorkerOwnership {
+        fn drop(&mut self) {
+            self.0
+                .history_refresh
+                .worker_started
+                .store(false, Ordering::Release);
+        }
+    }
+    let ownership = WorkerOwnership(Arc::clone(&agent));
     tokio::spawn(async move {
+        let _ownership = ownership;
         loop {
             let Some(state) = state.upgrade() else { break };
             if agent.history_refresh.retired.load(Ordering::Acquire) {

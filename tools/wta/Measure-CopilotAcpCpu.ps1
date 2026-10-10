@@ -14,13 +14,14 @@
 .PARAMETER CreateTranscript
     Make one synthetic, tool-denied model request, then test restoration.
     This consumes model credits and supplies a persisted conversation to replay.
-    Without this switch, only idle/list/cooldown are tested, with no model request.
+    Without this switch, only idle/list/idle-after-polling are tested, with no model request.
     Custom instructions and built-in MCP servers are disabled in all scenarios
     when this is selected.
 .PARAMETER PollPolicy
     Fixed sends a request every five seconds even after a timeout, testing the
-    suspected aggressive polling. Backoff uses 5/10/20/40/60-second failure
-    delays after request completion, like the current WTA refresh policy.
+    suspected aggressive polling. Backoff retains one request until its actual
+    response, waits five seconds after success, and uses 5/10/20/40/60-second
+    delays after error responses. It does not implement WTA's process recovery.
 .EXAMPLE
     pwsh -File tools\wta\Measure-CopilotAcpCpu.ps1
 .EXAMPLE
@@ -198,6 +199,7 @@ function Start-Server([string]$Name, [string]$ResumeSessionId) {
         StderrTask = $Process.StandardError.ReadLineAsync()
         StderrLines = 0; Notifications = 0; SessionUpdates = 0; ServerRequests = 0
         Pending = @{}; Owned = @{ $Process.Id = $Process.StartTime.Ticks }; UpdateTypes = @{}
+        BackoffPoll = [pscustomobject]@{ Request = $null; Failures = 0; NextPoll = 0.0 }
         Requests = [Collections.Generic.List[object]]::new()
     }
     $Clients.Add($Client)
@@ -253,6 +255,23 @@ function Get-OwnedCpu($Client) {
     return $Times
 }
 
+function Test-BackoffPollDue($State, [double]$Now) {
+    if ($null -ne $State.Request) {
+        if ($null -eq $State.Request.completed_seconds) { return $false }
+        if ($State.Request.outcome -eq 'ok') {
+            $State.Failures = 0
+            $Delay = 5
+        }
+        else {
+            $State.Failures = [Math]::Min(5, $State.Failures + 1)
+            $Delay = [Math]::Min(60, 5 * [Math]::Pow(2, $State.Failures - 1))
+        }
+        $State.NextPoll = $State.Request.completed_seconds + $Delay
+        $State.Request = $null
+    }
+    return $Now -ge $State.NextPoll
+}
+
 function Observe-Phase($Client, [string]$Name, [switch]$Poll) {
     Write-Host "Observing $Name ($DurationSeconds seconds, warmup $WarmupSeconds seconds)"
     $EndWarmup = $Clock.Elapsed.TotalSeconds + $WarmupSeconds
@@ -265,32 +284,18 @@ function Observe-Phase($Client, [string]$Name, [switch]$Poll) {
     $Previous = $Started
     $NextSample = $Started + 1
     $NextPoll = $Started
-    $LastPoll = $null
-    $Failures = 0
     $FirstRequest = $Client.Requests.Count
     $FirstSample = $Samples.Count
     while ($Clock.Elapsed.TotalSeconds - $Started -lt $DurationSeconds) {
         Receive-Messages $Client
         $Now = $Clock.Elapsed.TotalSeconds
-        if ($Poll -and $Now -ge $NextPoll) {
-            if ($PollPolicy -eq 'Backoff' -and $null -ne $LastPoll) {
-                if ($null -eq $LastPoll.completed_seconds -and -not $LastPoll.timed_out) {
-                    Start-Sleep -Milliseconds 20
-                    continue
-                }
-                if ($LastPoll.timed_out -or $LastPoll.outcome -ne 'ok') {
-                    $Failures++
-                    $NextPoll = $Now + [Math]::Min(60, 5 * [Math]::Pow(2, $Failures - 1))
-                    $LastPoll = $null
-                }
-                else {
-                    $Failures = 0
-                    $LastPoll = $null
-                }
-            }
-            if ($Now -ge $NextPoll) {
-                $LastPoll = Start-Request $Client 'session/list' @{}
+        if ($Poll) {
+            if ($PollPolicy -eq 'Fixed' -and $Now -ge $NextPoll) {
+                $null = Start-Request $Client 'session/list' @{}
                 $NextPoll = $Now + 5
+            }
+            elseif ($PollPolicy -eq 'Backoff' -and (Test-BackoffPollDue $Client.BackoffPoll $Now)) {
+                $Client.BackoffPoll.Request = Start-Request $Client 'session/list' @{}
             }
         }
         if ($Now -ge $NextSample) {

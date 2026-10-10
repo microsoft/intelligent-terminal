@@ -174,12 +174,24 @@ impl HistoryProcess {
             let child = self.child.as_mut().ok_or_else(|| anyhow!("history child missing"))?;
             let outgoing = child.stdin.take().ok_or_else(|| anyhow!("history stdin missing"))?;
             let incoming = self.incoming.take().ok_or_else(|| anyhow!("history stdout missing"))?;
-            let (connection, io) = conn::spawn_client(
-                acp::Client.builder().name("wta-history"),
-                conn::byte_streams(outgoing.compat_write(), incoming.compat()),
-            );
-            self.conn = Some(connection);
-            self.io = Some(tokio::spawn(io));
+            // Callers include ordinary Send tasks, which do not inherit the
+            // master's LocalSet. Keep the SDK's local driver alive on its own
+            // blocking thread while requests remain on the async worker.
+            let runtime = tokio::runtime::Handle::current();
+            let (ready, connection) = tokio::sync::oneshot::channel();
+            self.io = Some(tokio::task::spawn_blocking(move || {
+                runtime.block_on(LocalSet::new().run_until(async move {
+                    let (connection, io) = conn::spawn_client(
+                        acp::Client.builder().name("wta-history"),
+                        conn::byte_streams(outgoing.compat_write(), incoming.compat()),
+                    );
+                    if let Err(connection) = ready.send(connection) {
+                        connection.shutdown();
+                    }
+                    io.await
+                }))
+            }));
+            self.conn = Some(connection.await.context("history ACP driver failed to start")?);
             let response = tokio::time::timeout(self.init_timeout, self.connection()?.initialize(
                 acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
                     .client_info(acp::schema::v1::Implementation::new("wta-history", env!("CARGO_PKG_VERSION"))),

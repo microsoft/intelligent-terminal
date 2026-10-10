@@ -13969,7 +13969,7 @@ async fn history_refresh_bound_manual_rescan_returns_snapshot_while_query_is_hel
             }
             assert!(
                 requests.try_recv().is_err(),
-                "manual rescans merge without blocking or sending a duplicate"
+                "manual refresh requests merge without blocking or sending a duplicate"
             );
             held.send(Ok(Vec::new())).unwrap();
         })
@@ -14156,6 +14156,118 @@ async fn history_refresh_does_not_replace_a_process_with_unconfirmed_exit() {
             gate.query.reject_stop_for_test(false);
             gate.query.stop().await.unwrap();
             assert!(gate.query.process.is_none());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn history_refresh_real_worker_initializes_from_send_task_and_releases_ownership() {
+    use std::sync::atomic::Ordering;
+
+    struct Fixture(PathBuf);
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let fixture = Fixture(
+        std::env::current_dir()
+            .unwrap()
+            .join("tools")
+            .join("wta")
+            .join("target")
+            .join(format!("history-worker-fixture-{}", uuid::Uuid::new_v4())),
+    );
+    std::fs::create_dir_all(&fixture.0).unwrap();
+    let launches = fixture.0.join("launches");
+    let script = format!(
+        r#"$ErrorActionPreference='Stop'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+Add-Content -LiteralPath '{launches}' -Value $PID
+while ($null -ne ($line=[Console]::In.ReadLine())) {{
+    $request=$line | ConvertFrom-Json
+    if ($request.method -eq 'initialize') {{
+        $result=@{{protocolVersion=1;agentCapabilities=@{{sessionCapabilities=@{{list=@{{}}}}}}}}
+    }} elseif ($request.method -eq 'session/list') {{
+        $result=@{{sessions=@(@{{sessionId='worker-saved';cwd='C:\repo';title='Saved task'}})}}
+    }} else {{ throw 'Unexpected history operation' }}
+    [Console]::Out.WriteLine((@{{jsonrpc='2.0';id=$request.id;result=$result}} | ConvertTo-Json -Depth 20 -Compress))
+    [Console]::Out.Flush()
+}}"#,
+        launches = launches.to_string_lossy().replace('\'', "''"),
+    );
+    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let mut agent = listing_agent(crate::agent_sessions::CliSource::Copilot, &[]);
+            let inner = Arc::get_mut(&mut agent).unwrap();
+            Arc::get_mut(&mut inner.history_refresh.gate)
+                .unwrap()
+                .get_mut()
+                .query
+                .process = None;
+            inner
+                .history_refresh
+                .target
+                .set(history::HistoryTarget {
+                    command: format!(
+                        "pwsh.exe -NoProfile -EncodedCommand {}",
+                        crate::osc52::base64_encode(&utf16)
+                    ),
+                    agent_id: "custom:history-fixture".into(),
+                    source: crate::agent_source::AgentSource::Host,
+                    provider: ProviderBinding::Native,
+                })
+                .ok()
+                .unwrap();
+            let worker_state = Arc::clone(&state);
+            let worker_agent = Arc::clone(&agent);
+            // This task has no LocalSet context, just like a hook callback.
+            tokio::spawn(async move {
+                start_agent_history_worker(&worker_state, &worker_agent);
+                start_agent_history_worker(&worker_state, &worker_agent);
+            })
+            .await
+            .unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(20), async {
+                while agent.history_refresh.generation.load(Ordering::Acquire) == 0 {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("production worker initializes and lists through its child ACP connection");
+            assert_eq!(agent.history_refresh.gate.lock().await.last_count, Some(1));
+            let rows = state.registry.snapshot().await;
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].title.as_deref(), Some("Saved task"));
+            assert_eq!(
+                std::fs::read_to_string(&launches).unwrap().lines().count(),
+                1
+            );
+            assert!(agent
+                .conn
+                .list_sessions(acp::schema::v1::ListSessionsRequest::new())
+                .await
+                .is_ok());
+            agent.history_refresh.retired.store(true, Ordering::Release);
+            agent.history_refresh.cancelled.cancel();
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                while agent.history_refresh.worker_started.load(Ordering::Acquire) {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("worker exit releases its startup flag");
+            agent
+                .history_refresh
+                .gate
+                .lock()
+                .await
+                .query
+                .stop()
+                .await
+                .unwrap();
         })
         .await;
 }
