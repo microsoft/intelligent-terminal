@@ -39,6 +39,11 @@ confirm package inactivity before restoring configuration. `Start-Terminal` owns
 backup recovery; outer catches must not add package-wide shutdown or unconditional
 restoration.
 
+Verified Dev is intentionally disposable during unattended test preflight, even
+if a later read-only build receipt or hash check rejects the run. This permission
+does not extend to Store, ordinary Windows Terminal, the current chat ancestry,
+or unowned processes encountered during failure recovery and teardown.
+
 The `tests/` folder implements the `[E2E]` items from
 `doc/release-check-list.md` that are automatable on one machine. Copilot drives
 the baseline suites, while the agent matrix covers other installed and
