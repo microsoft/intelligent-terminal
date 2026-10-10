@@ -10,6 +10,7 @@
 
 #include <json/json.h>
 #include <til/io.h>
+#include "../inc/TerminalProtocolProxyRegistration.h"
 #include "../TerminalProtocol/ProtocolParsing.h"
 #include "../inc/AgentRegistry.h"
 
@@ -73,34 +74,44 @@ try
     g_comMtaThread = std::thread([&ready, &regHr]() {
         auto coInit = wil::CoInitializeEx(COINIT_MULTITHREADED);
 
-        // Classic-COM class factory (WRL) — marshaled via the OpenConsoleProxy
-        // proxy/stub, not WinRT MBM.
-        const auto factory = Make<SimpleClassFactory<TerminalProtocolComServer>>();
-        if (!factory)
+        wil::unique_hmodule proxyDll;
+        regHr = Microsoft::Terminal::Protocol::LoadAndVerifyLocalProxyDll(proxyDll);
+        if (SUCCEEDED(regHr))
         {
-            regHr = E_OUTOFMEMORY;
+            // Set COM's proxy factory, not the terminal server factory below.
+            regHr = Microsoft::Terminal::Protocol::RegisterProcessLocalProxyFactory(proxyDll);
         }
-        else
+        if (SUCCEEDED(regHr))
         {
-            ComPtr<IUnknown> unk;
-            regHr = factory.As(&unk);
-            if (SUCCEEDED(regHr))
+            // Classic-COM class factory (WRL) — marshaled via the OpenConsoleProxy
+            // proxy/stub, not WinRT MBM.
+            const auto factory = Make<SimpleClassFactory<TerminalProtocolComServer>>();
+            if (!factory)
             {
-                regHr = CoRegisterClassObject(
-                    __uuidof(TerminalProtocolComServer),
-                    unk.Get(),
-                    CLSCTX_LOCAL_SERVER,
-                    REGCLS_MULTIPLEUSE,
-                    &g_comRegistration);
+                regHr = E_OUTOFMEMORY;
+            }
+            else
+            {
+                ComPtr<IUnknown> unk;
+                regHr = factory.As(&unk);
                 if (SUCCEEDED(regHr))
                 {
-                    // Publish the same factory under the fixed CLSID for non-activating
-                    // hook lookups. A ROT failure must not disable ordinary COM clients.
-                    LOG_IF_FAILED(RegisterActiveObject(
-                        unk.Get(),
+                    regHr = CoRegisterClassObject(
                         __uuidof(TerminalProtocolComServer),
-                        ACTIVEOBJECT_STRONG,
-                        &g_activeRegistration));
+                        unk.Get(),
+                        CLSCTX_LOCAL_SERVER,
+                        REGCLS_MULTIPLEUSE,
+                        &g_comRegistration);
+                    if (SUCCEEDED(regHr))
+                    {
+                        // Publish the same factory under the fixed CLSID for non-activating
+                        // hook lookups. A ROT failure must not disable ordinary COM clients.
+                        LOG_IF_FAILED(RegisterActiveObject(
+                            unk.Get(),
+                            __uuidof(TerminalProtocolComServer),
+                            ACTIVEOBJECT_STRONG,
+                            &g_activeRegistration));
+                    }
                 }
             }
         }
@@ -109,9 +120,15 @@ try
 
         // Keep this MTA thread alive so the COM registration stays active.
         WaitForSingleObject(g_comMtaStop.get(), INFINITE);
+        LOG_IF_FAILED(Microsoft::Terminal::Protocol::UnregisterTerminalProtocolProxy());
     });
 
     ready.wait();
+    if (FAILED(regHr))
+    {
+        g_comMtaStop.SetEvent();
+        g_comMtaThread.join();
+    }
     RETURN_IF_FAILED(regHr);
     return S_OK;
 }

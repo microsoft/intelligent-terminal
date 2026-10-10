@@ -269,6 +269,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         // Mark that this pointer event actually started within our bounds.
         // We'll need this later, for PointerMoved events.
         _pointerPressedInBounds = true;
+        if (pointerUpdateKind == WM_RBUTTONDOWN)
+        {
+            _agentRightClickContextMenuPressed = false;
+        }
 
         // GH#9396: we prioritize hyper-link over VT mouse events
         auto hyperlink = _core->GetHyperlink(terminalPosition.to_core_point());
@@ -284,7 +288,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                 _hyperlinkHandler(hyperlink);
             }
         }
-        else if (_canSendVTMouseInput(modifiers))
+        else if (_canSendVTMouseInput(modifiers) &&
+                 !(_agentRightClickContextMenuEnabled &&
+                   pointerUpdateKind == WM_RBUTTONDOWN &&
+                   _core->Settings().RightClickContextMenu()))
         {
             _sendMouseEventHelper(terminalPosition, pointerUpdateKind, modifiers, 0, buttonState);
         }
@@ -339,6 +346,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         {
             if (_core->Settings().RightClickContextMenu())
             {
+                _agentRightClickContextMenuPressed = _agentRightClickContextMenuEnabled;
                 // Let the core know we're about to open a menu here. It has
                 // some separate conditional logic based on _where_ the user
                 // wanted to open the menu.
@@ -483,6 +491,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         _pointerPressedInBounds = false;
 
         const auto terminalPosition = _getTerminalPosition(til::point{ pixelPosition }, false);
+        if (pointerUpdateKind == WM_RBUTTONUP && _agentRightClickContextMenuPressed)
+        {
+            _agentRightClickContextMenuPressed = false;
+            return;
+        }
         // Short-circuit isReadOnly check to avoid warning dialog
         if (!_core->IsInReadOnlyMode() && _canSendVTMouseInput(modifiers))
         {

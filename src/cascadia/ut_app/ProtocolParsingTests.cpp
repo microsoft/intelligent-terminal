@@ -4,6 +4,7 @@
 #include "precomp.h"
 
 #include "../TerminalProtocol/ProtocolParsing.h"
+#include "../inc/TerminalProtocolEnvironment.h"
 
 using namespace WEX::TestExecution;
 using namespace Microsoft::Terminal::Protocol::Parsing;
@@ -24,7 +25,55 @@ namespace TerminalAppUnitTests
         TEST_METHOD(BoundedBufferTailAppliesLineAndCharacterLimits);
         TEST_METHOD(BoundedBufferTailPreservesBlankLines);
         TEST_METHOD(CapabilitySupportDistinguishesUnsupportedFromMalformed);
+        TEST_METHOD(HostClsidOverridesStaleEnvironment);
+        TEST_METHOD(UnpublishedStartupRemovesInheritedClsid);
     };
+
+    void ProtocolParsingTests::UnpublishedStartupRemovesInheritedClsid()
+    {
+        const auto original = wil::TryGetEnvironmentVariableW<std::wstring>(L"WT_COM_CLSID");
+        const auto restore = wil::scope_exit([&]() noexcept {
+            LOG_IF_WIN32_BOOL_FALSE(SetEnvironmentVariableW(L"WT_COM_CLSID", original.empty() ? nullptr : original.c_str()));
+        });
+        VERIFY_WIN32_BOOL_SUCCEEDED(SetEnvironmentVariableW(L"WT_COM_CLSID", L"{parent-host}"));
+
+        const auto snapshot = Microsoft::Terminal::Protocol::CaptureProtocolStartupEnvironment();
+        til::env captured{ snapshot.get() };
+        VERIFY_ARE_EQUAL(size_t{ 0 }, captured.as_map().count(L"WT_COM_CLSID"));
+        // No local server is published: the same state as failed registration.
+        const auto host = wil::TryGetEnvironmentVariableW<std::wstring>(L"WT_COM_CLSID");
+        VERIFY_IS_TRUE(host.empty());
+        til::env child;
+        child.as_map().insert_or_assign(L"WT_COM_CLSID", L"{stale-profile}");
+        Microsoft::Terminal::Protocol::ApplyHostClsid(child, host);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, child.as_map().count(L"WT_COM_CLSID"));
+
+        VERIFY_WIN32_BOOL_SUCCEEDED(SetEnvironmentVariableW(L"WT_COM_CLSID", L"{local-host}"));
+        Microsoft::Terminal::Protocol::ApplyHostClsid(child, wil::TryGetEnvironmentVariableW<std::wstring>(L"WT_COM_CLSID"));
+        VERIFY_ARE_EQUAL(L"{local-host}", child.as_map().at(L"WT_COM_CLSID"));
+    }
+
+    void ProtocolParsingTests::HostClsidOverridesStaleEnvironment()
+    {
+        til::env environment;
+        environment.as_map().insert_or_assign(L"PATH", L"preserved");
+        for (const auto* host : { L"", L"{current-host}", L"", L"{restarted-host}" })
+        {
+            environment.as_map().insert_or_assign(L"wT_cOm_ClSiD", L"{stale-profile-or-snapshot}");
+            Microsoft::Terminal::Protocol::ApplyHostClsid(environment, host);
+            VERIFY_ARE_EQUAL(L"preserved", environment.as_map().at(L"PATH"));
+            if (*host)
+            {
+                VERIFY_ARE_EQUAL(host, environment.as_map().at(L"WT_COM_CLSID"));
+                VERIFY_ARE_EQUAL(size_t{ 2 }, environment.as_map().size());
+            }
+            else
+            {
+                VERIFY_ARE_EQUAL(size_t{ 0 }, environment.as_map().count(L"WT_COM_CLSID"));
+                VERIFY_ARE_EQUAL(size_t{ 1 }, environment.as_map().size());
+            }
+        }
+    }
 
     void ProtocolParsingTests::CapabilitySupportDistinguishesUnsupportedFromMalformed()
     {

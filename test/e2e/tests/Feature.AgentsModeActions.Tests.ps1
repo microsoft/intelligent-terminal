@@ -1,10 +1,11 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# New sidebar action coverage only. Search/navigation remains in CombinedAgentsSidebar.
+# Normal plus and explicit agent action coverage. Search/navigation remains in CombinedAgentsSidebar.
 # A native canonical shim and custom interactive CLI avoid provider quota.
 
 Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\SidebarExpansionEvents.ps1')
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
         $cleanupTokens = $null
@@ -96,6 +97,14 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $invocation = "& '$($acp.Replace("'", "''"))' -LogPath '$($script:evidence.Replace("'", "''"))\acp.log'"
         $acpCommand = 'pwsh -NoProfile -EncodedCommand ' +
             [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation))
+        $script:defaultProfile = '{7d075d6b-6625-49fe-8a57-c31f362b7fce}'
+        $script:otherProfile = '{ca763862-36cd-41f3-80ef-60de629865e9}'
+        $defaultBootstrap = "`$env:ITE2E_PROFILE_MARKER = '$script:defaultProfile'; Write-Output 'DEFAULT-PROFILE-$script:runId'"
+        $defaultCommand = "`"$pwsh`" -NoLogo -NoProfile -NoExit -EncodedCommand " +
+            [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($defaultBootstrap))
+        $otherBootstrap = "`$env:ITE2E_PROFILE_MARKER = '$script:otherProfile'; Write-Output 'SOURCE-PROFILE-$script:runId'"
+        $otherCommand = "`"$pwsh`" -NoLogo -NoProfile -NoExit -EncodedCommand " +
+            [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($otherBootstrap))
         $script:ownsConfig = $true
         $script:app = Start-Terminal -Package Dev -PassFre $true -State @{
             sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
@@ -106,12 +115,18 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             delegateAgent = 'custom:agents-actions-cli'; delegateCustomCommand = $delegate; delegateModel = ''
             autoFixEnabled = $false; 'warning.confirmOnClose' = 'never'
             actions = @(); keybindings = @()
-            defaultProfile = '{7d075d6b-6625-49fe-8a57-c31f362b7fce}'
+            defaultProfile = $script:defaultProfile
             profiles = @{
                 list = @(@{
                     guid = '{7d075d6b-6625-49fe-8a57-c31f362b7fce}'
-                    name = 'ite2e-agents-actions'; commandline = "`"$pwsh`" -NoLogo -NoProfile -NoExit"
+                    name = 'ite2e-agents-actions'; commandline = $defaultCommand
                     startingDirectory = $script:evidence; commandPaletteAgent = ''
+                    reloadEnvironmentVariables = $false
+                }, @{
+                    guid = $script:otherProfile; name = 'ite2e-other-profile'
+                    commandline = $otherCommand
+                    startingDirectory = $script:evidence; commandPaletteAgent = ''
+                    tabTitle = 'ite2e-other-profile'; suppressApplicationTitle = $true
                     reloadEnvironmentVariables = $false
                 })
             }
@@ -216,14 +231,31 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         }
         function Set-ActionView {
             param([bool]$Agents)
-            $header = Get-ActionElement VerticalTabsHeader
-            if (($header.Current.Name -eq 'Agents') -ne $Agents) {
-                Invoke-UiClick -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
+            Set-TestSidebarScope -App $script:app -AgentsOnly $Agents -Recent $Agents
+            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
+        }
+        function Assert-ActionFilterState {
+            param([bool]$AgentsOnly, [bool]$Recent)
+            Invoke-UiClick -App $script:app -Selector FilterTabsButton | Out-Null
+            try {
+                foreach ($entry in @(
+                    @{ Id = 'AgentsOnlyFilterMenuItem'; Expected = $AgentsOnly },
+                    @{ Id = 'RecentAgentSessionsFilterMenuItem'; Expected = $Recent }
+                )) {
+                    $item = Wait-Until -TimeoutSec 10 -Because "$($entry.Id) is visible in the owned filter flyout" -Condition {
+                        $peer = Get-ActionElement $entry.Id
+                        if ($peer -and -not $peer.Current.IsOffscreen) { $peer }
+                    }
+                    $item.Current.ProcessId | Should -Be $script:app.Pid
+                    $item.Current.ControlType | Should -Be ([Windows.Automation.ControlType]::MenuItem)
+                    $expected = if ($entry.Expected) {
+                        [Windows.Automation.ToggleState]::On
+                    } else { [Windows.Automation.ToggleState]::Off }
+                    $item.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState |
+                        Should -Be $expected -Because "$($entry.Id) must retain the requested scope independently of the query"
+                }
             }
-            $expected = if ($Agents) { 'Agents' } else { 'Tabs' }
-            Wait-Until -TimeoutSec 10 -Because 'requested sidebar page renders' -Condition {
-                (Get-ActionElement VerticalTabsHeader).Current.Name -eq $expected
-            } | Out-Null
+            finally { Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null }
         }
         function Get-ActionLaunches {
             if (Test-Path -LiteralPath $script:launchLog) {
@@ -245,45 +277,22 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         }
         function Invoke-ActionPlus {
             $before = @(Get-ActionTabs).tab_id
-            $label = if ((Get-ActionElement VerticalTabsHeader).Current.Name -eq 'Agents') {
-                'Open background agent in a new tab'
-            } else { 'New tab' }
-            Invoke-UiClick -App $script:app -Selector $label | Out-Null
+            Invoke-UiClick -App $script:app -Selector 'New tab' | Out-Null
             Wait-Until -TimeoutSec 25 -Because 'plus creates exactly one new tab' -Condition {
                 @(Get-ActionTabs | Where-Object tab_id -NotIn $before).Count -eq 1
             } | Out-Null
             @(Get-ActionTabs | Where-Object tab_id -NotIn $before)[0]
         }
-        function Invoke-ActionRejectedSplit {
-            Initialize-LogOffsets -App $script:app | Out-Null
-            Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
-            Wait-Until -TimeoutSec 10 -Because 'unidentified split reports a visible failure before retry' -Condition {
-                $message = Get-ActionElement HistoryMessage
-                $message -and -not $message.Current.IsOffscreen -and $message.Current.Name -and
-                    (Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart) -match
-                        'agent split rejected: missing live identity, unsupported provider, or policy'
-            } | Out-Null
-            Save-ActionUiEvidence "retry-failure-$script:caseIndex"
-            (Get-ActionElement HistoryMessage).Current.Name
-        }
-        function Assert-ActionRetryClearsError {
-            param([string]$PreviousError)
-            Wait-Until -TimeoutSec 10 -Because 'successful retry removes the old error without closing Agents' -Condition {
-                $message = Get-ActionElement HistoryMessage
-                -not $message -or $message.Current.IsOffscreen -or
-                    $message.Current.BoundingRectangle.Height -le 0 -or
-                    $message.Current.BoundingRectangle.Width -le 0
-            } | Out-Null
-            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
-        }
         function Save-ActionUiEvidence {
             param([string]$Phase)
-            $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern(
-                [Windows.Automation.TogglePattern]::Pattern)
+            $search = Get-ActionElement SearchTabsButton
+            $header = Get-ActionElement VerticalTabsHeader
             @{
                 phase = $Phase; at = [DateTimeOffset]::UtcNow.ToString('o')
-                header = (Get-ActionElement VerticalTabsHeader).Current.Name
-                search_toggle = $toggle.Current.ToggleState.ToString()
+                header = if ($header) { $header.Current.Name } else { $null }
+                search_toggle = if ($search) {
+                    $search.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState.ToString()
+                } else { $null }
                 active_pane = Get-ActivePane -App $script:app
                 tabs = @(Get-ActionTabs)
                 custom_launches = @(Get-ActionLaunches)
@@ -340,56 +349,93 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         }
     }
 
-    It 'Agents plus creates a fresh interactive delegate' {
-        Set-ActionView $true
-        $original = Get-ActivePane -App $script:app
-        $tabsBeforeFailure = @(Get-ActionTabs).Count
-        $retryError = Invoke-ActionRejectedSplit
-        @(Get-ActionTabs).Count | Should -Be $tabsBeforeFailure
-        @(Get-ActionLaunches).Count | Should -Be 0
-        $first = Invoke-ActionPlus
-        Wait-Until -TimeoutSec 20 -Because 'interactive CLI logs its own launch' -Condition {
-            @(Get-ActionLaunches).Count -eq 1
-        } | Out-Null
-        $one = @(Get-ActionLaunches)[0]
-        $panes = @(Get-WtPanes -App $script:app -TabId ([string]$first.tab_id) -WindowId ([string]$script:app.WindowId))
-        $matches = @($panes | Where-Object session_id -EQ $one.pane_session_id)
-        $matches.Count | Should -Be 1
-        $one.pane_session_id | Should -Not -Be $original.session_id
-        $first.tab_id | Should -Not -Be $original.tab_id
-        $one.cwd | Should -Be $script:evidence
-        $one.source | Should -Be 'host'
-        @($one.args).Count | Should -Be 0 -Because 'no startup prompt or resume ID is allowed'
-        $process = Get-CimInstance Win32_Process -Filter "ProcessId=$($one.pid)" -ErrorAction Stop
-        $process.ExecutablePath | Should -Be $pwsh
-        $process.CommandLine | Should -Match ([regex]::Escape($fixture))
-        Get-WtCapture -App $script:app -SessionId $one.pane_session_id -MaxLines 30 |
-            Should -Match ([regex]::Escape("ITE2E-INTERACTIVE-DELEGATE $script:runId $($one.session_id)"))
-        Assert-ActionRetryClearsError $retryError
-        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
-        $second = Invoke-ActionPlus
-        Wait-Until -TimeoutSec 20 -Because 'second plus launches a fresh CLI' -Condition {
-            @(Get-ActionLaunches).Count -eq 2
-        } | Out-Null
-        $two = @(Get-ActionLaunches)[1]
-        $two.session_id | Should -Not -Be $one.session_id
-        $two.pid | Should -Not -Be $one.pid
-        $two.pane_session_id | Should -Not -Be $one.pane_session_id
-        $second.tab_id | Should -Not -Be $first.tab_id
-        $two.cwd | Should -Be $one.cwd
-        $two.source | Should -Be $one.source
-        @($two.args).Count | Should -Be 0
-        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
-        Wait-Until -TimeoutSec 10 -Because 'second delegate renders its unique interactive banner' -Condition {
-            (Get-WtCapture -App $script:app -SessionId $two.pane_session_id -MaxLines 30) -match
-                [regex]::Escape("ITE2E-INTERACTIVE-DELEGATE $script:runId $($two.session_id)")
-        } | Out-Null
-        Send-WtInput -App $script:app -SessionId $one.pane_session_id -Text "alive-$script:runId"
-        Send-WtKeys -App $script:app -SessionId $one.pane_session_id -Keys Enter
-        Wait-Until -TimeoutSec 10 -Because 'original delegate remains responsive' -Condition {
-            (Get-WtCapture -App $script:app -SessionId $one.pane_session_id -MaxLines 30) -match
-                [regex]::Escape("ITE2E-DELEGATE-ALIVE $($one.session_id) alive-$script:runId")
-        } | Out-Null
+    It 'Sidebar plus always creates the default profile' {
+        $launchCount = @(Get-ActionLaunches).Count + @(Get-CanonicalLaunches).Count
+        $created = @()
+        try {
+            foreach ($agentsOnly in @($false, $true)) {
+                foreach ($recent in @($false, $true)) {
+                    Set-TestSidebarScope -App $script:app -AgentsOnly $agentsOnly -Recent $recent
+                    foreach ($query in @('', "no-matching-tab-$script:runId")) {
+                        $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern(
+                            [Windows.Automation.TogglePattern]::Pattern)
+                        if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) {
+                            Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+                        }
+                        Set-UiValue -App $script:app -Selector SearchTextBox -Value $query | Out-Null
+                        foreach ($layout in @('vertical', 'horizontal')) {
+                            Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
+                            Set-WtSetting -App $script:app -Key tabLayout -Value $layout | Out-Null
+                            Wait-Until -TimeoutSec 10 -Because 'the requested layout is realized before plus' -Condition {
+                                $peer = Get-ActionElement $(if ($layout -eq 'vertical') { 'ItemsList' } else { 'TabView' })
+                                $peer -and -not $peer.Current.IsOffscreen -and
+                                    (Get-WtSetting -App $script:app -Key tabLayout) -eq $layout
+                            } | Out-Null
+                            if ($layout -eq 'vertical') {
+                                Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $query
+                                (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
+                            }
+                            $original = Invoke-WtCli -App $script:app -Arguments @(
+                                'new-tab', '--profile', $script:otherProfile, '-w', [string]$script:app.WindowId)
+                            Set-WtPaneFocus -App $script:app -SessionId $original.session_id | Out-Null
+                            (Get-ActivePane -App $script:app).session_id | Should -Be $original.session_id
+                            $tab = Invoke-ActionPlus
+                            $panes = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId))
+                            $panes.Count | Should -Be 1
+                            $pane = $panes[0]
+                            $pane.session_id | Should -Not -BeIn $created
+                            $pane.session_id | Should -Not -Be $original.session_id
+                            $pane.native_agent_provider_id | Should -BeNullOrEmpty
+                            $pane.is_agent_pane | Should -BeFalse
+                            (Get-ActivePane -App $script:app).session_id | Should -Be $pane.session_id
+                            Wait-Until -TimeoutSec 15 -Because 'the configured default profile, not the active profile, started its shell' -Condition {
+                                (Get-WtCapture -App $script:app -SessionId $pane.session_id -MaxLines 30) -match
+                                    [regex]::Escape("DEFAULT-PROFILE-$script:runId")
+                            } | Out-Null
+                            Invoke-RunCommand -App $script:app -SessionId $pane.session_id -Command `
+                                'Write-Output ("PROFILE-IDENTITY:" + $env:ITE2E_PROFILE_MARKER)' -SettleSec 1 | Out-Null
+                            Get-WtCapture -App $script:app -SessionId $pane.session_id -MaxLines 30 |
+                                Should -Match ([regex]::Escape("PROFILE-IDENTITY:$script:defaultProfile"))
+                            @(Get-ActionLaunches).Count + @(Get-CanonicalLaunches).Count | Should -Be $launchCount
+                            if ($layout -eq 'vertical') {
+                                Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $query
+                            }
+                            $created += $pane.session_id
+                            Save-ActionUiEvidence "plus-$agentsOnly-$recent-$($query.Length)-$layout"
+                            # Horizontal hides the filter flyout; inspect its retained checks
+                            # after restoring Sidebar, without reapplying either preference.
+                            if ($layout -eq 'horizontal') {
+                                Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+                                Wait-Until -TimeoutSec 10 -Because 'Sidebar exposes the actual retained filter menu after horizontal plus' -Condition {
+                                    $button = Get-ActionElement FilterTabsButton
+                                    $button -and -not $button.Current.IsOffscreen
+                                } | Out-Null
+                            }
+                            Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
+                            Close-WtPane -App $script:app -SessionId $pane.session_id
+                            Close-WtPane -App $script:app -SessionId $original.session_id
+                        }
+                        Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+                        Wait-Until -TimeoutSec 10 -Because 'Sidebar restores the existing search after the layout round trip' -Condition {
+                            $box = Get-ActionElement SearchTextBox
+                            $box -and -not $box.Current.IsOffscreen
+                        } | Out-Null
+                        Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
+                        Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $query
+                    }
+                }
+            }
+            $created.Count | Should -Be 16
+        }
+        finally {
+            Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
+            $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+            if ($toggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::On) {
+                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            }
+            Set-ActionView $false
+        }
     }
 
     It 'Tabs plus and split retain ordinary terminal behavior' {
@@ -397,6 +443,13 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $count = @(Get-ActionLaunches).Count
         $tab = Invoke-ActionPlus
         $source = Get-ActivePane -App $script:app
+        $pane = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId))[0]
+        $pane.native_agent_provider_id | Should -BeNullOrEmpty
+        $pane.is_agent_pane | Should -BeFalse
+        Wait-Until -TimeoutSec 15 -Because 'ordinary plus also creates the configured default profile' -Condition {
+            (Get-WtCapture -App $script:app -SessionId $source.session_id -MaxLines 30) -match
+                [regex]::Escape("DEFAULT-PROFILE-$script:runId")
+        } | Out-Null
         Invoke-RunCommand -App $script:app -SessionId $source.session_id -Command "Write-Output 'NORMAL-TABS-$script:runId'" -SettleSec 1 | Out-Null
         Get-WtCapture -App $script:app -SessionId $source.session_id -MaxLines 30 |
             Should -Match "NORMAL-TABS-$script:runId"
@@ -426,7 +479,12 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                 $settings = Invoke-Native -FilePath $script:target.WtcliPath -Arguments @('--json', 'get-settings') -TimeoutSec 10
                 $settings.ExitCode -eq 0 -and ($settings.StdOut | ConvertFrom-Json).delegateAgent -eq 'copilot'
             } | Out-Null
-            $tab = Invoke-ActionPlus
+            $tabsBefore = @(Get-ActionTabs).tab_id
+            Send-WtWindowKey -App $script:app -Vk 0x42 -Alt -Shift | Out-Null
+            $tab = Wait-Until -TimeoutSec 25 -Because 'explicit background-agent action creates its own native fixture tab' -Condition {
+                $new = @(Get-ActionTabs | Where-Object tab_id -NotIn $tabsBefore)
+                if ($new.Count -eq 1) { $new[0] }
+            }
             Wait-Until -TimeoutSec 20 -Because 'native fixture is held before publishing any session hook' -Condition {
                 @(Get-ChildItem -LiteralPath $script:evidence -Filter 'release-session-start.waiting-*.json' |
                     Where-Object FullName -NotIn $receiptsBefore).Count -eq 1
@@ -447,7 +505,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             @($rowsDuring | Where-Object pane_session_id -EQ $receipt.pane_session_id).Count |
                 Should -Be 1 -Because 'only the exact pinned native conversation belongs to this pane; new stashed ACP helpers have different pane GUIDs'
             Assert-ActionPriorSessionsPreserved -Before $rowsBefore -During $rowsDuring
-            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
             $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
             $visibleTitle = @($window.FindAll([Windows.Automation.TreeScope]::Descendants,
                 [Windows.Automation.PropertyCondition]::new(
@@ -478,14 +536,12 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         $provider = 'custom:agents-actions-no-pin'
         $customShim = Join-Path $script:shimDirectory 'interactive-fixture.exe'
         [IO.File]::Copy($script:shim, $customShim, $false)
-        $priorAgent = Get-WtSetting -App $script:app -Key delegateAgent
-        $priorCommand = Get-WtSetting -App $script:app -Key delegateCustomCommand
         $rowsBefore = @(Save-ActionSessionSnapshot 'custom-before-launch')
         if (Test-Path -LiteralPath $gate) { Remove-Item -LiteralPath $gate }
         try {
-            Set-WtSetting -App $script:app -Key delegateCustomCommand -Value "`"$customShim`" --session-id $sid" | Out-Null
-            Set-WtDelegateAgent -App $script:app -Agent $provider | Out-Null
-            $tab = Invoke-ActionPlus
+            $tab = Invoke-WtCli -App $script:app -Arguments @(
+                'new-tab', '-c', "`"$customShim`" --session-id $sid", '-d', $script:evidence,
+                '-w', [string]$script:app.WindowId, '--agent-provider', $provider)
             Wait-Until -TimeoutSec 20 -Because 'no-pin native fixture waits before publishing its genuine session hook' -Condition {
                 Test-Path -LiteralPath "$gate.waiting-$sid.json"
             } | Out-Null
@@ -498,7 +554,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             @($rowsDuring | Where-Object pane_session_id -EQ $receipt.pane_session_id).Count | Should -Be 0
             @($rowsDuring | Where-Object session_id -EQ $sid).Count | Should -Be 0
             Assert-ActionPriorSessionsPreserved -Before $rowsBefore -During $rowsDuring
-            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
+            (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
             $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
             @($window.FindAll([Windows.Automation.TreeScope]::Descendants,
                 [Windows.Automation.PropertyCondition]::new(
@@ -509,8 +565,6 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         }
         finally {
             Set-Content -LiteralPath $gate -Value 'released'
-            Set-WtSetting -App $script:app -Key delegateCustomCommand -Value $priorCommand | Out-Null
-            Set-WtDelegateAgent -App $script:app -Agent $priorAgent | Out-Null
         }
         Wait-Until -TimeoutSec 20 -Because 'the real hook supplies exactly one conversation for the same custom-launched pane' -Condition {
             (Test-Path -LiteralPath "$gate.emitted-$sid.json") -and @(Get-ActionSessions | Where-Object {
@@ -522,130 +576,187 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         Assert-ActionPriorSessionsPreserved -Before $rowsBefore -During $rowsAfter
     }
 
-    It 'Agents split creates a fresh same-provider interactive CLI' {
+    It 'Native agent terminal splits use the source profile without delegation' {
         Set-Content -LiteralPath $shimConfig.ITE2E_SHIM_SESSION_START_GATE -Value 'released'
-        Set-ActionView $false
-        Install-ActionCanonicalResolver
-        $sid = [guid]::NewGuid().ToString()
-        $beforeCount = @(Get-CanonicalLaunches).Count
-        $tab = New-WtTab -App $script:app -Command "`"$script:shim`" --session-id $sid" -Cwd $script:evidence
-        Wait-Until -TimeoutSec 20 -Because 'owned canonical shim delivers a real root session-start hook' -Condition {
-            @(Get-CanonicalLaunches).Count -eq $beforeCount + 1
-        } | Out-Null
-        $original = @(Get-CanonicalLaunches)[-1]
-        $original.session_id | Should -Be $sid
-        $original.pane_session_id | Should -Be $tab.session_id
-        $original.cwd | Should -Be $script:evidence
-        $original.provider | Should -Be 'copilot'
-        $originalProcess = Get-Process -Id $original.native_pid -ErrorAction Stop
-        $originalProcess.Path | Should -Be $script:shim
-        $probe = New-WtTab -App $script:app -Command "`"$pwsh`" -NoLogo -NoProfile -NoExit" -Cwd $script:evidence
-        $probeLog = Join-Path $script:evidence 'resolver-proof.json'
-        $probeCommand = "[IO.File]::WriteAllText('$($probeLog.Replace("'", "''"))', ((Get-Command copilot.exe -CommandType Application | Select-Object -First 1).Source | ConvertTo-Json))"
-        Invoke-RunCommand -App $script:app -SessionId $probe.session_id -Command $probeCommand -SettleSec 1 | Out-Null
-        (Get-Content -LiteralPath $probeLog -Raw | ConvertFrom-Json) | Should -Be $script:resolverShim
-        Wait-Until -TimeoutSec 20 -Because 'canonical Host identity is live in the owning master before splitting' -Condition {
-            $rows = @(Get-ActionSessions | Where-Object session_id -EQ $sid)
-            $rows.Count -eq 1 -and $rows[0].pane_session_id -eq $tab.session_id -and
-                $rows[0].provider_id -eq 'copilot' -and $rows[0].location -eq 'host'
-        } | Out-Null
-        Set-WtPaneFocus -App $script:app -SessionId $probe.session_id | Out-Null
         Set-ActionView $true
-        $retryError = Invoke-ActionRejectedSplit
-        @(Get-CanonicalLaunches).Count | Should -Be ($beforeCount + 1)
-        Set-WtPaneFocus -App $script:app -SessionId $tab.session_id | Out-Null
-        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
-        (Get-ActionElement HistoryMessage).Current.Name | Should -Be $retryError
-        Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
-        Wait-Until -TimeoutSec 30 -Because 'UI same-provider split launches the canonical native shim' -Condition {
-            @(Get-CanonicalLaunches).Count -eq $beforeCount + 2
-        } | Out-Null
-        $fresh = @(Get-CanonicalLaunches)[-1]
-        $fresh.session_id | Should -Not -Be $sid
-        $fresh.native_pid | Should -Not -Be $original.native_pid
-        $fresh.pane_session_id | Should -Not -Be $tab.session_id
-        $fresh.cwd | Should -Be $original.cwd
-        $fresh.source | Should -Be 'host'
-        $fresh.provider | Should -Be 'copilot'
-        (Get-CimInstance Win32_Process -Filter "ProcessId=$($fresh.native_pid)" -ErrorAction Stop).ExecutablePath |
-            Should -Be $script:resolverShim -Because 'the real provider executable must never launch'
-        $fresh.native_command_line | Should -Match ([regex]::Escape("--session-id $($fresh.session_id)"))
-        $fresh.native_command_line | Should -Not -Match '--resume|--acp|--stdio|(?:^|\s)-i(?:\s|$)'
-        $fresh.native_command_line | Should -Not -Match ([regex]::Escape($sid))
-        $panes = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId))
-        @($panes | Where-Object session_id -In @($tab.session_id, $fresh.pane_session_id)).Count | Should -Be 2
-        (Get-ActionTabs | Where-Object tab_id -EQ $tab.tab_id) | Should -Not -BeNullOrEmpty
-        (Get-ActionElement VerticalTabsHeader).Current.Name | Should -Be 'Agents'
-        Wait-Until -TimeoutSec 20 -Because 'both fresh and original canonical identities remain live' -Condition {
-            $rows = @(Get-ActionSessions | Where-Object session_id -In @($sid, $fresh.session_id))
-            $rows.Count -eq 2 -and @($rows | Where-Object provider_id -NE 'copilot').Count -eq 0
-        } | Out-Null
-        $originalProcess.Refresh()
-        $originalProcess.HasExited | Should -BeFalse
-        Get-WtCapture -App $script:app -SessionId $fresh.pane_session_id -MaxLines 30 |
-            Should -Match ([regex]::Escape("ITE2E-INTERACTIVE-DELEGATE $script:runId $($fresh.session_id)"))
-        Assert-ActionRetryClearsError $retryError
-        Send-WtInput -App $script:app -SessionId $tab.session_id -Text "split-alive-$script:runId"
-        Send-WtKeys -App $script:app -SessionId $tab.session_id -Keys Enter
-        Wait-Until -TimeoutSec 10 -Because 'original CLI remains responsive with unchanged session identity' -Condition {
-            (Get-WtCapture -App $script:app -SessionId $tab.session_id -MaxLines 30) -match
-                [regex]::Escape("ITE2E-DELEGATE-ALIVE $sid split-alive-$script:runId")
-        } | Out-Null
+        foreach ($provider in @('copilot', 'custom:unregistered-split-provider')) {
+            $sid = [guid]::NewGuid().ToString()
+            $command = if ($provider -eq 'copilot') { "`"$script:shim`" --session-id $sid" } else { $otherCommand }
+            $tab = Invoke-WtCli -App $script:app -Arguments @(
+                'new-tab', '--profile', $script:otherProfile, '-c', $command, '-d', $script:evidence,
+                '-w', [string]$script:app.WindowId, '--agent-provider', $provider)
+            if ($provider -eq 'copilot') {
+                Wait-Until -TimeoutSec 20 -Because 'the owned native fixture has a genuine live root session before splitting' -Condition {
+                    @(Get-ActionSessions | Where-Object {
+                        $_.session_id -eq $sid -and $_.pane_session_id -eq $tab.session_id
+                    }).Count -eq 1
+                } | Out-Null
+            }
+            $sourcePane = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId))[0]
+            $sourcePane.native_agent_provider_id | Should -Be $provider
+            $sourcePid = (Get-WtPaneStatus -App $script:app -SessionId $tab.session_id).pid
+            $count = @(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count
+            foreach ($layout in @('vertical', 'horizontal')) {
+                Set-WtSetting -App $script:app -Key tabLayout -Value $layout | Out-Null
+                Wait-Until -TimeoutSec 10 -Because 'the selected tab layout is realized' -Condition {
+                    $peer = Get-ActionElement $(if ($layout -eq 'vertical') { 'ItemsList' } else { 'TabView' })
+                    $peer -and -not $peer.Current.IsOffscreen
+                } | Out-Null
+                Set-WtPaneFocus -App $script:app -SessionId $tab.session_id | Out-Null
+                Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
+                Wait-Until -TimeoutSec 15 -Because 'native provider metadata does not override the ordinary duplicate split' -Condition {
+                    @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId)).Count -eq 2
+                } | Out-Null
+                $split = Get-ActivePane -App $script:app
+                $split.tab_id | Should -Be $tab.tab_id
+                $split.session_id | Should -Not -Be $tab.session_id
+                $pane = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId) |
+                    Where-Object session_id -EQ $split.session_id)[0]
+                $pane.native_agent_provider_id | Should -BeNullOrEmpty
+                $pane.is_agent_pane | Should -BeFalse
+                Wait-Until -TimeoutSec 15 -Because 'the source profile starts a normal shell rather than another native CLI' -Condition {
+                    (Get-WtCapture -App $script:app -SessionId $split.session_id -MaxLines 30) -match
+                        [regex]::Escape("SOURCE-PROFILE-$script:runId")
+                } | Out-Null
+                Invoke-RunCommand -App $script:app -SessionId $split.session_id -Command `
+                    'Write-Output ("SPLIT-PROFILE:" + $env:ITE2E_PROFILE_MARKER)' -SettleSec 1 | Out-Null
+                Get-WtCapture -App $script:app -SessionId $split.session_id -MaxLines 30 |
+                    Should -Match ([regex]::Escape("SPLIT-PROFILE:$script:otherProfile"))
+                (Get-WtPaneStatus -App $script:app -SessionId $tab.session_id).pid | Should -Be $sourcePid
+                @(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count | Should -Be $count
+                Close-WtPane -App $script:app -SessionId $split.session_id
+            }
+            if ($provider -eq 'copilot') {
+                Send-WtInput -App $script:app -SessionId $tab.session_id -Text "split-alive-$script:runId"
+                Send-WtKeys -App $script:app -SessionId $tab.session_id -Keys Enter
+                Wait-Until -TimeoutSec 10 -Because 'the original native CLI retains its responsive conversation' -Condition {
+                    (Get-WtCapture -App $script:app -SessionId $tab.session_id -MaxLines 30) -match
+                        [regex]::Escape("ITE2E-DELEGATE-ALIVE $sid split-alive-$script:runId")
+                } | Out-Null
+            }
+            Close-WtPane -App $script:app -SessionId $tab.session_id
+        }
+        Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
     }
 
-    It 'Agents split rejects an unidentified terminal without fallback' {
+    It 'Sidebar splits use the source profile across filters search and layouts' {
         Set-ActionView $false
-        $normalTab = New-WtTab -App $script:app -Command "`"$pwsh`" -NoLogo -NoProfile -NoExit" -Cwd $script:evidence
-        Set-WtPaneFocus -App $script:app -SessionId $normalTab.session_id | Out-Null
-        Set-ActionView $true
-        $before = @(Get-WtPanes -App $script:app -TabId ([string]$normalTab.tab_id) -WindowId ([string]$script:app.WindowId)).session_id
-        $count = @(Get-ActionLaunches).Count
-        Initialize-LogOffsets -App $script:app | Out-Null
-        Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
-        Wait-Until -TimeoutSec 10 -Because 'product explicitly rejects missing live agent identity' -Condition {
-            (Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart) -match
-                'agent split rejected: missing live identity, unsupported provider, or policy'
-        } | Out-Null
-        $error = Get-ActionElement HistoryMessage
-        $error | Should -Not -BeNullOrEmpty
-        $error.Current.IsOffscreen | Should -BeFalse
-        $error.Current.Name | Should -Not -BeNullOrEmpty
-        Start-Sleep -Seconds 2
-        $after = @(Get-WtPanes -App $script:app -TabId ([string]$normalTab.tab_id) -WindowId ([string]$script:app.WindowId)).session_id
-        @($after | Where-Object { $_ -notin $before }).Count | Should -Be 0
-        $after.Count | Should -Be $before.Count
-        @(Get-ActionLaunches).Count | Should -Be $count
-        Invoke-RunCommand -App $script:app -SessionId $normalTab.session_id -Command "Write-Output 'ORIGINAL-ALIVE-$script:runId'" -SettleSec 1 | Out-Null
-        Get-WtCapture -App $script:app -SessionId $normalTab.session_id -MaxLines 30 |
-            Should -Match "ORIGINAL-ALIVE-$script:runId"
+        $tab = Invoke-WtCli -App $script:app -Arguments @(
+            'new-tab', '--profile', $script:otherProfile, '-w', [string]$script:app.WindowId)
+        $count = @(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count
+        $created = @()
+        try {
+            foreach ($agentsOnly in @($false, $true)) {
+                foreach ($recent in @($false, $true)) {
+                    Set-TestSidebarScope -App $script:app -AgentsOnly $agentsOnly -Recent $recent
+                    foreach ($query in @('', "no-matching-split-$script:runId")) {
+                        $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+                        if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) {
+                            Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+                        }
+                        Set-UiValue -App $script:app -Selector SearchTextBox -Value $query | Out-Null
+                        foreach ($layout in @('vertical', 'horizontal')) {
+                            Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
+                            Set-WtSetting -App $script:app -Key tabLayout -Value $layout | Out-Null
+                            Wait-Until -TimeoutSec 10 -Because 'the requested layout is realized before split' -Condition {
+                                $peer = Get-ActionElement $(if ($layout -eq 'vertical') { 'ItemsList' } else { 'TabView' })
+                                $peer -and -not $peer.Current.IsOffscreen
+                            } | Out-Null
+                            Set-WtPaneFocus -App $script:app -SessionId $tab.session_id | Out-Null
+                            Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
+                            Wait-Until -TimeoutSec 15 -Because 'an unidentified ordinary shell splits normally in every scope' -Condition {
+                                @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId)).Count -eq 2
+                            } | Out-Null
+                            $split = Get-ActivePane -App $script:app
+                            $split.tab_id | Should -Be $tab.tab_id
+                            $split.session_id | Should -Not -Be $tab.session_id
+                            $split.session_id | Should -Not -BeIn $created
+                            $pane = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId) |
+                                Where-Object session_id -EQ $split.session_id)[0]
+                            $pane.native_agent_provider_id | Should -BeNullOrEmpty
+                            $pane.is_agent_pane | Should -BeFalse
+                            Wait-Until -TimeoutSec 15 -Because 'the duplicate source-profile shell is ready before its identity probe' -Condition {
+                                (Get-WtCapture -App $script:app -SessionId $split.session_id -MaxLines 30) -match
+                                    [regex]::Escape("SOURCE-PROFILE-$script:runId")
+                            } | Out-Null
+                            Invoke-RunCommand -App $script:app -SessionId $split.session_id -Command `
+                                'Write-Output ("SPLIT-PROFILE:" + $env:ITE2E_PROFILE_MARKER)' -SettleSec 1 | Out-Null
+                            Wait-Until -TimeoutSec 15 -Because 'duplicate split uses the source profile GUID, not the configured default' -Condition {
+                                (Get-WtCapture -App $script:app -SessionId $split.session_id -MaxLines 30) -match
+                                    [regex]::Escape("SPLIT-PROFILE:$script:otherProfile")
+                            } | Out-Null
+                            @(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count | Should -Be $count
+                            $created += $split.session_id
+                            Save-ActionUiEvidence "split-$agentsOnly-$recent-$($query.Length)-$layout"
+                            if ($layout -eq 'horizontal') {
+                                Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+                                Wait-Until -TimeoutSec 10 -Because 'Sidebar exposes retained scope after horizontal split' -Condition {
+                                    $button = Get-ActionElement FilterTabsButton
+                                    $button -and -not $button.Current.IsOffscreen
+                                } | Out-Null
+                            }
+                            Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
+                            Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $query
+                            Close-WtPane -App $script:app -SessionId $split.session_id
+                        }
+                    }
+                }
+            }
+            $created.Count | Should -Be 16
+            Invoke-RunCommand -App $script:app -SessionId $tab.session_id -Command "Write-Output 'ORIGINAL-ALIVE-$script:runId'" -SettleSec 1 | Out-Null
+            Get-WtCapture -App $script:app -SessionId $tab.session_id -MaxLines 30 |
+                Should -Match "ORIGINAL-ALIVE-$script:runId"
+        }
+        finally {
+            Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
+            $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+            if ($toggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::On) {
+                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            }
+            Close-WtPane -App $script:app -SessionId $tab.session_id
+        }
     }
 
-    It 'Agents split rejects an unsupported custom provider without fallback' {
+    It 'Assistant panes remain fixed during ordinary split actions' {
         Set-ActionView $false
         $tab = New-WtTab -App $script:app -Command "`"$pwsh`" -NoLogo -NoProfile -NoExit" -Cwd $script:evidence
         Set-WtPaneFocus -App $script:app -SessionId $tab.session_id | Out-Null
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 30 | Should -BeTrue
-        $helper = Get-AgentPaneSession -App $script:app
+        $helper = Get-AgentPaneSession -App $script:app -OwnerPaneSessionId $tab.session_id
         $helper.AcpSessionId | Should -Match '^chat-fixture-'
-        Set-AgentPaneFocus -App $script:app | Out-Null
-        Set-ActionView $true
         $before = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId)).session_id
         $count = @(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count
-        Initialize-LogOffsets -App $script:app | Out-Null
-        Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
-        Wait-Until -TimeoutSec 10 -Because 'custom provider split fails visibly instead of launching a different agent' -Condition {
-            (Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart) -match
-                'agent split rejected: missing live identity, unsupported provider, or policy'
-        } | Out-Null
-        $message = Get-ActionElement HistoryMessage
-        $message | Should -Not -BeNullOrEmpty
-        $message.Current.IsOffscreen | Should -BeFalse
-        $message.Current.Name | Should -Not -BeNullOrEmpty
-        $after = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId)).session_id
-        @($after | Where-Object { $_ -notin $before }).Count | Should -Be 0
-        $after.Count | Should -Be $before.Count
-        (@(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count) | Should -Be $count
-        (Get-AgentPaneSession -App $script:app).AcpSessionId | Should -Be $helper.AcpSessionId
+        foreach ($agentsOnly in @($false, $true)) {
+            foreach ($recent in @($false, $true)) {
+                Set-TestSidebarScope -App $script:app -AgentsOnly $agentsOnly -Recent $recent
+                foreach ($layout in @('vertical', 'horizontal')) {
+                    Set-WtSetting -App $script:app -Key tabLayout -Value $layout | Out-Null
+                    Wait-Until -TimeoutSec 10 -Because 'the requested layout is realized before the fixed-panel control' -Condition {
+                        $peer = Get-ActionElement $(if ($layout -eq 'vertical') { 'ItemsList' } else { 'TabView' })
+                        $peer -and -not $peer.Current.IsOffscreen
+                    } | Out-Null
+                    Set-WtPaneFocus -App $script:app -SessionId $helper.PaneSessionId | Out-Null
+                    Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
+                    Start-Sleep -Seconds 1
+                    $after = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId)).session_id
+                    @($after | Where-Object { $_ -notin $before }).Count | Should -Be 0
+                    $after.Count | Should -Be $before.Count
+                    @(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count | Should -Be $count
+                    $current = Get-AgentPaneSession -App $script:app -PaneSessionId $helper.PaneSessionId
+                    $current.AcpSessionId | Should -Be $helper.AcpSessionId
+                    $current.HelperProcessId | Should -Be $helper.HelperProcessId
+                    $message = Get-ActionElement HistoryMessage
+                    if ($message -and -not $message.Current.IsOffscreen) { $message.Current.Name | Should -BeNullOrEmpty }
+                }
+                Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+                Wait-Until -TimeoutSec 10 -Because 'Sidebar restores its real filter checks after the fixed-panel split control' -Condition {
+                    $button = Get-ActionElement FilterTabsButton
+                    $button -and -not $button.Current.IsOffscreen
+                } | Out-Null
+                Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
+            }
+        }
     }
 }

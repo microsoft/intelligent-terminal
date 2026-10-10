@@ -1,0 +1,1033 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Microsoft ResX Schema
+
+    Version 2.0
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
+    associated with the data types.
+
+    Example:
+
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+
+    There are any number of "resheader" rows that contain simple
+    name/value pairs.
+
+    Each data row contains a name, and value. The row also contains a
+    type or mimetype. Type corresponds to a .NET class that support
+    text/value conversion through the TypeConverter architecture.
+    Classes that don't support this are serialized and stored with the
+    mimetype set.
+
+    The mimetype is used for serialized objects, and tells the
+    ResXResourceReader how to depersist the object. This is currently not
+    extensible. For a given mimetype the value must be set accordingly:
+
+    Note - application/x-microsoft.net.object.binary.base64 is the format
+    that the ResXResourceWriter will generate, however the reader can
+    read any of the formats listed below.
+
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="SetColorSchemeParentCommandName" xml:space="preserve">
+    <value>בחר ערכת צבעים...</value>
+  </data>
+  <data name="NewTabParentCommandName" xml:space="preserve">
+    <value>כרטיסייה חדשה...</value>
+  </data>
+  <data name="SplitPaneParentCommandName" xml:space="preserve">
+    <value>פצל חלונית...</value>
+  </data>
+  <data name="SnippetsPaneCommandName" xml:space="preserve">
+    <value>פתח חלונית קטעי פקודות</value>
+    <comment>This will open a pane with a list of the users's saved commands ("snippets") in it</comment>
+  </data>
+  <data name="ApplicationDisplayNamePortable" xml:space="preserve">
+    <value>מסוף (נייד)</value>
+    <comment>This display name is used when the Terminal application is running in a "portable" mode, where settings are not stored in a shared location.</comment>
+  </data>
+  <data name="ApplicationDisplayNameUnpackaged" xml:space="preserve">
+    <value>מסוף (ללא חבילה)</value>
+    <comment>This display name is used when the application's name cannot be determined</comment>
+  </data>
+  <data name="ApplicationVersionUnknown" xml:space="preserve">
+    <value>לא ידוע</value>
+    <comment>This is displayed when the version of the application cannot be determined</comment>
+  </data>
+  <data name="AdjustFontSizeCommandKey" xml:space="preserve">
+    <value>התאם את גודל הגופן</value>
+  </data>
+  <data name="CloseOtherTabsCommandKey" xml:space="preserve">
+    <value>סגור את כל הכרטיסיות פרט לכרטיסייה באינדקס {0}</value>
+    <comment>{0} will be replaced with a number</comment>
+  </data>
+  <data name="CloseOtherTabsDefaultCommandKey" xml:space="preserve">
+    <value>סגור את כל הכרטיסיות האחרות</value>
+  </data>
+  <data name="ClosePaneCommandKey" xml:space="preserve">
+    <value>סגור חלונית</value>
+  </data>
+  <data name="CloseTabAtIndexCommandKey" xml:space="preserve">
+    <value>סגור כרטיסייה באינדקס {0}</value>
+    <comment>{0} will be replaced with a number</comment>
+  </data>
+  <data name="CloseTabCommandKey" xml:space="preserve">
+    <value>סגור כרטיסייה</value>
+  </data>
+  <data name="CloseTabsAfterCommandKey" xml:space="preserve">
+    <value>סגור כרטיסיות אחרי אינדקס {0}</value>
+    <comment>{0} will be replaced with a number</comment>
+  </data>
+  <data name="CopySuffix" xml:space="preserve">
+    <value>עותק</value>
+    <comment>The suffix we add to the name of a duplicated profile.</comment>
+  </data>
+  <data name="MoveTabCommandKey" xml:space="preserve">
+    <value>העבר כרטיסייה {0}</value>
+    <comment>{0} will be replaced with a "forward (right)" / "backward (left)"</comment>
+  </data>
+  <data name="MoveTabToWindowCommandKey" xml:space="preserve">
+    <value>העבר כרטיסייה לחלון &quot;{0}&quot;</value>
+    <comment>{0} will be replaced with a user-specified name of a window</comment>
+  </data>
+  <data name="MoveTabToNewWindowCommandKey" xml:space="preserve">
+    <value>העבר כרטיסייה לחלון חדש</value>
+  </data>
+  <data name="MoveTabDirectionForward" xml:space="preserve">
+    <value>קדימה (ימינה)</value>
+  </data>
+  <data name="MoveTabDirectionBackward" xml:space="preserve">
+    <value>אחורה (שמאלה)</value>
+  </data>
+  <data name="CloseTabsAfterDefaultCommandKey" xml:space="preserve">
+    <value>סגור את כל הכרטיסיות אחרי הכרטיסייה הנוכחית</value>
+  </data>
+  <data name="CloseWindowCommandKey" xml:space="preserve">
+    <value>סגור חלון</value>
+  </data>
+  <data name="OpenSystemMenuCommandKey" xml:space="preserve">
+    <value>פתח תפריט מערכת</value>
+  </data>
+  <data name="CommandPromptDisplayName" xml:space="preserve">
+    <value>שורת הפקודה</value>
+    <comment>This is the name of "Command Prompt", as localized in Windows. The localization here should match the one in the Windows product for "Command Prompt"</comment>
+  </data>
+  <data name="CopyTextAsSingleLineCommandKey" xml:space="preserve">
+    <value>העתק טקסט כשורה אחת</value>
+  </data>
+  <data name="CopyTextCommandKey" xml:space="preserve">
+    <value>העתק טקסט</value>
+  </data>
+  <data name="DecreaseFontSizeCommandKey" xml:space="preserve">
+    <value>הקטן את גודל הגופן</value>
+  </data>
+  <data name="DecreaseFontSizeWithAmountCommandKey" xml:space="preserve">
+    <value>הקטן את גודל הגופן ב-{0}</value>
+    <comment>{0} will be replaced with a positive number</comment>
+  </data>
+  <data name="DirectionDown" xml:space="preserve">
+    <value>למטה</value>
+  </data>
+  <data name="DirectionLeft" xml:space="preserve">
+    <value>שמאלה</value>
+  </data>
+  <data name="DirectionRight" xml:space="preserve">
+    <value>ימינה</value>
+  </data>
+  <data name="DirectionUp" xml:space="preserve">
+    <value>למעלה</value>
+  </data>
+  <data name="DirectionPrevious" xml:space="preserve">
+    <value>הקודם</value>
+  </data>
+  <data name="DuplicatePaneCommandKey" xml:space="preserve">
+    <value>שכפל חלונית</value>
+  </data>
+  <data name="DuplicateTabCommandKey" xml:space="preserve">
+    <value>שכפל כרטיסייה</value>
+  </data>
+  <data name="ExecuteCommandlineCommandKey" xml:space="preserve">
+    <value>הפעל את שורת הפקודה &quot;{0}&quot; בחלון זה</value>
+    <comment>{0} will be replaced with a user-defined commandline</comment>
+  </data>
+  <data name="FindCommandKey" xml:space="preserve">
+    <value>חפש</value>
+  </data>
+  <data name="FindNextCommandKey" xml:space="preserve">
+    <value>חפש את ההתאמה הבאה</value>
+  </data>
+  <data name="FindPrevCommandKey" xml:space="preserve">
+    <value>חפש את ההתאמה הקודמת</value>
+  </data>
+  <data name="IncreaseFontSizeCommandKey" xml:space="preserve">
+    <value>הגדל את גודל הגופן</value>
+  </data>
+  <data name="IncreaseFontSizeWithAmountCommandKey" xml:space="preserve">
+    <value>הגדל את גודל הגופן ב-{0}</value>
+    <comment>{0} will be replaced with a positive number</comment>
+  </data>
+  <data name="MoveFocusCommandKey" xml:space="preserve">
+    <value>העבר את המיקוד</value>
+  </data>
+  <data name="MoveFocusWithArgCommandKey" xml:space="preserve">
+    <value>העבר את המיקוד {0}</value>
+    <comment>{0} will be replaced with one of the four directions "DirectionLeft", "DirectionRight", "DirectionUp", "DirectionDown"</comment>
+  </data>
+  <data name="MoveFocusToLastUsedPane" xml:space="preserve">
+    <value>העבר את המיקוד לחלונית שהייתה בשימוש לאחרונה</value>
+  </data>
+  <data name="MoveFocusNextInOrder" xml:space="preserve">
+    <value>העבר את המיקוד לחלונית הבאה לפי הסדר</value>
+  </data>
+  <data name="MoveFocusPreviousInOrder" xml:space="preserve">
+    <value>העבר את המיקוד לחלונית הקודמת לפי הסדר</value>
+  </data>
+  <data name="MoveFocusFirstPane" xml:space="preserve">
+    <value>העבר את המיקוד לחלונית הראשונה</value>
+  </data>
+  <data name="MoveFocusParentPane" xml:space="preserve">
+    <value>העבר את המיקוד לחלונית האב</value>
+  </data>
+  <data name="MoveFocusChildPane" xml:space="preserve">
+    <value>העבר את המיקוד לחלונית הבת</value>
+  </data>
+  <data name="SwapPaneCommandKey" xml:space="preserve">
+    <value>החלף חלוניות</value>
+  </data>
+  <data name="SwapPaneWithArgCommandKey" xml:space="preserve">
+    <value>החלף חלוניות {0}</value>
+    <comment>{0} will be replaced with one of the four directions "DirectionLeft", "DirectionRight", "DirectionUp", "DirectionDown"</comment>
+  </data>
+  <data name="SwapPaneToLastUsedPane" xml:space="preserve">
+    <value>החלף עם החלונית שהייתה בשימוש לאחרונה</value>
+  </data>
+  <data name="SwapPaneNextInOrder" xml:space="preserve">
+    <value>החלף עם החלונית הבאה לפי הסדר</value>
+  </data>
+  <data name="SwapPanePreviousInOrder" xml:space="preserve">
+    <value>החלף עם החלונית הקודמת לפי הסדר</value>
+  </data>
+  <data name="SwapPaneFirstPane" xml:space="preserve">
+    <value>החלף עם החלונית הראשונה</value>
+  </data>
+  <data name="NewTabCommandKey" xml:space="preserve">
+    <value>כרטיסייה חדשה</value>
+  </data>
+  <data name="NewWindowCommandKey" xml:space="preserve">
+    <value>חלון חדש</value>
+  </data>
+  <data name="IdentifyWindowCommandKey" xml:space="preserve">
+    <value>זהה חלון</value>
+  </data>
+  <data name="IdentifyWindowsCommandKey" xml:space="preserve">
+    <value>זהה חלונות</value>
+  </data>
+  <data name="NextTabCommandKey" xml:space="preserve">
+    <value>הכרטיסייה הבאה</value>
+  </data>
+  <data name="OpenBothSettingsFilesCommandKey" xml:space="preserve">
+    <value>פתח את קובץ ההגדרות ואת קובץ הגדרות ברירת המחדל (JSON)</value>
+    <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>
+  </data>
+  <data name="OpenDefaultSettingsCommandKey" xml:space="preserve">
+    <value>פתח את קובץ הגדרות ברירת המחדל (JSON)</value>
+    <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>
+  </data>
+  <data name="OpenNewTabDropdownCommandKey" xml:space="preserve">
+    <value>פתח את התפריט הנפתח של כרטיסייה חדשה</value>
+  </data>
+  <data name="OpenSettingsCommandKey" xml:space="preserve">
+    <value>פתח את קובץ ההגדרות (JSON)</value>
+    <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>
+  </data>
+  <data name="SettingsFileOpenInExplorerCommandKey" xml:space="preserve">
+    <value>פתח את התיקייה של קובץ ההגדרות</value>
+  </data>
+  <data name="OpenTabColorPickerCommandKey" xml:space="preserve">
+    <value>הגדר צבע כרטיסייה...</value>
+  </data>
+  <data name="PasteTextCommandKey" xml:space="preserve">
+    <value>הדבק</value>
+  </data>
+  <data name="PrevTabCommandKey" xml:space="preserve">
+    <value>הכרטיסייה הקודמת</value>
+  </data>
+  <data name="RenameTabCommandKey" xml:space="preserve">
+    <value>שנה את שם הכרטיסייה ל-&quot;{0}&quot;</value>
+    <comment>{0} will be replaced with a user-defined string</comment>
+  </data>
+  <data name="ResetFontSizeCommandKey" xml:space="preserve">
+    <value>אפס את גודל הגופן</value>
+  </data>
+  <data name="ResetTabColorCommandKey" xml:space="preserve">
+    <value>אפס את צבע הכרטיסייה</value>
+  </data>
+  <data name="ResetTabNameCommandKey" xml:space="preserve">
+    <value>אפס את כותרת הכרטיסייה</value>
+  </data>
+  <data name="OpenTabRenamerCommandKey" xml:space="preserve">
+    <value>שנה שם כרטיסייה</value>
+  </data>
+  <data name="ResizePaneCommandKey" xml:space="preserve">
+    <value>שנה גודל חלונית</value>
+  </data>
+  <data name="ResizePaneWithArgCommandKey" xml:space="preserve">
+    <value>שנה גודל חלונית {0}</value>
+    <comment>{0} will be replaced with one of the four directions "DirectionLeft", "DirectionRight", "DirectionUp", or "DirectionDown"</comment>
+  </data>
+  <data name="ScrollDownCommandKey" xml:space="preserve">
+    <value>גלול למטה</value>
+  </data>
+  <data name="ScrollDownSeveralRowsCommandKey" xml:space="preserve">
+    <value>גלול {0} שורות למטה</value>
+    <comment>{0} will be replaced with the number of lines to scroll"</comment>
+  </data>
+  <data name="ScrollDownPageCommandKey" xml:space="preserve">
+    <value>גלול עמוד אחד למטה</value>
+  </data>
+  <data name="ScrollUpCommandKey" xml:space="preserve">
+    <value>גלול למעלה</value>
+  </data>
+  <data name="ScrollUpSeveralRowsCommandKey" xml:space="preserve">
+    <value>גלול {0} שורות למעלה</value>
+    <comment>{0} will be replaced with the number of lines to scroll"</comment>
+  </data>
+  <data name="ScrollUpPageCommandKey" xml:space="preserve">
+    <value>גלול עמוד אחד למעלה</value>
+  </data>
+  <data name="ScrollToTopCommandKey" xml:space="preserve">
+    <value>גלול לתחילת ההיסטוריה</value>
+  </data>
+  <data name="ScrollToBottomCommandKey" xml:space="preserve">
+    <value>גלול לסוף ההיסטוריה</value>
+  </data>
+  <data name="ScrollToPreviousMarkCommandKey" xml:space="preserve">
+    <value>גלול לסימן הקודם</value>
+  </data>
+  <data name="ScrollToNextMarkCommandKey" xml:space="preserve">
+    <value>גלול לסימן הבא</value>
+  </data>
+  <data name="ScrollToFirstMarkCommandKey" xml:space="preserve">
+    <value>גלול לסימן הראשון</value>
+  </data>
+  <data name="ScrollToLastMarkCommandKey" xml:space="preserve">
+    <value>גלול לסימן האחרון</value>
+  </data>
+  <data name="AddMarkCommandKey" xml:space="preserve">
+    <value>הוסף סימן גלילה</value>
+  </data>
+  <data name="AddMarkWithColorCommandKey" xml:space="preserve">
+    <value>הוסף סימן גלילה, color:{0}</value>
+    <comment>{Locked="color"}. "color" is a literal parameter name that shouldn't be translated. {0} will be replaced with a color in hexadecimal format, like `#123456`</comment>
+  </data>
+  <data name="ClearMarkCommandKey" xml:space="preserve">
+    <value>נקה סימן</value>
+  </data>
+  <data name="ClearAllMarksCommandKey" xml:space="preserve">
+    <value>נקה את כל הסימנים</value>
+  </data>
+  <data name="SendInputCommandKey" xml:space="preserve">
+    <value>שלח קלט: &quot;{0}&quot;</value>
+    <comment>{0} will be replaced with a string of input as defined by the user</comment>
+  </data>
+  <data name="SetColorSchemeCommandKey" xml:space="preserve">
+    <value>הגדר את ערכת הצבעים ל-{0}</value>
+    <comment>{0} will be replaced with the name of a color scheme as defined by the user.</comment>
+  </data>
+  <data name="SetTabColorCommandKey" xml:space="preserve">
+    <value>הגדר את צבע הכרטיסייה ל-{0}</value>
+    <comment>{0} will be replaced with a color, displayed in hexadecimal (#RRGGBB) notation.</comment>
+  </data>
+  <data name="SplitHorizontalCommandKey" xml:space="preserve">
+    <value>פצל חלונית אופקית</value>
+  </data>
+  <data name="MovePaneCommandKey" xml:space="preserve">
+    <value>העבר חלונית</value>
+  </data>
+  <data name="MovePaneToNewWindowCommandKey" xml:space="preserve">
+    <value>העבר חלונית לחלון חדש</value>
+  </data>
+  <data name="SplitPaneCommandKey" xml:space="preserve">
+    <value>פצל חלונית</value>
+  </data>
+  <data name="SplitVerticalCommandKey" xml:space="preserve">
+    <value>פצל חלונית אנכית</value>
+  </data>
+  <data name="SwitchToTabCommandKey" xml:space="preserve">
+    <value>עבור לכרטיסייה</value>
+  </data>
+  <data name="SwitchToLastTabCommandKey" xml:space="preserve">
+    <value>עבור לכרטיסייה האחרונה</value>
+  </data>
+  <data name="TabSearchCommandKey" xml:space="preserve">
+    <value>חפש כרטיסייה...</value>
+  </data>
+  <data name="ToggleAlwaysOnTopCommandKey" xml:space="preserve">
+    <value>הפעל או בטל מצב תמיד בראש</value>
+  </data>
+  <data name="ToggleCommandPaletteCommandKey" xml:space="preserve">
+    <value>הצג או הסתר את לוח הפקודות</value>
+  </data>
+  <data name="ShowProtocolInfoCommandKey" xml:space="preserve">
+    <value>הצג מידע על Terminal Protocol</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="SuggestionsCommandKey" xml:space="preserve">
+    <value>פתח הצעות</value>
+  </data>
+  <data name="ToggleCommandPaletteCommandLineModeCommandKey" xml:space="preserve">
+    <value>הצג או הסתר את לוח הפקודות במצב שורת פקודה</value>
+  </data>
+  <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
+    <value>הצג או הסתר את לוח הפקודות במצב האצלה לסוכן</value>
+  </data>
+  <data name="ToggleFocusModeCommandKey" xml:space="preserve">
+    <value>הפעל או בטל מצב מיקוד</value>
+    <comment>"Focus mode" is a mode with minimal UI elements, for a distraction-free experience</comment>
+  </data>
+  <data name="EnableFocusModeCommandKey" xml:space="preserve">
+    <value>הפעל מצב מיקוד</value>
+  </data>
+  <data name="DisableFocusModeCommandKey" xml:space="preserve">
+    <value>בטל מצב מיקוד</value>
+  </data>
+  <data name="ToggleFullscreenCommandKey" xml:space="preserve">
+    <value>הפעל או בטל מסך מלא</value>
+  </data>
+  <data name="EnableFullScreenCommandKey" xml:space="preserve">
+    <value>הפעל מסך מלא</value>
+  </data>
+  <data name="DisableFullScreenCommandKey" xml:space="preserve">
+    <value>בטל מסך מלא</value>
+  </data>
+  <data name="EnableMaximizedCommandKey" xml:space="preserve">
+    <value>הגדל חלון</value>
+  </data>
+  <data name="DisableMaximizedCommandKey" xml:space="preserve">
+    <value>שחזר חלון מוגדל</value>
+  </data>
+  <data name="ToggleSplitOrientationCommandKey" xml:space="preserve">
+    <value>החלף את כיוון פיצול החלונית</value>
+  </data>
+  <data name="TogglePaneZoomCommandKey" xml:space="preserve">
+    <value>הפעל או בטל הגדלת חלונית</value>
+  </data>
+  <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
+    <value>הצג או הסתר חלונית</value>
+  </data>
+  <data name="ToggleSidebarCommandKey" xml:space="preserve">
+    <value>הצג או הסתר את הסרגל הצדי</value>
+    <comment>A command that shows or collapses the vertical tabs sidebar.</comment>
+  </data>
+  <data name="ToggleSidebarAgentsOnlyCommandKey" xml:space="preserve">
+    <value>הפעל או בטל את מסנן הסוכנים בלבד בסרגל הצדי</value>
+    <comment>Command that toggles whether the sidebar shows only open AI-agent tabs. It does not change the independent Recent agent sessions option. Global sidebar search includes all tabs regardless of this preference.</comment>
+  </data>
+  <data name="ToggleSidebarRecentAgentSessionsCommandKey" xml:space="preserve">
+    <value>הצג או הסתר הפעלות סוכנים אחרונות בסרגל הצדי</value>
+    <comment>Command that toggles the Recent agent sessions section in the sidebar without changing the independent Agents only filter. Recent sessions are also included while a global search query is present.</comment>
+  </data>
+  <data name="TogglePaneReadOnlyCommandKey" xml:space="preserve">
+    <value>הפעל או בטל מצב קריאה בלבד בחלונית</value>
+  </data>
+  <data name="EnablePaneReadOnlyCommandKey" xml:space="preserve">
+    <value>הפעל מצב קריאה בלבד בחלונית</value>
+  </data>
+  <data name="DisablePaneReadOnlyCommandKey" xml:space="preserve">
+    <value>בטל מצב קריאה בלבד בחלונית</value>
+  </data>
+  <data name="ToggleShaderEffectsCommandKey" xml:space="preserve">
+    <value>הפעל או בטל אפקטים חזותיים במסוף</value>
+  </data>
+  <data name="BreakIntoDebuggerCommandKey" xml:space="preserve">
+    <value>עצור במאתר הבאגים</value>
+  </data>
+  <data name="OpenSettingsUICommandKey" xml:space="preserve">
+    <value>פתח הגדרות</value>
+  </data>
+  <data name="RenameWindowCommandKey" xml:space="preserve">
+    <value>שנה את שם החלון ל-&quot;{0}&quot;</value>
+    <comment>{0} will be replaced with a user-defined string</comment>
+  </data>
+  <data name="ResetWindowNameCommandKey" xml:space="preserve">
+    <value>אפס את שם החלון</value>
+  </data>
+  <data name="OpenWorkspaceCommandKey" xml:space="preserve">
+    <value>פתח סביבת עבודה &quot;{0}&quot;</value>
+    <comment>{0} will be replaced with the workspace name</comment>
+  </data>
+  <data name="OpenWorkspaceDefaultCommandKey" xml:space="preserve">
+    <value>פתח סביבת עבודה</value>
+  </data>
+  <data name="OpenWindowRenamerCommandKey" xml:space="preserve">
+    <value>שנה שם חלון...</value>
+  </data>
+  <data name="DisplayWorkingDirectoryCommandKey" xml:space="preserve">
+    <value>הצג את תיקיית העבודה הנוכחית של המסוף</value>
+  </data>
+  <data name="GlobalSummonCommandKey" xml:space="preserve">
+    <value>הצג או הסתר את חלון המסוף</value>
+  </data>
+  <data name="QuakeModeCommandKey" xml:space="preserve">
+    <value>הצג או הסתר חלון Quake</value>
+    <comment>Quake is a well-known computer game and isn't related to earthquakes, etc. See https://en.wikipedia.org/wiki/Quake_(video_game)</comment>
+  </data>
+  <data name="FocusPaneCommandKey" xml:space="preserve">
+    <value>מקד חלונית {0}</value>
+    <comment>{0} will be replaced with a user-specified number</comment>
+  </data>
+  <data name="ExportBufferToPathCommandKey" xml:space="preserve">
+    <value>יצא טקסט אל {0}</value>
+    <comment>{0} will be replaced with a user-specified file path</comment>
+  </data>
+  <data name="ExportBufferCommandKey" xml:space="preserve">
+    <value>יצא טקסט</value>
+  </data>
+  <data name="ClearAllCommandKey" xml:space="preserve">
+    <value>נקה את המאגר</value>
+    <comment>A command to clear the entirety of the Terminal output buffer</comment>
+  </data>
+  <data name="ClearViewportCommandKey" xml:space="preserve">
+    <value>נקה את אזור התצוגה</value>
+    <comment>A command to clear the active viewport of the Terminal</comment>
+  </data>
+  <data name="ClearScrollbackCommandKey" xml:space="preserve">
+    <value>נקה את היסטוריית הגלילה</value>
+    <comment>A command to clear the part of the buffer above the viewport</comment>
+  </data>
+  <data name="DefaultWindowsConsoleName" xml:space="preserve">
+    <value>אפשר ל-Windows להחליט</value>
+    <comment>This is the default option if a user doesn't choose to override Microsoft's choice of a Terminal.</comment>
+  </data>
+  <data name="InboxWindowsConsoleAuthor" xml:space="preserve">
+    <value>Microsoft Corporation</value>
+    <comment>Paired with `InboxWindowsConsoleName`, this is the application author... which is us: Microsoft.</comment>
+  </data>
+  <data name="InboxWindowsConsoleName" xml:space="preserve">
+    <value>מארח מסוף Windows</value>
+    <comment>Name describing the usage of the classic windows console as the terminal UI. (`conhost.exe`)</comment>
+  </data>
+  <data name="QuitCommandKey" xml:space="preserve">
+    <value>צא מהמסוף</value>
+  </data>
+  <data name="SetOpacityParentCommandName" xml:space="preserve">
+    <value>הגדר אטימות רקע...</value>
+  </data>
+  <data name="IncreaseOpacityCommandKey" xml:space="preserve">
+    <value>הגדל את אטימות הרקע ב-{0}%</value>
+    <comment>A command to change how transparent the background of the window is</comment>
+  </data>
+  <data name="DecreaseOpacityCommandKey" xml:space="preserve">
+    <value>הקטן את אטימות הרקע ב-{0}%</value>
+    <comment>A command to change how transparent the background of the window is</comment>
+  </data>
+  <data name="AdjustOpacityCommandKey" xml:space="preserve">
+    <value>הגדר את אטימות הרקע ל-{0}%</value>
+    <comment>A command to change how transparent the background of the window is</comment>
+  </data>
+  <data name="RestoreLastClosedCommandKey" xml:space="preserve">
+    <value>שחזר את החלונית או הכרטיסייה שנסגרה לאחרונה</value>
+  </data>
+  <data name="SelectAllCommandKey" xml:space="preserve">
+    <value>בחר את כל הטקסט</value>
+  </data>
+  <data name="MarkModeCommandKey" xml:space="preserve">
+    <value>הפעל או בטל מצב סימון</value>
+    <comment>A command that will toggle "mark mode". This is a mode in the application where the user can mark the text by selecting portions of the text.</comment>
+  </data>
+  <data name="ToggleBlockSelectionCommandKey" xml:space="preserve">
+    <value>הפעל או בטל בחירה מלבנית</value>
+  </data>
+  <data name="SwitchSelectionEndpointCommandKey" xml:space="preserve">
+    <value>החלף את קצה הבחירה</value>
+  </data>
+  <data name="ColorSelection_allMatches" xml:space="preserve">
+    <value>כל ההתאמות</value>
+    <comment>This is used in the description of an action which changes the color of selected text, to indicate that not only the selected text will be colored, but also all matching text.</comment>
+  </data>
+  <data name="ColorSelection_fg_action" xml:space="preserve">
+    <value>צבע בחירה, צבע טקסט: {0}{1}</value>
+    <comment>This is the description of an action which changes the color of selected text. {0}: the color. {1}: empty string OR a clause indicating that all matching text will be colored (ColorSelection_allMatches).</comment>
+  </data>
+  <data name="ColorSelection_bg_action" xml:space="preserve">
+    <value>צבע בחירה, רקע: {0}{1}</value>
+    <comment>This is the description of an action which changes the background color of selected text. {0}: the color. {1}: empty string OR a clause indicating that all matching text will be colored (ColorSelection_allMatches).</comment>
+  </data>
+  <data name="ColorSelection_fg_bg_action" xml:space="preserve">
+    <value>צבע בחירה, צבע טקסט: {0}, רקע: {1}{2}</value>
+    <comment>This is the description of an action which changes the color of selected text and the background. {0}: the foreground color. {1}: the background color. {2}: empty string OR a clause indicating that all matching text will be colored (ColorSelection_allMatches).</comment>
+  </data>
+  <data name="ColorSelection_default_action" xml:space="preserve">
+    <value>צבע בחירה, (צבעי טקסט ורקע של ברירת המחדל){0}</value>
+    <comment>This is the description of an action which changes the color of selected text and the background to the default colors. {0}: empty string OR a clause indicating that all matching text will be colored (ColorSelection_allMatches).</comment>
+  </data>
+  <data name="ColorSelection_defaultColor" xml:space="preserve">
+    <value>[ברירת מחדל]</value>
+    <comment>This is used in the description of an action which changes the color of selected text, as a placeholder for a color, to indicate that the default (foreground or background) color will be used.</comment>
+  </data>
+  <data name="ColorSelection_Black" xml:space="preserve">
+    <value>שחור</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_Red" xml:space="preserve">
+    <value>אדום</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_Green" xml:space="preserve">
+    <value>ירוק</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_Yellow" xml:space="preserve">
+    <value>צהוב</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_Blue" xml:space="preserve">
+    <value>כחול</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_Purple" xml:space="preserve">
+    <value>סגול</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_Cyan" xml:space="preserve">
+    <value>ציאן</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_White" xml:space="preserve">
+    <value>לבן</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_BrightBlack" xml:space="preserve">
+    <value>שחור בהיר</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_BrightRed" xml:space="preserve">
+    <value>אדום בהיר</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_BrightGreen" xml:space="preserve">
+    <value>ירוק בהיר</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_BrightYellow" xml:space="preserve">
+    <value>צהוב בהיר</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_BrightBlue" xml:space="preserve">
+    <value>כחול בהיר</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_BrightPurple" xml:space="preserve">
+    <value>סגול בהיר</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_BrightCyan" xml:space="preserve">
+    <value>ציאן בהיר</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ColorSelection_BrightWhite" xml:space="preserve">
+    <value>לבן בהיר</value>
+    <comment>A color used in the "ColorSelection" action.</comment>
+  </data>
+  <data name="ExpandSelectionToWordCommandKey" xml:space="preserve">
+    <value>הרחב את הבחירה למילה</value>
+  </data>
+  <data name="ShowContextMenuCommandKey" xml:space="preserve">
+    <value>הצג תפריט הקשר</value>
+  </data>
+  <data name="CloseOtherPanesCommandKey" xml:space="preserve">
+    <value>סגור את כל החלוניות האחרות</value>
+  </data>
+  <data name="ToggleBroadcastInputCommandKey" xml:space="preserve">
+    <value>הפעל או בטל שידור קלט לכל החלוניות</value>
+    <comment>When enabled, input will go to all panes in this tab simultaneously</comment>
+  </data>
+  <data name="RestartConnectionKey" xml:space="preserve">
+    <value>הפעל מחדש את ההפעלה</value>
+  </data>
+  <data name="OpenScratchpadKey" xml:space="preserve">
+    <value>פתח פנקס טיוטה</value>
+  </data>
+  <data name="SelectOutputNextCommandKey" xml:space="preserve">
+    <value>בחר את פלט הפקודה הבאה</value>
+  </data>
+  <data name="SelectOutputPreviousCommandKey" xml:space="preserve">
+    <value>בחר את פלט הפקודה הקודמת</value>
+  </data>
+  <data name="SelectCommandNextCommandKey" xml:space="preserve">
+    <value>בחר את הפקודה הבאה</value>
+  </data>
+  <data name="SelectCommandPreviousCommandKey" xml:space="preserve">
+    <value>בחר את הפקודה הקודמת</value>
+  </data>
+  <data name="SearchForTextCommandKey" xml:space="preserve">
+    <value>חפש {0}</value>
+    <comment>{0} will be replaced with a user-specified URL to a web page</comment>
+  </data>
+  <data name="SearchWebCommandKey" xml:space="preserve">
+    <value>חפש באינטרנט את הטקסט שנבחר</value>
+    <comment>This will open a web browser to search for some user-selected text</comment>
+  </data>
+  <data name="OpenAboutCommandKey" xml:space="preserve">
+    <value>פתח את תיבת הדו-שיח אודות</value>
+    <comment>This will open the "about" dialog, to display version info and other documentation</comment>
+  </data>
+  <data name="BugReportCommandKey" xml:space="preserve">
+    <value>דווח על באג (אסוף יומנים)</value>
+    <comment>Command palette entry that collects diagnostic log files into a zip archive on the user's Desktop, for attaching to a bug report.</comment>
+  </data>
+  <data name="SaveSnippetNamePrefix" xml:space="preserve">
+    <value>שמור קטע פקודה</value>
+  </data>
+  <data name="QuickFixCommandKey" xml:space="preserve">
+    <value>פתח את תפריט התיקון המהיר</value>
+  </data>
+  <data name="OpenCWDCommandKey" xml:space="preserve">
+    <value>פתח את תיקיית העבודה הנוכחית</value>
+  </data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve">
+    <value>הצג או הסתר את עוזר ה-AI</value>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve">
+    <value>מקד את חלונית עוזר ה-AI</value>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
+    <value>פתח את רשימת ההפעלות של עוזר ה-AI</value>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="TriggerAutofixCommandKey" xml:space="preserve">
+    <value>הפעל תיקון אוטומטי</value>
+  </data>
+  <data name="WorkspacesCommandKey" xml:space="preserve">
+    <value>סביבות עבודה...</value>
+  </data>
+  <data name="CloseTab" xml:space="preserve">
+    <value>סגור כרטיסייה</value>
+  </data>
+  <data name="SendInput" xml:space="preserve">
+    <value>שלח קלט</value>
+  </data>
+  <data name="SetFocusMode" xml:space="preserve">
+    <value>הגדר מצב מיקוד</value>
+  </data>
+  <data name="SetFullScreen" xml:space="preserve">
+    <value>הגדר מסך מלא</value>
+  </data>
+  <data name="SetMaximized" xml:space="preserve">
+    <value>הגדר מצב מוגדל</value>
+  </data>
+  <data name="SetColorScheme" xml:space="preserve">
+    <value>הגדר ערכת צבעים</value>
+  </data>
+  <data name="CloseOtherTabs" xml:space="preserve">
+    <value>סגור כרטיסיות אחרות</value>
+  </data>
+  <data name="CloseTabsAfter" xml:space="preserve">
+    <value>סגור כרטיסיות אחרי</value>
+  </data>
+  <data name="MoveTab" xml:space="preserve">
+    <value>העבר כרטיסייה</value>
+  </data>
+  <data name="FindMatch" xml:space="preserve">
+    <value>חפש התאמה</value>
+  </data>
+  <data name="SearchForText" xml:space="preserve">
+    <value>חפש טקסט</value>
+  </data>
+  <data name="FocusPane" xml:space="preserve">
+    <value>מקד חלונית</value>
+  </data>
+  <data name="ExportBuffer" xml:space="preserve">
+    <value>יצא מאגר</value>
+  </data>
+  <data name="ClearBuffer" xml:space="preserve">
+    <value>נקה מאגר</value>
+  </data>
+  <data name="MultipleActions" xml:space="preserve">
+    <value>פעולות מרובות</value>
+  </data>
+  <data name="AdjustOpacity" xml:space="preserve">
+    <value>התאם אטימות</value>
+  </data>
+  <data name="SelectCommand" xml:space="preserve">
+    <value>בחר פקודה</value>
+  </data>
+  <data name="SelectOutput" xml:space="preserve">
+    <value>בחר פלט</value>
+  </data>
+  <data name="Suggestions" xml:space="preserve">
+    <value>הצעות</value>
+  </data>
+  <data name="ColorSelection" xml:space="preserve">
+    <value>צבע בחירה</value>
+  </data>
+  <data name="WslDistroGeneratorDisplayName" xml:space="preserve">
+    <value>מחולל פרופילים להפצות WSL</value>
+    <comment>The display name of a dynamic profile generator for WSL distros</comment>
+  </data>
+  <data name="PowershellCoreProfileGeneratorDisplayName" xml:space="preserve">
+    <value>מחולל פרופילים של PowerShell</value>
+    <comment>The display name of a dynamic profile generator for PowerShell</comment>
+  </data>
+  <data name="AzureCloudShellGeneratorDisplayName" xml:space="preserve">
+    <value>מחולל פרופילים של Azure Cloud Shell</value>
+    <comment>The display name of a dynamic profile generator for Azure Cloud Shell</comment>
+  </data>
+  <data name="VisualStudioGeneratorDisplayName" xml:space="preserve">
+    <value>מחולל פרופילים של Visual Studio</value>
+    <comment>The display name of a dynamic profile generator for Visual Studio</comment>
+  </data>
+  <data name="SshHostGeneratorDisplayName" xml:space="preserve">
+    <value>מחולל פרופילים למארחי SSH</value>
+    <comment>The display name of a dynamic profile generator for SSH hosts</comment>
+  </data>
+  <data name="DismissSelectionActionArgumentLocalized" xml:space="preserve">
+    <value>בטל בחירה</value>
+  </data>
+  <data name="SingleLineActionArgumentLocalized" xml:space="preserve">
+    <value>שורה אחת</value>
+  </data>
+  <data name="WithControlSequencesActionArgumentLocalized" xml:space="preserve">
+    <value>עם רצפי בקרה</value>
+  </data>
+  <data name="CopyFormattingActionArgumentLocalized" xml:space="preserve">
+    <value>העתק עיצוב</value>
+  </data>
+  <data name="TabIndexActionArgumentLocalized" xml:space="preserve">
+    <value>אינדקס כרטיסייה</value>
+  </data>
+  <data name="WindowActionArgumentLocalized" xml:space="preserve">
+    <value>חלון</value>
+  </data>
+  <data name="ResizeDirectionActionArgumentLocalized" xml:space="preserve">
+    <value>כיוון שינוי הגודל</value>
+  </data>
+  <data name="FocusDirectionActionArgumentLocalized" xml:space="preserve">
+    <value>כיוון המיקוד</value>
+  </data>
+  <data name="DirectionActionArgumentLocalized" xml:space="preserve">
+    <value>כיוון</value>
+  </data>
+  <data name="DeltaActionArgumentLocalized" xml:space="preserve">
+    <value>הפרש</value>
+  </data>
+  <data name="InputActionArgumentLocalized" xml:space="preserve">
+    <value>קלט</value>
+  </data>
+  <data name="TargetActionArgumentLocalized" xml:space="preserve">
+    <value>יעד</value>
+  </data>
+  <data name="IsFocusModeActionArgumentLocalized" xml:space="preserve">
+    <value>האם מצב מיקוד פעיל</value>
+  </data>
+  <data name="IsMaximizedActionArgumentLocalized" xml:space="preserve">
+    <value>האם החלון מוגדל</value>
+  </data>
+  <data name="IsFullScreenActionArgumentLocalized" xml:space="preserve">
+    <value>האם מסך מלא פעיל</value>
+  </data>
+  <data name="SchemeNameActionArgumentLocalized" xml:space="preserve">
+    <value>שם ערכה</value>
+  </data>
+  <data name="TabColorActionArgumentLocalized" xml:space="preserve">
+    <value>צבע כרטיסייה</value>
+  </data>
+  <data name="TitleActionArgumentLocalized" xml:space="preserve">
+    <value>כותרת</value>
+  </data>
+  <data name="CommandlineActionArgumentLocalized" xml:space="preserve">
+    <value>שורת פקודה</value>
+  </data>
+  <data name="IndexActionArgumentLocalized" xml:space="preserve">
+    <value>אינדקס</value>
+  </data>
+  <data name="RowsToScrollActionArgumentLocalized" xml:space="preserve">
+    <value>שורות לגלילה</value>
+  </data>
+  <data name="ColorActionArgumentLocalized" xml:space="preserve">
+    <value>צבע</value>
+  </data>
+  <data name="LaunchModeActionArgumentLocalized" xml:space="preserve">
+    <value>מצב הפעלה</value>
+  </data>
+  <data name="NameActionArgumentLocalized" xml:space="preserve">
+    <value>שם</value>
+  </data>
+  <data name="KeyChordActionArgumentLocalized" xml:space="preserve">
+    <value>צירוף מקשים</value>
+  </data>
+  <data name="SourceActionArgumentLocalized" xml:space="preserve">
+    <value>מקור</value>
+  </data>
+  <data name="UseCommandlineActionArgumentLocalized" xml:space="preserve">
+    <value>השתמש בשורת פקודה</value>
+  </data>
+  <data name="SwitcherModeActionArgumentLocalized" xml:space="preserve">
+    <value>מצב מחליף כרטיסיות</value>
+  </data>
+  <data name="QueryUrlActionArgumentLocalized" xml:space="preserve">
+    <value>כתובת URL לשאילתה</value>
+  </data>
+  <data name="DesktopActionArgumentLocalized" xml:space="preserve">
+    <value>שולחן עבודה</value>
+  </data>
+  <data name="MonitorActionArgumentLocalized" xml:space="preserve">
+    <value>צג</value>
+  </data>
+  <data name="ToggleVisibilityActionArgumentLocalized" xml:space="preserve">
+    <value>הצג או הסתר</value>
+  </data>
+  <data name="DropdownDurationActionArgumentLocalized" xml:space="preserve">
+    <value>משך ההנפשה של החלון הנפתח</value>
+  </data>
+  <data name="IdActionArgumentLocalized" xml:space="preserve">
+    <value>מזהה</value>
+  </data>
+  <data name="PathActionArgumentLocalized" xml:space="preserve">
+    <value>נתיב</value>
+  </data>
+  <data name="ClearActionArgumentLocalized" xml:space="preserve">
+    <value>נקה</value>
+  </data>
+  <data name="OpacityActionArgumentLocalized" xml:space="preserve">
+    <value>אטימות</value>
+  </data>
+  <data name="RelativeActionArgumentLocalized" xml:space="preserve">
+    <value>יחסי</value>
+  </data>
+  <data name="ForegroundActionArgumentLocalized" xml:space="preserve">
+    <value>צבע טקסט</value>
+  </data>
+  <data name="BackgroundActionArgumentLocalized" xml:space="preserve">
+    <value>רקע</value>
+  </data>
+  <data name="MatchModeActionArgumentLocalized" xml:space="preserve">
+    <value>מצב התאמה</value>
+  </data>
+  <data name="StartingDirectoryActionArgumentLocalized" xml:space="preserve">
+    <value>תיקיית התחלה</value>
+  </data>
+  <data name="TabTitleActionArgumentLocalized" xml:space="preserve">
+    <value>כותרת כרטיסייה</value>
+  </data>
+  <data name="ProfileIndexActionArgumentLocalized" xml:space="preserve">
+    <value>אינדקס פרופיל</value>
+  </data>
+  <data name="ProfileActionArgumentLocalized" xml:space="preserve">
+    <value>פרופיל</value>
+  </data>
+  <data name="SuppressApplicationTitleActionArgumentLocalized" xml:space="preserve">
+    <value>מנע כותרת יישום</value>
+  </data>
+  <data name="ColorSchemeActionArgumentLocalized" xml:space="preserve">
+    <value>ערכת צבעים</value>
+  </data>
+  <data name="ElevateActionArgumentLocalized" xml:space="preserve">
+    <value>הפעל כמנהל</value>
+  </data>
+  <data name="ReloadEnvironmentVariablesActionArgumentLocalized" xml:space="preserve">
+    <value>טען מחדש משתני סביבה</value>
+  </data>
+  <data name="SplitDirectionActionArgumentLocalized" xml:space="preserve">
+    <value>כיוון פיצול</value>
+  </data>
+  <data name="SplitModeActionArgumentLocalized" xml:space="preserve">
+    <value>מצב פיצול</value>
+  </data>
+  <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
+    <value>גודל פיצול</value>
+  </data>
+  <data name="PromptActionArgumentLocalized" xml:space="preserve">
+    <value>הנחיה</value>
+  </data>
+  <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
+    <value>פתח סוכן רקע בכרטיסייה חדשה</value>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+</root>

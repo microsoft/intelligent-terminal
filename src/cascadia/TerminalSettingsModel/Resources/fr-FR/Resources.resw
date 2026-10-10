@@ -990,17 +990,28 @@
   <data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>Afficher les informations sur Terminal Protocol</value><comment>{Locked="Terminal Protocol"}</comment></data>
   <data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>Afficher ou masquer le volet</value></data>
   <data name="ToggleSidebarCommandKey" xml:space="preserve"><value>Afficher ou masquer la barre latérale</value><comment>A command that shows or collapses the vertical tabs sidebar.</comment></data>
-  <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Afficher ou masquer l'agent IA</value></data>
-  <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Mettre le focus sur le volet de l'agent IA</value></data>
-  <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Ouvrir la liste des sessions de l'agent IA</value></data>
+  <data name="ToggleSidebarAgentsOnlyCommandKey" xml:space="preserve">
+    <value>Activer ou désactiver le filtre de la barre latérale limité aux agents</value>
+    <comment>Command that toggles whether the sidebar shows only open AI-agent tabs. It does not change the independent Recent agent sessions option. Global sidebar search includes all tabs regardless of this preference.</comment>
+  </data>
+  <data name="ToggleSidebarRecentAgentSessionsCommandKey" xml:space="preserve">
+    <value>Afficher ou masquer les sessions récentes d’agents dans la barre latérale</value>
+    <comment>Command that toggles the Recent agent sessions section in the sidebar without changing the independent Agents only filter. Recent sessions are also included while a global search query is present.</comment>
+  </data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Afficher ou masquer l'agent IA</value><comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Mettre le focus sur le volet de l'agent IA</value><comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Ouvrir la liste des sessions de l'agent IA</value><comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>Déclencher la correction automatique</value></data>
   <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>Prompt</value></data>
-  <data name="BugReportCommandKey" xml:space="preserve"><value>Signaler un bug (collecter les journaux)</value></data>
+  <data name="BugReportCommandKey" xml:space="preserve"><value>Signaler un bug (collecter les journaux)</value><comment>Command palette entry that collects diagnostic log files into a zip archive on the user's Desktop, for attaching to a bug report.</comment></data>
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>Ouvrir l'agent en arrière-plan dans un nouvel onglet</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="AgentProfileGeneratorDisplayName" xml:space="preserve">
     <value>Agents IA</value>
     <comment>Name of the dynamic profile source and new-tab menu folder containing installed native AI agent command-line applications.</comment>
+  </data>
+  <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
+    <value>Basculer la palette de commandes en mode de délégation à un agent</value>
   </data>
 </root>

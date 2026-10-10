@@ -12,6 +12,7 @@ mod input;
 mod layout;
 mod line_diff;
 mod model_popup;
+mod pending_queue;
 mod permission;
 mod popup;
 mod recommendations;

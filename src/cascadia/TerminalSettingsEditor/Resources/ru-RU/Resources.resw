@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>Приложение терминала, запускаемое при запуске приложения командной строки без существующего сеанса, например из меню "Пуск" или из диалогового окна "Выполнить".</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>API графики</value>
@@ -912,7 +912,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>Автоматически</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>Цветовая схема</value>
@@ -2288,7 +2288,7 @@
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
     <value>Интеллектуальный Терминал работает в переносном режиме.</value>
-    <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
+    <comment>A disclaimer that indicates that Intelligent Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
     <value>Дополнительные сведения.</value>
@@ -2818,9 +2818,7 @@
   </data>
   <data name="Nav_AIAgents.Content" xml:space="preserve">
     <value>Агенты</value>
-  </data>
-  <data name="AIAgents_PageSubtitle.Text" xml:space="preserve">
-    <value>Настройте работу агентов во всем терминале</value>
+    <comment>Header for the "Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment>
   </data>
   <data name="AIAgents_PageSubtitlePrefix" xml:space="preserve">
     <value>Настройте работу агентов во всем терминале.</value>
@@ -2832,12 +2830,15 @@
   </data>
   <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve">
     <value>Панель агента</value>
+    <comment>Section header for the agent pane settings group. &#xA;In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve">
     <value>Палитра команд</value>
+    <comment>Section header for the command palette agent settings group. &#xA;In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AcpAgent.Header" xml:space="preserve">
     <value>Агент</value>
+    <comment>Header for the setting that specifies which AI agent powers the agent pane.</comment>
   </data>
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
     <value>Выберите агента, используемого в панели агента. Любой совместимый агент ACP будет обнаружен автоматически.</value>
@@ -2845,9 +2846,11 @@
   </data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve">
     <value>Модель</value>
+    <comment>Header for the setting that specifies the model used by the agent pane agent. &#xA;In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve">
     <value>Выберите модель, которую использует этот агент.</value>
+    <comment>Supplementary description for the model setting.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
     <value>CLI агента</value>
@@ -2857,12 +2860,6 @@
     <value>Создайте новую вкладку с CLI предпочитаемого агента, при необходимости добавив начальный запрос и контекст из активной панели.
 Alt+Shift+/ ввести запрос; Alt+Shift+B запустить без начального запроса.</value>
     <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment>
-  </data>
-  <data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>Автоматически предлагать исправления для команд с ошибками</value>
-  </data>
-  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>Если включено, ИИ-агент автоматически анализирует команды с ошибками и предлагает исправление. Если отключено, для команд с ошибками в строке состояния отображается подсказка, по которой можно щелкнуть — нажмите Ctrl+Alt+. или щелкните подсказку, чтобы запросить исправление.</value>
   </data>
   <data name="AIAgents_SessionManagement.Header" xml:space="preserve">
     <value>Сеансы</value>
@@ -2876,9 +2873,11 @@ Alt+Shift+/ ввести запрос; Alt+Shift+B запустить без н�
   <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>Показывать оставшийся контекст и стоимость сеанса, когда они доступны</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>Положение панели</value>
+    <comment>Header for the setting that controls where the agent pane appears relative to the active pane. &#xA;In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve">
     <value>Расположение агента</value>
+    <comment>Supplementary description for the pane position setting. &#xA;In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
     <value>Снизу</value>
@@ -2904,7 +2903,7 @@ Alt+Shift+/ ввести запрос; Alt+Shift+B запустить без н�
   </data>
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>Этот параметр управляется вашей организацией.</value>
-    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+    <comment>Text displayed when a setting is controlled by Group Policy (GPO). Standard Windows policy notice wording.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingTitle.Text" xml:space="preserve">
     <value>Автоматическая обработка ошибок</value>
@@ -2975,7 +2974,7 @@ Alt+Shift+/ ввести запрос; Alt+Shift+B запустить без н�
     <comment>{Locked="OpenAI","https://api.openai.com/v1","https://api.together.xyz/v1"} Hint below the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
-    <value>Идентификатор модели</value>
+    <value>ID модели</value>
     <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
   </data>
   <data name="AIAgents_CustomModelId.PlaceholderText" xml:space="preserve">
@@ -3098,5 +3097,9 @@ Alt+Shift+/ ввести запрос; Alt+Shift+B запустить без н�
   <data name="Globals_TabLayout.Header" xml:space="preserve">
     <value>Режим вкладок</value>
     <comment>Header for a control to choose whether tabs are laid out horizontally across the top of the window or vertically down the left side.</comment>
+  </data>
+  <data name="Actions_CommandPaletteLaunchModeAgentDelegation.Content" xml:space="preserve">
+    <value>Делегирование агенту</value>
+    <comment>An option to choose from for the "command palette launch mode". Launches in agent delegation mode (with the literal ASCII "?" prefix). {Locked="?"}</comment>
   </data>
 </root>

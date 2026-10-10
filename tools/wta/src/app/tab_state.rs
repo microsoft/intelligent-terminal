@@ -572,6 +572,9 @@ impl ConfigPickerState {
 /// mutating shared `App` fields.
 #[derive(Default)]
 pub struct TabSession {
+    pub(crate) pending_queue_action: Option<u64>,
+    pub(super) prompt_queue: super::prompt_queue::PromptQueue,
+    pub(super) pending_autofix_captures: VecDeque<super::prompt_queue::QueuedRequest>,
     pub(crate) last_telemetry_session_id: Option<String>,
     pub(crate) telemetry_model_pending: Option<(String, uuid::Uuid)>,
     /// Per-tab autofix state machine (see `TabAutofixState`).
@@ -670,10 +673,10 @@ pub struct TabSession {
     /// Preferred display column, valid only for the same input-box width.
     pub(super) input_vertical_goal: Option<(u16, usize)>,
     pub(crate) attachments: super::attachments::PendingAttachments,
-    /// True while a host-triggered text paste is reading the clipboard on a
+    /// True while a host-triggered paste is reading the clipboard on a
     /// blocking worker.
     pub paste_pending: bool,
-    /// Monotonic generation for async text paste.
+    /// Monotonic generation for async clipboard paste.
     pub paste_generation: u64,
     /// Recomputed on every input mutation. Empty when not in
     /// command-prefix mode.
@@ -715,6 +718,7 @@ pub struct TabSession {
 
     // "Does this tab want the agent pane visible?" — per-tab user intent.
     pub pane_open: bool,
+    pub copy_on_select: bool,
     /// Transient position override for this tab's agent pane.
     pub agent_pane_position: Option<&'static str>,
 

@@ -9,6 +9,7 @@
 #include "winrt/Windows.UI.ViewManagement.h"
 
 #include "TabStrip.g.h"
+#include "SidebarFiltersViewModel.g.h"
 #include "TabStripSelectionChangedEventArgs.g.h"
 #include "TabStripCloseRequestedEventArgs.g.h"
 #include "TabStripDragStartingEventArgs.g.h"
@@ -29,6 +30,26 @@ namespace TerminalAppLocalTests
 
 namespace winrt::TerminalApp::implementation
 {
+    struct SidebarFiltersViewModel : SidebarFiltersViewModelT<SidebarFiltersViewModel>
+    {
+        SidebarFiltersViewModel() = default;
+        bool ShowAgentsOnly() const noexcept { return _showAgentsOnly; }
+        void ShowAgentsOnly(bool value);
+        bool ShowRecentAgentSessions() const noexcept { return _showRecentAgentSessions; }
+        void ShowRecentAgentSessions(bool value);
+        winrt::hstring SearchQuery() const { return _searchQuery; }
+        void SearchQuery(winrt::hstring const& value);
+        bool HasSearchQuery() const noexcept { return !_searchQuery.empty(); }
+        bool AgentsOnlyEffective() const noexcept { return _showAgentsOnly && !HasSearchQuery(); }
+        bool RecentAgentSessionsVisible() const noexcept { return _showRecentAgentSessions || HasSearchQuery(); }
+        til::property_changed_event PropertyChanged;
+
+    private:
+        bool _showAgentsOnly{};
+        bool _showRecentAgentSessions{};
+        winrt::hstring _searchQuery;
+    };
+
     struct TabStripItemTemplateSelector : TabStripItemTemplateSelectorT<TabStripItemTemplateSelector>
     {
         winrt::Windows::UI::Xaml::DataTemplate LiveTemplate{ nullptr };
@@ -60,7 +81,8 @@ namespace winrt::TerminalApp::implementation
         TabStripHistoryItem() = default;
         WINRT_PROPERTY(winrt::hstring, SessionId);
         WINRT_PROPERTY(winrt::hstring, Title);
-        WINRT_PROPERTY(winrt::hstring, Subtitle);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Subtitle, PropertyChanged.raise);
+        WINRT_PROPERTY(std::optional<uint64_t>, LastActivityAtMs);
         WINRT_PROPERTY(winrt::hstring, Cwd);
         WINRT_PROPERTY(winrt::hstring, PaneSessionId);
         WINRT_PROPERTY(winrt::hstring, AgentId);
@@ -83,7 +105,11 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Media::Brush, CurrentForeground, PropertyChanged.raise, nullptr);
 
     public:
+        bool RefreshAge(uint64_t nowMs);
         til::property_changed_event PropertyChanged;
+
+    private:
+        std::optional<std::pair<uint64_t, uint64_t>> _ageKey;
     };
 
     struct TabStripHistoryActivationEventArgs : TabStripHistoryActivationEventArgsT<TabStripHistoryActivationEventArgs>
@@ -311,15 +337,17 @@ namespace winrt::TerminalApp::implementation
         void IsRailCollapsed(bool value);
         void PrepareTabItem(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         void RefreshTabColor(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
-        TerminalApp::TabStripFilterMode FilterMode() const noexcept { return _filterMode; }
+        TerminalApp::TabStripFilterMode FilterMode() const noexcept { return _sidebarFilters.ShowAgentsOnly() ? TerminalApp::TabStripFilterMode::AgentsOnly : TerminalApp::TabStripFilterMode::AllTabs; }
         void FilterMode(TerminalApp::TabStripFilterMode value);
         bool SearchActive() const noexcept { return _searchActive; }
         void SearchActive(bool value);
-        winrt::hstring SearchQuery() const { return _searchQuery; }
+        winrt::hstring SearchQuery() const { return _sidebarFilters.SearchQuery(); }
         void SearchQuery(winrt::hstring const& value);
         bool FocusTabSearch();
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, bool ready = false);
+        void InvalidateHistorySnapshotReadiness() noexcept { _historySnapshotReady = false; }
+        void TryCompleteAgentFilterTelemetry();
         struct RepresentedHistorySession
         {
             winrt::hstring sessionId;
@@ -336,9 +364,9 @@ namespace winrt::TerminalApp::implementation
                                      winrt::hstring const& statusText);
         bool HasHistoryItems() const noexcept { return !_historySnapshot.empty(); }
         void ClearHistorySnapshot();
-        void ClearHistorySearch();
         void OpenHistory();
-        bool HistoryActive() const noexcept { return _historyActive; }
+        bool HistoryActive() const noexcept { return _sidebarFilters.ShowRecentAgentSessions(); }
+        TerminalApp::SidebarFiltersViewModel SidebarFilters() const noexcept { return _sidebarFilters; }
         winrt::Windows::UI::Xaml::Controls::Grid HistorySection();
         TerminalApp::TabStripHistoryHeader HistoryHeaderButton() { return _historyElement(L"HistoryHeaderButton").try_as<TerminalApp::TabStripHistoryHeader>(); }
         winrt::Windows::UI::Xaml::Controls::TextBlock HistoryHeader() { return _historyElement(L"HistoryHeader").try_as<winrt::Windows::UI::Xaml::Controls::TextBlock>(); }
@@ -397,8 +425,6 @@ namespace winrt::TerminalApp::implementation
                                       winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnHistoryClick(winrt::Windows::Foundation::IInspectable const& sender,
                             winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
-        void OnHeaderToggleClick(winrt::Windows::Foundation::IInspectable const& sender,
-                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnHistoryCloseClick(winrt::Windows::Foundation::IInspectable const& sender,
                                  winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnRichTabRepositoryVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,
@@ -514,10 +540,15 @@ namespace winrt::TerminalApp::implementation
         uint64_t _searchAnimationGeneration{ 0 };
         winrt::Windows::UI::Xaml::Media::Animation::Storyboard _searchPanelStoryboard{ nullptr };
         bool _projectionControlsEnabled{ true };
-        winrt::hstring _searchQuery;
-        bool _historyActive{ false };
+        TerminalApp::SidebarFiltersViewModel _sidebarFilters{ winrt::make<SidebarFiltersViewModel>() };
+        winrt::Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker _sidebarFiltersChanged;
+        void _onSidebarFiltersChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Data::PropertyChangedEventArgs const&);
+        winrt::Windows::UI::Xaml::DispatcherTimer _historyAgeTimer{ nullptr };
+        void _updateHistoryAgeTimer();
+        void _refreshHistoryAges(uint64_t nowMs);
         std::vector<RepresentedHistorySession> _representedHistorySessions;
         bool _agentFilterTelemetryPending{ false };
+        bool _historySnapshotReady{ false };
         friend class ::TerminalAppLocalTests::TabTests;
         bool _historyLoading{ false };
         bool _historyActivating{ false };
@@ -526,7 +557,6 @@ namespace winrt::TerminalApp::implementation
         bool _syncingViewportSelection{ false };
         winrt::hstring _historyError;
         winrt::hstring _historyRefreshError;
-        TerminalApp::TabStripFilterMode _filterMode{ TerminalApp::TabStripFilterMode::AllTabs };
         bool _richTabRepositoryVisible{ false };
         bool _richTabBranchVisible{ false };
         bool _richTabAgentStatusVisible{ true };
@@ -649,6 +679,7 @@ namespace winrt::TerminalApp::implementation
 
 namespace winrt::TerminalApp::factory_implementation
 {
+    BASIC_FACTORY(SidebarFiltersViewModel);
     BASIC_FACTORY(TabStripItemTemplateSelector);
     BASIC_FACTORY(TabStripHistoryHeader);
     BASIC_FACTORY(TabStripHistoryHeaderAutomationPeer);

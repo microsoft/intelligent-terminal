@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>O aplicativo de terminal que é iniciado quando um aplicativo de linha de comando é executado sem uma sessão existente, como no menu iniciar ou na caixa de diálogo Executar.</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>API de Gráficos</value>
@@ -912,7 +912,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>Automático</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>Esquema de cores</value>
@@ -1546,7 +1546,7 @@
     <comment>This is the formal name for a font feature.</comment>
   </data>
   <data name="Profile_FontFeature_sinf" xml:space="preserve">
-    <value>Scientific inferiors</value>
+    <value>Subscritos científicos</value>
     <comment>This is the formal name for a font feature.</comment>
   </data>
   <data name="Profile_FontFeature_subs" xml:space="preserve">
@@ -2288,7 +2288,7 @@
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
     <value>O Terminal Inteligente está em execução no modo portátil.</value>
-    <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
+    <comment>A disclaimer that indicates that Intelligent Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
     <value>Saiba mais.</value>
@@ -2818,9 +2818,7 @@
   </data>
   <data name="Nav_AIAgents.Content" xml:space="preserve">
     <value>Agentes</value>
-  </data>
-  <data name="AIAgents_PageSubtitle.Text" xml:space="preserve">
-    <value>Configure como os agentes funcionam em toda a sua experiência no terminal</value>
+    <comment>Header for the "Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment>
   </data>
   <data name="AIAgents_PageSubtitlePrefix" xml:space="preserve">
     <value>Configure como os agentes funcionam em toda a sua experiência no terminal.</value>
@@ -2832,22 +2830,27 @@
   </data>
   <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve">
     <value>Painel do agente</value>
+    <comment>Section header for the agent pane settings group. &#xA;In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve">
     <value>Paleta de comandos</value>
+    <comment>Section header for the command palette agent settings group. &#xA;In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AcpAgent.Header" xml:space="preserve">
     <value>Agente</value>
+    <comment>Header for the setting that specifies which AI agent powers the agent pane.</comment>
   </data>
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
     <value>Escolha o agente usado no painel do agente. Qualquer agente compatível com ACP será detectado.</value>
-    <comment>Supplementary description for the agent pane agent setting. {Locked="ACP"}</comment>
+    <comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve">
     <value>Modelo</value>
+    <comment>Header for the setting that specifies the model used by the agent pane agent. &#xA;In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve">
     <value>Escolha o modelo usado por este agente.</value>
+    <comment>Supplementary description for the model setting.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
     <value>CLI do agente</value>
@@ -2857,12 +2860,6 @@
     <value>Crie uma nova guia com a CLI do agente de sua preferência, incluindo opcionalmente um prompt e o contexto do painel ativo.
 Alt+Shift+/ insira um prompt; Alt+Shift+B inicie sem um prompt inicial.</value>
     <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment>
-  </data>
-  <data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>Sugerir correções automaticamente para comandos com falha</value>
-  </data>
-  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>Quando habilitado, o agente de IA analisa automaticamente os comandos com falha e propõe uma correção. Quando desabilitado, os comandos com falha exibem uma dica clicável na barra de status — pressione Ctrl+Alt+. ou clique na dica para solicitar uma correção.</value>
   </data>
   <data name="AIAgents_SessionManagement.Header" xml:space="preserve">
     <value>Sessões</value>
@@ -2876,9 +2873,11 @@ Alt+Shift+/ insira um prompt; Alt+Shift+B inicie sem um prompt inicial.</value>
   <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>Mostrar o contexto restante e o custo da sessão quando disponíveis</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>Posição do painel</value>
+    <comment>Header for the setting that controls where the agent pane appears relative to the active pane. &#xA;In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve">
     <value>Onde o agente fica</value>
+    <comment>Supplementary description for the pane position setting. &#xA;In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
     <value>Abaixo</value>
@@ -2904,7 +2903,7 @@ Alt+Shift+/ insira um prompt; Alt+Shift+B inicie sem um prompt inicial.</value>
   </data>
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>Esta configuração é gerenciada pela sua organização.</value>
-    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+    <comment>Text displayed when a setting is controlled by Group Policy (GPO). Standard Windows policy notice wording.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingTitle.Text" xml:space="preserve">
     <value>Tratamento automático de erros</value>
@@ -3098,5 +3097,9 @@ Alt+Shift+/ insira um prompt; Alt+Shift+B inicie sem um prompt inicial.</value>
   <data name="Globals_TabLayout.Header" xml:space="preserve">
     <value>Modo das guias</value>
     <comment>Header for a control to choose whether tabs are laid out horizontally across the top of the window or vertically down the left side.</comment>
+  </data>
+  <data name="Actions_CommandPaletteLaunchModeAgentDelegation.Content" xml:space="preserve">
+    <value>Delegação ao agente</value>
+    <comment>An option to choose from for the "command palette launch mode". Launches in agent delegation mode (with the literal ASCII "?" prefix). {Locked="?"}</comment>
   </data>
 </root>

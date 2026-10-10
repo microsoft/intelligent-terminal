@@ -9,6 +9,15 @@ pub enum AppEvent {
     Key(KeyEvent),
     Mouse(MouseEvent),
     Tick,
+    AutofixSnapshotReady {
+        request_id: u64,
+        result: Result<crate::protocol::acp::client::AutofixSnapshot, String>,
+    },
+    RecommendationExecutionSettled {
+        tab_id: String,
+        prompt_id: u64,
+        success: bool,
+    },
     RevealTick,
     Resize(u16, u16),
     FocusChanged(bool),
@@ -111,12 +120,12 @@ pub enum AppEvent {
         tab_id: String,
         message: String,
     },
-    AgentPasteTextReady {
+    AgentPasteReady {
         tab_id: String,
         generation: u64,
-        text: String,
+        content: crate::win32::ClipboardPaste,
     },
-    AgentPasteTextFailed {
+    AgentPasteFailed {
         tab_id: String,
         generation: u64,
         error: String,

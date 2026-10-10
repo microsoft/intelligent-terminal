@@ -381,8 +381,8 @@
     <comment>Tooltip for the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
-    <value>Criathraich</value>
-    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
+    <value>Seall</value>
+    <comment>Section heading above independent sidebar display options: show only agent tabs, or also show recent agent sessions.</comment>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>A h-uile taba</value>
@@ -441,8 +441,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Seiseanan o chionn ghoirid</value>
-    <comment>Collapsible noun heading below open agent tabs in the Agents sidebar. Includes prior agent sessions, kept-running background tabs, sessions in other tracked windows, and external sessions not represented by the current window's open agent panes. This is not an archive-only list.</comment>
+    <value>Seiseanan o chionn ghoirid nan àidseantan</value>
+    <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Àidseantan</value>
@@ -521,8 +521,12 @@
     <comment>Command in the notification-area menu that brings a background tab and its still-running terminal panes back into a window. It does not restart the processes or restore a file backup.</comment>
   </data>
   <data name="KeepTabRunningText" xml:space="preserve">
-    <value>Cum an taba a’ ruith</value>
-    <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+    <value>Cuir modh gun eadar-aghaidh air</value>
+    <comment>Command at the top of a vertical terminal tab&apos;s context menu that enables headless mode. Headless mode keeps all existing panes running after the tab or window is closed; it does not immediately hide or pin the tab.</comment>
+  </data>
+  <data name="HeadlessModeOnName" xml:space="preserve">
+    <value>Modh gun eadar-aghaidh air</value>
+    <comment>Accessibility name for the status icon shown on a terminal tab when headless mode is enabled. Describes the current state, not a command. Headless mode keeps existing panes running after the tab or window is closed.</comment>
   </data>
   <data name="PinTabText" xml:space="preserve">
     <value>Prìnich an taba</value>
@@ -548,15 +552,15 @@
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>Cum an taba seo a’ ruith sa chùlaibh às dèidh dhut an taba no an uinneag a dhùnadh.</value>
-    <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
+    <comment>Tooltip and accessibility help for Turn on headless mode. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
   </data>
   <data name="TurnOffKeepTabRunningText" xml:space="preserve">
-    <value>Cuir dheth cumail a’ ruith</value>
-    <comment>Command shown instead of Keep tab running when that tab already has keep running enabled. It only turns off the background-running behavior; it does not close the tab or stop its current processes immediately.</comment>
+    <value>Cuir modh gun eadar-aghaidh dheth</value>
+    <comment>Command shown instead of Turn on headless mode when that tab already has headless mode enabled. It only turns off the background-running behavior; it does not close the tab or stop its current processes immediately.</comment>
   </data>
   <data name="TurnOffKeepTabRunningToolTip" xml:space="preserve">
     <value>Cha chùm an taba seo a’ ruith tuilleadh às dèidh dhut an taba no an uinneag a dhùnadh.</value>
-    <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
+    <comment>Tooltip and accessibility help for Turn off headless mode. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
     <value>Na thàmh</value>
@@ -616,7 +620,7 @@
   </data>
   <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
     <value>Dùin a h-uile taba a tha a’ ruith sa chùlaibh</value>
-    <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by Keep tab running and terminates their panes and processes. Does not close tabs still in a window or only turn off keep running.</comment>
+    <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by headless mode and terminates their panes and processes. Does not close tabs still in a window or only turn off headless mode.</comment>
   </data>
   <data name="PaneProgressStatusNormal" xml:space="preserve">
     <value>Adhartas</value>
@@ -635,8 +639,8 @@
     <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
-    <value>Lorg seiseanan gnìomhach agus seiseanan o chionn ghoirid nan àidseantan</value>
-    <comment>Shared search placeholder, tooltip, and accessible name in the Agents sidebar. Searches both open AI-agent tabs, including idle open sessions, and the Recent Sessions section. Active does not mean only currently working. Keep the separate Tabs view search labels unchanged.</comment>
+    <value>Lorg tabaichean agus seiseanan o chionn ghoirid nan àidseantan</value>
+    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · uinneag eile</value>
@@ -677,12 +681,12 @@
     <comment>Tooltip and accessible action name of the sidebar header button while Agents is selected. One click switches to the Tabs view; it does not change between sidebar and horizontal tab layouts.</comment>
   </data>
   <data name="VerticalTabsExpandRecentSessions" xml:space="preserve">
-    <value>Leudaich seiseanan o chionn ghoirid</value>
-    <comment>Tooltip for expanding the Recent Sessions section inside the Agents sidebar. Expansion shows its session rows without leaving Agents or resuming a session.</comment>
+    <value>Leudaich seiseanan o chionn ghoirid nan àidseantan</value>
+    <comment>Tooltip for expanding the Recent agent sessions section in the sidebar. This shows session rows without resuming a session.</comment>
   </data>
   <data name="VerticalTabsCollapseRecentSessions" xml:space="preserve">
-    <value>Co-theannaich seiseanan o chionn ghoirid</value>
-    <comment>Tooltip for collapsing the Recent Sessions section inside the Agents sidebar. Collapse hides its rows without closing agents or deleting sessions.</comment>
+    <value>Co-theannaich seiseanan o chionn ghoirid nan àidseantan</value>
+    <comment>Tooltip for collapsing the Recent agent sessions section in the sidebar. This hides rows without closing agents or deleting sessions.</comment>
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Dòigh nas glice air tabaichean a stiùireadh</value>

@@ -251,7 +251,7 @@
                         </Grid.ColumnDefinitions>
                         <local:HighlightedTextControl x:Name="HistorySubtitleText"
                                                       SearchText="{x:Bind SearchQuery}"
-                                                      Text="{x:Bind Subtitle}"
+                                                      Text="{x:Bind Subtitle, Mode=OneWay}"
                                                       TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
                         <local:HighlightedTextControl x:Name="HistoryStatusText"
                                                       Grid.Column="1"
@@ -374,38 +374,12 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <Button x:Name="VerticalTabsHeaderButton"
-                    Padding="8,4"
-                    HorizontalAlignment="Left"
-                    HorizontalContentAlignment="Left"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource SidebarTabCornerRadius}"
-                    UseSystemFocusVisuals="True"
-                    Click="OnHeaderToggleClick">
-                <Button.Resources>
-                    <StaticResource x:Key="ButtonBackgroundPointerOver"
-                                    ResourceKey="SubtleFillColorSecondaryBrush" />
-                    <StaticResource x:Key="ButtonBackgroundPressed"
-                                    ResourceKey="SubtleFillColorTertiaryBrush" />
-                    <StaticResource x:Key="ButtonBorderBrushPointerOver"
-                                    ResourceKey="CardStrokeColorDefaultBrush" />
-                    <StaticResource x:Key="ButtonBorderBrushPressed"
-                                    ResourceKey="CardStrokeColorDefaultBrush" />
-                </Button.Resources>
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock x:Name="VerticalTabsHeader"
-                               x:Uid="VerticalTabsHeader"
-                               VerticalAlignment="Center"
-                               FontWeight="SemiBold" />
-                    <PathIcon x:Name="SidebarViewSwitchIcon"
-                              Width="12"
-                              Height="12"
-                              VerticalAlignment="Center"
-                              AutomationProperties.AccessibilityView="Raw"
-                              Data="M0,3 L3,0 L3,2 L10,2 L10,4 L3,4 L3,6 Z M12,9 L9,6 L9,8 L2,8 L2,10 L9,10 L9,12 Z" />
-                </StackPanel>
-            </Button>
+            <TextBlock x:Name="VerticalTabsHeader"
+                       x:Uid="VerticalTabsHeader"
+                       Margin="8,4"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Center"
+                       FontWeight="SemiBold" />
 
             <ToggleButton x:Name="SearchTabsButton"
                           x:Uid="VerticalTabsSearchButton"
@@ -440,6 +414,16 @@
                 <Button.Flyout>
                     <MenuFlyout Closing="OnRichTabMetadataFlyoutClosing"
                                 Placement="BottomEdgeAlignedLeft">
+                        <MenuFlyoutItem x:Uid="VerticalTabsFilterSection"
+                                        IsEnabled="False"
+                                        Style="{StaticResource RichTabMetadataSectionStyle}" />
+                        <ToggleMenuFlyoutItem x:Name="AgentsOnlyFilterMenuItem"
+                                              x:Uid="VerticalTabsFilterAgentsOnly"
+                                              IsChecked="{x:Bind SidebarFilters.ShowAgentsOnly, Mode=TwoWay}" />
+                        <ToggleMenuFlyoutItem x:Name="RecentAgentSessionsFilterMenuItem"
+                                              x:Uid="VerticalTabsSessionHistoryHeader"
+                                              IsChecked="{x:Bind SidebarFilters.ShowRecentAgentSessions, Mode=TwoWay}" />
+                        <MenuFlyoutSeparator />
                         <MenuFlyoutItem x:Name="RichTabMetadataSectionItem"
                                         x:Uid="VerticalTabsMetadataSection"
                                         IsEnabled="False"
