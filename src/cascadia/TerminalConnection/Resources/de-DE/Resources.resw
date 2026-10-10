@@ -226,4 +226,7 @@
   <data name="FileNotFound" xml:space="preserve">
     <value>Die angegebene Datei wurde nicht gefunden.</value>
   </data>
+  <data name="LocalizationWorkflowCombinedRetest" xml:space="preserve">
+    <value>Testnachricht für die erneute Veröffentlichungsprüfung der Terminal-Lokalisierung.</value>
+  </data>
 </root>

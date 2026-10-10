@@ -226,4 +226,7 @@
   <data name="FileNotFound" xml:space="preserve">
     <value>Ŧнё şγśţêм ςâлηόť ƒїлď ŧнэ ƒΐĺë śрéćιƒієð. !!! !!! !!! !!! </value>
   </data>
+  <data name="LocalizationWorkflowCombinedRetest" xml:space="preserve">
+    <value>[Ţёŕмїñáĺ ĺőςáĺїзáţїőñ ρúвĺїςáţїőñ ŕёţёśţ мёśśáğё.!!!! !!!!]</value>
+  </data>
 </root>
