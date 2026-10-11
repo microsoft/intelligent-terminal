@@ -110,8 +110,12 @@ from another phase.
 Corrections are confined to original candidate WTA Rust files, with at most
 three replacements, 100 added-plus-deleted lines and 16 KiB of UTF-8
 zero-context diff. The independent replacement transport cap is 256 KiB.
-Every replacement has a corresponding proposed finding at its actual
-`path:line`. C++ findings cannot authorize unrelated WTA edits.
+Every replacement is associated with a proposed finding through a canonical
+`path:line` anchor. This is file association, not line-existence validation or
+semantic attribution of every edited hunk. HIGH eligibility and the necessity
+of each edit remain review obligations; uncertain attribution requires manual
+handoff. Native tests do not establish severity or measured performance gain.
+C++ findings cannot authorize unrelated WTA edits.
 
 Original tests remain unchanged. A conservative lexical suffix guard can
 reject otherwise valid repairs involving comments, early attributes/modules

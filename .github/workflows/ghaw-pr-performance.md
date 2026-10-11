@@ -1,6 +1,6 @@
 ---
 description: 'Evidence-based review of changed hot paths and callers, with native-tested repair only for eligible HIGH WTA regressions.'
-intent: 'Require base/head evidence for repeated work, UI blocking, growing session/log costs, and retained tasks/processes; repair only eligible HIGH WTA changes and otherwise publish a job-summary card without commenting.'
+intent: 'Require base/head evidence for repeated work, UI blocking, growing session/log costs, and retained tasks/processes; propose only eligible HIGH WTA repairs and return diagnostic artifacts for controller-owned PR reporting.'
 
 on:
   workflow_dispatch:
