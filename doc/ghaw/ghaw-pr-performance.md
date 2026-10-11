@@ -151,6 +151,10 @@ commit operations.
 After a published repair, reporting waits at most ten seconds for PR metadata
 to advance from the reviewed head to that known commit. A different head stops
 the wait immediately; missing delivery stays visible and cannot leave green.
+The bot marker also records controller run/attempt ordering. A recorded newer
+run blocks an older report before check creation, with another freshness read
+before comment mutation. PR concurrency serializes controllers; GitHub comment
+updates themselves do not provide an atomic compare-and-swap operation.
 
 An entered fork submission invalidates previous accepted JSON before summary
 capture and validation. Rejected replacement data therefore cannot reuse an

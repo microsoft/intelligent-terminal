@@ -79,12 +79,14 @@ jobs:
         with:
           script: |
             const pr = context.payload.pull_request;
+            const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
+            if (!/^[1-9][0-9]*$/.test(runAttempt ?? "")) throw new Error("Missing valid controller run attempt.");
             const sameRepo = process.env.SAME_REPO === "true";
             const worker = sameRepo
               ? "ghaw-pr-performance.lock.yml"
               : "ghaw-pr-performance-fork-guidance.lock.yml";
             const dispatchId =
-              `ghaw-pr-performance-${pr.number}-${process.env.EXPECTED_HEAD_SHA}-${context.runId}-${context.runAttempt}`;
+              `ghaw-pr-performance-${pr.number}-${process.env.EXPECTED_HEAD_SHA}-${context.runId}-${runAttempt}`;
             const inputs = {
               dispatch_id: dispatchId,
               pr_number: String(pr.number),
@@ -267,6 +269,8 @@ jobs:
         with:
           script: |
             const fs = require("fs");
+            const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
+            if (!/^[1-9][0-9]*$/.test(runAttempt ?? "")) throw new Error("Missing valid controller run attempt.");
             const path = require("path");
             const { pathToFileURL } = require("url");
             const { readReviewSummary } = await import(pathToFileURL(
@@ -308,6 +312,26 @@ jobs:
               "### Review-time agent summary (not native-validation or publication authority)",
               reviewSummary
             ].filter(Boolean).join("\n\n");
+            const marker = "<!-- ghaw-pr-performance-report -->";
+            const runMarker = `<!-- ghaw-pr-performance-run:${context.runId}:${runAttempt} -->`;
+            const readExistingReport = async () => {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                ...context.repo, issue_number: Number(process.env.PR_NUMBER), per_page: 100
+              });
+              return comments.find(comment =>
+                comment.user?.login === "github-actions[bot]" &&
+                comment.body?.startsWith(marker));
+            };
+            const newerReport = comment => {
+              const recorded = /<!-- ghaw-pr-performance-run:([1-9][0-9]*):([1-9][0-9]*) -->/.exec(comment?.body ?? "");
+              return recorded && (BigInt(recorded[1]) > BigInt(context.runId) ||
+                (BigInt(recorded[1]) === BigInt(context.runId) && BigInt(recorded[2]) > BigInt(runAttempt)));
+            };
+            if (newerReport(await readExistingReport())) {
+              core.warning("Older controller result skipped: a newer run already owns the Conversation report.");
+              await core.summary.addRaw(`${summary}\n\nConversation delivery: **superseded by newer run**`).write();
+              return;
+            }
             const { data: check } = await github.rest.checks.create({
               ...context.repo,
               name: "Performance review",
@@ -315,17 +339,10 @@ jobs:
               status: "completed",
               conclusion: conclusion === "success" ? "action_required" : conclusion,
               details_url: process.env.CONTROLLER_RUN_URL,
-              external_id: `${context.runId}-${context.runAttempt}`,
+              external_id: `${context.runId}-${runAttempt}`,
               output: { title: "Performance review run report", summary: `${summary}\n\nConversation delivery: **pending**` }
             });
             await core.summary.addRaw(summary).write();
-            const marker = "<!-- ghaw-pr-performance-report -->";
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              ...context.repo, issue_number: Number(process.env.PR_NUMBER), per_page: 100
-            });
-            const existing = comments.find(comment =>
-              comment.user?.login === "github-actions[bot]" &&
-              comment.body?.startsWith(marker));
             let currentPr;
             for (let attempt = 0; attempt < 6; attempt++) {
               ({ data: currentPr } = await github.rest.pulls.get({
@@ -336,12 +353,17 @@ jobs:
               await require("timers/promises").setTimeout(2000);
             }
             let conversationDelivery = "completed";
-            if (currentPr.head.sha !== head) {
+            const existing = await readExistingReport();
+            if (newerReport(existing)) {
+              conversationDelivery = "superseded by newer run";
+              conclusion = "cancelled";
+              core.warning("Older controller result skipped after final Conversation freshness read.");
+            } else if (currentPr.head.sha !== head) {
               core.warning(`Conversation report skipped: reviewed result ${head} is no longer the PR head.`);
               conversationDelivery = "skipped: expected head not observed; action required";
               if (conclusion === "success") conclusion = "action_required";
             } else {
-              const body = `${marker}\n## Performance review\n\n${summary.replaceAll("@", "@\u200b")}`;
+              const body = `${marker}\n${runMarker}\n## Performance review\n\n${summary.replaceAll("@", "@\u200b")}`;
               if (existing) {
                 await github.rest.issues.updateComment({
                   ...context.repo, comment_id: existing.id, body

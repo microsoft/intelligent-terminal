@@ -73,11 +73,12 @@ async function simulate({ fork = false, conclusion = 'success', agent = true, ti
         },
     };
     const context = { payload: { pull_request: { number: 42 } },
-        repo: { owner: 'owner', repo: 'repo' }, runId: 1, runAttempt: 1 };
+        repo: { owner: 'owner', repo: 'repo' }, runId: 1 };
     const process = { env: {
         EXPECTED_HEAD_SHA: 'head', EXPECTED_BASE_SHA: 'base', COMPARISON_BASE_SHA: 'merge',
         HEAD_REF: 'topic', BASE_REF: 'main', HEAD_REPO: fork ? 'fork/repo' : 'owner/repo',
         SAME_REPO: String(!fork),
+        GITHUB_RUN_ATTEMPT: '1',
     } };
     let error;
     try {
@@ -94,6 +95,7 @@ test('actual controller dispatches repair with native PR context and checks infe
     const dispatch = result.calls[0][1];
     assert.equal(dispatch.workflow_id, 'ghaw-pr-performance.lock.yml');
     assert.equal(dispatch.ref, 'main');
+    assert.equal(dispatch.inputs.dispatch_id, 'ghaw-pr-performance-42-head-1-1');
     assert.deepEqual(JSON.parse(dispatch.inputs.aw_context), {
         run_id: '1', workflow_id: 'ghaw-pr-performance-controller',
         item_type: 'pull_request', item_number: 42, repo: 'owner/repo',
@@ -145,6 +147,7 @@ async function reportRun(overrides = {}, markdown, conversation = {}) {
     let initialConclusion;
     let summary;
     let headReads = 0;
+    let commentReads = 0;
     const github = {
         rest: {
             checks: {
@@ -182,7 +185,8 @@ async function reportRun(overrides = {}, markdown, conversation = {}) {
             assert.equal(endpoint, 'comments');
             assert.equal(request.issue_number, 42);
             assert.equal(request.per_page, 100);
-            return conversation.comments ?? [];
+            return conversation.commentSequence?.[
+                Math.min(commentReads++, conversation.commentSequence.length - 1)] ?? conversation.comments ?? [];
         },
     };
     const core = { warning(value) { warnings.push(value); },
@@ -206,9 +210,10 @@ async function reportRun(overrides = {}, markdown, conversation = {}) {
     try {
         let error;
         try {
-            await reportScript(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100, runAttempt: 1 }, core, {
+            await reportScript(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100 }, core, {
                 env: {
                     GITHUB_WORKSPACE: process.cwd(), RUNNER_TEMP: root, PR_NUMBER: '42', WORKER_RUN_ID: '',
+                    GITHUB_RUN_ATTEMPT: '1',
                     RUN_OUTCOME: 'success', REVIEW_STATUS: 'pass', REVIEWED_HEAD_SHA: 'a'.repeat(40),
                     PUBLISHED_HEAD_SHA: '', PUBLISHED_COMMIT_URL: '',
                     CONTROLLER_RUN_URL: 'https://github.com/owner/repo/actions/runs/100',
@@ -220,6 +225,7 @@ async function reportRun(overrides = {}, markdown, conversation = {}) {
             if (!conversation.captureError) throw caught;
             error = caught;
         }
+        if (!reports.length) return { warnings, commentCalls, initialConclusion, error, headReads, checksCreated: 0 };
         assert.equal(reports.length, 1);
         if (!error) assert.ok(reports[0].output.summary.endsWith(summary));
         return { ...reports[0], warnings, commentCalls, initialConclusion, error, headReads };
@@ -239,9 +245,43 @@ test('controller automatically publishes the full result and links in the PR con
     assert.equal(comment.action, 'create');
     assert.equal(comment.issue_number, 42);
     assert.match(comment.body, /^<!-- ghaw-pr-performance-report -->/);
+    assert.match(comment.body, /<!-- ghaw-pr-performance-run:100:1 -->/);
     assert.ok(comment.body.endsWith(markdown));
     assert.match(comment.body, /Controller run report/);
     assert.match(comment.body, /Agentic worker report/);
+});
+
+test('report identity requires the actual runner attempt before any output publication', async () => {
+    for (const attempt of [undefined, '', 'undefined', '0', '01']) {
+        const report = await reportRun({ GITHUB_RUN_ATTEMPT: attempt }, undefined, { captureError: true });
+        assert.match(report.error.message, /valid controller run attempt/);
+        assert.equal(report.checksCreated, 0);
+        assert.equal(report.commentCalls.length, 0);
+    }
+});
+
+test('older run or attempt cannot replace a newer same-head report or create a misleading check', async () => {
+    for (const recorded of ['101:1', '100:2']) {
+        const report = await reportRun({}, undefined, {
+            comments: [{ id: 77, user: { login: 'github-actions[bot]' },
+                body: `<!-- ghaw-pr-performance-report -->\n<!-- ghaw-pr-performance-run:${recorded} -->` }],
+        });
+        assert.equal(report.checksCreated, 0);
+        assert.equal(report.commentCalls.length, 0);
+        assert.match(report.warnings.at(-1), /newer run/);
+    }
+});
+
+test('Conversation freshness is rechecked immediately before update', async () => {
+    const old = { id: 77, user: { login: 'github-actions[bot]' },
+        body: '<!-- ghaw-pr-performance-report -->\n<!-- ghaw-pr-performance-run:99:1 -->' };
+    const newer = { ...old, body: '<!-- ghaw-pr-performance-report -->\n<!-- ghaw-pr-performance-run:101:1 -->' };
+    const report = await reportRun({ WORKER_RUN_ID: '101' }, 'Older result.\n', {
+        commentSequence: [[old], [newer]],
+    });
+    assert.equal(report.commentCalls.length, 0);
+    assert.equal(report.conclusion, 'cancelled');
+    assert.match(report.output.summary, /superseded by newer run/);
 });
 
 test('controller updates its existing bot comment instead of duplicating the result', async () => {
