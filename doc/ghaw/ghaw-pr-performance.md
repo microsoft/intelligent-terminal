@@ -167,6 +167,10 @@ actionlint -shellcheck= -pyflakes= -ignore 'unknown permission scope "copilot-re
 Use actionlint 1.7.12; only its two known field-schema gaps are excluded.
 Fixtures exercise report, scope, drift, native and immutable-publication
 contracts. They do not establish product speedup or detector superiority.
+Report feedback rejects ranged or noncanonical proposed locations before
+handoff; sealed-file binding and all three native gates remain mandatory.
+Allocation/copy warnings without relevant-impact evidence remain advice-only,
+including when another finding in the same file is repair-eligible.
 
 | Historical hosted evidence | Verified outcome |
 | --- | --- |

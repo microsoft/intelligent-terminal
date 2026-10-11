@@ -1052,6 +1052,37 @@ test('repair proposals require exactly three confirmed validation tools; fake pa
     }
 });
 
+test('report feedback rejects malformed proposed locations but preserves manual and advice spans', () => {
+    const expected = { ...identity, mode: 'repair' };
+    for (const location of [
+        'tools/wta/src/master/mod.rs:4-11', 'tools/wta/src/master/mod.rs:16-18',
+        'tools\\wta\\src\\master\\mod.rs:1', './tools/wta/src/master/mod.rs:1',
+        '/tools/wta/src/master/mod.rs:1', 'tools/wta/src/../mod.rs:1',
+        'tools/wta/src/master/mod.rs:0', 'tools/wta/src/master/mod.rs:01',
+        'tools/wta/src/master/mod.rs:1:2', 'tools/wta/src/master/mod.rs',
+        'tools/wta/src/master/mod.rs:4\n', 'tools/wta/src/master/mod.rs:4\r\n',
+    ]) {
+        const value = proposal();
+        value.report.findings[0].location = location;
+        assert.throws(() => validateReport(value.report, expected), /canonical|safe repository-relative/);
+        assert.throws(() => validateProposal(value, expected), /canonical|safe repository-relative/);
+    }
+    const value = proposal();
+    value.report.findings[0].location = 'tools/wta/src/master/mod.rs:4';
+    assert.equal(validateReport(value.report, expected), value.report);
+    assert.equal(validateProposal(value, expected), value);
+    value.report.findings[0].fixDisposition = 'manual_required';
+    value.report.findings[0].location = 'tools/wta/src/master/mod.rs:4-11';
+    value.report.status = 'action_required';
+    assert.equal(validateReport(value.report, expected), value.report);
+    value.report.mode = 'guide';
+    assert.equal(validateReport(value.report, identity), value.report);
+    value.report.findings[0].severity = 'medium';
+    value.report.findings[0].fixDisposition = 'advice_only';
+    value.report.status = 'advisory';
+    assert.equal(validateReport(value.report, identity), value.report);
+});
+
 test('every proposed location is canonical and bound to a covered sealed replacement, independently of category', () => {
     const expected = { ...identity, mode: 'repair' };
     for (const category of ['concurrency', 'session-log-enumeration', 'wta-runtime']) {
@@ -1063,6 +1094,7 @@ test('every proposed location is canonical and bound to a covered sealed replace
         'src/renderer/atlas/AtlasEngine.cpp:1', 'tools/wta/src/unchanged.rs:1',
         'tools\\wta\\src\\master\\mod.rs:1', './tools/wta/src/master/mod.rs:1',
         'tools/wta/src/master/mod.rs:0', 'tools/wta/src/master/mod.rs:01',
+        'tools/wta/src/master/mod.rs:4-11', 'tools/wta/src/master/mod.rs:16-18',
         'tools/wta/src/master/mod.rs:1:2', 'tools/wta/src/master/mod.rs',
     ]) {
         const value = proposal();

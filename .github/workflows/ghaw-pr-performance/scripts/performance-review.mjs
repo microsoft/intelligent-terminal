@@ -202,6 +202,13 @@ function classifyFile(file) {
     };
 }
 
+function canonicalProposedPath(location) {
+    const match = /^([^:]+):([1-9][0-9]*)$/.exec(location);
+    if (!match || match[0] !== location)
+        fail('every proposed finding needs a canonical repository-relative path:line with one positive line number, not a range');
+    return classifyFile({ filename: match[1] }).filename;
+}
+
 export function classifyPullRequest(filesInput, identity) {
     if (!Array.isArray(filesInput)) fail('pull request file input must be an array');
     if (filesInput.length > 3000) fail('pull request file input must contain at most 3000 files');
@@ -248,6 +255,7 @@ export function validateReport(report, expected) {
             fail(`${prefix} has an invalid severity, confidence, dimension, or category`);
         for (const key of ['title', 'affectedScenario', 'location', 'observed', 'expected', 'impact', 'proposedFix', 'validation'])
             requireString(finding[key], `${prefix}.${key}`, 3);
+        if (finding.fixDisposition === 'proposed') canonicalProposedPath(finding.location);
         if (!['windows-x64', 'windows-arm64', 'not-measured'].includes(finding.nativeEnvironment?.architecture))
             fail(`${prefix}.nativeEnvironment.architecture is invalid`);
         requireString(finding.nativeEnvironment.details, `${prefix}.nativeEnvironment.details`, 3);
@@ -562,10 +570,10 @@ export function validateProposal(proposal, expected) {
     if (size > MAX_REPAIR_BLOB_BYTES) fail('repair source content exceeds the transport size limit');
     const covered = new Set();
     for (const finding of proposal.report.findings.filter(finding => finding.fixDisposition === 'proposed')) {
-        const location = /^([^:]+):([1-9][0-9]*)$/.exec(finding.location);
-        if (!location || classifyFile({ filename: location[1] }).role !== 'candidate' || !paths.has(location[1]))
+        const filename = canonicalProposedPath(finding.location);
+        if (classifyFile({ filename }).role !== 'candidate' || !paths.has(filename))
             fail('every proposed finding needs a canonical path:line location in a sealed WTA Rust replacement');
-        covered.add(location[1]);
+        covered.add(filename);
     }
     if ([...paths].some(filename => !covered.has(filename)))
         fail('every replacement file must be covered by a proposed finding');

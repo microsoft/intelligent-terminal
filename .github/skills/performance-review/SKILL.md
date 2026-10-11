@@ -98,6 +98,12 @@ causality. Collapse duplicate warnings for the same underlying defect.
 | Plausible cost with uncertain impact or frequency | MEDIUM/LOW advice with uncertainty and tradeoffs. |
 | Unrelated baseline debt, negligible bounded cost, intentional behavior or false positive | Explain the exclusion in check evidence. |
 
+Proof that work exists is not proof that it merits HIGH repair. Tie its growth,
+blocking or retention to the affected scenario's actual bounds/frequency or
+demonstrated impact. An unnecessary allocation or copy with no such context
+remains MEDIUM/LOW advice, even if its local replacement is obvious. A separate
+HIGH defect in the same file does not authorize editing an advice-only finding.
+
 A source correction is eligible when it is explicitly authorized, HIGH and
 high-confidence, small and localized, behavior-preserving, and supported by
 repository-specific proof and an existing focused native test. Required input

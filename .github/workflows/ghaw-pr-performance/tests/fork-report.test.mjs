@@ -208,7 +208,7 @@ test('inline guide tool captures only fixed summary/report outputs with immutabl
     }
 });
 
-test('repair report tool rejects a missing second location and accepts correction before native handoff', async () => {
+test('repair report tool rejects missing or ranged locations and accepts correction before native handoff', async () => {
     const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
     const script = workflow.match(/    script: \|\n([\s\S]*?)\n\njobs:/)[1]
         .split('\n').map(line => line.slice(6)).join('\n');
@@ -243,6 +243,22 @@ test('repair report tool rejects a missing second location and accepts correctio
         await assert.rejects(module.exports.execute({ report_json: JSON.stringify(value) }),
             /findings\[1\]\.location must be a non-empty string/);
         value.findings[1].location = 'tools/wta/src/lib.rs:16';
+        assert.deepEqual(await validate(JSON.stringify(value)), { status: 'pending_validation', findings: 2 });
+        for (const [first, second] of [['tools/wta/src/lib.rs:4-11', 'tools/wta/src/lib.rs:16'],
+            ['tools/wta/src/lib.rs:4', 'tools/wta/src/lib.rs:16-18'],
+            ['tools/wta/src/lib.rs:4-11', 'tools/wta/src/lib.rs:16-18']]) {
+            const ranged = structuredClone(value);
+            ranged.findings[0].location = first;
+            ranged.findings[1].location = second;
+            await assert.rejects(inline(JSON.stringify(ranged)), /canonical.*one positive line number/);
+            await assert.rejects(module.exports.execute({ report_json: JSON.stringify(ranged) }),
+                /canonical.*one positive line number/);
+        }
+        value.findings[0].location = 'tools/wta/src/lib.rs:4';
+        assert.deepEqual(await validate(JSON.stringify(value)), { status: 'pending_validation', findings: 2 });
+        value.findings[1].severity = 'medium';
+        value.findings[1].fixDisposition = 'advice_only';
+        value.findings[1].location = 'tools/wta/src/lib.rs:16-18';
         assert.deepEqual(await validate(JSON.stringify(value)), { status: 'pending_validation', findings: 2 });
         for (const mutate of [
             r => { r.identity.prNumber++; },

@@ -11,6 +11,14 @@ Submit this version-1 report through `validate_performance_report`. Correct
 field or identity errors before completing the handoff. Each finding needs
 every required field, including its own `location`.
 
+For each `proposed` finding, `location` is one canonical repository-relative
+path with `/` separators followed by `:` and a single positive line number,
+for example `tools/wta/src/master/mod.rs:4`. Do not use ranges (`:4-11`),
+column suffixes, leading-zero line numbers, backslashes or `./` prefixes.
+Use the first relevant line as the anchor; put any additional span in evidence
+or the human summary. Tool acceptance checks this syntax, not sealed-file
+membership or native success; trusted proposal processing still checks those.
+
 ```json
 {
   "version": 1,
