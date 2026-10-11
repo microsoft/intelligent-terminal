@@ -11189,6 +11189,12 @@ async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
     })));
     let state = make_state_with_wt(mock.clone());
     let _capture = crate::wt_protocol_events::capture_test_published_events();
+    let (changes_tx, mut changes) = mpsc::unbounded_channel();
+    state
+        .helper_ext_subscribers
+        .lock()
+        .await
+        .insert(HelperId(1), changes_tx);
 
     let mut row = SessionInfo::new(SessionId::new("copilot-history"), PathBuf::from("C:\\repo"));
     row.provider_id = Some("copilot".to_string());
@@ -11230,11 +11236,52 @@ async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
         restored.pane_session_id.as_deref(),
         Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
     );
+    assert_eq!(restored.status, Some(AgentStatus::Idle));
+    assert!(state
+        .registry
+        .lookup_active_by_pane("old-pane-binding")
+        .await
+        .is_none());
+    let lookup = crate::session_registry::build_source_pane_session_by_pane_request(
+        "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}",
+    );
+    let lookup =
+        crate::session_registry::parse_source_pane_session_by_pane_params(&lookup.params).unwrap();
+    let lookup = handle_source_pane_session_by_pane(&state, &lookup)
+        .await
+        .unwrap();
+    assert_eq!(
+        crate::session_registry::parse_source_pane_session_by_pane_response(&lookup.0)
+            .unwrap()
+            .session_id,
+        Some(params.identity.session_id.clone())
+    );
+    assert!(
+        changes.try_recv().is_ok(),
+        "resume must invalidate subscribed session lists without a hook"
+    );
+    assert!(
+        changes.try_recv().is_err(),
+        "one activation publishes one structural change"
+    );
 
-    let events = crate::wt_protocol_events::take_test_published_events();
+    let events: Vec<serde_json::Value> = crate::wt_protocol_events::take_test_published_events()
+        .into_iter()
+        .map(|event| {
+            serde_json::from_str(&event)
+                .unwrap_or_else(|error| panic!("invalid published event JSON: {error}: {event}"))
+        })
+        .collect();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event["method"] == "session_registry_changed")
+            .count(),
+        1,
+        "Terminal must refresh the resumed tab's known status without a hook"
+    );
     let binding = events
         .iter()
-        .filter_map(|event| serde_json::from_str::<serde_json::Value>(event).ok())
         .find(|event| event["method"] == "pane_agent_session_changed")
         .expect("created pane binding is published to Terminal");
     assert_eq!(binding["params"]["agent"], "copilot");
@@ -11524,6 +11571,23 @@ async fn sidebar_cli_resume_reports_creation_and_focus_failures() {
             }
         );
         assert_eq!(mock.calls().len(), call_count);
+        let events: Vec<serde_json::Value> =
+            crate::wt_protocol_events::take_test_published_events()
+                .into_iter()
+                .map(|event| {
+                    serde_json::from_str(&event).unwrap_or_else(|error| {
+                        panic!("invalid published event JSON: {error}: {event}")
+                    })
+                })
+                .collect();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event["method"] == "session_registry_changed")
+                .count(),
+            usize::from(call_count == 2),
+            "only successful creation and binding publishes metadata, even if focus fails"
+        );
         let row = state.registry.lookup_identity(&identity).await.unwrap();
         if call_count == 2 {
             assert_eq!(
@@ -11757,6 +11821,162 @@ async fn sidebar_cli_resume_updates_only_selected_collision_identity() {
         .expect("colliding row remains registered");
     assert_eq!(other.status, Some(AgentStatus::Historical));
     assert!(other.pane_session_id.is_none());
+    let events: Vec<serde_json::Value> = crate::wt_protocol_events::take_test_published_events()
+        .into_iter()
+        .map(|event| {
+            serde_json::from_str(&event)
+                .unwrap_or_else(|error| panic!("invalid published event JSON: {error}: {event}"))
+        })
+        .collect();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event["method"] == "session_registry_changed")
+            .count(),
+        1,
+        "qualified collisions require structural invalidation, not a raw-ID status delta"
+    );
+    assert!(state.hook_owned.lock().await.is_empty());
+    assert!(state.born_bound.lock().await.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sidebar_cli_resume_accepts_a_matching_hook_binding_without_resetting_activity() {
+    use crate::agent_sessions::{
+        AgentStatus, CliSource, SessionEvent, SessionLocation, SessionOrigin,
+    };
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use std::sync::Mutex as StdMutex;
+    use std::time::Duration;
+
+    let _resolver = mock_native_delegate_executables();
+    struct PausedCreate {
+        entered: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+        focused: StdMutex<Vec<serde_json::Value>>,
+    }
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for PausedCreate {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            if method == "create_tab" {
+                assert_eq!(params["window_id"], 42);
+                self.entered.notify_one();
+                tokio::time::timeout(Duration::from_secs(5), self.release.notified())
+                    .await
+                    .context("test did not release native resume creation")?;
+            } else {
+                assert_eq!(method, "focus_pane");
+                self.focused.lock().unwrap().push(params);
+            }
+            Ok(serde_json::json!({ "session_id": "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}" }))
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    tokio::time::timeout(
+        Duration::from_secs(15),
+        tokio::task::LocalSet::new().run_until(async {
+            for (status, remove_target) in [
+                (AgentStatus::Idle, false),
+                (AgentStatus::Working, false),
+                (AgentStatus::Attention, false),
+                (AgentStatus::Error, false),
+                (AgentStatus::Idle, true),
+            ] {
+                let wt = Arc::new(PausedCreate {
+                    entered: tokio::sync::Notify::new(),
+                    release: tokio::sync::Notify::new(),
+                    focused: StdMutex::new(Vec::new()),
+                });
+                let state = make_state_with_wt(wt.clone());
+                let sid = SessionId::new("hook-wins-resume");
+                let mut row = SessionInfo::new(sid.clone(), "C:\\repo".into());
+                row.provider_id = Some("copilot".into());
+                row.cli_source = Some(CliSource::Copilot);
+                row.location = SessionLocation::Host;
+                row.origin = Some(SessionOrigin::Unknown);
+                row.status = Some(AgentStatus::Historical);
+                let identity = SessionIdentity::from_info(&row);
+                state.registry.upsert(row).await;
+                let params = SessionActivateParams {
+                    identity: identity.clone(),
+                    window_id: 42,
+                    activation_id: "hook-winner".into(),
+                };
+                let caller = tokio::task::spawn_local({
+                    let state = state.clone();
+                    let params = params.clone();
+                    async move { handle_session_activate(&state, &params).await }
+                });
+                tokio::time::timeout(Duration::from_secs(5), wt.entered.notified())
+                    .await
+                    .unwrap();
+                handle_session_hook(
+                    &state,
+                    SessionEvent::SessionStarted {
+                        key: sid.to_string(),
+                        cli_source: CliSource::Copilot,
+                        pane_session_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into(),
+                        cwd: "C:\\repo".into(),
+                        title: "Current native session".into(),
+                    },
+                    false,
+                )
+                .await
+                .unwrap();
+                let mut current = state.registry.lookup_identity(&identity).await.unwrap();
+                current.status = Some(status.clone());
+                current.current_tool = Some("current-tool".into());
+                current.attention_reason = Some("current-attention".into());
+                current.last_error = Some("current-error".into());
+                state.registry.upsert(current.clone()).await;
+                if remove_target {
+                    state.registry.remove_identity(&identity).await;
+                }
+                wt.release.notify_one();
+                let response = caller.await.unwrap().unwrap();
+                let receipt =
+                    crate::session_registry::parse_session_activate_response(&response.0).unwrap();
+                if remove_target {
+                    assert!(
+                        !receipt.accepted,
+                        "a vanished target must not count as a matching binding"
+                    );
+                    assert!(state.registry.lookup_identity(&identity).await.is_none());
+                    assert!(wt.focused.lock().unwrap().is_empty());
+                    continue;
+                }
+                assert!(
+                    receipt.accepted,
+                    "matching hook binding must succeed for {status:?}: {receipt:?}"
+                );
+                assert_eq!(
+                    state.registry.lookup_identity(&identity).await.unwrap(),
+                    current
+                );
+                assert!(state.hook_owned.lock().await.contains(&sid));
+                assert!(!state.born_bound.lock().await.contains(&sid));
+                assert_eq!(
+                    wt.focused.lock().unwrap()[0]["session_id"],
+                    "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+                );
+                let replay = handle_session_activate(&state, &params).await.unwrap();
+                assert_eq!(
+                    crate::session_registry::parse_session_activate_response(&replay.0).unwrap(),
+                    receipt
+                );
+                assert_eq!(wt.focused.lock().unwrap().len(), 1);
+            }
+        }),
+    )
+    .await
+    .expect("hook-winner matrix completes within 15 seconds");
 }
 
 #[tokio::test]

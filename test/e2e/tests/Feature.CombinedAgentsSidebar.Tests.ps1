@@ -460,7 +460,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 $buttons[0]
             }
             function New-CombinedCliFixture {
-                param([string]$Purpose, [string]$SessionId = '', [string]$ResumeSession = '')
+                param([string]$Purpose, [string]$SessionId = '', [string]$ResumeSession = '', [switch]$HoldHook)
                 $sid = if ($ResumeSession) { $ResumeSession } elseif ($SessionId) { $SessionId } else { [guid]::NewGuid().ToString() }
                 $folder = Join-Path $script:evidence "$script:marker-$Purpose"
                 New-Item -ItemType Directory -Path $folder -Force | Out-Null
@@ -474,6 +474,11 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                     ITE2E_SHIM_LOG = $log; ITE2E_SHIM_RUN = $sid; ITE2E_SHIM_WTCLI = $script:app.WtcliPath
                 }
                 if ($ResumeSession) { $config.ITE2E_SHIM_RESUME_SESSION = $ResumeSession }
+                $gate = Join-Path $folder 'release-native-hook'
+                if ($HoldHook) {
+                    $config.ITE2E_SHIM_SESSION_START_GATE = $gate
+                    $config.ITE2E_SHIM_SUPPRESS_TITLE_BEFORE_HOOK = '1'
+                }
                 $header = Join-Path $folder 'config.h'
                 @($config.Keys | ForEach-Object { "#define $_ LR`"ite2e($($config[$_]))ite2e`"" }) |
                     Set-Content -LiteralPath $header -Encoding ascii
@@ -488,7 +493,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($buildScript))
                 (Invoke-Native -FilePath $pwsh -Arguments @('-NoProfile', '-EncodedCommand', $encoded) `
                     -WorkingDirectory $folder -TimeoutSec 60).ExitCode | Should -Be 0
-                [pscustomobject]@{ SessionId = $sid; Folder = $folder; Shim = $shim; Log = $log }
+                [pscustomobject]@{ SessionId = $sid; Folder = $folder; Shim = $shim; Log = $log; Gate = $gate }
             }
             function Send-CombinedCliHook {
                 param($Fixture, [string]$PaneSessionId, [string]$Event)
@@ -499,7 +504,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                     -Environment @{ WT_SESSION = $PaneSessionId; WT_COM_CLSID = $script:app.ComClsid } -TimeoutSec 10).ExitCode | Should -Be 0
             }
             function Register-CombinedUnboundSession {
-                param($Fixture)
+                param($Fixture, [switch]$Stopped)
                 $name = $script:pipe -replace '^\\\\\.\\pipe\\', ''
                 $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', $name, [IO.Pipes.PipeDirection]::InOut,
                     [IO.Pipes.PipeOptions]::Asynchronous)
@@ -522,6 +527,11 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                             pane_session_id = ''; cwd = $Fixture.Folder; title = (Split-Path $Fixture.Folder -Leaf)
                         } }
                     )
+                    if ($Stopped) {
+                        $requests += @{ jsonrpc = '2.0'; id = 3; method = '_intellterm.wta/session_hook'; params = @{
+                            kind = 'SessionStopped'; key = $Fixture.SessionId; reason = 'owned external fixture exited'
+                        } }
+                    }
                     foreach ($request in $requests) {
                         $writer.WriteLine(($request | ConvertTo-Json -Depth 8 -Compress))
                         $clock = [Diagnostics.Stopwatch]::StartNew()
@@ -572,8 +582,11 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 $state = Get-CombinedFilterState
                 if ($state[$entry.Id] -ne $entry.Value) {
                     Invoke-UiClick -App $script:app -Selector FilterTabsButton | Out-Null
-                    $item = Get-CombinedElement $entry.Id
-                    $item.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+                    $item = Wait-Until -TimeoutSec 10 -Because 'the filter menu peer is visible' -Condition {
+                        $peer = Get-CombinedElement $entry.Id
+                        if ($peer -and -not $peer.Current.IsOffscreen) { $peer }
+                    }
+                    $item.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
                 }
             }
             $state = Get-CombinedFilterState
@@ -1018,7 +1031,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             language = 'en-US'; tabLayout = 'vertical'; tabLayoutVerticalWidth = 320
             startupActions = ''; firstWindowPreference = 'defaultProfile'; windowingBehavior = 'useNew'
             acpAgent = 'custom:combined-sidebar-fixture'; acpCustomCommand = $command; acpModel = ''
-            autoFixEnabled = $false; actions = @(); keybindings = @(); 'warning.confirmOnClose' = 'never'
+            autoFixEnabled = $false; 'warning.confirmOnClose' = 'never'
         }
         if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
             throw 'Dev started during preparation; refusing configuration mutation or adoption.'
@@ -1030,7 +1043,6 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         }
         Backup-WtConfig -App $script:target
         $script:ownsConfig = $true
-        Clear-WtConfig -App $script:target
         foreach ($key in $startupState.Keys) {
             Set-WtState -App $script:target -Key $key -Value $startupState[$key] | Out-Null
         }
@@ -1949,6 +1961,146 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                     if (Test-Path $path) { Remove-Item -LiteralPath $path }
                 }
             }
+            }
+        }
+    }
+
+    It 'Native history resume publishes Idle before hooks' -Tag 'KnownNativeResumeMetadata' {
+        $sid = [guid]::NewGuid().ToString()
+        $fixture = New-CombinedCliFixture 'known-resume' -ResumeSession $sid -HoldHook
+        $directory = $env:ITE2E_CANONICAL_SHIM_DIRECTORY
+        if (-not $directory -or -not (Test-Path -LiteralPath $directory -PathType Container)) {
+            throw 'Supply an owned native resolver directory on the test profile PATH.'
+        }
+        $resolver = Join-Path $directory 'copilot.exe'
+        if (Test-Path -LiteralPath $resolver) { throw 'Never replace an existing native executable.' }
+        [IO.File]::Copy($fixture.Shim, $resolver, $false)
+        $resolverHash = (Get-FileHash -LiteralPath $resolver).Hash
+        $external = $null
+        $native = $null
+        $pane = $null
+        $primaryFailure = $null
+        try {
+            $resolvedPath = Join-Path $fixture.Folder 'resolved-native-executable.json'
+            $command = "(Get-Command copilot.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source | ConvertTo-Json | Set-Content -LiteralPath '$($resolvedPath.Replace("'", "''"))'"
+            Invoke-RunCommand -App $script:app -SessionId $script:tabs[0].session_id -Command $command -SettleSec 5 | Out-Null
+            Wait-Until -TimeoutSec 10 -Because 'the owning Terminal shell resolves the copied native fixture before activation' -Condition {
+                Test-Path -LiteralPath $resolvedPath
+            } | Out-Null
+            (Get-Content -LiteralPath $resolvedPath -Raw | ConvertFrom-Json) | Should -Be $resolver
+            $start = [Diagnostics.ProcessStartInfo]::new($fixture.Shim)
+            $start.UseShellExecute = $false
+            $start.CreateNoWindow = $true
+            $start.RedirectStandardInput = $true
+            $start.RedirectStandardOutput = $true
+            $start.RedirectStandardError = $true
+            $start.WorkingDirectory = $fixture.Folder
+            $start.Environment.Remove('WT_SESSION') | Out-Null
+            $start.Environment.Remove('WT_COM_CLSID') | Out-Null
+            $start.ArgumentList.Add('--external-session')
+            $start.ArgumentList.Add($sid)
+            $external = [Diagnostics.Process]::Start($start)
+            $output = $external.StandardOutput.ReadToEndAsync()
+            $errorOutput = $external.StandardError.ReadToEndAsync()
+            Wait-Until -TimeoutSec 15 -Condition { Test-Path -LiteralPath $fixture.Log } | Out-Null
+            $known = Get-Content -LiteralPath $fixture.Log | Select-Object -First 1 | ConvertFrom-Json
+            $known.session_id | Should -Be $sid
+            $known.native_pid | Should -Be $external.Id
+            $known.pane_session_id | Should -BeNullOrEmpty
+            $external.StandardInput.WriteLine('exit')
+            $external.StandardInput.Flush()
+            $external.WaitForExit(10000) | Should -BeTrue
+            Register-CombinedUnboundSession -Fixture $fixture -Stopped
+            (Get-CombinedElement SearchTabsButton).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState |
+                Should -Be ([Windows.Automation.ToggleState]::Off) -Because 'search must not bypass the Agents-only filter'
+            Set-CombinedFilters -AgentsOnly $true -Recent $false
+            $name = $script:pipe -replace '^\\\\\.\\pipe\\', ''
+            $rpc = [IO.Pipes.NamedPipeClientStream]::new('.', $name, [IO.Pipes.PipeDirection]::InOut)
+            $reader = $null
+            $writer = $null
+            try {
+                $rpc.Connect(5000)
+                $reader = [IO.StreamReader]::new($rpc)
+                $writer = [IO.StreamWriter]::new($rpc)
+                $writer.AutoFlush = $true
+                $requests = @(
+                    @{ jsonrpc = '2.0'; id = 1; method = 'initialize'; params = @{
+                        protocolVersion = 1; clientCapabilities = @{}; clientInfo = @{ name = 'known-resume-test'; version = '1' }
+                        _meta = @{ wta = @{ control_client = 'sidebar-history-v1' } }
+                    } },
+                    @{ jsonrpc = '2.0'; id = 2; method = '_intellterm.wta/session/activate'; params = @{
+                        identity = @{ session_id = $sid; history_key = @{ session_id = $sid; provider_id = 'copilot'; location = 'Host' } }
+                        window_id = [long]$script:app.WindowId; activation_id = [guid]::NewGuid().ToString()
+                    } }
+                )
+                foreach ($request in $requests) {
+                    $writer.WriteLine(($request | ConvertTo-Json -Depth 10 -Compress))
+                    $clock = [Diagnostics.Stopwatch]::StartNew()
+                    do {
+                        $read = $reader.ReadLineAsync()
+                        if (-not $read.Wait(15000)) { throw 'Known resume RPC timed out.' }
+                        $response = $read.GetAwaiter().GetResult() | ConvertFrom-Json -ErrorAction Stop
+                        if ($clock.Elapsed.TotalSeconds -gt 20) { throw 'Known resume RPC exceeded its deadline.' }
+                    } while ($response.id -ne $request.id)
+                    if ($response.error) { throw "Known resume RPC failed: $($response.error | ConvertTo-Json -Compress -Depth 8)" }
+                }
+                $response.result.accepted | Should -BeTrue
+            }
+            finally {
+                if ($writer) { $writer.Dispose() }
+                if ($reader) { $reader.Dispose() }
+                $rpc.Dispose()
+            }
+            $waiting = "$($fixture.Gate).waiting-$sid.json"
+            Wait-Until -TimeoutSec 15 -Condition { Test-Path -LiteralPath $waiting } | Out-Null
+            $receipt = Get-Content -LiteralPath $waiting -Raw | ConvertFrom-Json
+            $pane = [string]$receipt.pane_session_id
+            $pane | Should -Not -BeNullOrEmpty
+            $context = Invoke-WtCli -App $script:app -Arguments @('get-pane-context', '--target', $pane)
+            [string]$context.pane.window_id | Should -Be ([string]$script:app.WindowId)
+            $nativePid = (Get-WtPaneStatus -App $script:app -SessionId $pane).pid
+            $native = Get-Process -Id $nativePid -ErrorAction Stop
+            $native.Path | Should -Be $resolver
+            Wait-Until -TimeoutSec 10 -Because 'known metadata is bound before the hook' -Condition {
+                @((Get-CombinedSnapshot).sessions | Where-Object {
+                    $_.session_id -eq $sid -and $_.provider_id -eq 'copilot' -and $_.status -eq 'Idle' -and
+                        ([string]$_.pane_session_id).Trim('{}') -eq $pane.Trim('{}')
+                }).Count -eq 1
+            } | Out-Null
+            $row = Wait-Until -TimeoutSec 10 -Because 'the known native tab remains visible under Agents only' -Condition {
+                $list = Get-CombinedElement ItemsList
+                if ($list) {
+                    $rows = @($list.FindAll([Windows.Automation.TreeScope]::Children, [Windows.Automation.Condition]::TrueCondition) |
+                        Where-Object { -not $_.Current.IsOffscreen -and $_.Current.Name.Contains($receipt.title) })
+                    if ($rows.Count -eq 1) { $rows[0] }
+                }
+            }
+            $row.Current.ProcessId | Should -Be $script:app.Pid
+            $row.Current.Name | Should -Match '\bIdle\b'
+            $row.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, 'HistoryProviderIcon')) |
+                Should -BeNullOrEmpty -Because 'the retained row is the live tab, not a Recent duplicate'
+            Test-Path -LiteralPath "$($fixture.Gate).emitted-$sid.json" | Should -BeFalse
+            @((Get-CombinedSnapshot).sessions | Where-Object session_id -eq $sid) | ConvertTo-Json -Depth 10 |
+                Set-Content -LiteralPath (Join-Path $script:evidence 'known-native-before-hook.json')
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence 'known-native-before-hook.png') | Out-Null
+        }
+        catch { $primaryFailure = $_; throw }
+        finally {
+            Invoke-CombinedCheckedCleanup -PrimaryFailure $primaryFailure -Action {
+                Set-Content -LiteralPath $fixture.Gate -Value 'release for owned cleanup'
+                if ($pane) { Close-WtPane -App $script:app -SessionId $pane }
+                if ($native -and -not $native.WaitForExit(10000)) { throw 'Owned resumed fixture did not exit.' }
+                if ($external -and -not $external.HasExited) {
+                    $external.StandardInput.Close()
+                    if (-not $external.WaitForExit(10000)) { throw 'Owned external fixture did not exit.' }
+                }
+                (Get-FileHash -LiteralPath $resolver).Hash | Should -Be $resolverHash
+                if (@(Get-Process | Where-Object Path -eq $resolver).Count) { throw 'Native fixture is still active; retain it.' }
+                Remove-Item -LiteralPath $resolver
+                foreach ($file in @('copilot.exe', 'copilot.obj')) {
+                    Remove-Item -LiteralPath (Join-Path $fixture.Folder $file) -ErrorAction Stop
+                }
             }
         }
     }
