@@ -396,10 +396,15 @@ export function verifyPullRequest(pr, expected) {
         fail('live PR metadata does not match immutable dispatch inputs');
 }
 
-export function validateVerdict(verdict, expected) {
+function validatedVerdictStatus(verdict, expected) {
     validateIdentity(verdict?.identity, expected);
     if (verdict.version !== 1 || !STATUSES.includes(verdict.status)) fail('worker verdict is malformed');
-    if (['action_required', 'blocked'].includes(verdict.status)) fail(`performance review requires action: ${verdict.status}`);
+    return verdict.status;
+}
+
+export function validateVerdict(verdict, expected) {
+    const status = validatedVerdictStatus(verdict, expected);
+    if (['action_required', 'blocked'].includes(status)) fail(`performance review requires action: ${status}`);
 }
 
 let repositoryRoot;
@@ -821,6 +826,10 @@ async function main() {
             if (option(args, '--print-status', false) === 'true') process.stdout.write(verdict.status);
             break;
         }
+        case 'verdict-status': {
+            process.stdout.write(validatedVerdictStatus(readJson(option(args, '--input')), expected));
+            break;
+        }
         case 'prepare': {
             const scope = prepareScope(expected, option(args, '--output-dir'), option(args, '--baseline', false));
             const safeOutputs = option(args, '--safe-outputs', false);
@@ -886,7 +895,7 @@ async function main() {
             break;
         }
         default:
-            fail('usage: performance-review.mjs verify-pr|prepare|validate|render|gate|validate-proposal|apply-proposal|verdict|fork-report|summary ...');
+            fail('usage: performance-review.mjs verify-pr|prepare|validate|render|gate|validate-proposal|apply-proposal|verdict|verdict-status|fork-report|summary ...');
     }
 }
 

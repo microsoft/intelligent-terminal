@@ -156,6 +156,10 @@ run blocks an older report before check creation, with another freshness read
 before comment mutation. PR concurrency serializes controllers; GitHub comment
 updates themselves do not provide an atomic compare-and-swap operation.
 
+The controller reads an identity-validated verdict status and records it before
+deliberately failing on `action_required` or `blocked`. Invalid identities or
+malformed statuses cannot populate the report output.
+
 An entered fork submission invalidates previous accepted JSON before summary
 capture and validation. The fork safe-output layer is staged, explicitly
 artifact-only, and disables automatic failure/incomplete/noop issue reporting.

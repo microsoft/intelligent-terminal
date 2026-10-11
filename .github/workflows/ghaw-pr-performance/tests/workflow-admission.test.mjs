@@ -265,6 +265,54 @@ test('actual verdict CLI refuses remaining HIGH instead of passing a green worke
     const result = f.run(['verdict', '--input', verdict, ...f.identity]);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /requires action/);
+    for (const status of ['action_required', 'blocked']) {
+        fs.writeFileSync(verdict, JSON.stringify({
+            version: 1, identity: { prNumber: 42, baseSha: f.baseSha, headSha: f.headSha }, status,
+        }));
+        const readStatus = f.run(['verdict-status', '--input', verdict, ...f.identity]);
+        assert.equal(readStatus.status, 0, readStatus.stderr);
+        assert.equal(readStatus.stdout, status);
+        assert.equal(f.run(['verdict', '--input', verdict, ...f.identity]).status, 1,
+            'reading a status does not relax the enforcing validator');
+    }
+    for (const invalid of [
+        { version: 1, identity: { prNumber: 43, baseSha: f.baseSha, headSha: f.headSha }, status: 'blocked' },
+        { version: 1, identity: { prNumber: 42, baseSha: f.baseSha, headSha: f.headSha }, status: 'invented' },
+    ]) {
+        fs.writeFileSync(verdict, JSON.stringify(invalid));
+        const rejected = f.run(['verdict-status', '--input', verdict, ...f.identity]);
+        assert.equal(rejected.status, 1);
+        assert.equal(rejected.stdout, '');
+    }
+});
+
+test('controller records validated blocking status before deliberately failing the domain gate', t => {
+    const f = fixture(t);
+    const controller = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-controller.yml', import.meta.url), 'utf8');
+    const block = controller.match(/name: Enforce domain verdict[\s\S]*?run: \|\r?\n((?: {10}.*(?:\r?\n|$))+)/)?.[1];
+    assert.ok(block);
+    const script = block.replace(/^ {10}/gm, '')
+        .replace('node .github/workflows/ghaw-pr-performance/scripts/performance-review.mjs',
+            `node "${runtime.replaceAll('\\', '/')}"`);
+    const runner = path.join(f.root, 'runner');
+    fs.mkdirSync(path.join(runner, 'performance-result'), { recursive: true });
+    const verdictPath = path.join(runner, 'performance-result', 'performance-verdict.json');
+    const output = path.join(f.root, 'verdict-output');
+    const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
+    for (const status of ['blocked', 'action_required', 'advisory', 'pass', 'invented']) {
+        fs.writeFileSync(verdictPath, JSON.stringify({
+            version: 1, identity: { prNumber: 42, baseSha: f.baseSha, headSha: f.headSha }, status,
+        }));
+        fs.writeFileSync(output, '');
+        const result = spawnSync(bash, [], {
+            cwd: f.repo, input: `gh() { return 0; }\n${script}`, encoding: 'utf8', timeout: 30000,
+            env: { ...process.env, RUNNER_TEMP: runner.replaceAll('\\', '/'),
+                GITHUB_OUTPUT: output.replaceAll('\\', '/'), GITHUB_REPOSITORY: 'owner/repo',
+                RUN_ID: '101', PR_NUMBER: '42', BASE_SHA: f.baseSha, HEAD_SHA: f.headSha },
+        });
+        assert.equal(result.status, ['pass', 'advisory'].includes(status) ? 0 : 1, result.stderr);
+        assert.equal(fs.readFileSync(output, 'utf8'), status === 'invented' ? '' : `status=${status}\n`);
+    }
 });
 
 test('fresh trust seals raw bytes despite malicious clean filter, worktree redirect and replaced runtime blob', t => {

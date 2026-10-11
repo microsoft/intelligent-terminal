@@ -194,10 +194,16 @@ jobs:
           set -euo pipefail
           gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
             --name performance-result --dir "$RUNNER_TEMP/performance-result"
-          status="$(node .github/workflows/ghaw-pr-performance/scripts/performance-review.mjs verdict \
+          status="$(node .github/workflows/ghaw-pr-performance/scripts/performance-review.mjs verdict-status \
             --input "$RUNNER_TEMP/performance-result/performance-verdict.json" \
-            --pr "$PR_NUMBER" --base "$BASE_SHA" --head "$HEAD_SHA" --print-status true)"
+            --pr "$PR_NUMBER" --base "$BASE_SHA" --head "$HEAD_SHA")"
           echo "status=$status" >> "$GITHUB_OUTPUT"
+          case "$status" in
+            action_required|blocked)
+              echo "::error::Performance review requires action: $status"
+              exit 1
+              ;;
+          esac
 
       - name: Download immutable sealed proposal
         if: steps.verdict.outputs.status == 'pending_validation' && github.event.pull_request.head.repo.id == github.repository_id
