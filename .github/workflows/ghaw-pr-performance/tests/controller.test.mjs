@@ -144,6 +144,7 @@ async function reportRun(overrides = {}, markdown, conversation = {}) {
     const commentCalls = [];
     let initialConclusion;
     let summary;
+    let headReads = 0;
     const github = {
         rest: {
             checks: {
@@ -171,7 +172,8 @@ async function reportRun(overrides = {}, markdown, conversation = {}) {
             pulls: {
                 async get(request) {
                     assert.equal(request.pull_number, 42);
-                    return { data: { head: { sha: conversation.currentHead ??
+                    return { data: { head: { sha: conversation.headSequence?.[
+                        Math.min(headReads++, conversation.headSequence.length - 1)] ?? conversation.currentHead ??
                         (overrides.PUBLISHED_HEAD_SHA || overrides.REVIEWED_HEAD_SHA || 'a'.repeat(40)) } } };
                 },
             },
@@ -187,7 +189,9 @@ async function reportRun(overrides = {}, markdown, conversation = {}) {
         summary: { addRaw(value) { summary = value; return this; }, async write() {} } };
     const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-summary-controller-'));
     const nativeRequire = createRequire(import.meta.url);
-    const require = name => name === 'child_process' ? {
+    const require = name => name === 'timers/promises' ? {
+        async setTimeout(milliseconds) { assert.equal(milliseconds, 2000); },
+    } : name === 'child_process' ? {
         execFileSync(command, args) {
             assert.equal(command, 'gh');
             assert.equal(args[2], '101');
@@ -217,8 +221,8 @@ async function reportRun(overrides = {}, markdown, conversation = {}) {
             error = caught;
         }
         assert.equal(reports.length, 1);
-        if (!error) assert.equal(summary, reports[0].output.summary);
-        return { ...reports[0], warnings, commentCalls, initialConclusion, error };
+        if (!error) assert.ok(reports[0].output.summary.endsWith(summary));
+        return { ...reports[0], warnings, commentCalls, initialConclusion, error, headReads };
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
@@ -272,7 +276,31 @@ test('old results do not overwrite the conversation after the PR head moves', as
     });
     assert.equal(report.commentCalls.length, 0);
     assert.match(report.warnings[0], /no longer the PR head/);
-    assert.equal(report.conclusion, 'success', 'the historical head retains its actual validation outcome');
+    assert.equal(report.conclusion, 'action_required', 'undelivered conversation output cannot leave a green check');
+    assert.match(report.output.summary, /Conversation delivery: \*\*skipped/);
+});
+
+test('published repair reporting waits only for the reviewed head to converge to its known commit', async () => {
+    const published = 'b'.repeat(40);
+    const report = await reportRun({ WORKER_RUN_ID: '101', PUBLISHED_HEAD_SHA: published }, 'Repair result.\n', {
+        headSequence: ['a'.repeat(40), 'a'.repeat(40), published],
+    });
+    assert.equal(report.headReads, 3);
+    assert.equal(report.commentCalls.length, 1);
+    assert.equal(report.conclusion, 'success');
+    assert.match(report.output.summary, /Conversation delivery: \*\*completed/);
+});
+
+test('stale propagation times out visibly and a newer head stops the wait immediately', async () => {
+    for (const heads of [['a'.repeat(40)], ['a'.repeat(40), 'c'.repeat(40)]]) {
+        const report = await reportRun({ WORKER_RUN_ID: '101', PUBLISHED_HEAD_SHA: 'b'.repeat(40) }, 'Repair result.\n', {
+            headSequence: heads,
+        });
+        assert.equal(report.headReads, heads.length === 1 ? 6 : 2);
+        assert.equal(report.commentCalls.length, 0);
+        assert.equal(report.conclusion, 'action_required');
+        assert.match(report.output.summary, /Conversation delivery: \*\*skipped/);
+    }
 });
 
 test('failed conversation delivery throws and cannot leave a green check', async () => {

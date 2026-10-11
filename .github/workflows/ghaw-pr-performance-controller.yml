@@ -293,7 +293,7 @@ jobs:
               core.warning("Review summary missing: no correlated worker run; see controller run");
             }
             const head = process.env.PUBLISHED_HEAD_SHA || process.env.REVIEWED_HEAD_SHA;
-            const conclusion = process.env.RUN_OUTCOME === "success" && !summaryDelivered
+            let conclusion = process.env.RUN_OUTCOME === "success" && !summaryDelivered
               ? "action_required" : process.env.RUN_OUTCOME;
             const result = process.env.PUBLISHED_HEAD_SHA ? "fixed" : process.env.REVIEW_STATUS || "see worker report";
             const summary = [
@@ -326,11 +326,20 @@ jobs:
             const existing = comments.find(comment =>
               comment.user?.login === "github-actions[bot]" &&
               comment.body?.startsWith(marker));
-            const { data: currentPr } = await github.rest.pulls.get({
-              ...context.repo, pull_number: Number(process.env.PR_NUMBER)
-            });
+            let currentPr;
+            for (let attempt = 0; attempt < 6; attempt++) {
+              ({ data: currentPr } = await github.rest.pulls.get({
+                ...context.repo, pull_number: Number(process.env.PR_NUMBER)
+              }));
+              if (currentPr.head.sha === head || !process.env.PUBLISHED_HEAD_SHA ||
+                  currentPr.head.sha !== process.env.REVIEWED_HEAD_SHA || attempt === 5) break;
+              await require("timers/promises").setTimeout(2000);
+            }
+            let conversationDelivery = "completed";
             if (currentPr.head.sha !== head) {
               core.warning(`Conversation report skipped: reviewed result ${head} is no longer the PR head.`);
+              conversationDelivery = "skipped: expected head not observed; action required";
+              if (conclusion === "success") conclusion = "action_required";
             } else {
               const body = `${marker}\n## Performance review\n\n${summary.replaceAll("@", "@\u200b")}`;
               if (existing) {
@@ -345,5 +354,5 @@ jobs:
             }
             await github.rest.checks.update({
               ...context.repo, check_run_id: check.id, conclusion,
-              output: { title: "Performance review run report", summary }
+              output: { title: "Performance review run report", summary: `Conversation delivery: **${conversationDelivery}**\n\n${summary}` }
             });

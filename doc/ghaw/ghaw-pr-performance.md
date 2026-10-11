@@ -148,6 +148,9 @@ marked `github-actions[bot]` comment, checks the live head immediately before
 posting, suppresses mentions in that copy, and keeps an otherwise-successful
 check non-green until delivery succeeds. Workers do not combine comment and
 commit operations.
+After a published repair, reporting waits at most ten seconds for PR metadata
+to advance from the reviewed head to that known commit. A different head stops
+the wait immediately; missing delivery stays visible and cannot leave green.
 
 An entered fork submission invalidates previous accepted JSON before summary
 capture and validation. Rejected replacement data therefore cannot reuse an
