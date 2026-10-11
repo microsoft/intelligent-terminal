@@ -356,6 +356,18 @@ test('actual compiled post-agent layout loads helper and Git context only from t
     const checkout = steps.find(step => step.includes('name: Checkout fresh post-agent trust context\n'));
     const gate = steps.find(step => step.includes('id: repair_gate\n'));
     assert.ok(absent && checkout && gate, 'use the actual compiled post-agent steps');
+    assert.match(absent, /id: post_agent_trust_absent/);
+    assert.match(checkout, /id: post_agent_trust/);
+    assert.match(checkout, /if:.*always\(\).*steps\.post_agent_trust_absent\.outcome == 'success'/);
+    for (const name of ['Collect review-time Markdown summary independently of report validation']) {
+        const step = steps.find(value => value.includes(`name: ${name}\n`));
+        assert.ok(step);
+        assert.match(step, /if:.*always\(\).*steps\.post_agent_trust\.outcome == 'success'/);
+    }
+    assert.match(gate, /if:.*success\(\).*steps\.post_agent_trust\.outcome == 'success'/);
+    const card = steps.find(step => step.includes('name: Publish deterministic performance card to job summary\n'));
+    assert.ok(card);
+    assert.match(card, /if:.*always\(\).*steps\.repair_gate\.outcome == 'success'/);
     assert.match(checkout, /path: \.performance-trusted/);
     assert.match(checkout, /repository: \$\{\{ github.event.inputs.repo \}\}/);
     assert.match(checkout, /ref: \$\{\{ github.workflow_sha \}\}/);
@@ -409,4 +421,8 @@ test('actual compiled post-agent layout loads helper and Git context only from t
         fs.readFileSync(path.join(postTrust, f.runtimeRelative)));
     assert.equal(fs.existsSync(sentinel), false);
     assert.equal(execute(extract(absent)).status, 1, 'an agent-created or reused trust directory must fail closed');
+    fs.rmSync(postTrust, { recursive: true, force: true });
+    fs.symlinkSync(f.trust, postTrust, process.platform === 'win32' ? 'junction' : 'dir');
+    assert.equal(execute(extract(absent)).status, 1, 'an agent-created trust link must fail before checkout');
+    fs.unlinkSync(postTrust);
 });

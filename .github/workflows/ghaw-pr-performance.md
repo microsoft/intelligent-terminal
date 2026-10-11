@@ -479,6 +479,7 @@ post-steps:
       }
 
   - name: Require an absent post-agent trusted checkout
+    id: post_agent_trust_absent
     if: always()
     shell: bash
     run: |
@@ -487,7 +488,8 @@ post-steps:
       test ! -L "$GITHUB_WORKSPACE/.performance-trusted"
 
   - name: Checkout fresh post-agent trust context
-    if: always()
+    id: post_agent_trust
+    if: always() && steps.post_agent_trust_absent.outcome == 'success'
     uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     with:
       repository: ${{ github.event.inputs.repo }}
@@ -497,7 +499,7 @@ post-steps:
       path: .performance-trusted
 
   - name: Collect review-time Markdown summary independently of report validation
-    if: always()
+    if: always() && steps.post_agent_trust.outcome == 'success'
     shell: bash
     run: |
       set -euo pipefail
@@ -519,6 +521,7 @@ post-steps:
 
   - name: Validate repair report and changed files
     id: repair_gate
+    if: success() && steps.post_agent_trust.outcome == 'success'
     shell: bash
     env:
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
@@ -552,7 +555,7 @@ post-steps:
       retention-days: 7
 
   - name: Publish deterministic performance card to job summary
-    if: always()
+    if: always() && steps.repair_gate.outcome == 'success'
     shell: bash
     env:
       PR_NUMBER: ${{ github.event.inputs.pr_number }}

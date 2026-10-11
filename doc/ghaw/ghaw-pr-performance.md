@@ -123,6 +123,9 @@ or custom test arrangements; those require a manual handoff.
 It is not a Rust parser or a semantic
 equivalence proof. Source replacements are read and decoded before candidate
 code runs; later mutable proposal/helper files cannot authorize other bytes.
+The post-agent trust checkout runs only after its absent-path guard succeeds;
+summary extraction and sealing require that checkout's success. A preexisting
+trust directory or symlink is rejected before the checkout action touches it.
 
 Native stages enforce physical tracked-source inventories, reject
 untracked/ignored paths and reparse points, and preserve ancestor Cargo
