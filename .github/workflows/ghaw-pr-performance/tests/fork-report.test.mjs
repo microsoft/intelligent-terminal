@@ -147,9 +147,18 @@ test('workflow exposes no model shell/edit route and only fixed read-only GitHub
 test('fork worker cannot publish a comment after its agent-job freshness check', () => {
     const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-fork-guidance.md', import.meta.url), 'utf8');
     const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-fork-guidance.lock.yml', import.meta.url), 'utf8');
-    assert.match(workflow, /safe-outputs: \{\}/);
+    assert.match(workflow, /safe-outputs:\s*\n  staged: true/);
+    assert.match(workflow, /report-failure-as-issue: false/);
     assert.match(workflow, /Then request exactly one `noop`/);
     assert.doesNotMatch(compiled, /add_comment|add-comment|pull-requests: write/);
+    assert.doesNotMatch(compiled, /create_issue|create-issue|contents: write/);
+    const safeJob = compiled.split(/^  safe_outputs:\r?\n/m)[1];
+    assert.ok(safeJob);
+    assert.doesNotMatch(safeJob, /issues: write|pull-requests: write|contents: write/);
+    assert.match(compiled, /GH_AW_SAFE_OUTPUTS_STAGED: ["']?true/);
+    const conclusion = compiled.split(/^  conclusion:\r?\n/m)[1]?.split(/^  detection:\r?\n/m)[0];
+    assert.ok(conclusion);
+    assert.match(conclusion, /&& \(false\)/, 'framework conclusion must not run its issue-writing detection handler');
     assert.match(compiled, /"noop"/);
     assert.match(compiled, /performance-report\.json/);
 });

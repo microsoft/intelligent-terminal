@@ -157,7 +157,15 @@ before comment mutation. PR concurrency serializes controllers; GitHub comment
 updates themselves do not provide an atomic compare-and-swap operation.
 
 An entered fork submission invalidates previous accepted JSON before summary
-capture and validation. Rejected replacement data therefore cannot reuse an
+capture and validation. The fork safe-output layer is staged, explicitly
+artifact-only, and disables automatic failure/incomplete/noop issue reporting.
+An empty output block is not safe: the pinned compiler otherwise injects issue
+creation. Its framework conclusion job still declares issue-write permission;
+its entire conclusion job is explicitly disabled because the pinned detection
+handler can otherwise create tracking issues. Controller reporting and agent
+artifacts remain authoritative for results. This is not a claim that every
+generated job's permission map is read-only.
+Rejected replacement data therefore cannot reuse an
 old report; transport rejection before the handler changes neither artifact.
 
 | Bound | Enforcement |

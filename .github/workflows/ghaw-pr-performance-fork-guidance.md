@@ -80,6 +80,8 @@ mcp-scripts:
       return { renderedCard: runtime.renderReport(report) };
 
 jobs:
+  conclusion:
+    if: 'false'
   prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -194,7 +196,20 @@ pre-agent-steps:
         --safe-outputs "$GH_AW_SAFE_OUTPUTS" \
         --pr "$PR_NUMBER" --base "$BASE_SHA" --head "$HEAD_SHA"
 
-safe-outputs: {}
+safe-outputs:
+  staged: true
+  report-failure-as-issue: false
+  report-incomplete:
+    create-issue: false
+  noop:
+    report-as-issue: false
+  missing-tool: false
+  missing-data: false
+  upload-artifact:
+    allowed-paths:
+      - /tmp/gh-aw/performance-report.json
+      - /tmp/gh-aw/.performance-summary.md
+    retention-days: 7
 
 post-steps:
   - name: Upload review-time Markdown summary
