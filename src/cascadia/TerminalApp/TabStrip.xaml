@@ -511,10 +511,20 @@
                               ContextFlyout="{x:Bind ContextFlyout, Mode=OneWay}"
                               CornerRadius="{StaticResource SidebarTabCornerRadius}"
                               DoubleTapped="OnTabHeaderDoubleTapped"
+                              GotFocus="OnTabHeaderGotFocus"
                               Loaded="OnTabHeaderLoaded"
+                              PointerEntered="OnTabHeaderPointerEntered"
                               PointerPressed="OnTabHeaderPointerPressed"
-                              Tapped="OnTabHeaderTapped"
-                              ToolTipService.ToolTip="{x:Bind ToolTipText, Mode=OneWay}">
+                              SizeChanged="OnTabHeaderSizeChanged"
+                              Tapped="OnTabHeaderTapped">
+                            <ToolTipService.ToolTip>
+                                <ToolTip AutomationProperties.Name="{x:Bind ToolTipText, Mode=OneWay}"
+                                         FlowDirection="LeftToRight">
+                                    <TextBlock FlowDirection="{Binding FlowDirection, ElementName=TabHeaderGrid, Mode=OneWay}"
+                                               Text="{x:Bind ToolTipText, Mode=OneWay}"
+                                               TextWrapping="Wrap" />
+                                </ToolTip>
+                            </ToolTipService.ToolTip>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
