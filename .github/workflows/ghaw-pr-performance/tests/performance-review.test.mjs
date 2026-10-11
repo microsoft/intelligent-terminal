@@ -64,6 +64,28 @@ test('trusted repository policy checks CI pin, analysis alias and owning recipes
         write('.cargo/config.toml', changedAlias);
         assert.throws(() => verifyRepositoryPolicy(root), /no longer covers the planned crate, target and all targets/);
     }
+    const baseCommand = JSON.parse(/^wta-perf\s*=\s*(\[[^\r\n]+\])$/m.exec(aliases)[1]);
+    const extension = JSON.parse(/^wta-perf-extended\s*=\s*(\[[^\r\n]+\])$/m.exec(aliases)[1]).slice(1);
+    const command = [...baseCommand, ...extension];
+    const writeCommand = args => write('.cargo/config.toml', `[alias]\nwta-perf-extended = ${JSON.stringify(args)}\n`);
+    for (let index = 0; index < command.length; index++) {
+        const args = command.filter((_, position) => position !== index);
+        writeCommand(args);
+        assert.throws(() => verifyRepositoryPolicy(root), /alias no longer/, `removed ${command[index]}`);
+    }
+    for (const args of [
+        command.slice(0, command.indexOf('--frozen')),
+        [...command, '-A', 'clippy::needless_collect'],
+        command.map(arg => arg === '--message-format=json' ? '--message-format=short' : arg),
+        command.map(arg => arg === 'clippy::large_futures' ? 'clippy::all' : arg),
+        [...command.slice(0, 9), ...command.slice(11, 13), ...command.slice(9, 11), ...command.slice(13)],
+        [...command.slice(0, 1), ...command.slice(5, 6), ...command.slice(1, 5), ...command.slice(6)],
+    ]) {
+        writeCommand(args);
+        assert.throws(() => verifyRepositoryPolicy(root), /alias no longer/);
+    }
+    writeCommand(command.map(arg => arg.replaceAll('\\', '/')));
+    assert.deepEqual(verifyRepositoryPolicy(root), expected, 'equivalent manifest separators are accepted');
     write('.cargo/config.toml', aliases);
     fs.unlinkSync(path.join(root, 'src', 'renderer', 'atlas', 'atlas.vcxproj'));
     assert.throws(() => verifyRepositoryPolicy(root), /owning-project recipe is stale/);

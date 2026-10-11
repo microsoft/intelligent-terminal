@@ -9,6 +9,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const RUST_TOOLCHAIN = '1.93.0';
+const WTA_ANALYSIS_COMMAND = [
+    'clippy', '--target', 'x86_64-pc-windows-msvc', '--manifest-path', 'tools/wta/Cargo.toml',
+    '--all-targets', '--frozen', '--message-format=json', '--',
+    '-W', 'clippy::vec_init_then_push', '-W', 'clippy::slow_vector_initialization',
+    '-W', 'clippy::await_holding_lock', '-W', 'clippy::needless_collect', '-W', 'clippy::large_futures',
+];
 const MAX_REPAIR_FILES = 3;
 const MAX_REPAIR_LINES = 100;
 const MAX_REPAIR_DIFF_BYTES = 16 * 1024;
@@ -74,6 +80,8 @@ export function verifyRepositoryPolicy(root) {
         argument('--target') !== 'x86_64-pc-windows-msvc' ||
         argument('--manifest-path')?.replaceAll('\\', '/') !== 'tools/wta/Cargo.toml')
         fail('Native WTA analysis alias no longer covers the planned crate, target and all targets; update its workflow binding.');
+    if (JSON.stringify(command.map(value => value.replaceAll('\\', '/'))) !== JSON.stringify(WTA_ANALYSIS_COMMAND))
+        fail('Native WTA analysis alias no longer matches the complete frozen JSON performance profile; update its workflow binding.');
     return { rustToolchain: RUST_TOOLCHAIN, cppRecipes: CPP_PROJECTS.length };
 }
 

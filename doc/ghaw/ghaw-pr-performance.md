@@ -46,6 +46,10 @@ analysis alias and the declared C++ owning projects before review. The public
 Rust backend must match the CI language/library version. A changed CI pin,
 missing alias or stale project recipe produces an explicit failure requiring
 the binding to be updated, rather than silently using old coverage.
+The fully expanded Rust command must match the pinned ordered profile,
+including `--frozen`, JSON diagnostics, the `--` separator and all five lint
+flags. Removing, reordering or overriding arguments requires an explicit
+binding update; equivalent manifest-path separators remain accepted.
 
 New/unmapped `src` source paths remain review candidates with manual scope.
 Project prefixes select possible owners, while evaluated native MSBuild
