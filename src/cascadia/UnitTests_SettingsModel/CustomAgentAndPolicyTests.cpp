@@ -56,6 +56,7 @@ namespace SettingsModelUnitTests
         // Round-trip tests
         TEST_METHOD(CustomAcpAgentRoundtrips);
         TEST_METHOD(AgentProfileSettingsRoundtrip);
+        TEST_METHOD(AgentProfileAntigravitySettingsRoundtrip);
         TEST_METHOD(AgentProfileCommandQuoting);
         TEST_METHOD(AgentProfileNativeCommands);
         TEST_METHOD(AgentProfileArgumentValidation);
@@ -443,12 +444,36 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(std::wstring{ LR"(C:\source tree)" }, std::wstring{ argv[6] });
     }
 
+    void CustomAgentAndPolicyTests::AgentProfileAntigravitySettingsRoundtrip()
+    {
+        Json::Value json{ Json::objectValue };
+        json["agentProfile.id"] = "antigravity";
+        json["agentProfile.model"] = "chosen-model";
+        json["agentProfile.permissionMode"] = "plan";
+        json["agentProfile.arguments"] = "--conversation \"session id\"";
+        const auto profile = implementation::Profile::FromJson(json);
+        const auto copied = profile->CopySettings();
+        const auto restored = implementation::Profile::FromJson(copied->ToJson());
+        VERIFY_ARE_EQUAL(profile->AgentProfileId(), restored->AgentProfileId());
+        VERIFY_ARE_EQUAL(profile->AgentProfileModel(), restored->AgentProfileModel());
+        VERIFY_ARE_EQUAL(profile->AgentProfilePermissionMode(), restored->AgentProfilePermissionMode());
+        VERIFY_ARE_EQUAL(profile->AgentProfileArguments(), restored->AgentProfileArguments());
+        VERIFY_IS_TRUE(::Microsoft::Terminal::AgentProfiles::IsManaged(*restored));
+        VERIFY_ARE_EQUAL(std::wstring{ L"\"agy.exe\" \"--model\" \"chosen-model\" \"--mode\" \"plan\" \"--conversation\" \"session id\"" },
+                         ::Microsoft::Terminal::AgentProfiles::Command(*restored, false, L""));
+        restored->Commandline(L"agy --model edited");
+        VERIFY_IS_FALSE(::Microsoft::Terminal::AgentProfiles::IsManaged(*restored));
+        restored->ClearCommandline();
+        VERIFY_IS_TRUE(::Microsoft::Terminal::AgentProfiles::IsManaged(*restored));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"chosen-model" }, profile->AgentProfileModel());
+    }
+
     void CustomAgentAndPolicyTests::AgentProfileNativeCommands()
     {
         namespace Agents = ::Microsoft::Terminal::AgentProfiles;
         for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinNativeProfileAgents)
         {
-            const auto executable = L"C:\\Native Tools\\" + std::wstring{ agent.id } + L".exe";
+            const auto executable = L"C:\\Native Tools\\" + std::wstring{ agent.cliExecutable } + L".exe";
             VERIFY_ARE_EQUAL(L"\"" + executable + L"\"", Agents::BuildCommand(executable, agent.id, {}, {}, {}));
             const auto args = Agents::ParseArguments(Agents::BuildCommand(executable, agent.id, L"provider/model", {}, L"--version"));
             VERIFY_ARE_EQUAL(size_t{ 4 }, args.size());
@@ -462,7 +487,9 @@ namespace SettingsModelUnitTests
                  std::tuple{ L"claude", L"plan", L"--permission-mode" },
                  std::tuple{ L"codex", L"on-request", L"--ask-for-approval" },
                  std::tuple{ L"gemini", L"auto_edit", L"--approval-mode" },
-                 std::tuple{ L"opencode", L"auto", L"--auto" } })
+                 std::tuple{ L"opencode", L"auto", L"--auto" },
+                 std::tuple{ L"antigravity", L"accept-edits", L"--mode" },
+                 std::tuple{ L"antigravity", L"plan", L"--mode" } })
         {
             const auto args = Agents::ParseArguments(Agents::BuildCommand(L"C:\\agent.exe", id, {}, mode, {}));
             VERIFY_ARE_EQUAL(std::wstring{ flag }, args[1]);
@@ -485,6 +512,22 @@ namespace SettingsModelUnitTests
         VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", {}, {}, L"--add-dir %USERPROFILE%"), wil::ResultException);
         VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.cmd", L"claude", L"embedded\"quote", {}, {}), wil::ResultException);
         VERIFY_THROWS(Agents::BuildCommand(L"C:\\agent.exe", L"custom:claude", {}, {}, {}), wil::ResultException);
+        const auto antigravity = Agents::ParseArguments(Agents::BuildCommand(
+            L"C:\\agy.exe", L"antigravity", L"chosen-model", L"plan",
+            LR"(--conversation "session id" --add-dir "C:\source tree" --prompt-interactive "Explain this project" --continue)"));
+        VERIFY_ARE_EQUAL(size_t{ 12 }, antigravity.size());
+        VERIFY_ARE_EQUAL(std::wstring{ L"--mode" }, antigravity[3]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"plan" }, antigravity[4]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"session id" }, antigravity[6]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\source tree" }, antigravity[8]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Explain this project" }, antigravity[10]);
+        for (const auto arguments : { L"--conversation", L"--conversation=--model", L"--resume session",
+                                     L"--mode plan", L"--dangerously-skip-permissions", L"--print prompt",
+                                     L"--model other", L"--add-dir --model" })
+        {
+            VERIFY_THROWS(Agents::BuildCommand(L"C:\\agy.exe", L"antigravity", {}, {}, arguments), wil::ResultException);
+        }
+        VERIFY_THROWS(Agents::BuildCommand(L"C:\\agy.exe", L"antigravity", {}, L"yolo", {}), wil::ResultException);
     }
 
     void CustomAgentAndPolicyTests::AgentProfileDiscoveryLifecycle()
@@ -505,6 +548,12 @@ namespace SettingsModelUnitTests
         std::ofstream{ early / L"antigravity.exe" }.put('\n');
         std::ofstream{ early / L"agy.exe" }.put('\n');
         const auto path = early.native() + L";" + late.native();
+        VERIFY_ARE_EQUAL((early / L"agy.exe").native(), Agents::Discover(path).at(L"antigravity").native());
+        std::filesystem::remove(early / L"agy.exe");
+        std::ofstream{ early / L"agy.cmd" }.put('\n');
+        std::ofstream{ early / L"agy_acp_server.exe" }.put('\n');
+        std::ofstream{ early / L"localharness_external.exe" }.put('\n');
+        VERIFY_IS_TRUE(Agents::ResolveExecutable(L"antigravity", path).empty());
         VERIFY_ARE_EQUAL(exe.native(), Agents::Discover(path).at(L"claude").native());
         std::filesystem::remove(exe);
         VERIFY_ARE_EQUAL(shim.native(), Agents::Discover(path).at(L"claude").native());
@@ -513,6 +562,8 @@ namespace SettingsModelUnitTests
         std::ofstream{ shim }.put('\n');
         VERIFY_ARE_EQUAL(shim.native(), Agents::Discover(path).at(L"claude").native());
         VERIFY_IS_TRUE(Agents::Discover(L"").empty());
+        std::ofstream{ late / L"agy.exe" }.put('\n');
+        VERIFY_ARE_EQUAL((late / L"agy.exe").native(), Agents::Discover(path).at(L"antigravity").native());
     }
 
     void CustomAgentAndPolicyTests::AgentProfileDiscoveryCacheLifecycle()
@@ -563,26 +614,31 @@ namespace SettingsModelUnitTests
     void CustomAgentAndPolicyTests::AgentProfileNativeAllowlist()
     {
         namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
-        VERIFY_ARE_EQUAL(size_t{ 5 }, Registry::BuiltinNativeProfileAgents.size());
+        VERIFY_ARE_EQUAL(size_t{ 6 }, Registry::BuiltinNativeProfileAgents.size());
         VERIFY_IS_TRUE(Registry::CanonicalNativeAgentProviderId(L"antigravity") == L"antigravity");
         VERIFY_IS_TRUE(Registry::CanonicalNativeAgentProviderId(L"ANTIGRAVITY") == L"antigravity");
-        VERIFY_IS_FALSE(Registry::SupportsNativeProfile(L"antigravity"));
+        VERIFY_IS_TRUE(Registry::SupportsNativeProfile(L"antigravity"));
+        VERIFY_IS_TRUE(Registry::CliExecutable(L"antigravity") == L"agy");
         VERIFY_IS_TRUE(std::ranges::any_of(Registry::BuiltinAcpAgents, [](const auto& agent) { return agent.id == L"antigravity"; }));
         VERIFY_IS_TRUE(std::ranges::any_of(Registry::BuiltinDelegateAgents, [](const auto& agent) { return agent.id == L"antigravity"; }));
-        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::BuildCommand(L"C:\\agy.exe", L"antigravity", {}, {}, {}), wil::ResultException);
-        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::BuildCommand(L"C:\\agy.exe", L"antigravity", {}, {}, {}, false), wil::ResultException);
+        VERIFY_ARE_EQUAL(std::wstring{ L"\"C:\\agy.exe\"" },
+                         ::Microsoft::Terminal::AgentProfiles::BuildCommand(L"C:\\agy.exe", L"antigravity", {}, {}, {}));
         auto profile = winrt::make_self<implementation::Profile>();
         profile->AgentProfileId(L"antigravity");
-        VERIFY_IS_FALSE(::Microsoft::Terminal::AgentProfiles::IsManaged(*profile));
-        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::Command(*profile, false, L""), wil::ResultException);
+        VERIFY_IS_TRUE(::Microsoft::Terminal::AgentProfiles::IsManaged(*profile));
+        VERIFY_ARE_EQUAL(std::wstring{ L"\"agy.exe\"" }, ::Microsoft::Terminal::AgentProfiles::Command(*profile, false, L""));
         VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::Command(*profile, true, L""), wil::ResultException);
         AgentPolicy::PolicySnapshot policy;
         VERIFY_IS_TRUE(Registry::IsNativeAgentProviderAllowed(L"antigravity", policy));
-        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(L"antigravity", policy), wil::ResultException);
+        ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(L"antigravity", policy);
         policy.allowedAgents.emplace();
         VERIFY_IS_FALSE(Registry::IsNativeAgentProviderAllowed(L"antigravity", policy));
+        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(L"antigravity", policy), wil::ResultException);
         policy.allowedAgents->insert(L"antigravity");
         VERIFY_IS_TRUE(Registry::IsNativeAgentProviderAllowed(L"ANTIGRAVITY", policy));
+        ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(L"antigravity", policy);
+        policy.yoloMode = AgentPolicy::PolicyState::Blocked;
+        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(L"antigravity", policy), wil::ResultException);
     }
 
     void CustomAgentAndPolicyTests::AgentProfileUninstallPreservesOverrides()

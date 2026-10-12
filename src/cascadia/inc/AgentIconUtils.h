@@ -10,7 +10,7 @@ namespace Microsoft::Terminal
     {
         const auto uri = source.UriSource().AbsoluteUri();
         winrt::hstring originalPath;
-        for (const auto provider : { L"copilot", L"claude", L"codex", L"opencode" })
+        for (const auto provider : { L"copilot", L"claude", L"codex", L"opencode", L"antigravity" })
         {
             const auto path = winrt::hstring{ L"ms-appx:///AgentIcons/" } + provider;
             if (uri == path + L".svg" || uri == path + L"-light.svg")

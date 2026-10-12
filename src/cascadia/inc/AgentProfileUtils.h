@@ -33,8 +33,13 @@ namespace Microsoft::Terminal::AgentProfiles
 
     inline std::filesystem::path ResolveExecutable(const std::wstring_view id, const std::wstring_view path)
     {
+        const auto executable = Settings::Model::AgentRegistry::CliExecutable(id);
         for (const auto extension : { L".exe", L".cmd" })
         {
+            if (id == L"antigravity" && std::wstring_view{ extension } == L".cmd")
+            {
+                continue;
+            }
             size_t start = 0;
             while (start < path.size())
             {
@@ -46,7 +51,7 @@ namespace Microsoft::Terminal::AgentProfiles
                 }
                 if (!directory.empty())
                 {
-                    const auto candidate = std::filesystem::path{ directory } / (std::wstring{ id } + extension);
+                    const auto candidate = std::filesystem::path{ directory } / (std::wstring{ executable } + extension);
                     if (std::filesystem::is_regular_file(candidate))
                     {
                         return std::filesystem::absolute(candidate);
@@ -101,13 +106,14 @@ namespace Microsoft::Terminal::AgentProfiles
             const auto equals = argument.find(L'=');
             const auto flag = argument.substr(0, equals);
             const auto takesValue =
-                ((id == L"claude" || id == L"copilot" || id == L"codex") && flag == L"--add-dir") ||
+                ((id == L"claude" || id == L"copilot" || id == L"codex" || id == L"antigravity") && flag == L"--add-dir") ||
                 (id == L"claude" && flag == L"--resume") ||
                 (id == L"gemini" && (flag == L"--resume" || flag == L"--prompt-interactive")) ||
-                (id == L"opencode" && (flag == L"--session" || flag == L"--prompt"));
+                (id == L"opencode" && (flag == L"--session" || flag == L"--prompt")) ||
+                (id == L"antigravity" && (flag == L"--conversation" || flag == L"--prompt-interactive"));
             const auto standalone = flag == L"--help" || flag == L"--version" ||
                                     (id == L"copilot" && flag == L"--resume") ||
-                                    ((id == L"copilot" || id == L"claude" || id == L"opencode") && flag == L"--continue") ||
+                                    ((id == L"copilot" || id == L"claude" || id == L"opencode" || id == L"antigravity") && flag == L"--continue") ||
                                     (id == L"codex" && flag == L"--no-alt-screen");
             THROW_HR_IF_MSG(E_INVALIDARG, !(takesValue || standalone), "Unsupported or conflicting native agent argument");
             if (takesValue)
@@ -161,9 +167,10 @@ namespace Microsoft::Terminal::AgentProfiles
                                         permissionMode == L"bypassPermissions" || permissionMode == L"manual" ||
                                         permissionMode == L"dontAsk" || permissionMode == L"plan")) ||
                     (id == L"codex" && (permissionMode == L"untrusted" || permissionMode == L"on-request" || permissionMode == L"never")) ||
-                    (id == L"gemini" && (permissionMode == L"default" || permissionMode == L"auto_edit" || permissionMode == L"yolo" || permissionMode == L"plan"));
+                    (id == L"gemini" && (permissionMode == L"default" || permissionMode == L"auto_edit" || permissionMode == L"yolo" || permissionMode == L"plan")) ||
+                    (id == L"antigravity" && (permissionMode == L"accept-edits" || permissionMode == L"plan"));
                 THROW_HR_IF(E_INVALIDARG, validate && !valid);
-                const auto flag = id == L"claude" ? L"--permission-mode" : id == L"codex" ? L"--ask-for-approval" : L"--approval-mode";
+                const auto flag = id == L"claude" ? L"--permission-mode" : id == L"codex" ? L"--ask-for-approval" : id == L"antigravity" ? L"--mode" : L"--approval-mode";
                 values.insert(values.begin(), { flag, std::wstring{ permissionMode } });
             }
         }
@@ -249,7 +256,7 @@ namespace Microsoft::Terminal::AgentProfiles
         {
             THROW_HR_IF_MSG(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), requireExecutable, "Native agent executable is unavailable");
             // Orphaned profiles must remain editable without an installed CLI.
-            executable = std::wstring{ std::wstring_view{ profile.AgentProfileId() } } + L".exe";
+            executable = std::wstring{ Settings::Model::AgentRegistry::CliExecutable(std::wstring_view{ profile.AgentProfileId() }) } + L".exe";
         }
         return BuildCommand(executable.native(), profile.AgentProfileId(), profile.AgentProfileModel(),
                             profile.AgentProfilePermissionMode(), profile.AgentProfileArguments(), requireExecutable);

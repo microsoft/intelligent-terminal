@@ -11,6 +11,20 @@ Describe 'Native agent profile settings layout' -Tag 'Unit' {
         $advancedCode = Get-Content -LiteralPath (Join-Path $editorRoot 'Profiles_Advanced.cpp') -Raw
     }
 
+    It 'keeps native profile schema identifiers synchronized with the registry' {
+        $registry = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\inc\AgentRegistry.h') -Raw
+        $nativeProfiles = [regex]::Match($registry, '(?s)BuiltinNativeProfileAgents\{\s*\{(?<entries>.*?)\}\s*\};')
+        $nativeProfiles.Success | Should -BeTrue
+        $ids = @([regex]::Matches($nativeProfiles.Groups['entries'].Value, '\{\s*L"([^"]+)"') |
+            ForEach-Object { $_.Groups[1].Value } | Sort-Object)
+        $ids.Count | Should -BeGreaterThan 0
+        $schema = Get-Content -LiteralPath (Join-Path $repoRoot 'doc\cascadia\profiles.schema.json') -Raw | ConvertFrom-Json
+        $enum = @($schema.'$defs'.Profile.properties.'agentProfile.id'.enum)
+        $enum | Should -Contain ''
+        ($enum | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object) -join ',' |
+            Should -BeExactly ($ids -join ',')
+    }
+
     It 'keeps auxiliary assistant selectors only on the shell base page' {
         foreach ($name in @('AgentPaneBackend', 'CommandPaletteAgent')) {
             $baseControls = @($base.SelectNodes('//*') | Where-Object {

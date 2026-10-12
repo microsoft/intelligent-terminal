@@ -80,6 +80,7 @@ wta launch-agent --agent-id copilot
 wta launch-agent --agent-id claude --model sonnet --permission-mode plan
 wta launch-agent --agent-id codex --permission-mode untrusted -- --no-alt-screen
 wta launch-agent --agent-id gemini -- --prompt-interactive "Explain this project"
+wta launch-agent --agent-id antigravity -- --conversation "conversation-id"
 ```
 
 `launch-agent` is a thin inherited-console launcher, **not** the ACP agent pane.
@@ -101,7 +102,7 @@ wta launch-agent --agent-id <id> [--model <value>] [--permission-mode <value>] [
 Only the canonical IDs below are accepted. Omitted or empty model/permission
 values mean **no override**: provider defaults, configuration and environment
 remain authoritative. This is not a universal “safe”, “read-only” or
-automatic-approval setting. There is no theme override. All five providers map
+automatic-approval setting. There is no theme override. All six providers map
 `--model` to their native `--model` flag; OpenCode expects `provider/model`.
 
 | Agent ID | Permission values | Native mapping |
@@ -111,11 +112,14 @@ automatic-approval setting. There is no theme override. All five providers map
 | `codex` | `untrusted`, `on-request`, `never` | `--ask-for-approval <value>`; does not override the sandbox |
 | `gemini` | `default`, `auto_edit`, `yolo`, `plan` | `--approval-mode <value>` |
 | `opencode` | `auto` | `--auto` |
+| `antigravity` | `accept-edits`, `plan` | `--mode <value>` |
 
 These flags were verified against installed native `--help` output on
 2026-09-24 (Copilot 1.0.88, Claude Code 2.1.218, Codex 0.146.1, Gemini 0.38.1,
 OpenCode 1.17.18). Older CLI versions may reject newer native modes; WTA preserves that
 failure rather than silently choosing a different mode.
+Antigravity's native flags were verified against `agy 1.3.3 --help` on
+2026-10-12. Discovery uses `agy.exe`, not the provider ID or the separate ACP server.
 
 Additional arguments are argv elements, not a shell command. The launcher
 rejects unreviewed flags, subcommands, short-option clusters and conflicting
@@ -130,6 +134,7 @@ widen permissions. Supported extras:
 | Codex | `--no-alt-screen`, `--add-dir <directory>` |
 | Gemini | `--resume <session>`, `--prompt-interactive <prompt>` |
 | OpenCode | `--continue`, `--session <session>`, `--prompt <prompt>` |
+| Antigravity | `--continue`, `--conversation <session>`, `--add-dir <directory>`, `--prompt-interactive <prompt>` |
 
 Named values also accept `--flag=value`. Values beginning with `-` are rejected.
 For `.cmd` shims, expansion characters (`%`, `!`, `^`), embedded quotes and
@@ -162,7 +167,8 @@ paths and no authentication/model probe:
 The list follows built-in registry order and contains only installed,
 policy-allowed Windows CLIs. It uses WTA's fresh registry-plus-process PATH and
 the existing per-agent extension search order (`.exe`, then `.cmd`), including
-Claude's native npm shim. It does **not** require ACP adapters or npx, and does
+Claude's native npm shim; Antigravity accepts only its official `agy.exe`,
+not an `agy.cmd` shim. It does **not** require ACP adapters or npx, and does
 not inspect WSL. An empty successful list means no matching native executables;
 nonzero exit with stderr means discovery is unknown/failed, not unavailable.
 `launch-agent` resolves the executable afresh on each launch. The existing

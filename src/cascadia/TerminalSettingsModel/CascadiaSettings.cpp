@@ -852,7 +852,7 @@ Model::Profile CascadiaSettings::GetProfileForArgs(const Model::NewTerminalArgs&
                     restored->AgentProfileId(winrt::hstring{ identity });
                     const auto generated = winrt::make_self<Profile>();
                     generated->Origin(OriginTag::Generated);
-                    generated->Commandline(winrt::hstring{ std::wstring{ identity } + L".exe" });
+                    generated->Commandline(winrt::hstring{ std::wstring{ Registry::CliExecutable(identity) } + L".exe" });
                     restored->AddMostImportantParent(generated);
                     return *restored;
                 }

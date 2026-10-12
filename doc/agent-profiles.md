@@ -6,15 +6,22 @@ alongside shell profiles, with each provider's own icon. No agent folder is
 created. These profiles can be edited, copied, hidden, launched in tabs
 or panes, and selected with `wt -p`, just like a shell profile.
 
-The initial providers are GitHub Copilot, Claude, Codex, Gemini, and OpenCode.
+The supported providers are GitHub Copilot, Claude, Codex, Gemini, OpenCode,
+and Google Antigravity.
 WSL installations and arbitrary custom agents are not automatically generated.
 Native profile discovery uses this dedicated provider list, not the broader
 ACP or delegation provider registry.
 Discovery does not install software, sign in, or start an ACP server. Native CLI
 availability is independent of the adapters needed by the built-in agent pane.
 
+Antigravity profiles discover the interactive `agy.exe` installed by the
+[official CLI installer](https://antigravity.google/docs/cli/install), not an
+`antigravity.exe` or the separate `agy_acp_server.exe`. The profile's stable
+provider ID is `antigravity`. An ACP-only installation does not generate a
+native profile; an `agy` installation does not need the ACP server to do so.
+
 The generated profile icons use transparent SVG artwork. Copilot, Claude,
-Codex, and OpenCode use dark artwork on light surfaces and their original
+Codex, OpenCode, and Antigravity use dark artwork on light surfaces and their original
 artwork on dark surfaces. Menus render the artwork without foreground tinting,
 including hover and pressed states. Gemini and custom SVG icons retain their
 original colors.
@@ -61,6 +68,9 @@ Unsupported modes and conflicting arguments produce startup errors.
 The profile editor exposes model and additional startup arguments, but does not
 include a permission-mode selector. Configure approvals through the native CLI;
 existing `agentProfile.permissionMode` JSON values remain supported.
+For Antigravity, `accept-edits` and `plan` map to `agy --mode`; an empty value
+preserves the CLI's configured default. The managed launcher does not accept
+`--dangerously-skip-permissions` as an additional argument.
 The agent profile's Advanced page exposes only close-on-exit behavior and
 environment-variable refresh. It omits the separate ACP agent-pane and
 command-palette delegation selectors and the other terminal fine-tuning

@@ -15,7 +15,7 @@ fn native_profiles() -> impl Iterator<Item = &'static AgentProfile> {
     KNOWN_AGENTS.iter().filter(|profile| {
         matches!(
             profile.id,
-            "copilot" | "claude" | "codex" | "gemini" | "opencode"
+            "copilot" | "claude" | "codex" | "gemini" | "opencode" | "antigravity"
         )
     })
 }
@@ -38,7 +38,7 @@ fn find_in_path(
         for directory in
             std::env::split_paths(path).filter(|directory| !directory.as_os_str().is_empty())
         {
-            let candidate = directory.join(format!("{}{extension}", profile.id));
+            let candidate = directory.join(format!("{}{extension}", profile.cli_executable));
             if is_file(&candidate).context("cannot inspect native agent executable")? {
                 return Ok(Some(candidate));
             }
@@ -98,6 +98,7 @@ fn permission_args(id: &str, mode: &str) -> Result<Vec<String>> {
         ("codex", "untrusted" | "on-request" | "never") => &["--ask-for-approval", mode],
         ("gemini", "default" | "auto_edit" | "yolo" | "plan") => &["--approval-mode", mode],
         ("opencode", "auto") => &["--auto"],
+        ("antigravity", "accept-edits" | "plan") => &["--mode", mode],
         _ => bail!("unsupported --permission-mode for {id}: {mode}"),
     };
     Ok(args.iter().map(|arg| (*arg).to_owned()).collect())
@@ -123,6 +124,8 @@ fn validate_extra_args(id: &str, args: &[String]) -> Result<()> {
             ("codex", "--add-dir") => true,
             ("gemini", "--resume" | "--prompt-interactive") => true,
             ("opencode", "--session" | "--prompt") => true,
+            ("antigravity", "--continue") => false,
+            ("antigravity", "--conversation" | "--add-dir" | "--prompt-interactive") => true,
             _ => bail!(
                 "unsupported or conflicting additional argument for {id}: {flag}; \
                  use --model and --permission-mode before --"

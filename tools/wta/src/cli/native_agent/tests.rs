@@ -8,17 +8,24 @@ fn strings(values: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn native_profile_providers_are_exactly_the_five_managed_clis() {
+fn native_profile_providers_are_exactly_the_six_managed_clis() {
     assert_eq!(
         native_profiles()
             .map(|profile| profile.id)
             .collect::<Vec<_>>(),
-        ["copilot", "claude", "codex", "gemini", "opencode"]
+        [
+            "copilot",
+            "claude",
+            "codex",
+            "gemini",
+            "opencode",
+            "antigravity"
+        ]
     );
     assert!(KNOWN_AGENTS
         .iter()
         .any(|profile| profile.id == "antigravity"));
-    assert!(profile("antigravity").is_err());
+    assert_eq!(profile("antigravity").unwrap().cli_executable, "agy");
 }
 
 #[test]
@@ -77,7 +84,6 @@ fn defaults_leave_native_settings_untouched_and_models_are_atomic() {
         "custom:copilot",
         "Copilot",
         "claude.exe",
-        "antigravity",
         "agy",
     ] {
         assert!(profile(id).is_err());
@@ -120,6 +126,12 @@ fn permission_modes_are_provider_native_not_universal() {
         ("gemini", "yolo", vec!["--approval-mode", "yolo"]),
         ("gemini", "plan", vec!["--approval-mode", "plan"]),
         ("opencode", "auto", vec!["--auto"]),
+        (
+            "antigravity",
+            "accept-edits",
+            vec!["--mode", "accept-edits"],
+        ),
+        ("antigravity", "plan", vec!["--mode", "plan"]),
     ] {
         assert_eq!(permission_args(id, mode).unwrap(), expected);
     }
@@ -130,6 +142,7 @@ fn permission_modes_are_provider_native_not_universal() {
     assert!(permission_args("codex", "read-only").is_err());
     assert!(permission_args("opencode", "plan").is_err());
     assert!(permission_args("claude", "default").is_err());
+    assert!(permission_args("antigravity", "yolo").is_err());
 }
 
 #[test]
@@ -156,6 +169,8 @@ fn additional_arguments_cannot_replace_settings_or_launch_other_modes() {
             vec!["--", "--model", "other"],
             vec!["--help=--model"],
             vec!["--unreviewed-option"],
+            vec!["--mode", "plan"],
+            vec!["--print", "prompt"],
         ] {
             assert!(
                 launch_args(profile.id, Some("chosen"), None, &strings(&args)).is_err(),
@@ -205,6 +220,64 @@ fn native_resolution_prefers_exe_and_accepts_claude_cmd_without_npx() {
     .is_err());
 }
 
+#[test]
+fn antigravity_profiles_resolve_only_the_native_agy_executable() {
+    let path = OsStr::new(r"C:\early;C:\late");
+    let antigravity = profile("antigravity").unwrap();
+    assert_eq!(
+        find_in_path(antigravity, path, |p| Ok([
+            Path::new(r"C:\early\antigravity.exe"),
+            Path::new(r"C:\early\agy.cmd"),
+            Path::new(r"C:\early\agy_acp_server.exe"),
+            Path::new(r"C:\late\agy.exe")
+        ]
+        .contains(&p)))
+        .unwrap(),
+        Some(PathBuf::from(r"C:\late\agy.exe"))
+    );
+    assert!(find_in_path(antigravity, path, |p| Ok([
+        Path::new(r"C:\early\antigravity.exe"),
+        Path::new(r"C:\early\agy.cmd"),
+        Path::new(r"C:\early\agy_acp_server.exe")
+    ]
+    .contains(&p)))
+    .unwrap()
+    .is_none());
+    assert_eq!(
+        launch_args(
+            "antigravity",
+            Some("provider/model"),
+            Some("plan"),
+            &strings(&[
+                "--conversation",
+                "session id",
+                "--add-dir",
+                r"C:\source tree",
+                "--prompt-interactive",
+                "Explain this project",
+                "--continue",
+            ]),
+        )
+        .unwrap(),
+        strings(&[
+            "--model",
+            "provider/model",
+            "--mode",
+            "plan",
+            "--conversation",
+            "session id",
+            "--add-dir",
+            r"C:\source tree",
+            "--prompt-interactive",
+            "Explain this project",
+            "--continue",
+        ])
+    );
+    assert!(validate_extra_args("antigravity", &strings(&["--conversation"])).is_err());
+    assert!(validate_extra_args("antigravity", &strings(&["--conversation=--model"])).is_err());
+    assert!(validate_extra_args("antigravity", &strings(&["--resume", "session"])).is_err());
+}
+
 struct Scratch(PathBuf);
 
 impl Scratch {
@@ -236,7 +309,8 @@ fn discovery_reports_only_native_availability_and_allowed_ids() {
         all,
         serde_json::json!({"agents": [
             {"id": "copilot", "display_name": "GitHub Copilot"},
-            {"id": "claude", "display_name": "Claude"}
+            {"id": "claude", "display_name": "Claude"},
+            {"id": "antigravity", "display_name": "Google Antigravity"}
         ]})
     );
     let filtered = policy::Policy {
@@ -253,6 +327,9 @@ fn discovery_reports_only_native_availability_and_allowed_ids() {
     );
     std::fs::remove_file(scratch.0.join("claude.cmd")).unwrap();
     std::fs::remove_file(scratch.0.join("copilot.exe")).unwrap();
+    std::fs::remove_file(scratch.0.join("agy.exe")).unwrap();
+    std::fs::write(scratch.0.join("agy_acp_server.exe"), "").unwrap();
+    std::fs::write(scratch.0.join("localharness_external.exe"), "").unwrap();
     assert_eq!(
         discovery(path, &policy::Policy::default()).unwrap(),
         serde_json::json!({"agents": []})

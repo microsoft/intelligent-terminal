@@ -75,12 +75,13 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
     } };
 
     // Managed native profiles have a narrower command/schema contract than ACP and delegation.
-    inline constexpr std::array<BuiltinAgent, 5> BuiltinNativeProfileAgents{ {
+    inline constexpr std::array<BuiltinAgent, 6> BuiltinNativeProfileAgents{ {
         { L"copilot", L"GitHub Copilot", ByokMode::CopilotProviderEnvironment },
         { L"claude", L"Claude", ByokMode::Unsupported },
         { L"codex", L"Codex", ByokMode::Unsupported },
         { L"gemini", L"Gemini", ByokMode::Unsupported },
         { L"opencode", L"OpenCode", ByokMode::OpenCodeConfigContent },
+        { L"antigravity", L"Google Antigravity", ByokMode::Unsupported, true, L"agy" },
     } };
 
     inline constexpr ByokMode GetByokMode(const std::wstring_view agentId) noexcept

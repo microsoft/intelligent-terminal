@@ -93,7 +93,12 @@ namespace SettingsModelUnitTests
         profile.AgentProfileId(L"unknown-agent");
         VERIFY_IS_FALSE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
         profile.AgentProfileId(L"antigravity");
-        VERIFY_IS_FALSE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
+        VERIFY_IS_TRUE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
+        profile.AgentProfilePermissionMode(L"plan");
+        const auto antigravityArgs = ::Microsoft::Terminal::AgentProfiles::ParseArguments(
+            TerminalSettings::CreateForPreview(settings, profile)->Commandline());
+        VERIFY_ARE_EQUAL(std::wstring{ L"--mode" }, antigravityArgs[3]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"plan" }, antigravityArgs[4]);
     }
 
     void TerminalSettingsTests::AgentProfileCommandlineOverrides()
@@ -151,7 +156,7 @@ namespace SettingsModelUnitTests
         VERIFY_IS_TRUE(TerminalSettings::CreateWithNewTerminalArgs(settings, saved).DefaultSettings()->UsesManagedAgentCommand());
         VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::Command(restored, true, L""), wil::ResultException);
         VERIFY_IS_TRUE(orphan.AgentProfileId().empty());
-        for (const auto provider : { L"unknown-agent", L"custom:fixture", L"antigravity" })
+        for (const auto provider : { L"unknown-agent", L"custom:fixture" })
         {
             saved.NativeAgentProviderId(provider);
             VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
@@ -185,7 +190,18 @@ namespace SettingsModelUnitTests
         saved.NativeAgentProviderId(L"");
         VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, settings.GetProfileForArgs(saved).AgentProfileId());
         orphan.ClearAgentProfileId();
-        const std::wstring unsupportedIdentity{ L"IntelligentTerminal.AgentProfiles:antigravity" };
+        const std::wstring antigravityIdentity{ L"IntelligentTerminal.AgentProfiles:antigravity" };
+        const auto antigravityGuid = Utils::CreateV5Uuid(TERMINAL_PROFILE_NAMESPACE_GUID, std::as_bytes(std::span{ antigravityIdentity }));
+        orphan.Guid(antigravityGuid);
+        saved.Profile(Utils::GuidToString(antigravityGuid));
+        const auto restoredAntigravity = settings.GetProfileForArgs(saved);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"antigravity" }, restoredAntigravity.AgentProfileId());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"agy.exe" }, restoredAntigravity.Commandline());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"chosen" }, restoredAntigravity.AgentProfileModel());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\Project" }, restoredAntigravity.StartingDirectory());
+        VERIFY_IS_TRUE(TerminalSettings::CreateForPreview(settings, restoredAntigravity)->UsesManagedAgentCommand());
+        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::Command(restoredAntigravity, true, L""), wil::ResultException);
+        const std::wstring unsupportedIdentity{ L"IntelligentTerminal.AgentProfiles:unknown-agent" };
         const auto unsupportedGuid = Utils::CreateV5Uuid(TERMINAL_PROFILE_NAMESPACE_GUID, std::as_bytes(std::span{ unsupportedIdentity }));
         orphan.Guid(unsupportedGuid);
         saved.Profile(Utils::GuidToString(unsupportedGuid));

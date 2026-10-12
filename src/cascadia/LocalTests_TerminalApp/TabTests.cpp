@@ -355,6 +355,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabChromeBackgroundTracksTheme);
         TEST_METHOD(NewTabButtonSharesChromeBackdrop);
         TEST_METHOD(NewTabFlyoutAgentIconsAdaptToTheme);
+        TEST_METHOD(SettingsProfileAgentIconAdaptsToTheme);
         TEST_METHOD(AgentProfileCommandlineCopies);
         TEST_METHOD(VerticalTabStripBindsBackground);
         TEST_METHOD(VerticalTabHistorySharesBackdrop);
@@ -5927,7 +5928,7 @@ namespace TerminalAppLocalTests
         std::map<std::wstring, std::vector<uint8_t>> originalPixels;
         for (const auto theme : { ElementTheme::Dark, ElementTheme::Light, ElementTheme::Dark })
         {
-            for (const auto id : { L"copilot", L"claude", L"codex", L"gemini", L"opencode" })
+            for (const auto id : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"antigravity" })
             {
                 ::details::Event loaded;
                 ::details::Event imageLoaded;
@@ -6036,6 +6037,56 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(winrt::hstring{ path }, source.UriSource().AbsoluteUri());
             }
         });
+    }
+
+    void TabTests::SettingsProfileAgentIconAdaptsToTheme()
+    {
+        ::details::Event loaded;
+        UIElement previousContent{ nullptr };
+        StackPanel host{ nullptr };
+        winrt::MUX::Controls::ImageIcon icon{ nullptr };
+        winrt::event_token loadedToken{};
+        TestOnUIThread([&]() {
+            const auto window = Window::Current();
+            previousContent = window.Content();
+            host = StackPanel{};
+            host.RequestedTheme(ElementTheme::Dark);
+            icon = winrt::Microsoft::Terminal::UI::IconPathConverter::IconWUX(L"ms-appx:///AgentIcons/antigravity.svg").as<winrt::MUX::Controls::ImageIcon>();
+            loadedToken = icon.Loaded([&](auto&&, auto&&) { loaded.Set(); });
+            host.Children().Append(icon);
+            window.Content(host);
+            window.Activate();
+            host.UpdateLayout();
+        });
+        const auto cleanup = wil::scope_exit([&]() {
+            LOG_IF_FAILED(RunOnUIThread([&]() {
+                icon.Loaded(loadedToken);
+                Window::Current().Content(previousContent);
+            }));
+        });
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(loaded.m_handle, 10000));
+
+        for (const auto theme : { ElementTheme::Light, ElementTheme::Dark, ElementTheme::Light })
+        {
+            ::details::Event changed;
+            winrt::event_token token{};
+            TestOnUIThread([&]() {
+                token = icon.ActualThemeChanged([&](auto&&, auto&&) { changed.Set(); });
+                host.RequestedTheme(theme);
+                host.UpdateLayout();
+            });
+            const auto removeHandler = wil::scope_exit([&]() {
+                LOG_IF_FAILED(RunOnUIThread([&]() { icon.ActualThemeChanged(token); }));
+            });
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(changed.m_handle, 10000));
+            TestOnUIThread([&]() {
+                const auto source = icon.Source().as<Media::Imaging::SvgImageSource>();
+                const auto expected = theme == ElementTheme::Light ?
+                                          L"ms-appx:///AgentIcons/antigravity-light.svg" :
+                                          L"ms-appx:///AgentIcons/antigravity.svg";
+                VERIFY_ARE_EQUAL(winrt::hstring{ expected }, source.UriSource().AbsoluteUri());
+            });
+        }
     }
 
     void TabTests::VerticalTabStripBindsBackground()
