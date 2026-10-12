@@ -8092,6 +8092,7 @@ namespace TerminalAppLocalTests
             first.IsCurrent(true);
             const auto row = container.ContentTemplateRoot().as<Grid>();
             const auto age = row.FindName(L"HistorySubtitleText").as<winrt::TerminalApp::HighlightedTextControl>();
+            const auto tooltipAge = ToolTipService::GetToolTip(row).as<ToolTip>().Content().as<StackPanel>().Children().GetAt(3).as<TextBlock>();
             std::vector<winrt::hstring> propertyChanges;
             const auto propertyChanged = first.PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
                 propertyChanges.emplace_back(args.PropertyName());
@@ -8104,6 +8105,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryAgeText(nowMs - 80'000, nowMs + 40'000), first.Subtitle());
             VERIFY_ARE_EQUAL(first.Subtitle(), refreshed.Subtitle());
             VERIFY_ARE_EQUAL(first.Subtitle(), age.Text());
+            VERIFY_ARE_EQUAL(first.Subtitle(), tooltipAge.Text());
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryAgeText(nowMs - 61'000, nowMs + 40'000), second.Subtitle());
             VERIFY_ARE_EQUAL(size_t{ 1 }, propertyChanges.size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Subtitle" }, propertyChanges[0]);
@@ -8115,6 +8117,7 @@ namespace TerminalAppLocalTests
             impl->_refreshHistoryAges(nowMs + 300'000);
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryAgeText(nowMs - 80'000, nowMs + 300'000), first.Subtitle());
             VERIFY_ARE_EQUAL(first.Subtitle(), age.Text());
+            VERIFY_ARE_EQUAL(first.Subtitle(), tooltipAge.Text());
             VERIFY_ARE_EQUAL(size_t{ 2 }, propertyChanges.size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Snapshot unavailable" }, strip.HistoryError());
             VERIFY_IS_TRUE(strip.HistoryActivating());
@@ -8381,6 +8384,9 @@ namespace TerminalAppLocalTests
             strip.Width(360);
             strip.Height(400);
         });
+        const std::string longTitle = "Full session title that exceeds the width of the history row and must remain readable in the tooltip without losing its final words";
+        const char* providers[]{ "copilot", "claude", "codex", "gemini", "opencode", "custom:history-agent", "copilot" };
+        size_t providerIndex = 0;
         for (const auto state : { "InUse", "Idle", "Working", "Attention", "Error", "Historical", "Ended" })
         {
             TestOnUIThread([&]() {
@@ -8388,9 +8394,9 @@ namespace TerminalAppLocalTests
                 response["history_status"] = "ready";
                 auto& session = response["sessions"][0];
                 session["session_id"] = "three-lines";
-                session["provider_id"] = "copilot";
+                session["provider_id"] = providers[providerIndex++];
                 session["location"] = "Host";
-                session["title"] = "Session title";
+                session["title"] = longTitle + " " + state;
                 session["cwd"] = "C:\\work\\project";
                 session["status"] = state;
                 session["last_activity_at_ms"] = Json::UInt64{ 12345 };
@@ -8422,13 +8428,37 @@ namespace TerminalAppLocalTests
                 impl->SetCurrentHistoryItem(item, tab);
                 VERIFY_ARE_EQUAL(currentStatus, Automation::AutomationProperties::GetItemStatus(container));
                 VERIFY_ARE_EQUAL(external ? externalTip : winrt::hstring{}, Automation::AutomationProperties::GetHelpText(container));
-                VERIFY_ARE_EQUAL(winrt::hstring{ L"Session title" }, title.Text());
+                VERIFY_ARE_EQUAL(winrt::to_hstring(longTitle + " " + state), title.Text());
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\work\\project" }, cwd.Text());
-                VERIFY_ARE_EQUAL(external ? externalTip : cwd.Text(), winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(cwd)));
+                VERIFY_IS_NULL(ToolTipService::GetToolTip(cwd));
                 const auto icon = row.FindName(L"HistoryProviderIcon").as<ContentControl>();
                 VERIFY_ARE_EQUAL(Automation::Peers::AccessibilityView::Raw, Automation::AutomationProperties::GetAccessibilityView(icon));
-                VERIFY_ARE_EQUAL(external ? externalTip : item.ProviderDisplayName(), winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(icon)));
-                VERIFY_ARE_EQUAL(external, ToolTipService::GetToolTip(row) != nullptr);
+                VERIFY_IS_NULL(ToolTipService::GetToolTip(icon));
+                VERIFY_IS_NOT_NULL(row.Background());
+                const auto tooltip = ToolTipService::GetToolTip(row).as<ToolTip>();
+                const auto details = tooltip.Content().as<StackPanel>().Children();
+                const auto tooltipTitle = details.GetAt(0).as<TextBlock>();
+                VERIFY_ARE_EQUAL(item.Title(), tooltipTitle.Text());
+                VERIFY_ARE_EQUAL(TextWrapping::Wrap, tooltipTitle.TextWrapping());
+                VERIFY_ARE_EQUAL(TextTrimming::None, tooltipTitle.TextTrimming());
+                VERIFY_ARE_EQUAL(0u, tooltipTitle.MaxLines());
+                VERIFY_ARE_EQUAL(item.ProviderDisplayName(), details.GetAt(1).as<TextBlock>().Text());
+                VERIFY_ARE_EQUAL(item.Cwd(), details.GetAt(2).as<TextBlock>().Text());
+                const auto tooltipAge = details.GetAt(3).as<TextBlock>();
+                const auto tooltipStatus = details.GetAt(4).as<TextBlock>();
+                const auto tooltipInUse = details.GetAt(5).as<TextBlock>();
+                VERIFY_ARE_EQUAL(item.Subtitle(), tooltipAge.Text());
+                VERIFY_ARE_EQUAL(item.StatusText(), tooltipStatus.Text());
+                VERIFY_ARE_EQUAL(historical ? Visibility::Visible : Visibility::Collapsed, tooltipAge.Visibility());
+                VERIFY_ARE_EQUAL(historical ? Visibility::Collapsed : Visibility::Visible, tooltipStatus.Visibility());
+                VERIFY_ARE_EQUAL(external ? externalTip : winrt::hstring{}, tooltipInUse.Text());
+                VERIFY_ARE_EQUAL(external ? Visibility::Visible : Visibility::Collapsed, tooltipInUse.Visibility());
+                item.IsKeepRunning(true);
+                VERIFY_ARE_EQUAL(Visibility::Visible, details.GetAt(6).as<TextBlock>().Visibility());
+                VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(row.FindName(L"HistoryKeepRunningIcon").as<FontIcon>()),
+                                 details.GetAt(6).as<TextBlock>().Text());
+                item.IsKeepRunning(false);
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, details.GetAt(6).as<TextBlock>().Visibility());
                 VERIFY_ARE_EQUAL(historical ? Visibility::Visible : Visibility::Collapsed, age.Visibility());
                 VERIFY_ARE_EQUAL(historical ? Visibility::Collapsed : Visibility::Visible, status.Visibility());
                 VERIFY_ARE_EQUAL(item.Subtitle(), age.Text());
@@ -8439,22 +8469,29 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(historical ? Visibility::Collapsed : Visibility::Visible, age.Visibility());
                 VERIFY_ARE_EQUAL(historical ? Visibility::Visible : Visibility::Collapsed, status.Visibility());
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\work\\project" }, cwd.Text());
-                VERIFY_ARE_EQUAL(cwd.Text(), winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(cwd)));
-                VERIFY_IS_NULL(ToolTipService::GetToolTip(row));
+                VERIFY_IS_NULL(ToolTipService::GetToolTip(cwd));
+                VERIFY_IS_TRUE(ToolTipService::GetToolTip(row) == tooltip);
+                VERIFY_ARE_EQUAL(item.StatusText(), tooltipStatus.Text());
+                VERIFY_ARE_EQUAL(historical ? Visibility::Collapsed : Visibility::Visible, tooltipAge.Visibility());
+                VERIFY_ARE_EQUAL(historical ? Visibility::Visible : Visibility::Collapsed, tooltipStatus.Visibility());
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, tooltipInUse.Visibility());
                 VERIFY_IS_TRUE(Automation::AutomationProperties::GetHelpText(container).empty());
                 VERIFY_ARE_EQUAL(currentStatus, Automation::AutomationProperties::GetItemStatus(container));
                 VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"three-lines", L"", L"InUse", L"In use"));
                 strip.UpdateLayout();
-                VERIFY_ARE_EQUAL(externalTip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(row)));
-                VERIFY_ARE_EQUAL(externalTip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(cwd)));
-                VERIFY_ARE_EQUAL(externalTip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(icon)));
+                VERIFY_IS_TRUE(ToolTipService::GetToolTip(row) == tooltip);
+                VERIFY_ARE_EQUAL(externalTip, tooltipInUse.Text());
+                VERIFY_ARE_EQUAL(Visibility::Visible, tooltipInUse.Visibility());
+                VERIFY_ARE_EQUAL(item.StatusText(), tooltipStatus.Text());
                 VERIFY_ARE_EQUAL(externalTip, Automation::AutomationProperties::GetHelpText(container));
                 VERIFY_ARE_EQUAL(currentStatus, Automation::AutomationProperties::GetItemStatus(container));
                 VERIFY_ARE_EQUAL(name, Automation::AutomationProperties::GetName(container));
                 VERIFY_IS_TRUE(impl->ApplyHistoryStatusDelta(L"three-lines", L"", L"Idle", L"Idle"));
                 strip.UpdateLayout();
                 VERIFY_IS_TRUE(Automation::AutomationProperties::GetHelpText(container).empty());
-                VERIFY_IS_NULL(ToolTipService::GetToolTip(row));
+                VERIFY_IS_TRUE(ToolTipService::GetToolTip(row) == tooltip);
+                VERIFY_ARE_EQUAL(item.StatusText(), tooltipStatus.Text());
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, tooltipInUse.Visibility());
             });
         }
         view.Search(L"project");
@@ -10896,8 +10933,11 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, icon.Visibility());
             VERIFY_IS_FALSE(Automation::AutomationProperties::GetName(icon).empty());
             VERIFY_IS_FALSE(Automation::AutomationProperties::GetHelpText(icon).empty());
+            VERIFY_IS_NULL(ToolTipService::GetToolTip(icon));
+            const auto tooltipKeepRunning = ToolTipService::GetToolTip(row).as<ToolTip>().Content().as<StackPanel>().Children().GetAt(6).as<TextBlock>();
             VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(icon),
-                             winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(icon)));
+                             tooltipKeepRunning.Text());
+            VERIFY_ARE_EQUAL(Visibility::Visible, tooltipKeepRunning.Visibility());
             VERIFY_IS_TRUE(text.IsTextTrimmed());
             const auto titlePosition = title.TransformToVisual(row).TransformPoint({ 0, 0 });
             const auto metadataPosition = metadata.TransformToVisual(row).TransformPoint({ 0, 0 });
@@ -10910,6 +10950,7 @@ namespace TerminalAppLocalTests
             impl->UpdateHistoryKeepRunning([&](const auto&) { return enabled; }, [](const auto&) { return false; });
             strip.UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, icon.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, tooltipKeepRunning.Visibility());
             VERIFY_IS_TRUE(impl->ItemsList().ContainerFromItem(item) == container);
         });
     }

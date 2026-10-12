@@ -1025,18 +1025,10 @@ namespace winrt::TerminalApp::implementation
         const auto isCurrent = item && item.IsCurrent();
         const auto external = item && item.Status() == L"InUse";
         const auto externalTip = external ? RS_(L"VerticalTabsHistoryInUseToolTip") : winrt::hstring{};
-        ToolTipService::SetToolTip(root, external ? box_value(externalTip) : nullptr);
-        if (const auto cwd = root.FindName(L"HistoryCwdText").try_as<Control>())
+        if (const auto text = root.FindName(L"HistoryInUseTooltipText").try_as<TextBlock>())
         {
-            const auto tip = external ? externalTip : item ? item.Cwd() :
-                                                             winrt::hstring{};
-            ToolTipService::SetToolTip(cwd, tip.empty() ? nullptr : box_value(tip));
-        }
-        if (const auto icon = root.FindName(L"HistoryProviderIcon").try_as<Control>())
-        {
-            const auto tip = external ? externalTip : item ? item.ProviderDisplayName() :
-                                                             winrt::hstring{};
-            ToolTipService::SetToolTip(icon, tip.empty() ? nullptr : box_value(tip));
+            text.Text(externalTip);
+            text.Visibility(external ? Visibility::Visible : Visibility::Collapsed);
         }
         const auto foreground = isCurrent ? item.CurrentForeground() : nullptr;
         const auto palette = root.FindName(L"HistorySelectionPalette").try_as<Control>();
@@ -2262,7 +2254,10 @@ namespace winrt::TerminalApp::implementation
             const auto help = RS_(L"KeepTabRunningToolTip");
             WUX::Automation::AutomationProperties::SetName(icon, RS_(L"KeepTabRunningText"));
             WUX::Automation::AutomationProperties::SetHelpText(icon, help);
-            ToolTipService::SetToolTip(icon, box_value(help));
+        }
+        if (const auto text = root.FindName(L"HistoryKeepRunningTooltipText").try_as<TextBlock>())
+        {
+            text.Text(RS_(L"KeepTabRunningToolTip"));
         }
         _applyHistoryRowForeground(root, item);
     }

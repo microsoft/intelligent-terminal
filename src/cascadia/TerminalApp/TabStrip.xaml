@@ -194,8 +194,30 @@
             <DataTemplate x:Key="HistoryRowTemplate"
                           x:DataType="local:TabStripHistoryItem">
                 <Grid Padding="12,8"
+                      Background="Transparent"
                       ColumnSpacing="10"
                       Loaded="OnHistoryRowLoaded">
+                    <ToolTipService.ToolTip>
+                        <ToolTip>
+                            <StackPanel MaxWidth="480" Spacing="4">
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="{x:Bind Title}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{x:Bind ProviderDisplayName}" TextWrapping="Wrap" />
+                                <TextBlock Text="{x:Bind Cwd}" TextWrapping="Wrap" />
+                                <TextBlock Text="{x:Bind Subtitle, Mode=OneWay}"
+                                           TextWrapping="Wrap"
+                                           Visibility="{x:Bind IsHistorical, Mode=OneWay}" />
+                                <TextBlock Text="{x:Bind StatusText, Mode=OneWay}"
+                                           TextWrapping="Wrap"
+                                           Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(IsHistorical), Mode=OneWay}" />
+                                <TextBlock x:Name="HistoryInUseTooltipText" TextWrapping="Wrap" />
+                                <TextBlock x:Name="HistoryKeepRunningTooltipText"
+                                           TextWrapping="Wrap"
+                                           Visibility="{x:Bind IsKeepRunning, Mode=OneWay}" />
+                            </StackPanel>
+                        </ToolTip>
+                    </ToolTipService.ToolTip>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="28" />
                         <ColumnDefinition Width="*" />
