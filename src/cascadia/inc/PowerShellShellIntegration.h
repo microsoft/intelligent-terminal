@@ -965,38 +965,28 @@ if (-not $Global:__ShellInteg_Installed) {
             for ($i = 1; $i -lt $command.CommandElements.Count; $i++) {
                 $element = $command.CommandElements[$i]
                 if ($element -isnot [System.Management.Automation.Language.StringConstantExpressionAst]) { return }
-                $arguments += $element.Value
+                $arguments += $element
             }
             $resumeSession = $null
             if ($resumeAgent -eq 'codex') {
-                if ($arguments.Count -lt 2 -or $arguments[0] -cne 'resume') { return }
-                $resumeSession = $arguments[1]
+                if ($arguments.Count -lt 2 -or
+                    $arguments[0].StringConstantType -ne [System.Management.Automation.Language.StringConstantType]::BareWord -or
+                    $arguments[0].Value -cne 'resume') { return }
+                $resumeSession = $arguments[1].Value
             }
             else {
                 $flag = if ($resumeAgent -eq 'opencode') { '--session' }
                         elseif ($resumeAgent -eq 'antigravity') { '--conversation' }
                         else { '--resume' }
-                # Known prompt/model options consume one literal value, even
-                # when it looks like a resume flag. Inline =values are already
-                # part of the option and must not consume the next argument.
-                $valueOptions = switch ($resumeAgent) {
-                    'copilot' { @('--model', '-m', '--interactive', '--prompt', '-i', '-p') }
-                    'claude' { @('--model', '--fallback-model', '--system-prompt', '--append-system-prompt') }
-                    'gemini' { @('--model', '-m', '--prompt', '-p', '--prompt-interactive', '-i') }
-                    'opencode' { @('--model', '-m', '--prompt') }
-                    'antigravity' { @('--model', '--prompt-interactive', '-i') }
-                }
                 for ($i = 0; $i -lt $arguments.Count; $i++) {
-                    $argument = $arguments[$i]
+                    # Quoted IDs are allowed, but a wholly quoted argument is
+                    # not a resume flag. Preserve the AST's quote boundary.
+                    if ($arguments[$i].StringConstantType -ne [System.Management.Automation.Language.StringConstantType]::BareWord) { continue }
+                    $argument = $arguments[$i].Value
                     if ($argument -ceq '--') { break }
-                    if ($valueOptions -ccontains $argument) {
-                        if ($i + 1 -ge $arguments.Count) { return }
-                        $i++
-                        continue
-                    }
                     if ($argument -ceq $flag) {
                         if ($null -ne $resumeSession -or $i + 1 -ge $arguments.Count) { return }
-                        $resumeSession = $arguments[++$i]
+                        $resumeSession = $arguments[++$i].Value
                     }
                     elseif ($argument.StartsWith($flag + '=', [StringComparison]::Ordinal)) {
                         if ($null -ne $resumeSession) { return }

@@ -599,6 +599,7 @@ $cases = @(
     @{ Line = "copilot --interactive '--resume=other' --resume resume-test"; Agent = 'copilot' }
     @{ Line = 'copilot --prompt="--resume=other" --resume resume-test'; Agent = 'copilot' }
     @{ Line = 'copilot --interactive "--" --resume resume-test'; Agent = 'copilot' }
+    @{ Line = 'copilot --unknown-option "--resume=other" --resume resume-test'; Agent = 'copilot' }
     @{ Line = '& copilot.cmd --resume resume-test'; Agent = 'copilot' }
     @{ Line = 'claude --resume resume-test --model sonnet'; Agent = 'claude' }
     @{ Line = 'claude --system-prompt "--resume=other" --resume resume-test'; Agent = 'claude' }
@@ -613,6 +614,16 @@ $cases = @(
     @{ Line = "& agy.cmd --conversation='resume-test' --model gemini"; Agent = 'antigravity' }
     @{ Line = '& C:\Antigravity\agy.bat --conversation resume-test'; Agent = 'antigravity' }
     @{ Line = 'codex resume --last'; Agent = '' }
+    @{ Line = 'copilot "--resume=resume-test"'; Agent = '' }
+    @{ Line = "copilot '--resume=resume-test'"; Agent = '' }
+    @{ Line = 'copilot "--resume" "resume-test"'; Agent = '' }
+    @{ Line = "copilot '--resume' resume-test"; Agent = '' }
+    @{ Line = 'claude "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'gemini "--resume" "resume-test"'; Agent = '' }
+    @{ Line = 'codex "resume" resume-test'; Agent = '' }
+    @{ Line = 'opencode "--session=resume-test"'; Agent = '' }
+    @{ Line = 'agy "--conversation=resume-test"'; Agent = '' }
+    @{ Line = 'agy "--conversation" "resume-test"'; Agent = '' }
     @{ Line = 'copilot --interactive "--resume=resume-test"'; Agent = '' }
     @{ Line = "copilot --interactive '--resume=resume-test'"; Agent = '' }
     @{ Line = 'copilot --prompt "--resume=resume-test"'; Agent = '' }
