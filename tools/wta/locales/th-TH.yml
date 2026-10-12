@@ -126,6 +126,8 @@ agents.status.active: "ใช้งานอยู่"
 agents.status.waiting_for_input: "รอข้อมูลป้อนเข้า"
 agents.status.error: "ข้อผิดพลาด"
 agents.status.idle: "ว่าง"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "ถูกใช้งานอยู่"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. แสดง/ซ่อนแผงเอเจนต์ • Ctrl+Shift+/ แสดง/ซ่อนเซสชันเอเจนต์)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

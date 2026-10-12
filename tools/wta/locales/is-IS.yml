@@ -126,6 +126,8 @@ agents.status.active: "Virk"
 agents.status.waiting_for_input: "Bíður eftir inntaki"
 agents.status.error: "Villa"
 agents.status.idle: "Aðgerðarlaus"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Í notkun"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. til að sýna/fela agentspjald • Ctrl+Shift+/ til að sýna/fela agentlotu)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

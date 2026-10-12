@@ -191,6 +191,8 @@ toupper
 TRACKMOUSEEVENT
 ubrk
 UChar
+udat
+UDAT
 UFIELD
 ULARGE
 UNCEx

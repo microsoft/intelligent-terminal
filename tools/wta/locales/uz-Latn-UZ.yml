@@ -139,6 +139,8 @@ agents.status.active: "Faol"
 agents.status.waiting_for_input: "Kiritish kutilmoqda"
 agents.status.error: "Xatolik"
 agents.status.idle: "Boʻsh"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Foydalanilmoqda"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. agent panelini koʻrsatish/yashirish • Ctrl+Shift+/ agent seansini koʻrsatish/yashirish)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

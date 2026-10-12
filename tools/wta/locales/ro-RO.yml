@@ -126,6 +126,8 @@ agents.status.active: "Activ"
 agents.status.waiting_for_input: "Așteaptă introducere"
 agents.status.error: "Eroare"
 agents.status.idle: "Inactiv"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "În uz"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. afișare/ascundere panou agent • Ctrl+Shift+/ afișare/ascundere sesiune agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

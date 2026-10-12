@@ -1178,6 +1178,20 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
+    void Tab::PreparePaneFocus(const uint32_t id)
+    {
+        ASSERT_UI_THREAD();
+
+        const auto pane = _rootPane ? _rootPane->FindPane(id) : nullptr;
+        THROW_HR_IF(E_INVALIDARG, !pane || !pane->_IsLeaf());
+        if (pane != _activePane)
+        {
+            // Select the incoming pane without focusing content in a background tab.
+            _UpdateActivePane(pane);
+            _RecalculateAndApplyTabColor();
+        }
+    }
+
     bool Tab::FocusPane(const uint32_t id)
     {
         ASSERT_UI_THREAD();

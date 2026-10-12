@@ -126,6 +126,8 @@ agents.status.active: "Aktibo"
 agents.status.waiting_for_input: "Naghihintay ng input"
 agents.status.error: "May error"
 agents.status.idle: "Walang ginagawa"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Ginagamit"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. para ipakita/itago ang agent pane • Ctrl+Shift+/ para ipakita/itago ang agent session)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

@@ -122,6 +122,8 @@ agents.status.active: "활성"
 agents.status.waiting_for_input: "입력 대기 중"
 agents.status.error: "오류"
 agents.status.idle: "유휴"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "사용 중"
 
 # ── 레이아웃 환영 힌트 (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. 에이전트 창 표시/숨기기 • Ctrl+Shift+/ 에이전트 세션 표시/숨기기)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

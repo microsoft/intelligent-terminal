@@ -127,6 +127,8 @@ agents.status.active: "Actiu"
 agents.status.waiting_for_input: "Esperant entrada"
 agents.status.error: "Error"
 agents.status.idle: "Inactiu"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "En ús"
 
 # ── Consell de benvinguda del disseny (src/ui/layout.rs) ──────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. per a mostrar/amagar el panell d'agent • Ctrl+Shift+/ per a mostrar/amagar la sessió d'agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

@@ -7667,6 +7667,23 @@ async fn handle_sessions_list(
     agent: Option<&AgentCli>,
     parsed: &crate::session_registry::SessionsListParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
+    handle_sessions_list_with_probe(state, agent, parsed, |mut sessions| async move {
+        crate::session_watcher::copilot_status::enrich_snapshot(&mut sessions).await;
+        sessions
+    })
+    .await
+}
+
+async fn handle_sessions_list_with_probe<F, Fut>(
+    state: &std::sync::Arc<MasterStateInner>,
+    agent: Option<&AgentCli>,
+    parsed: &crate::session_registry::SessionsListParams,
+    probe: F,
+) -> acp::Result<acp::schema::v1::ExtResponse>
+where
+    F: FnOnce(Vec<crate::session_registry::SessionInfo>) -> Fut,
+    Fut: std::future::Future<Output = Vec<crate::session_registry::SessionInfo>>,
+{
     if parsed.rescan {
         if let Some(agent) = agent {
             // Re-pull this agent's own `session/list` and broadcast. Each pooled
@@ -7698,8 +7715,37 @@ async fn handle_sessions_list(
     // Read readiness first so a refresh cannot pair an old empty snapshot with
     // its newly published Ready status.
     let history_status = *state.history_status.borrow();
+    let snapshot = state.registry.snapshot().await;
+    let mut candidates: std::collections::HashMap<_, _> = snapshot
+        .iter()
+        .filter(|row| crate::session_watcher::copilot_status::eligible(row))
+        .map(|row| {
+            (
+                crate::session_registry::SessionIdentity::from_info(row),
+                row.clone(),
+            )
+        })
+        .collect();
+    let evidence: std::collections::HashMap<_, _> = probe(snapshot)
+        .await
+        .into_iter()
+        .filter(|row| row.status == Some(crate::agent_sessions::AgentStatus::InUse))
+        .filter_map(|row| {
+            let identity = crate::session_registry::SessionIdentity::from_info(&row);
+            candidates
+                .remove(&identity)
+                .map(|original| (identity, original))
+        })
+        .collect();
+    // Reconcile before collecting panes: registrations made during the probe
+    // need ownership queries too. Apply external evidence only to unchanged
+    // historical rows, never resurrecting removed rows or overriding new bindings.
     let mut sessions = state.registry.snapshot().await;
     for row in &mut sessions {
+        let identity = crate::session_registry::SessionIdentity::from_info(row);
+        if evidence.get(&identity) == Some(row) {
+            row.status = Some(crate::agent_sessions::AgentStatus::InUse);
+        }
         row.owner_window_id = None;
         row.background_tab = None;
     }
@@ -7786,7 +7832,6 @@ async fn handle_sessions_list(
         }
     }
 
-    crate::session_watcher::copilot_status::enrich_snapshot(&mut sessions).await;
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
     let raw = crate::session_registry::build_sessions_list_response(
         sessions,
@@ -7971,6 +8016,26 @@ async fn execute_session_activation(
     state: &MasterStateInner,
     parsed: &crate::session_registry::SessionActivateParams,
 ) -> crate::session_registry::SessionActivateResponse {
+    execute_session_activation_with_probe(state, parsed, |row| async move {
+        crate::session_watcher::copilot_status::activation_status(&row).await
+    })
+    .await
+}
+
+async fn execute_session_activation_with_probe<F, Fut>(
+    state: &MasterStateInner,
+    parsed: &crate::session_registry::SessionActivateParams,
+    probe: F,
+) -> crate::session_registry::SessionActivateResponse
+where
+    F: FnOnce(crate::session_registry::SessionInfo) -> Fut,
+    Fut: std::future::Future<
+        Output = Result<
+            Option<crate::agent_sessions::AgentStatus>,
+            crate::session_watcher::copilot_status::ProbeError,
+        >,
+    >,
+{
     use crate::agent_sessions::{AgentStatus, SessionOrigin};
     use crate::session_mgmt::{
         decide_enter_action, liveness_from_status, EnterAction, RowSnapshot,
@@ -8017,13 +8082,46 @@ async fn execute_session_activation(
         }
     };
 
-    let Some(row) = state.registry.lookup_identity(&parsed.identity).await else {
+    let Some(mut row) = state.registry.lookup_identity(&parsed.identity).await else {
         return respond!(
             "not_found",
             false,
             Some("The selected session is no longer available.".to_string())
         );
     };
+    if crate::session_watcher::copilot_status::eligible(&row) {
+        let evidence = probe(row.clone()).await;
+        // Hook registration during the probe is authoritative; never apply stale
+        // external evidence to a live IT registration or persist it in the registry.
+        let Some(current) = state.registry.lookup_identity(&parsed.identity).await else {
+            return respond!(
+                "not_found",
+                false,
+                Some("The selected session is no longer available.".to_string())
+            );
+        };
+        row = current;
+        if crate::session_watcher::copilot_status::eligible(&row) {
+            match evidence {
+                Ok(Some(AgentStatus::InUse)) => {
+                    return respond!(
+                        "not_resumable",
+                        false,
+                        Some("The selected session is already in use.".to_string())
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(target: "copilot_status", ?error, "activation in-use verification unavailable");
+                    return respond!(
+                        "not_resumable",
+                        false,
+                        Some("Session ownership could not be verified; try again.".to_string())
+                    );
+                }
+                Ok(_) => {}
+            }
+        }
+    }
     let status = row.status.clone().unwrap_or(AgentStatus::Historical);
     let liveness = liveness_from_status(&status, row.pane_session_id.clone());
     // Focusing an existing live pane does not require a launchable provider.

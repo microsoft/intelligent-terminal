@@ -135,6 +135,8 @@ agents.status.active: "Aktívny"
 agents.status.waiting_for_input: "Čaká na vstup"
 agents.status.error: "Chyba"
 agents.status.idle: "Nečinný"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Používa sa"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. zobraziť/skryť panel agenta • Ctrl+Shift+/ zobraziť/skryť reláciu agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

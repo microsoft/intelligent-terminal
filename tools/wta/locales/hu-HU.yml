@@ -126,6 +126,8 @@ agents.status.active: "Aktív"
 agents.status.waiting_for_input: "Bemenetre vár"
 agents.status.error: "Hiba"
 agents.status.idle: "Tétlen"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Használatban"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ügynökpanel megjelenítése/elrejtése • Ctrl+Shift+/ ügynökmunkamenet megjelenítése/elrejtése)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

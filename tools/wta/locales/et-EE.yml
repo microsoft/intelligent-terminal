@@ -126,6 +126,8 @@ agents.status.active: "Aktiivne"
 agents.status.waiting_for_input: "Ootab sisendit"
 agents.status.error: "Viga"
 agents.status.idle: "Jõude"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Kasutusel"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. agendipaneeli kuvamiseks/peitmiseks • Ctrl+Shift+/ agendiseansi kuvamiseks/peitmiseks)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

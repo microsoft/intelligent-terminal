@@ -10390,6 +10390,203 @@ async fn sessions_list_handler_returns_registry_snapshot_payload() {
     assert_eq!(parsed.sessions, vec![row]);
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn sessions_list_probe_live_registration_keeps_new_pane_ownership() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
+    use crate::session_registry::{self, SessionIdentity, SessionInfo};
+
+    for status in [
+        AgentStatus::Idle,
+        AgentStatus::Working,
+        AgentStatus::Attention,
+        AgentStatus::Error,
+    ] {
+        for background in [false, true] {
+            let pane = uuid::Uuid::new_v4();
+            let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+                "pane": {
+                    "session_id": pane.to_string(),
+                    "window_id": 84,
+                    "is_background_tab": background
+                }
+            })));
+            let state = make_state_with_wt(mock.clone());
+            let mut row = SessionInfo::new(
+                SessionId::new(uuid::Uuid::new_v4().to_string()),
+                PathBuf::from("C:\\repo"),
+            );
+            row.provider_id = Some("copilot".into());
+            row.cli_source = Some(CliSource::Copilot);
+            row.location = SessionLocation::Host;
+            row.status = Some(AgentStatus::Historical);
+            let identity = SessionIdentity::from_info(&row);
+            state.registry.upsert(row.clone()).await;
+            row.status = Some(status.clone());
+            row.pane_session_id = Some(pane.to_string());
+            let live = row.clone();
+            let registry = &state.registry;
+            let response = handle_sessions_list_with_probe(
+                &state,
+                None,
+                &Default::default(),
+                |mut rows| async move {
+                    assert!(crate::session_watcher::copilot_status::eligible(&rows[0]));
+                    registry.upsert(live).await;
+                    rows[0].status = Some(AgentStatus::InUse);
+                    rows
+                },
+            )
+            .await
+            .unwrap();
+            let parsed = session_registry::parse_sessions_list_response(&response.0).unwrap();
+            let mut expected = row.clone();
+            expected.owner_window_id = Some(84);
+            expected.background_tab = Some(background);
+            assert_eq!(parsed.sessions, [expected]);
+            let raw: serde_json::Value = serde_json::from_str(response.0.get()).unwrap();
+            assert_eq!(raw["sessions"][0]["owner_window_id"], 84);
+            assert_eq!(raw["sessions"][0]["background_tab"], background);
+            assert_eq!(
+                mock.calls(),
+                [(
+                    "get_pane_context".into(),
+                    serde_json::json!({
+                        "session_id": pane.to_string(), "max_lines": 0, "max_chars": 0
+                    })
+                )]
+            );
+            assert_eq!(
+                state.registry.lookup_identity(&identity).await.unwrap(),
+                row
+            );
+        }
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sessions_list_probe_external_evidence_preserves_full_identity_and_live_control() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
+    use crate::session_registry::{self, SessionIdentity, SessionInfo};
+
+    let state = make_state();
+    let mut external = SessionInfo::new(
+        SessionId::new(uuid::Uuid::new_v4().to_string()),
+        PathBuf::from("C:\\repo"),
+    );
+    external.provider_id = Some("copilot".into());
+    external.cli_source = Some(CliSource::Copilot);
+    external.location = SessionLocation::Host;
+    external.status = Some(AgentStatus::Historical);
+    let mut originals = vec![external.clone()];
+    let mut live = external.clone();
+    live.session_id = SessionId::new(uuid::Uuid::new_v4().to_string());
+    live.status = Some(AgentStatus::Working);
+    originals.push(live);
+    let mut provider = external.clone();
+    provider.provider_id = Some("claude".into());
+    provider.cli_source = Some(CliSource::Claude);
+    originals.push(provider);
+    let mut location = external.clone();
+    location.location = SessionLocation::Wsl {
+        distro: "Ubuntu".into(),
+    };
+    originals.push(location);
+    let mut universe = external.clone();
+    universe.session_universe = Some("other-universe".into());
+    originals.push(universe);
+    for row in &originals {
+        state.registry.upsert(row.clone()).await;
+    }
+    let identity = SessionIdentity::from_info(&external);
+    let response =
+        handle_sessions_list_with_probe(&state, None, &Default::default(), |mut rows| async move {
+            for row in &mut rows {
+                if SessionIdentity::from_info(row) == identity {
+                    row.status = Some(AgentStatus::InUse);
+                }
+            }
+            rows
+        })
+        .await
+        .unwrap();
+    let parsed = session_registry::parse_sessions_list_response(&response.0).unwrap();
+    assert_eq!(parsed.sessions.len(), originals.len());
+    for original in originals {
+        let identity = SessionIdentity::from_info(&original);
+        let actual = parsed
+            .sessions
+            .iter()
+            .find(|row| SessionIdentity::from_info(row) == identity)
+            .unwrap();
+        let mut expected = original.clone();
+        if expected == external {
+            expected.status = Some(AgentStatus::InUse);
+        }
+        assert_eq!(actual, &expected);
+        assert_eq!(
+            state.registry.lookup_identity(&identity).await.unwrap(),
+            original
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sessions_list_probe_does_not_restore_removed_or_changed_history() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{self, SessionIdentity, SessionInfo};
+
+    for change in ["removed", "bound", "activity", "origin", "status"] {
+        let state = make_state();
+        let mut row = SessionInfo::new(
+            SessionId::new(uuid::Uuid::new_v4().to_string()),
+            PathBuf::from("C:\\repo"),
+        );
+        row.provider_id = Some("copilot".into());
+        row.cli_source = Some(CliSource::Copilot);
+        row.location = SessionLocation::Host;
+        row.status = Some(AgentStatus::Historical);
+        let identity = SessionIdentity::from_info(&row);
+        state.registry.upsert(row.clone()).await;
+        match change {
+            "bound" => row.pane_session_id = Some(uuid::Uuid::new_v4().to_string()),
+            "activity" => row.last_activity_at_ms = Some(42),
+            "origin" => row.origin = Some(SessionOrigin::AgentPane),
+            "status" => row.status = Some(AgentStatus::Ended),
+            _ => {}
+        }
+        let current = row.clone();
+        let registry = &state.registry;
+        let selected = identity.clone();
+        let response = handle_sessions_list_with_probe(
+            &state,
+            None,
+            &Default::default(),
+            |mut rows| async move {
+                if change == "removed" {
+                    registry.remove_identity(&selected).await;
+                } else {
+                    registry.upsert(current).await;
+                }
+                rows[0].status = Some(AgentStatus::InUse);
+                rows
+            },
+        )
+        .await
+        .unwrap();
+        let parsed = session_registry::parse_sessions_list_response(&response.0).unwrap();
+        if change == "removed" {
+            assert!(parsed.sessions.is_empty());
+            assert!(state.registry.lookup_identity(&identity).await.is_none());
+        } else {
+            assert_eq!(parsed.sessions, [row.clone()], "{change}");
+            assert_eq!(
+                state.registry.lookup_identity(&identity).await.unwrap(),
+                row
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn source_pane_session_handler_returns_live_registry_identity() {
     use crate::session_registry::{self, SessionInfo};
@@ -11062,6 +11259,145 @@ async fn sidebar_activation_unbound_agent_pane_keeps_live_guard() {
             row
         );
     }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sidebar_activation_external_probe_blocks_without_registry_mutation() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use crate::session_watcher::copilot_status::ProbeError;
+
+    for status in [AgentStatus::Historical, AgentStatus::Ended] {
+        for origin in [None, Some(SessionOrigin::Unknown)] {
+            for evidence in [
+                Ok(Some(AgentStatus::InUse)),
+                Err(ProbeError::Busy),
+                Err(ProbeError::Timeout),
+                Err(ProbeError::Unavailable),
+            ] {
+                let mock = Arc::new(MockWtChannel::ok());
+                let state = make_state_with_wt(mock.clone());
+                let mut row = SessionInfo::new(
+                    SessionId::new(uuid::Uuid::new_v4().to_string()),
+                    std::path::PathBuf::from("C:\\repo"),
+                );
+                row.provider_id = Some("copilot".into());
+                row.cli_source = Some(CliSource::Copilot);
+                row.location = crate::agent_sessions::SessionLocation::Host;
+                row.status = Some(status.clone());
+                row.origin = origin.clone();
+                let identity = SessionIdentity::from_info(&row);
+                state.registry.upsert(row.clone()).await;
+                let response = execute_session_activation_with_probe(
+                    &state,
+                    &SessionActivateParams {
+                        identity: identity.clone(),
+                        window_id: 42,
+                        activation_id: "external-ownership".into(),
+                    },
+                    |_| std::future::ready(evidence.clone()),
+                )
+                .await;
+                assert!(!response.accepted, "{response:?}");
+                assert_eq!(response.action, "not_resumable");
+                assert!(mock.calls().is_empty());
+                assert_eq!(
+                    state.registry.lookup_identity(&identity).await.unwrap(),
+                    row
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sidebar_activation_live_registration_wins_after_external_probe_await() {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use crate::session_watcher::copilot_status::ProbeError;
+
+    for status in [
+        AgentStatus::Idle,
+        AgentStatus::Working,
+        AgentStatus::Attention,
+        AgentStatus::Error,
+    ] {
+        for evidence in [Ok(Some(AgentStatus::InUse)), Err(ProbeError::Busy)] {
+            let mock = Arc::new(MockWtChannel::ok());
+            let state = make_state_with_wt(mock.clone());
+            let mut row = SessionInfo::new(
+                SessionId::new(uuid::Uuid::new_v4().to_string()),
+                std::path::PathBuf::from("C:\\repo"),
+            );
+            row.provider_id = Some("copilot".into());
+            row.cli_source = Some(CliSource::Copilot);
+            row.location = crate::agent_sessions::SessionLocation::Host;
+            row.status = Some(AgentStatus::Historical);
+            let identity = SessionIdentity::from_info(&row);
+            state.registry.upsert(row.clone()).await;
+            row.status = Some(status.clone());
+            row.pane_session_id = Some("new-live-pane".into());
+            let live = row.clone();
+            let registry = &state.registry;
+            let response = execute_session_activation_with_probe(
+                &state,
+                &SessionActivateParams {
+                    identity: identity.clone(),
+                    window_id: 42,
+                    activation_id: "live-precedence".into(),
+                },
+                |_| async move {
+                    registry.upsert(live).await;
+                    evidence
+                },
+            )
+            .await;
+            assert!(response.accepted, "{response:?}");
+            assert_eq!(response.action, "focus");
+            assert_eq!(mock.calls().len(), 1);
+            assert_eq!(mock.calls()[0].0, "focus_pane");
+            assert_eq!(
+                state.registry.lookup_identity(&identity).await.unwrap(),
+                row
+            );
+        }
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sidebar_activation_released_external_lease_allows_historical_resume() {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+
+    let _locale = crate::test_support::lock_locale();
+    let _resolver = mock_native_delegate_executables();
+    let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+        "session_id": "released-resume-pane"
+    })));
+    let state = make_state_with_wt(mock.clone());
+    let mut row = SessionInfo::new(
+        SessionId::new(uuid::Uuid::new_v4().to_string()),
+        std::path::PathBuf::from("C:\\repo"),
+    );
+    row.provider_id = Some("copilot".into());
+    row.cli_source = Some(CliSource::Copilot);
+    row.location = crate::agent_sessions::SessionLocation::Host;
+    row.status = Some(AgentStatus::Historical);
+    let identity = SessionIdentity::from_info(&row);
+    state.registry.upsert(row).await;
+    let response = execute_session_activation_with_probe(
+        &state,
+        &SessionActivateParams {
+            identity,
+            window_id: 42,
+            activation_id: "released-lease".into(),
+        },
+        |_| std::future::ready(Ok(None)),
+    )
+    .await;
+    assert!(response.accepted, "{response:?}");
+    assert_eq!(response.action, "resume_cli");
+    assert_eq!(mock.calls()[0].0, "create_tab");
 }
 
 #[tokio::test(flavor = "current_thread")]
