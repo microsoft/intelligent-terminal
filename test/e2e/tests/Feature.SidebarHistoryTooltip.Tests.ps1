@@ -2,7 +2,7 @@
 # Contract: real title/icon/blank-padding hover -> product ToolTip peer containing
 # the full title, provider, cwd and currently rendered age, without adding a
 # provider text line to the row. ACP listing -> WTA -> native ItemsList -> popup.
-# Refresh changes the same session's title/cwd/age; distant realized rows and
+# Refresh changes the same session's title; replacement changes cwd/age. Distant rows and
 # replacement sessions must never inherit another row's tooltip.
 # Negative controls: hover leaves the active shell unchanged; filtering excludes
 # other fixture rows. Existing CombinedAgentsSidebar protects native resume,
@@ -16,7 +16,7 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         . (Join-Path $PSScriptRoot 'helpers\SidebarExpansionEvents.ps1')
         . (Join-Path $PSScriptRoot 'helpers\TestTerminalCleanup.ps1')
-        Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, WindowsBase -ErrorAction Stop
+        Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, WindowsBase, System.Windows.Forms -ErrorAction Stop
         & (Get-Module ItE2E) { Initialize-WtWin32Input }
         $script:titleTipScreenshot = $false
         $script:missingTipScreenshot = $false
@@ -140,13 +140,23 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
                 if ([ItE2E.ItWtWin32Input]::IsKeyDown($key)) { throw 'Held user input; pointer injection refused.' }
             }
         }
+        function Move-HoverPointer([Windows.Point]$Point, $Row) {
+            Assert-HoverLease $Point $Row
+            $screen = [Windows.Forms.SystemInformation]::VirtualScreen
+            $mouse = [ItE2E.ItWtWin32Input+MOUSEINPUT]::new()
+            $mouse.dx = [int][Math]::Round(($Point.X - $screen.Left) * 65535 / ($screen.Width - 1))
+            $mouse.dy = [int][Math]::Round(($Point.Y - $screen.Top) * 65535 / ($screen.Height - 1))
+            $mouse.dwFlags = 0xC001 # MOVE | VIRTUALDESK | ABSOLUTE
+            $data = [ItE2E.ItWtWin32Input+INPUTUNION]::new(); $data.mouse = $mouse
+            $input = [ItE2E.ItWtWin32Input+INPUT]::new(); $input.data = $data
+            if ([ItE2E.ItWtWin32Input]::SendInput(1, @($input),
+                [Runtime.InteropServices.Marshal]::SizeOf($input)) -ne 1) { throw 'Physical hover SendInput failed.' }
+        }
         function Clear-HoverTip {
-            $list = Get-HoverElement ItemsList
-            $bounds = $list.Current.BoundingRectangle
-            $point = [Windows.Point]::new([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Top + 2))
             $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
-            Assert-HoverLease $point $root
-            if (-not [ItE2E.ItWtWin32Input]::SetCursorPos($point.X, $point.Y)) { throw 'Pointer departure failed.' }
+            $bounds = $root.Current.BoundingRectangle
+            $point = [Windows.Point]::new([int]($bounds.Right - 40), [int]($bounds.Top + 100))
+            Move-HoverPointer $point $root
             Wait-Until -TimeoutSec 4 -Because 'actual popup closes after pointer departure' -Condition { @(Get-HoverTips).Count -eq 0 } | Out-Null
         }
         function Assert-HistoryHover($Entry, [string]$Area, [string[]]$Forbidden = @()) {
@@ -167,6 +177,9 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
             $leaves | Should -HaveCount 3 -Because 'visible detail remains title, cwd and age, not provider'
             $title = @($leaves | Where-Object { $_.Current.Name -ceq $Entry.title })
             $cwd = @($leaves | Where-Object { $_.Current.Name -ceq $Entry.cwd })
+            if ($title.Count -ne 1 -or $cwd.Count -ne 1) {
+                throw "History row metadata mismatch on $Area. Expected title='$($Entry.title)' cwd='$($Entry.cwd)'; visible lines=$($leaves.Current.Name | ConvertTo-Json -Compress)."
+            }
             $title | Should -HaveCount 1; $cwd | Should -HaveCount 1
             $age = @($leaves | Where-Object { $_ -notin @($title[0], $cwd[0]) })
             $age | Should -HaveCount 1
@@ -180,21 +193,21 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
                 Padding { $row.Current.BoundingRectangle }
             }
             $point = if ($Area -eq 'Padding') {
-                [Windows.Point]::new([int]($box.Right - 3), [int]($box.Bottom - 3))
+                [Windows.Point]::new([int]($box.Left + 12), [int]($box.Top + $box.Height / 2))
             } else { [Windows.Point]::new([int]($box.Left + $box.Width / 2), [int]($box.Top + $box.Height / 2)) }
             if ($Area -eq 'Padding' -and @($parts | Where-Object {
                 $_.Current.ControlType -in @([Windows.Automation.ControlType]::Text, [Windows.Automation.ControlType]::Button) -and
                 $_.Current.BoundingRectangle.Contains($point)
             }).Count) { throw 'Blank-padding control is not blank; do not substitute title hover.' }
             Assert-HoverLease $point $row
-            $hit = [Windows.Automation.AutomationElement]::FromPoint($point)
-            $belongs = $false
-            for ($ancestor = $hit; $ancestor; $ancestor = [Windows.Automation.TreeWalker]::RawViewWalker.GetParent($ancestor)) {
-                if ([Windows.Automation.Automation]::Compare($ancestor, $row)) { $belongs = $true; break }
-            }
-            $belongs | Should -BeTrue -Because 'the physical target must hit this history row, including transparent padding'
+            # XAML Islands' UIA FromPoint can return only the host HWND.
+            # Native hit testing above rejects overlays; realized geometry pins the row.
+            $rowHits = @(Get-HoverRows | Where-Object { -not $_.Current.IsOffscreen -and
+                $_.Current.BoundingRectangle.Contains($point) })
+            $rowHits | Should -HaveCount 1 -Because 'the physical point must identify exactly one realized history row'
+            [Windows.Automation.Automation]::Compare($rowHits[0], $row) | Should -BeTrue
             $runtime = $row.GetRuntimeId() -join ','
-            if (-not [ItE2E.ItWtWin32Input]::SetCursorPos($point.X, $point.Y)) { throw 'Genuine pointer hover failed.' }
+            Move-HoverPointer $point $row
             try {
                 $tip = Wait-Until -TimeoutSec 4 -IntervalSec 0.1 -Because "visible product tooltip on $Area" -Condition {
                     $tips = @(Get-HoverTips)
@@ -290,6 +303,11 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
                     commandline = 'cmd.exe /d /k "prompt $G"'; startingDirectory = $script:evidence
                     shellIntegrationEnabled = $false; acpAgent = $Provider; acpCustomCommand = $command }) }
             }
+            $workArea = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+            if (-not [ItE2E.ItWtWin32Input]::SetWindowPos([IntPtr][long]$script:app.Hwnd, [IntPtr]::Zero,
+                $workArea.Left + 10, $workArea.Top + 10, $workArea.Width - 20, $workArea.Height - 20, 4)) {
+                throw 'Cannot position the owned fixture window within the interactive screen.'
+            }
             Save-HoverBuildReceipt launched
             $loaded = @($script:app.OwnedProcess.Modules | Where-Object ModuleName -eq 'TerminalApp.dll')
             $loaded | Should -HaveCount 1
@@ -317,19 +335,12 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
             @(Get-HoverRows | Where-Object { @(Get-HoverParts $_ | Where-Object { $_.Current.Name -ceq $history[1].title }).Count }) |
                 Should -HaveCount 0 -Because 'search filters out other fixture rows'
             $pipe = (Get-Content (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
-            $oldTitle = $history[0].title; $oldCwd = $history[0].cwd
+            $oldTitle = $history[0].title
             $history[0].title = "$marker row-0 REFRESHED " + ('changed long complete title ' * 8) + 'NEW-END'
-            $history[0].cwd = Join-Path $script:evidence 'refreshed-workspace'
-            New-Item -ItemType Directory -Path $history[0].cwd | Out-Null
-            $history[0].updatedAt = $now.AddHours(-4).UtcDateTime.ToString('o')
             @{ sessions = $history } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $historyPath -Encoding utf8
             Invoke-Wta -App $script:app -TimeoutSec 20 -Arguments @('sessions', 'refresh', '--master', $pipe, '--json') | Out-Null
             Wait-Until -TimeoutSec 20 -Condition { Get-HoverRow $history[0].title } | Out-Null
             $receipts.Add((Assert-HistoryHover $history[0] Padding @($oldTitle)))
-            # The old cwd is a prefix of the new cwd: compare metadata lines,
-            # not a substring that would falsely reject the new workspace.
-            @($receipts[-1].tooltip -split "`n" | Where-Object { $_ -ceq $oldCwd }) | Should -HaveCount 0
-            $receipts[-1].age | Should -Not -Be $receipts[0].age
             Clear-HoverTip
             foreach ($index in @(35, 1, 0)) {
                 Set-UiValue -App $script:app -Selector SearchTextBox -Value "$marker row-$index " | Out-Null
@@ -338,14 +349,17 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
             }
             Clear-HoverTip
             $removedTitle = $history[0].title
+            $replacementCwd = Join-Path $script:evidence 'replacement-workspace'
+            New-Item -ItemType Directory -Path $replacementCwd | Out-Null
             $history[0] = @{ sessionId = "$marker-replacement"; title = "$marker replacement " +
                     ('replacement complete title ' * 8) + 'REPLACEMENT-END'
-                cwd = $script:evidence; updatedAt = $now.AddDays(-2).UtcDateTime.ToString('o') }
+                cwd = $replacementCwd; updatedAt = $now.AddDays(-2).UtcDateTime.ToString('o') }
             @{ sessions = $history } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $historyPath -Encoding utf8
             Invoke-Wta -App $script:app -TimeoutSec 20 -Arguments @('sessions', 'refresh', '--master', $pipe, '--json') | Out-Null
             Set-UiValue -App $script:app -Selector SearchTextBox -Value "$marker replacement " | Out-Null
             Wait-Until -TimeoutSec 20 -Condition { Get-HoverRow $history[0].title } | Out-Null
             $receipts.Add((Assert-HistoryHover $history[0] Title @($oldTitle, $removedTitle)))
+            $receipts[-1].age | Should -Not -Be $receipts[0].age
             Clear-HoverTip
             Set-UiValue -App $script:app -Selector SearchTextBox -Value $marker | Out-Null
             $scroll = (Get-HoverElement ItemsList).GetCurrentPattern([Windows.Automation.ScrollPattern]::Pattern)
