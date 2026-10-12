@@ -119,23 +119,29 @@ CLI transcript are accepted, because the upstream plugin directory is also share
 by other Antigravity frontends. The ordinary `WT_SESSION`/COM gate still suppresses
 shared ACP processes.
 
-The Windows command invokes Windows PowerShell with `-EncodedCommand` to avoid
-nested command quoting, guards a missing `wtcli.exe`, and returns exactly `{}` on
-stdout. Antigravity parses hook responses as JSON even though `wtcli agent-hook`
-itself is silent. The neutral response does not supply a tool permission decision,
-inject steps, or request that the execution loop continue. Tracking is best-effort
-and must not block ordinary agent actions when the bridge is unavailable.
-The encoded UTF-16LE script for each event is:
+Antigravity's Windows hook executor splits the command into argv without stripping
+quote characters. Keep the script after PowerShell's `-Command` **unquoted**:
+PowerShell joins those arguments into a script. Quoting the entire script instead
+makes PowerShell evaluate a string literal and print the script rather than execute
+it. This uses the same readable `try`/`catch` guard as the Copilot, Codex, and Gemini
+hooks, with no Base64 or additional launcher:
 
-```powershell
-$ProgressPreference = 'SilentlyContinue'; try { wtcli.exe agent-hook --cli-source antigravity --event <topic> } catch { }; [Console]::Out.WriteLine('{}'); exit 0
+```text
+powershell.exe -NoLogo -NoProfile -NonInteractive -Command try { wtcli.exe agent-hook --cli-source antigravity --event <topic> } catch { }; [Console]::Out.WriteLine('{}'); exit 0
 ```
 
-The executable bundle tests keep these encoded scripts aligned with the readable
-form above and exercise Windows PowerShell, PowerShell 7, CMD, and Bash.
-The `antigravity-wsl` bundle uses the same native
-bridge with a Bash launch guard and child-scoped `WSLENV` distro propagation;
-it also forwards the actual hook cwd for callbacks without mounted-workspace metadata.
+The hook returns exactly `{}` on stdout, including when `wtcli.exe` is unavailable.
+Antigravity parses hook responses as JSON even though `wtcli agent-hook` itself is
+silent. The neutral response does not supply a tool permission decision, inject
+steps, or request that the execution loop continue. Tracking must not block ordinary
+agent actions when the bridge is unavailable.
+
+The executable bundle tests reproduce the provider's Windows argv dispatch, rather
+than incorrectly treating the command as a PowerShell or Bash shell expression.
+The `antigravity-wsl` bundle uses a Bash launch guard and single-quotes the readable
+PowerShell script so Bash preserves its inner double quotes.
+Child-scoped `WSLENV` propagation preserves the distro and actual hook cwd for
+callbacks without mounted-workspace metadata.
 Its guard returns `{}` even outside Terminal or when Windows interop is unavailable.
 The bridge never answers provider tool permissions. WSL plugins are installed separately
 with the in-distro `agy plugin install`, not by host-profile reconciliation.

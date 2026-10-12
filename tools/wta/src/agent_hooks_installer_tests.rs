@@ -1520,18 +1520,15 @@ fn run_hook_command(shell: HookShell, command: &str) -> Option<std::process::Out
     )
 }
 
-fn antigravity_hook_script(event: &str, bridge: &str) -> String {
-    format!(
-        "$ProgressPreference = 'SilentlyContinue'; \
-         try {{ {bridge} agent-hook --cli-source antigravity --event {event} }} catch {{ }}; \
-         [Console]::Out.WriteLine('{{}}'); exit 0"
-    )
-}
-
-fn antigravity_encoded_script(event: &str, bridge: &str) -> String {
-    let script = antigravity_hook_script(event, bridge);
-    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
-    crate::osc52::base64_encode(&utf16)
+fn antigravity_windows_hook_process(command: &str) -> std::process::Command {
+    // Antigravity's Windows executor keeps literal quotes in whitespace-split argv.
+    let mut argv = command.split_whitespace();
+    let mut process = std::process::Command::new(argv.next().expect("hook executable"));
+    process
+        .args(argv)
+        .env_remove("WT_COM_CLSID")
+        .env_remove("WT_SESSION");
+    process
 }
 
 fn antigravity_hook_commands(manifest: &Value) -> Vec<(&str, &str)> {
@@ -1572,29 +1569,20 @@ fn assert_antigravity_hook_response(output: &std::process::Output, command: &str
 }
 
 #[test]
-fn antigravity_hooks_return_neutral_json_in_every_supported_shell() {
+fn antigravity_hooks_return_neutral_json_in_native_windows_dispatch() {
     let manifest: Value =
         serde_json::from_str(include_str!("../wt-agent-hooks/antigravity/hooks.json")).unwrap();
-    for (event, command) in antigravity_hook_commands(&manifest) {
-        let encoded = antigravity_encoded_script(event, "wtcli.exe");
-        let missing = antigravity_encoded_script(event, MISSING_BRIDGE);
-        for candidate in [command.to_string(), command.replace(&encoded, &missing)] {
-            // Windows PowerShell's native argument handling differs from pwsh.
-            let output = std::process::Command::new("powershell.exe")
-                .args(["-NoProfile", "-NonInteractive", "-Command", &candidate])
-                .env_remove("WT_COM_CLSID")
-                .env_remove("WT_SESSION")
+    for (_, command) in antigravity_hook_commands(&manifest) {
+        for candidate in [
+            command.to_string(),
+            command.replace("wtcli.exe", MISSING_BRIDGE),
+        ] {
+            let output = antigravity_windows_hook_process(&candidate)
                 .output()
                 .expect("Windows PowerShell should start");
             assert_antigravity_hook_response(&output, &candidate);
-        }
-        assert!(is_shell_agnostic(command), "{command}");
-        assert!(command.ends_with(&encoded), "{command}");
-        for shell in HOOK_SHELLS {
-            for candidate in [command.to_string(), command.replace(&encoded, &missing)] {
-                if let Some(output) = run_hook_command(shell, &candidate) {
-                    assert_antigravity_hook_response(&output, &candidate);
-                }
+            if let Some(output) = run_hook_command(HookShell::Cmd, &candidate) {
+                assert_antigravity_hook_response(&output, &candidate);
             }
         }
     }
@@ -1605,7 +1593,7 @@ fn antigravity_wsl_hooks_return_neutral_json_when_tracking_is_unavailable() {
     let manifest: Value =
         serde_json::from_str(include_str!("../wt-agent-hooks/antigravity-wsl/hooks.json")).unwrap();
     for (event, command) in antigravity_hook_commands(&manifest) {
-        assert!(command.contains(&antigravity_encoded_script(event, "wtcli.exe")));
+        assert!(command.contains(&format!("--event {event}")));
         assert!(command.contains("WSL_DISTRO_NAME/w"));
         assert!(command.contains("WTA_HOOK_CWD=\"$PWD\""));
         assert!(command.contains("WTA_HOOK_CWD/w"));
@@ -1618,14 +1606,26 @@ fn antigravity_wsl_hooks_return_neutral_json_when_tracking_is_unavailable() {
             }
         }
         if let Some(bash) = bash_exe() {
-            let missing_interop = command.replace("powershell.exe", MISSING_BRIDGE);
-            let output = std::process::Command::new(bash)
-                .args(["-c", &missing_interop])
-                .env("WT_SESSION", "fixture-pane")
-                .env("WT_COM_CLSID", "fixture-server")
-                .output()
-                .expect("Bash should start");
-            assert_antigravity_hook_response(&output, &missing_interop);
+            for candidate in [
+                command.to_string(),
+                command.replace("wtcli.exe", MISSING_BRIDGE),
+                command.replace("powershell.exe", MISSING_BRIDGE),
+            ] {
+                let output = std::process::Command::new(bash)
+                    .args(["-c", &candidate])
+                    .env("WT_SESSION", "")
+                    .env("WT_COM_CLSID", "fixture-server")
+                    .output()
+                    .expect("Bash should start");
+                assert_antigravity_hook_response(&output, &candidate);
+                let output = std::process::Command::new(bash)
+                    .args(["-c", &candidate])
+                    .env("WT_SESSION", "fixture-pane")
+                    .env("WT_COM_CLSID", "fixture-server")
+                    .output()
+                    .expect("Bash should start");
+                assert_antigravity_hook_response(&output, &candidate);
+            }
         }
     }
     for (native, linux) in [
@@ -1646,35 +1646,28 @@ fn antigravity_wsl_hooks_return_neutral_json_when_tracking_is_unavailable() {
 }
 
 #[test]
-fn antigravity_encoded_hooks_forward_stdin_and_event_arguments() {
+fn antigravity_hooks_forward_stdin_and_event_arguments() {
     use std::io::Write;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
     let fixture_home = antigravity_test_home("hook-input");
-    let record_path = fixture_home.join("bridge-input.json");
+    let record_path = fixture_home.join("bridge input 'quoted'.json");
     let path = record_path.to_string_lossy().replace('\'', "''");
     let manifest: Value =
         serde_json::from_str(include_str!("../wt-agent-hooks/antigravity/hooks.json")).unwrap();
     let payload = r#"{"conversationId":"fixture-session","workspacePaths":["C:\\a workspace"],"toolCall":{"name":"AskQuestion","args":{"question":"A quoted \"question\""}}}"#;
     for (event, command) in antigravity_hook_commands(&manifest) {
-        let script = format!(
-            "$ProgressPreference = 'SilentlyContinue'; function wtcli.exe {{ \
+        let bridge = format!(
+            "function wtcli.exe {{ \
              $record = @{{ arguments = @($args); input = [Console]::In.ReadToEnd() }}; \
              [System.IO.File]::WriteAllText('{path}', ($record | ConvertTo-Json -Compress)) \
-             }}; {}",
-            antigravity_hook_script(event, "wtcli.exe")
+             }}; "
         );
-        let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
-        let encoded = antigravity_encoded_script(event, "wtcli.exe");
-        assert!(command.contains(&encoded));
-        let candidate = command.replace(&encoded, &crate::osc52::base64_encode(&utf16));
-        let mut child = Command::new("powershell.exe")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &candidate])
+        let candidate = command.replacen("-Command ", &format!("-Command {bridge}"), 1);
+        let mut child = antigravity_windows_hook_process(&candidate)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env_remove("WT_COM_CLSID")
-            .env_remove("WT_SESSION")
             .spawn()
             .unwrap();
         child

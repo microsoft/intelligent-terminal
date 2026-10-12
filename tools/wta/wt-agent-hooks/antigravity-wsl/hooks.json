@@ -3,7 +3,7 @@
     "PreInvocation": [
       {
         "type": "command",
-        "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand JABQAHIAbwBnAHIAZQBzAHMAUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAaQBsAGUAbgB0AGwAeQBDAG8AbgB0AGkAbgB1AGUAJwA7ACAAdAByAHkAIAB7ACAAdwB0AGMAbABpAC4AZQB4AGUAIABhAGcAZQBuAHQALQBoAG8AbwBrACAALQAtAGMAbABpAC0AcwBvAHUAcgBjAGUAIABhAG4AdABpAGcAcgBhAHYAaQB0AHkAIAAtAC0AZQB2AGUAbgB0ACAAYQBnAGUAbgB0AC4AcAByAG8AbQBwAHQALgBzAHUAYgBtAGkAdAAgAH0AIABjAGEAdABjAGgAIAB7ACAAfQA7ACAAWwBDAG8AbgBzAG8AbABlAF0AOgA6AE8AdQB0AC4AVwByAGkAdABlAEwAaQBuAGUAKAAnAHsAfQAnACkAOwAgAGUAeABpAHQAIAAwAA== || printf '{}\\n'; exit 0",
+        "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'try { wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } catch { }; [Console]::Out.WriteLine(\"{}\"); exit 0' || printf '{}\\n'; exit 0",
         "timeout": 5
       }
     ],
@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand JABQAHIAbwBnAHIAZQBzAHMAUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAaQBsAGUAbgB0AGwAeQBDAG8AbgB0AGkAbgB1AGUAJwA7ACAAdAByAHkAIAB7ACAAdwB0AGMAbABpAC4AZQB4AGUAIABhAGcAZQBuAHQALQBoAG8AbwBrACAALQAtAGMAbABpAC0AcwBvAHUAcgBjAGUAIABhAG4AdABpAGcAcgBhAHYAaQB0AHkAIAAtAC0AZQB2AGUAbgB0ACAAYQBnAGUAbgB0AC4AdABvAG8AbAAuAHMAdABhAHIAdABpAG4AZwAgAH0AIABjAGEAdABjAGgAIAB7ACAAfQA7ACAAWwBDAG8AbgBzAG8AbABlAF0AOgA6AE8AdQB0AC4AVwByAGkAdABlAEwAaQBuAGUAKAAnAHsAfQAnACkAOwAgAGUAeABpAHQAIAAwAA== || printf '{}\\n'; exit 0",
+            "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'try { wtcli.exe agent-hook --cli-source antigravity --event agent.tool.starting } catch { }; [Console]::Out.WriteLine(\"{}\"); exit 0' || printf '{}\\n'; exit 0",
             "timeout": 5
           }
         ]
@@ -22,7 +22,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand JABQAHIAbwBnAHIAZQBzAHMAUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAaQBsAGUAbgB0AGwAeQBDAG8AbgB0AGkAbgB1AGUAJwA7ACAAdAByAHkAIAB7ACAAdwB0AGMAbABpAC4AZQB4AGUAIABhAGcAZQBuAHQALQBoAG8AbwBrACAALQAtAGMAbABpAC0AcwBvAHUAcgBjAGUAIABhAG4AdABpAGcAcgBhAHYAaQB0AHkAIAAtAC0AZQB2AGUAbgB0ACAAYQBnAGUAbgB0AC4AcwB0AG8AcAAgAH0AIABjAGEAdABjAGgAIAB7ACAAfQA7ACAAWwBDAG8AbgBzAG8AbABlAF0AOgA6AE8AdQB0AC4AVwByAGkAdABlAEwAaQBuAGUAKAAnAHsAfQAnACkAOwAgAGUAeABpAHQAIAAwAA== || printf '{}\\n'; exit 0",
+        "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'try { wtcli.exe agent-hook --cli-source antigravity --event agent.stop } catch { }; [Console]::Out.WriteLine(\"{}\"); exit 0' || printf '{}\\n'; exit 0",
         "timeout": 5
       }
     ]
