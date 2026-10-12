@@ -872,7 +872,7 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // v12: upgrade earlier v11 installs to include Antigravity resume handling
     // and reject option-shaped session IDs.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 12;
+    inline constexpr int kVersion = 11;
 
     inline std::wstring ScriptFileName()
     {
