@@ -587,6 +587,8 @@ function Global:PSConsoleHostReadLine { return $Global:__ResumeTestLine }
 $cases = @(
     @{ Line = 'copilot --resume=resume-test'; Agent = 'copilot' }
     @{ Line = 'copilot --resume resume-test'; Agent = 'copilot' }
+    @{ Line = 'copilot --resume="resume-test"'; Agent = 'copilot' }
+    @{ Line = "copilot --resume='resume-test'"; Agent = 'copilot' }
     @{ Line = 'copilot --resume "resume-test" --yolo'; Agent = 'copilot' }
     @{ Line = "copilot --model gpt-5 --resume='resume-test'"; Agent = 'copilot' }
     @{ Line = '& copilot.cmd --resume resume-test'; Agent = 'copilot' }
