@@ -20,13 +20,20 @@ function workerPhaseMinutes() {
         assert.ok(match, `compiled ${name} job is missing`);
         return match[1];
     };
-    const jobMinutes = name => Number(job(name).match(/^    timeout-minutes:\s*(\d+)/m)?.[1]);
+    const jobMinutes = name => {
+        const phaseBounds = source.match(/const phaseTimeoutMinutes = \{ activation: (\d+), conclusion: (\d+) \}/);
+        const value = Number(job(name).match(/^    timeout-minutes:\s*(\d+)/m)?.[1] ??
+            (name === 'activation' ? phaseBounds?.[1] : name === 'conclusion' ? phaseBounds?.[2] : undefined));
+        assert.ok(Number.isFinite(value) && value > 0, `compiled ${name} job needs a bounded timeout`);
+        return value;
+    };
     const nativeMinutes = Math.max(...['validate_performance_original_tests',
         'validate_performance_focused_tests', 'validate_performance_repair'].map(name =>
         [...job(name).matchAll(/^        timeout-minutes:\s*(\d+)/gm)]
             .reduce((total, match) => total + Number(match[1]), 0)));
-    return jobMinutes('prepare') + jobMinutes('performance_analysis') + jobMinutes('agent') +
-        jobMinutes('detection') + Math.max(jobMinutes('safe_outputs'), nativeMinutes);
+    return jobMinutes('prepare') + jobMinutes('activation') + jobMinutes('performance_analysis') +
+        jobMinutes('agent') + jobMinutes('detection') +
+        Math.max(jobMinutes('safe_outputs') + jobMinutes('conclusion'), nativeMinutes);
 }
 
 test('the controller run name preserves the PR identity instead of starting a YAML comment', () => {
@@ -42,15 +49,17 @@ test('controller job leaves bounded preparation and reporting headroom beyond it
     const workerMinutes = Number(source.match(/const deadline = Date\.now\(\) \+ (\d+) \* 60 \* 1000/)?.[1]);
     assert.equal(jobMinutes, 175);
     assert.equal(workerMinutes, 150);
-    assert.equal(workerPhaseMinutes(), 132);
+    assert.equal(workerPhaseMinutes(), 140);
     assert.ok(workerMinutes - workerPhaseMinutes() >= 10, 'deadline must cover actual compiled phase bounds plus orchestration');
     assert.ok(jobMinutes - workerMinutes >= 20);
 });
 
-async function simulate({ fork = false, conclusion = 'success', agent = true, timeout = false, completeAfterMinutes = 0 } = {}) {
+async function simulate({ fork = false, conclusion = 'success', agent = true, timeout = false, completeAfterMinutes = 0,
+    slowPhase, invalidPhaseStarted = false, resistsCancellation = false } = {}) {
     const calls = [];
     const outputs = {};
     let clock = 100000;
+    let cancelled = false;
     const github = {
         rest: { actions: {
             async createWorkflowDispatch(value) { calls.push(['dispatch', value]); },
@@ -61,15 +70,22 @@ async function simulate({ fork = false, conclusion = 'success', agent = true, ti
                 }] } };
             },
             async getWorkflowRun() {
+                if (cancelled && !resistsCancellation) return { data: { id: 123, status: 'completed', conclusion: 'cancelled' } };
                 return { data: { id: 123, status: timeout || clock - 100000 < completeAfterMinutes * 60 * 1000 ? 'in_progress' : 'completed',
                     conclusion, html_url: 'https://example.invalid/run/123' } };
             },
-            async cancelWorkflowRun(value) { calls.push(['cancel', value]); },
+            async cancelWorkflowRun(value) { calls.push(['cancel', value]); cancelled = true; },
             listJobsForWorkflowRun: 'jobs',
         } },
+        async request(route, target) {
+            assert.equal(route, 'POST /repos/{owner}/{repo}/actions/runs/{run_id}/force-cancel');
+            calls.push(['force-cancel', target]);
+        },
         async paginate() {
             return [{ name: 'agent', conclusion: agent ? 'success' : 'skipped',
-                steps: [{ name: 'Execute GitHub Copilot CLI', conclusion: agent ? 'success' : 'skipped' }] }];
+                steps: [{ name: 'Execute GitHub Copilot CLI', conclusion: agent ? 'success' : 'skipped' }] },
+                ...(slowPhase ? [{ name: slowPhase, status: 'in_progress',
+                    started_at: invalidPhaseStarted ? 'invalid' : new Date(100000).toISOString() }] : [])];
         },
     };
     const context = { payload: { pull_request: { number: 42 } },
@@ -133,6 +149,23 @@ test('actual controller timeout cancels only its correlated run', async () => {
     assert.deepEqual(result.calls.find(([kind]) => kind === 'cancel')[1], {
         owner: 'owner', repo: 'repo', run_id: 123,
     });
+});
+
+test('activation and conclusion watchdogs cancel only the correlated worker before the overall deadline', async () => {
+    for (const phase of ['activation', 'conclusion']) {
+        const result = await simulate({ timeout: true, slowPhase: phase });
+        assert.match(result.error.message, new RegExp(`${phase} exceeded its .*controller phase deadline`));
+        assert.deepEqual(result.calls.filter(call => call[0] === 'cancel'), [['cancel', {
+            owner: 'owner', repo: 'repo', run_id: 123,
+        }]]);
+    }
+    const invalid = await simulate({ timeout: true, slowPhase: 'activation', invalidPhaseStarted: true });
+    assert.match(invalid.error.message, /no valid start time/);
+    assert.equal(invalid.calls.filter(call => call[0] === 'cancel').length, 1);
+    const resistant = await simulate({ timeout: true, slowPhase: 'conclusion', resistsCancellation: true });
+    assert.deepEqual(resistant.calls.filter(call => ['cancel', 'force-cancel'].includes(call[0])).map(call => call[0]),
+        ['cancel', 'force-cancel']);
+    assert.equal(resistant.calls.find(call => call[0] === 'force-cancel')[1].run_id, 123);
 });
 
 const reportMatch = workflow.match(/name: Publish linked PR run report[\s\S]*?script: \|\r?\n((?: {12}.+(?:\r?\n|$)|\s*\r?\n)+)/);

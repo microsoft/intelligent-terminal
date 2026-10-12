@@ -144,12 +144,42 @@ jobs:
             core.setOutput("run_url", run.html_url ||
               `${process.env.GITHUB_SERVER_URL || "https://github.com"}/${context.repo.owner}/${context.repo.repo}/actions/runs/${run.id}`);
             const deadline = Date.now() + 150 * 60 * 1000;
+            const phaseTimeoutMinutes = { activation: 5, conclusion: 3 };
+            const cancelWorker = async () => {
+              const target = { owner: context.repo.owner, repo: context.repo.repo, run_id: run.id };
+              await github.rest.actions.cancelWorkflowRun(target);
+              for (let attempt = 0; attempt < 2; attempt++) {
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                const stopped = (await github.rest.actions.getWorkflowRun(target)).data;
+                if (stopped.status === "completed") return;
+              }
+              await github.request("POST /repos/{owner}/{repo}/actions/runs/{run_id}/force-cancel", target);
+            };
             while (Date.now() < deadline) {
               run = (await github.rest.actions.getWorkflowRun({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 run_id: run.id
               })).data;
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run.id,
+                per_page: 100
+              });
+              for (const job of jobs) {
+                const limit = phaseTimeoutMinutes[job.name];
+                if (!limit || job.status !== "in_progress") continue;
+                const phaseStarted = Date.parse(job.started_at);
+                if (!Number.isFinite(phaseStarted)) {
+                  await cancelWorker();
+                  throw new Error(`Worker ${job.name} has no valid start time.`);
+                }
+                if (Date.now() - phaseStarted > limit * 60 * 1000) {
+                  await cancelWorker();
+                  throw new Error(`Worker ${job.name} exceeded its ${limit}-minute controller phase deadline.`);
+                }
+              }
               if (run.status === "completed") {
                 core.setOutput("run_id", String(run.id));
                 core.setOutput("run_url", run.html_url);
@@ -157,12 +187,6 @@ jobs:
                 if (run.conclusion !== "success") {
                   throw new Error(`${worker} run ${run.id} concluded ${run.conclusion}.`);
                 }
-                const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  run_id: run.id,
-                  per_page: 100
-                });
                 const agentJob = jobs.find(job => job.name === "agent");
                 if (agentJob?.conclusion !== "success" ||
                     !agentJob.steps?.some(step =>
@@ -173,11 +197,7 @@ jobs:
               }
               await new Promise(resolve => setTimeout(resolve, 15000));
             }
-            await github.rest.actions.cancelWorkflowRun({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: run.id
-            });
+            await cancelWorker();
             throw new Error(`${worker} run ${run.id} exceeded 150 minutes.`);
 
       - name: Enforce domain verdict rather than workflow success alone

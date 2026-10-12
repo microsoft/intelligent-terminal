@@ -63,11 +63,11 @@ explicit gaps. Referenced prerequisite builds are not extra analyzer coverage.
 | --- | --- |
 | C++ `PerformanceAnalysis=Extended` | Four selected Clang-Tidy performance checks on top of AuditMode/MSVC/CppCoreCheck infrastructure. |
 | Rust `cargo wta-perf` / `cargo wta-perf-extended` | Developer Clippy entrypoints; the extended alias adds `needless_collect` and `large_futures` individually. Ordinary Cargo builds do not run Clippy. |
+| Shared skill rules | Repeated work, UI blocking, MVVM amplification, async contention and owner lifetime, investigated only where triggered. |
 
 The opt-in C++ profile explicitly enables Clang-Tidy. BASE/HEAD analysis also
 passes enablement as a trusted global property alongside the frozen checks;
 ordinary builds without that profile/property remain unchanged.
-| Shared skill rules | Repeated work, UI blocking, MVVM amplification, async contention and owner lifetime, investigated only where triggered. |
 
 Before same-repository inference, separate read-only Windows BASE/HEAD jobs
 use the same HEAD-derived plan and trusted profiles. Their metadata and raw
@@ -187,8 +187,19 @@ old report; transport rejection before the handler changes neither artifact.
 | Controller | 150-minute worker wait within a 175-minute job |
 | Model | Auto; 500 main-agent and 100000 daily AI-credit caps; framework detection has a separate budget |
 
-The compiled critical phases permit 132 minutes. Queue/setup delays can still
-exhaust the controller headroom. Pinned gh-aw v0.87.10 does not emit a custom
+The conservative phase budget is 140 minutes, including controller-observed
+five-minute activation and three-minute conclusion deadlines. Activation and
+analysis can overlap; the budget does not depend on that optimization. The
+controller still waits 150 minutes within its 175-minute job.
+The pinned compiler cannot set job timeouts for those two framework jobs.
+The controller checks their running-job timestamps on its existing polling
+loop and cancels only the correlated worker on expiry. Polling and GitHub
+cancellation are asynchronous; these are watchdogs, not generated job limits.
+After ordinary cancellation, the controller allows two ten-second status
+checks before using GitHub's force-cancel endpoint for an unresponsive run
+(including `always()` jobs). Both requests target only the correlated worker.
+Queue/setup delays can still exhaust the controller headroom.
+Pinned gh-aw v0.87.10 does not emit a custom
 safe-job timeout override; step deadlines and controller cancellation are the
 enforced bounds, not a claimed 35-minute native job limit.
 
