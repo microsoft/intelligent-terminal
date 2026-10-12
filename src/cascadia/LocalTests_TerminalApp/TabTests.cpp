@@ -366,6 +366,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabKeyboardFocusPreservesSelection);
         TEST_METHOD(VerticalTabStripHostsPaneGroups);
         TEST_METHOD(VerticalTabPaneSelectionTracksSelectedTab);
+        TEST_METHOD(VerticalSidebarPaneActivationSkipsPreviousFocus);
         TEST_METHOD(HorizontalTabProgressSurvivesAsyncVerticalTeardown);
         TEST_METHOD(HeaderProgressWrapperBindingPreservesRingState);
         TEST_METHOD(IndeterminateProgressUsesSharedResource);
@@ -12197,6 +12198,131 @@ namespace TerminalAppLocalTests
             strip.SelectedItem(nullptr);
             verifySelection(firstDisplay, -1);
             verifySelection(secondDisplay, -1);
+        });
+    }
+
+    void TabTests::VerticalSidebarPaneActivationSkipsPreviousFocus()
+    {
+        Grid host{ nullptr };
+        TestOnUIThread([&]() {
+            host = Grid{};
+            host.Width(1200);
+            host.Height(800);
+        });
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{bbe0ea84-01ab-42e4-8f82-89ab03724dc1}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*connection, host, std::nullopt, true);
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> group;
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> other;
+        winrt::Microsoft::Terminal::Control::TermControl firstControl{ nullptr };
+        winrt::Microsoft::Terminal::Control::TermControl secondControl{ nullptr };
+        winrt::Microsoft::Terminal::Control::TermControl thirdControl{ nullptr };
+        uint32_t firstContentId{};
+        uint32_t thirdContentId{};
+
+        TestOnUIThread([&]() {
+            group = page->_GetFocusedTabImpl();
+            firstControl = group->GetActiveTerminalControl();
+            firstContentId = group->GetActivePane()->ContentId().value();
+            const auto secondConnection = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{bbe0ea84-02ab-42e4-8f82-89ab03724dc1}" },
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const auto secondPane = page->_MakePane(nullptr, nullptr, *secondConnection);
+            secondControl = secondPane->GetTerminalControl();
+            VERIFY_IS_TRUE(page->_SplitPane(group, SplitDirection::Right, 0.5f, secondPane));
+            const auto thirdConnection = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{bbe0ea84-03ab-42e4-8f82-89ab03724dc1}" },
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const auto thirdPane = page->_MakePane(nullptr, nullptr, *thirdConnection);
+            thirdControl = thirdPane->GetTerminalControl();
+            thirdContentId = thirdPane->ContentId().value();
+            VERIFY_IS_TRUE(page->_SplitPane(group, SplitDirection::Down, 0.5f, thirdPane));
+            page->UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return firstControl.IsLoaded() && secondControl.IsLoaded() && thirdControl.IsLoaded() &&
+                   firstControl.ActualWidth() > 0 && secondControl.ActualWidth() > 0 && thirdControl.ActualWidth() > 0;
+        });
+        TestOnUIThread([&]() {
+            const auto firstPane = group->GetRootPane()->FindPaneByContentId(firstContentId);
+            VERIFY_IS_TRUE(group->FocusPane(firstPane->Id().value()));
+            VERIFY_IS_TRUE(firstControl.Focus(FocusState::Programmatic));
+            const auto otherConnection = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{bbe0ea84-04ab-42e4-8f82-89ab03724dc1}" },
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            other = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, *otherConnection)));
+            other->SuppressAgentPrewarm();
+            page->_selectedTabItem(other->TabViewItem());
+            page->UpdateLayout();
+        });
+        TestOnUIThread([&]() {
+            const auto firstPane = group->GetRootPane()->FindPaneByContentId(firstContentId);
+            const auto thirdPane = group->GetRootPane()->FindPaneByContentId(thirdContentId);
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = strip->DisplayItemForTab(group->TabViewItem());
+            const auto firstRow = display.PaneItems().GetAt(0);
+            const auto thirdRow = display.PaneItems().GetAt(2);
+            VERIFY_ARE_EQUAL(firstContentId, firstRow.ContentId());
+            VERIFY_ARE_EQUAL(thirdContentId, thirdRow.ContentId());
+
+            uint32_t firstFocusCount = 0;
+            uint32_t firstHighlightCount = 0;
+            const auto firstFocus = firstControl.GotFocus(winrt::auto_revoke, [&](auto&&, auto&&) { ++firstFocusCount; });
+            const auto firstHighlight = firstRow.PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                if (args.PropertyName() == L"ActiveIndicatorVisibility" && firstRow.ActiveIndicatorVisibility() == Visibility::Visible)
+                {
+                    ++firstHighlightCount;
+                }
+            });
+            const auto activateThird = [&]() {
+                // Use the same callback as pointer, keyboard, and automation activation.
+                Button button;
+                button.DataContext(thirdRow);
+                strip->OnPaneActivateClick(button, RoutedEventArgs{});
+            };
+            const auto verifyThird = [&]() {
+                VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == group);
+                VERIFY_IS_TRUE(group->GetActivePane() == thirdPane);
+                VERIFY_IS_TRUE(Input::FocusManager::GetFocusedElement(page->XamlRoot()) == thirdControl);
+                VERIFY_ARE_EQUAL(0u, firstFocusCount);
+                VERIFY_ARE_EQUAL(0u, firstHighlightCount);
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, firstRow.ActiveIndicatorVisibility());
+                VERIFY_ARE_EQUAL(Visibility::Visible, thirdRow.ActiveIndicatorVisibility());
+                VERIFY_IS_TRUE(display.PaneItems().GetAt(0) == firstRow);
+                VERIFY_IS_TRUE(display.PaneItems().GetAt(2) == thirdRow);
+            };
+
+            activateThird();
+            verifyThird();
+            activateThird();
+            verifyThird();
+            page->_selectedTabItem(other->TabViewItem());
+            page->_selectedTabItem(group->TabViewItem());
+            verifyThird();
+
+            VERIFY_IS_TRUE(group->FocusPane(firstPane->Id().value()));
+            firstFocusCount = 0;
+            firstHighlightCount = 0;
+            activateThird();
+            verifyThird();
+
+            group->EnterZoom();
+            page->_selectedTabItem(other->TabViewItem());
+            activateThird();
+            VERIFY_IS_TRUE(group->IsZoomed());
+            verifyThird();
+            group->ExitZoom();
+
+            VERIFY_IS_TRUE(group->FocusPane(firstPane->Id().value()));
+            group->EnterZoom();
+            VERIFY_IS_TRUE(group->IsZoomed());
+            page->_selectedTabItem(other->TabViewItem());
+            firstFocusCount = 0;
+            firstHighlightCount = 0;
+            activateThird();
+            VERIFY_IS_FALSE(group->IsZoomed());
+            verifyThird();
         });
     }
 

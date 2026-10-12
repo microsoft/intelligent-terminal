@@ -102,6 +102,11 @@ default profile. Filters, search, and tab layout do not change its action,
 accessible name, help text, or tooltip. Creating an agent requires an explicit
 agent action, not an override of the normal new-tab control.
 
+Activating a pane row in another tab selects that pane before the tab restores
+input focus. The tab's previously active pane must not receive intermediate
+focus or selection highlighting. Selecting the tab itself still restores its
+last active pane. Activating another pane in a zoomed tab exits zoom first.
+
 ## Sidebar presentation
 
 - The toolbar heading is static **Tabs**, with no switch button, border, or swap

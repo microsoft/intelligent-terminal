@@ -13340,15 +13340,15 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        if (winrt::get_abi(_selectedTabItem()) != winrt::get_abi(args.Tab()))
-        {
-            _selectedTabItem(args.Tab());
-        }
-
         const auto active = tab->GetActivePane();
         if (tab->IsZoomed() && (!active || active->ContentId() != pane->ContentId()))
         {
             tab->ExitZoom();
+        }
+        if (winrt::get_abi(_selectedTabItem()) != winrt::get_abi(args.Tab()))
+        {
+            tab->PreparePaneFocus(pane->Id().value());
+            _selectedTabItem(args.Tab());
         }
         tab->FocusPane(pane->Id().value());
         if (const auto content = pane->GetContent())

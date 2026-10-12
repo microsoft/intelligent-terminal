@@ -64,6 +64,7 @@ namespace winrt::TerminalApp::implementation
         bool NavigateFocus(const winrt::Microsoft::Terminal::Settings::Model::FocusDirection& direction);
         bool SwapPane(const winrt::Microsoft::Terminal::Settings::Model::FocusDirection& direction);
         bool FocusPane(const uint32_t id);
+        void PreparePaneFocus(const uint32_t id);
 
         void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
         void UpdateTitle();
