@@ -247,8 +247,6 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
         $script:provider = $Provider
         $script:rowAmbiguity = $null
         $script:clock = [Diagnostics.Stopwatch]::StartNew()
-        $dpi = [ItE2E.ItWtWin32Input]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
-        if ($dpi -eq [IntPtr]::Zero) { throw 'Physical DPI context unavailable.' }
         $marker = 'HistoryHover-' + [guid]::NewGuid().ToString('N')
         $root = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
         $script:evidence = Join-Path ([IO.Path]::GetFullPath($root)) $marker
@@ -275,6 +273,8 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
             installedWta = @{ path = $script:target.WtaPath; sha256 = (Get-FileHash -LiteralPath $script:target.WtaPath).Hash }
         }
         Save-HoverBuildReceipt before-launch
+        $dpi = [ItE2E.ItWtWin32Input]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
+        if ($dpi -eq [IntPtr]::Zero) { throw 'Physical DPI context unavailable.' }
         try {
             Assert-WtPackageInactive -App $script:target
             $profile = '{' + [guid]::NewGuid() + '}'
