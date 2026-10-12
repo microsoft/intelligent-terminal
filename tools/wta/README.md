@@ -229,6 +229,12 @@ The gate remains occupied until the blocking file operation finishes, even
 when its caller times out or disconnects. Busy list reads retain the original
 snapshot.
 
+List responses reread the registry after the external probe and enrich pane
+ownership from that current snapshot. Registrations made during the probe retain
+their detailed activity and window/background attribution in the same response.
+External evidence applies only to unchanged eligible history rows; it cannot
+restore removed rows or overwrite a newer binding.
+
 Activation checks the same qualified native evidence again before any
 resume path; it never trusts the status returned to the sidebar. An actively
 held external lease rejects activation without changing registry ownership.

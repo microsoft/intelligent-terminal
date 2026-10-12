@@ -7667,6 +7667,23 @@ async fn handle_sessions_list(
     agent: Option<&AgentCli>,
     parsed: &crate::session_registry::SessionsListParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
+    handle_sessions_list_with_probe(state, agent, parsed, |mut sessions| async move {
+        crate::session_watcher::copilot_status::enrich_snapshot(&mut sessions).await;
+        sessions
+    })
+    .await
+}
+
+async fn handle_sessions_list_with_probe<F, Fut>(
+    state: &std::sync::Arc<MasterStateInner>,
+    agent: Option<&AgentCli>,
+    parsed: &crate::session_registry::SessionsListParams,
+    probe: F,
+) -> acp::Result<acp::schema::v1::ExtResponse>
+where
+    F: FnOnce(Vec<crate::session_registry::SessionInfo>) -> Fut,
+    Fut: std::future::Future<Output = Vec<crate::session_registry::SessionInfo>>,
+{
     if parsed.rescan {
         if let Some(agent) = agent {
             // Re-pull this agent's own `session/list` and broadcast. Each pooled
@@ -7698,8 +7715,37 @@ async fn handle_sessions_list(
     // Read readiness first so a refresh cannot pair an old empty snapshot with
     // its newly published Ready status.
     let history_status = *state.history_status.borrow();
+    let snapshot = state.registry.snapshot().await;
+    let mut candidates: std::collections::HashMap<_, _> = snapshot
+        .iter()
+        .filter(|row| crate::session_watcher::copilot_status::eligible(row))
+        .map(|row| {
+            (
+                crate::session_registry::SessionIdentity::from_info(row),
+                row.clone(),
+            )
+        })
+        .collect();
+    let evidence: std::collections::HashMap<_, _> = probe(snapshot)
+        .await
+        .into_iter()
+        .filter(|row| row.status == Some(crate::agent_sessions::AgentStatus::InUse))
+        .filter_map(|row| {
+            let identity = crate::session_registry::SessionIdentity::from_info(&row);
+            candidates
+                .remove(&identity)
+                .map(|original| (identity, original))
+        })
+        .collect();
+    // Reconcile before collecting panes: registrations made during the probe
+    // need ownership queries too. Apply external evidence only to unchanged
+    // historical rows, never resurrecting removed rows or overriding new bindings.
     let mut sessions = state.registry.snapshot().await;
     for row in &mut sessions {
+        let identity = crate::session_registry::SessionIdentity::from_info(row);
+        if evidence.get(&identity) == Some(row) {
+            row.status = Some(crate::agent_sessions::AgentStatus::InUse);
+        }
         row.owner_window_id = None;
         row.background_tab = None;
     }
@@ -7786,29 +7832,6 @@ async fn handle_sessions_list(
         }
     }
 
-    use crate::agent_sessions::AgentStatus;
-    crate::session_watcher::copilot_status::enrich_snapshot(&mut sessions).await;
-    for row in &mut sessions {
-        if !crate::session_watcher::copilot_status::eligible(row)
-            && row.status != Some(AgentStatus::InUse)
-        {
-            continue;
-        }
-        let identity = crate::session_registry::SessionIdentity::from_info(row);
-        if let Some(current) = state.registry.lookup_identity(&identity).await {
-            if matches!(
-                current.status,
-                Some(
-                    AgentStatus::Idle
-                        | AgentStatus::Working
-                        | AgentStatus::Attention
-                        | AgentStatus::Error
-                )
-            ) {
-                *row = current;
-            }
-        }
-    }
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
     let raw = crate::session_registry::build_sessions_list_response(
         sessions,
