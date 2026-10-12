@@ -127,14 +127,16 @@ it. This uses the same readable `try`/`catch` guard as the Copilot, Codex, and G
 hooks, with no Base64 or additional launcher:
 
 ```text
-powershell.exe -NoLogo -NoProfile -NonInteractive -Command try { wtcli.exe agent-hook --cli-source antigravity --event <topic> } catch { }; [Console]::Out.WriteLine('{}'); exit 0
+powershell.exe -NoLogo -NoProfile -NonInteractive -Command try { wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } catch { }; [Console]::Out.WriteLine('{}'); exit 0
 ```
 
-The hook returns exactly `{}` on stdout, including when `wtcli.exe` is unavailable.
 Antigravity parses hook responses as JSON even though `wtcli agent-hook` itself is
-silent. The neutral response does not supply a tool permission decision, inject
-steps, or request that the execution loop continue. Tracking must not block ordinary
-agent actions when the bridge is unavailable.
+silent. `PreInvocation` and `Stop` return `{}` without injecting steps or requesting
+that the execution loop continue. `PreToolUse` requires a permission decision:
+return `{"decision":"ask"}` so the provider retains normal approval and existing
+"Always Allow" grants. An empty response denies tools, while `"allow"` bypasses
+their approval. Do not return either for `PreToolUse`, including when `wtcli.exe`
+is unavailable.
 
 The executable bundle tests reproduce the provider's Windows argv dispatch, rather
 than incorrectly treating the command as a PowerShell or Bash shell expression.
@@ -142,8 +144,9 @@ The `antigravity-wsl` bundle uses a Bash launch guard and single-quotes the read
 PowerShell script so Bash preserves its inner double quotes.
 Child-scoped `WSLENV` propagation preserves the distro and actual hook cwd for
 callbacks without mounted-workspace metadata.
-Its guard returns `{}` even outside Terminal or when Windows interop is unavailable.
-The bridge never answers provider tool permissions. WSL plugins are installed separately
+Its guard returns the same event-specific response even outside Terminal or when
+Windows interop is unavailable. The bridge never automatically grants provider
+tool permissions. WSL plugins are installed separately
 with the in-distro `agy plugin install`, not by host-profile reconciliation.
 The bridge uses that source metadata, or queries only the exact pane's shell
 metadata (no terminal text), so WSL sessions keep their distro even when a

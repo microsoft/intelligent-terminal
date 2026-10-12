@@ -1552,7 +1552,7 @@ fn antigravity_hook_commands(manifest: &Value) -> Vec<(&str, &str)> {
         .collect()
 }
 
-fn assert_antigravity_hook_response(output: &std::process::Output, command: &str) {
+fn assert_antigravity_hook_response(output: &std::process::Output, command: &str, event: &str) {
     assert!(
         output.status.success() && output.stderr.is_empty(),
         "{command}\nstderr: {}",
@@ -1564,15 +1564,20 @@ fn assert_antigravity_hook_response(output: &std::process::Output, command: &str
             String::from_utf8_lossy(&output.stdout)
         )
     });
-    // An observer must not auto-allow tools, inject steps, or change stop behavior.
-    assert_eq!(response, serde_json::json!({}), "{command}");
+    // Empty PreToolUse results deny tools; ask preserves the provider's normal grants.
+    let expected = if event == "agent.tool.starting" {
+        serde_json::json!({"decision": "ask"})
+    } else {
+        serde_json::json!({})
+    };
+    assert_eq!(response, expected, "{command}");
 }
 
 #[test]
-fn antigravity_hooks_return_neutral_json_in_native_windows_dispatch() {
+fn antigravity_hooks_preserve_permissions_in_native_windows_dispatch() {
     let manifest: Value =
         serde_json::from_str(include_str!("../wt-agent-hooks/antigravity/hooks.json")).unwrap();
-    for (_, command) in antigravity_hook_commands(&manifest) {
+    for (event, command) in antigravity_hook_commands(&manifest) {
         for candidate in [
             command.to_string(),
             command.replace("wtcli.exe", MISSING_BRIDGE),
@@ -1580,16 +1585,13 @@ fn antigravity_hooks_return_neutral_json_in_native_windows_dispatch() {
             let output = antigravity_windows_hook_process(&candidate)
                 .output()
                 .expect("Windows PowerShell should start");
-            assert_antigravity_hook_response(&output, &candidate);
-            if let Some(output) = run_hook_command(HookShell::Cmd, &candidate) {
-                assert_antigravity_hook_response(&output, &candidate);
-            }
+            assert_antigravity_hook_response(&output, &candidate, event);
         }
     }
 }
 
 #[test]
-fn antigravity_wsl_hooks_return_neutral_json_when_tracking_is_unavailable() {
+fn antigravity_wsl_hooks_preserve_permissions_when_tracking_is_unavailable() {
     let manifest: Value =
         serde_json::from_str(include_str!("../wt-agent-hooks/antigravity-wsl/hooks.json")).unwrap();
     for (event, command) in antigravity_hook_commands(&manifest) {
@@ -1602,7 +1604,7 @@ fn antigravity_wsl_hooks_return_neutral_json_when_tracking_is_unavailable() {
             command.replace("powershell.exe", MISSING_BRIDGE),
         ] {
             if let Some(output) = run_hook_command(HookShell::Bash, &candidate) {
-                assert_antigravity_hook_response(&output, &candidate);
+                assert_antigravity_hook_response(&output, &candidate, event);
             }
         }
         if let Some(bash) = bash_exe() {
@@ -1617,14 +1619,14 @@ fn antigravity_wsl_hooks_return_neutral_json_when_tracking_is_unavailable() {
                     .env("WT_COM_CLSID", "fixture-server")
                     .output()
                     .expect("Bash should start");
-                assert_antigravity_hook_response(&output, &candidate);
+                assert_antigravity_hook_response(&output, &candidate, event);
                 let output = std::process::Command::new(bash)
                     .args(["-c", &candidate])
                     .env("WT_SESSION", "fixture-pane")
                     .env("WT_COM_CLSID", "fixture-server")
                     .output()
                     .expect("Bash should start");
-                assert_antigravity_hook_response(&output, &candidate);
+                assert_antigravity_hook_response(&output, &candidate, event);
             }
         }
     }
@@ -1677,7 +1679,7 @@ fn antigravity_hooks_forward_stdin_and_event_arguments() {
             .write_all(payload.as_bytes())
             .unwrap();
         let output = child.wait_with_output().unwrap();
-        assert_antigravity_hook_response(&output, &candidate);
+        assert_antigravity_hook_response(&output, &candidate, event);
         let record: Value = serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
         assert_eq!(record["input"], payload);
         assert_eq!(

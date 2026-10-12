@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell.exe -NoLogo -NoProfile -NonInteractive -Command try { wtcli.exe agent-hook --cli-source antigravity --event agent.tool.starting } catch { }; [Console]::Out.WriteLine('{}'); exit 0",
+            "command": "powershell.exe -NoLogo -NoProfile -NonInteractive -Command try { wtcli.exe agent-hook --cli-source antigravity --event agent.tool.starting } catch { }; [Console]::Out.WriteLine('{\"decision\":\"ask\"}'); exit 0",
             "timeout": 5
           }
         ]
