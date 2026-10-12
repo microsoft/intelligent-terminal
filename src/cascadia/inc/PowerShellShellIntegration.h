@@ -989,6 +989,7 @@ if (-not $Global:__ShellInteg_Installed) {
                 }
             }
             if ($null -eq $resumeSession -or $resumeSession.Length -gt 256 -or
+                $resumeSession.StartsWith('-', [StringComparison]::Ordinal) -or
                 $resumeSession -notmatch '\A[A-Za-z0-9_.:-]+\z' -or
                 $resumeSession.StartsWith('sidekick-', [StringComparison]::Ordinal)) { return }
             return @{ Agent = $resumeAgent; SessionId = $resumeSession }

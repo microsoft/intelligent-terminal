@@ -597,6 +597,10 @@ $cases = @(
     @{ Line = '& "C:\Program Files\Antigravity\agy.exe" --model gemini --conversation "resume-test"'; Agent = 'antigravity' }
     @{ Line = "& agy.cmd --conversation='resume-test' --model gemini"; Agent = 'antigravity' }
     @{ Line = '& C:\Antigravity\agy.bat --conversation resume-test'; Agent = 'antigravity' }
+    @{ Line = 'codex resume --last'; Agent = '' }
+    @{ Line = 'copilot --resume --model gpt-5'; Agent = '' }
+    @{ Line = 'opencode --session=--last'; Agent = '' }
+    @{ Line = 'agy --conversation "--model"'; Agent = '' }
     @{ Line = 'agy --conversation resume-test --conversation=other'; Agent = '' }
     @{ Line = 'agy --conversation=resume-test --conversation=other'; Agent = '' }
     @{ Line = 'agy --conversation $sessionId'; Agent = '' }
