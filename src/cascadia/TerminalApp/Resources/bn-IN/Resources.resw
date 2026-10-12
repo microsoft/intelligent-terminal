@@ -441,6 +441,14 @@
     <value>এজেন্ট · সংযোগ হচ্ছে</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>বিভাজনের প্রোফাইল উপলব্ধ নয়</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>বিভাজনের জন্য কনফিগার করা প্রোফাইলটি উপলব্ধ নয়। এর পরিবর্তে গ্লোবাল ডিফল্ট প্রোফাইল ব্যবহার করা হবে। বিভাজনের লক্ষ্য প্রোফাইল পরিবর্তন করতে, settings.json-এ এই প্রোফাইলের defaultSplitProfile সম্পাদনা করুন।</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
+  </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>নিচের ট্যাবগুলি বন্ধ করুন</value>
   </data>

@@ -252,6 +252,7 @@ fn process_label(cli: &Cli) -> String {
         None => "main".to_string(),
         Some(Command::Delegate { .. }) => "delegate".to_string(),
         Some(Command::ProbeModels { .. })
+        | Some(Command::ProbeProfileAgents)
         | Some(Command::ProbeAgentSources { .. })
         | Some(Command::ProbeSessions { .. })
         | Some(Command::ProbeHostSessions { .. }) => "probe".to_string(),

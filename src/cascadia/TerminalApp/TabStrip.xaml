@@ -194,9 +194,10 @@
             <DataTemplate x:Key="HistoryRowTemplate"
                           x:DataType="local:TabStripHistoryItem">
                 <Grid Padding="12,8"
+                      ColumnSpacing="10"
                       Loaded="OnHistoryRowLoaded">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="28" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
@@ -228,7 +229,7 @@
                                     Grid.RowSpan="3"
                                     Width="16"
                                     Height="16"
-                                    Margin="0,0,12,0"
+                                    HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     HorizontalContentAlignment="Stretch"
                                     VerticalContentAlignment="Stretch"
@@ -491,10 +492,20 @@
                               ContextFlyout="{x:Bind ContextFlyout, Mode=OneWay}"
                               CornerRadius="{StaticResource SidebarTabCornerRadius}"
                               DoubleTapped="OnTabHeaderDoubleTapped"
+                              GotFocus="OnTabHeaderGotFocus"
                               Loaded="OnTabHeaderLoaded"
+                              PointerEntered="OnTabHeaderPointerEntered"
                               PointerPressed="OnTabHeaderPointerPressed"
-                              Tapped="OnTabHeaderTapped"
-                              ToolTipService.ToolTip="{x:Bind ToolTipText, Mode=OneWay}">
+                              SizeChanged="OnTabHeaderSizeChanged"
+                              Tapped="OnTabHeaderTapped">
+                            <ToolTipService.ToolTip>
+                                <ToolTip AutomationProperties.Name="{x:Bind ToolTipText, Mode=OneWay}"
+                                         FlowDirection="LeftToRight">
+                                    <TextBlock FlowDirection="{Binding FlowDirection, ElementName=TabHeaderGrid, Mode=OneWay}"
+                                               Text="{x:Bind ToolTipText, Mode=OneWay}"
+                                               TextWrapping="Wrap" />
+                                </ToolTip>
+                            </ToolTipService.ToolTip>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />

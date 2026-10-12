@@ -443,6 +443,14 @@
     <value>एजेंट · जोडटा</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>विभाजनाखातीरचें प्रोफायल उपलब्ध ना</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>विभाजनाखातीर संरचीत केल्लें प्रोफायल उपलब्ध ना. ताचे सुवातेर जागतीक मुलभूत प्रोफायल वापरतले. विभाजनाचें लक्ष्य प्रोफायल बदलपाखातीर, settings.json मदीं ह्या प्रोफायलाचें defaultSplitProfile संपादीत करात.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
+  </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>सकयले टॅब बंद करात</value>
   </data>

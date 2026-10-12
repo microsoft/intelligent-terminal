@@ -350,6 +350,14 @@
     <value>เพื่อประสบการณ์การจัดการเซสชันที่ดีที่สุด ให้เปิด Sessions ใน Settings &gt; Agents</value>
     <comment>Subtle hint below the agent sessions title, shown only in session management when Sessions is off and policy permits changes. Navigation is Settings &gt; Agents, then turn on Sessions. Match the displayed labels: Settings uses SettingsMenuItem/SettingsTab, Agents uses Nav_AIAgents.Content, and Sessions uses AIAgents_SessionManagement.Header, including fallback labels where a locale has no translation. Turning Sessions off only prevents hook updates; existing hooks and session functionality can keep working. Do not imply that tracking, data refresh, or functionality stops.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>โปรไฟล์สำหรับการแบ่งไม่พร้อมใช้งาน</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>โปรไฟล์ที่กำหนดค่าไว้สำหรับการแบ่งไม่พร้อมใช้งาน ระบบจะใช้โปรไฟล์เริ่มต้นส่วนกลางแทน หากต้องการเปลี่ยนโปรไฟล์เป้าหมายสำหรับการแบ่ง ให้แก้ไข defaultSplitProfile ของโปรไฟล์นี้ใน settings.json</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
+  </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>ปิดแท็บด้านล่าง</value>
   </data>

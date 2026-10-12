@@ -3749,7 +3749,7 @@ namespace winrt::TerminalApp::implementation
     void Tab::_splitTabClicked(const winrt::Windows::Foundation::IInspectable& /* sender */,
                                const winrt::Windows::UI::Xaml::RoutedEventArgs& /* args */)
     {
-        ActionAndArgs actionAndArgs{ ShortcutAction::SplitPane, SplitPaneArgs{ SplitType::Duplicate } };
+        ActionAndArgs actionAndArgs{ ShortcutAction::SplitPane, SplitPaneArgs{ SplitType::Profile } };
         _dispatch.DoAction(*this, actionAndArgs);
     }
     void Tab::_closePaneClicked(const winrt::Windows::Foundation::IInspectable& /* sender */,

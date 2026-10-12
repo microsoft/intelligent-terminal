@@ -2991,6 +2991,30 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <value>Remove</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Profile_AgentModel.Header" xml:space="preserve">
+    <value>Ａｇｅｎｔ ｍｏｄｅｌ !!!</value>
+    <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentModel.HelpText" xml:space="preserve">
+    <value>Ｅｎｔｅｒ ａ ｍｏｄｅｌ ｉｄｅｎｔｉｆｉｅｒ ｓｕｐｐｏｒｔｅｄ ｂｙ ｔｈｉｓ ａｇｅｎｔ. Ｌｅａｖｅ ｅｍｐｔｙ ｔｏ ｕｓｅ ｔｈｅ ａｇｅｎｔ'ｓ ｏｗｎ ｃｏｎｆｉｇｕｒａｔｉｏｎ. Ａｐｐｌｉｅｓ ｔｏ ｎｅｗ ｓｅｓｓｉｏｎｓ. !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
+  </data>
+  <data name="Profile_AgentArguments.Header" xml:space="preserve">
+    <value>Ａｄｄｉｔｉｏｎａｌ ａｇｅｎｔ ａｒｇｕｍｅｎｔｓ !!! !!!</value>
+    <comment>Additional startup arguments for the native AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
+    <value>Ｕｓｅ Windows ｃｏｍｍａｎｄ-ｌｉｎｅ ｑｕｏｔｉｎｇ ｆｏｒ ｖａｌｕｅｓ ｃｏｎｔａｉｎｉｎｇ ｓｐａｃｅｓ. Ａｒｇｕｍｅｎｔｓ ｔｈａｔ ｃｏｎｆｌｉｃｔ ｗｉｔｈ ｍａｎａｇｅｄ ｓｅｔｔｉｎｇｓ ｏｒ ｐｏｌｉｃｙ ａｒｅ ｒｅｊｅｃｔｅｄ. Ｓｈｅｌｌ ｃｏｍｍａｎｄｓ ａｒｅ ｎｏｔ ｓｕｐｐｏｒｔｅｄ. !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+  </data>
+  <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
+    <value>Ｕｓｅ ｐｒｏｆｉｌｅ ｓｐｌｉｔ ｐｒｅｆｅｒｅｎｃｅ !!! !!!</value>
+    <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
+  </data>
+  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
+    <value>Ｙｏｕｒ ｏｒｇａｎｉｚａｔｉｏｎ ｂｌｏｃｋｓ ｍａｎａｇｅｄ ｎａｔｉｖｅ ａｇｅｎｔ ｌａｕｎｃｈｅｓ. Ｔｈｅ ａｇｅｎｔ ｍｕｓｔ ｂｅ ａｌｌｏｗｅｄ, ａｎｄ ｐｏｌｉｃｙ ｍｕｓｔ ｐｅｒｍｉｔ ａｕｔｏｍａｔｉｃ ａｐｐｒｏｖａｌ ｂｅｃａｕｓｅ ｎａｔｉｖｅ ａｇｅｎｔｓ ｃｏｎｔｒｏｌ ｔｈｅｉｒ ｏｗｎ ａｐｐｒｏｖａｌ ｓｅｔｔｉｎｇｓ. !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
+  </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
     <value>[Ŧôğğļë ƀëţŵëëñ ţĥë ñëŵ šîđëƀáŕ ôŕ çļáššîç ĥôŕîžôñţáļ ţáƀš vîëŵ !!! !!! !!!]</value>
     <comment>A description for what the &quot;tab layout&quot; setting does. Presented near &quot;Globals_TabLayout.Header&quot;.</comment>

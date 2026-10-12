@@ -1143,8 +1143,9 @@
               "description": "The orientation to split the pane in. Possible values:\n -\"auto\" (splits pane based on remaining space)\n -\"up\" (think [-] and above)\n -\"down\" (think [-] and below)\n -\"left\" (think [|] and to the left)\n -\"right\"(think [|] and to the right)"
             },
             "splitMode": {
-              "default": "duplicate",
-              "description": "Control how the pane splits. Only accepts \"duplicate\" which will duplicate the focused pane's profile into a new pane."
+              "default": "manual",
+              "enum": ["manual", "duplicate", "profile"],
+              "description": "manual uses the specified or global default profile. duplicate copies the focused profile. profile uses the focused profile's defaultSplitProfile, or duplicates it when that setting is empty; an explicit target takes precedence."
             },
             "size": {
               "default": 0.5,
@@ -3212,6 +3213,28 @@
             "string",
             "null"
           ]
+        },
+        "agentProfile.id": {
+          "description": "Built-in native interactive agent launched by this profile. Empty disables managed agent launching.",
+          "type": ["string", "null"],
+          "enum": ["", "copilot", "claude", "codex", "gemini", "opencode", null]
+        },
+        "agentProfile.model": {
+          "description": "Native CLI model identifier. Empty leaves the agent's own configuration unchanged. Applies only when commandline has no explicit override.",
+          "type": ["string", "null"]
+        },
+        "agentProfile.permissionMode": {
+          "description": "Provider-specific native permission mode. Empty leaves the agent's own configuration unchanged. Applies only when commandline has no explicit override. Unsupported modes fail explicitly; these are not Windows file permissions.",
+          "type": ["string", "null"]
+        },
+        "agentProfile.arguments": {
+          "description": "Additional native CLI arguments using Windows command-line quoting, not shell syntax. Applies only when commandline has no explicit override. Conflicts with managed options and policy are rejected.",
+          "type": ["string", "null"]
+        },
+        "defaultSplitProfile": {
+          "description": "Target of profile-aware split actions: empty duplicates this profile, default selects the global default, or a profile GUID selects that profile. Explicit duplicate and explicit target actions are unchanged.",
+          "type": ["string", "null"],
+          "pattern": "^(|default|\\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\})$"
         },
         "agentPaneBackend": {
           "description": "Selects an optional profile-specific agent pane agent. An empty value uses the global Windows-hosted agent. WSL values identify an agent installed in the profile's own distro.",

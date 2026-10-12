@@ -305,6 +305,14 @@
     <value>ۋەكىل · باغلىنىۋاتىدۇ</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>بۆلۈش ئارخىپى ئىشلىتىشكە بولمايدۇ</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>بۆلۈش ئۈچۈن سەپلەنگەن ئارخىپنى ئىشلىتىشكە بولمايدۇ. ئۇنىڭ ئورنىغا ئومۇمىي كۆڭۈلدىكى ئارخىپ ئىشلىتىلىدۇ. بۆلۈشنىڭ نىشان ئارخىپىنى ئۆزگەرتىش ئۈچۈن، settings.json ھۆججىتىدە بۇ ئارخىپنىڭ defaultSplitProfile قىممىتىنى تەھرىرلەڭ.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
+  </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>ئاستىدىكى بەتكۈچلەرنى تاقاش</value>
   </data>

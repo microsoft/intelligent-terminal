@@ -163,6 +163,20 @@ the hook-free resume binding, so `handle_session_hook` records them in
 treated as hook-owned and its row would sit at `Idle` forever even as the watcher
 saw activity.
 
+**Native History resume metadata.** Explicit Sidebar activation keeps the
+selected qualified session identity and binds the pane returned by tab
+creation. Historical/Ended becomes Idle; newer live activity is retained.
+After binding, the master invalidates session lists and Terminal's status
+projection through the existing structural notification, without waiting for
+a hook. An exact matching binding established by an earlier hook is successful
+and keeps that hook's activity. Assistant source-pane context uses the existing
+registry lookup for the real native CLI session ID, not the helper's ACP ID.
+This known binding keeps the resumed tab visible under Agents only before its
+first hook. Idle is an initial baseline, not evidence that the CLI loaded or
+that subsequent activity is being observed.
+This initialization does not change subsequent hook-loss activity behavior,
+watcher ownership, or saved-layout restore routing.
+
 **Resume pane ownership.** `ResumePaneAssigned` marks the row's pane binding
 `born_bound_pane` (`session_registry.rs`). WTA creates the resume pane and binds
 it *before* the agent CLI starts, so that pane belongs to exactly one session

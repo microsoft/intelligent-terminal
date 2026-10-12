@@ -113,6 +113,11 @@ Author(s):
     X(Microsoft::Terminal::Control::ScrollbarState, ScrollState, "scrollbarState", Microsoft::Terminal::Control::ScrollbarState::Visible)                      \
     X(Microsoft::Terminal::Control::TextAntialiasingMode, AntialiasingMode, "antialiasingMode", Microsoft::Terminal::Control::TextAntialiasingMode::Grayscale) \
     X(hstring, StartingDirectory, "startingDirectory")                                                                                                         \
+    X(hstring, AgentProfileId, "agentProfile.id", L"")                                                                                                          \
+    X(hstring, AgentProfileModel, "agentProfile.model", L"")                                                                                                    \
+    X(hstring, AgentProfilePermissionMode, "agentProfile.permissionMode", L"")                                                                                  \
+    X(hstring, AgentProfileArguments, "agentProfile.arguments", L"")                                                                                            \
+    X(hstring, DefaultSplitProfile, "defaultSplitProfile", L"")                                                                                                \
     X(hstring, AgentPaneBackend, "agentPaneBackend", L"")                                                                                                      \
     X(hstring, CommandPaletteAgent, "commandPaletteAgent", L"")                                                                                                \
     X(IMediaResource, Icon, "icon", implementation::MediaResource::FromString(L"\uE756"))                                                                      \

@@ -32,6 +32,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto args = e.Parameter().as<Editor::NavigateToPageArgs>();
         _Profile = args.ViewModel().as<Editor::ProfileViewModel>();
         _weakWindowRoot = args.WindowRoot();
+        if (!winrt::get_self<ProfileViewModel>(_Profile)->IsAgentProfile())
+        {
+            FindName(L"AgentPaneBackend");
+            FindName(L"CommandPaletteAgent");
+            FindName(L"Elevate");
+        }
         BringIntoViewWhenLoaded(args.ElementToFocus());
 
         // Check the use parent directory box if the starting directory is empty
@@ -136,7 +142,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         if (!path.empty())
         {
-            _Profile.Commandline(path);
+            _Profile.LaunchCommandline(path);
         }
     }
 

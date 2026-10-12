@@ -11,14 +11,16 @@ Describe 'Combined History metadata layout contract' -Tag Unit {
         $source = Get-Content -LiteralPath (Join-Path $root 'src\cascadia\TerminalApp\TabStrip.cpp') -Raw
     }
     It 'keeps a leading centered 16px icon outside the metadata text grid' {
-        @($row.SelectNodes('p:Grid.ColumnDefinitions/p:ColumnDefinition', $ns)).Width | Should -Be @('Auto', '*', 'Auto')
+        @($row.SelectNodes('p:Grid.ColumnDefinitions/p:ColumnDefinition', $ns)).Width | Should -Be @('28', '*', 'Auto')
+        $row.ColumnSpacing | Should -Be '10'
         @($row.SelectNodes('p:Grid.RowDefinitions/p:RowDefinition', $ns)).Height | Should -Be @('Auto', 'Auto', 'Auto')
         $icon = $row.SelectSingleNode('p:ContentControl[@x:Name="HistoryProviderIcon"]', $ns)
         $icon | Should -Not -BeNullOrEmpty
         $icon.GetAttribute('Grid.RowSpan') | Should -Be '3'
         $icon.Width | Should -Be '16'
         $icon.Height | Should -Be '16'
-        $icon.Margin | Should -Be '0,0,12,0'
+        $icon.GetAttribute('Margin') | Should -Be ''
+        $icon.HorizontalAlignment | Should -Be 'Center'
         $icon.VerticalAlignment | Should -Be 'Center'
         $icon.GetAttribute('AutomationProperties.Name') | Should -Be '{x:Bind ProviderDisplayName}'
         $icon.GetAttribute('AutomationProperties.AccessibilityView') | Should -Be 'Raw'

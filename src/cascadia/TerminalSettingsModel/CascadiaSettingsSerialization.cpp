@@ -16,6 +16,7 @@
 #include "VisualStudioGenerator.h"
 #include "WslDistroGenerator.h"
 #include "SshHostGenerator.h"
+#include "AgentProfileGenerator.h"
 
 #include "ApplicationState.h"
 #include "../inc/AgentPolicy.h"
@@ -230,6 +231,7 @@ void SettingsLoader::GenerateProfiles()
     generateProfiles(WslDistroGenerator{});
     generateProfiles(AzureCloudShellGenerator{});
     generateProfiles(VisualStudioGenerator{});
+    generateProfiles(AgentProfileGenerator{});
     if constexpr (Feature_DynamicSSHProfiles::IsEnabled())
     {
         sshProfilesGenerated = generateProfiles(SshHostGenerator{});
@@ -272,6 +274,7 @@ void SettingsLoader::GenerateExtensionPackagesFromProfileGenerators()
     generateExtensionPackages(WslDistroGenerator{});
     generateExtensionPackages(AzureCloudShellGenerator{});
     generateExtensionPackages(VisualStudioGenerator{});
+    generateExtensionPackages(AgentProfileGenerator{});
     if constexpr (Feature_DynamicSSHProfiles::IsEnabled())
     {
         generateExtensionPackages(SshHostGenerator{});

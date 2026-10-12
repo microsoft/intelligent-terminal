@@ -8,6 +8,8 @@
 
 #include "DefaultTerminal.h"
 #include "FileUtils.h"
+#include "../inc/AgentProfileUtils.h"
+#include "DynamicProfileUtils.h"
 
 #include <VersionHelpers.h>
 #include <WtExeUtils.h>
@@ -367,6 +369,23 @@ Model::Profile CascadiaSettings::DuplicateProfile(const Model::Profile& source)
 
     MTSM_PROFILE_SETTINGS(DUPLICATE_PROFILE_SETTINGS)
 #undef DUPLICATE_PROFILE_SETTINGS
+
+    if (!source.AgentProfileId().empty())
+    {
+        duplicated->AgentProfileId(source.AgentProfileId());
+        duplicated->AgentProfileModel(source.AgentProfileModel());
+        duplicated->AgentProfilePermissionMode(source.AgentProfilePermissionMode());
+        duplicated->AgentProfileArguments(source.AgentProfileArguments());
+        duplicated->DefaultSplitProfile(source.DefaultSplitProfile());
+        if (!::Microsoft::Terminal::AgentProfiles::IsManaged(source))
+        {
+            duplicated->Commandline(source.Commandline());
+        }
+    }
+    if (::Microsoft::Terminal::AgentProfiles::IsManaged(source))
+    {
+        duplicated->ClearCommandline();
+    }
 
     // These aren't in MTSM_PROFILE_SETTINGS because they're special
     DUPLICATE_SETTING_MACRO(TabColor);
@@ -784,13 +803,64 @@ Model::Profile CascadiaSettings::GetProfileForArgs(const Model::NewTerminalArgs&
 {
     if (newTerminalArgs)
     {
+        // An empty command plus a native provider identifies a managed saved launch.
+        // Do not let a missing generated profile turn that launch into the default shell.
+        const auto savedProvider = newTerminalArgs.NativeAgentProviderId();
+        const auto provider = ::Microsoft::Terminal::Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(
+            std::wstring_view{ savedProvider });
+        const auto managedRestore = !newTerminalArgs.Profile().empty() && newTerminalArgs.Commandline().empty() &&
+                                    std::ranges::any_of(::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinNativeProfileAgents,
+                                                        [&](const auto& agent) { return agent.id == std::wstring_view{ provider }; });
         if (const auto name = newTerminalArgs.Profile(); !name.empty())
         {
             if (auto profile = GetProfileByName(name))
             {
+                if (newTerminalArgs.Commandline().empty() && profile.Orphaned() && !profile.HasCommandline() &&
+                    profile.Source() == ::Microsoft::Terminal::AgentProfiles::Source)
+                {
+                    namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+                    const auto isBuiltin = [](const std::wstring_view id) {
+                        return std::ranges::any_of(Registry::BuiltinNativeProfileAgents, [&](const auto& agent) { return agent.id == id; });
+                    };
+                    const auto profileId = profile.AgentProfileId();
+                    auto identity = Registry::CanonicalNativeAgentProviderId(std::wstring_view{ profileId });
+                    THROW_HR_IF_MSG(E_INVALIDARG, !profileId.empty() && !isBuiltin(identity),
+                                    "Invalid orphaned native agent identity");
+                    for (const auto& agent : Registry::BuiltinNativeProfileAgents)
+                    {
+                        const auto name = std::wstring{ ::Microsoft::Terminal::AgentProfiles::Source } + L":" + std::wstring{ agent.id };
+                        const winrt::guid generatedGuid{ Utils::CreateV5Uuid(TERMINAL_PROFILE_NAMESPACE_GUID, std::as_bytes(std::span{ name })) };
+                        if (profile.Guid() == generatedGuid)
+                        {
+                            THROW_HR_IF_MSG(E_INVALIDARG, !identity.empty() && identity != agent.id,
+                                            "Orphaned native agent identity does not match its generated profile");
+                            identity = agent.id;
+                            break;
+                        }
+                    }
+                    THROW_HR_IF_MSG(E_INVALIDARG, !savedProvider.empty() &&
+                                                     (!isBuiltin(provider) || (!identity.empty() && identity != provider)),
+                                    "Saved native agent identity does not match its profile");
+                    if (identity.empty())
+                    {
+                        identity = provider;
+                    }
+                    THROW_HR_IF_MSG(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), identity.empty(),
+                                    "Orphaned native agent identity is unavailable");
+                    std::unordered_map<const Profile*, winrt::com_ptr<Profile>> visited;
+                    const auto restored = winrt::get_self<Profile>(profile)->CopyInheritanceGraph(visited);
+                    restored->AgentProfileId(winrt::hstring{ identity });
+                    const auto generated = winrt::make_self<Profile>();
+                    generated->Origin(OriginTag::Generated);
+                    generated->Commandline(winrt::hstring{ std::wstring{ identity } + L".exe" });
+                    restored->AddMostImportantParent(generated);
+                    return *restored;
+                }
                 return profile;
             }
         }
+        THROW_HR_IF_MSG(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), managedRestore,
+                       "Saved native agent profile is unavailable");
 
         if (const auto index = newTerminalArgs.ProfileIndex())
         {

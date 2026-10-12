@@ -67,6 +67,107 @@ the host agent, WTA puts the current package family's alias directory first on
 therefore use short `wta.exe` commands without selecting another installed
 branding or reproducing a protected package path.
 
+### Native interactive Agent Profiles (Windows host)
+
+Automatically generated Terminal Agent profiles now discover and launch the
+native CLI directly through C++, without these WTA commands. The commands below
+remain available as standalone CLI utilities; their native flag/argument
+contract is also used by Terminal's managed profile command builder.
+
+```powershell
+wta probe-profile-agents
+wta launch-agent --agent-id copilot
+wta launch-agent --agent-id claude --model sonnet --permission-mode plan
+wta launch-agent --agent-id codex --permission-mode untrusted -- --no-alt-screen
+wta launch-agent --agent-id gemini -- --prompt-interactive "Explain this project"
+```
+
+`launch-agent` is a thin inherited-console launcher, **not** the ACP agent pane.
+It starts the installed native CLI in the existing ConPTY, preserves cwd,
+environment (including `WT_SESSION`, `WT_COM_CLSID` and existing hook variables),
+inherits stdin/stdout/stderr, waits for the child, and returns its Windows exit
+code after flushing WTA logging. It does not create master/helper processes,
+render a WTA TUI, manufacture session IDs, install hooks or agents, invoke npx,
+log in, download anything, or write provider configuration. The native CLI may
+perform its own normal authentication, networking and configuration behavior.
+Native hooks already installed by the user continue to work normally.
+
+The exact contract is:
+
+```text
+wta launch-agent --agent-id <id> [--model <value>] [--permission-mode <value>] [-- <additional arguments>]
+```
+
+Only the canonical IDs below are accepted. Omitted or empty model/permission
+values mean **no override**: provider defaults, configuration and environment
+remain authoritative. This is not a universal “safe”, “read-only” or
+automatic-approval setting. There is no theme override. All five providers map
+`--model` to their native `--model` flag; OpenCode expects `provider/model`.
+
+| Agent ID | Permission values | Native mapping |
+|---|---|---|
+| `copilot` | `allow-all-tools`, `allow-all` | Corresponding `--allow-all-tools` or `--allow-all` flag |
+| `claude` | `acceptEdits`, `auto`, `bypassPermissions`, `manual`, `dontAsk`, `plan` | `--permission-mode <value>` |
+| `codex` | `untrusted`, `on-request`, `never` | `--ask-for-approval <value>`; does not override the sandbox |
+| `gemini` | `default`, `auto_edit`, `yolo`, `plan` | `--approval-mode <value>` |
+| `opencode` | `auto` | `--auto` |
+
+These flags were verified against installed native `--help` output on
+2026-09-24 (Copilot 1.0.88, Claude Code 2.1.218, Codex 0.146.1, Gemini 0.38.1,
+OpenCode 1.17.18). Older CLI versions may reject newer native modes; WTA preserves that
+failure rather than silently choosing a different mode.
+
+Additional arguments are argv elements, not a shell command. The launcher
+rejects unreviewed flags, subcommands, short-option clusters and conflicting
+model, permission, config or profile overrides instead of guessing whether they
+widen permissions. Supported extras:
+
+| Agent | Additional arguments |
+|---|---|
+| All | `--help`, `--version` |
+| Copilot | `--resume` (picker), `--continue`, `--add-dir <directory>` |
+| Claude | `--continue`, `--resume <session>`, `--add-dir <directory>` |
+| Codex | `--no-alt-screen`, `--add-dir <directory>` |
+| Gemini | `--resume <session>`, `--prompt-interactive <prompt>` |
+| OpenCode | `--continue`, `--session <session>`, `--prompt <prompt>` |
+
+Named values also accept `--flag=value`. Values beginning with `-` are rejected.
+For `.cmd` shims, expansion characters (`%`, `!`, `^`), embedded quotes and
+newlines in the executable path or arguments are rejected explicitly; ordinary
+spaces, Unicode and shell metacharacters are passed through Rust's Windows
+batch-argument quoting. Native `.exe` launches use argv directly. WTA registers
+a non-inheritable control handler: Ctrl+C/Ctrl+Break remain the native CLI's
+responsibility, while the wrapper waits. A private kill-on-close job owns only
+the wrapper and its descendants, reclaiming them when the pane/wrapper closes;
+WTA never terminates the terminal host or unrelated agent processes.
+
+Both commands read current policy at invocation under
+`Software\Policies\Microsoft\IntelligentTerminal`, preferring HKLM over HKCU
+independently for each value. `AllowedAgents` (`REG_MULTI_SZ`) is case-insensitive:
+absent means all built-ins, empty means none. Discovery filters disallowed IDs;
+launch checks again. Invalid/unreadable policy fails explicitly rather than
+reporting “not installed”. `AllowAutomaticApproval=0` blocks **all native profile
+launches**, even with no permission override: a native CLI's configuration,
+environment or in-session toggles cannot be reliably constrained by this
+wrapper. Use the policy-enforced ACP agent pane instead. Discovery remains an
+availability probe and does not hide installed agents for this approval policy.
+
+`probe-profile-agents` emits exactly one stdout JSON object, with no resolved
+paths and no authentication/model probe:
+
+```json
+{"agents":[{"id":"copilot","display_name":"GitHub Copilot"},{"id":"claude","display_name":"Claude"}]}
+```
+
+The list follows built-in registry order and contains only installed,
+policy-allowed Windows CLIs. It uses WTA's fresh registry-plus-process PATH and
+the existing per-agent extension search order (`.exe`, then `.cmd`), including
+Claude's native npm shim. It does **not** require ACP adapters or npx, and does
+not inspect WSL. An empty successful list means no matching native executables;
+nonzero exit with stderr means discovery is unknown/failed, not unavailable.
+`launch-agent` resolves the executable afresh on each launch. The existing
+`probe-host-agents` retains its separate ACP prerequisites and behavior.
+
 ### Sidebar Agent sessions
 
 Master discovers installed, policy-allowed Windows-host agents in the background
