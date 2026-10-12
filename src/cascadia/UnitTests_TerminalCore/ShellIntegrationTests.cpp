@@ -129,6 +129,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Install_ReinstallsWhenScriptMissingButBlockMatches);
     TEST_METHOD(Install_RewritesLegacyDotSourceLineAtEnd);
     TEST_METHOD(Install_UpgradesWhenBlockReferencesOlderScriptVersion);
+    TEST_METHOD(Install_UpgradesEarlierResumeScript);
     TEST_METHOD(Install_OverwritesOrphanOpenMarker);
     TEST_METHOD(Install_CreatesBackupForNonEmptyProfile);
     TEST_METHOD(Install_DoesNotCreateBackupForEmptyProfile);
@@ -1058,6 +1059,32 @@ void ShellIntegrationTests::Install_UpgradesWhenBlockReferencesOlderScriptVersio
     const auto scriptPath = profile.parent_path() / ShellIntegrationScriptFileName();
     VERIFY_IS_TRUE(std::filesystem::exists(scriptPath), L"Current-version script must be written on upgrade");
     VERIFY_IS_TRUE(_Contains(_ReadFile(scriptPath), "9001"), L"Upgraded script must emit OSC 9001;ShellType");
+}
+
+void ShellIntegrationTests::Install_UpgradesEarlierResumeScript()
+{
+    const auto profile = _ProfilePath();
+    const auto currentName = til::u16u8(ShellIntegrationScriptFileName());
+    const std::string oldName{ "shell-integration_v11.ps1" };
+    auto oldBlock = BuildShellIntegrationBlock(L"PowerShell", "\n");
+    const auto namePos = oldBlock.find(currentName);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, namePos);
+    oldBlock.replace(namePos, currentName.size(), oldName);
+    const std::string userContent{ "Set-Alias ll Get-ChildItem\n" };
+    _WriteFile(profile, userContent + oldBlock + "\n");
+    _WriteFile(profile.parent_path() / oldName, "# earlier resume script without Antigravity support\n");
+
+    const auto result = Install(profile.wstring());
+    VERIFY_IS_TRUE(result.success);
+    VERIFY_IS_FALSE(result.alreadyInstalled);
+    VERIFY_IS_TRUE(_ReadFile(profile).starts_with(userContent));
+    VERIFY_IS_FALSE(_Contains(_ReadFile(profile), oldName));
+    VERIFY_ARE_EQUAL(ShellIntegrationScriptContent(),
+                     _ReadFile(profile.parent_path() / ShellIntegrationScriptFileName()));
+
+    const auto repeated = Install(profile.wstring());
+    VERIFY_IS_TRUE(repeated.success);
+    VERIFY_IS_TRUE(repeated.alreadyInstalled);
 }
 
 void ShellIntegrationTests::Install_OverwritesOrphanOpenMarker()

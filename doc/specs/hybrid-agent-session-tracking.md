@@ -197,9 +197,11 @@ pipelines, compound commands, and duplicate resume flags are not evaluated or
 guessed. Bash/WSL and CMD do not emit this PowerShell-specific mark.
 
 The binding is retired when the shell reports command completion (`OSC 133;D`).
-After a shell-integration upgrade, open a new PowerShell session to load the
-updated script. This binding path does not require automatic error detection or
-Autofix to be enabled once the script is loaded.
+The v12 script upgrades earlier v11 installations that lack Antigravity handling.
+After shell-integration installation or an upgrade completes, open a new
+PowerShell session to load the updated script; an already-running shell keeps
+its previously loaded functions. This binding path does not require automatic
+error detection or Autofix to be enabled once the script is loaded.
 
 ### Liveness gate: scoping to this IT window
 

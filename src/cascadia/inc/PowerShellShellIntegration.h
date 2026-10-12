@@ -869,8 +869,10 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // boundary immediately after a supported resume command is accepted.
     // v11: parse literal resume arguments so quoted IDs and additional CLI
     // options also establish the binding before the first conversation.
+    // v12: upgrade earlier v11 installs to include Antigravity resume handling
+    // and reject option-shaped session IDs.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 11;
+    inline constexpr int kVersion = 12;
 
     inline std::wstring ScriptFileName()
     {
