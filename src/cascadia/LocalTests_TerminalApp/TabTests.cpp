@@ -391,6 +391,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabIconChangesUpdatePresentation);
         TEST_METHOD(SettingsTabIconFollowsContentAndTheme);
         TEST_METHOD(RunningAgentIconOverridesProfileIcon);
+        TEST_METHOD(AgentsOnlyPaneIconsFollowRowForeground);
         TEST_METHOD(NativeAgentCreationOwnsProviderBeforeHooks);
         TEST_METHOD(NativeAgentResumeSeedsProviderBeforeContent);
         TEST_METHOD(NativeAgentPreHookPersistenceRestoresTabAndSplit);
@@ -16221,6 +16222,158 @@ namespace TerminalAppLocalTests
             page->OnPaneAgentSessionChanged(shellActivity);
             VERIFY_IS_TRUE(manager->NativeAgentProviderId(shell.ContentId()).empty());
             VERIFY_ARE_EQUAL(shellActivity, manager->AgentSessionEvent(shell.ContentId()));
+        });
+    }
+
+    void TabTests::AgentsOnlyPaneIconsFollowRowForeground()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto firstConnection = winrt::make_self<TestConnection>(winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd0451861}" }, State::Connected);
+        const auto secondConnection = winrt::make_self<TestConnection>(winrt::guid{ L"{6239a42c-bbbb-49a3-80bd-e8fdd0451862}" }, State::Connected);
+        const auto otherConnection = winrt::make_self<TestConnection>(winrt::guid{ L"{6239a42c-cccc-49a3-80bd-e8fdd0451863}" }, State::Connected);
+        Grid host{ nullptr };
+        TestOnUIThread([&]() {
+            host = Grid{};
+            host.Width(1200);
+            host.Height(700);
+        });
+        auto page = _commonSetup(*firstConnection, host, std::nullopt, true);
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+        winrt::TerminalApp::TabStripDisplayItem display{ nullptr };
+        winrt::MUX::Controls::TabViewItem otherTab{ nullptr };
+        std::vector<std::shared_ptr<Pane>> panes;
+        TestOnUIThread([&]() {
+            const auto initialTab = page->_tabs.GetAt(0);
+            NewTerminalArgs args;
+            args.NativeAgentProviderId(L"copilot");
+            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(page->_MakePane(args, nullptr, *firstConnection)));
+            page->_RemoveTab(initialTab);
+            tab = page->_GetFocusedTabImpl();
+            tab->SuppressAgentPrewarm();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            host.UpdateLayout();
+            return page->IsLoaded() && page->_tabContent.ActualWidth() > 0 && page->_tabContent.ActualHeight() > 0 &&
+                   tab->PreCalculateCanSplit(SplitDirection::Right, 0.5f,
+                                             { static_cast<float>(page->_tabContent.ActualWidth()),
+                                               static_cast<float>(page->_tabContent.ActualHeight()) }).has_value();
+        });
+        TestOnUIThread([&]() {
+            const auto sessionId = tab->GetActivePane()->GetSessionId();
+            NewTerminalArgs args;
+            args.NativeAgentProviderId(L"copilot");
+            const auto second = page->_MakePane(args, nullptr, *secondConnection);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, second));
+            panes = { tab->GetRootPane()->FindPaneBySessionId(sessionId), second };
+            for (const auto& pane : panes)
+            {
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                    winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(pane->GetSessionId())),
+                    winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(pane->GetSessionId())),
+                    "copilot", uint64_t{ 1234 }, "Idle"));
+            }
+            page->_tabStrip.SidebarFilters().ShowAgentsOnly(true);
+            display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(tab->TabViewItem());
+            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(page->_MakePane(args, nullptr, *otherConnection)));
+            otherTab = page->_GetFocusedTabImpl()->TabViewItem();
+        });
+        const auto paneRoot = [&](const uint32_t index) {
+            page->UpdateLayout();
+            const auto row = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<FrameworkElement>();
+            const auto list = row.FindName(L"TabPaneItems").as<ItemsControl>();
+            return Media::VisualTreeHelper::GetChild(list.ContainerFromIndex(index).as<ContentPresenter>(), 0).as<FrameworkElement>();
+        };
+        _waitForContentTransferReviewUI([&]() {
+            return display.PaneItems().Size() == 2 && paneRoot(0).IsLoaded() && paneRoot(1).IsLoaded();
+        });
+        for (const auto theme : { ElementTheme::Dark, ElementTheme::Light, ElementTheme::Dark })
+        {
+            TestOnUIThread([&]() { page->RequestedTheme(theme); });
+            _waitForContentTransferReviewUI([&]() { return paneRoot(0).ActualTheme() == theme; });
+            for (const auto agentsOnly : { true, false })
+            {
+                for (uint32_t active = 0; active < panes.size(); ++active)
+                {
+                    TestOnUIThread([&]() {
+                        page->_tabStrip.SidebarFilters().ShowAgentsOnly(agentsOnly);
+                        VERIFY_IS_TRUE(tab->FocusPane(panes[active]->Id().value()));
+                        page->_selectedTabItem(active == 0 ? tab->TabViewItem() : otherTab);
+                    });
+                    for (uint32_t index = 0; index < panes.size(); ++index)
+                    {
+                        BitmapIcon icon{ nullptr };
+                        winrt::Windows::UI::Color foreground{};
+                        TestOnUIThread([&]() {
+                            const auto root = paneRoot(index);
+                            const auto item = display.PaneItems().GetAt(index);
+                            icon = root.FindName(L"PaneIconPresenter").as<ContentPresenter>().Content().as<BitmapIcon>();
+                            const auto button = root.FindName(L"PaneActivateButton").as<Button>();
+                            foreground = button.Foreground().as<Media::SolidColorBrush>().Color();
+                            VERIFY_ARE_EQUAL(foreground, icon.Foreground().as<Media::SolidColorBrush>().Color());
+                            VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/Masks/copilot.png" }, icon.UriSource().AbsoluteUri());
+                            VERIFY_IS_TRUE(icon.ShowAsMonochrome());
+                            VERIFY_ARE_EQUAL(index == active, item.IsActive());
+                            VERIFY_ARE_EQUAL(index == active && active == 0 ? Visibility::Visible : Visibility::Collapsed, item.ActiveIndicatorVisibility());
+                            VERIFY_IS_FALSE(item.IsProgressRingActive());
+                        });
+                        Media::Imaging::RenderTargetBitmap bitmap{ nullptr };
+                        winrt::Windows::Foundation::IAsyncAction render{ nullptr };
+                        TestOnUIThread([&]() {
+                            bitmap = Media::Imaging::RenderTargetBitmap{};
+                            render = bitmap.RenderAsync(icon);
+                        });
+                        VERIFY_IS_TRUE(render.wait_for(std::chrono::seconds{ 10 }) == winrt::Windows::Foundation::AsyncStatus::Completed);
+                        render.get();
+                        winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Storage::Streams::IBuffer> read{ nullptr };
+                        TestOnUIThread([&]() { read = bitmap.GetPixelsAsync(); });
+                        VERIFY_IS_TRUE(read.wait_for(std::chrono::seconds{ 10 }) == winrt::Windows::Foundation::AsyncStatus::Completed);
+                        const auto buffer = read.get();
+                        std::vector<uint8_t> pixels(buffer.Length());
+                        winrt::Windows::Storage::Streams::DataReader::FromBuffer(buffer).ReadBytes(pixels);
+                        bool hasGlyph = false;
+                        for (size_t offset = 0; offset + 3 < pixels.size(); offset += 4)
+                        {
+                            hasGlyph |= pixels[offset + 3] != 0 && pixels[offset + 3] == foreground.A &&
+                                        std::abs(static_cast<int>(pixels[offset]) - foreground.B * foreground.A / 255) <= 1 &&
+                                        std::abs(static_cast<int>(pixels[offset + 1]) - foreground.G * foreground.A / 255) <= 1 &&
+                                        std::abs(static_cast<int>(pixels[offset + 2]) - foreground.R * foreground.A / 255) <= 1;
+                        }
+                        VERIFY_IS_TRUE(hasGlyph);
+                    }
+                }
+            }
+        }
+        TestOnUIThread([&]() {
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto root = paneRoot(0);
+            const auto item = display.PaneItems().GetAt(0);
+            const auto button = root.FindName(L"PaneActivateButton").as<Button>();
+            for (const auto provider : { L"claude", L"codex", L"gemini", L"opencode", L"antigravity", L"copilot" })
+            {
+                winrt::get_self<winrt::TerminalApp::implementation::TabStripPaneItem>(item)->SyncIcon(
+                    ::Microsoft::Terminal::UI::AgentIcons::IconPathForProvider(provider));
+                strip->_updatePaneRowVisuals(root, item);
+                const auto icon = root.FindName(L"PaneIconPresenter").as<ContentPresenter>().Content().as<BitmapIcon>();
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/Masks/" } + provider + L".png", icon.UriSource().AbsoluteUri());
+                VERIFY_ARE_EQUAL(button.Foreground().as<Media::SolidColorBrush>().Color(), icon.Foreground().as<Media::SolidColorBrush>().Color());
+                for (const auto color : { winrt::Windows::UI::Colors::Yellow(), winrt::Windows::UI::Colors::White() })
+                {
+                    button.Foreground(Media::SolidColorBrush{ color });
+                    VERIFY_ARE_EQUAL(color, icon.Foreground().as<Media::SolidColorBrush>().Color());
+                }
+                button.ClearValue(Control::ForegroundProperty());
+                VERIFY_ARE_EQUAL(button.Foreground().as<Media::SolidColorBrush>().Color(), icon.Foreground().as<Media::SolidColorBrush>().Color());
+            }
+            winrt::MUX::Controls::BitmapIconSource colored;
+            colored.UriSource(winrt::Windows::Foundation::Uri{ L"ms-appx:///ProfileIcons/pwsh.png" });
+            colored.ShowAsMonochrome(false);
+            const Media::SolidColorBrush identityForeground{ winrt::Windows::UI::Colors::Blue() };
+            colored.Foreground(identityForeground);
+            item.IconSource(colored);
+            strip->_updatePaneRowVisuals(root, item);
+            const auto icon = root.FindName(L"PaneIconPresenter").as<ContentPresenter>().Content().as<BitmapIcon>();
+            VERIFY_IS_FALSE(icon.ShowAsMonochrome());
+            VERIFY_IS_TRUE(icon.Foreground() == identityForeground);
         });
     }
 

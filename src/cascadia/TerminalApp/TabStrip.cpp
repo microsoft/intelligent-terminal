@@ -1190,6 +1190,21 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const auto button = _findNamedElement(root, L"PaneActivateButton").try_as<WUX::Controls::Control>();
+        const auto presenter = _findNamedElement(root, L"PaneIconPresenter").try_as<ContentPresenter>();
+        const auto icon = presenter ? presenter.Content().try_as<IconElement>() : nullptr;
+        const auto bitmap = icon ? icon.try_as<BitmapIcon>() : nullptr;
+        const auto monochromeIcon = icon && !icon.try_as<MUX::Controls::ImageIcon>() &&
+                                    (!bitmap || bitmap.ShowAsMonochrome());
+        if (monochromeIcon && button)
+        {
+            WUX::Data::Binding binding;
+            binding.Source(button);
+            binding.Path(WUX::PropertyPath{ L"Foreground" });
+            binding.Mode(WUX::Data::BindingMode::OneWay);
+            icon.SetBinding(IconElement::ForegroundProperty(), binding);
+        }
+
         const auto updateRing = [&](WUX::Controls::Control const& ring) {
             if (!ring)
             {
