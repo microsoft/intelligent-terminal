@@ -362,6 +362,17 @@ test('conversation output prevents model text from triggering mentions while pre
     assert.ok(report.output.summary.endsWith(markdown));
 });
 
+test('worst-case accepted mention escaping stays inside the final Conversation limit', async () => {
+    const report = await reportRun({ WORKER_RUN_ID: '101' }, '@'.repeat(24 * 1024));
+    assert.equal(report.conclusion, 'success');
+    assert.ok(report.commentCalls[0].body.length <= 65536);
+    const rejected = await reportRun({ WORKER_RUN_ID: '101' }, '@'.repeat(24 * 1024 + 1));
+    assert.equal(rejected.conclusion, 'action_required');
+    assert.match(rejected.warnings[0], /mention escaping/);
+    const oversized = await reportRun({ WORKER_RUN_ID: '101' }, '@'.repeat(48 * 1024));
+    assert.equal(oversized.conclusion, 'action_required');
+    assert.ok(oversized.commentCalls[0].body.length <= 65536);
+});
 test('failed correlated worker directly embeds review-time Markdown without granting model authority', async () => {
     const markdown = 'A review-time proposal.\n\n| Severity | Finding |\n| HIGH | Fixed; all tests pass |\n';
     const report = await reportRun({

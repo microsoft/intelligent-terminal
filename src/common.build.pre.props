@@ -248,6 +248,7 @@
 
   <!-- Explicit ClangTidy target; normal builds and AuditMode analysis stay unchanged. -->
   <PropertyGroup Condition="'$(PerformanceAnalysis)'=='Extended'">
+    <EnableClangTidyCodeAnalysis>true</EnableClangTidyCodeAnalysis>
     <ClangTidyChecks>-*,performance-inefficient-vector-operation,performance-for-range-copy,performance-unnecessary-value-param,performance-move-const-arg</ClangTidyChecks>
     <ClangTidyHeaderFilter Condition="'$(ClangTidyHeaderFilter)'==''">$([System.Text.RegularExpressions.Regex]::Escape('$(SolutionDir)src').Replace('\\', '[/\\]'))[/\\]</ClangTidyHeaderFilter>
   </PropertyGroup>

@@ -370,6 +370,7 @@ jobs:
               if (conclusion === "success") conclusion = "action_required";
             } else {
               const body = `${marker}\n${runMarker}\n## Performance review\n\n${summary.replaceAll("@", "@\u200b")}`;
+              if (body.length > 65536) throw new Error("Performance Conversation report exceeds GitHub's comment limit.");
               if (existing) {
                 await github.rest.issues.updateComment({
                   ...context.repo, comment_id: existing.id, body

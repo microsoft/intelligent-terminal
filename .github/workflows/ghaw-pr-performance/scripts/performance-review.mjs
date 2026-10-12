@@ -20,6 +20,7 @@ const MAX_REPAIR_LINES = 100;
 const MAX_REPAIR_DIFF_BYTES = 16 * 1024;
 const MAX_REPAIR_BLOB_BYTES = 256 * 1024;
 const MAX_SUMMARY_BYTES = 48 * 1024;
+const MAX_SUMMARY_COMMENT_CHARS = 48 * 1024;
 const SOURCE_EXTENSIONS = new Set(['.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hlsl', '.idl', '.ixx', '.rs', '.xaml']);
 const LEVELS = ['high', 'medium', 'low'];
 const DIMENSIONS = ['application-performance', 'responsiveness', 'memory-growth', 'ci-runtime-cost'];
@@ -433,6 +434,11 @@ function withIndex(revision, action) {
     }
 }
 
+function validateSummaryCommentSize(summary) {
+    if (summary.replaceAll('@', '@\u200b').length > MAX_SUMMARY_COMMENT_CHARS)
+        fail('review summary after mention escaping must fit the 48 Ki-character Conversation budget');
+}
+
 export function readReviewSummary(root) {
     const directory = path.resolve(root);
     const filename = path.join(directory, '.performance-summary.md');
@@ -462,7 +468,9 @@ export function readReviewSummary(root) {
         const current = fs.lstatSync(filename);
         if (current.isSymbolicLink() || current.ino !== opened.ino || current.dev !== opened.dev)
             fail('review summary changed during collection');
-        return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer.subarray(0, length));
+        const summary = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer.subarray(0, length));
+        validateSummaryCommentSize(summary);
+        return summary;
     } finally {
         fs.closeSync(descriptor);
     }
@@ -473,6 +481,7 @@ export function captureReviewSummary(root, summaryMarkdown) {
         Buffer.byteLength(summaryMarkdown, 'utf8') < 1 || Buffer.byteLength(summaryMarkdown, 'utf8') > MAX_SUMMARY_BYTES ||
         new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(Buffer.from(summaryMarkdown)) !== summaryMarkdown)
         fail('review summary must be valid UTF-8 Markdown within 48 KiB');
+    validateSummaryCommentSize(summaryMarkdown);
     const directory = path.resolve(root);
     if (fs.lstatSync(directory).isSymbolicLink() ||
         (process.platform === 'win32' ? fs.realpathSync(directory).toLowerCase() !== directory.toLowerCase() :

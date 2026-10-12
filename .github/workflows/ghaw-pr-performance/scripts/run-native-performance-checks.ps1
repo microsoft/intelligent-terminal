@@ -141,7 +141,8 @@ if ($Phase -eq 'Analysis') {
                 $projectPath = Join-Path $root $project.Replace('/', '\')
                 if (-not (Test-Path -LiteralPath $projectPath)) { throw "Selected owning project is unavailable at ${Revision}: $project" }
                 $common = @($projectPath, '-nologo', "/p:SolutionDir=$($root.TrimEnd('\'))\", '/p:Configuration=AuditMode',
-                    '/p:Platform=x64', "/p:ClangTidyChecks=$escapedChecks", "/p:ClangTidyHeaderFilter=$headerFilter")
+                    '/p:Platform=x64', '/p:EnableClangTidyCodeAnalysis=true',
+                    "/p:ClangTidyChecks=$escapedChecks", "/p:ClangTidyHeaderFilter=$headerFilter")
                 $roundTrip = (Invoke-AnalysisCommand "cpp-checks-$index" $msbuild ($common + '/getProperty:ClangTidyChecks')).Trim()
                 if ($roundTrip -cne $checks) { throw 'MSBuild did not preserve the trusted comma-separated global checks property.' }
                 $null = Invoke-AnalysisCommand "cpp-restore-$index" $msbuild ($common + @('/t:Restore', '/p:RestorePackagesConfig=true'))

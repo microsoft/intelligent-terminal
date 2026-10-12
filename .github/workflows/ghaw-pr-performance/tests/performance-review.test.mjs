@@ -267,6 +267,7 @@ test('successful C++ jobs without actual evaluated TU coverage cannot authorize 
 test('Windows analysis reuses trusted normal profiles instead of embedding a second rule list', () => {
     const runner = fs.readFileSync(new URL('../scripts/run-native-performance-checks.ps1', import.meta.url), 'utf8');
     assert.match(runner, /\/getProperty:ClangTidyChecks/);
+    assert.match(runner, /\/p:EnableClangTidyCodeAnalysis=true/);
     assert.match(runner, /\/getItem:ClCompile/);
     assert.match(runner, /\/p:PerformanceAnalysis=Extended/);
     assert.match(runner, /checks\.Replace\(',', '%2C'\)/);

@@ -187,6 +187,12 @@ test('summary reader accepts bounded UTF-8 Markdown and rejects missing, oversiz
     captureReviewSummary(directory, 'Résumé — review-time proposal.\n');
     assert.equal(readReviewSummary(directory), 'Résumé — review-time proposal.\n');
     assert.throws(() => captureReviewSummary(directory, 'x'.repeat(48 * 1024 + 1)), /48 KiB/);
+    const mentions = '@'.repeat(24 * 1024);
+    captureReviewSummary(directory, mentions);
+    assert.equal(readReviewSummary(directory), mentions);
+    assert.throws(() => captureReviewSummary(directory, `${mentions}@`), /mention escaping/);
+    fs.writeFileSync(path.join(directory, '.performance-summary.md'), `${mentions}@`);
+    assert.throws(() => readReviewSummary(directory), /mention escaping/);
     fs.writeFileSync(path.join(directory, '.performance-summary.md'), Buffer.from([0xff]));
     assert.throws(() => readReviewSummary(directory), /encoded data/);
 });

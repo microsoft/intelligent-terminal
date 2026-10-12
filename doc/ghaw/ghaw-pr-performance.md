@@ -63,6 +63,10 @@ explicit gaps. Referenced prerequisite builds are not extra analyzer coverage.
 | --- | --- |
 | C++ `PerformanceAnalysis=Extended` | Four selected Clang-Tidy performance checks on top of AuditMode/MSVC/CppCoreCheck infrastructure. |
 | Rust `cargo wta-perf` / `cargo wta-perf-extended` | Developer Clippy entrypoints; the extended alias adds `needless_collect` and `large_futures` individually. Ordinary Cargo builds do not run Clippy. |
+
+The opt-in C++ profile explicitly enables Clang-Tidy. BASE/HEAD analysis also
+passes enablement as a trusted global property alongside the frozen checks;
+ordinary builds without that profile/property remain unchanged.
 | Shared skill rules | Repeated work, UI blocking, MVVM amplification, async contention and owner lifetime, investigated only where triggered. |
 
 Before same-repository inference, separate read-only Windows BASE/HEAD jobs
@@ -157,7 +161,11 @@ before comment mutation. PR concurrency serializes controllers; GitHub comment
 updates themselves do not provide an atomic compare-and-swap operation.
 
 The controller reads an identity-validated verdict status and records it before
-deliberately failing on `action_required` or `blocked`. Invalid identities or
+deliberately failing on `action_required` or `blocked`. Summary artifacts retain
+the 48 KiB UTF-8 limit and additionally reserve report-wrapper space by bounding
+mention-escaped text to 48 Ki characters. The final Conversation body is checked
+against GitHub's 65,536-character limit; it is not silently truncated.
+Invalid identities or
 malformed statuses cannot populate the report output.
 
 An entered fork submission invalidates previous accepted JSON before summary
