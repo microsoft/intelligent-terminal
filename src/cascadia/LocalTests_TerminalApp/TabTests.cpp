@@ -8441,7 +8441,7 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(item.Title(), tooltipTitle.Text());
                 VERIFY_ARE_EQUAL(TextWrapping::Wrap, tooltipTitle.TextWrapping());
                 VERIFY_ARE_EQUAL(TextTrimming::None, tooltipTitle.TextTrimming());
-                VERIFY_ARE_EQUAL(0u, tooltipTitle.MaxLines());
+                VERIFY_ARE_EQUAL(0, tooltipTitle.MaxLines());
                 VERIFY_ARE_EQUAL(item.ProviderDisplayName(), details.GetAt(1).as<TextBlock>().Text());
                 VERIFY_ARE_EQUAL(item.Cwd(), details.GetAt(2).as<TextBlock>().Text());
                 const auto tooltipAge = details.GetAt(3).as<TextBlock>();
