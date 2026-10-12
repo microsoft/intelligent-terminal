@@ -99,7 +99,13 @@ separate ownership/version marker. `wta hooks install --cli antigravity` invokes
 `agy plugin install` and verifies the copied files under
 `~/.gemini/config/plugins/wt-agent-hooks`; it commits the version marker last.
 The status reader combines `import_manifest.json` and the plugin's enablement in
-`config.json`. Upgrade uses the same native reinstall operation. Uninstall checks
+`config.json`. Existing `local-install` registrations are also recognized when
+the plugin has an Intelligent Terminal ownership marker or managed descriptor.
+These legacy plugins are uninstalled through `agy` before reinstalling, because
+native install otherwise retains the old entry alongside its new registration.
+The same migration repairs a partial reinstall with one entry from each source;
+duplicate entries from the same source or foreign sources are rejected.
+Ordinary upgrades use native install directly. Uninstall checks
 ownership and invokes the native plugin manager, then verifies removal. If the
 native CLI is absent, cleanup fails explicitly without rewriting shared JSON or
 discarding managed files. This does not claim a cross-provider filesystem transaction.
@@ -113,10 +119,24 @@ CLI transcript are accepted, because the upstream plugin directory is also share
 by other Antigravity frontends. The ordinary `WT_SESSION`/COM gate still suppresses
 shared ACP processes.
 
-The Windows command explicitly invokes Windows PowerShell, guards a missing
-`wtcli.exe`, and emits no stdout. The `antigravity-wsl` bundle uses the same native
+The Windows command invokes Windows PowerShell with `-EncodedCommand` to avoid
+nested command quoting, guards a missing `wtcli.exe`, and returns exactly `{}` on
+stdout. Antigravity parses hook responses as JSON even though `wtcli agent-hook`
+itself is silent. The neutral response does not supply a tool permission decision,
+inject steps, or request that the execution loop continue. Tracking is best-effort
+and must not block ordinary agent actions when the bridge is unavailable.
+The encoded UTF-16LE script for each event is:
+
+```powershell
+$ProgressPreference = 'SilentlyContinue'; try { wtcli.exe agent-hook --cli-source antigravity --event <topic> } catch { }; [Console]::Out.WriteLine('{}'); exit 0
+```
+
+The executable bundle tests keep these encoded scripts aligned with the readable
+form above and exercise Windows PowerShell, PowerShell 7, CMD, and Bash.
+The `antigravity-wsl` bundle uses the same native
 bridge with a Bash launch guard and child-scoped `WSLENV` distro propagation;
 it also forwards the actual hook cwd for callbacks without mounted-workspace metadata.
+Its guard returns `{}` even outside Terminal or when Windows interop is unavailable.
 The bridge never answers provider tool permissions. WSL plugins are installed separately
 with the in-distro `agy plugin install`, not by host-profile reconciliation.
 The bridge uses that source metadata, or queries only the exact pane's shell

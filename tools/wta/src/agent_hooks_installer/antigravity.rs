@@ -44,6 +44,7 @@ struct Installation {
     imports: Option<JsonFile>,
     config: Option<JsonFile>,
     registered: bool,
+    legacy_registration: bool,
     owned: bool,
     complete: bool,
     enabled: bool,
@@ -99,6 +100,8 @@ fn load(home: &Path) -> Result<Installation, String> {
 
     let imports = JsonFile::read(root.join("import_manifest.json"))?;
     let mut registered = false;
+    let mut native_registration = false;
+    let mut legacy_registration = false;
     if let Some(entries) = imports.as_ref().and_then(|file| file.value.get("imports")) {
         if !entries.is_null() {
             let entries = entries
@@ -108,17 +111,22 @@ fn load(home: &Path) -> Result<Installation, String> {
                 .iter()
                 .filter(|entry| entry.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME))
             {
-                if registered || entry.get("source").and_then(Value::as_str) != Some("antigravity")
-                {
+                let (component, seen) = match entry.get("source").and_then(Value::as_str) {
+                    Some("antigravity") => ("hooks", &mut native_registration),
+                    Some("local-install") if owned => ("installed", &mut legacy_registration),
+                    _ => return Err("conflicting Antigravity hook import registration".into()),
+                };
+                if *seen {
                     return Err("conflicting Antigravity hook import registration".into());
                 }
-                registered = entry
+                *seen = true;
+                registered |= entry
                     .get("components")
                     .and_then(Value::as_array)
                     .is_some_and(|components| {
                         components
                             .iter()
-                            .any(|component| component.as_str() == Some("hooks"))
+                            .any(|value| value.as_str() == Some(component))
                     });
             }
         }
@@ -160,6 +168,7 @@ fn load(home: &Path) -> Result<Installation, String> {
         imports,
         config,
         registered,
+        legacy_registration,
         owned,
         complete,
         enabled,
@@ -356,6 +365,13 @@ pub(super) fn install_with(
             ("USERPROFILE", home_value.as_ref()),
             ("HOME", home_value.as_ref()),
         ];
+        if before.legacy_registration {
+            // Native install appends a new source without removing the old local-install entry.
+            remove(home, true, |exe, args, environment| {
+                run(exe, args, environment)
+            })
+            .map_err(|error| format!("cannot migrate legacy Antigravity hooks: {error}"))?;
+        }
         run("agy", &["plugin", "install", &staged], &environment)
             .map_err(|error| format!("Antigravity plugin install failed: {error}"))?;
         let copied = load(home)?;
