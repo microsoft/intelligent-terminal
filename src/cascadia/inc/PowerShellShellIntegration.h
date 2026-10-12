@@ -868,9 +868,8 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // v10: emit the dedicated Resume OSC from the PSConsoleHostReadLine
     // boundary immediately after a supported resume command is accepted.
     // v11: parse literal resume arguments so quoted IDs and additional CLI
-    // options also establish the binding before the first conversation.
-    // v12: upgrade earlier v11 installs to include Antigravity resume handling
-    // and reject option-shaped session IDs.
+    // options also establish the binding before the first conversation,
+    // including Antigravity, while rejecting option-shaped session IDs.
     // ───────────────────────────────────────────────────────────────────
     inline constexpr int kVersion = 11;
 

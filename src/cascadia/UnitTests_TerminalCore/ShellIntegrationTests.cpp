@@ -1065,7 +1065,7 @@ void ShellIntegrationTests::Install_UpgradesEarlierResumeScript()
 {
     const auto profile = _ProfilePath();
     const auto currentName = til::u16u8(ShellIntegrationScriptFileName());
-    const std::string oldName{ "shell-integration_v11.ps1" };
+    const std::string oldName{ "shell-integration_v10.ps1" };
     auto oldBlock = BuildShellIntegrationBlock(L"PowerShell", "\n");
     const auto namePos = oldBlock.find(currentName);
     VERIFY_ARE_NOT_EQUAL(std::string::npos, namePos);
