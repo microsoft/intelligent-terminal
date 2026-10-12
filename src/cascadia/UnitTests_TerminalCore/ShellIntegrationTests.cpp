@@ -592,6 +592,8 @@ $cases = @(
     @{ Line = 'copilot --resume "resume-test" --yolo'; Agent = 'copilot' }
     @{ Line = "copilot --model gpt-5 --resume='resume-test'"; Agent = 'copilot' }
     @{ Line = 'copilot --model gpt-6.1-sol --resume="resume-test"'; Agent = 'copilot' }
+    @{ Line = 'copilot "-m" "--resume=other" --resume resume-test'; Agent = 'copilot' }
+    @{ Line = 'copilot "-m" "gpt-6.1-sol" --resume resume-test'; Agent = 'copilot' }
     @{ Line = 'copilot --resume resume-test --interactive "literal prompt"'; Agent = 'copilot' }
     @{ Line = 'copilot --resume resume-test --prompt "--resume=other"'; Agent = 'copilot' }
     @{ Line = "copilot --interactive '--resume=other' --resume resume-test"; Agent = 'copilot' }
@@ -620,6 +622,7 @@ $cases = @(
     @{ Line = 'copilot --interactive="--resume=resume-test"'; Agent = '' }
     @{ Line = "copilot --prompt='--resume=resume-test'"; Agent = '' }
     @{ Line = 'copilot --model "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'copilot "-m" "--resume=other"'; Agent = '' }
     @{ Line = 'copilot -i "--resume=resume-test"'; Agent = '' }
     @{ Line = 'copilot "-i" "--resume=resume-test"'; Agent = '' }
     @{ Line = 'copilot "--interactive" "--resume=resume-test"'; Agent = '' }

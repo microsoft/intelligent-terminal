@@ -980,7 +980,7 @@ if (-not $Global:__ShellInteg_Installed) {
                 # when it looks like a resume flag. Inline =values are already
                 # part of the option and must not consume the next argument.
                 $valueOptions = switch ($resumeAgent) {
-                    'copilot' { @('--model', '--interactive', '--prompt', '-i', '-p') }
+                    'copilot' { @('--model', '-m', '--interactive', '--prompt', '-i', '-p') }
                     'claude' { @('--model', '--fallback-model', '--system-prompt', '--append-system-prompt') }
                     'gemini' { @('--model', '-m', '--prompt', '-p', '--prompt-interactive', '-i') }
                     'opencode' { @('--model', '-m', '--prompt') }
