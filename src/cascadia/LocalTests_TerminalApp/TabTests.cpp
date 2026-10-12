@@ -484,6 +484,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneContextPropagatesCaptureFailure);
         TEST_METHOD(AgentSessionRestoreRequiresPersistedBufferPath);
         TEST_METHOD(InteractiveResumeCommandPublishesSessionLifecycle);
+        TEST_METHOD(InteractiveResumeOscPersistsSessionWithoutHooks);
         TEST_METHOD(AgentPaneRestoreRecordRoundTrips);
         TEST_METHOD(AgentPaneRestorePreservesSettingsBinding);
         TEST_METHOD(RestoredAgentSelectionBecomesExplicitOnlyAfterUserChoice);
@@ -1078,6 +1079,63 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(std::string{ "resumed-session" }, events[1]["params"]["agent_session_id"].asString());
             VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
             VERIFY_IS_FALSE(page->_interactiveResumeSessions.contains(paneId));
+        });
+    }
+
+    void TabTests::InteractiveResumeOscPersistsSessionWithoutHooks()
+    {
+        const winrt::guid paneId{ L"{5d9cc4ac-1a11-4bb0-99ca-82a71e94fa78}" };
+        const auto connection = winrt::make_self<TestConnection>(
+            paneId,
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        Grid host{ nullptr };
+        TestOnUIThread([&]() { host = Grid{}; });
+        const auto page = _commonSetup(*connection, host);
+        ::details::Event bound;
+        Json::Value birth;
+        winrt::event_token token{};
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                page->ProtocolVtSequenceReceived(token);
+                page->ShutdownPanes();
+            });
+        });
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().AutoErrorDetectionEnabled(false);
+            page->_settings.GlobalSettings().AutoFixEnabled(false);
+            token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                Json::Value event;
+                Json::CharReaderBuilder reader;
+                std::istringstream stream{ winrt::to_string(payload) };
+                std::string errors;
+                if (Json::parseFromStream(reader, stream, &event, &errors) &&
+                    event["method"] == "session_born_bound")
+                {
+                    birth = std::move(event);
+                    bound.Set();
+                }
+            });
+        });
+
+        const std::u16string_view resume{ u"\x1b]9001;Resume;copilot;resume-without-conversation\x07" };
+        connection->WriteInput({ resume.data(), resume.data() + resume.size() });
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(bound.m_handle, 10000));
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(_formatPaneId(paneId), birth["params"]["pane_id"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "resume-without-conversation" }, birth["params"]["agent_session_id"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "copilot" }, birth["params"]["agent"].asString());
+            VERIFY_ARE_EQUAL(winrt::to_string(page->_GetFocusedTabImpl()->StableId()), birth["params"]["tab_id"].asString());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"resume-without-conversation" }, page->_paneAgentSessions.at(paneId).sessionId);
+
+            const auto layout = page->GetWindowLayout();
+            VERIFY_IS_NOT_NULL(layout);
+            const auto saved = WindowLayout::FromJson(WindowLayout::ToJson(layout));
+            VERIFY_ARE_EQUAL(1u, saved.TabLayout().Size());
+            const auto terminalArgs = _getTerminalArgs(saved.TabLayout().GetAt(0));
+            VERIFY_ARE_EQUAL(winrt::hstring{ LR"(cmd.exe /d /s /c "copilot --resume resume-without-conversation")" }, terminalArgs.Commandline());
+            VERIFY_ARE_EQUAL(
+                std::wstring{ L"resume-without-conversation" },
+                ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(terminalArgs.Commandline()).sessionId);
         });
     }
 

@@ -109,6 +109,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(BuildBlock_HonoursEolParameter);
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
     TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
+    TEST_METHOD(PowerShell_ResumeCommand_EmitsOscBeforeExecution);
     TEST_METHOD(PowerShell_ScriptContent_GatesRestrictedLanguageFeatures);
     TEST_METHOD(PowerShell_ScriptContent_ReArmsFromReadLineBoundary);
     TEST_METHOD(PowerShell_ScriptContent_ReArmIsBestEffortAndSkipsWithoutWrapper);
@@ -535,9 +536,6 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
     const auto script = ShellIntegrationScriptContent();
     const auto readLineWrapper = script.find("function Global:PSConsoleHostReadLine");
     const auto lineStored = script.find("$Global:__ShellInteg_LastSubmittedLine =", readLineWrapper);
-    const auto resumeCommandMatch = script.find("copilot|claude|gemini", lineStored);
-    const auto resumeEqualsMatch = script.find("(?:\\s+|=)", resumeCommandMatch);
-    const auto resumeCommandMark = script.find("]9001;Resume;", resumeCommandMatch);
     const auto promptStart = script.find("function prompt");
     const auto lineCaptured = script.find("$submittedLine = $Global:__ShellInteg_LastSubmittedLine", promptStart);
     const auto capture = script.find("$errorRecord", lineCaptured);
@@ -557,10 +555,7 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, consumeLine);
     VERIFY_IS_TRUE(readLineWrapper < lineStored &&
-                       lineStored < resumeCommandMatch &&
-                       resumeCommandMatch < resumeEqualsMatch &&
-                       resumeEqualsMatch < resumeCommandMark &&
-                       resumeCommandMark < promptStart &&
+                       lineStored < promptStart &&
                        promptStart < lineCaptured &&
                        lineCaptured < capture &&
                        capture < historyCheck &&
@@ -577,6 +572,76 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
                        originalPrompt < consumeError &&
                        consumeError < consumeLine,
                    L"Submitted input must be retained at the PSReadLine boundary, parsed only after normal completion signals are absent, and consumed after prompt rendering");
+}
+
+void ShellIntegrationTests::PowerShell_ResumeCommand_EmitsOscBeforeExecution()
+{
+    const auto runner = _scratchDir / L"resume-test.ps1";
+    const auto script = std::string{ "\xef\xbb\xbf" } +
+                        R"($ErrorActionPreference = 'Stop'
+function Global:PSConsoleHostReadLine { return $Global:__ResumeTestLine }
+)" +
+                        ShellIntegrationScriptContent() +
+                        R"PS(
+$cases = @(
+    @{ Line = 'copilot --resume=resume-test'; Agent = 'copilot' }
+    @{ Line = 'copilot --resume resume-test'; Agent = 'copilot' }
+    @{ Line = 'copilot --resume "resume-test" --yolo'; Agent = 'copilot' }
+    @{ Line = "copilot --model gpt-5 --resume='resume-test'"; Agent = 'copilot' }
+    @{ Line = '& copilot.cmd --resume resume-test'; Agent = 'copilot' }
+    @{ Line = 'claude --resume resume-test --model sonnet'; Agent = 'claude' }
+    @{ Line = 'codex resume "resume-test" --yolo'; Agent = 'codex' }
+    @{ Line = 'opencode --session=resume-test'; Agent = 'opencode' }
+    @{ Line = 'copilot --resume=$sessionId'; Agent = '' }
+    @{ Line = 'copilot --resume resume-test; echo other'; Agent = '' }
+    @{ Line = 'copilot --resume resume-test | Out-Null'; Agent = '' }
+    @{ Line = 'copilot --resume resume-test --resume other'; Agent = '' }
+    @{ Line = 'copilot -- --resume resume-test'; Agent = '' }
+    @{ Line = 'copilot --resume "bad;id"'; Agent = '' }
+    @{ Line = 'Write-Output "copilot --resume resume-test"'; Agent = '' }
+)
+foreach ($case in $cases) {
+    $Global:__ResumeTestLine = $case.Line
+    $output = New-Object System.IO.StringWriter
+    $original = [Console]::Out
+    [Console]::SetOut($output)
+    try {
+        $returned = PSConsoleHostReadLine
+    }
+    finally {
+        [Console]::SetOut($original)
+    }
+    if ($returned -cne $case.Line) { throw 'ReadLine changed the submitted command' }
+    $expected = if ($case.Agent) {
+        '{0}]9001;Resume;{1};resume-test{2}' -f [char]0x1B, $case.Agent, [char]0x07
+    } else { '' }
+    if ($output.ToString() -cne $expected) { throw "Incorrect Resume OSC for: $($case.Line)" }
+}
+'passed'
+)PS";
+    _WriteFile(runner, script);
+
+    std::vector<std::wstring> hosts{
+        wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    };
+    if (auto pwsh = Powershell::details::ResolvePwshExecutableFromExplicitPath(); !pwsh.empty())
+    {
+        hosts.emplace_back(std::move(pwsh));
+    }
+    for (const auto& host : hosts)
+    {
+        const auto result = Powershell::details::RunPowerShellCommand(
+            host.c_str(), L"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + runner.wstring() + L"\"");
+        VERIFY_ARE_EQUAL(DWORD{ ERROR_SUCCESS }, result.error);
+        VERIFY_IS_TRUE(result.launched);
+        VERIFY_IS_FALSE(result.timedOut);
+        if (result.exitCode != 0)
+        {
+            Log::Comment(result.output.c_str());
+        }
+        VERIFY_ARE_EQUAL(DWORD{ 0 }, result.exitCode);
+        VERIFY_ARE_EQUAL(std::wstring{ L"passed" }, result.output);
+    }
 }
 
 void ShellIntegrationTests::PowerShell_ScriptContent_GatesRestrictedLanguageFeatures()

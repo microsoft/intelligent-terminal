@@ -178,6 +178,28 @@ silently dropped every event. The flag clears itself whenever the row gives up
 the pane (`SessionStopped`, `PaneClosed`, `end_entry`) or once a `SessionStarted`
 for the *same* key claims it, so the protection needs no timer.
 
+### User-typed PowerShell resume: binding before the first conversation
+
+When Intelligent Terminal's shell integration is loaded in PowerShell, accepting
+a literal resume command emits `OSC 9001;Resume;<agent>;<session-id>` before the
+CLI starts. `TerminalPage` binds the emitting pane's connection GUID directly to
+that session and publishes `session_born_bound`; neither a hook nor a first
+conversation is required. Saved layouts reuse the binding to persist the agent's
+resume invocation, including when Terminal closes before any conversation.
+
+Both `copilot --resume=<id>` and `copilot --resume <id>` are recognized, including
+quoted literal IDs, additional CLI options, and `.cmd`/`.exe` launchers. Claude
+and Gemini use the same resume flag; Codex uses `resume <id>` and OpenCode uses
+`--session <id>`. Only a single foreground command with literal arguments is
+inspected. Variables, expressions, pipelines, compound commands, and duplicate
+resume flags are not evaluated or guessed. Bash/WSL and CMD do not emit this
+PowerShell-specific mark.
+
+The binding is retired when the shell reports command completion (`OSC 133;D`).
+After a shell-integration upgrade, open a new PowerShell session to load the
+updated script. This binding path does not require automatic error detection or
+Autofix to be enabled once the script is loaded.
+
 ### Liveness gate: scoping to this IT window
 
 The four CLIs write their session state to **per-user** roots, so the watcher
