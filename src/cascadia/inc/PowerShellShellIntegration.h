@@ -976,9 +976,24 @@ if (-not $Global:__ShellInteg_Installed) {
                 $flag = if ($resumeAgent -eq 'opencode') { '--session' }
                         elseif ($resumeAgent -eq 'antigravity') { '--conversation' }
                         else { '--resume' }
+                # Known prompt/model options consume one literal value, even
+                # when it looks like a resume flag. Inline =values are already
+                # part of the option and must not consume the next argument.
+                $valueOptions = switch ($resumeAgent) {
+                    'copilot' { @('--model', '--interactive', '--prompt', '-i', '-p') }
+                    'claude' { @('--model', '--fallback-model', '--system-prompt', '--append-system-prompt') }
+                    'gemini' { @('--model', '-m', '--prompt', '-p', '--prompt-interactive', '-i') }
+                    'opencode' { @('--model', '-m', '--prompt') }
+                    'antigravity' { @('--model', '--prompt-interactive', '-i') }
+                }
                 for ($i = 0; $i -lt $arguments.Count; $i++) {
                     $argument = $arguments[$i]
                     if ($argument -ceq '--') { break }
+                    if ($valueOptions -ccontains $argument) {
+                        if ($i + 1 -ge $arguments.Count) { return }
+                        $i++
+                        continue
+                    }
                     if ($argument -ceq $flag) {
                         if ($null -ne $resumeSession -or $i + 1 -ge $arguments.Count) { return }
                         $resumeSession = $arguments[++$i]

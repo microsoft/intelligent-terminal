@@ -591,16 +591,42 @@ $cases = @(
     @{ Line = "copilot --resume='resume-test'"; Agent = 'copilot' }
     @{ Line = 'copilot --resume "resume-test" --yolo'; Agent = 'copilot' }
     @{ Line = "copilot --model gpt-5 --resume='resume-test'"; Agent = 'copilot' }
+    @{ Line = 'copilot --model gpt-6.1-sol --resume="resume-test"'; Agent = 'copilot' }
+    @{ Line = 'copilot --resume resume-test --interactive "literal prompt"'; Agent = 'copilot' }
+    @{ Line = 'copilot --resume resume-test --prompt "--resume=other"'; Agent = 'copilot' }
+    @{ Line = "copilot --interactive '--resume=other' --resume resume-test"; Agent = 'copilot' }
+    @{ Line = 'copilot --prompt="--resume=other" --resume resume-test'; Agent = 'copilot' }
+    @{ Line = 'copilot --interactive "--" --resume resume-test'; Agent = 'copilot' }
     @{ Line = '& copilot.cmd --resume resume-test'; Agent = 'copilot' }
     @{ Line = 'claude --resume resume-test --model sonnet'; Agent = 'claude' }
+    @{ Line = 'claude --system-prompt "--resume=other" --resume resume-test'; Agent = 'claude' }
+    @{ Line = 'gemini --prompt-interactive "--resume=other" --resume resume-test'; Agent = 'gemini' }
     @{ Line = 'codex resume "resume-test" --yolo'; Agent = 'codex' }
     @{ Line = 'opencode --session=resume-test'; Agent = 'opencode' }
+    @{ Line = 'opencode --session resume-test --prompt "--session=other"'; Agent = 'opencode' }
     @{ Line = 'agy --conversation resume-test'; Agent = 'antigravity' }
+    @{ Line = 'agy --prompt-interactive "--conversation=other" --conversation resume-test'; Agent = 'antigravity' }
     @{ Line = 'agy --conversation=resume-test'; Agent = 'antigravity' }
     @{ Line = '& "C:\Program Files\Antigravity\agy.exe" --model gemini --conversation "resume-test"'; Agent = 'antigravity' }
     @{ Line = "& agy.cmd --conversation='resume-test' --model gemini"; Agent = 'antigravity' }
     @{ Line = '& C:\Antigravity\agy.bat --conversation resume-test'; Agent = 'antigravity' }
     @{ Line = 'codex resume --last'; Agent = '' }
+    @{ Line = 'copilot --interactive "--resume=resume-test"'; Agent = '' }
+    @{ Line = "copilot --interactive '--resume=resume-test'"; Agent = '' }
+    @{ Line = 'copilot --prompt "--resume=resume-test"'; Agent = '' }
+    @{ Line = "copilot --prompt '--resume=resume-test'"; Agent = '' }
+    @{ Line = 'copilot --prompt "--resume resume-test"'; Agent = '' }
+    @{ Line = 'copilot --interactive "--resume" resume-test'; Agent = '' }
+    @{ Line = 'copilot --interactive="--resume=resume-test"'; Agent = '' }
+    @{ Line = "copilot --prompt='--resume=resume-test'"; Agent = '' }
+    @{ Line = 'copilot --model "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'copilot -i "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'copilot "-i" "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'copilot "--interactive" "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'claude --append-system-prompt "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'gemini --prompt-interactive "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'opencode --prompt "--session=resume-test"'; Agent = '' }
+    @{ Line = 'agy --prompt-interactive "--conversation=resume-test"'; Agent = '' }
     @{ Line = 'copilot --resume --model gpt-5'; Agent = '' }
     @{ Line = 'opencode --session=--last'; Agent = '' }
     @{ Line = 'agy --conversation "--model"'; Agent = '' }

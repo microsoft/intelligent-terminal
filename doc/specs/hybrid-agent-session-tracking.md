@@ -196,6 +196,19 @@ foreground command with literal arguments is inspected. Variables, expressions,
 pipelines, compound commands, and duplicate resume flags are not evaluated or
 guessed. Bash/WSL and CMD do not emit this PowerShell-specific mark.
 
+The flag scan skips values consumed by known prompt/model options: Copilot
+`--interactive`/`--prompt`/`--model`; Claude
+`--system-prompt`/`--append-system-prompt`/`--model`/`--fallback-model`; Gemini
+`--prompt`/`--prompt-interactive`/`--model`; OpenCode `--prompt`/`--model`; and
+Antigravity `--prompt-interactive`/`--model`. Their supported
+short aliases are handled when quoted as literals; unquoted single-dash options
+are PowerShell parameter AST nodes and remain outside the literal-only scope.
+Separate option values are not re-scanned as resume flags, and inline `=value`
+forms do not consume the following argument. This is not a full CLI parser:
+other or future options' value arity is not inferred, so their resume-looking
+values are outside this consumption protection. Codex only inspects the leading
+`resume <id>` subcommand and does not scan later options.
+
 The binding is retired when the shell reports command completion (`OSC 133;D`).
 The v11 script upgrades earlier v10 installations to the literal resume parser.
 After shell-integration installation or an upgrade completes, open a new
