@@ -190,10 +190,11 @@ resume invocation, including when Terminal closes before any conversation.
 Both `copilot --resume=<id>` and `copilot --resume <id>` are recognized, including
 quoted literal IDs, additional CLI options, and `.cmd`/`.exe` launchers. Claude
 and Gemini use the same resume flag; Codex uses `resume <id>` and OpenCode uses
-`--session <id>`. Only a single foreground command with literal arguments is
-inspected. Variables, expressions, pipelines, compound commands, and duplicate
-resume flags are not evaluated or guessed. Bash/WSL and CMD do not emit this
-PowerShell-specific mark.
+`--session <id>`. Antigravity uses `agy --conversation <id>` for CLI conversations,
+not ACP sessions, and emits the canonical agent ID `antigravity`. Only a single
+foreground command with literal arguments is inspected. Variables, expressions,
+pipelines, compound commands, and duplicate resume flags are not evaluated or
+guessed. Bash/WSL and CMD do not emit this PowerShell-specific mark.
 
 The binding is retired when the shell reports command completion (`OSC 133;D`).
 After a shell-integration upgrade, open a new PowerShell session to load the
