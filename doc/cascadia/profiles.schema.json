@@ -2708,6 +2708,16 @@
           "minimum": 180,
           "maximum": 480
         },
+        "sidebarShowAgentsOnly": {
+          "default": false,
+          "description": "Whether the sidebar's Agents only filter is checked. Saved automatically when toggled in the sidebar or through an action, and restored when a window opens. A nonempty search temporarily includes all tabs without changing this preference.",
+          "type": "boolean"
+        },
+        "sidebarShowRecentAgentSessions": {
+          "default": false,
+          "description": "Whether the sidebar's Recent agent sessions option is checked. Saved automatically when toggled in the sidebar or through an action, and restored when a window opens. A nonempty search temporarily includes recent sessions without changing this preference.",
+          "type": "boolean"
+        },
         "wordDelimiters": {
           "default": " ./\\()\"'-:,.;<>~!@#$%^&*|+=[]{}~?│",
           "description": "Determines the delimiters used in a double click selection.",

@@ -500,6 +500,8 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        _ApplySidebarFilterSettings();
+
         // Upon settings update we reload the system settings for scrolling as well.
         // TODO: consider reloading this value periodically.
         _systemRowsToScroll = _ReadSystemRowsToScroll();
@@ -542,6 +544,7 @@ namespace winrt::TerminalApp::implementation
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
         _tabStrip = this->VerticalTabStrip();
+        _ApplySidebarFilterSettings();
         auto tabRowImpl = winrt::get_self<implementation::TabRowControl>(_tabRow);
         _rearranging = false;
         _hasTitlebarHost = _settings.GlobalSettings().ShowTabsInTitlebar();
@@ -721,6 +724,7 @@ namespace winrt::TerminalApp::implementation
                 page->_UpdateRecentAgentSessionsVisibility();
             }
         });
+        _tabStrip.SidebarFilters().PropertyChanged({ get_weak(), &TerminalPage::_OnSidebarFilterSettingsChanged });
         _tabStrip.SearchActivationRequested([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto page = weakThis.get())
             {
@@ -6596,6 +6600,84 @@ namespace winrt::TerminalApp::implementation
         {
             _FocusSidebarTerminalFallback();
         }
+    }
+
+    void TerminalPage::_ApplySidebarFilterSettings()
+    {
+        if (!_tabStrip)
+        {
+            return;
+        }
+
+        const auto globals = _settings.GlobalSettings();
+        const auto filters = _tabStrip.SidebarFilters();
+        filters.ShowAgentsOnly(globals.SidebarShowAgentsOnly());
+        filters.ShowRecentAgentSessions(globals.SidebarShowRecentAgentSessions());
+        _tabFilterMode = _tabStrip.FilterMode();
+    }
+
+    void TerminalPage::_OnSidebarFilterSettingsChanged(const IInspectable& sender,
+                                                       const WUX::Data::PropertyChangedEventArgs& args)
+    {
+        const auto agentsOnlyChanged = args.PropertyName() == L"ShowAgentsOnly";
+        if (!agentsOnlyChanged && args.PropertyName() != L"ShowRecentAgentSessions")
+        {
+            return;
+        }
+
+        const auto globals = _settings.GlobalSettings();
+        const auto filters = sender.as<TerminalApp::SidebarFiltersViewModel>();
+        const auto value = agentsOnlyChanged ? filters.ShowAgentsOnly() : filters.ShowRecentAgentSessions();
+        const auto previous = agentsOnlyChanged ? globals.SidebarShowAgentsOnly() : globals.SidebarShowRecentAgentSessions();
+        // Restoring settings must not write them back or save a temporary search projection.
+        if (value == previous)
+        {
+            return;
+        }
+
+        const auto hadValue = agentsOnlyChanged ? globals.HasSidebarShowAgentsOnly() : globals.HasSidebarShowRecentAgentSessions();
+        if (agentsOnlyChanged)
+        {
+            globals.SidebarShowAgentsOnly(value);
+        }
+        else
+        {
+            globals.SidebarShowRecentAgentSessions(value);
+        }
+
+        if (_settings.WriteSettingsToDisk())
+        {
+            return;
+        }
+
+        if (agentsOnlyChanged)
+        {
+            if (hadValue)
+            {
+                globals.SidebarShowAgentsOnly(previous);
+            }
+            else
+            {
+                globals.ClearSidebarShowAgentsOnly();
+            }
+            filters.ShowAgentsOnly(previous);
+        }
+        else
+        {
+            if (hadValue)
+            {
+                globals.SidebarShowRecentAgentSessions(previous);
+            }
+            else
+            {
+                globals.ClearSidebarShowRecentAgentSessions();
+            }
+            filters.ShowRecentAgentSessions(previous);
+        }
+
+        auto warnings = winrt::single_threaded_vector<SettingsLoadWarnings>();
+        warnings.Append(SettingsLoadWarnings::FailedToWriteToSettings);
+        ShowLoadWarningsDialog.raise(*this, warnings.GetView());
     }
 
     void TerminalPage::_UpdateRecentAgentSessionsVisibility()

@@ -41,6 +41,7 @@
 #include <icu.h>
 #include <map>
 #include <set>
+#include <til/io.h>
 #include <winrt/Windows.Globalization.NumberFormatting.h>
 #include <winrt/Windows.Storage.Streams.h>
 #include <winrt/Windows.UI.Xaml.Automation.h>
@@ -348,6 +349,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SidebarRecentPreferencePreservesSearchAndInputFocus);
         TEST_METHOD(AgentsViewFiltersLiveTabsAndHistoryConcurrently);
         TEST_METHOD(SidebarFiltersViewModelCombinationsAndNotifications);
+        TEST_METHOD(SidebarFilterSettingsRestoreAndReload);
+        TEST_METHOD(SidebarFilterSettingsSaveIndependentPreferences);
+        TEST_METHOD(SidebarFilterSettingsSaveFailureRollsBack);
         TEST_METHOD(SidebarGlobalSearchRestoresIndependentPreferences);
         TEST_METHOD(SidebarFilterActionsTogglePreferencesDuringSearch);
         TEST_METHOD(VerticalTitlebarDragAreaExcludesControls);
@@ -5117,6 +5121,154 @@ namespace TerminalAppLocalTests
                     verifyNotifications({});
                 }
             }
+        });
+    }
+
+    void TabTests::SidebarFilterSettingsRestoreAndReload()
+    {
+        const auto settingsPath = std::filesystem::path{ std::wstring_view{ CascadiaSettings::SettingsPath() } };
+        const auto before = til::io::read_file_as_utf8_string_if_exists(settingsPath);
+        const CascadiaSettings settings{ LR"({
+            "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+            "showTabsInTitlebar": false,
+            "tabLayout": "vertical",
+            "sidebarShowAgentsOnly": true,
+            "sidebarShowRecentAgentSessions": true,
+            "profiles": [{
+                "name": "profile0",
+                "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                "closeOnExit": "never"
+            }]
+        })",
+                                         {} };
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-eeee-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+        _initializeTerminalPage(page, settings, *connection);
+
+        TestOnUIThread([&]() {
+            page->_historyRefreshInFlight = true;
+            const auto filters = page->_tabStrip.SidebarFilters();
+            VERIFY_IS_TRUE(filters.ShowAgentsOnly());
+            VERIFY_IS_TRUE(filters.ShowRecentAgentSessions());
+            VERIFY_ARE_EQUAL(TabStripFilterMode::AgentsOnly, page->_tabFilterMode);
+            VERIFY_ARE_EQUAL(before, til::io::read_file_as_utf8_string_if_exists(settingsPath));
+            page->_tabStrip.SearchActive(true);
+            filters.SearchQuery(L"temporary global query");
+
+            for (const auto agentsOnly : { false, true })
+            {
+                for (const auto recentSessions : { false, true })
+                {
+                    const auto reloaded = settings.Copy();
+                    reloaded.GlobalSettings().SidebarShowAgentsOnly(agentsOnly);
+                    reloaded.GlobalSettings().SidebarShowRecentAgentSessions(recentSessions);
+                    page->SetSettings(reloaded, false);
+                    VERIFY_ARE_EQUAL(agentsOnly, filters.ShowAgentsOnly());
+                    VERIFY_ARE_EQUAL(recentSessions, filters.ShowRecentAgentSessions());
+                    VERIFY_ARE_EQUAL(agentsOnly ? TabStripFilterMode::AgentsOnly : TabStripFilterMode::AllTabs, page->_tabFilterMode);
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"temporary global query" }, filters.SearchQuery());
+                    VERIFY_IS_FALSE(filters.AgentsOnlyEffective());
+                    VERIFY_IS_TRUE(filters.RecentAgentSessionsVisible());
+                    VERIFY_ARE_EQUAL(before, til::io::read_file_as_utf8_string_if_exists(settingsPath));
+                }
+            }
+        });
+    }
+
+    void TabTests::SidebarFilterSettingsSaveIndependentPreferences()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-eeee-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto settingsPath = std::filesystem::path{ std::wstring_view{ CascadiaSettings::SettingsPath() } };
+            VERIFY_IS_TRUE(settingsPath.native().find(L"WindowsTerminal.TestHost_") != std::wstring::npos);
+            page->_historyRefreshInFlight = true;
+            const auto filters = page->_tabStrip.SidebarFilters();
+            const auto verifySaved = [&](const bool agentsOnly, const bool recentSessions) {
+                const auto contents = til::io::read_file_as_utf8_string_if_exists(settingsPath);
+                const CascadiaSettings saved{ winrt::to_hstring(contents), {} };
+                VERIFY_ARE_EQUAL(agentsOnly, saved.GlobalSettings().SidebarShowAgentsOnly());
+                VERIFY_ARE_EQUAL(recentSessions, saved.GlobalSettings().SidebarShowRecentAgentSessions());
+                VERIFY_ARE_EQUAL(page->_settings.GlobalSettings().DefaultProfile(), saved.GlobalSettings().DefaultProfile());
+            };
+
+            filters.ShowAgentsOnly(true);
+            verifySaved(true, false);
+            ActionEventArgs recentArgs;
+            page->_HandleToggleSidebarRecentAgentSessions(nullptr, recentArgs);
+            VERIFY_IS_TRUE(recentArgs.Handled());
+            verifySaved(true, true);
+
+            const auto beforeSearch = til::io::read_file_as_utf8_string_if_exists(settingsPath);
+            page->_tabStrip.SearchActive(true);
+            filters.SearchQuery(L"temporary query");
+            filters.SearchQuery(L"");
+            VERIFY_ARE_EQUAL(beforeSearch, til::io::read_file_as_utf8_string_if_exists(settingsPath));
+
+            filters.ShowRecentAgentSessions(false);
+            verifySaved(true, false);
+            // Another window may save the independent preference before this window reloads.
+            page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
+            ActionEventArgs agentsArgs;
+            page->_HandleToggleSidebarAgentsOnly(nullptr, agentsArgs);
+            VERIFY_IS_TRUE(agentsArgs.Handled());
+            verifySaved(false, true);
+            page->_ApplySidebarFilterSettings();
+            filters.ShowRecentAgentSessions(false);
+            verifySaved(false, false);
+        });
+    }
+
+    void TabTests::SidebarFilterSettingsSaveFailureRollsBack()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-eeee-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto settingsPath = std::filesystem::path{ std::wstring_view{ CascadiaSettings::SettingsPath() } };
+            VERIFY_IS_TRUE(settingsPath.native().find(L"WindowsTerminal.TestHost_") != std::wstring::npos);
+            page->_historyRefreshInFlight = true;
+            const auto globals = page->_settings.GlobalSettings();
+            const auto filters = page->_tabStrip.SidebarFilters();
+            uint32_t warnings = 0;
+            const auto token = page->ShowLoadWarningsDialog([&](auto&&, const auto& values) {
+                VERIFY_ARE_EQUAL(1u, values.Size());
+                VERIFY_ARE_EQUAL(SettingsLoadWarnings::FailedToWriteToSettings, values.GetAt(0));
+                ++warnings;
+            });
+            const auto revoke = wil::scope_exit([&]() { page->ShowLoadWarningsDialog(token); });
+            auto temporaryPath = settingsPath;
+            temporaryPath += L".tmp";
+            const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove(temporaryPath); });
+
+            for (const auto explicitValue : { false, true })
+            {
+                if (explicitValue)
+                {
+                    globals.SidebarShowAgentsOnly(true);
+                    globals.SidebarShowRecentAgentSessions(true);
+                }
+                page->_ApplySidebarFilterSettings();
+                VERIFY_IS_TRUE(page->_settings.WriteSettingsToDisk());
+                const auto before = til::io::read_file_as_utf8_string_if_exists(settingsPath);
+                wil::unique_hfile lock{ CreateFileW(settingsPath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) };
+                VERIFY_IS_TRUE(static_cast<bool>(lock));
+                filters.ShowAgentsOnly(!explicitValue);
+                filters.ShowRecentAgentSessions(!explicitValue);
+                VERIFY_ARE_EQUAL(explicitValue, filters.ShowAgentsOnly());
+                VERIFY_ARE_EQUAL(explicitValue, filters.ShowRecentAgentSessions());
+                VERIFY_ARE_EQUAL(explicitValue, globals.SidebarShowAgentsOnly());
+                VERIFY_ARE_EQUAL(explicitValue, globals.SidebarShowRecentAgentSessions());
+                VERIFY_ARE_EQUAL(explicitValue, globals.HasSidebarShowAgentsOnly());
+                VERIFY_ARE_EQUAL(explicitValue, globals.HasSidebarShowRecentAgentSessions());
+                VERIFY_ARE_EQUAL(before, til::io::read_file_as_utf8_string_if_exists(settingsPath));
+            }
+            VERIFY_ARE_EQUAL(4u, warnings);
         });
     }
 

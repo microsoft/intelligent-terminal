@@ -18,6 +18,15 @@ loading/activation lifecycle, not a separate navigation mode. The one-time upgra
 changes the initial `tabLayout`; subsequent user choices, horizontal agent-session
 behavior, and other agent/delegation shortcuts remain supported.
 
+The two filter preferences are saved independently in `settings.json` as
+`sidebarShowAgentsOnly` and `sidebarShowRecentAgentSessions` (both default to
+`false`). Sidebar menu changes and toggle actions save the selected preference;
+new windows and application restarts restore it. Editing these settings also
+updates open windows through the existing settings reload path. Search queries
+and their temporary scope overrides are not persisted, and switching layouts
+does not clear the saved preferences. A failed save restores the previous
+checkbox value and reports the existing settings-write warning.
+
 Custom native CLI launch identities remain `custom:<name>` when their underlying
 CLI reports activity as a built-in provider. Activity/session bindings still
 update, and built-in native CLI panes retain provider rebinding.

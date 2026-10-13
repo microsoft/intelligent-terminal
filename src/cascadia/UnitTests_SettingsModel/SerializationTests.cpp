@@ -38,6 +38,7 @@ namespace SettingsModelUnitTests
         TEST_CLASS(SerializationTests);
 
         TEST_METHOD(GlobalSettings);
+        TEST_METHOD(SidebarFilterSettingsRoundtrip);
         TEST_METHOD(Profile);
         TEST_METHOD(ColorScheme);
         TEST_METHOD(Actions);
@@ -293,6 +294,35 @@ namespace SettingsModelUnitTests
 
         RoundtripTest<implementation::GlobalAppSettings>(globalsString);
         RoundtripTest<implementation::GlobalAppSettings>(smallGlobalsString);
+    }
+
+    void SerializationTests::SidebarFilterSettingsRoundtrip()
+    {
+        const auto defaults = implementation::GlobalAppSettings::FromJson(VerifyParseSucceeded(R"({})"));
+        VERIFY_IS_FALSE(defaults->SidebarShowAgentsOnly());
+        VERIFY_IS_FALSE(defaults->SidebarShowRecentAgentSessions());
+        VERIFY_IS_FALSE(defaults->ToJson().isMember("sidebarShowAgentsOnly"));
+        VERIFY_IS_FALSE(defaults->ToJson().isMember("sidebarShowRecentAgentSessions"));
+
+        for (const auto agentsOnly : { false, true })
+        {
+            for (const auto recentSessions : { false, true })
+            {
+                auto json = VerifyParseSucceeded(R"({})");
+                json["sidebarShowAgentsOnly"] = agentsOnly;
+                json["sidebarShowRecentAgentSessions"] = recentSessions;
+                const auto settings = implementation::GlobalAppSettings::FromJson(json);
+                VERIFY_ARE_EQUAL(agentsOnly, settings->SidebarShowAgentsOnly());
+                VERIFY_ARE_EQUAL(recentSessions, settings->SidebarShowRecentAgentSessions());
+
+                const auto roundtrip = settings->ToJson();
+                VERIFY_ARE_EQUAL(agentsOnly, roundtrip["sidebarShowAgentsOnly"].asBool());
+                VERIFY_ARE_EQUAL(recentSessions, roundtrip["sidebarShowRecentAgentSessions"].asBool());
+                settings->SidebarShowAgentsOnly(!agentsOnly);
+                VERIFY_ARE_EQUAL(!agentsOnly, settings->ToJson()["sidebarShowAgentsOnly"].asBool());
+                VERIFY_ARE_EQUAL(recentSessions, settings->ToJson()["sidebarShowRecentAgentSessions"].asBool());
+            }
+        }
     }
 
     void SerializationTests::Profile()
