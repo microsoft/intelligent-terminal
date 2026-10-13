@@ -1194,8 +1194,8 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        const auto button = _findNamedElement(root, L"PaneActivateButton").try_as<WUX::Controls::Control>();
-        const auto presenter = _findNamedElement(root, L"PaneIconPresenter").try_as<ContentPresenter>();
+        const auto button = root.FindName(L"PaneActivateButton").try_as<WUX::Controls::Control>();
+        const auto presenter = root.FindName(L"PaneIconPresenter").try_as<ContentPresenter>();
         _bindMonochromeIconForeground(presenter, button);
 
         const auto updateRing = [&](WUX::Controls::Control const& ring) {
