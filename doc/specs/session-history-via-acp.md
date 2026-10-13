@@ -144,7 +144,9 @@ so the title is upgraded **in place** instead:
     listing-capable pooled connections are still synchronized every five seconds;
   - **per-connection refresh gate** — concurrent triggers share an in-flight
     refresh; background requests respect the five-second cadence and failed queries
-    back off up to 60 seconds. Each response updates both history and titles;
+    back off exponentially up to ten minutes, measured from failure completion.
+    Success resets the delay; explicit rescans can bypass it. Each response
+    updates both history and titles;
   - **cli-source gate** (`row_refreshable_by_connected_agent`) — the connected
     agent enumerates only *its own* CLI's sessions, so a row stamped with a
     *different* known CLI (e.g. a watched `claude` shell session while the agent

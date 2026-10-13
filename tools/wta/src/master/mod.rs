@@ -53,6 +53,7 @@ const SESSION_LOAD_TIMEOUT_SECS: u64 = 55;
 const SESSION_ROLLBACK_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 const HISTORY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+const HISTORY_REFRESH_MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(600);
 
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Context, Result};
@@ -1905,8 +1906,10 @@ struct HistoryRefreshState {
 
 impl HistoryRefreshState {
     fn record_failure(&mut self) -> std::time::Duration {
-        self.failures = self.failures.saturating_add(1).min(5);
-        std::time::Duration::from_secs((5u64 << (self.failures - 1)).min(60))
+        self.failures = self.failures.saturating_add(1).min(8);
+        HISTORY_REFRESH_INTERVAL
+            .saturating_mul(1 << (self.failures - 1))
+            .min(HISTORY_REFRESH_MAX_BACKOFF)
     }
 
     fn retry_due(&self) -> bool {
