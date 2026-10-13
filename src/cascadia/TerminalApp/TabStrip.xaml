@@ -193,7 +193,8 @@
             </DataTemplate>
             <DataTemplate x:Key="HistoryRowTemplate"
                           x:DataType="local:TabStripHistoryItem">
-                <Grid Padding="12,8"
+                <Grid x:Name="HistoryRowGrid"
+                      Padding="12,8"
                       Background="Transparent"
                       ColumnSpacing="10"
                       GotFocus="OnSidebarRowGotFocus"
@@ -203,7 +204,7 @@
                     <ToolTipService.ToolTip>
                         <ToolTip FlowDirection="LeftToRight">
                             <StackPanel MaxWidth="480"
-                                        FlowDirection="{Binding FlowDirection, ElementName=HistoryTitleText}"
+                                        FlowDirection="{Binding FlowDirection, ElementName=HistoryRowGrid, Mode=OneWay}"
                                         Spacing="4">
                                 <TextBlock FontWeight="SemiBold"
                                            Text="{x:Bind Title}"
