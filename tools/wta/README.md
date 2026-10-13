@@ -200,7 +200,7 @@ for an ACP history query. Master synchronizes initialized, listing-capable poole
 connections every five seconds, including already-connected WSL and custom agents.
 Each connection has one refresh in flight; history and title updates share its
 single response. Failed or five-second timed-out queries retain prior rows and
-wait 5, 10, 20, 40, 80, 160, 320, then at most 600 seconds after each failure.
+wait 5, 10, 20, 40, 80, 160, 320, then at most 600 seconds after each failed query completes.
 Periodic and event-driven refreshes honor this per-connection cooldown; a successful
 query resets it to the normal five-second cadence. An explicit rescan bypasses the
 cooldown. Timing out locally does not guarantee that the agent stops processing

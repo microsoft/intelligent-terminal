@@ -14666,7 +14666,10 @@ async fn history_refresh_timeouts_wait_until_backoff_expires_and_reset_after_rec
                     refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic).await,
                     None
                 );
-                assert!(requests.try_recv().is_err(), "no RPC during cooldown");
+                assert!(
+                    matches!(requests.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
+                    "no RPC during cooldown"
+                );
                 assert_eq!(state.registry.snapshot().await, [kept.clone()]);
                 tokio::time::advance(std::time::Duration::from_secs(1)).await;
             }
