@@ -225,6 +225,18 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
             $cursor = [ItE2E.ItWtWin32Input]::GetCursorPosition()
             $cursor[0] | Should -Be $point.X; $cursor[1] | Should -Be $point.Y
             ((Get-HoverRow $Entry.title).GetRuntimeId() -join ',') | Should -BeExactly $runtime
+            $tipBounds = $tip.Current.BoundingRectangle
+            $rowBounds = $row.Current.BoundingRectangle
+            if ($script:language -eq 'ar-SA') {
+                $tipBounds.Right | Should -BeLessOrEqual ($rowBounds.Left + 8) -Because 'RTL history tooltip prefers the terminal-content side'
+            } else {
+                $tipBounds.Left | Should -BeGreaterOrEqual ($rowBounds.Right - 8) -Because 'LTR history tooltip prefers the terminal-content side'
+            }
+            foreach ($neighbor in @(Get-HoverRows)) {
+                if ([Windows.Automation.Automation]::Compare($neighbor, $row) -or $neighbor.Current.IsOffscreen) { continue }
+                $intersection = [Windows.Rect]::Intersect($tipBounds, $neighbor.Current.BoundingRectangle)
+                $intersection.IsEmpty | Should -BeTrue -Because 'the tooltip must leave neighboring history rows unobstructed'
+            }
             $tipText = @(Get-HoverParts $tip -Content | Where-Object {
                 $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and $_.Current.Name -and
                 -not $_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Width -gt 0 -and
@@ -253,11 +265,13 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
         }
     }
 
-    It 'History hover exposes full metadata and survives refresh and row reuse (<Provider>)' -ForEach @(
-        @{ Provider = 'custom:history-hover-alpha' }, @{ Provider = 'custom:history-hover-beta' }
+    It 'History hover exposes full metadata and survives refresh and row reuse (<Provider>, <Language>)' -ForEach @(
+        @{ Provider = 'custom:history-hover-alpha'; Language = 'en-US' },
+        @{ Provider = 'custom:history-hover-beta'; Language = 'ar-SA' }
     ) {
         $script:app = $null; $launch = $null; $originalCursor = $null; $primary = $null
         $script:provider = $Provider
+        $script:language = $Language
         $script:rowAmbiguity = $null
         $script:clock = [Diagnostics.Stopwatch]::StartNew()
         $marker = 'HistoryHover-' + [guid]::NewGuid().ToString('N')
@@ -279,7 +293,7 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
         $script:buildReceipt = [ordered]@{
             package = $script:package; installLocation = $script:target.InstallLocation
             sourceCommit = (git -C (Join-Path $PSScriptRoot '..\..\..') rev-parse HEAD)
-            sourceReceipt = $env:ITE2E_SOURCE_COMMIT; provider = $Provider
+            sourceReceipt = $env:ITE2E_SOURCE_COMMIT; provider = $Provider; language = $Language
             expectedAppSha256 = $env:ITE2E_EXPECTED_APP_SHA256; expectedWtaSha256 = $env:ITE2E_EXPECTED_WTA_SHA256
             installedApp = @{ path = (Join-Path $script:target.InstallLocation 'TerminalApp.dll')
                 sha256 = (Get-FileHash -LiteralPath (Join-Path $script:target.InstallLocation 'TerminalApp.dll')).Hash }
@@ -295,7 +309,7 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
             $script:app = Start-Terminal -Package $script:package -PassFre $true -TimeoutSec 45 -State @{
                 sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
             } -Settings @{
-                language = 'en-US'; tabLayout = 'vertical'; tabLayoutVerticalWidth = 320
+                language = $Language; tabLayout = 'vertical'; tabLayoutVerticalWidth = 320
                 startupActions = ''; firstWindowPreference = 'defaultProfile'; windowingBehavior = 'useNew'
                 acpAgent = $Provider; acpCustomCommand = $command; acpModel = ''
                 autoFixEnabled = $false; autoErrorDetectionEnabled = $false; defaultProfile = $profile

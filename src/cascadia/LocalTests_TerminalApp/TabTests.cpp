@@ -6603,15 +6603,15 @@ namespace TerminalAppLocalTests
             const auto originalFlowDirection = thirdHeader.FlowDirection();
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             thirdHeader.FlowDirection(FlowDirection::RightToLeft);
-            stripImpl->OnTabHeaderGotFocus(thirdHeader, RoutedEventArgs{});
+            stripImpl->OnSidebarRowGotFocus(thirdHeader, RoutedEventArgs{});
             verifyPlacementRect();
             VERIFY_ARE_EQUAL(verticalTooltip, verticalTooltipText());
             thirdHeader.FlowDirection(FlowDirection::LeftToRight);
-            stripImpl->OnTabHeaderGotFocus(thirdHeader, RoutedEventArgs{});
+            stripImpl->OnSidebarRowGotFocus(thirdHeader, RoutedEventArgs{});
             verifyPlacementRect();
             VERIFY_ARE_EQUAL(verticalTooltip, verticalTooltipText());
             thirdHeader.FlowDirection(originalFlowDirection);
-            stripImpl->OnTabHeaderGotFocus(thirdHeader, RoutedEventArgs{});
+            stripImpl->OnSidebarRowGotFocus(thirdHeader, RoutedEventArgs{});
             VERIFY_ARE_EQUAL(horizontalTooltip, verticalTooltip);
             VERIFY_ARE_EQUAL(winrt::hstring{ verticalTooltip }, thirdDisplay.ToolTipText());
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, verticalTooltip.find(L"Third tab"));
@@ -8436,6 +8436,29 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_NULL(ToolTipService::GetToolTip(icon));
                 VERIFY_IS_NOT_NULL(row.Background());
                 const auto tooltip = ToolTipService::GetToolTip(row).as<ToolTip>();
+                VERIFY_ARE_EQUAL(Primitives::PlacementMode::Right, tooltip.Placement());
+                VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, tooltip.FlowDirection());
+                const auto placementTarget = row.XamlRoot().Content();
+                VERIFY_IS_TRUE(ToolTipService::GetPlacementTarget(row) == placementTarget);
+                const auto assertPlacement = [&]() {
+                    const auto expected = row.TransformToVisual(placementTarget).TransformBounds(
+                        Rect{ 0, 0, static_cast<float>(row.ActualWidth()), static_cast<float>(row.ActualHeight()) });
+                    VERIFY_IS_TRUE(expected == tooltip.PlacementRect());
+                };
+                assertPlacement();
+                row.FlowDirection(FlowDirection::RightToLeft);
+                impl->OnSidebarRowPointerEntered(row, nullptr);
+                VERIFY_ARE_EQUAL(Primitives::PlacementMode::Left, tooltip.Placement());
+                assertPlacement();
+                strip.Width(320);
+                strip.UpdateLayout();
+                impl->OnSidebarRowSizeChanged(row, nullptr);
+                assertPlacement();
+                row.FlowDirection(FlowDirection::LeftToRight);
+                impl->OnSidebarRowGotFocus(row, RoutedEventArgs{});
+                VERIFY_ARE_EQUAL(Primitives::PlacementMode::Right, tooltip.Placement());
+                strip.Width(360);
+                strip.UpdateLayout();
                 const auto details = tooltip.Content().as<StackPanel>().Children();
                 const auto tooltipTitle = details.GetAt(0).as<TextBlock>();
                 VERIFY_ARE_EQUAL(item.Title(), tooltipTitle.Text());
