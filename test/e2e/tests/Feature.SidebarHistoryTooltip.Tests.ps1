@@ -151,15 +151,17 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
             $input = [ItE2E.ItWtWin32Input+INPUT]::new(); $input.data = $data
             if ([ItE2E.ItWtWin32Input]::SendInput(1, @($input),
                 [Runtime.InteropServices.Marshal]::SizeOf($input)) -ne 1) { throw 'Physical hover SendInput failed.' }
+            $script:pointerMoved = $true
         }
         function Clear-HoverTip {
             $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
             $bounds = $root.Current.BoundingRectangle
-            $point = [Windows.Point]::new([int]($bounds.Right - 40), [int]($bounds.Top + 100))
+            $point = [Windows.Point]::new([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Top + 100))
             Move-HoverPointer $point $root
             Wait-Until -TimeoutSec 4 -Because 'actual popup closes after pointer departure' -Condition { @(Get-HoverTips).Count -eq 0 } | Out-Null
         }
         function Assert-HistoryHover($Entry, [string]$Area, [string[]]$Forbidden = @()) {
+            $script:buildReceipt.lastHover = @{ title = $Entry.title; area = $Area; language = $script:language }
             Clear-HoverTip
             $row = Get-HoverRow $Entry.title
             if (-not $row) { throw "Missing intended history row before hover: $($Entry.title)" }
@@ -193,7 +195,8 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
                 Padding { $row.Current.BoundingRectangle }
             }
             $point = if ($Area -eq 'Padding') {
-                [Windows.Point]::new([int]($box.Left + 12), [int]($box.Top + $box.Height / 2))
+                $leading = if ($script:language -eq 'ar-SA') { $box.Right - 12 } else { $box.Left + 12 }
+                [Windows.Point]::new([int]$leading, [int]($box.Top + $box.Height / 2))
             } else { [Windows.Point]::new([int]($box.Left + $box.Width / 2), [int]($box.Top + $box.Height / 2)) }
             if ($Area -eq 'Padding' -and @($parts | Where-Object {
                 $_.Current.ControlType -in @([Windows.Automation.ControlType]::Text, [Windows.Automation.ControlType]::Button) -and
@@ -205,7 +208,7 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
             $rowHits = @(Get-HoverRows | Where-Object { -not $_.Current.IsOffscreen -and
                 $_.Current.BoundingRectangle.Contains($point) })
             $rowHits | Should -HaveCount 1 -Because 'the physical point must identify exactly one realized history row'
-            [Windows.Automation.Automation]::Compare($rowHits[0], $row) | Should -BeTrue
+            [Windows.Automation.Automation]::Compare($rowHits[0], $row) | Should -BeTrue -Because 'realized geometry must resolve the requested row identity'
             $runtime = $row.GetRuntimeId() -join ','
             Move-HoverPointer $point $row
             try {
@@ -272,6 +275,7 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
         $script:app = $null; $launch = $null; $originalCursor = $null; $primary = $null
         $script:provider = $Provider
         $script:language = $Language
+        $script:pointerMoved = $false
         $script:rowAmbiguity = $null
         $script:clock = [Diagnostics.Stopwatch]::StartNew()
         $marker = 'HistoryHover-' + [guid]::NewGuid().ToString('N')
@@ -331,7 +335,9 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
             $script:app | Add-Member RequireOwnedForeground $true
             $script:shell = Get-ActivePane -App $script:app
             Open-AgentPane -App $script:app -TimeoutSec 30 | Out-Null
-            Wait-AgentReady -App $script:app -TimeoutSec 30 | Should -BeTrue
+            Wait-Until -TimeoutSec 30 -Because 'the configured ACP fixture actually services history listing' -Condition {
+                (Test-Path -LiteralPath $log) -and (Get-Content -LiteralPath $log -Raw).Contains('|list|')
+            } | Out-Null
             Save-HoverBuildReceipt agent-ready
             $script:buildReceipt.observedWta.Count | Should -BeGreaterThan 0
             foreach ($wta in $script:buildReceipt.observedWta) {
@@ -348,7 +354,7 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
             Clear-HoverTip
             $focusedRow = Get-HoverRow $history[0].title
             $focusedRow.SetFocus()
-            $focusedRow.Current.HasKeyboardFocus | Should -BeTrue
+            $focusedRow.Current.HasKeyboardFocus | Should -BeTrue -Because 'UIA focus must reach the intended history row'
             $receipts.Add((Assert-HistoryHover $history[0] Title))
             Clear-HoverTip
             Set-WtPaneFocus -App $script:app -SessionId $script:shell.session_id | Out-Null
@@ -414,10 +420,10 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
         } catch { $primary = $_ }
         finally {
             $errors = [Collections.Generic.List[Exception]]::new()
-            try { Save-HoverBuildReceipt before-cleanup $(if ($primary) { $primary.ToString() } else { '' }) }
+            try { Save-HoverBuildReceipt before-cleanup $(if ($primary) { $primary.ToString() + "`n" + $primary.ScriptStackTrace } else { '' }) }
             catch { $errors.Add($_.Exception) }
             try {
-                if ($script:app -and $originalCursor) {
+                if ($script:app -and $originalCursor -and $script:pointerMoved) {
                     $cursor = [ItE2E.ItWtWin32Input]::GetCursorPosition()
                     $point = [ItE2E.ItWtWin32Input+POINT]::new(); $point.X = $cursor[0]; $point.Y = $cursor[1]
                     if (-not [ItE2E.ItWtWin32Input]::IsOwnedRootOrPopup([ItE2E.ItWtWin32Input]::WindowFromPoint($point),
