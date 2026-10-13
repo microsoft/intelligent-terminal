@@ -8443,7 +8443,9 @@ namespace TerminalAppLocalTests
                 const auto assertPlacement = [&]() {
                     const auto expected = row.TransformToVisual(placementTarget).TransformBounds(
                         winrt::Windows::Foundation::Rect{ 0, 0, static_cast<float>(row.ActualWidth()), static_cast<float>(row.ActualHeight()) });
-                    VERIFY_IS_TRUE(expected == tooltip.PlacementRect());
+                    const auto actual = tooltip.PlacementRect();
+                    VERIFY_IS_NOT_NULL(actual);
+                    VERIFY_IS_TRUE(expected == actual.Value());
                 };
                 assertPlacement();
                 row.FlowDirection(FlowDirection::RightToLeft);
