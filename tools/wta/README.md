@@ -200,12 +200,12 @@ for an ACP history query. Master synchronizes initialized, listing-capable poole
 connections every five seconds, including already-connected WSL and custom agents.
 Each connection has one refresh in flight; history and title updates share its
 single response. Failed or five-second timed-out queries retain prior rows and
-start a per-connection cooldown of 5, 10, 20, 40, 80, 160, 320, then 600 seconds
+start a per-connection retry delay of 5, 10, 20, 40, 80, 160, 320, then 600 seconds
 (capped) after each failed query completes. Automatic retries occur on existing
-periodic or event-driven refresh triggers once the cooldown expires; periodic
-scheduling can add delay beyond the cooldown. A successful query resets it to
+periodic or event-driven refresh triggers once the retry delay expires; periodic
+scheduling can add delay beyond that wait. A successful query resets it to
 the normal five-second cadence. An explicit rescan bypasses the
-cooldown. Timing out locally does not guarantee that the agent stops processing
+retry delay. Timing out locally does not guarantee that the agent stops processing
 the request; backoff limits further requests but cannot stop an agent's internal loop.
 The opt-in JSON object contains `sessions` and `history_status` (`loading`, `ready`,
 or `error`), with optional `history_error_kind` to distinguish timeout-only failures;

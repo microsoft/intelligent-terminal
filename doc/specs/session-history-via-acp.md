@@ -145,7 +145,7 @@ so the title is upgraded **in place** instead:
   - **per-connection refresh gate** — concurrent triggers share an in-flight
     refresh; background requests respect the five-second cadence and failed queries
     back off exponentially up to ten minutes, measured from failure completion.
-    Success resets the delay; explicit rescans can bypass it. Each response
+    Success resets the delay; explicit refresh requests can bypass it. Each response
     updates both history and titles;
   - **cli-source gate** (`row_refreshable_by_connected_agent`) — the connected
     agent enumerates only *its own* CLI's sessions, so a row stamped with a

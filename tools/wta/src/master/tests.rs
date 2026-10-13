@@ -14668,7 +14668,7 @@ async fn history_refresh_timeouts_wait_until_backoff_expires_and_reset_after_rec
                 );
                 assert!(
                     matches!(requests.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
-                    "no RPC during cooldown"
+                    "no RPC during retry delay"
                 );
                 assert_eq!(state.registry.snapshot().await, [kept.clone()]);
                 tokio::time::advance(std::time::Duration::from_secs(1)).await;
