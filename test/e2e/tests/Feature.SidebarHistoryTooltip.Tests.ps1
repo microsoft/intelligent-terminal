@@ -346,6 +346,16 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
             if (-not (Set-WtWindowForeground -App $script:app -Attempts 2)) { throw 'Cannot acquire owned foreground.' }
             foreach ($area in @('Title', 'Icon', 'Padding')) { $receipts.Add((Assert-HistoryHover $history[0] $area)) }
             Clear-HoverTip
+            $focusedRow = Get-HoverRow $history[0].title
+            $focusedRow.SetFocus()
+            $focusedRow.Current.HasKeyboardFocus | Should -BeTrue
+            $receipts.Add((Assert-HistoryHover $history[0] Title))
+            Clear-HoverTip
+            Set-WtPaneFocus -App $script:app -SessionId $script:shell.session_id | Out-Null
+            Wait-Until -TimeoutSec 5 -Because 'focus returns to the original shell without activating history' -Condition {
+                -not (Get-HoverRow $history[0].title).Current.HasKeyboardFocus -and
+                    (Get-ActivePane -App $script:app).session_id -eq $script:shell.session_id
+            } | Out-Null
             @(Get-HoverRows | Where-Object { @(Get-HoverParts $_ | Where-Object { $_.Current.Name -ceq $history[1].title }).Count }) |
                 Should -HaveCount 0 -Because 'search filters out other fixture rows'
             $pipe = (Get-Content (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()

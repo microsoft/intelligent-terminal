@@ -8442,7 +8442,7 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(ToolTipService::GetPlacementTarget(row) == placementTarget);
                 const auto assertPlacement = [&]() {
                     const auto expected = row.TransformToVisual(placementTarget).TransformBounds(
-                        Rect{ 0, 0, static_cast<float>(row.ActualWidth()), static_cast<float>(row.ActualHeight()) });
+                        winrt::Windows::Foundation::Rect{ 0, 0, static_cast<float>(row.ActualWidth()), static_cast<float>(row.ActualHeight()) });
                     VERIFY_IS_TRUE(expected == tooltip.PlacementRect());
                 };
                 assertPlacement();
