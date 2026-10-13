@@ -1016,6 +1016,21 @@ namespace winrt::TerminalApp::implementation
         return luminance >= 0.6 ? Windows::UI::Colors::Black() : Windows::UI::Colors::White();
     }
 
+    static void _bindTintableIconForeground(ContentPresenter const& presenter, Control const& foregroundOwner)
+    {
+        const auto icon = presenter ? presenter.Content().try_as<IconElement>() : nullptr;
+        const auto bitmap = icon ? icon.try_as<BitmapIcon>() : nullptr;
+        if (icon && foregroundOwner && !icon.try_as<MUX::Controls::ImageIcon>() &&
+            (!bitmap || bitmap.ShowAsMonochrome()))
+        {
+            WUX::Data::Binding binding;
+            binding.Source(foregroundOwner);
+            binding.Path(WUX::PropertyPath{ L"Foreground" });
+            binding.Mode(WUX::Data::BindingMode::OneWay);
+            icon.SetBinding(IconElement::ForegroundProperty(), binding);
+        }
+    }
+
     static void _applyHistoryRowForeground(FrameworkElement const& root, TerminalApp::TabStripHistoryItem const& item)
     {
         if (!root)
@@ -1139,10 +1154,6 @@ namespace winrt::TerminalApp::implementation
             const auto header = grid.FindName(L"TabHeaderPresenter").try_as<WUX::Controls::Control>();
             const auto close = grid.FindName(L"TabCloseButton").try_as<WUX::Controls::Control>();
             const auto iconPresenter = grid.FindName(L"TabIconPresenter").try_as<ContentPresenter>();
-            const auto icon = iconPresenter ? iconPresenter.Content().try_as<IconElement>() : nullptr;
-            const auto bitmap = icon ? icon.try_as<BitmapIcon>() : nullptr;
-            const auto monochromeIcon = icon && !icon.try_as<MUX::Controls::ImageIcon>() &&
-                                        (!bitmap || bitmap.ShowAsMonochrome());
             if (tabColor && selected)
             {
                 const auto foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(*tabColor) };
@@ -1164,14 +1175,7 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
             }
-            if (monochromeIcon && header)
-            {
-                WUX::Data::Binding binding;
-                binding.Source(header);
-                binding.Path(WUX::PropertyPath{ L"Foreground" });
-                binding.Mode(WUX::Data::BindingMode::OneWay);
-                icon.SetBinding(IconElement::ForegroundProperty(), binding);
-            }
+            _bindTintableIconForeground(iconPresenter, header);
         }
     }
 
@@ -1192,18 +1196,7 @@ namespace winrt::TerminalApp::implementation
 
         const auto button = _findNamedElement(root, L"PaneActivateButton").try_as<WUX::Controls::Control>();
         const auto presenter = _findNamedElement(root, L"PaneIconPresenter").try_as<ContentPresenter>();
-        const auto icon = presenter ? presenter.Content().try_as<IconElement>() : nullptr;
-        const auto bitmap = icon ? icon.try_as<BitmapIcon>() : nullptr;
-        const auto monochromeIcon = icon && !icon.try_as<MUX::Controls::ImageIcon>() &&
-                                    (!bitmap || bitmap.ShowAsMonochrome());
-        if (monochromeIcon && button)
-        {
-            WUX::Data::Binding binding;
-            binding.Source(button);
-            binding.Path(WUX::PropertyPath{ L"Foreground" });
-            binding.Mode(WUX::Data::BindingMode::OneWay);
-            icon.SetBinding(IconElement::ForegroundProperty(), binding);
-        }
+        _bindTintableIconForeground(presenter, button);
 
         const auto updateRing = [&](WUX::Controls::Control const& ring) {
             if (!ring)

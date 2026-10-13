@@ -16286,6 +16286,31 @@ namespace TerminalAppLocalTests
         _waitForContentTransferReviewUI([&]() {
             return display.PaneItems().Size() == 2 && paneRoot(0).IsLoaded() && paneRoot(1).IsLoaded();
         });
+        const auto verifyRenderedForeground = [&](BitmapIcon const& icon, const winrt::Windows::UI::Color foreground) {
+            Media::Imaging::RenderTargetBitmap bitmap{ nullptr };
+            winrt::Windows::Foundation::IAsyncAction render{ nullptr };
+            TestOnUIThread([&]() {
+                bitmap = Media::Imaging::RenderTargetBitmap{};
+                render = bitmap.RenderAsync(icon);
+            });
+            VERIFY_IS_TRUE(render.wait_for(std::chrono::seconds{ 10 }) == winrt::Windows::Foundation::AsyncStatus::Completed);
+            render.get();
+            winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Storage::Streams::IBuffer> read{ nullptr };
+            TestOnUIThread([&]() { read = bitmap.GetPixelsAsync(); });
+            VERIFY_IS_TRUE(read.wait_for(std::chrono::seconds{ 10 }) == winrt::Windows::Foundation::AsyncStatus::Completed);
+            const auto buffer = read.get();
+            std::vector<uint8_t> pixels(buffer.Length());
+            winrt::Windows::Storage::Streams::DataReader::FromBuffer(buffer).ReadBytes(pixels);
+            bool hasGlyph = false;
+            for (size_t offset = 0; offset + 3 < pixels.size(); offset += 4)
+            {
+                hasGlyph |= pixels[offset + 3] != 0 && pixels[offset + 3] == foreground.A &&
+                            std::abs(static_cast<int>(pixels[offset]) - foreground.B * foreground.A / 255) <= 1 &&
+                            std::abs(static_cast<int>(pixels[offset + 1]) - foreground.G * foreground.A / 255) <= 1 &&
+                            std::abs(static_cast<int>(pixels[offset + 2]) - foreground.R * foreground.A / 255) <= 1;
+            }
+            VERIFY_IS_TRUE(hasGlyph);
+        };
         for (const auto theme : { ElementTheme::Dark, ElementTheme::Light, ElementTheme::Dark })
         {
             TestOnUIThread([&]() { page->RequestedTheme(theme); });
@@ -16299,6 +16324,20 @@ namespace TerminalAppLocalTests
                         VERIFY_IS_TRUE(tab->FocusPane(panes[active]->Id().value()));
                         page->_selectedTabItem(active == 0 ? tab->TabViewItem() : otherTab);
                     });
+                    BitmapIcon headerIcon{ nullptr };
+                    winrt::Windows::UI::Color headerForeground{};
+                    TestOnUIThread([&]() {
+                        const auto row = page->_tabStrip.ContainerFromIndex(1).as<ListViewItem>().ContentTemplateRoot().as<FrameworkElement>();
+                        const auto header = row.FindName(L"TabHeaderPresenter").as<Control>();
+                        headerIcon = row.FindName(L"TabIconPresenter").as<ContentPresenter>().Content().as<BitmapIcon>();
+                        headerForeground = header.Foreground().as<Media::SolidColorBrush>().Color();
+                        VERIFY_ARE_EQUAL(theme, row.ActualTheme());
+                        VERIFY_IS_TRUE(theme == ElementTheme::Dark ? headerForeground.R > 127 : headerForeground.R < 128);
+                        VERIFY_ARE_EQUAL(headerForeground, headerIcon.Foreground().as<Media::SolidColorBrush>().Color());
+                        VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/Masks/copilot.png" }, headerIcon.UriSource().AbsoluteUri());
+                        VERIFY_IS_TRUE(headerIcon.ShowAsMonochrome());
+                    });
+                    verifyRenderedForeground(headerIcon, headerForeground);
                     for (uint32_t index = 0; index < panes.size(); ++index)
                     {
                         BitmapIcon icon{ nullptr };
@@ -16309,6 +16348,8 @@ namespace TerminalAppLocalTests
                             icon = root.FindName(L"PaneIconPresenter").as<ContentPresenter>().Content().as<BitmapIcon>();
                             const auto button = root.FindName(L"PaneActivateButton").as<Button>();
                             foreground = button.Foreground().as<Media::SolidColorBrush>().Color();
+                            VERIFY_ARE_EQUAL(theme, root.ActualTheme());
+                            VERIFY_IS_TRUE(theme == ElementTheme::Dark ? foreground.R > 127 : foreground.R < 128);
                             VERIFY_ARE_EQUAL(foreground, icon.Foreground().as<Media::SolidColorBrush>().Color());
                             VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/Masks/copilot.png" }, icon.UriSource().AbsoluteUri());
                             VERIFY_IS_TRUE(icon.ShowAsMonochrome());
@@ -16316,29 +16357,7 @@ namespace TerminalAppLocalTests
                             VERIFY_ARE_EQUAL(index == active && active == 0 ? Visibility::Visible : Visibility::Collapsed, item.ActiveIndicatorVisibility());
                             VERIFY_IS_FALSE(item.IsProgressRingActive());
                         });
-                        Media::Imaging::RenderTargetBitmap bitmap{ nullptr };
-                        winrt::Windows::Foundation::IAsyncAction render{ nullptr };
-                        TestOnUIThread([&]() {
-                            bitmap = Media::Imaging::RenderTargetBitmap{};
-                            render = bitmap.RenderAsync(icon);
-                        });
-                        VERIFY_IS_TRUE(render.wait_for(std::chrono::seconds{ 10 }) == winrt::Windows::Foundation::AsyncStatus::Completed);
-                        render.get();
-                        winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Storage::Streams::IBuffer> read{ nullptr };
-                        TestOnUIThread([&]() { read = bitmap.GetPixelsAsync(); });
-                        VERIFY_IS_TRUE(read.wait_for(std::chrono::seconds{ 10 }) == winrt::Windows::Foundation::AsyncStatus::Completed);
-                        const auto buffer = read.get();
-                        std::vector<uint8_t> pixels(buffer.Length());
-                        winrt::Windows::Storage::Streams::DataReader::FromBuffer(buffer).ReadBytes(pixels);
-                        bool hasGlyph = false;
-                        for (size_t offset = 0; offset + 3 < pixels.size(); offset += 4)
-                        {
-                            hasGlyph |= pixels[offset + 3] != 0 && pixels[offset + 3] == foreground.A &&
-                                        std::abs(static_cast<int>(pixels[offset]) - foreground.B * foreground.A / 255) <= 1 &&
-                                        std::abs(static_cast<int>(pixels[offset + 1]) - foreground.G * foreground.A / 255) <= 1 &&
-                                        std::abs(static_cast<int>(pixels[offset + 2]) - foreground.R * foreground.A / 255) <= 1;
-                        }
-                        VERIFY_IS_TRUE(hasGlyph);
+                        verifyRenderedForeground(icon, foreground);
                     }
                 }
             }
