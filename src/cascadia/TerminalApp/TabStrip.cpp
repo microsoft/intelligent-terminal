@@ -1016,7 +1016,7 @@ namespace winrt::TerminalApp::implementation
         return luminance >= 0.6 ? Windows::UI::Colors::Black() : Windows::UI::Colors::White();
     }
 
-    static void _bindTintableIconForeground(ContentPresenter const& presenter, Control const& foregroundOwner)
+    static void _bindMonochromeIconForeground(ContentPresenter const& presenter, Control const& foregroundOwner)
     {
         const auto icon = presenter ? presenter.Content().try_as<IconElement>() : nullptr;
         const auto bitmap = icon ? icon.try_as<BitmapIcon>() : nullptr;
@@ -1175,7 +1175,7 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
             }
-            _bindTintableIconForeground(iconPresenter, header);
+            _bindMonochromeIconForeground(iconPresenter, header);
         }
     }
 
@@ -1196,7 +1196,7 @@ namespace winrt::TerminalApp::implementation
 
         const auto button = _findNamedElement(root, L"PaneActivateButton").try_as<WUX::Controls::Control>();
         const auto presenter = _findNamedElement(root, L"PaneIconPresenter").try_as<ContentPresenter>();
-        _bindTintableIconForeground(presenter, button);
+        _bindMonochromeIconForeground(presenter, button);
 
         const auto updateRing = [&](WUX::Controls::Control const& ring) {
             if (!ring)
