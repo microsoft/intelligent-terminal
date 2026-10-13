@@ -8436,8 +8436,10 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_NULL(ToolTipService::GetToolTip(icon));
                 VERIFY_IS_NOT_NULL(row.Background());
                 const auto tooltip = ToolTipService::GetToolTip(row).as<ToolTip>();
+                const auto tooltipContent = tooltip.Content().as<StackPanel>();
                 VERIFY_ARE_EQUAL(Primitives::PlacementMode::Right, tooltip.Placement());
                 VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, tooltip.FlowDirection());
+                VERIFY_ARE_EQUAL(row.FlowDirection(), tooltipContent.FlowDirection());
                 const auto placementTarget = row.XamlRoot().Content();
                 VERIFY_IS_TRUE(ToolTipService::GetPlacementTarget(row) == placementTarget);
                 const auto assertPlacement = [&]() {
@@ -8449,8 +8451,10 @@ namespace TerminalAppLocalTests
                 };
                 assertPlacement();
                 row.FlowDirection(FlowDirection::RightToLeft);
+                strip.UpdateLayout();
                 impl->OnSidebarRowPointerEntered(row, nullptr);
                 VERIFY_ARE_EQUAL(Primitives::PlacementMode::Left, tooltip.Placement());
+                VERIFY_ARE_EQUAL(FlowDirection::RightToLeft, tooltipContent.FlowDirection());
                 assertPlacement();
                 strip.Width(320);
                 strip.UpdateLayout();
@@ -8459,6 +8463,7 @@ namespace TerminalAppLocalTests
                 row.FlowDirection(FlowDirection::LeftToRight);
                 impl->OnSidebarRowGotFocus(row, RoutedEventArgs{});
                 VERIFY_ARE_EQUAL(Primitives::PlacementMode::Right, tooltip.Placement());
+                VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, tooltipContent.FlowDirection());
                 strip.Width(360);
                 strip.UpdateLayout();
                 const auto details = tooltip.Content().as<StackPanel>().Children();

@@ -1,4 +1,5 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
+param([switch]$RtlOnly)
 # Contract: real title/icon/blank-padding hover -> product ToolTip peer containing
 # the full title, provider, cwd and currently rendered age, without adding a
 # provider text line to the row. ACP listing -> WTA -> native ItemsList -> popup.
@@ -268,10 +269,10 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
         }
     }
 
-    It 'History hover exposes full metadata and survives refresh and row reuse (<Provider>, <Language>)' -ForEach @(
+    It 'History hover exposes full metadata and survives refresh and row reuse (<Provider>, <Language>)' -ForEach (@(
         @{ Provider = 'custom:history-hover-alpha'; Language = 'en-US' },
         @{ Provider = 'custom:history-hover-beta'; Language = 'ar-SA' }
-    ) {
+    ) | Where-Object { -not $RtlOnly -or $_.Language -eq 'ar-SA' }) {
         $script:app = $null; $launch = $null; $originalCursor = $null; $primary = $null
         $script:provider = $Provider
         $script:language = $Language

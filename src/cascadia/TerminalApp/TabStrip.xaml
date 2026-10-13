@@ -202,7 +202,9 @@
                       SizeChanged="OnSidebarRowSizeChanged">
                     <ToolTipService.ToolTip>
                         <ToolTip FlowDirection="LeftToRight">
-                            <StackPanel MaxWidth="480" Spacing="4">
+                            <StackPanel MaxWidth="480"
+                                        FlowDirection="{Binding FlowDirection, ElementName=HistoryTitleText}"
+                                        Spacing="4">
                                 <TextBlock FontWeight="SemiBold"
                                            Text="{x:Bind Title}"
                                            TextWrapping="Wrap" />
