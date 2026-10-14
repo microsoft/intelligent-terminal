@@ -9669,7 +9669,8 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
             page->_historyRefreshInFlight = true;
-            page->_tabStrip.SidebarFilters().ShowRecentAgentSessions(true);
+            page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
+            page->_ApplySidebarFilterSettings();
             page->_historyRefreshPending = false;
             page->UpdateLayout();
         });
@@ -9729,7 +9730,8 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
             page->_historyRefreshInFlight = true;
-            page->_tabStrip.SidebarFilters().ShowRecentAgentSessions(true);
+            page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
+            page->_ApplySidebarFilterSettings();
             page->_historyRefreshPending = false;
             page->UpdateLayout();
         });
