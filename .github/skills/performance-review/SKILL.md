@@ -88,8 +88,10 @@ cross-platform timings remain evidence for the platform actually measured.
 
 ## Triage and repair
 
-Rank findings by demonstrated impact, frequency or growth, and confidence in
-causality. Collapse duplicate warnings for the same underlying defect.
+Classify each finding as HIGH, MEDIUM or LOW before choosing its disposition.
+Rank severity by demonstrated scenario impact, frequency or growth, not by
+how easy a fix is. Do not promote a finding to HIGH to make it autofix-eligible.
+Collapse duplicate warnings for the same underlying defect.
 
 | Result | Disposition |
 | --- | --- |
@@ -104,7 +106,7 @@ demonstrated impact. An unnecessary allocation or copy with no such context
 remains MEDIUM/LOW advice, even if its local replacement is obvious. A separate
 HIGH defect in the same file does not authorize editing an advice-only finding.
 
-A source correction is eligible when it is explicitly authorized, HIGH and
+Only HIGH findings are eligible for authorized autofix, and only when they are
 high-confidence, small and localized, behavior-preserving, and supported by
 repository-specific proof and an existing focused native test. Required input
 analysis must be complete and comparable. Broad threading, caching, architecture,
