@@ -580,7 +580,7 @@
                                           FontSize="9"
                                           Glyph="&#xE718;"
                                           HorizontalAlignment="Right"
-                                          VerticalAlignment="Bottom"
+                                          VerticalAlignment="Top"
                                           IsHitTestVisible="False"
                                           Visibility="{x:Bind PinnedIconVisibility, Mode=OneWay}" />
                                 <!-- Alignment follows the inherited flow direction: trailing

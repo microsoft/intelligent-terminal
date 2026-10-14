@@ -13433,6 +13433,18 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, collapsedProgress.Visibility());
             VERIFY_IS_TRUE(_progressIndicatorsMatch(rowRoot, L"Collapsed", true, false, 42));
             VERIFY_IS_FALSE(collapsedProgress.IsHitTestVisible());
+            page->_SetTabPinned(tab, true);
+            VERIFY_IS_TRUE(tab->IsPinned());
+            FontIcon pin{ nullptr };
+            for (const auto child : collapsedProgress.Parent().as<Grid>().Children())
+            {
+                if (const auto candidate = child.try_as<FontIcon>())
+                {
+                    pin = candidate;
+                }
+            }
+            VERIFY_IS_NOT_NULL(pin);
+            VERIFY_ARE_EQUAL(Visibility::Visible, pin.Visibility());
             for (const auto direction : { FlowDirection::LeftToRight, FlowDirection::RightToLeft })
             {
                 rowRoot.FlowDirection(direction);
@@ -13449,6 +13461,21 @@ namespace TerminalAppLocalTests
                                    progressPosition.X > iconPosition.X :
                                    progressPosition.X < iconPosition.X);
                 VERIFY_IS_TRUE(progressPosition.Y > iconPosition.Y);
+                const auto pinBounds = pin.TransformToVisual(parent).TransformBounds(
+                    { 0, 0, static_cast<float>(pin.ActualWidth()), static_cast<float>(pin.ActualHeight()) });
+                const auto progressBounds = collapsedProgress.TransformToVisual(parent).TransformBounds(
+                    { 0, 0, static_cast<float>(collapsedProgress.ActualWidth()), static_cast<float>(collapsedProgress.ActualHeight()) });
+                VERIFY_IS_TRUE(pinBounds.Width > 0);
+                VERIFY_IS_TRUE(pinBounds.Height > 0);
+                Log::Comment(NoThrowString().Format(
+                    L"Pinned %s: pin=(%.1f,%.1f,%.1f,%.1f), progress=(%.1f,%.1f,%.1f,%.1f)",
+                    direction == FlowDirection::LeftToRight ? L"LTR" : L"RTL",
+                    pinBounds.X, pinBounds.Y, pinBounds.Width, pinBounds.Height,
+                    progressBounds.X, progressBounds.Y, progressBounds.Width, progressBounds.Height));
+                VERIFY_IS_TRUE(pinBounds.X + pinBounds.Width <= progressBounds.X ||
+                               progressBounds.X + progressBounds.Width <= pinBounds.X ||
+                               pinBounds.Y + pinBounds.Height <= progressBounds.Y ||
+                               progressBounds.Y + progressBounds.Height <= pinBounds.Y);
             }
             rowRoot.FlowDirection(FlowDirection::LeftToRight);
             VERIFY_IS_FALSE(rowRoot.FindName(L"CollapsedProgressRing").as<Control>().IsTabStop());
@@ -13475,6 +13502,9 @@ namespace TerminalAppLocalTests
         });
 
         TestOnUIThread([&]() {
+            VERIFY_IS_TRUE(tab->IsPinned());
+            page->_SetTabPinned(tab, false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, display.PinnedIconVisibility());
             page->_tabStrip.IsRailCollapsed(false);
             VERIFY_ARE_EQUAL(Visibility::Visible, display.HeaderVisibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, collapsedProgress.Visibility());
