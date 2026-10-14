@@ -137,6 +137,7 @@ namespace TerminalApp
         // Object carries MUX IconSource data; the setter validates its type.
         Object IconSource;
         Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
+        Windows.UI.Xaml.Visibility CollapsedProgressVisibility;
     };
 
     [default_interface] runtimeclass TabStripPaneEventArgs

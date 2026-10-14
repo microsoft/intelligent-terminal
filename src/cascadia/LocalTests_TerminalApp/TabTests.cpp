@@ -13330,6 +13330,18 @@ namespace TerminalAppLocalTests
 
     void TabTests::VerticalSinglePaneProgressKeepsProfileIcon()
     {
+        Grid layoutHost{ nullptr };
+        UIElement previousContent{ nullptr };
+        TestOnUIThread([&]() {
+            layoutHost = Grid{};
+            previousContent = Window::Current().Content();
+        });
+        const auto restoreContent = wil::scope_exit([&]() {
+            LOG_IF_FAILED(RunOnUIThread([&]() {
+                Window::Current().Content(previousContent);
+                layoutHost.Children().Clear();
+            }));
+        });
         const CascadiaSettings settings{ LR"({
             "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
             "showTabsInTitlebar": false,
@@ -13346,7 +13358,9 @@ namespace TerminalAppLocalTests
             winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
-        _initializeTerminalPage(page, settings, *connection);
+        // Geometry assertions require a realized page, not the protocol-only
+        // connection setup that deliberately skips attaching window content.
+        _initializeTerminalPage(page, settings, *connection, layoutHost);
 
         winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
         winrt::TerminalApp::TabStripDisplayItem display{ nullptr };
@@ -13355,6 +13369,8 @@ namespace TerminalAppLocalTests
         winrt::MUX::Controls::ProgressRing headerRing{ nullptr };
         winrt::MUX::Controls::IconSource profileIcon{ nullptr };
         IconElement profileVisual{ nullptr };
+        FrameworkElement rowRoot{ nullptr };
+        Grid collapsedProgress{ nullptr };
 
         TestOnUIThread([&]() {
             tab = page->_GetFocusedTabImpl();
@@ -13366,7 +13382,14 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(display);
             VERIFY_IS_FALSE(display.IsGroup());
 
-            const auto root = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<FrameworkElement>();
+            page->UpdateLayout();
+            const auto container = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>();
+            VERIFY_IS_NOT_NULL(container);
+            const auto root = container.ContentTemplateRoot().as<FrameworkElement>();
+            VERIFY_IS_NOT_NULL(root);
+            rowRoot = root;
+            collapsedProgress = root.FindName(L"CollapsedProgressPresenter").as<Grid>();
+            VERIFY_IS_NOT_NULL(collapsedProgress);
             iconPresenter = root.FindName(L"TabIconPresenter").as<ContentPresenter>();
             header = strip->HeaderForTab(tab->TabViewItem()).as<winrt::TerminalApp::TabHeaderControl>();
             headerRing = header.as<FrameworkElement>().FindName(L"HeaderProgressRing").as<winrt::MUX::Controls::ProgressRing>();
@@ -13380,6 +13403,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, iconPresenter.Visibility());
             VERIFY_IS_TRUE(_progressIndicatorsMatch(header, L"Header", false, false));
             VERIFY_IS_FALSE(headerRing.IsActive());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, collapsedProgress.Visibility());
         });
 
         _emitOsc(connection, u"\x1b]9;4;1;42\a");
@@ -13406,8 +13430,54 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(iconPresenter.Content() == profileVisual);
             VERIFY_IS_TRUE(header.TabStatus().IsProgressRingActive());
 
+            VERIFY_ARE_EQUAL(Visibility::Visible, collapsedProgress.Visibility());
+            VERIFY_IS_TRUE(_progressIndicatorsMatch(rowRoot, L"Collapsed", true, false, 42));
+            VERIFY_IS_FALSE(collapsedProgress.IsHitTestVisible());
+            for (const auto direction : { FlowDirection::LeftToRight, FlowDirection::RightToLeft })
+            {
+                rowRoot.FlowDirection(direction);
+                rowRoot.UpdateLayout();
+                VERIFY_ARE_EQUAL(16.0, iconPresenter.ActualWidth());
+                VERIFY_ARE_EQUAL(16.0, iconPresenter.ActualHeight());
+                VERIFY_ARE_EQUAL(10.0, collapsedProgress.ActualWidth());
+                VERIFY_ARE_EQUAL(10.0, collapsedProgress.ActualHeight());
+                VERIFY_IS_TRUE(iconPresenter.Content() == profileVisual);
+                const auto parent = rowRoot.Parent().as<UIElement>();
+                const auto iconPosition = iconPresenter.TransformToVisual(parent).TransformPoint({});
+                const auto progressPosition = collapsedProgress.TransformToVisual(parent).TransformPoint({});
+                VERIFY_IS_TRUE(direction == FlowDirection::LeftToRight ?
+                                   progressPosition.X > iconPosition.X :
+                                   progressPosition.X < iconPosition.X);
+                VERIFY_IS_TRUE(progressPosition.Y > iconPosition.Y);
+            }
+            rowRoot.FlowDirection(FlowDirection::LeftToRight);
+            VERIFY_IS_FALSE(rowRoot.FindName(L"CollapsedProgressRing").as<Control>().IsTabStop());
+            VERIFY_IS_FALSE(rowRoot.FindName(L"CollapsedIndeterminateProgressRing").as<Control>().IsTabStop());
+        });
+
+        // OSC changes must reach the overlay while the header remains hidden.
+        _emitOsc(connection, u"\x1b]9;4;3;0\a");
+        _waitForContentTransferReviewUI([&]() {
+            return collapsedProgress.Visibility() == Visibility::Visible &&
+                   _progressIndicatorsMatch(rowRoot, L"Collapsed", true, true);
+        });
+        _emitOsc(connection, u"\x1b]9;4;1;73\a");
+        _waitForContentTransferReviewUI([&]() {
+            return _progressIndicatorsMatch(rowRoot, L"Collapsed", true, false, 73);
+        });
+        _emitOsc(connection, u"\x1b]9;4;0;0\a");
+        _waitForContentTransferReviewUI([&]() {
+            return _progressIndicatorsMatch(rowRoot, L"Collapsed", false, false);
+        });
+        _emitOsc(connection, u"\x1b]9;4;3;0\a");
+        _waitForContentTransferReviewUI([&]() {
+            return _progressIndicatorsMatch(rowRoot, L"Collapsed", true, true);
+        });
+
+        TestOnUIThread([&]() {
             page->_tabStrip.IsRailCollapsed(false);
             VERIFY_ARE_EQUAL(Visibility::Visible, display.HeaderVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, collapsedProgress.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, display.IconVisibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, iconPresenter.Visibility());
             VERIFY_IS_TRUE(header.TabStatus().IsProgressRingActive());
@@ -13415,15 +13485,21 @@ namespace TerminalAppLocalTests
 
         _emitOsc(connection, u"\x1b]9;4;0;0\a");
         _waitForContentTransferReviewUI([&]() {
+            return !header.TabStatus().IsProgressRingActive() &&
+                   _progressIndicatorsMatch(header, L"Header", false, true);
+        });
+        TestOnUIThread([&]() {
             const auto restoredIcon = display.IconSource().try_as<winrt::MUX::Controls::FontIconSource>();
-            return display.IconVisibility() == Visibility::Visible &&
-                   iconPresenter.Visibility() == Visibility::Visible &&
-                   restoredIcon != nullptr &&
-                   restoredIcon.Glyph() == L"\xE8A5" &&
-                   iconPresenter.Content() == profileVisual &&
-                   !header.TabStatus().IsProgressRingActive() &&
-                   _progressIndicatorsMatch(header, L"Header", false, false) &&
-                   !headerRing.IsActive();
+            VERIFY_ARE_EQUAL(Visibility::Visible, display.IconVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, iconPresenter.Visibility());
+            VERIFY_IS_NOT_NULL(restoredIcon);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8A5" }, restoredIcon.Glyph());
+            VERIFY_IS_TRUE(iconPresenter.Content() == profileVisual);
+            VERIFY_IS_FALSE(header.TabStatus().IsProgressRingActive());
+            // Stop hides both indicators without changing the last progress mode.
+            VERIFY_IS_TRUE(header.TabStatus().IsProgressRingIndeterminate());
+            VERIFY_IS_TRUE(_progressIndicatorsMatch(header, L"Header", false, true));
+            VERIFY_IS_FALSE(headerRing.IsActive());
         });
     }
 

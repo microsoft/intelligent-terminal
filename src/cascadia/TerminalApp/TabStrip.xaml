@@ -583,6 +583,40 @@
                                           VerticalAlignment="Bottom"
                                           IsHitTestVisible="False"
                                           Visibility="{x:Bind PinnedIconVisibility, Mode=OneWay}" />
+                                <!-- Alignment follows the inherited flow direction: trailing
+                                     bottom corner, without resizing the profile/agent icon. -->
+                                <Grid x:Name="CollapsedProgressPresenter"
+                                      Width="10"
+                                      Height="10"
+                                      Margin="0,0,0,-6"
+                                      HorizontalAlignment="Right"
+                                      VerticalAlignment="Bottom"
+                                      IsHitTestVisible="False"
+                                      Visibility="{x:Bind CollapsedProgressVisibility, Mode=OneWay}">
+                                    <!-- The shared spinner has a 15px composition visual.
+                                         Scale the indicator, not the underlying icon. -->
+                                    <Viewbox>
+                                        <Grid Width="15"
+                                              Height="15"
+                                              Visibility="{x:Bind Presentation.TabStatus.IsProgressRingActive, Mode=OneWay}">
+                                            <mux:ProgressRing x:Name="CollapsedProgressRing"
+                                                              Width="15"
+                                                              Height="15"
+                                                              MinWidth="0"
+                                                              MinHeight="0"
+                                                              IsTabStop="False"
+                                                              IsActive="{x:Bind Presentation.TabStatus.IsProgressRingActive, Mode=OneWay}"
+                                                              IsIndeterminate="False"
+                                                              Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(Presentation.TabStatus.IsProgressRingIndeterminate), Mode=OneWay}"
+                                                              Value="{x:Bind Presentation.TabStatus.ProgressValue, Mode=OneWay}" />
+                                            <local:IndeterminateProgressRing x:Name="CollapsedIndeterminateProgressRing"
+                                                                             Style="{StaticResource DeclarativeSpinner}"
+                                                                             Foreground="{Binding Foreground, ElementName=CollapsedProgressRing, Mode=OneWay}"
+                                                                             IsActive="{x:Bind Presentation.TabStatus.IsProgressRingActive, Mode=OneWay}"
+                                                                             Visibility="{x:Bind Presentation.TabStatus.IsProgressRingIndeterminate, Mode=OneWay}" />
+                                        </Grid>
+                                    </Viewbox>
+                                </Grid>
                             </Grid>
                             <local:TabHeaderControl x:Name="TabHeaderPresenter"
                                                     Grid.Column="1"

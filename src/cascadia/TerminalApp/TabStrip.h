@@ -182,6 +182,7 @@ namespace winrt::TerminalApp::implementation
         TerminalApp::TabHeaderPresentation Presentation() const { return Header().as<TerminalApp::TabHeaderPresentation>(); }
         WINRT_OBSERVABLE_PROPERTY(bool, IsMetadataVisible, PropertyChanged.raise, false);
         WINRT_OBSERVABLE_PROPERTY(bool, ShowProgressRing, PropertyChanged.raise, true);
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Visibility, CollapsedProgressVisibility, PropertyChanged.raise, winrt::Windows::UI::Xaml::Visibility::Collapsed);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Title, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, SearchText, PropertyChanged.raise);
 

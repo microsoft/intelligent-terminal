@@ -398,6 +398,7 @@ namespace winrt::TerminalApp::implementation
         const auto showHeaderProgressRing = !showPaneRows || !HeaderProgressProjectedToPaneRows();
 
         ShowProgressRing(showHeaderProgressRing);
+        CollapsedProgressVisibility(railCollapsed ? Visibility::Visible : Visibility::Collapsed);
 
         GroupVisibility(isGroup && !railCollapsed ? Visibility::Visible : Visibility::Collapsed);
         ChildrenVisibility(showPaneRows ? Visibility::Visible : Visibility::Collapsed);
