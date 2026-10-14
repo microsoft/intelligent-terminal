@@ -364,6 +364,7 @@ namespace winrt::TerminalApp::implementation
         std::unordered_map<std::wstring, winrt::hstring> _historyUnresolvedActivations;
         bool _preserveSidebarHistory{ false };
         Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
+        Windows::UI::Xaml::DispatcherTimer _historyMasterRecoveryTimer{ nullptr };
         bool _historyRefreshInFlight{ false };
         bool _historyRefreshPending{ false };
         std::shared_ptr<std::atomic<bool>> _historyRefreshCancellation;
@@ -1046,6 +1047,8 @@ namespace winrt::TerminalApp::implementation
         void _ClearTabSearch();
         void _StartSidebarHistoryRefreshTimer();
         void _StopSidebarHistoryRefreshTimer();
+        void _ResetSidebarHistoryMasterRecovery();
+        bool _ExpireSidebarHistoryMasterRecovery(std::chrono::steady_clock::time_point now);
         Windows::UI::Xaml::Controls::Control _SidebarFocusedControl() const;
         bool _TryFocusSidebarInput(const Microsoft::Terminal::Control::TermControl& control);
         void _FocusSidebarTerminalFallback();

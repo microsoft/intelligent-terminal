@@ -217,7 +217,10 @@ exits nonzero and writes `{"error":{"kind":"master_unavailable"}}` instead of a
 successful empty snapshot. Other listing failures retain their ordinary error
 behavior. The sidebar keeps loading (or retains existing rows) and retries every
 five seconds for a 15-second recovery window after the first unavailable result.
-Persistent unavailability then shows the normal load error. Once connected, a
+A separate deadline timer shows the normal load error at the end of that window,
+even while a retry command is still running; repeated unavailable results do not
+extend the deadline. The running capture retains ownership and can still recover
+normally when it returns a ready snapshot. Once connected, a
 `loading` history snapshot also keeps the sidebar on a five-second refresh interval
 and clears any earlier failure backoff, including when partial rows are already
 visible. `ready` restores the ordinary 60-second interval. These reads do not restart

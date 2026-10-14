@@ -462,6 +462,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryStartupLoading);
         TEST_METHOD(VerticalTabHistoryMasterUnavailableKeepsLoading);
         TEST_METHOD(VerticalTabHistoryMasterUnavailablePreservesRowsAndExpires);
+        TEST_METHOD(VerticalTabHistoryMasterUnavailableDeadlineDuringCapture);
+        TEST_METHOD(VerticalTabHistoryMasterUnavailableDeadlineResets);
         TEST_METHOD(VerticalTabHistoryLoadingRefreshesUntilReady);
         TEST_METHOD(VerticalTabHistoryLoadingAndErrorsKeepRows);
         TEST_METHOD(VerticalTabHistoryTimeoutKeepsRowsWithoutError);
@@ -9756,14 +9758,128 @@ namespace TerminalAppLocalTests
             const auto since = page->_historyMasterUnavailableSince;
             page->_CompleteSidebarHistoryRefresh(generation - 1, unavailable);
             VERIFY_IS_TRUE(page->_historyMasterUnavailableSince == since);
-            page->_historyMasterUnavailableSince = std::chrono::steady_clock::now() - std::chrono::seconds{ 15 };
-            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            page->_historyRefreshInFlight = true;
+            VERIFY_IS_TRUE(page->_ExpireSidebarHistoryMasterRecovery(*since + std::chrono::seconds{ 15 }));
+            VERIFY_IS_TRUE(page->_historyRefreshInFlight);
             VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
             VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
             VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == item);
             VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryMessage().Visibility());
             page->_StopSidebarHistoryRefreshTimer();
             VERIFY_IS_FALSE(page->_historyMasterUnavailableSince.has_value());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryMasterUnavailableDeadlineDuringCapture()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_historyRefreshInFlight = true;
+            page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
+            page->_ApplySidebarFilterSettings();
+            page->_historyRefreshPending = false;
+            page->UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            return winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HistorySection() != nullptr;
+        });
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto generation = page->_historyRequestGeneration;
+            const auto unavailable = Page::_ParseSidebarHistoryFailure(R"({"error":{"kind":"master_unavailable"}})");
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            const auto since = *page->_historyMasterUnavailableSince;
+            const auto timer = page->_historyMasterRecoveryTimer;
+            const auto interval = timer.Interval();
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            VERIFY_IS_TRUE(*page->_historyMasterUnavailableSince == since);
+            VERIFY_IS_TRUE(page->_historyMasterRecoveryTimer == timer);
+            VERIFY_ARE_EQUAL(interval.count(), timer.Interval().count());
+            VERIFY_IS_TRUE(page->_historyMasterRecoveryTimer.IsEnabled());
+            const auto cancellation = std::make_shared<std::atomic<bool>>(false);
+            page->_historyRefreshCancellation = cancellation;
+            page->_historyRefreshInFlight = true;
+            VERIFY_IS_FALSE(page->_ExpireSidebarHistoryMasterRecovery(since + std::chrono::seconds{ 15 } - std::chrono::milliseconds{ 1 }));
+            VERIFY_ARE_EQUAL(int64_t{ 1 }, std::chrono::duration_cast<std::chrono::milliseconds>(timer.Interval()).count());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_IS_TRUE(page->_ExpireSidebarHistoryMasterRecovery(since + std::chrono::seconds{ 15 }));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryMessage().Visibility());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+            VERIFY_IS_TRUE(page->_historyRefreshInFlight);
+            VERIFY_IS_TRUE(page->_historyRefreshCancellation == cancellation);
+            VERIFY_IS_FALSE(cancellation->load());
+            VERIFY_IS_FALSE(page->_historyMasterRecoveryTimer.IsEnabled());
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
+            VERIFY_IS_FALSE(page->_historyRefreshInFlight);
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_IS_FALSE(page->_historyMasterUnavailableSince.has_value());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryMasterUnavailableDeadlineResets()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_historyRefreshInFlight = true;
+            page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
+            page->_ApplySidebarFilterSettings();
+            page->_historyRefreshPending = false;
+            page->UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            return winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HistorySection() != nullptr;
+        });
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            const auto unavailable = Page::_ParseSidebarHistoryFailure(R"({"error":{"kind":"master_unavailable"}})");
+            auto generation = page->_historyRequestGeneration;
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            const auto deadline = *page->_historyMasterUnavailableSince + std::chrono::seconds{ 15 };
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"loading"})"));
+            VERIFY_IS_FALSE(page->_historyMasterRecoveryTimer.IsEnabled());
+            VERIFY_IS_FALSE(page->_ExpireSidebarHistoryMasterRecovery(deadline));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            page->_StopSidebarHistoryRefreshTimer();
+            VERIFY_IS_FALSE(page->_historyRefreshTimer.IsEnabled());
+            VERIFY_IS_FALSE(page->_historyMasterRecoveryTimer.IsEnabled());
+            page->_isVerticalRailVisible = false;
+            VERIFY_IS_FALSE(page->_ExpireSidebarHistoryMasterRecovery(deadline));
+            page->_isVerticalRailVisible = true;
+            generation = page->_historyRequestGeneration;
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
+            page->_CompleteSidebarHistoryRefresh(generation - 1, unavailable);
+            VERIFY_IS_FALSE(page->_ExpireSidebarHistoryMasterRecovery(deadline));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            page->_tabStrip.HistoryError(L"activation error");
+            page->_tabStrip.HistoryActivating(true);
+            page->_ExpireSidebarHistoryMasterRecovery(*page->_historyMasterUnavailableSince + std::chrono::seconds{ 15 });
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"activation error" }, page->_tabStrip.HistoryError());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActivating());
+            VERIFY_IS_FALSE(page->_historyMasterRecoveryTimer.IsEnabled());
+            page->_tabStrip.HistoryActivating(false);
+            Page::_SidebarHistorySnapshot cancelled;
+            cancelled.state = Page::_SidebarHistorySnapshot::State::Cancelled;
+            page->_CompleteSidebarHistoryRefresh(generation, cancelled);
+            VERIFY_IS_FALSE(page->_ExpireSidebarHistoryMasterRecovery(deadline));
+            VERIFY_IS_FALSE(page->_historyMasterRecoveryTimer.IsEnabled());
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            page->_historyRefreshInFlight = true;
+            page->_RequestSidebarHistoryRefresh(true);
+            VERIFY_IS_FALSE(page->_historyMasterUnavailableSince.has_value());
+            VERIFY_IS_FALSE(page->_historyMasterRecoveryTimer.IsEnabled());
+            VERIFY_IS_FALSE(page->_ExpireSidebarHistoryMasterRecovery(deadline));
+            VERIFY_IS_TRUE(page->_historyRefreshInFlight);
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
+            page->_historyRefreshPending = false;
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
         });
     }
 
