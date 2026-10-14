@@ -88,6 +88,9 @@ using namespace std::chrono_literals;
 static constexpr double railMin = 180.0;
 static constexpr double railMax = 480.0;
 static constexpr double railCollapsedWidth = 40.0;
+static constexpr auto sidebarHistoryMasterRecoveryTimeout = std::chrono::seconds{ 15 };
+static constexpr auto sidebarHistoryMasterRetryInterval = std::chrono::seconds{ 5 };
+static constexpr auto sidebarHistoryRefreshInterval = std::chrono::seconds{ 60 };
 
 #define HOOKUP_ACTION(action) _actionDispatch->action({ this, &TerminalPage::_Handle##action });
 
@@ -6681,7 +6684,7 @@ namespace winrt::TerminalApp::implementation
         if (!_historyRefreshTimer)
         {
             _historyRefreshTimer = Windows::UI::Xaml::DispatcherTimer{};
-            _historyRefreshTimer.Interval(std::chrono::seconds{ 60 });
+            _historyRefreshTimer.Interval(sidebarHistoryRefreshInterval);
             _historyRefreshTimer.Tick([weakThis{ get_weak() }](auto&&, auto&&) {
                 if (const auto page = weakThis.get(); page && page->_AreRecentAgentSessionsVisible())
                 {
@@ -6700,6 +6703,7 @@ namespace winrt::TerminalApp::implementation
         }
         ++_historyRequestGeneration;
         _historyRefreshPending = false;
+        _historyMasterUnavailableSince.reset();
         if (_historyRefreshCancellation)
         {
             _historyRefreshCancellation->store(true, std::memory_order_relaxed);
@@ -6733,6 +6737,7 @@ namespace winrt::TerminalApp::implementation
         }
         if (initialLoad)
         {
+            _historyMasterUnavailableSince.reset();
             _historyRetryDelay = std::chrono::seconds{ 0 };
             _historyNextRefresh = {};
             _tabStrip.HistoryError(L"");
@@ -7111,6 +7116,24 @@ namespace winrt::TerminalApp::implementation
         return snapshot;
     }
 
+    TerminalPage::_SidebarHistorySnapshot TerminalPage::_ParseSidebarHistoryFailure(const std::string& output)
+    {
+        _SidebarHistorySnapshot snapshot;
+        Json::Value response;
+        Json::CharReaderBuilder builder;
+        builder["failIfExtra"] = true;
+        std::istringstream json{ output };
+        std::string errors;
+        if (Json::parseFromStream(builder, json, &response, &errors) &&
+            response.isObject() && response["error"].isObject() &&
+            response["error"]["kind"].isString() &&
+            response["error"]["kind"].asString() == "master_unavailable")
+        {
+            snapshot.state = _SidebarHistorySnapshot::State::MasterUnavailable;
+        }
+        return snapshot;
+    }
+
     safe_void_coroutine TerminalPage::_LoadSidebarHistory(const uint64_t generation)
     {
         const auto weakThis = get_weak();
@@ -7148,6 +7171,10 @@ namespace winrt::TerminalApp::implementation
         }
         else
         {
+            if (result.completed)
+            {
+                snapshot = _ParseSidebarHistoryFailure(result.output);
+            }
             _agentPaneLog(
                 "sidebar history unavailable completed=" + std::to_string(result.completed) +
                 " exit=" + std::to_string(result.exitCode));
@@ -7183,6 +7210,29 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        const auto now = std::chrono::steady_clock::now();
+        if (snapshot.state == State::MasterUnavailable)
+        {
+            if (!_historyMasterUnavailableSince)
+            {
+                _historyMasterUnavailableSince = now;
+            }
+            if (now - *_historyMasterUnavailableSince >= sidebarHistoryMasterRecoveryTimeout)
+            {
+                snapshot.state = State::Error;
+                _agentPaneLog("sidebar history master recovery timed out");
+            }
+        }
+        else
+        {
+            _historyMasterUnavailableSince.reset();
+        }
+        if (_historyRefreshTimer)
+        {
+            _historyRefreshTimer.Interval(snapshot.state == State::MasterUnavailable ?
+                                              sidebarHistoryMasterRetryInterval :
+                                              sidebarHistoryRefreshInterval);
+        }
         if (snapshot.state == State::Timeout)
         {
             _agentPaneLog("sidebar history refresh timed out; retaining the current snapshot");
@@ -7204,7 +7254,14 @@ namespace winrt::TerminalApp::implementation
         {
             strip->HistoryRefreshError(L"");
         }
-        if (snapshot.state == State::Error || snapshot.state == State::InvalidResponse || snapshot.state == State::Timeout)
+        if (snapshot.state == State::MasterUnavailable)
+        {
+            _agentPaneLog("sidebar history master temporarily unavailable; retrying");
+            _historyRetryDelay = sidebarHistoryMasterRetryInterval;
+            _historyNextRefresh = now + _historyRetryDelay;
+            _historyRefreshPending = false;
+        }
+        else if (snapshot.state == State::Error || snapshot.state == State::InvalidResponse || snapshot.state == State::Timeout)
         {
             _historyRetryDelay = (std::min)((std::max)(_historyRetryDelay * 2, std::chrono::seconds{ 5 }), std::chrono::seconds{ 60 });
             _historyNextRefresh = std::chrono::steady_clock::now() + _historyRetryDelay;
@@ -7215,7 +7272,7 @@ namespace winrt::TerminalApp::implementation
             _historyRetryDelay = std::chrono::seconds{ 0 };
             _historyNextRefresh = {};
         }
-        _tabStrip.HistoryLoading((snapshot.state == State::Loading || snapshot.state == State::Timeout) && !strip->HasHistoryItems());
+        _tabStrip.HistoryLoading((snapshot.state == State::Loading || snapshot.state == State::Timeout || snapshot.state == State::MasterUnavailable) && !strip->HasHistoryItems());
         strip->TryCompleteAgentFilterTelemetry();
         if (_historyRefreshPending)
         {

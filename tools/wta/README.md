@@ -204,6 +204,23 @@ The opt-in JSON object contains `sessions` and `history_status` (`loading`, `rea
 or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
 ordinary `--json` output remains one session per line.
 
+Session commands without an explicit `--master` rediscover `master-pipe.txt`
+before each connection attempt, so a stale address from a previous Terminal
+process does not pin a startup request to the old pipe. An explicit `--master`
+stays pinned. Missing discovery files, missing pipes, and busy pipes share the
+existing seven-attempt retry budget (1.87 seconds of backoff); permission and
+other failures are not retried. Listing, activation, and born-bound registration
+use the same connection path.
+
+If the master remains temporarily unavailable, `sessions list --json --include-status`
+exits nonzero and writes `{"error":{"kind":"master_unavailable"}}` instead of a
+successful empty snapshot. Other listing failures retain their ordinary error
+behavior. The sidebar keeps loading (or retains existing rows) and retries every
+five seconds for a 15-second recovery window after the first unavailable result.
+Persistent unavailability then shows the normal load error; successful connections
+restore ordinary refresh timing. The command's 15-second total capture timeout,
+history-query timeout behavior, and activation errors are unchanged.
+
 An activity hook cannot claim or alter a pane owned by another live session,
 even if its raw session ID exists in another provider or source. Nested CLI
 workers can inherit the parent's pane identity; their synthetic session starts
