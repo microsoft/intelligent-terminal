@@ -89,7 +89,7 @@ static constexpr double railMin = 180.0;
 static constexpr double railMax = 480.0;
 static constexpr double railCollapsedWidth = 40.0;
 static constexpr auto sidebarHistoryMasterRecoveryTimeout = std::chrono::seconds{ 15 };
-static constexpr auto sidebarHistoryMasterRetryInterval = std::chrono::seconds{ 5 };
+static constexpr auto sidebarHistoryFastRefreshInterval = std::chrono::seconds{ 5 };
 static constexpr auto sidebarHistoryRefreshInterval = std::chrono::seconds{ 60 };
 
 #define HOOKUP_ACTION(action) _actionDispatch->action({ this, &TerminalPage::_Handle##action });
@@ -7311,8 +7311,8 @@ namespace winrt::TerminalApp::implementation
         }
         if (_historyRefreshTimer)
         {
-            _historyRefreshTimer.Interval(snapshot.state == State::MasterUnavailable ?
-                                              sidebarHistoryMasterRetryInterval :
+            _historyRefreshTimer.Interval(snapshot.state == State::MasterUnavailable || snapshot.state == State::Loading ?
+                                              sidebarHistoryFastRefreshInterval :
                                               sidebarHistoryRefreshInterval);
         }
         if (snapshot.state == State::Timeout)
@@ -7339,7 +7339,7 @@ namespace winrt::TerminalApp::implementation
         if (snapshot.state == State::MasterUnavailable)
         {
             _agentPaneLog("sidebar history master temporarily unavailable; retrying");
-            _historyRetryDelay = sidebarHistoryMasterRetryInterval;
+            _historyRetryDelay = sidebarHistoryFastRefreshInterval;
             _historyNextRefresh = now + _historyRetryDelay;
             _historyRefreshPending = false;
         }
@@ -7349,7 +7349,7 @@ namespace winrt::TerminalApp::implementation
             _historyNextRefresh = std::chrono::steady_clock::now() + _historyRetryDelay;
             _historyRefreshPending = false;
         }
-        else if (snapshot.state == State::Ready)
+        else if (snapshot.state == State::Ready || snapshot.state == State::Loading)
         {
             _historyRetryDelay = std::chrono::seconds{ 0 };
             _historyNextRefresh = {};

@@ -217,9 +217,13 @@ exits nonzero and writes `{"error":{"kind":"master_unavailable"}}` instead of a
 successful empty snapshot. Other listing failures retain their ordinary error
 behavior. The sidebar keeps loading (or retains existing rows) and retries every
 five seconds for a 15-second recovery window after the first unavailable result.
-Persistent unavailability then shows the normal load error; successful connections
-restore ordinary refresh timing. The command's 15-second total capture timeout,
-history-query timeout behavior, and activation errors are unchanged.
+Persistent unavailability then shows the normal load error. Once connected, a
+`loading` history snapshot also keeps the sidebar on a five-second refresh interval
+and clears any earlier failure backoff, including when partial rows are already
+visible. `ready` restores the ordinary 60-second interval. These reads do not restart
+agents or request another history scan. The 15-second recovery window applies only
+to an unavailable master, not normal history loading. The command's 15-second total
+capture timeout, history-query timeout behavior, and activation errors are unchanged.
 
 An activity hook cannot claim or alter a pane owned by another live session,
 even if its raw session ID exists in another provider or source. Nested CLI
