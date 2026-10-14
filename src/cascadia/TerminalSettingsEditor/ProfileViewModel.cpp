@@ -11,6 +11,7 @@
 #include "../WinRTUtils/inc/Utils.h"
 #include "../inc/AgentPaneBackend.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentProfileUtils.h"
 #include "../inc/ShellIntegrationProfileGate.h"
 #include "../inc/WslShellIntegration.h"
 #include "../inc/WtaProcess.h"
@@ -53,6 +54,34 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             }
         }
         return id.empty() ? winrt::hstring{ L"Agent" } : winrt::hstring{ id };
+    }
+
+    hstring ProfileViewModel::LaunchCommandline() const
+    {
+        return IsManagedAgentProfile() ?
+                   hstring{ ::Microsoft::Terminal::AgentProfiles::Command(_profile) } :
+                   Commandline();
+    }
+
+    bool ProfileViewModel::IsManagedAgentProfile() const
+    {
+        return ::Microsoft::Terminal::AgentProfiles::IsManaged(_profile);
+    }
+
+    bool ProfileViewModel::IsAgentProfilePolicyBlocked() const
+    {
+        namespace Policy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
+        return IsManagedAgentProfile() &&
+               (!Policy::IsAgentAllowed(_profile.AgentProfileId()) || !Policy::IsYoloModeAllowed());
+    }
+
+    void ProfileViewModel::LaunchCommandline(const hstring& value)
+    {
+        if (value != LaunchCommandline())
+        {
+            _profile.Commandline(value);
+            _NotifyChanges(L"HasCommandline", L"Commandline");
+        }
     }
 
     static void _RebuildAgentBackendList(
@@ -195,9 +224,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             {
                 _NotifyChanges(L"CurrentCommandPaletteAgent");
             }
+            else if (viewModelProperty == L"AgentProfileModel" || viewModelProperty == L"AgentProfileArguments")
+            {
+                _NotifyChanges(L"LaunchCommandline");
+            }
             else if (viewModelProperty == L"Commandline")
             {
                 _RefreshAgentPaneBackendList();
+                _NotifyChanges(L"IsManagedAgentProfile", L"IsAgentProfilePolicyBlocked", L"LaunchCommandline");
             }
             else if (viewModelProperty == L"AntialiasingMode")
             {

@@ -587,6 +587,7 @@ fn status_badge(s: &AgentSession) -> String {
         AgentStatus::Attention => t!("agents.status.waiting_for_input").into_owned(),
         AgentStatus::Error => t!("agents.status.error").into_owned(),
         AgentStatus::Idle => t!("agents.status.idle").into_owned(),
+        AgentStatus::InUse => t!("agents.status.in_use").into_owned(),
         AgentStatus::Ended | AgentStatus::Historical => String::new(),
     }
 }
@@ -601,7 +602,7 @@ fn badge_style(s: &AgentSession) -> Style {
         AgentStatus::Error => Style::default().fg(ACCENT_RED),
         // Idle: muted off-white so it reads as a real status badge but
         // stays visually quieter than the colored Active/Waiting tags.
-        AgentStatus::Idle => Style::default().fg(SOFT_WHITE),
+        AgentStatus::Idle | AgentStatus::InUse => Style::default().fg(SOFT_WHITE),
         AgentStatus::Ended | AgentStatus::Historical => Style::default(),
     }
 }
@@ -1189,6 +1190,7 @@ mod tests {
     ///   Attention-> "Waiting for input" (waiting-for-input state)
     ///   Idle     -> "Idle"              (live, ready-for-next-prompt state)
     ///   Error    -> "Error"
+    ///   InUse    -> "In use"            (unregistered in IT; activity is not shown)
     ///   Ended / Historical -> ""        (terminal/on-disk rows carry NO badge, so an Ended row is
     ///                                     visually distinct from any live/idle row — this is why an
     ///                                     Ended row cannot be "falsely live").
@@ -1220,6 +1222,7 @@ mod tests {
             "Waiting for input"
         );
         assert_eq!(status_badge(&mk(AgentStatus::Idle)), "Idle");
+        assert_eq!(status_badge(&mk(AgentStatus::InUse)), "In use");
         assert_eq!(status_badge(&mk(AgentStatus::Error)), "Error");
         // Terminal / on-disk rows render an empty badge — no live activity to show.
         assert_eq!(status_badge(&mk(AgentStatus::Ended)), "");

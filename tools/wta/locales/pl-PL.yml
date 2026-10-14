@@ -135,6 +135,8 @@ agents.status.active: "Aktywny"
 agents.status.waiting_for_input: "Oczekiwanie na dane"
 agents.status.error: "Błąd"
 agents.status.idle: "Bezczynny"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "W użyciu"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. pokaż/ukryj panel agenta • Ctrl+Shift+/ pokaż/ukryj sesję agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

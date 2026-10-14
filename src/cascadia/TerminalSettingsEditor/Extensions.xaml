@@ -214,10 +214,10 @@
 
                             <StackPanel Grid.Column="0"
                                         Orientation="Horizontal">
-                                <IconSourceElement Width="16"
-                                                   Height="16"
-                                                   Margin="0,0,12,0"
-                                                   IconSource="{x:Bind mtu:IconPathConverter.IconSourceWUX(Profile.Icon.Resolved), Mode=OneWay}" />
+                                <ContentPresenter Width="16"
+                                                  Height="16"
+                                                  Margin="0,0,12,0"
+                                                  Content="{x:Bind mtu:IconPathConverter.IconWUX(Profile.Icon.Resolved), Mode=OneWay}" />
 
                                 <TextBlock Text="{x:Bind Profile.Name, Mode=OneWay}" />
 

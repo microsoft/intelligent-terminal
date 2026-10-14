@@ -30,6 +30,7 @@
     <ClCompile Include="CommandPaletteTelemetryTests.cpp" />
     <ClCompile Include="AgentPaneTransferTests.cpp" />
     <ClCompile Include="AutofixStateTests.cpp" />
+    <ClCompile Include="TabListViewModelTests.cpp" />
     <ClCompile Include="BoundedDispatchQueueTests.cpp" />
     <ClCompile Include="CustomAgentIdTests.cpp" />
     <ClCompile Include="ProtocolParsingTests.cpp" />

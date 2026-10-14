@@ -200,6 +200,8 @@ agents.status.waiting_for_input: "Waiting for input"
 agents.status.error: "Error"
 # Status badge when agent session has no active work
 agents.status.idle: "Idle"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "In use"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. to show/hide agent pane • Ctrl+Shift+/ to show/hide agent session)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

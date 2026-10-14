@@ -18,6 +18,15 @@ loading/activation lifecycle, not a separate navigation mode. The one-time upgra
 changes the initial `tabLayout`; subsequent user choices, horizontal agent-session
 behavior, and other agent/delegation shortcuts remain supported.
 
+The two filter preferences are saved independently in `settings.json` as
+`sidebarShowAgentsOnly` and `sidebarShowRecentAgentSessions` (both default to
+`false`). Sidebar menu changes and toggle actions save the selected preference;
+new windows and application restarts restore it. Editing these settings also
+updates open windows through the existing settings reload path. Search queries
+and their temporary scope overrides are not persisted, and switching layouts
+does not clear the saved preferences. A failed save restores the previous
+checkbox value and reports the existing settings-write warning.
+
 Custom native CLI launch identities remain `custom:<name>` when their underlying
 CLI reports activity as a built-in provider. Activity/session bindings still
 update, and built-in native CLI panes retain provider rebinding.
@@ -102,46 +111,72 @@ default profile. Filters, search, and tab layout do not change its action,
 accessible name, help text, or tooltip. Creating an agent requires an explicit
 agent action, not an override of the normal new-tab control.
 
+Activating a pane row in another tab selects that pane before the tab restores
+input focus. The tab's previously active pane must not receive intermediate
+focus or selection highlighting. Selecting the tab itself still restores its
+last active pane. Activating another pane in a zoomed tab exits zoom first.
+
 ## Sidebar presentation
 
+- Tab icons use the source terminal's icon when available; tabs without a
+  terminal pane, such as Settings, use their active content's icon. Both layouts
+  honor the theme's icon style and explicit tab icon visibility.
 - The toolbar heading is static **Tabs**, with no switch button, border, or swap
   icon. The display-options flyout has a **Show** section containing standard
   checkable **Agents only** and **Recent agent sessions** controls.
 - The display-options button uses **Sidebar display options** for its tooltip
   and accessible name regardless of filters. Its menu configures visible tab details and
   any available tab filters; opening it does not itself filter tabs.
-- History rows use a leading 16px provider icon, vertically centered across the
-  title and metadata rows, with both text rows aligned to its right. Metadata is
-  ordered as timestamp, meaningful status, and provider display name.
-  Ended/historical rows omit the redundant
-  Historical status; live Idle/Working/Attention/Error statuses remain visible.
-  An outlined window with an upward restore arrow after the provider name
-  identifies a confirmed background tab; clicking restores the whole original
-  tab. Two overlapping windows identify a session attached to another visible
-  window; clicking focuses its original tab and pane. The status remains plain
-  activity text. Kept-tab membership takes precedence over an old window ID.
-  Unknown ownership leaves the activity status visible without either indicator.
+- History rows have three text lines aligned to the right of a leading 16px
+  provider icon: title, working directory, then status or time. The icon is
+  vertically centered across all three lines. The third line shows only **In use**
+  for live sessions without an IT registration, the detailed
+  Idle/Active/Waiting for input/Error status for live IT registrations, or the
+  relative timestamp for ended/historical sessions. Live rows do not display a
+  timestamp, and historical rows do not display the redundant Historical status.
+  A session attached to another visible IT window ends its detailed status
+  with **In another window**, separated by a middle dot (for example,
+  `Idle · In another window`). This requires confirmed different-window
+  ownership; current-window, external **In use**, historical, and unknown-owner
+  rows do not receive the annotation. Kept-tab membership takes precedence
+  over an old window ID and does not show the other-window annotation.
+  Activity colors apply only to the status label; the window annotation retains
+  the ordinary metadata foreground and opacity through status changes.
+  Entering headless mode clears a stale window annotation immediately from
+  locally known retained rows, without waiting for the next master snapshot.
+  Successful reattachment into a different window migrates locally tracked
+  session bindings even when no hook binding is available. The restored session
+  is excluded from that window's recent rows immediately; existing rows in other
+  windows update their ownership annotation at the committed content handoff.
+  Failed transfers retain the original bindings and headless ownership.
+  There are no dedicated switch-window or restore-background-tab action buttons
+  or icons in recent-session rows. The passive Keep Running badge is unchanged.
+  Unknown ownership leaves the activity status visible without a window annotation.
   Enter uses the same activation: focus or restore an existing bound pane, or
   attempt supported resume in the current window for an explicitly activated
   known-provider shell session with no bound pane. A failed bound-pane focus
   never falls back to creating a new resumed session.
   Bare Enter activates the focused History row even with selection disabled;
-  modified Enter is ignored. A focused ownership button retains its native
-  activation, rather than also activating its containing row.
-  Provider identity remains available through the icon tooltip, highlighted
-  provider-name text, and shared search.
-  Time and provider text share bounded metadata space and may truncate with an ellipsis at the
-  minimum sidebar width; status and the ownership action retain reserved space.
-- History ages use Windows ICU's standard, locale-aware **short numeric relative
-  time** format (CLDR), using the UI resource language rather than private unit
-  abbreviations. For example, English uses `2 min. ago`, `2 hr. ago`, `2 wk. ago`,
-  `2 mo. ago`, and `2 yr. ago`; translations and grammar come from the platform.
-  Below a minute, the existing localized “just now” text remains. Whole elapsed
-  minutes, hours, days, and seven-day weeks are floored; older timestamps use
-  completed Gregorian UTC calendar months and years, including month-end and
-  leap-year adjustment, rather than fixed 30-day/365-day approximations.
+  modified Enter is ignored.
+  Provider identity remains available through the icon tooltip, the focused
+  history row's accessible name (alongside its title), and shared search.
+  The working directory supports search highlighting and a full-path tooltip.
+  For **In use** sessions, hovering the row, working directory, or provider icon
+  instead explains: **This session is open in another application.**
+  The focused history row exposes the same explanation as accessible help text.
+  Both follow status changes without replacing the row, and the help text clears
+  when the session returns to IT or becomes historical.
+  Text may truncate with an ellipsis at the minimum sidebar width.
+- History ages match the original session-management view: localized,
+  unabbreviated numeric relative time below seven days, such as `2 minutes ago`,
+  `2 hours ago`, and `2 days ago`. Below a minute, the existing localized
+  “just now” text remains. Whole elapsed minutes, hours, and days are floored.
+  At exactly seven days and beyond, display the session's UTC calendar date
+  using a localized year/month/day date without a weekday, rather than weeks,
+  months, or years ago (for example, `September 21, 2026` in English).
+  Relative-time translations, plural grammar, date ordering, and month names
+  come from Windows ICU's long CLDR formats, using the UI resource language.
   Missing or unsupported timestamps, or timestamps that cannot be formatted, retain localized “unknown.”
-  ICU's normal locale fallback applies, including for unsupported pseudo-locales.
 - The sidebar has exactly one vertical scrolling viewport containing the
   eligible open tabs followed by **Recent agent sessions** when requested.
   The live section grows or shrinks with its tab, group, and pane rows; this does
@@ -320,6 +355,34 @@ focus fallback first retains the current visible terminal or Agent input, then
 uses the existing source-shell fallback; this adds no saved focus field,
 selection cache, timer, repair callback or view-model clock.
 
+Sidebar shortcut hints belong to the existing display descriptor, not the
+shared header presentation or canonical horizontal tab. Effective corresponding
+Ctrl+Alt+1..8 bindings use navigation ordinals in the selected All/Agents-only
+filter; Ctrl+Alt+9 targets its last owning tab. Search never renumbers these
+targets, including when a query displays ordinary tabs outside Agents-only scope
+or produces no results. Custom or differently remapped bindings keep their
+canonical meaning. Recognized filter navigation with no eligible owner is
+consumed as a no-op, preserving selection and content without forwarding the
+chord to the shell. An empty query result is not an empty navigation scope.
+Hints use the same effective-binding target evaluator as execution, and advertise a
+chord only for its actual owner. The descriptor retains only resolved tooltip
+and accelerator strings across ordinary presentation sync; projection, tooltip
+changes and settings reload refresh them. Horizontal presentation clears that
+override and retains canonical tab hints and independently owned controls.
+
+`TerminalPage` supplies raw layout, rail, selected-filter and search criteria
+plus a canonical-order snapshot of owner identity, pin/agent state, titles and
+visible metadata/child fields to the data-only `TabListViewModel`. The view model
+derives navigation scope independently of query-dependent display scope,
+ordinary search-field matching, move targets and hint choice; it owns no XAML
+controls. A nonempty global query matches ordinary titles and visible metadata,
+including visible child fields, without changing the selected filter's navigation
+ordinals. Active search, whether empty or nonempty, keeps Move up/down visible
+but disabled. With search closed, Agents-only movement skips hidden ordinary
+neighbors and inserts the whole owner before/after the nearest eligible owner.
+Pin boundaries, canonical public indices, replay, custom remaps and horizontal
+behavior remain unchanged.
+
 Pin state remains shared model data. `TabHeaderControl.ShowPinnedIcon` is an
 appended, view-local property, defaulting to true: the canonical horizontal
 header sets it to false, while newly created sidebar headers retain the default.
@@ -383,6 +446,10 @@ Interactive requests reveal the actual row by expanding a collapsed rail through
 the existing view commands, without hiding recent sessions. Filter-hidden rows remain
 unavailable; no invisible native-header fallback is used.
 
+The inline renamer stays at the title's leading edge, including while typing or
+resizing the sidebar. Its maximum width limits the input's size without centering
+it in the wider title column; status icons retain their existing title offset.
+
 Existing WinRT methods retain their ordering and signatures. New members are
 appended. `TabStripDisplayItem.Header` retains its `Object` getter/setter slots,
 but now returns `TabHeaderPresentation`, never a visual; its setter accepts
@@ -431,7 +498,7 @@ These are required checks for this contract, not claims of completed validation:
   override filters.
 - Change filters during search, then clear and close the query separately.
   Verify restoration of the exact checked preferences, not default values.
-- Verify existing recent-row resume/ownership actions and live tab/group/pane
+- Verify existing recent-row activation and live tab/group/pane
   actions remain available when their rows are visible.
 - For sidebar-hotkey entry from collapsed and expanded rails, verify restoration
   to Agent Pane chat and the exact originating terminal split when available.

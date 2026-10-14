@@ -3,7 +3,7 @@
     "PreInvocation": [
       {
         "type": "command",
-        "command": "powershell.exe -NoLogo -NoProfile -NonInteractive -Command \"try { wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } catch { }; exit 0\"",
+        "command": "powershell.exe -NoLogo -NoProfile -NonInteractive -Command try { wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } catch { }; [Console]::Out.WriteLine('{}'); exit 0",
         "timeout": 5
       }
     ],
@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell.exe -NoLogo -NoProfile -NonInteractive -Command \"try { wtcli.exe agent-hook --cli-source antigravity --event agent.tool.starting } catch { }; exit 0\"",
+            "command": "powershell.exe -NoLogo -NoProfile -NonInteractive -Command try { wtcli.exe agent-hook --cli-source antigravity --event agent.tool.starting } catch { }; [Console]::Out.WriteLine('{\"decision\":\"ask\"}'); exit 0",
             "timeout": 5
           }
         ]
@@ -22,7 +22,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "powershell.exe -NoLogo -NoProfile -NonInteractive -Command \"try { wtcli.exe agent-hook --cli-source antigravity --event agent.stop } catch { }; exit 0\"",
+        "command": "powershell.exe -NoLogo -NoProfile -NonInteractive -Command try { wtcli.exe agent-hook --cli-source antigravity --event agent.stop } catch { }; [Console]::Out.WriteLine('{}'); exit 0",
         "timeout": 5
       }
     ]

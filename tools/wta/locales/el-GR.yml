@@ -127,6 +127,8 @@ agents.status.active: "Ενεργός"
 agents.status.waiting_for_input: "Αναμονή εισόδου"
 agents.status.error: "Σφάλμα"
 agents.status.idle: "Αδρανής"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Σε χρήση"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. για εμφάνιση/απόκρυψη πλαισίου παράγοντα • Ctrl+Shift+/ για εμφάνιση/απόκρυψη συνεδρίας παράγοντα)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

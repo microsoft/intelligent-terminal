@@ -121,6 +121,7 @@
     <ClInclude Include="VsSetupConfiguration.h" />
     <ClInclude Include="WslDistroGenerator.h" />
     <ClInclude Include="SshHostGenerator.h" />
+    <ClInclude Include="AgentProfileGenerator.h" />
     <ClInclude Include="ModelSerializationHelpers.h" />
   </ItemGroup>
   <!-- ========================= Cpp Files ======================== -->
@@ -222,6 +223,7 @@
     <ClCompile Include="VsSetupConfiguration.cpp" />
     <ClCompile Include="WslDistroGenerator.cpp" />
     <ClCompile Include="SshHostGenerator.cpp" />
+    <ClCompile Include="AgentProfileGenerator.cpp" />
     <ClCompile Include="TestHooks.cpp" />
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
   </ItemGroup>

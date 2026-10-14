@@ -139,6 +139,8 @@ agents.status.active: "செயலில்"
 agents.status.waiting_for_input: "உள்ளீட்டுக்காகக் காத்திருக்கிறது"
 agents.status.error: "பிழை"
 agents.status.idle: "செயலற்றது"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "பயன்பாட்டில்"
 
 # ── தளவமைப்பு வரவேற்பு குறிப்பு (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ஏஜெண்ட் பலகத்தைக் காட்டு/மறை • Ctrl+Shift+/ ஏஜெண்ட் அமர்வைக் காட்டு/மறை)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

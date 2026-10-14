@@ -44,6 +44,8 @@ Author(s):
     X(winrt::Microsoft::UI::Xaml::Controls::TabViewWidthMode, TabWidthMode, "tabWidthMode", winrt::Microsoft::UI::Xaml::Controls::TabViewWidthMode::Equal)                                            \
     X(Model::TabLayout, TabLayout, "tabLayout", Model::TabLayout::Vertical)                                                                                                                           \
     X(int32_t, TabLayoutVerticalWidth, "tabLayoutVerticalWidth", 220)                                                                                                                                 \
+    X(bool, SidebarShowAgentsOnly, "sidebarShowAgentsOnly", false)                                                                                                                                   \
+    X(bool, SidebarShowRecentAgentSessions, "sidebarShowRecentAgentSessions", false)                                                                                                                  \
     X(bool, UseAcrylicInTabRow, "useAcrylicInTabRow", false)                                                                                                                                          \
     X(bool, ShowTabsInTitlebar, "showTabsInTitlebar", true)                                                                                                                                           \
     X(bool, InputServiceWarning, "warning.inputService", true)                                                                                                                                        \
@@ -113,6 +115,11 @@ Author(s):
     X(Microsoft::Terminal::Control::ScrollbarState, ScrollState, "scrollbarState", Microsoft::Terminal::Control::ScrollbarState::Visible)                      \
     X(Microsoft::Terminal::Control::TextAntialiasingMode, AntialiasingMode, "antialiasingMode", Microsoft::Terminal::Control::TextAntialiasingMode::Grayscale) \
     X(hstring, StartingDirectory, "startingDirectory")                                                                                                         \
+    X(hstring, AgentProfileId, "agentProfile.id", L"")                                                                                                          \
+    X(hstring, AgentProfileModel, "agentProfile.model", L"")                                                                                                    \
+    X(hstring, AgentProfilePermissionMode, "agentProfile.permissionMode", L"")                                                                                  \
+    X(hstring, AgentProfileArguments, "agentProfile.arguments", L"")                                                                                            \
+    X(hstring, DefaultSplitProfile, "defaultSplitProfile", L"")                                                                                                \
     X(hstring, AgentPaneBackend, "agentPaneBackend", L"")                                                                                                      \
     X(hstring, CommandPaletteAgent, "commandPaletteAgent", L"")                                                                                                \
     X(IMediaResource, Icon, "icon", implementation::MediaResource::FromString(L"\uE756"))                                                                      \

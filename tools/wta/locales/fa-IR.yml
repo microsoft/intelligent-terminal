@@ -139,6 +139,8 @@ agents.status.active: "فعال"
 agents.status.waiting_for_input: "در انتظار ورودی"
 agents.status.error: "خطا"
 agents.status.idle: "بیکار"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "در حال استفاده"
 
 # ── راهنمای خوشامدگویی چیدمان (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. نمایش/پنهان کردن پنل عامل هوش مصنوعی • Ctrl+Shift+/ نمایش/پنهان کردن نشست عامل هوش مصنوعی)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

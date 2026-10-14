@@ -126,6 +126,8 @@ agents.status.active: "Aktiboa"
 agents.status.waiting_for_input: "Sarreraren zain"
 agents.status.error: "Errorea"
 agents.status.idle: "Inaktibo"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Erabiltzen ari da"
 
 # ── Diseinu-ongietorri argibidea (src/ui/layout.rs) ──────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. agente-panela erakusteko/ezkutatzeko • Ctrl+Shift+/ agente-saioa erakusteko/ezkutatzeko)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

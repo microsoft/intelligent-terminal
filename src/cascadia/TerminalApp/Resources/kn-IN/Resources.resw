@@ -442,6 +442,14 @@
     <value>ಏಜೆಂಟ್ · ಸಂಪರ್ಕಿಸಲಾಗುತ್ತಿದೆ</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>ವಿಭಜನೆಯ ಪ್ರೊಫೈಲ್ ಲಭ್ಯವಿಲ್ಲ</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>ವಿಭಜನೆಗಾಗಿ ಕಾನ್ಫಿಗರ್ ಮಾಡಿದ ಪ್ರೊಫೈಲ್ ಲಭ್ಯವಿಲ್ಲ. ಅದರ ಬದಲಿಗೆ ಜಾಗತಿಕ ಡೀಫಾಲ್ಟ್ ಪ್ರೊಫೈಲ್ ಅನ್ನು ಬಳಸಲಾಗುತ್ತದೆ. ವಿಭಜನೆಯ ಗುರಿ ಪ್ರೊಫೈಲ್ ಅನ್ನು ಬದಲಾಯಿಸಲು, settings.json ನಲ್ಲಿ ಈ ಪ್ರೊಫೈಲ್‌ನ defaultSplitProfile ಅನ್ನು ಸಂಪಾದಿಸಿ.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
+  </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>ಕೆಳಗಿನ ಟ್ಯಾಬ್‌ಗಳನ್ನು ಮುಚ್ಚಿ</value>
   </data>
@@ -674,6 +682,14 @@
     <value>ನಿಷ್ಕ್ರಿಯ</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
+    <value>ಬಳಕೆಯಲ್ಲಿದೆ</value>
+    <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
+  </data>
+  <data name="VerticalTabsHistoryInUseToolTip" xml:space="preserve">
+    <value>ಈ ಸೆಷನ್ ಮತ್ತೊಂದು ಅಪ್ಲಿಕೇಶನ್‌ನಲ್ಲಿ ತೆರೆದಿದೆ.</value>
+    <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
     <value>ಸಕ್ರಿಯ</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>
@@ -751,16 +767,8 @@
     <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
-    <value>{0} · ಮತ್ತೊಂದು ವಿಂಡೋ</value>
+    <value>{0} · ಮತ್ತೊಂದು ವಿಂಡೋದಲ್ಲಿ</value>
     <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
-  </data>
-  <data name="VerticalTabsHistoryRestoreBackgroundTab" xml:space="preserve">
-    <value>ಹಿನ್ನೆಲೆ ಟ್ಯಾಬ್ ಮರುಸ್ಥಾಪಿಸಿ</value>
-    <comment>Action for a live agent session in a kept-running background tab. Restores the entire original tab, with all its panes, to the foreground. This does not resume a new conversation or focus another visible window.</comment>
-  </data>
-  <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
-    <value>ಮತ್ತೊಂದು ವಿಂಡೋಗೆ ಬದಲಿಸಿ</value>
-    <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
   <data name="TabColorChoose"><value>ಟ್ಯಾಬ್ ಬಣ್ಣ ಬದಲಿಸಿ</value></data>
   <data name="RenameTabText"><value>ಟ್ಯಾಬ್ ಹೆಸರು ಬದಲಿಸಿ</value></data>

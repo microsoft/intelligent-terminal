@@ -114,6 +114,7 @@
                  Height="24"
                  MinHeight="0"
                  MaxWidth="{x:Bind RenamerMaxWidth, Mode=OneWay}"
+                 HorizontalAlignment="Left"
                  Padding="4,4,4,3"
                  FontSize="12"
                  IsSpellCheckEnabled="False"

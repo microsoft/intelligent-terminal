@@ -64,6 +64,7 @@ namespace winrt::TerminalApp::implementation
         bool NavigateFocus(const winrt::Microsoft::Terminal::Settings::Model::FocusDirection& direction);
         bool SwapPane(const winrt::Microsoft::Terminal::Settings::Model::FocusDirection& direction);
         bool FocusPane(const uint32_t id);
+        void PreparePaneFocus(const uint32_t id);
 
         void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
         void UpdateTitle();
@@ -75,6 +76,7 @@ namespace winrt::TerminalApp::implementation
 
         void SetTabText(winrt::hstring title);
         winrt::hstring GetTabText() const;
+        winrt::hstring ToolTipTextForKeyChord(const winrt::hstring& keyChord);
         void ResetTabText();
         void ActivateTabRenamer();
         void CancelTabRename();
@@ -131,13 +133,19 @@ namespace winrt::TerminalApp::implementation
         // Returns the Pane node hosting the AgentPaneContent, or nullptr.
         std::shared_ptr<Pane> FindAgentPane() const;
         bool IsAgentTab() const;
-        void SetTabListPositionOperationsRestricted(bool restricted)
+        void SetTabListPositionOperationsRestricted(bool restricted, bool tabMoveRestricted)
         {
             _tabListPositionOperationsRestricted = restricted;
+            _tabMoveRestricted = tabMoveRestricted;
             _EnableMenuItems();
             _UpdatePinMenuItem();
         }
         void SetTabPointerInteractionRestricted(bool restricted);
+        void SetVisibleMoveTargets(std::optional<std::pair<bool, bool>> targets)
+        {
+            _visibleMoveTargets = targets;
+            _EnableMenuItems();
+        }
 
         // Hide the agent pane without detaching it from the tree. The pane
         // stays alive (so TermControl + conpty + wta-helper survive), but
@@ -302,6 +310,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _switchTabLayoutMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeOtherTabsMenuItem{};
         bool _tabListPositionOperationsRestricted{ false };
+        bool _tabMoveRestricted{ false };
+        std::optional<std::pair<bool, bool>> _visibleMoveTargets;
         bool _tabPointerInteractionRestricted{ false };
         winrt::Windows::UI::Xaml::Controls::MenuFlyout _contextMenuFlyout{ nullptr };
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeTabsAfterMenuItem{};

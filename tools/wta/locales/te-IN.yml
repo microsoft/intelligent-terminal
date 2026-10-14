@@ -139,6 +139,8 @@ agents.status.active: "సక్రియం"
 agents.status.waiting_for_input: "ఇన్‌పుట్ కోసం వేచి ఉంది"
 agents.status.error: "ఎర్రర్"
 agents.status.idle: "నిష్క్రియం"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "వినియోగంలో"
 
 # ── లేఔట్ స్వాగత సూచన (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ఏజెంట్ పేన్ చూపించు/దాచు • Ctrl+Shift+/ ఏజెంట్ సెషన్ చూపించు/దాచు)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

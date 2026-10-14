@@ -207,7 +207,8 @@ pub fn decide_enter_action(row: &RowSnapshot) -> EnterAction {
 ///
 /// Mapping mirrors the `activate_agent_session_routed` dispatch
 /// (`Idle | Working | Attention | Error` are all "live"; `Ended` and
-/// `Historical` are the dead buckets).
+/// `Historical` are the dead buckets). External `InUse` preserves the
+/// live-without-pane rejection and cannot acquire a focus target from a hint.
 pub fn liveness_from_status(
     status: &crate::agent_sessions::AgentStatus,
     pane_session_id: Option<String>,
@@ -215,6 +216,9 @@ pub fn liveness_from_status(
     use crate::agent_sessions::AgentStatus::*;
     match status {
         Idle | Working | Attention | Error => Liveness::Live { pane_session_id },
+        InUse => Liveness::Live {
+            pane_session_id: None,
+        },
         Ended => Liveness::Ended,
         Historical => Liveness::Historical,
     }
@@ -613,6 +617,33 @@ mod tests {
             liveness_from_status(&Idle, None),
             Liveness::Live {
                 pane_session_id: None
+            }
+        );
+    }
+
+    #[test]
+    fn external_in_use_cannot_focus_an_it_pane() {
+        let liveness = liveness_from_status(
+            &crate::agent_sessions::AgentStatus::InUse,
+            Some("untrusted-pane".into()),
+        );
+        assert_eq!(
+            liveness,
+            Liveness::Live {
+                pane_session_id: None
+            }
+        );
+        let snapshot = row(
+            SessionOrigin::Unknown,
+            liveness,
+            CliSource::Copilot,
+            true,
+            true,
+        );
+        assert_eq!(
+            decide_enter_action(&snapshot),
+            EnterAction::NotResumable {
+                reason: NotResumableReason::LiveWithoutPane,
             }
         );
     }

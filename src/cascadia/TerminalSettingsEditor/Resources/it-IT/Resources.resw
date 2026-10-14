@@ -2994,6 +2994,30 @@ Alt+Shift+/ inserisci un prompt; Alt+Shift+B avvia senza un prompt iniziale.</va
     <value>Rimuovi</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
+  <data name="Profile_AgentModel.Header" xml:space="preserve">
+    <value>Modello dell’agente</value>
+    <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentModel.HelpText" xml:space="preserve">
+    <value>Immetti un identificatore di modello supportato da questo agente. Lascia il campo vuoto per usare la configurazione dell’agente. Si applica alle nuove sessioni.</value>
+    <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
+  </data>
+  <data name="Profile_AgentArguments.Header" xml:space="preserve">
+    <value>Argomenti aggiuntivi dell’agente</value>
+    <comment>Additional startup arguments for the native AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
+    <value>Per i valori contenenti spazi, usa le regole per le virgolette della riga di comando di Windows. Gli argomenti in conflitto con le impostazioni gestite o i criteri vengono rifiutati. I comandi della shell non sono supportati.</value>
+    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+  </data>
+  <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
+    <value>Usa la preferenza di divisione del profilo</value>
+    <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
+  </data>
+  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
+    <value>La tua organizzazione blocca gli avvii gestiti degli agenti nativi. L’agente deve essere consentito e i criteri devono permettere l’approvazione automatica, perché gli agenti nativi controllano le proprie impostazioni di approvazione.</value>
+    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
+  </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
     <value>Passa dalla nuova barra laterale alla visualizzazione classica delle schede orizzontali e viceversa</value>
     <comment>A description for what the &quot;tab layout&quot; setting does. Presented near &quot;Globals_TabLayout.Header&quot;.</comment>

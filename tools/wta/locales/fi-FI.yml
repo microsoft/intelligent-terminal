@@ -126,6 +126,8 @@ agents.status.active: "Aktiivinen"
 agents.status.waiting_for_input: "Odottaa syötettä"
 agents.status.error: "Virhe"
 agents.status.idle: "Vapaa"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Käytössä"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. näyttää/piilottaa agenttipaneelin • Ctrl+Shift+/ näyttää/piilottaa agenttiistunnon)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

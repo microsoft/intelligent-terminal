@@ -163,6 +163,20 @@ the hook-free resume binding, so `handle_session_hook` records them in
 treated as hook-owned and its row would sit at `Idle` forever even as the watcher
 saw activity.
 
+**Native History resume metadata.** Explicit Sidebar activation keeps the
+selected qualified session identity and binds the pane returned by tab
+creation. Historical/Ended becomes Idle; newer live activity is retained.
+After binding, the master invalidates session lists and Terminal's status
+projection through the existing structural notification, without waiting for
+a hook. An exact matching binding established by an earlier hook is successful
+and keeps that hook's activity. Assistant source-pane context uses the existing
+registry lookup for the real native CLI session ID, not the helper's ACP ID.
+This known binding keeps the resumed tab visible under Agents only before its
+first hook. Idle is an initial baseline, not evidence that the CLI loaded or
+that subsequent activity is being observed.
+This initialization does not change subsequent hook-loss activity behavior,
+watcher ownership, or saved-layout restore routing.
+
 **Resume pane ownership.** `ResumePaneAssigned` marks the row's pane binding
 `born_bound_pane` (`session_registry.rs`). WTA creates the resume pane and binds
 it *before* the agent CLI starts, so that pane belongs to exactly one session
@@ -177,6 +191,45 @@ stayed there for the rest of the CLI's life — the watcher's status fallback
 silently dropped every event. The flag clears itself whenever the row gives up
 the pane (`SessionStopped`, `PaneClosed`, `end_entry`) or once a `SessionStarted`
 for the *same* key claims it, so the protection needs no timer.
+
+### User-typed PowerShell resume: binding before the first conversation
+
+When Intelligent Terminal's shell integration is loaded in PowerShell, accepting
+a literal resume command emits `OSC 9001;Resume;<agent>;<session-id>` before the
+CLI starts. `TerminalPage` binds the emitting pane's connection GUID directly to
+that session and publishes `session_born_bound`; neither a hook nor a first
+conversation is required. Saved layouts reuse the binding to persist the agent's
+resume invocation, including when Terminal closes before any conversation.
+
+Both `copilot --resume=<id>` and `copilot --resume <id>` are recognized, including
+quoted literal IDs, additional CLI options, and `.cmd`/`.exe` launchers. Claude
+and Gemini use the same resume flag; Codex uses `resume <id>` and OpenCode uses
+`--session <id>`. Antigravity uses `agy --conversation <id>` for CLI conversations,
+not ACP sessions, and emits the canonical agent ID `antigravity`. Only a single
+foreground command with literal arguments is inspected. Variables, expressions,
+pipelines, compound commands, and duplicate resume flags are not evaluated or
+guessed. Bash/WSL and CMD do not emit this PowerShell-specific mark.
+
+Resume flags and Codex's `resume` subcommand must be unquoted `BareWord` AST
+arguments. Both `copilot --resume="id"` and `copilot --resume "id"` are recognized:
+the session ID may be quoted, but `copilot "--resume=id"` and
+`copilot "--resume" "id"` do not establish an OSC binding. The same rule excludes
+quoted resume-looking prompt text, regardless of which CLI option precedes it.
+
+The detector preserves AST quote boundaries instead of flattening arguments or
+maintaining provider-specific option lists. It does not interpret CLI option
+semantics or infer which options consume values; an unquoted resume-looking word
+used as another option's value remains ambiguous. Unquoted single-dash options
+are PowerShell parameter AST nodes and remain outside the literal-only scope.
+Codex only inspects the leading `resume <id>` subcommand, not later options.
+
+The binding is retired when the shell reports command completion (`OSC 133;D`).
+The v11 script upgrades earlier v10 installations to the literal resume parser.
+After shell-integration installation or an upgrade completes, open a new
+PowerShell session to load the updated script; an already-running shell keeps
+its previously loaded functions. Existing development copies already named v11
+must be refreshed separately. This binding path does not require automatic
+error detection or Autofix to be enabled once the script is loaded.
 
 ### Liveness gate: scoping to this IT window
 

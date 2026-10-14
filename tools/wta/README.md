@@ -67,6 +67,113 @@ the host agent, WTA puts the current package family's alias directory first on
 therefore use short `wta.exe` commands without selecting another installed
 branding or reproducing a protected package path.
 
+### Native interactive Agent Profiles (Windows host)
+
+Automatically generated Terminal Agent profiles now discover and launch the
+native CLI directly through C++, without these WTA commands. The commands below
+remain available as standalone CLI utilities; their native flag/argument
+contract is also used by Terminal's managed profile command builder.
+
+```powershell
+wta probe-profile-agents
+wta launch-agent --agent-id copilot
+wta launch-agent --agent-id claude --model sonnet --permission-mode plan
+wta launch-agent --agent-id codex --permission-mode untrusted -- --no-alt-screen
+wta launch-agent --agent-id gemini -- --prompt-interactive "Explain this project"
+wta launch-agent --agent-id antigravity -- --conversation "conversation-id"
+```
+
+`launch-agent` is a thin inherited-console launcher, **not** the ACP agent pane.
+It starts the installed native CLI in the existing ConPTY, preserves cwd,
+environment (including `WT_SESSION`, `WT_COM_CLSID` and existing hook variables),
+inherits stdin/stdout/stderr, waits for the child, and returns its Windows exit
+code after flushing WTA logging. It does not create master/helper processes,
+render a WTA TUI, manufacture session IDs, install hooks or agents, invoke npx,
+log in, download anything, or write provider configuration. The native CLI may
+perform its own normal authentication, networking and configuration behavior.
+Native hooks already installed by the user continue to work normally.
+
+The exact contract is:
+
+```text
+wta launch-agent --agent-id <id> [--model <value>] [--permission-mode <value>] [-- <additional arguments>]
+```
+
+Only the canonical IDs below are accepted. Omitted or empty model/permission
+values mean **no override**: provider defaults, configuration and environment
+remain authoritative. This is not a universal “safe”, “read-only” or
+automatic-approval setting. There is no theme override. All six providers map
+`--model` to their native `--model` flag; OpenCode expects `provider/model`.
+
+| Agent ID | Permission values | Native mapping |
+|---|---|---|
+| `copilot` | `allow-all-tools`, `allow-all` | Corresponding `--allow-all-tools` or `--allow-all` flag |
+| `claude` | `acceptEdits`, `auto`, `bypassPermissions`, `manual`, `dontAsk`, `plan` | `--permission-mode <value>` |
+| `codex` | `untrusted`, `on-request`, `never` | `--ask-for-approval <value>`; does not override the sandbox |
+| `gemini` | `default`, `auto_edit`, `yolo`, `plan` | `--approval-mode <value>` |
+| `opencode` | `auto` | `--auto` |
+| `antigravity` | `accept-edits`, `plan` | `--mode <value>` |
+
+These flags were verified against installed native `--help` output on
+2026-09-24 (Copilot 1.0.88, Claude Code 2.1.218, Codex 0.146.1, Gemini 0.38.1,
+OpenCode 1.17.18). Older CLI versions may reject newer native modes; WTA preserves that
+failure rather than silently choosing a different mode.
+Antigravity's native flags were verified against `agy 1.3.3 --help` on
+2026-10-12. Discovery uses `agy.exe`, not the provider ID or the separate ACP server.
+
+Additional arguments are argv elements, not a shell command. The launcher
+rejects unreviewed flags, subcommands, short-option clusters and conflicting
+model, permission, config or profile overrides instead of guessing whether they
+widen permissions. Supported extras:
+
+| Agent | Additional arguments |
+|---|---|
+| All | `--help`, `--version` |
+| Copilot | `--resume` (picker), `--continue`, `--add-dir <directory>` |
+| Claude | `--continue`, `--resume <session>`, `--add-dir <directory>` |
+| Codex | `--no-alt-screen`, `--add-dir <directory>` |
+| Gemini | `--resume <session>`, `--prompt-interactive <prompt>` |
+| OpenCode | `--continue`, `--session <session>`, `--prompt <prompt>` |
+| Antigravity | `--continue`, `--conversation <session>`, `--add-dir <directory>`, `--prompt-interactive <prompt>` |
+
+Named values also accept `--flag=value`. Values beginning with `-` are rejected.
+For `.cmd` shims, expansion characters (`%`, `!`, `^`), embedded quotes and
+newlines in the executable path or arguments are rejected explicitly; ordinary
+spaces, Unicode and shell metacharacters are passed through Rust's Windows
+batch-argument quoting. Native `.exe` launches use argv directly. WTA registers
+a non-inheritable control handler: Ctrl+C/Ctrl+Break remain the native CLI's
+responsibility, while the wrapper waits. A private kill-on-close job owns only
+the wrapper and its descendants, reclaiming them when the pane/wrapper closes;
+WTA never terminates the terminal host or unrelated agent processes.
+
+Both commands read current policy at invocation under
+`Software\Policies\Microsoft\IntelligentTerminal`, preferring HKLM over HKCU
+independently for each value. `AllowedAgents` (`REG_MULTI_SZ`) is case-insensitive:
+absent means all built-ins, empty means none. Discovery filters disallowed IDs;
+launch checks again. Invalid/unreadable policy fails explicitly rather than
+reporting “not installed”. `AllowAutomaticApproval=0` blocks **all native profile
+launches**, even with no permission override: a native CLI's configuration,
+environment or in-session toggles cannot be reliably constrained by this
+wrapper. Use the policy-enforced ACP agent pane instead. Discovery remains an
+availability probe and does not hide installed agents for this approval policy.
+
+`probe-profile-agents` emits exactly one stdout JSON object, with no resolved
+paths and no authentication/model probe:
+
+```json
+{"agents":[{"id":"copilot","display_name":"GitHub Copilot"},{"id":"claude","display_name":"Claude"}]}
+```
+
+The list follows built-in registry order and contains only installed,
+policy-allowed Windows CLIs. It uses WTA's fresh registry-plus-process PATH and
+the existing per-agent extension search order (`.exe`, then `.cmd`), including
+Claude's native npm shim; Antigravity accepts only its official `agy.exe`,
+not an `agy.cmd` shim. It does **not** require ACP adapters or npx, and does
+not inspect WSL. An empty successful list means no matching native executables;
+nonzero exit with stderr means discovery is unknown/failed, not unavailable.
+`launch-agent` resolves the executable afresh on each launch. The existing
+`probe-host-agents` retains its separate ACP prerequisites and behavior.
+
 ### Sidebar Agent sessions
 
 Master discovers installed, policy-allowed Windows-host agents in the background
@@ -132,6 +239,30 @@ The opt-in JSON object contains `sessions` and `history_status` (`loading`, `rea
 or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
 ordinary `--json` output remains one session per line.
 
+Session commands without an explicit `--master` rediscover `master-pipe.txt`
+before each connection attempt, so a stale address from a previous Terminal
+process does not pin a startup request to the old pipe. An explicit `--master`
+stays pinned. Missing discovery files, missing pipes, and busy pipes share the
+existing seven-attempt retry budget (1.87 seconds of backoff); permission and
+other failures are not retried. Listing, activation, and born-bound registration
+use the same connection path.
+
+If the master remains temporarily unavailable, `sessions list --json --include-status`
+exits nonzero and writes `{"error":{"kind":"master_unavailable"}}` instead of a
+successful empty snapshot. Other listing failures retain their ordinary error
+behavior. The sidebar keeps loading (or retains existing rows) and retries every
+five seconds for a 15-second recovery window after the first unavailable result.
+A separate deadline timer shows the normal load error at the end of that window,
+even while a retry command is still running; repeated unavailable results do not
+extend the deadline. The running capture retains ownership and can still recover
+normally when it returns a ready snapshot. Once connected, a
+`loading` history snapshot also keeps the sidebar on a five-second refresh interval
+and clears any earlier failure backoff, including when partial rows are already
+visible. `ready` restores the ordinary 60-second interval. These reads do not restart
+agents or request another history scan. The 15-second recovery window applies only
+to an unavailable master, not normal history loading. The command's 15-second total
+capture timeout, history-query timeout behavior, and activation errors are unchanged.
+
 An activity hook cannot claim or alter a pane owned by another live session,
 even if its raw session ID exists in another provider or source. Nested CLI
 workers can inherit the parent's pane identity; their synthetic session starts
@@ -147,16 +278,42 @@ other-window action. Missing or malformed membership is unknown, not evidence
 that the pane is attached elsewhere. These fields are refreshed per response,
 not stored as registry ownership or lifecycle state.
 
-Historical/Ended native host Copilot rows may receive response-only activity
-from their exact default-universe SDK session directory. This requires a
+Sessions registered as live in master keep their detailed Idle, Active,
+Waiting for input, or Error status. Historical/Ended native host Copilot rows
+are not live IT registrations; they may instead receive the response-only
+`InUse` status, displayed as **In use**, from their exact default-universe SDK
+session directory. This requires a
 matching PID marker, a live native `copilot.exe` created before that marker,
 and an actively held `inuse.<pid>.hold` lease (observed with Copilot SDK
-1.0.80). A stale marker, released lease, inaccessible process, unknown phase,
+1.0.80). A stale marker, released lease, inaccessible process,
 or nonmatching provider/source/universe leaves the original status unchanged.
-The existing turn classifier supplies activity; individual tool completion
-does not imply Idle. Reads use a bounded 4 MiB bootstrap tail and incremental
-cached appends under a two-second budget. This does not mutate registry state,
-infer a window/pane owner, or enable a running-location indicator.
+External sessions do not expose detailed activity: this probe does not read
+`events.jsonl` or infer Idle/Active from turns. Marker and lease reads have a
+two-second budget and share one process-wide nonblocking admission gate.
+The gate remains occupied until the blocking file operation finishes, even
+when its caller times out or disconnects. Busy list reads retain the original
+snapshot.
+
+List responses reread the registry after the external probe and enrich pane
+ownership from that current snapshot. Registrations made during the probe retain
+their detailed activity and window/background attribution in the same response.
+External evidence applies only to unchanged eligible history rows; it cannot
+restore removed rows or overwrite a newer binding.
+
+Activation checks the same qualified native evidence again before any
+resume path; it never trusts the status returned to the sidebar. An actively
+held external lease rejects activation without changing registry ownership.
+Busy, timed-out, or failed verification also rejects activation instead of
+assuming the session is free. Absent or released evidence allows the normal
+historical resume path. A live IT registration observed after the asynchronous
+probe takes precedence over its older evidence and retains detailed activity.
+This does not infer a window/pane owner or enable a running-location indicator.
+
+Session CLI connections retry transient missing/busy named-pipe instances under
+a bounded backoff (up to 1.87 seconds). Concurrent windows can refresh immediately
+after resume without treating a busy master as stopped; final failures preserve
+the underlying Windows error. This retries connection establishment only; it never
+sends an activation request again.
 
 The initial
 discovery stays `loading` until all eligible host providers finish. Providers that

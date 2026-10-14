@@ -28,9 +28,37 @@ namespace TerminalAppUnitTests
         TEST_METHOD(CapabilitySupportDistinguishesUnsupportedFromMalformed);
         TEST_METHOD(HookCwdUsesOnlyOwningPaneMetadata);
         TEST_METHOD(HookCwdPreservesProviderWorkspaceAndExecutionSource);
+        TEST_METHOD(OversizedOpenCodeHooksRetainTitle);
         TEST_METHOD(HostClsidOverridesStaleEnvironment);
         TEST_METHOD(UnpublishedStartupRemovesInheritedClsid);
     };
+
+    void ProtocolParsingTests::OversizedOpenCodeHooksRetainTitle()
+    {
+        Json::Value payload;
+        payload["session_id"] = "opencode-session";
+        payload["cwd"] = "C:\\repo";
+        const std::string expected(wtcli::kMaxRetainedFieldChars - 1, 'x');
+        payload["title"] = expected + "\xE4\xB8\xAD" + std::string(wtcli::kMaxHookEventChars, 'y');
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        const auto input = Json::writeString(writer, payload);
+        VERIFY_IS_TRUE(input.size() > wtcli::kMaxHookEventChars);
+
+        Json::Value event;
+        VERIFY_IS_TRUE(wtcli::BuildAgentHookEventJson("agent.session.start", "opencode", input, "pane-a", "", event));
+        const auto& reduced = event["params"]["payload"];
+        VERIFY_IS_TRUE(reduced["_truncated"].asBool());
+        VERIFY_ARE_EQUAL(expected, reduced["title"].asString());
+        VERIFY_ARE_EQUAL("opencode-session", event["params"]["agent_session_id"].asString());
+        VERIFY_ARE_EQUAL("pane-a", event["params"]["pane_id"].asString());
+        VERIFY_IS_TRUE(Json::writeString(writer, event).size() <= wtcli::kMaxHookEventChars);
+
+        payload["title"] = "Small \xE4\xB8\xAD";
+        VERIFY_IS_TRUE(wtcli::BuildAgentHookEventJson("agent.session.start", "opencode", Json::writeString(writer, payload), "pane-a", "", event));
+        VERIFY_ARE_EQUAL(payload["title"].asString(), event["params"]["payload"]["title"].asString());
+        VERIFY_IS_FALSE(event["params"]["payload"].isMember("_truncated"));
+    }
 
     void ProtocolParsingTests::UnpublishedStartupRemovesInheritedClsid()
     {

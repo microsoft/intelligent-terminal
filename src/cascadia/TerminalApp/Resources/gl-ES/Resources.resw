@@ -258,6 +258,14 @@
     <value>Para gozar da mellor experiencia de xestión de sesións, activa «Sessions» en Settings &gt; Agents.</value>
     <comment>Subtle hint below the agent sessions title, shown only in session management when Sessions is off and policy permits changes. Navigation is Settings &gt; Agents, then turn on Sessions. Match the displayed labels: Settings uses SettingsMenuItem/SettingsTab, Agents uses Nav_AIAgents.Content, and Sessions uses AIAgents_SessionManagement.Header, including fallback labels where a locale has no translation. Turning Sessions off only prevents hook updates; existing hooks and session functionality can keep working. Do not imply that tracking, data refresh, or functionality stops.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>O perfil de división non está dispoñible</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>O perfil de división configurado non está dispoñible. No seu lugar usarase o perfil predeterminado global. Para cambiar o perfil de destino da división, edita defaultSplitProfile deste perfil en settings.json.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
+  </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>Pechar as pestanas de abaixo</value>
   </data>
@@ -490,6 +498,14 @@
     <value>Inactivo</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
+    <value>En uso</value>
+    <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
+  </data>
+  <data name="VerticalTabsHistoryInUseToolTip" xml:space="preserve">
+    <value>Esta sesión está aberta noutra aplicación.</value>
+    <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
     <value>Activo</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>
@@ -567,16 +583,8 @@
     <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
-    <value>{0} · outra xanela</value>
+    <value>{0} · Noutra xanela</value>
     <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
-  </data>
-  <data name="VerticalTabsHistoryRestoreBackgroundTab" xml:space="preserve">
-    <value>Restaurar pestana en segundo plano</value>
-    <comment>Action for a live agent session in a kept-running background tab. Restores the entire original tab, with all its panes, to the foreground. This does not resume a new conversation or focus another visible window.</comment>
-  </data>
-  <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
-    <value>Cambiar a outra xanela</value>
-    <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
   <data name="TabColorChoose"><value>Cambiar a cor da pestana</value></data>
   <data name="RenameTabText"><value>Renomear a pestana</value></data>

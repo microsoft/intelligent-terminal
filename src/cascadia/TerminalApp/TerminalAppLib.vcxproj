@@ -219,6 +219,7 @@
       <DependentUpon>AgentPaneContent.xaml</DependentUpon>
     </ClInclude>
     <ClInclude Include="AutofixState.h" />
+    <ClInclude Include="TabListViewModel.h" />
     <ClInclude Include="AgentUsage.h" />
     <ClInclude Include="FreOverlay.h">
       <DependentUpon>FreOverlay.xaml</DependentUpon>

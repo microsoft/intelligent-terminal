@@ -1006,6 +1006,10 @@
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>Apri agente in background in una nuova scheda</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="AgentProfileGeneratorDisplayName" xml:space="preserve">
+    <value>Agenti IA</value>
+    <comment>Display name of the native AI agent profile generator source shown in Settings > Extensions. This source generates profiles for installed native AI agent command-line applications.</comment>
+  </data>
   <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
     <value>Attiva/disattiva riquadro dei comandi in modalità delega all&apos;agente</value>
   </data>

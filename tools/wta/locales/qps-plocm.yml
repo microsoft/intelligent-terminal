@@ -126,6 +126,8 @@ agents.status.active: "[!! Act_ive !!]"
 agents.status.waiting_for_input: "[!! Wai_ting for input !!]"
 agents.status.error: "[!! Err_or !!]"
 agents.status.idle: "[!! Idl_e !!]"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "[!! Îñ ûśé !!]"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "[!!   (C_trl+Shift+. to show/hide agent pane • Ctrl+Shift+/ to show/hide agent session) !!]"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

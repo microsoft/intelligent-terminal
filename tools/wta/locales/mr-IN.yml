@@ -139,6 +139,8 @@ agents.status.active: "सक्रिय"
 agents.status.waiting_for_input: "इनपुटची प्रतीक्षा"
 agents.status.error: "त्रुटी"
 agents.status.idle: "निष्क्रिय"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "वापरात"
 
 # ── लेआउट स्वागत संकेत (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. एजंट पेन दाखवा/लपवा • Ctrl+Shift+/ एजंट सत्र दाखवा/लपवा)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

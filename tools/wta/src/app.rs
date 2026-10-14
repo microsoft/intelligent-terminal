@@ -494,6 +494,7 @@ fn open_url_in_browser(url: &str) -> std::io::Result<()> {
 /// outside `USER_INPUT_TOOL_NAMES`.
 pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
     "cwd",
+    "title",
     "tool_name",
     "toolName",
     "tool_input",
@@ -620,7 +621,16 @@ pub fn plan_agent_event(
             cli_source: cli_source.clone(),
             pane_session_id: pane_session_id.to_string(),
             cwd,
-            title: synth_title,
+            title: if matches!(cli_source, crate::agent_sessions::CliSource::OpenCode) {
+                payload
+                    .get("title")
+                    .and_then(|value| value.as_str())
+                    .filter(|title| !title.trim().is_empty())
+                    .map(str::to_owned)
+                    .unwrap_or(synth_title)
+            } else {
+                synth_title
+            },
         },
         "agent.tool.starting" => {
             let tool_name = payload

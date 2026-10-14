@@ -151,6 +151,8 @@ agents.status.waiting_for_input: "Սպասում է մուտքի"
 agents.status.error: "Սխալ"
 # Status badge when agent session has no active work
 agents.status.idle: "Անգործ"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Օգտագործվում է"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ագենտի վահանակը ցույց տալ/թաքցնել • Ctrl+Shift+/ ագենտի նիստը ցույց տալ/թաքցնել)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

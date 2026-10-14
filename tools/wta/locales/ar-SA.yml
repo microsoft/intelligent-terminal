@@ -140,6 +140,8 @@ agents.status.active: "نشط"
 agents.status.waiting_for_input: "في انتظار الإدخال"
 agents.status.error: "خطأ"
 agents.status.idle: "خامل"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "قيد الاستخدام"
 
 # ── تلميح ترحيب التخطيط (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. لإظهار/إخفاء لوحة عامل الذكاء الاصطناعي • Ctrl+Shift+/ لإظهار/إخفاء جلسة عامل الذكاء الاصطناعي)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

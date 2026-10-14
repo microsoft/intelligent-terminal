@@ -135,6 +135,8 @@ agents.status.active: "Aktivno"
 agents.status.waiting_for_input: "Čaka na vnos"
 agents.status.error: "Napaka"
 agents.status.idle: "Nedejavno"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "V uporabi"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. prikaži/skrij podokno agenta • Ctrl+Shift+/ prikaži/skrij sejo agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}

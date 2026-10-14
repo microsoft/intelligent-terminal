@@ -126,6 +126,8 @@ agents.status.active: "Attiv"
 agents.status.waiting_for_input: "Qed jistenna input"
 agents.status.error: "Żball"
 agents.status.idle: "Inattiv"
+# Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
+agents.status.in_use: "Fl-użu"
 
 # ── Suġġeriment tal-merħba tad-disinn (src/ui/layout.rs) ──────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. biex turi/taħbi l-pannell tal-aġent • Ctrl+Shift+/ biex turi/taħbi s-sessjoni tal-aġent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
