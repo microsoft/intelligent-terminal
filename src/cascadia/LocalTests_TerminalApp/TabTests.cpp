@@ -13371,6 +13371,30 @@ namespace TerminalAppLocalTests
         IconElement profileVisual{ nullptr };
         FrameworkElement rowRoot{ nullptr };
         Grid collapsedProgress{ nullptr };
+        const auto verifyProgressNames = [&]() {
+            const auto originalName = display.Presentation().AutomationName();
+            VERIFY_IS_FALSE(originalName.empty());
+            const auto verifyNames = [&](const winrt::hstring& expected) {
+                for (const auto name : { L"CollapsedProgressRing", L"CollapsedIndeterminateProgressRing" })
+                {
+                    const auto ring = rowRoot.FindName(name).as<FrameworkElement>();
+                    VERIFY_ARE_EQUAL(expected, Automation::AutomationProperties::GetName(ring));
+                    // A collapsed control need not expose a peer. Check each
+                    // live peer in its corresponding OSC progress mode.
+                    if (ring.Visibility() == Visibility::Visible)
+                    {
+                        const auto peer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(ring);
+                        VERIFY_IS_NOT_NULL(peer);
+                        VERIFY_ARE_EQUAL(expected, peer.GetName());
+                    }
+                }
+            };
+            verifyNames(originalName);
+            display.Presentation().AutomationName(L"Updated collapsed tab automation name");
+            verifyNames(L"Updated collapsed tab automation name");
+            display.Presentation().AutomationName(originalName);
+            verifyNames(originalName);
+        };
 
         TestOnUIThread([&]() {
             tab = page->_GetFocusedTabImpl();
@@ -13480,6 +13504,7 @@ namespace TerminalAppLocalTests
             rowRoot.FlowDirection(FlowDirection::LeftToRight);
             VERIFY_IS_FALSE(rowRoot.FindName(L"CollapsedProgressRing").as<Control>().IsTabStop());
             VERIFY_IS_FALSE(rowRoot.FindName(L"CollapsedIndeterminateProgressRing").as<Control>().IsTabStop());
+            verifyProgressNames();
         });
 
         // OSC changes must reach the overlay while the header remains hidden.
@@ -13488,6 +13513,7 @@ namespace TerminalAppLocalTests
             return collapsedProgress.Visibility() == Visibility::Visible &&
                    _progressIndicatorsMatch(rowRoot, L"Collapsed", true, true);
         });
+        TestOnUIThread(verifyProgressNames);
         _emitOsc(connection, u"\x1b]9;4;1;73\a");
         _waitForContentTransferReviewUI([&]() {
             return _progressIndicatorsMatch(rowRoot, L"Collapsed", true, false, 73);

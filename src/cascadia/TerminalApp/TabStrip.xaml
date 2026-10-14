@@ -604,6 +604,7 @@
                                                               Height="15"
                                                               MinWidth="0"
                                                               MinHeight="0"
+                                                              AutomationProperties.Name="{x:Bind Presentation.AutomationName, Mode=OneWay}"
                                                               IsTabStop="False"
                                                               IsActive="{x:Bind Presentation.TabStatus.IsProgressRingActive, Mode=OneWay}"
                                                               IsIndeterminate="False"
@@ -611,6 +612,7 @@
                                                               Value="{x:Bind Presentation.TabStatus.ProgressValue, Mode=OneWay}" />
                                             <local:IndeterminateProgressRing x:Name="CollapsedIndeterminateProgressRing"
                                                                              Style="{StaticResource DeclarativeSpinner}"
+                                                                             AutomationProperties.Name="{x:Bind Presentation.AutomationName, Mode=OneWay}"
                                                                              Foreground="{Binding Foreground, ElementName=CollapsedProgressRing, Mode=OneWay}"
                                                                              IsActive="{x:Bind Presentation.TabStatus.IsProgressRingActive, Mode=OneWay}"
                                                                              Visibility="{x:Bind Presentation.TabStatus.IsProgressRingIndeterminate, Mode=OneWay}" />
