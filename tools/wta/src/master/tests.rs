@@ -14680,6 +14680,78 @@ async fn pooled_opencode_v2_finds_bound_cwd_on_later_page() {
 }
 
 #[tokio::test]
+async fn completed_paginated_cwd_listing_releases_missing_session() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for complete in [true, false] {
+                let state = make_state();
+                let sid = SessionId::new("missing-page-two");
+                let mut live = crate::session_registry::SessionInfo::new(
+                    sid.clone(),
+                    PathBuf::from("C:\\start"),
+                );
+                live.provider_id = Some("copilot".into());
+                live.location = crate::agent_sessions::SessionLocation::Host;
+                live.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
+                live.status = Some(crate::agent_sessions::AgentStatus::Idle);
+                live.pane_session_id = Some("bound-pane".into());
+                state.registry.upsert(live).await;
+
+                let mut first =
+                    acp::schema::v1::ListSessionsResponse::new(vec![history_row("front", "first")]);
+                first.next_cursor = Some("page-2".into());
+                let mut second = acp::schema::v1::ListSessionsResponse::new(vec![]);
+                if !complete {
+                    second.next_cursor = Some("missing-page".into());
+                }
+                let (agent, mut cursors) = paged_history_agent(
+                    "copilot",
+                    HashMap::from([(None, first), (Some("page-2".into()), second)]),
+                );
+                let original = state.registry.lookup(&sid).await.unwrap();
+                assert!(
+                    state
+                        .registry
+                        .adopt_acp_cwd_identity(
+                            &crate::session_registry::SessionIdentity::from_info(&original),
+                            original.cwd_revision(),
+                            agent.instance_id,
+                            PathBuf::from("C:\\acp"),
+                        )
+                        .await
+                );
+                state
+                    .registry
+                    .apply_event(
+                        crate::agent_sessions::SessionEvent::WorkingDirectoryChanged {
+                            key: sid.to_string(),
+                            pane_session_id: "bound-pane".into(),
+                            cwd: PathBuf::from("C:\\hook"),
+                        },
+                    )
+                    .await;
+                assert_eq!(
+                    state.registry.lookup(&sid).await.unwrap().cwd,
+                    PathBuf::from("C:\\acp")
+                );
+
+                assert_eq!(
+                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic).await,
+                    Some(1)
+                );
+                assert_eq!(cursors.try_recv().unwrap(), None);
+                assert_eq!(cursors.try_recv().unwrap(), Some("page-2".into()));
+                assert_eq!(
+                    state.registry.lookup(&sid).await.unwrap().cwd,
+                    PathBuf::from(if complete { "C:\\hook" } else { "C:\\acp" }),
+                    "complete={complete}"
+                );
+            }
+        })
+        .await;
+}
+
+#[tokio::test]
 async fn later_page_claude_cwd_does_not_extend_first_page_history() {
     tokio::task::LocalSet::new()
         .run_until(async {

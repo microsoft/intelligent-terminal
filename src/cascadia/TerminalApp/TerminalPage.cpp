@@ -856,7 +856,7 @@ namespace winrt::TerminalApp::implementation
                     {
                         page->_LogSidebarRowFieldsTelemetry("UserChange");
                     }
-                    if (sender.RichTabAgentStatusVisible() || sender.RichTabWorkingDirectoryVisible())
+                    if (sender.RichTabAgentStatusVisible() || page->_RichTabCwdDependentFieldsVisible())
                     {
                         page->_RequestRichTabAgentStatusRefresh();
                     }
@@ -3646,7 +3646,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto tab = _GetTabImpl(runtimeTab))
             {
                 _UpdateTabIcon(*tab);
-                if (_tabStrip.RichTabAgentStatusVisible() || _tabStrip.RichTabWorkingDirectoryVisible())
+                if (_tabStrip.RichTabAgentStatusVisible() || _RichTabCwdDependentFieldsVisible())
                 {
                     if (const auto rootPane = tab->GetRootPane())
                     {
@@ -3745,6 +3745,7 @@ namespace winrt::TerminalApp::implementation
                 _paneAgentSessions.erase(*paneSessionId);
                 _activeCliAgentPanes.erase(*paneSessionId);
                 _interactiveResumeSessions.erase(*paneSessionId);
+                _richTabEndedSessionByPaneId.erase(*paneSessionId);
             }
         });
     }
@@ -11028,7 +11029,7 @@ namespace winrt::TerminalApp::implementation
                         if (sessionStarted)
                         {
                             _richTabEndedSessionByPaneId.erase(*paneSessionId);
-                            if (_tabStrip.RichTabWorkingDirectoryVisible())
+                            if (_RichTabCwdDependentFieldsVisible())
                             {
                                 if (const auto ownerPane = rootPane->FindPaneBySessionId(*paneSessionId))
                                 {
@@ -11163,7 +11164,7 @@ namespace winrt::TerminalApp::implementation
                             _richTabEndedSessionByPaneId.insert_or_assign(*paneSessionId, agentSessionId);
                         }
                     }
-                    if (_tabStrip.RichTabWorkingDirectoryVisible())
+                    if (_RichTabCwdDependentFieldsVisible())
                     {
                         if (const auto ownerPane = rootPane->FindPaneBySessionId(*paneSessionId))
                         {
@@ -11518,7 +11519,7 @@ namespace winrt::TerminalApp::implementation
         if (existing)
         {
             broker.UpdateContext(*existing, workingDirectory, authoritative, shellType);
-            if (_tabStrip.RichTabWorkingDirectoryVisible())
+            if (_RichTabCwdDependentFieldsVisible())
             {
                 _UpdateRichTabFirstPartyFields(control);
             }
@@ -11554,7 +11555,7 @@ namespace winrt::TerminalApp::implementation
                 key,
                 RichTabAttachment{ attachment, sessionId, reservation });
         }
-        if (attachment != 0 && _tabStrip.RichTabWorkingDirectoryVisible())
+        if (attachment != 0 && _RichTabCwdDependentFieldsVisible())
         {
             _UpdateRichTabFirstPartyFields(control);
         }
@@ -11760,6 +11761,14 @@ namespace winrt::TerminalApp::implementation
         return { true, info->cwd };
     }
 
+    bool TerminalPage::_RichTabCwdDependentFieldsVisible() const
+    {
+        return _tabStrip.RichTabWorkingDirectoryVisible() ||
+               _tabStrip.RichTabRepositoryVisible() ||
+               _tabStrip.RichTabBranchVisible() ||
+               _tabStrip.RichTabChangesVisible();
+    }
+
     std::unordered_map<std::string, std::string> TerminalPage::_BuildRichTabFirstPartyFields(const TermControl& control)
     {
         std::unordered_map<std::string, std::string> firstPartyFields;
@@ -11796,7 +11805,7 @@ namespace winrt::TerminalApp::implementation
         ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().UpdateFirstPartyFields(
             attachment,
             _BuildRichTabFirstPartyFields(control));
-        if (_tabStrip.RichTabWorkingDirectoryVisible())
+        if (_RichTabCwdDependentFieldsVisible())
         {
             const auto [active, cwd] = _RichTabAgentCwdForControl(control);
             ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().UpdateAgentWorkingDirectory(
@@ -11968,7 +11977,7 @@ namespace winrt::TerminalApp::implementation
                 page->_richTabAgentStatusByPaneId = std::move(snapshot.byPane);
                 page->_richTabAgentStatusSnapshotLoaded = true;
             }
-            if (parsed || page->_tabStrip.RichTabWorkingDirectoryVisible())
+            if (parsed || page->_RichTabCwdDependentFieldsVisible())
             {
                 for (const auto& runtimeTab : page->_RuntimeTabs())
                 {
@@ -14017,6 +14026,7 @@ namespace winrt::TerminalApp::implementation
             moveBindings(source._interactiveResumeSessions, _interactiveResumeSessions);
             moveBindings(source._pendingRestoredSessionBindings, _pendingRestoredSessionBindings);
             moveBindings(source._activeCliAgentPanes, _activeCliAgentPanes);
+            moveBindings(source._richTabEndedSessionByPaneId, _richTabEndedSessionByPaneId);
         }
         try
         {

@@ -6923,15 +6923,14 @@ async fn host_acp_cwd_from_later_pages(
     agent: &AgentCli,
     mut cursor: String,
     mut wanted: HashSet<String>,
-) -> Vec<acp::schema::v1::SessionInfo> {
+) -> (Vec<acp::schema::v1::SessionInfo>, bool) {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
     let mut cursors = HashSet::new();
     let mut found = Vec::new();
-    let mut more_pages = true;
     for _ in 0..8 {
         if cursor.is_empty() || !cursors.insert(cursor.clone()) {
             tracing::warn!(target: "master_history", "host ACP cwd pagination cursor repeated");
-            return Vec::new();
+            return (Vec::new(), false);
         }
         let response = tokio::time::timeout_at(
             deadline,
@@ -6942,30 +6941,28 @@ async fn host_acp_cwd_from_later_pages(
         .await;
         let Ok(Ok(response)) = response else {
             tracing::debug!(target: "master_history", "host ACP cwd pagination incomplete");
-            return Vec::new();
+            return (Vec::new(), false);
         };
+        let next_cursor = response.next_cursor;
         for session in response.sessions {
             if wanted.remove(session.session_id.0.as_ref()) {
                 found.push(session);
             }
         }
-        if wanted.is_empty() {
-            break;
-        }
-        let Some(next_cursor) = response.next_cursor else {
-            more_pages = false;
-            break;
+        let Some(next_cursor) = next_cursor else {
+            return (found, true);
         };
+        if wanted.is_empty() {
+            return (found, false);
+        }
         cursor = next_cursor;
     }
-    if more_pages && !wanted.is_empty() {
-        tracing::debug!(
-            target: "master_history",
-            remaining = wanted.len(),
-            "host ACP cwd pagination budget exhausted; retaining existing evidence"
-        );
-    }
-    found
+    tracing::debug!(
+        target: "master_history",
+        remaining = wanted.len(),
+        "host ACP cwd pagination budget exhausted; retaining existing evidence"
+    );
+    (found, false)
 }
 
 /// Legacy fallback for rows without a qualified provider identity.
@@ -7139,7 +7136,7 @@ async fn sync_host_history(
         HashMap::new()
     };
     let listing = host_session_list_raw(agent).await?;
-    let first_page_complete = listing.next_cursor.is_none();
+    let mut listing_complete = listing.next_cursor.is_none();
     let sessions = listing.sessions;
     if agent
         .history_refresh
@@ -7161,7 +7158,9 @@ async fn sync_host_history(
         .collect();
     let additional_cwd = if search_later_pages && host_acp_cwd && !wanted.is_empty() {
         if let Some(cursor) = listing.next_cursor {
-            host_acp_cwd_from_later_pages(agent, cursor, wanted).await
+            let (found, complete) = host_acp_cwd_from_later_pages(agent, cursor, wanted).await;
+            listing_complete = complete;
+            found
         } else {
             Vec::new()
         }
@@ -7289,9 +7288,18 @@ async fn sync_host_history(
                 changed = true;
             }
         }
-        if first_page_complete {
+        if listing_complete {
+            let listed_cwd_ids: HashSet<_> = first_page_ids
+                .iter()
+                .cloned()
+                .chain(
+                    additional_cwd
+                        .iter()
+                        .map(|session| session.session_id.to_string()),
+                )
+                .collect();
             for (identity, (revision, _)) in &prior_rows {
-                if !first_page_ids.contains(identity.session_id.0.as_ref())
+                if !listed_cwd_ids.contains(identity.session_id.0.as_ref())
                     && state
                         .registry
                         .clear_acp_cwd_identity(identity, *revision)

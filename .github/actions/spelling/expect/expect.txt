@@ -1433,6 +1433,7 @@ Replymessage
 repointed
 repointing
 reportfileaccesses
+repositoryformatversion
 repositorypath
 rerasterize
 rescap

@@ -108,7 +108,7 @@ namespace TerminalAppUnitTests
         VERIFY_IS_FALSE(thirdParty.pending.has_value());
         VERIFY_ARE_EQUAL(std::string{ "D:\\agent" }, git.pending->request.firstPartyFields.at("agentWorkingDirectory"));
         VERIFY_ARE_EQUAL(std::string{ "true" }, git.pending->request.firstPartyFields.at("agentCwdActive"));
-        VERIFY_ARE_EQUAL(std::wstring{ L"main\nthird-party" }, updates.back().presentation->text);
+        VERIFY_ARE_EQUAL(std::wstring{ L"main\n" L"third-party" }, updates.back().presentation->text);
 
         broker.Notify(1, ActivationEvent::ManualRefresh);
         VERIFY_IS_TRUE(thirdParty.pending.has_value());
@@ -124,7 +124,7 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(ProviderBroker::AttachmentId{ 2 }, second);
         VERIFY_IS_FALSE(git.snapshot->fields.contains("workingDirectory"));
         VERIFY_IS_FALSE(duplicateUpdates.empty());
-        VERIFY_ARE_EQUAL(std::wstring{ L"main\nthird-party" }, updates.back().presentation->text);
+        VERIFY_ARE_EQUAL(std::wstring{ L"main\n" L"third-party" }, duplicateUpdates.back().presentation->text);
         VERIFY_ARE_EQUAL(std::string{ "true" }, git.pending->request.firstPartyFields.at("agentCwdActive"));
         VERIFY_IS_FALSE(git.pending->request.firstPartyFields.contains("agentWorkingDirectory"));
 

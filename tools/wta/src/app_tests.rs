@@ -1111,14 +1111,14 @@ fn prompt_refreshes_existing_session_cwd_without_rebinding_its_pane() {
             key: "native-session".into(),
             cli_source: source,
             pane_session_id: pane.into(),
-            cwd: "C:\\Users\\haonantang".into(),
+            cwd: "C:\\Users\\example".into(),
             title: String::new(),
         });
         let params = json!({
             "event": "agent.prompt.submit",
             "cli_source": cli,
             "agent_session_id": "native-session",
-            "payload": { "cwd": "C:\\Users\\haonantang\\Copilot\\psPolicy" }
+            "payload": { "cwd": "C:\\Users\\example\\project" }
         });
         let mut published = Vec::new();
         route_agent_event_to_registry_with_hook_sink(&mut registry, pane, &params, |event| {
@@ -1130,13 +1130,13 @@ fn prompt_refreshes_existing_session_cwd_without_rebinding_its_pane() {
                 [SessionEvent::WorkingDirectoryChanged { key, pane_session_id, cwd }, SessionEvent::ToolStarting { .. }]
                     if key == "native-session"
                         && pane_session_id == pane
-                        && cwd == &std::path::PathBuf::from("C:\\Users\\haonantang\\Copilot\\psPolicy")
+                        && cwd == &std::path::PathBuf::from("C:\\Users\\example\\project")
             ),
             "{cli}"
         );
         assert_eq!(
             registry.get(&"native-session".to_string()).unwrap().cwd,
-            std::path::PathBuf::from("C:\\Users\\haonantang\\Copilot\\psPolicy"),
+            std::path::PathBuf::from("C:\\Users\\example\\project"),
             "{cli}"
         );
         assert_eq!(
