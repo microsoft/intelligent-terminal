@@ -2200,55 +2200,83 @@ fn claude_and_copilot_hooks_json_are_parity_identical() {
 /// metadata and declaring the hook file explicitly.
 #[test]
 fn copilot_uses_native_plugin_layout() {
-    let claude: Value = serde_json::from_str(CLAUDE_PLUGIN_JSON).unwrap();
+    let mut claude: Value = serde_json::from_str(CLAUDE_PLUGIN_JSON).unwrap();
     let mut copilot: Value = serde_json::from_str(COPILOT_PLUGIN_JSON).unwrap();
     assert_eq!(
         copilot.get("hooks").and_then(Value::as_str),
         Some("hooks/hooks.json")
     );
     copilot.as_object_mut().unwrap().remove("hooks");
-    assert_eq!(claude, copilot, "shared plugin metadata must stay aligned");
-
+    for manifest in [&mut claude, &mut copilot] {
+        manifest.as_object_mut().unwrap().remove("version");
+    }
     assert_eq!(
-        CLAUDE_MARKETPLACE_JSON, COPILOT_MARKETPLACE_JSON,
-        "claude/ and copilot/ marketplace.json must match byte-for-byte"
+        claude, copilot,
+        "shared non-version metadata must stay aligned"
+    );
+
+    let mut marketplaces: [Value; 2] = [
+        serde_json::from_str(CLAUDE_MARKETPLACE_JSON).unwrap(),
+        serde_json::from_str(COPILOT_MARKETPLACE_JSON).unwrap(),
+    ];
+    for marketplace in &mut marketplaces {
+        marketplace["plugins"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("version");
+    }
+    assert_eq!(
+        marketplaces[0], marketplaces[1],
+        "claude/ and copilot/ marketplace metadata must match except for version"
     );
 }
 
-/// The five bundles ship as one unit, so the installer's
-/// `bundled_version > installed_version` check only pushes a change to every
-/// CLI when they move together. `copilot_uses_native_plugin_layout` separately
-/// requires claude's and copilot's marketplace files to be byte-identical, and
-/// the version lives in those too — so a single-CLI bump is not expressible
-/// here even when only one bundle's content changed.
+/// Providers upgrade independently. A marketplace must advertise the version
+/// of its own plugin, not the version of an unrelated provider's bundle.
+/// Each expected release version moves with that provider alone; equality
+/// ensures a bump also advances its recorded rollback guard.
 #[test]
-fn native_hook_bundle_versions_stay_in_sync() {
-    const BUNDLE_VERSION: &str = "0.1.7";
+fn native_hook_bundle_versions_match_their_marketplaces() {
     let manifests = [
-        CLAUDE_PLUGIN_JSON,
-        COPILOT_PLUGIN_JSON,
-        GEMINI_EXTENSION_JSON,
-        CODEX_PLUGIN_JSON,
-        OPENCODE_PLUGIN_JSON,
+        ("claude", CLAUDE_PLUGIN_JSON, "0.1.7"),
+        ("copilot", COPILOT_PLUGIN_JSON, "0.1.7"),
+        ("gemini", GEMINI_EXTENSION_JSON, "0.1.7"),
+        ("codex", CODEX_PLUGIN_JSON, "0.1.7"),
+        ("opencode", OPENCODE_PLUGIN_JSON, "0.1.7"),
+        (
+            "antigravity",
+            include_str!("../wt-agent-hooks/antigravity/intelligent-terminal.json"),
+            "0.1.2",
+        ),
+        (
+            "antigravity-wsl",
+            include_str!("../wt-agent-hooks/antigravity-wsl/intelligent-terminal.json"),
+            "0.1.2",
+        ),
     ];
-    for manifest in manifests {
+    for (provider, manifest, expected_release) in manifests {
         let value: Value = serde_json::from_str(manifest).unwrap();
+        let version = value["version"]
+            .as_str()
+            .unwrap()
+            .parse::<Version>()
+            .expect("each provider needs a valid upgrade version");
+        let expected = expected_release.parse::<Version>().unwrap();
         assert_eq!(
-            value.get("version").and_then(Value::as_str),
-            Some(BUNDLE_VERSION)
+            version, expected,
+            "{provider} must update its own expected release version with its manifest"
         );
     }
 
-    for marketplace in [CLAUDE_MARKETPLACE_JSON, COPILOT_MARKETPLACE_JSON] {
-        let value: Value = serde_json::from_str(marketplace).unwrap();
+    for (manifest, marketplace) in [
+        (CLAUDE_PLUGIN_JSON, CLAUDE_MARKETPLACE_JSON),
+        (COPILOT_PLUGIN_JSON, COPILOT_MARKETPLACE_JSON),
+    ] {
+        let plugin: Value = serde_json::from_str(manifest).unwrap();
+        let registration: Value = serde_json::from_str(marketplace).unwrap();
         assert_eq!(
-            value
-                .get("plugins")
-                .and_then(Value::as_array)
-                .and_then(|plugins| plugins.first())
-                .and_then(|plugin| plugin.get("version"))
-                .and_then(Value::as_str),
-            Some(BUNDLE_VERSION)
+            registration["plugins"][0]["version"], plugin["version"],
+            "a provider's marketplace and plugin versions must agree"
         );
     }
 }
@@ -3088,6 +3116,32 @@ fn install_action_upgrades_a_complete_but_outdated_bridge() {
         }),
         InstallAction::Upgrade
     );
+}
+
+#[test]
+fn install_action_upgrades_only_the_provider_with_a_newer_bundle() {
+    for &cli in CliKind::ALL {
+        let bundled = if cli == CliKind::OpenCode {
+            "0.1.8"
+        } else {
+            "0.1.7"
+        };
+        let status = CliStatus {
+            installed_version: Some("0.1.7".into()),
+            bundle_version: Some(bundled.into()),
+            ..installed_status(cli.name())
+        };
+        let expected = if cli == CliKind::OpenCode {
+            InstallAction::Upgrade
+        } else {
+            InstallAction::Skip
+        };
+        assert_eq!(
+            decide_install_action(cli, &status, None),
+            expected,
+            "{cli:?}"
+        );
+    }
 }
 
 /// An unreadable version on either side is not proof of staleness. `install`

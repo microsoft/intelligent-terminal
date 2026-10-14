@@ -1136,6 +1136,55 @@ fn non_terminal_agent_event_for_unknown_session_still_synthesizes_a_start() {
     );
 }
 
+#[test]
+fn opencode_session_hooks_update_title_without_changing_other_providers() {
+    use crate::agent_sessions::AgentSessionRegistry;
+
+    let pane = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE";
+    let mut reg = AgentSessionRegistry::new();
+    for (title, expected) in [
+        (json!("Original"), "Original"),
+        (json!("Renamed"), "Renamed"),
+        (json!(""), "Renamed"),
+        (json!("   "), "Renamed"),
+        (json!(null), "Renamed"),
+    ] {
+        route_agent_event_to_registry(
+            &mut reg,
+            pane,
+            &json!({
+                "event": "agent.session.start",
+                "cli_source": "opencode",
+                "agent_session_id": "opencode-session",
+                "payload": { "cwd": r"C:\repo", "title": title }
+            }),
+        );
+        assert_eq!(
+            reg.get(&"opencode-session".to_string()).unwrap().title,
+            expected
+        );
+    }
+
+    for provider in ["copilot", "claude", "codex", "gemini", "antigravity"] {
+        let mut reg = AgentSessionRegistry::new();
+        route_agent_event_to_registry(
+            &mut reg,
+            pane,
+            &json!({
+                "event": "agent.session.start",
+                "cli_source": provider,
+                "agent_session_id": "other-session",
+                "payload": { "cwd": r"C:\repo", "title": "Unrelated hook title" }
+            }),
+        );
+        assert_eq!(
+            reg.get(&"other-session".to_string()).unwrap().title,
+            "repo",
+            "{provider}"
+        );
+    }
+}
+
 /// Both spellings accepted as a real session-start hook must supersede the
 /// pane-keyed placeholder created while the agent session id was unavailable.
 /// Leaving the placeholder behind produces a second local row for one pane and

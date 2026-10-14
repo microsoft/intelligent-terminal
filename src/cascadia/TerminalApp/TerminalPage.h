@@ -1033,6 +1033,9 @@ namespace winrt::TerminalApp::implementation
                    _tabStrip && _tabStrip.SidebarFilters().RecentAgentSessionsVisible();
         }
         void _UpdateRecentAgentSessionsVisibility();
+        void _ApplySidebarFilterSettings();
+        void _OnSidebarFilterSettingsChanged(const Windows::Foundation::IInspectable& sender,
+                                             const Windows::UI::Xaml::Data::PropertyChangedEventArgs& args);
         bool _IsTabListPositionOperationBlocked() const
         {
             return _IsTabListProjectionActive();
