@@ -12,6 +12,10 @@ import { createContext, deferred, loadPlugin } from "../fixtures/OpenCodeHookCon
 const pluginPath = process.env.ITE2E_OPENCODE_PLUGIN ??
   fileURLToPath(new URL("../../../tools/wta/wt-agent-hooks/opencode/wt-agent-hooks.js", import.meta.url))
 const plugin = await loadPlugin(pluginPath)
+const tuiPluginPath = fileURLToPath(new URL(
+  "../../../tools/wta/wt-agent-hooks/opencode/wt-agent-hooks/tui.js", import.meta.url,
+))
+const tuiPlugin = await loadPlugin(tuiPluginPath)
 const environmentKeys = ["WT_COM_CLSID", "WT_SESSION", "WTCLI_PATH", "OPENCODE_CLIENT", "WTA_HOOK_LOG_DIR"]
 let originalEnvironment
 let originalBun
@@ -33,6 +37,96 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
         return { exited: Promise.resolve(0) }
       },
     }
+  })
+
+  describe("OpenCode V2 TUI cwd binding", () => {
+    let sessions
+    let handlers
+    let route
+    let context
+    let statuses
+
+    beforeEach(() => {
+      sessions = new Map()
+      statuses = new Map()
+      handlers = new Map()
+      route = { type: "session", sessionID: "root" }
+      context = {
+        ui: { router: { current: () => route } },
+        data: {
+          session: {
+            get: (sessionID) => sessions.get(sessionID),
+            status: (sessionID) => statuses.get(sessionID) ?? "idle",
+          },
+          on: (event, handler) => {
+            handlers.set(event, handler)
+            return () => handlers.delete(event)
+          },
+        },
+      }
+    })
+
+    function emit(event, data) {
+      handlers.get(event)({ data })
+    }
+
+    it("binds the visible root and sends moved cwd without attributing other panes or child sessions", () => {
+      sessions.set("root", { id: "root", title: "Current", location: { directory: "C:\\first" } })
+      sessions.set("other", { id: "other", location: { directory: "C:\\foreign" } })
+      sessions.set("child", { id: "child", parentID: "root", location: { directory: "C:\\child" } })
+      const dispose = tuiPlugin.setup(context)
+      emit("session.viewed", { sessionID: "root" })
+      emit("session.moved", { sessionID: "root", location: { directory: "C:\\second" } })
+      emit("session.moved", { sessionID: "root", location: { directory: "C:\\second" } })
+      emit("session.moved", { sessionID: "other", location: { directory: "C:\\foreign" } })
+      route = { type: "session", sessionID: "child" }
+      emit("session.viewed", { sessionID: "child" })
+      assert.deepEqual(calls.map(({ topic, payload }) => [topic, payload.session_id, payload.cwd]), [
+        ["agent.session.start", "root", "C:\\first"],
+        ["agent.cwd.changed", "root", "C:\\second"],
+      ])
+      assert.equal(calls[0].payload.title, "Current")
+      assert.deepEqual(calls[0].options.cmd, [process.env.WTCLI_PATH, "agent-hook", "--cli-source", "opencode", "--event", "agent.session.start"])
+      dispose()
+      assert.equal(handlers.size, 0)
+    })
+
+    it("does not bind a moved session missing from the TUI cache, then binds it when viewed", () => {
+      const dispose = tuiPlugin.setup(context)
+      emit("session.moved", { sessionID: "root", location: { directory: "C:\\second" } })
+      assert.equal(calls.length, 0)
+      sessions.set("root", { id: "root", location: { directory: "C:\\second" } })
+      emit("session.viewed", { sessionID: "root" })
+      assert.deepEqual(calls.map((call) => call.payload.cwd), ["C:\\second"])
+      dispose()
+    })
+
+    it("binds an already visible running session on startup and owns its status and deletion", () => {
+      sessions.set("root", { id: "root", title: "Restored", location: { directory: "C:\\restored" } })
+      statuses.set("root", "running")
+      const dispose = tuiPlugin.setup(context)
+      assert.deepEqual(calls.map((call) => call.topic), ["agent.session.start", "agent.prompt.submit"])
+      emit("session.status", { sessionID: "other", status: { type: "busy" } })
+      emit("session.status", { sessionID: "root", status: { type: "idle" } })
+      emit("session.renamed", { sessionID: "root", title: "New title" })
+      emit("session.deleted", { sessionID: "root" })
+      emit("session.status", { sessionID: "root", status: { type: "busy" } })
+      assert.deepEqual(calls.map((call) => call.topic), [
+        "agent.session.start", "agent.prompt.submit", "agent.stop", "agent.session.start", "agent.session.end",
+      ])
+      assert.equal(calls[3].payload.title, "New title")
+      assert.equal(calls[4].payload.reason, "deleted")
+      dispose()
+    })
+
+    it("suppresses hooks outside a Terminal pane and in ACP mode", () => {
+      delete process.env.WT_SESSION
+      assert.equal(tuiPlugin.setup(context), undefined)
+      process.env.WT_SESSION = "00000000-0000-0000-0000-000000000002"
+      process.env.OPENCODE_CLIENT = "acp"
+      assert.equal(tuiPlugin.setup(context), undefined)
+      assert.equal(handlers.size, 0)
+    })
   })
 
   afterEach(() => {
@@ -87,12 +181,13 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
         ["Permission required: edit", "OpenCode is waiting for input"])
       assert.equal(calls.filter((call) => call.topic === "agent.stop").length, 2)
       assert.equal(calls.find((call) => call.topic === "agent.error").payload.error, "Fixture failure")
-      assert.equal(calls.find((call) => call.payload.title === "Renamed").topic, "agent.session.start")
+      assert.equal(calls.some((call) => call.topic === "agent.session.start"), false)
       assert.deepEqual(calls.find((call) => call.topic === "agent.tool.starting").payload.tool_input, { questions: ["Continue?"] })
       await sdk.event("session.deleted", { sessionID: "root" })
-      assert.equal(calls.at(-1).topic, "agent.session.end")
+      assert.equal(calls.some((call) => call.topic === "agent.session.end"), false)
     } finally { await dispose() }
     assert.equal(sdk.aborted, true)
+    assert.equal(calls.some((call) => call.topic === "agent.session.end"), false)
   })
 
   it("V2 location filtering rejects both foreign directories and foreign workspaces", async () => {
@@ -103,7 +198,8 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       await sdk.event("session.created", { sessionID: "foreign-workspace" }, { ...sdk.location, workspaceID: "other" })
       assert.equal(calls.length, 0)
       await sdk.event("session.created", { sessionID: "owned", title: "Owned" })
-      assert.equal(calls.length, 1)
+      await sdk.prompt("owned")
+      assert.deepEqual(calls.map((call) => call.topic), ["agent.prompt.submit"])
       assert.equal(calls[0].payload.session_id, "owned")
     } finally { await dispose() }
   })

@@ -6832,6 +6832,7 @@ fn session_event_is_activity_only(event: &crate::agent_sessions::SessionEvent) -
         SessionEvent::ToolStarting { .. }
             | SessionEvent::ToolCompleted { .. }
             | SessionEvent::Notification { .. }
+            | SessionEvent::WorkingDirectoryChanged { .. }
     )
 }
 
@@ -6868,6 +6869,8 @@ async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str
         row.provider_id.as_deref(),
         row.last_activity_at_ms,
         status,
+        row.cwd.to_str().filter(|cwd| !cwd.is_empty()),
+        row.origin.as_ref(),
     ));
     true
 }
@@ -6875,7 +6878,7 @@ async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str
 /// Called only under the per-connection refresh gate. Failure is not an empty list.
 async fn host_session_list_raw(
     agent: &AgentCli,
-) -> Result<Vec<acp::schema::v1::SessionInfo>, HistoryRefreshFailure> {
+) -> Result<acp::schema::v1::ListSessionsResponse, HistoryRefreshFailure> {
     if agent
         .cached_init_resp
         .agent_capabilities
@@ -6894,7 +6897,7 @@ async fn host_session_list_raw(
     )
     .await
     {
-        Ok(Ok(resp)) => Ok(resp.sessions),
+        Ok(Ok(resp)) => Ok(resp),
         Ok(Err(e)) => {
             tracing::warn!(
                 target: "master_history",
@@ -6912,6 +6915,57 @@ async fn host_session_list_raw(
             Err(HistoryRefreshFailure::Timeout)
         }
     }
+}
+
+/// Additional pages are cwd evidence only: never add them to history or
+/// `listed_ever`. A failed page walk discards all of its candidates.
+async fn host_acp_cwd_from_later_pages(
+    agent: &AgentCli,
+    mut cursor: String,
+    mut wanted: HashSet<String>,
+) -> Vec<acp::schema::v1::SessionInfo> {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    let mut cursors = HashSet::new();
+    let mut found = Vec::new();
+    let mut more_pages = true;
+    for _ in 0..8 {
+        if cursor.is_empty() || !cursors.insert(cursor.clone()) {
+            tracing::warn!(target: "master_history", "host ACP cwd pagination cursor repeated");
+            return Vec::new();
+        }
+        let response = tokio::time::timeout_at(
+            deadline,
+            agent
+                .conn
+                .list_sessions(acp::schema::v1::ListSessionsRequest::new().cursor(cursor)),
+        )
+        .await;
+        let Ok(Ok(response)) = response else {
+            tracing::debug!(target: "master_history", "host ACP cwd pagination incomplete");
+            return Vec::new();
+        };
+        for session in response.sessions {
+            if wanted.remove(session.session_id.0.as_ref()) {
+                found.push(session);
+            }
+        }
+        if wanted.is_empty() {
+            break;
+        }
+        let Some(next_cursor) = response.next_cursor else {
+            more_pages = false;
+            break;
+        };
+        cursor = next_cursor;
+    }
+    if more_pages && !wanted.is_empty() {
+        tracing::debug!(
+            target: "master_history",
+            remaining = wanted.len(),
+            "host ACP cwd pagination budget exhausted; retaining existing evidence"
+        );
+    }
+    found
 }
 
 /// Legacy fallback for rows without a qualified provider identity.
@@ -7029,6 +7083,32 @@ fn titles_from_listing(
         .collect()
 }
 
+fn host_acp_cwd_enabled(agent: &AgentCli) -> bool {
+    if agent.source.session_location() != crate::agent_sessions::SessionLocation::Host {
+        return false;
+    }
+    match agent.resolved_agent_id.as_str() {
+        "copilot" | "claude" => true,
+        "opencode" => agent
+            .cached_init_resp
+            .agent_info
+            .as_ref()
+            .is_some_and(|info| {
+                if info.name != "OpenCode" {
+                    return false;
+                }
+                let version = info.version.strip_prefix('v').unwrap_or(&info.version);
+                let Some((minor, patch)) =
+                    version.strip_prefix("2.").and_then(|v| v.split_once('.'))
+                else {
+                    return false;
+                };
+                minor.parse::<u32>().is_ok() && patch.parse::<u32>().is_ok()
+            }),
+        _ => false,
+    }
+}
+
 /// Sync master's history rows for `agent` to its `session/list` (the
 /// single source of truth for THAT CLI): add newly-listed sessions and drop
 /// terminal Class-B rows it no longer lists (phantoms, CLI-side deletes).
@@ -7038,8 +7118,29 @@ fn titles_from_listing(
 async fn sync_host_history(
     state: &MasterStateInner,
     agent: &AgentCli,
+    search_later_pages: bool,
 ) -> Result<(bool, usize), HistoryRefreshFailure> {
-    let sessions = host_session_list_raw(agent).await?;
+    let host_acp_cwd = host_acp_cwd_enabled(agent);
+    let prior_rows: HashMap<_, _> = if host_acp_cwd {
+        state
+            .registry
+            .snapshot()
+            .await
+            .into_iter()
+            .filter(|row| row_belongs_to_agent(row, agent))
+            .map(|row| {
+                (
+                    crate::session_registry::SessionIdentity::from_info(&row),
+                    (row.cwd_revision(), row.pane_session_id),
+                )
+            })
+            .collect()
+    } else {
+        HashMap::new()
+    };
+    let listing = host_session_list_raw(agent).await?;
+    let first_page_complete = listing.next_cursor.is_none();
+    let sessions = listing.sessions;
     if agent
         .history_refresh
         .retired
@@ -7047,6 +7148,26 @@ async fn sync_host_history(
     {
         return Err(HistoryRefreshFailure::Other);
     }
+    let first_page_ids: HashSet<_> = sessions
+        .iter()
+        .map(|row| row.session_id.to_string())
+        .collect();
+    let wanted: HashSet<_> = prior_rows
+        .iter()
+        .filter(|(identity, (_, pane))| {
+            pane.is_some() && !first_page_ids.contains(identity.session_id.0.as_ref())
+        })
+        .map(|(identity, _)| identity.session_id.to_string())
+        .collect();
+    let additional_cwd = if search_later_pages && host_acp_cwd && !wanted.is_empty() {
+        if let Some(cursor) = listing.next_cursor {
+            host_acp_cwd_from_later_pages(agent, cursor, wanted).await
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
     let rows = host_history_via_acp(state, agent, &sessions)
         .await
         .ok_or(HistoryRefreshFailure::Other)?;
@@ -7136,6 +7257,50 @@ async fn sync_host_history(
     .await
     {
         changed = true;
+    }
+
+    if host_acp_cwd {
+        for session in sessions.iter().chain(&additional_cwd) {
+            let Some(key) = crate::session_registry::HistoryRowKey::new(
+                &agent.resolved_agent_id,
+                crate::agent_sessions::SessionLocation::Host,
+                session.session_id.to_string(),
+                None,
+            ) else {
+                continue;
+            };
+            let identity = crate::session_registry::SessionIdentity {
+                session_id: session.session_id.clone(),
+                history_key: Some(key),
+            };
+            let Some((revision, _)) = prior_rows.get(&identity) else {
+                continue;
+            };
+            if state
+                .registry
+                .adopt_acp_cwd_identity(
+                    &identity,
+                    *revision,
+                    agent.instance_id,
+                    session.cwd.clone(),
+                )
+                .await
+            {
+                changed = true;
+            }
+        }
+        if first_page_complete {
+            for (identity, (revision, _)) in &prior_rows {
+                if !first_page_ids.contains(identity.session_id.0.as_ref())
+                    && state
+                        .registry
+                        .clear_acp_cwd_identity(identity, *revision)
+                        .await
+                {
+                    changed = true;
+                }
+            }
+        }
     }
 
     Ok((changed, rows.len()))
@@ -7307,7 +7472,12 @@ async fn refresh_agent_history(
         return refresh.last_count;
     }
     let started_at = tokio::time::Instant::now();
-    let result = sync_host_history(state, agent).await;
+    let result = sync_host_history(
+        state,
+        agent,
+        matches!(trigger, HistoryRefreshTrigger::Periodic),
+    )
+    .await;
     let delay = if result.is_ok() {
         refresh.failures = 0;
         HISTORY_REFRESH_INTERVAL
@@ -10827,6 +10997,7 @@ fn session_event_key(event: &crate::agent_sessions::SessionEvent) -> Option<&str
     use crate::agent_sessions::SessionEvent;
     match event {
         SessionEvent::SessionStarted { key, .. }
+        | SessionEvent::WorkingDirectoryChanged { key, .. }
         | SessionEvent::ToolStarting { key, .. }
         | SessionEvent::ToolCompleted { key }
         | SessionEvent::Notification { key, .. }

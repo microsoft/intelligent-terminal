@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "try { wtcli.exe agent-hook --cli-source codex --event agent.session.start } catch { }; exit 0"
+            "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source codex --event agent.session.start; exit 0",
+            "commandWindows": "cmd.exe /d /s /c \"wtcli.exe agent-hook --cli-source codex --event agent.session.start >nul 2>&1 & exit /b 0\""
           }
         ]
       }
@@ -16,7 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "try { wtcli.exe agent-hook --cli-source codex --event agent.notification } catch { }; exit 0"
+            "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source codex --event agent.notification; exit 0",
+            "commandWindows": "cmd.exe /d /s /c \"wtcli.exe agent-hook --cli-source codex --event agent.notification >nul 2>&1 & exit /b 0\""
           }
         ]
       }
@@ -26,7 +28,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "try { wtcli.exe agent-hook --cli-source codex --event agent.prompt.submit } catch { }; exit 0"
+            "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source codex --event agent.prompt.submit; exit 0",
+            "commandWindows": "cmd.exe /d /s /c \"wtcli.exe agent-hook --cli-source codex --event agent.prompt.submit >nul 2>&1 & exit /b 0\""
           }
         ]
       }
@@ -36,7 +39,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "try { wtcli.exe agent-hook --cli-source codex --event agent.stop } catch { }; exit 0"
+            "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source codex --event agent.stop; exit 0",
+            "commandWindows": "cmd.exe /d /s /c \"wtcli.exe agent-hook --cli-source codex --event agent.stop >nul 2>&1 & exit /b 0\""
           }
         ]
       }

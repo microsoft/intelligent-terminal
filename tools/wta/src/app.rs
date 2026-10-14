@@ -594,6 +594,7 @@ pub fn plan_agent_event(
             | "agent.session.start"
             | "agent.session.stopped"
             | "agent.session.end"
+            | "agent.cwd.changed"
     ) && !facts.session_known;
     if facts.pane_owned_by_other
         && !matches!(event, "agent.session.started" | "agent.session.start")
@@ -609,6 +610,23 @@ pub fn plan_agent_event(
             pane_session_id: pane_session_id.to_string(),
             cwd: cwd.clone(),
             title: synth_title.clone(),
+        });
+    }
+    if facts.session_known
+        && matches!(
+            cli_source,
+            crate::agent_sessions::CliSource::Copilot
+                | crate::agent_sessions::CliSource::Claude
+                | crate::agent_sessions::CliSource::Codex
+                | crate::agent_sessions::CliSource::Gemini
+        )
+        && event == "agent.prompt.submit"
+        && !cwd.as_os_str().is_empty()
+    {
+        plan.events.push(SessionEvent::WorkingDirectoryChanged {
+            key: key.clone(),
+            pane_session_id: pane_session_id.to_string(),
+            cwd: cwd.clone(),
         });
     }
 
@@ -632,6 +650,21 @@ pub fn plan_agent_event(
                 synth_title
             },
         },
+        "agent.cwd.changed" if facts.session_known => {
+            let Some(cwd) = payload
+                .get("new_cwd")
+                .or_else(|| payload.get("cwd"))
+                .and_then(|value| value.as_str())
+                .filter(|value| !value.trim().is_empty())
+            else {
+                return plan;
+            };
+            SessionEvent::WorkingDirectoryChanged {
+                key,
+                pane_session_id: pane_session_id.to_string(),
+                cwd: PathBuf::from(cwd),
+            }
+        }
         "agent.tool.starting" => {
             let tool_name = payload
                 .get("tool_name")

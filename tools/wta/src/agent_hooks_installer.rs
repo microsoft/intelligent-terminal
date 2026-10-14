@@ -138,6 +138,7 @@ const MARKETPLACE_NAME: &str = "wt-local";
 const GEMINI_EXTENSION_DIR_NAME: &str = "wt-agent-hooks";
 
 const OPENCODE_PLUGIN_JS: &str = "wt-agent-hooks.js";
+const OPENCODE_TUI_JS: &str = "tui.js";
 const OPENCODE_LEGACY_BRIDGE_PS1: &str = "send-event.ps1";
 const OPENCODE_MANIFEST: &str = "plugin.json";
 const OPENCODE_SUPPORT_DIR: &str = "wt-agent-hooks";
@@ -223,7 +224,7 @@ fn opencode_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>)
         .unwrap_or(false);
     let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST));
     let managed = managed_js || managed_support;
-    let complete = managed_js && managed_support;
+    let complete = managed_js && managed_support && opencode_tui_is_managed(&support_dir);
     out.marketplace_registered = managed;
     out.marketplace_path = managed.then(|| dir.to_string_lossy().into_owned());
     out.marketplace_path_valid = complete;
@@ -241,6 +242,12 @@ fn opencode_manifest_is_managed(path: &Path) -> bool {
                 && manifest.get("managed_by").and_then(Value::as_str)
                     == Some(OPENCODE_MANIFEST_MANAGED_BY)
         })
+}
+
+fn opencode_tui_is_managed(support_dir: &Path) -> bool {
+    let path = support_dir.join(OPENCODE_TUI_JS);
+    fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_file())
+        && fs::read_to_string(path).is_ok_and(|text| text.contains(OPENCODE_MANAGED_MARKER))
 }
 
 impl CliKind {
@@ -1548,6 +1555,12 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
     let destination = opencode_plugins_dir(home);
     let support_dir = opencode_support_dir(home);
     let installed_js = destination.join(OPENCODE_PLUGIN_JS);
+    let installed_tui = support_dir.join(OPENCODE_TUI_JS);
+    let tui_existed = match fs::symlink_metadata(&installed_tui) {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error),
+    };
     let installed_js_metadata = match fs::symlink_metadata(&installed_js) {
         Ok(metadata) => Some(metadata),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
@@ -1592,11 +1605,18 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
             ));
         }
     }
+    if tui_existed && !opencode_tui_is_managed(&support_dir) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!("{} exists but is not a regular managed file", installed_tui.display()),
+        ));
+    }
 
     let copy_result = (|| {
         fs::create_dir_all(&destination)?;
         fs::create_dir_all(&support_dir)?;
         fs::copy(source.join(OPENCODE_PLUGIN_JS), &installed_js)?;
+        fs::copy(source.join(OPENCODE_SUPPORT_DIR).join(OPENCODE_TUI_JS), &installed_tui)?;
         let legacy_bridge = support_dir.join(OPENCODE_LEGACY_BRIDGE_PS1);
         if legacy_bridge.exists() {
             fs::remove_file(legacy_bridge)?;
@@ -1611,6 +1631,9 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
     })();
 
     if copy_result.is_err() {
+        if !tui_existed {
+            let _ = fs::remove_file(&installed_tui);
+        }
         if !installed_js_existed {
             let _ = fs::remove_file(&installed_js);
         }
@@ -2972,7 +2995,11 @@ fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
         .map(|text| text.contains(OPENCODE_MANAGED_MARKER))
         .unwrap_or(false);
     let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST));
-    if (js.exists() && !managed_js) || (support_dir.exists() && !managed_support && !managed_js) {
+    let tui = support_dir.join(OPENCODE_TUI_JS);
+    if (js.exists() && !managed_js)
+        || (support_dir.exists() && !managed_support && !managed_js)
+        || (tui.exists() && !opencode_tui_is_managed(&support_dir))
+    {
         out.messages.push(format!(
             "refusing to remove non-managed OpenCode hook files under {}",
             dir.display()
@@ -2989,6 +3016,13 @@ fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
             removed = false;
             out.messages
                 .push(format!("failed to remove {}: {}", bridge.display(), e));
+        }
+    }
+    if removed && tui.exists() {
+        if let Err(e) = fs::remove_file(&tui) {
+            removed = false;
+            out.messages
+                .push(format!("failed to remove {}: {}", tui.display(), e));
         }
     }
     // Keep the JavaScript ownership marker until the support artifacts are
@@ -4454,7 +4488,7 @@ fn read_installed_opencode(home: &Path) -> InstalledProbe {
     if !managed_js && !managed_support {
         return Ok(None);
     }
-    let complete = managed_js && managed_support;
+    let complete = managed_js && managed_support && opencode_tui_is_managed(&support_dir);
     Ok(Some(InstalledInfo {
         // A partial managed install must go through OpenCodeCopy even when its
         // surviving manifest already has the current bundle version.

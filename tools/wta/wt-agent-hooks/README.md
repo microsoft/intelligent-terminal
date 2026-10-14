@@ -274,10 +274,41 @@ always exits successfully. The shared ACP process has no `WT_SESSION`, so its
 redundant hooks are dropped and cannot be incorrectly attributed to the active
 shell pane.
 
-**The `command` field must stay shell-agnostic.** Each CLI decides for itself
-which shell interprets that string. That choice is undocumented, differs per
-CLI, and we guessed it wrong twice — so the bundle assumes nothing and ships one
-spelling that survives all of them:
+### Known limitation: Codex managed daemon pane identity
+
+Codex's shared managed app-server can execute hooks for a new CLI session using
+the environment inherited when the daemon first started. If that was another
+tab, `wtcli agent-hook` receives the old tab's `WT_SESSION` even though the
+hook payload contains the new session ID and correct cwd. Terminal cannot bind
+the event to the new pane; if the old pane is closed, explicit pane lookup fails
+with `0x80070490`. This is distinct from the shared WTA ACP process, which has
+no pane identity and whose redundant hooks are dropped.
+
+Reproduced with Codex 0.162.1 on Windows: a new tab's hooks kept reporting the
+previous pane. Starting the CLI in that same tab with `codex --no-daemon`
+reported its actual pane, bound the session, and updated Rich Tab. This is a
+per-invocation workaround, not a change to the user's default Codex command.
+Do not substitute the focused pane or relax pane ownership checks: a durable
+fix needs authoritative per-client pane identity from Codex. Track the
+upstream issue at <https://github.com/openai/codex/issues/48500>. Copilot and
+Claude bound their tested sessions correctly; Gemini has not had the same
+cross-tab test.
+
+### Gemini CLI cwd semantics
+
+Gemini CLI has no built-in command to switch the current process cwd within
+an interactive session. `/directory add` only adds workspace directories; it
+does not change cwd and must not be treated as an agent cwd update. To run
+Gemini from another cwd, exit, change the shell directory, and start Gemini
+again; that tests a new session rather than an in-session cwd transition.
+Gemini's existing `BeforeAgent` hook includes `cwd` and already serves prompt
+activity; WTA reuses that field to correct a known session's recorded cwd on
+the next prompt. No separate cwd-change hook or extra hook invocation is
+needed. Cross-tab Gemini pane attribution has not yet been verified.
+
+**A shared `command` field must stay shell-agnostic.** Each CLI decides for
+itself which shell interprets that string. For hooks with a documented
+platform-specific override, use that override instead:
 
 ```
 wtcli.exe agent-hook --cli-source <cli> --event <topic>
@@ -289,7 +320,7 @@ an expression, no `cmd.exe` metacharacters, and nothing bash rewrites.
 | CLI | Hook shell | How we know |
 | --- | --- | --- |
 | Copilot | PowerShell 7+ | GitHub hooks documentation |
-| Codex | PowerShell | sandbox log dispatches every command as `pwsh.exe -NoProfile -Command` |
+| Codex | Session-selected shell | `commandWindows` selects the text, not the shell; Windows sessions may run hooks through PowerShell or cmd.exe |
 | Gemini | PowerShell | `hookRunner.ts` → `getShellConfiguration()` resolves ComSpec-powershell → `pwsh.exe` → `powershell.exe`, with no `cmd.exe` branch |
 | Claude | **bash** (`/usr/bin/bash`) | its own debug log reports `/usr/bin/bash: line 1: …` |
 
@@ -437,7 +468,7 @@ Current state with the bridge missing:
 | Copilot | `powershell` / `bash` fields, no bare `command` | exit 0, silent |
 | Claude | `shell: "bash"` + `command -v` guard | exit 0, silent |
 | Gemini | PowerShell guard in `command` | exit 0, silent |
-| Codex | PowerShell guard in `command` | exit 0, silent |
+| Codex | POSIX guard in `command`, cmd.exe wrapper in `commandWindows` | exit 0, silent in both Windows shells |
 | OpenCode | JS `try`/`catch`, output ignored | exit 0, silent |
 
 OpenCode needs none of this: its plugin spawns `wtcli.exe` through an argv array

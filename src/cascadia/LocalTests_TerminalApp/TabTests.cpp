@@ -7825,7 +7825,8 @@ namespace TerminalAppLocalTests
                 "00000000-0000-0000-0000-000000000001",
                 "claude",
                 uint64_t{ 1234 },
-                "Attention"));
+                "Attention",
+                std::string{ "C:\\first" }));
             VERIFY_ARE_EQUAL(uint64_t{ 42 }, page->_richTabAgentStatusRequestGeneration);
             VERIFY_IS_FALSE(page->_richTabAgentStatusSnapshotLoaded);
             VERIFY_IS_TRUE(page->_richTabAgentStatusRefreshPending);
@@ -7838,6 +7839,16 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(
                 uint64_t{ 1234 },
                 page->_richTabAgentStatusBySessionId.at("session-a").lastActivityAtMs.value());
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                "session-a",
+                "00000000-0000-0000-0000-000000000001",
+                "claude",
+                uint64_t{ 1234 },
+                "Attention",
+                std::string{ "D:\\second" }));
+            VERIFY_ARE_EQUAL(std::string{ "D:\\second" }, page->_richTabAgentStatusBySessionId.at("session-a").cwd.value());
+            VERIFY_ARE_EQUAL(std::string{ "D:\\second" },
+                             page->_richTabAgentStatusByPaneId.at(winrt::guid{ L"00000000-0000-0000-0000-000000000001" }).cwd.value());
             VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
                 "session-a",
                 "00000000-0000-0000-0000-000000000001",

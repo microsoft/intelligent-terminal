@@ -1059,6 +1059,129 @@ fn terminal_agent_event_for_unknown_session_does_not_fabricate_a_row() {
     }
 }
 
+#[test]
+fn cwd_hook_requires_a_known_session_and_prefers_new_cwd() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    let payload = json!({ "cwd": "C:\\old", "new_cwd": "C:\\new" });
+    let facts = crate::app::AgentEventFacts {
+        key: "cwd-session".into(),
+        session_known: false,
+        pane_owned_by_other: false,
+    };
+    let absent = crate::app::plan_agent_event(
+        "agent.cwd.changed",
+        &payload,
+        "pane-1",
+        &CliSource::Claude,
+        &facts,
+    );
+    assert!(absent.events.is_empty());
+
+    let known = crate::app::AgentEventFacts {
+        session_known: true,
+        ..facts
+    };
+    let plan = crate::app::plan_agent_event(
+        "agent.cwd.changed",
+        &payload,
+        "pane-1",
+        &CliSource::Claude,
+        &known,
+    );
+    assert!(matches!(
+        plan.events.as_slice(),
+        [SessionEvent::WorkingDirectoryChanged { cwd, pane_session_id, .. }]
+            if cwd == &std::path::PathBuf::from("C:\\new") && pane_session_id == "pane-1"
+    ));
+}
+
+#[test]
+fn prompt_refreshes_existing_session_cwd_without_rebinding_its_pane() {
+    use crate::agent_sessions::{AgentSessionRegistry, CliSource, SessionEvent};
+
+    let pane = "dd7141e2-a8d7-4766-b7ee-77c286cafe83";
+    for (source, cli) in [
+        (CliSource::Copilot, "copilot"),
+        (CliSource::Claude, "claude"),
+        (CliSource::Codex, "codex"),
+        (CliSource::Gemini, "gemini"),
+    ] {
+        let mut registry = AgentSessionRegistry::new();
+        registry.apply(SessionEvent::SessionStarted {
+            key: "native-session".into(),
+            cli_source: source,
+            pane_session_id: pane.into(),
+            cwd: "C:\\Users\\haonantang".into(),
+            title: String::new(),
+        });
+        let params = json!({
+            "event": "agent.prompt.submit",
+            "cli_source": cli,
+            "agent_session_id": "native-session",
+            "payload": { "cwd": "C:\\Users\\haonantang\\Copilot\\psPolicy" }
+        });
+        let mut published = Vec::new();
+        route_agent_event_to_registry_with_hook_sink(&mut registry, pane, &params, |event| {
+            published.push(event)
+        });
+        assert!(
+            matches!(
+                published.as_slice(),
+                [SessionEvent::WorkingDirectoryChanged { key, pane_session_id, cwd }, SessionEvent::ToolStarting { .. }]
+                    if key == "native-session"
+                        && pane_session_id == pane
+                        && cwd == &std::path::PathBuf::from("C:\\Users\\haonantang\\Copilot\\psPolicy")
+            ),
+            "{cli}"
+        );
+        assert_eq!(
+            registry.get(&"native-session".to_string()).unwrap().cwd,
+            std::path::PathBuf::from("C:\\Users\\haonantang\\Copilot\\psPolicy"),
+            "{cli}"
+        );
+        assert_eq!(
+            registry.key_for_pane(pane).as_deref(),
+            Some("native-session"),
+            "{cli}"
+        );
+    }
+
+    let facts = crate::app::AgentEventFacts {
+        key: "native-session".into(),
+        session_known: true,
+        pane_owned_by_other: false,
+    };
+    for (source, payload, foreign_owner) in [
+        (
+            CliSource::OpenCode,
+            json!({ "cwd": "C:\\unverified" }),
+            false,
+        ),
+        (
+            CliSource::Antigravity,
+            json!({ "cwd": "C:\\workspace-root" }),
+            false,
+        ),
+        (CliSource::Copilot, json!({}), false),
+        (CliSource::Codex, json!({ "cwd": "C:\\wrong" }), true),
+    ] {
+        let plan = crate::app::plan_agent_event(
+            "agent.prompt.submit",
+            &payload,
+            pane,
+            &source,
+            &crate::app::AgentEventFacts {
+                pane_owned_by_other: foreign_owner,
+                ..facts.clone()
+            },
+        );
+        assert!(!plan
+            .events
+            .iter()
+            .any(|event| matches!(event, SessionEvent::WorkingDirectoryChanged { .. })));
+    }
+}
+
 /// `agent.error` is NOT a terminal event and must keep its synthetic start.
 ///
 /// It reports a session that is still live but failing, and its

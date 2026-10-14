@@ -6,6 +6,7 @@
 #include <iterator>
 
 #include "../RichTabProvider/CommandRunner.h"
+#include "../RichTabProvider/BuiltInProviderCatalog.h"
 #include "../RichTabProvider/ProviderBroker.h"
 
 using namespace WEX::TestExecution;
@@ -49,13 +50,88 @@ namespace TerminalAppUnitTests
         TEST_METHOD(BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected);
         TEST_METHOD(ResolveGitUsesExplicitPathAndDetectsMissingExecutable);
         TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
+        TEST_METHOD(GitStatusProviderUsesDisplayedDirectoryForGit);
         TEST_METHOD(BrokerInjectsImmutableGitAvailabilityIntoRequests);
         TEST_METHOD(GitStatusProviderKnownMissingGitDoesNotFallBack);
         TEST_METHOD(GitStatusProviderInvokesLiteralApplicationPath);
         TEST_METHOD(GitStatusProviderSkipsGitWhenNoGitFieldsVisible);
         TEST_METHOD(GitStatusProviderHandlesGitFailureGracefully);
         TEST_METHOD(GitStatusProviderSetsSafeGitConfigEnvironment);
+        TEST_METHOD(AgentCwdInvalidatesOnlyTrustedGitStatusField);
     };
+
+    void RichTabProviderTests::AgentCwdInvalidatesOnlyTrustedGitStatusField()
+    {
+        ProviderBroker broker{ std::nullopt };
+        Registration trusted;
+        trusted.manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        trusted.manifest.activationEvents = { ActivationEvent::WorkingDirectoryChanged, ActivationEvent::ManualRefresh };
+        trusted.manifest.fields = { FieldDeclaration{ "workingDirectory", "Directory" },
+                                    FieldDeclaration{ "branch", "Branch" } };
+        trusted.kind = RegistrationKind::Managed;
+        trusted.root = BuiltInProviderCatalog::PackageRoot() / L"RichTabProviders" / L"GitStatus";
+        trusted.enabled = true;
+        trusted.integrityValid = true;
+        Registration other = trusted;
+        other.manifest.id = "com.example.other";
+        other.manifest.activationEvents = { ActivationEvent::ManualRefresh };
+        other.kind = RegistrationKind::Development;
+        broker._providers = { trusted, other };
+
+        auto& session = broker._sessions["agent-cwd-test"];
+        session.context.sessionId = "agent-cwd-test";
+        session.context.workingDirectory = L"C:\\shell";
+        session.context.workingDirectoryAuthoritative = true;
+        session.sessionIncarnation = 1;
+        std::vector<BrokerUpdate> updates;
+        session.callbacks.emplace(1, [&](const auto& update) { updates.emplace_back(update); });
+        broker._attachmentSessions.emplace(1, session.context.sessionId);
+        auto& git = session.providers[trusted.manifest.id];
+        git.snapshot.emplace();
+        git.snapshot->fields.emplace("workingDirectory", std::string{ "C:\\shell" });
+        git.snapshot->fields.emplace("branch", std::string{ "main" });
+        git.running = true;
+        git.runningGeneration = 1;
+        auto& thirdParty = session.providers[other.manifest.id];
+        thirdParty.snapshot.emplace();
+        thirdParty.snapshot->fields.emplace("workingDirectory", std::string{ "third-party" });
+        thirdParty.running = true;
+        thirdParty.runningGeneration = 2;
+
+        broker.UpdateAgentWorkingDirectory(1, true, std::string{ "D:\\agent" });
+
+        VERIFY_ARE_EQUAL(size_t{ 1 }, updates.size());
+        VERIFY_IS_FALSE(git.snapshot->fields.contains("workingDirectory"));
+        VERIFY_IS_TRUE(git.snapshot->fields.contains("branch"));
+        VERIFY_IS_TRUE(thirdParty.snapshot->fields.contains("workingDirectory"));
+        VERIFY_IS_TRUE(git.pending.has_value());
+        VERIFY_IS_FALSE(thirdParty.pending.has_value());
+        VERIFY_ARE_EQUAL(std::string{ "D:\\agent" }, git.pending->request.firstPartyFields.at("agentWorkingDirectory"));
+        VERIFY_ARE_EQUAL(std::string{ "true" }, git.pending->request.firstPartyFields.at("agentCwdActive"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"main\nthird-party" }, updates.back().presentation->text);
+
+        broker.Notify(1, ActivationEvent::ManualRefresh);
+        VERIFY_IS_TRUE(thirdParty.pending.has_value());
+        VERIFY_IS_FALSE(thirdParty.pending->request.firstPartyFields.contains("agentCwdActive"));
+        VERIFY_IS_FALSE(thirdParty.pending->request.firstPartyFields.contains("agentWorkingDirectory"));
+
+        git.snapshot->fields.emplace("workingDirectory", std::string{ "D:\\agent" });
+        broker._nextAttachment = 2;
+        std::vector<BrokerUpdate> duplicateUpdates;
+        const auto second = broker.Attach(session.context, [&](const auto& update) {
+            duplicateUpdates.emplace_back(update);
+        });
+        VERIFY_ARE_EQUAL(ProviderBroker::AttachmentId{ 2 }, second);
+        VERIFY_IS_FALSE(git.snapshot->fields.contains("workingDirectory"));
+        VERIFY_IS_FALSE(duplicateUpdates.empty());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main\nthird-party" }, updates.back().presentation->text);
+        VERIFY_ARE_EQUAL(std::string{ "true" }, git.pending->request.firstPartyFields.at("agentCwdActive"));
+        VERIFY_IS_FALSE(git.pending->request.firstPartyFields.contains("agentWorkingDirectory"));
+
+        broker.UpdateAgentWorkingDirectory(second, false, std::nullopt);
+        VERIFY_IS_TRUE(session.agentActive);
+        VERIFY_IS_FALSE(session.agentWorkingDirectory.has_value());
+    }
 
     void RichTabProviderTests::ResolveGitUsesExplicitPathAndDetectsMissingExecutable()
     {
@@ -629,6 +705,120 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(parsed.value->fields.find("repository") == parsed.value->fields.end());
         VERIFY_IS_TRUE(parsed.value->fields.find("branch") == parsed.value->fields.end());
         VERIFY_IS_TRUE(parsed.value->fields.find("changes") == parsed.value->fields.end());
+    }
+
+    void RichTabProviderTests::GitStatusProviderUsesDisplayedDirectoryForGit()
+    {
+        const auto fixture = std::filesystem::temp_directory_path() /
+                             (L"RichTabAgentGit-" + std::to_wstring(GetCurrentProcessId()) +
+                              L"-" + std::to_wstring(GetTickCount64()));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(fixture, error);
+        });
+        const auto shellRoot = fixture / L"shell";
+        const auto agentRoot = fixture / L"agent";
+        for (const auto& [root, branch] : { std::pair{ shellRoot, "shell-branch" },
+                                             std::pair{ agentRoot, "agent-branch" } })
+        {
+            const auto gitDirectory = root / L".git";
+            std::filesystem::create_directories(gitDirectory / L"objects");
+            std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+            std::filesystem::create_directories(gitDirectory / L"logs");
+            _WriteFile(gitDirectory / L"config", "[core]\n\trepositoryformatversion = 0\n\tbare = false\n");
+            _WriteFile(gitDirectory / L"HEAD", "ref: refs/heads/" + std::string{ branch } + "\n");
+        }
+        const auto gitScript = fixture / L"git-probe.ps1";
+        const auto invocations = fixture / L"git-invocations.txt";
+        _WriteFile(gitScript, R"(
+$gitArg = $args | Where-Object { $_ -like '--git-dir=*' } | Select-Object -First 1
+if (-not $gitArg) { throw 'Missing git directory' }
+$gitDirectory = $gitArg.Substring('--git-dir='.Length)
+if ($args -contains 'status') {
+    [IO.File]::AppendAllText((Join-Path $PSScriptRoot 'git-invocations.txt'), "$gitDirectory`n")
+    $branch = (Get-Content -LiteralPath (Join-Path $gitDirectory 'HEAD') -Raw).Trim().Split('/')[-1]
+    "# branch.head $branch"
+    if ($branch -eq 'agent-branch') { '? agent.txt'; '? second.txt' }
+    else { '? shell.txt' }
+    $global:LASTEXITCODE = 0
+}
+elseif ($args -contains 'config' -or $args -contains 'rev-parse') {
+    $global:LASTEXITCODE = 1
+}
+else {
+    $global:LASTEXITCODE = 0
+}
+)");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, true },
+            { "branch", "Git branch", FieldType::String, true },
+            { "changes", "Git changes", FieldType::String, true },
+        };
+
+        Request request;
+        request.requestId = "agent-git-directory";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectory = shellRoot;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace("gitBinary", gitScript.string());
+        request.firstPartyFields.emplace("agentCwdActive", "true");
+        request.firstPartyFields.emplace("agentWorkingDirectory", agentRoot.string());
+
+        const auto inspect = [&]() {
+            const auto serialized = SerializeRequest(request, manifest);
+            VERIFY_IS_TRUE(static_cast<bool>(serialized));
+            const auto command = CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+            VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+            VERIFY_ARE_EQUAL(0u, command.exitCode);
+            const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+            VERIFY_IS_TRUE(static_cast<bool>(parsed));
+            return *parsed.value;
+        };
+        const auto field = [](const Snapshot& snapshot, const std::string& name) {
+            return std::get<std::string>(snapshot.fields.at(name));
+        };
+        const auto agent = inspect();
+        VERIFY_ARE_EQUAL(agentRoot.string(), field(agent, "workingDirectory"));
+        VERIFY_ARE_EQUAL(std::string{ "agent" }, field(agent, "repository"));
+        VERIFY_ARE_EQUAL(std::string{ "agent-branch" }, field(agent, "branch"));
+        VERIFY_ARE_EQUAL(std::string{ "~2 +0 -0" }, field(agent, "changes"));
+        VERIFY_IS_TRUE(agent.tooltip.has_value());
+
+        request.workingDirectoryAuthoritative = false;
+        const auto agentWithoutShellCwd = inspect();
+        VERIFY_ARE_EQUAL(agentRoot.string(), field(agentWithoutShellCwd, "workingDirectory"));
+        VERIFY_ARE_EQUAL(std::string{ "agent-branch" }, field(agentWithoutShellCwd, "branch"));
+        request.workingDirectoryAuthoritative = true;
+        const auto firstGitRun = std::filesystem::file_size(invocations);
+
+        request.firstPartyFields.erase("agentWorkingDirectory");
+        const auto unknown = inspect();
+        VERIFY_IS_TRUE(unknown.fields.empty());
+        VERIFY_ARE_EQUAL(firstGitRun, std::filesystem::file_size(invocations));
+
+        request.firstPartyFields.emplace("agentWorkingDirectory", "\\\\server\\share");
+        const auto remote = inspect();
+        VERIFY_ARE_EQUAL(std::string{ "\\\\server\\share" }, field(remote, "workingDirectory"));
+        VERIFY_IS_TRUE(remote.fields.find("repository") == remote.fields.end());
+        VERIFY_ARE_EQUAL(firstGitRun, std::filesystem::file_size(invocations));
+
+        request.firstPartyFields.erase("agentCwdActive");
+        const auto shell = inspect();
+        VERIFY_ARE_EQUAL(shellRoot.string(), field(shell, "workingDirectory"));
+        VERIFY_ARE_EQUAL(std::string{ "shell" }, field(shell, "repository"));
+        VERIFY_ARE_EQUAL(std::string{ "shell-branch" }, field(shell, "branch"));
+        VERIFY_ARE_EQUAL(std::string{ "~1 +0 -0" }, field(shell, "changes"));
     }
 
     void RichTabProviderTests::GitStatusProviderKnownMissingGitDoesNotFallBack()

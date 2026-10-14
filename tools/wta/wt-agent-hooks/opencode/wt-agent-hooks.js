@@ -61,7 +61,7 @@ function enabled() {
   )
 }
 
-const WtAgentHooks = async ({ directory, resolveSession }) => {
+const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true }) => {
   const rootSessions = new Map()
   const childSessions = new Set()
   const sessionStates = new Map()
@@ -83,7 +83,7 @@ const WtAgentHooks = async ({ directory, resolveSession }) => {
         stdin: new TextEncoder().encode(
           JSON.stringify({
             session_id: sessionID,
-            cwd: directory,
+            cwd: rootSessions.get(sessionID)?.cwd || directory,
             ...payload,
           }),
         ),
@@ -114,7 +114,10 @@ const WtAgentHooks = async ({ directory, resolveSession }) => {
       title: info.title || previous?.title || "",
     }
     rootSessions.set(info.id, session)
-    if (!previous || (info.title && info.title !== previous.title)) {
+    if (ownsPane && previous && session.cwd !== previous.cwd) {
+      emit("agent.cwd.changed", info.id, { cwd: session.cwd })
+    }
+    if (ownsPane && (!previous || (info.title && info.title !== previous.title))) {
       emit("agent.session.start", info.id, {
         cwd: session.cwd,
         title: session.title,
@@ -179,9 +182,11 @@ const WtAgentHooks = async ({ directory, resolveSession }) => {
       }
       if (isRootSession(sessionID)) {
         // Rebind an existing OpenCode session when the user returns to it.
-        emit("agent.session.start", sessionID, {
-          cwd: rootSessions.get(sessionID).cwd,
-        })
+        if (ownsPane) {
+          emit("agent.session.start", sessionID, {
+            cwd: rootSessions.get(sessionID).cwd,
+          })
+        }
         emit("agent.prompt.submit", sessionID)
       }
     },
@@ -241,7 +246,7 @@ const WtAgentHooks = async ({ directory, resolveSession }) => {
         case "session.deleted": {
           const sessionID = properties.info?.id || properties.sessionID
           sessionStates.delete(sessionID)
-          if (sessionID && isRootSession(sessionID)) {
+          if (ownsPane && sessionID && isRootSession(sessionID)) {
             emit("agent.session.end", sessionID, { reason: "deleted" })
           }
           rootSessions.delete(sessionID)
@@ -272,8 +277,10 @@ const WtAgentHooks = async ({ directory, resolveSession }) => {
       if (disposed) return
       disposed = true
       sessionStates.clear()
-      for (const sessionID of rootSessions.keys()) {
-        emit("agent.session.end", sessionID, { reason: "OpenCode exited" })
+      if (ownsPane) {
+        for (const sessionID of rootSessions.keys()) {
+          emit("agent.session.end", sessionID, { reason: "OpenCode exited" })
+        }
       }
       rootSessions.clear()
       childSessions.clear()
@@ -293,6 +300,7 @@ export default {
     const hooks = await WtAgentHooks({
       directory,
       resolveSession: (sessionID) => ctx.session.get({ sessionID }),
+      ownsPane: false,
     })
     await ctx.session.hook("prompt", hooks["chat.message"])
     await ctx.tool.hook("execute.before", (event) =>

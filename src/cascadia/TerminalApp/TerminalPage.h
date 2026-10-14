@@ -988,6 +988,7 @@ namespace winrt::TerminalApp::implementation
             std::string providerId;
             std::optional<uint64_t> lastActivityAtMs;
             std::optional<winrt::guid> paneSessionId;
+            std::optional<std::string> cwd;
         };
         static bool _IsBuiltinAgentProviderId(std::string_view id);
         static bool _ShouldUseIncomingAgentProvider(std::string_view existingProviderId, std::string_view incomingProviderId);
@@ -1000,6 +1001,7 @@ namespace winrt::TerminalApp::implementation
         };
         static _RichTabAgentStatusSnapshot _BuildAgentStatusSnapshot(const std::vector<_RichTabAgentInfo>& rows, const std::unordered_map<winrt::guid, _RichTabAgentInfo>& lastReceivedByPane);
         std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
+        std::pair<bool, std::optional<std::string>> _RichTabAgentCwdForControl(const Microsoft::Terminal::Control::TermControl& control);
         winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& profileIcon);
         std::unordered_map<std::string, std::string> _BuildRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
@@ -1057,7 +1059,8 @@ namespace winrt::TerminalApp::implementation
                                            std::string_view paneSessionId,
                                            std::string_view providerId,
                                            std::optional<uint64_t> lastActivityAtMs,
-                                           std::string_view status);
+                                           std::string_view status,
+                                           std::optional<std::string> cwd = std::nullopt);
         static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs, std::wstring_view languageTag = {});
         friend struct TabStripHistoryItem;
         struct _SidebarHistorySnapshot
@@ -1124,6 +1127,8 @@ namespace winrt::TerminalApp::implementation
         std::unordered_map<std::string, RichTabPresentationState> _richTabPresentations;
         std::unordered_map<std::string, _RichTabAgentInfo> _richTabAgentStatusBySessionId;
         std::unordered_map<winrt::guid, _RichTabAgentInfo> _richTabAgentStatusByPaneId;
+        std::unordered_map<winrt::guid, std::string> _richTabEndedSessionByPaneId;
+        bool _richTabAgentCwdAvailable{ false };
         bool _richTabAgentStatusSnapshotLoaded{ false };
         bool _richTabAgentStatusRefreshInFlight{ false };
         bool _richTabAgentStatusRefreshPending{ false };
