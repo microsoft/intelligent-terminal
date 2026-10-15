@@ -205,6 +205,7 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(double, HeaderMinHeight, PropertyChanged.raise, 40.0);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, ChevronGlyph, PropertyChanged.raise, L"\xE70D");
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Thickness, LeadingContentMargin, PropertyChanged.raise, 6, 0, 10, 0);
+        WINRT_OBSERVABLE_PROPERTY(int32_t, LeadingContentColumnSpan, PropertyChanged.raise, 1);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, ToolTipText, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, AcceleratorKey, PropertyChanged.raise);
 

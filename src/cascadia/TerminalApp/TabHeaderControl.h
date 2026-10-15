@@ -17,6 +17,7 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, SearchText, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(double, RenamerMaxWidth, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::TerminalTabStatus, TabStatus, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::Foundation::IInspectable, IconSource, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, MetadataText, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, MetadataAutomationName, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, AutomationName, PropertyChanged.raise);

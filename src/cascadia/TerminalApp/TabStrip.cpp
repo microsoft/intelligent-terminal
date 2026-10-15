@@ -395,17 +395,20 @@ namespace winrt::TerminalApp::implementation
     {
         const auto isGroup = IsGroup();
         const auto showPaneRows = verticalPresentation && isGroup && !railCollapsed && IsExpanded();
-        const auto showHeaderProgressRing = !showPaneRows || !HeaderProgressProjectedToPaneRows();
+        const auto status = Presentation().TabStatus();
+        const auto showHeaderProgressRing = status && status.IsProgressRingActive() &&
+                                            (!showPaneRows || !HeaderProgressProjectedToPaneRows());
 
         ShowProgressRing(showHeaderProgressRing);
 
         GroupVisibility(isGroup && !railCollapsed ? Visibility::Visible : Visibility::Collapsed);
         ChildrenVisibility(showPaneRows ? Visibility::Visible : Visibility::Collapsed);
         const auto bitmap = IconSource().try_as<MUX::Controls::BitmapIconSource>();
-        IconVisibility((isGroup && !railCollapsed) || (bitmap && !bitmap.UriSource()) ? Visibility::Collapsed : Visibility::Visible);
+        IconVisibility(showHeaderProgressRing || (isGroup && !railCollapsed) || (bitmap && !bitmap.UriSource()) ? Visibility::Collapsed : Visibility::Visible);
         PinnedIconVisibility(railCollapsed && IsPinned() ? Visibility::Visible : Visibility::Collapsed);
         HeaderMinHeight(railCollapsed ? 32.0 : 40.0);
         LeadingContentMargin(railCollapsed ? WUX::Thickness{} : WUX::Thickness{ 6, 0, 10, 0 });
+        LeadingContentColumnSpan(railCollapsed ? 3 : 1);
         ChevronGlyph(IsExpanded() ? L"\xE70D" : L"\xE76C");
     }
 
@@ -807,7 +810,10 @@ namespace winrt::TerminalApp::implementation
         display.Presentation().Title(title);
         if (useNativeIconSource)
         {
-            const auto source = display.Tab().IconSource();
+            // Progress suppresses the native TabView icon, not the retained
+            // profile/provider identity used by the Sidebar's leading slot.
+            const auto retainedSource = display.Presentation().IconSource().try_as<MUX::Controls::IconSource>();
+            const auto source = retainedSource ? retainedSource : display.Tab().IconSource();
             if (source)
             {
                 winrt::get_self<TabStripDisplayItem>(display)->SyncIcon(iconPath, source);
