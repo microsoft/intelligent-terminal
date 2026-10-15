@@ -120,11 +120,12 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       emit("session.execution.started", { sessionID: "root" })
       await dispose()
       assert.deepEqual(calls.map((call) => call.topic), [
-        "agent.session.start", "agent.prompt.submit", "agent.stop", "agent.session.renamed",
+        "agent.session.start", "agent.stop", "agent.session.renamed",
         "agent.prompt.submit", "agent.stop", "agent.prompt.submit", "agent.stop", "agent.session.end",
       ])
-      assert.equal(calls[3].payload.title, "New title")
-      assert.equal(calls[8].payload.reason, "deleted")
+      assert.equal(calls[0].payload.running, true)
+      assert.equal(calls[2].payload.title, "New title")
+      assert.equal(calls[7].payload.reason, "deleted")
       assert.equal(handlers.size, 0)
     })
 
@@ -196,9 +197,8 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
         emit("session.viewed", { sessionID: "root" })
         await firstDispose.flush()
         assert.deepEqual(calls.filter((call) => call.topic === "agent.session.start").map((call) => call.payload.running),
-          [undefined, undefined, activity === "running" ? true : undefined])
-        assert.equal(calls.filter((call) => call.topic === "agent.prompt.submit").length,
-          activity === "running" ? 2 : 0)
+          activity === "running" ? [true, true, true] : [undefined, undefined, undefined])
+        assert.equal(calls.filter((call) => call.topic === "agent.prompt.submit").length, 0)
         assert.equal(calls.at(-1).topic, "agent.session.start")
         await firstDispose()
         assert.equal(calls.at(-1).topic, "agent.session.end")

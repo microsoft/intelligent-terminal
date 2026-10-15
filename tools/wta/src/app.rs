@@ -504,6 +504,7 @@ pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
     "reason",
     "error",
     "pane_owner",
+    "running",
 ];
 
 /// Members of `payload.tool_input` the routing function reads when the tool is
@@ -526,8 +527,8 @@ pub struct AgentEventFacts {
     pub key: String,
     /// Whether a row already exists for `key`.
     pub session_known: bool,
-    /// Status before applying this event; a TUI can report current activity
-    /// when reclaiming an ended OpenCode session without changing live Attention.
+    /// Status before applying this event; a running OpenCode binding must not
+    /// overwrite live Attention when a second TUI views the session.
     pub session_status: Option<crate::agent_sessions::AgentStatus>,
     /// An existing live session other than `key` owns the hook's pane.
     pub pane_owned_by_other: bool,
@@ -785,11 +786,12 @@ pub fn plan_agent_event(
     if event == "agent.session.start"
         && *cli_source == crate::agent_sessions::CliSource::OpenCode
         && payload.get("running").and_then(|value| value.as_bool()) == Some(true)
-        && matches!(
+        && !facts.pane_owned_by_other
+        && !matches!(
             facts.session_status.as_ref(),
             Some(
-                crate::agent_sessions::AgentStatus::Ended
-                    | crate::agent_sessions::AgentStatus::Historical
+                crate::agent_sessions::AgentStatus::Working
+                    | crate::agent_sessions::AgentStatus::Attention
             )
         )
     {

@@ -29,6 +29,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(HookCwdUsesOnlyOwningPaneMetadata);
         TEST_METHOD(HookCwdPreservesProviderWorkspaceAndExecutionSource);
         TEST_METHOD(OversizedOpenCodeHooksRetainTitle);
+        TEST_METHOD(OversizedOpenCodeBindingRetainsRunningState);
         TEST_METHOD(OversizedCwdChangeRetainsNewDirectory);
         TEST_METHOD(HostClsidOverridesStaleEnvironment);
         TEST_METHOD(UnpublishedStartupRemovesInheritedClsid);
@@ -83,6 +84,29 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL("D:\\new", reduced["new_cwd"].asString());
         VERIFY_IS_FALSE(reduced.isMember("unrelated"));
         VERIFY_IS_TRUE(Json::writeString(writer, event).size() <= wtcli::kMaxHookEventChars);
+    }
+
+    void ProtocolParsingTests::OversizedOpenCodeBindingRetainsRunningState()
+    {
+        Json::Value payload;
+        payload["session_id"] = "opencode-session";
+        payload["cwd"] = "C:\\repo";
+        payload["title"] = std::string(wtcli::kMaxHookEventChars, 'x');
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+
+        for (const bool running : { false, true })
+        {
+            payload["running"] = running;
+            Json::Value event;
+            VERIFY_IS_TRUE(wtcli::BuildAgentHookEventJson(
+                "agent.session.start", "opencode", Json::writeString(writer, payload), "pane-a", "", event));
+            const auto& reduced = event["params"]["payload"];
+            VERIFY_IS_TRUE(reduced["_truncated"].asBool());
+            VERIFY_IS_TRUE(reduced["running"].isBool());
+            VERIFY_ARE_EQUAL(running, reduced["running"].asBool());
+            VERIFY_IS_TRUE(Json::writeString(writer, event).size() <= wtcli::kMaxHookEventChars);
+        }
     }
 
     void ProtocolParsingTests::UnpublishedStartupRemovesInheritedClsid()

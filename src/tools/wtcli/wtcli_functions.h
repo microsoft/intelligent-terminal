@@ -191,6 +191,7 @@ namespace wtcli
         "reason",
         "error",
         "pane_owner",
+        "running",
     };
     inline constexpr const char* kConsumedToolInputKeys[] = {
         "question",
@@ -239,7 +240,8 @@ namespace wtcli
             {
                 reduced[key] = ClampUtf8(member.asString(), kMaxRetainedFieldChars);
             }
-            else if (member.isBool() && std::string_view{ key } == "pane_owner")
+            else if (member.isBool() &&
+                     (std::string_view{ key } == "pane_owner" || std::string_view{ key } == "running"))
             {
                 reduced[key] = member;
             }

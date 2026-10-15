@@ -18291,20 +18291,25 @@ async fn master_opencode_view_reclaims_session_after_other_pane_disposes() {
                 }
             })
         };
-        handle_master_wt_event(&state, hook("first-pane", "agent.session.start", false)).await;
-        handle_master_wt_event(&state, hook("second-pane", "agent.session.start", false)).await;
+        handle_master_wt_event(&state, hook("first-pane", "agent.session.start", running)).await;
         if running {
-            handle_master_wt_event(&state, hook("second-pane", "agent.prompt.submit", false)).await;
-            handle_master_wt_event(&state, hook("second-pane", "agent.notification", false)).await;
+            assert_eq!(
+                state.registry.lookup(&sid).await.unwrap().status,
+                Some(AgentStatus::Working),
+                "a new running binding starts Working without a synthetic prompt"
+            );
+            handle_master_wt_event(&state, hook("first-pane", "agent.notification", false)).await;
             assert_eq!(
                 state.registry.lookup(&sid).await.unwrap().status,
                 Some(AgentStatus::Attention)
             );
-            handle_master_wt_event(&state, hook("second-pane", "agent.session.start", true)).await;
+        }
+        handle_master_wt_event(&state, hook("second-pane", "agent.session.start", running)).await;
+        if running {
             assert_eq!(
                 state.registry.lookup(&sid).await.unwrap().status,
                 Some(AgentStatus::Attention),
-                "viewing an already-live session must preserve Attention"
+                "a second TUI binding must preserve a live Attention state"
             );
         }
         handle_master_wt_event(&state, hook("second-pane", "agent.session.end", false)).await;
