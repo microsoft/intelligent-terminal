@@ -49,7 +49,9 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         New-Item -ItemType Directory -Path $script:evidence | Out-Null
         $profile = '{' + [guid]::NewGuid().ToString() + '}'
         $script:profile = $profile
-        $pwsh = (Get-Command pwsh).Source
+        # A Store execution alias and the actual packaged image have different
+        # paths. Launch the runner's real PowerShell image for exact PID checks.
+        $pwsh = if ($PSVersionTable.PSEdition -eq 'Core') { [Environment]::ProcessPath } else { (Get-Command pwsh).Source }
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
         $fixtureCode = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:evidence.Replace("'", "''"))\acp.log'"
         $fixtureCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureCode))
@@ -153,7 +155,19 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         function Open-TabMenu {
             Set-WtWindowForeground -App $script:app | Should -BeTrue
             Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground -Repeat 2 | Out-Null
-            Invoke-TestTabHeaderContextMenu -App $script:app -PaneSessionId $script:a.session_id -Title $script:titleA
+            $previousRunToken = $env:ITE2E_RUN_TOKEN
+            $previousReceipt = $env:ITE2E_OWNED_PROCESS_RECEIPT
+            try {
+                # Pass the captured creation-proven lease to the existing
+                # physical-header guard; never infer ownership from a PID.
+                $env:ITE2E_RUN_TOKEN = $script:app.InputRunToken
+                $env:ITE2E_OWNED_PROCESS_RECEIPT = $script:app.InputReceiptPath
+                Invoke-TestTabHeaderContextMenu -App $script:app -PaneSessionId $script:a.session_id -Title $script:titleA
+            }
+            finally {
+                $env:ITE2E_RUN_TOKEN = $previousRunToken
+                $env:ITE2E_OWNED_PROCESS_RECEIPT = $previousReceipt
+            }
             Wait-UiElement -App $script:app -Selector 'Move tab' | Out-Null
             Save-CompositorFrame "context-$([guid]::NewGuid().ToString('N'))" -PreserveFlyout
         }
@@ -341,7 +355,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                 $row = $items[$TabIndex]
                 $bounds = $row.Current.BoundingRectangle
                 $size = 16 * $script:scale
-                $slot = [Windows.Rect]::new($bounds.X + 6 * $script:scale,
+                $slot = [Windows.Rect]::new($bounds.X + ($bounds.Width - $size) / 2,
                     $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
             }
             else {
@@ -636,7 +650,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             $active.session_id | Should -Be $script:a.session_id
             $bounds = $items[[int]$active.tab_id].Current.BoundingRectangle
             $size = 16 * $script:scale
-            $icon = [Windows.Rect]::new($bounds.X + 6 * $script:scale, $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
+            $icon = [Windows.Rect]::new($bounds.X + ($bounds.Width - $size) / 2, $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
             $bounds.Contains($icon) | Should -BeTrue
             Get-VisualDigest -Bounds $icon -Name compact-group-profile -Icon | Out-Null
         }
@@ -856,7 +870,9 @@ $endHook
             if ($Surface -eq 'collapsed') { Invoke-UiElement -App $script:app -Selector 'Expand sidebar' | Out-Null }
             if ($Surface -eq 'horizontal') { Switch-ContextLayout vertical }
             Wait-UiElement -App $script:app -Selector PaneActivateButton | Out-Null
-            Get-ProfileIconDigest "$token-final-profile" | Should -Be $script:profileIcon
+            Wait-Until -TimeoutSec 10 -Because 'native Ended has propagated to the realized profile icon, not only the session registry' -Condition {
+                (Get-ProfileIconDigest "$token-final-profile") -eq $script:profileIcon
+            } | Out-Null
             Get-ProfileIconDigest "$token-final-sibling" $script:titleB | Should -Be $script:siblingIcon
         }
     }

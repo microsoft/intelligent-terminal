@@ -13672,7 +13672,17 @@ namespace TerminalAppLocalTests
             winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
-        _initializeTerminalPage(page, settings, *connection);
+        Grid layoutHost{ nullptr };
+        TestOnUIThread([&]() {
+            layoutHost = Grid{};
+            layoutHost.Width(1280);
+            layoutHost.Height(720);
+        });
+        _initializeTerminalPage(page, settings, *connection, layoutHost);
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            return page->_tabStrip.ContainerFromIndex(0) != nullptr;
+        });
 
         winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
         winrt::TerminalApp::TabStripDisplayItem display{ nullptr };
@@ -13770,11 +13780,16 @@ namespace TerminalAppLocalTests
             TestOnUIThread([&]() { Window::Current().Content(previousContent); });
         });
 
+        winrt::TerminalApp::TabStrip strip{ nullptr };
+        winrt::MUX::Controls::TabViewItem tab{ nullptr };
+        winrt::TerminalApp::TabHeaderControl nativeHeader{ nullptr };
+        winrt::TerminalApp::TerminalTabStatus status{ nullptr };
+        StackPanel host{ nullptr };
         TestOnUIThread([&]() {
-            winrt::TerminalApp::TabStrip strip;
-            winrt::MUX::Controls::TabViewItem tab;
-            winrt::TerminalApp::TabHeaderControl nativeHeader;
-            winrt::TerminalApp::TerminalTabStatus status;
+            strip = winrt::TerminalApp::TabStrip{};
+            tab = winrt::MUX::Controls::TabViewItem{};
+            nativeHeader = winrt::TerminalApp::TabHeaderControl{};
+            status = winrt::TerminalApp::TerminalTabStatus{};
             nativeHeader.Title(L"Independent status");
             nativeHeader.TabStatus(status);
             tab.Header(nativeHeader);
@@ -13782,13 +13797,18 @@ namespace TerminalAppLocalTests
             strip.Height(160);
             strip.TabItems().Append(tab);
             strip.SetTabPresentation(tab, nativeHeader.Title(), L"\xE8A5");
-            StackPanel host;
+            host = StackPanel{};
             host.Children().Append(strip);
             host.Children().Append(nativeHeader);
             Window::Current().Content(host);
             Window::Current().Activate();
             host.UpdateLayout();
-
+        });
+        _waitForContentTransferReviewUI([&]() {
+            host.UpdateLayout();
+            return winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->HeaderForTab(tab) != nullptr;
+        });
+        TestOnUIThread([&]() {
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             const auto display = impl->DisplayItemForTab(tab);
             const auto rowHeader = impl->HeaderForTab(tab).as<winrt::TerminalApp::TabHeaderControl>();
