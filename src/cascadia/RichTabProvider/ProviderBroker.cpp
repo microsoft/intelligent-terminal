@@ -26,6 +26,15 @@ namespace Microsoft::Terminal::RichTab::Provider
                    provider.root == BuiltInProviderCatalog::PackageRoot() / L"RichTabProviders" / L"GitStatus";
         }
 
+        void _ClearGitStatusCwdDependentFields(Snapshot& snapshot)
+        {
+            for (const auto* field : { "workingDirectory", "repository", "branch", "changes" })
+            {
+                snapshot.fields.erase(field);
+            }
+            snapshot.tooltip.reset();
+        }
+
         bool _Handles(const Manifest& manifest, const ActivationEvent event)
         {
             return std::find(
@@ -428,20 +437,21 @@ namespace Microsoft::Terminal::RichTab::Provider
                     provider.generation = _nextGeneration++;
                     provider.pending.reset();
                 }
-                ++session.updateSequence;
-            }
-            if (!session.callbacks.empty() && session.agentActive)
-            {
-                session.agentWorkingDirectory.reset();
-                ++session.updateSequence;
                 _InvalidateGitStatusWorkingDirectoryLocked(session);
-                for (const auto& [_, listener] : session.callbacks)
-                {
-                    previousCallbacks.emplace_back(listener);
-                }
+                ++session.updateSequence;
             }
             session.callbacks.emplace(attachment, std::move(callback));
             _attachmentSessions.emplace(attachment, session.context.sessionId);
+            if (_RecomputeAgentWorkingDirectoryLocked(session))
+            {
+                for (const auto& [id, listener] : session.callbacks)
+                {
+                    if (id != attachment)
+                    {
+                        previousCallbacks.emplace_back(listener);
+                    }
+                }
+            }
             existing = _UpdateFor(session.context.sessionId, session);
         }
 
@@ -459,36 +469,57 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     void ProviderBroker::Detach(const AttachmentId attachment)
     {
-        std::lock_guard lock{ _mutex };
-        const auto attached = _attachmentSessions.find(attachment);
-        if (attached == _attachmentSessions.end())
+        std::string sessionId;
+        std::vector<Callback> callbacks;
+        BrokerUpdate update;
         {
-            return;
-        }
-        if (const auto session = _sessions.find(attached->second); session != _sessions.end())
-        {
-            session->second.callbacks.erase(attachment);
-            if (session->second.callbacks.empty())
+            std::lock_guard lock{ _mutex };
+            const auto attached = _attachmentSessions.find(attachment);
+            if (attached == _attachmentSessions.end())
             {
-                session->second.agentActive = false;
-                session->second.agentWorkingDirectory.reset();
-                for (auto& [id, provider] : session->second.providers)
+                return;
+            }
+            if (const auto found = _sessions.find(attached->second); found != _sessions.end())
+            {
+                auto& session = found->second;
+                session.callbacks.erase(attachment);
+                session.activeAgentWorkingDirectories.erase(attachment);
+                if (session.callbacks.empty())
                 {
-                    provider.generation = _nextGeneration++;
-                    provider.pending.reset();
-                    if (provider.snapshot && std::any_of(_providers.begin(), _providers.end(), [&](const auto& registration) {
-                            return registration.manifest.id == id && _IsBuiltInGitStatus(registration);
-                        }))
+                    session.activeAgentWorkingDirectories.clear();
+                    session.agentActive = false;
+                    session.agentWorkingDirectory.reset();
+                    for (auto& [_, provider] : session.providers)
                     {
-                        provider.snapshot->fields.erase("workingDirectory");
+                        provider.generation = _nextGeneration++;
+                        provider.pending.reset();
+                    }
+                    _InvalidateGitStatusWorkingDirectoryLocked(session);
+                    ++session.updateSequence;
+                    session.detachedAt = std::chrono::steady_clock::now();
+                }
+                else if (_RecomputeAgentWorkingDirectoryLocked(session))
+                {
+                    sessionId = attached->second;
+                    update = _UpdateFor(sessionId, session);
+                    callbacks.reserve(session.callbacks.size());
+                    for (const auto& [_, callback] : session.callbacks)
+                    {
+                        callbacks.emplace_back(callback);
                     }
                 }
-                ++session->second.updateSequence;
-                session->second.detachedAt = std::chrono::steady_clock::now();
             }
+            _attachmentSessions.erase(attached);
+            _PruneDetachedSessionsLocked();
         }
-        _attachmentSessions.erase(attached);
-        _PruneDetachedSessionsLocked();
+        for (const auto& callback : callbacks)
+        {
+            callback(update);
+        }
+        if (!sessionId.empty())
+        {
+            _Refresh(sessionId, ActivationEvent::WorkingDirectoryChanged, false, "com.microsoft.intelligent-terminal.git-status");
+        }
     }
 
     void ProviderBroker::UpdateContext(
@@ -519,6 +550,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             session.context.shellType = std::move(shellType);
             ++session.contextRevision;
             ++session.updateSequence;
+            _InvalidateGitStatusWorkingDirectoryLocked(session);
             sessionId = session.context.sessionId;
             update = _UpdateFor(sessionId, session);
             callbacks.reserve(session.callbacks.size());
@@ -598,19 +630,18 @@ namespace Microsoft::Terminal::RichTab::Provider
                 return;
             }
             auto& session = _sessions.at(attached->second);
-            if (session.callbacks.size() > 1 && (session.agentActive || agentActive))
+            if (agentActive)
             {
-                agentActive = true;
-                workingDirectory.reset();
+                session.activeAgentWorkingDirectories.insert_or_assign(attachment, std::move(workingDirectory));
             }
-            if (session.agentActive == agentActive && session.agentWorkingDirectory == workingDirectory)
+            else
+            {
+                session.activeAgentWorkingDirectories.erase(attachment);
+            }
+            if (!_RecomputeAgentWorkingDirectoryLocked(session))
             {
                 return;
             }
-            session.agentActive = agentActive;
-            session.agentWorkingDirectory = std::move(workingDirectory);
-            ++session.updateSequence;
-            _InvalidateGitStatusWorkingDirectoryLocked(session);
             sessionId = attached->second;
             update = _UpdateFor(sessionId, session);
             for (const auto& [_, callback] : session.callbacks)
@@ -637,10 +668,29 @@ namespace Microsoft::Terminal::RichTab::Provider
                 provider.pending.reset();
                 if (provider.snapshot)
                 {
-                    provider.snapshot->fields.erase("workingDirectory");
+                    _ClearGitStatusCwdDependentFields(*provider.snapshot);
                 }
             }
         }
+    }
+
+    bool ProviderBroker::_RecomputeAgentWorkingDirectoryLocked(SessionState& session)
+    {
+        const auto agentActive = !session.activeAgentWorkingDirectories.empty();
+        std::optional<std::string> cwd;
+        if (agentActive && session.callbacks.size() == 1)
+        {
+            cwd = session.activeAgentWorkingDirectories.begin()->second;
+        }
+        if (session.agentActive == agentActive && session.agentWorkingDirectory == cwd)
+        {
+            return false;
+        }
+        session.agentActive = agentActive;
+        session.agentWorkingDirectory = std::move(cwd);
+        ++session.updateSequence;
+        _InvalidateGitStatusWorkingDirectoryLocked(session);
+        return true;
     }
 
     void ProviderBroker::Activate(const AttachmentId attachment)

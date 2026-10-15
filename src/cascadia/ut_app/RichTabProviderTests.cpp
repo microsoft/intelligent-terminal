@@ -58,6 +58,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(GitStatusProviderHandlesGitFailureGracefully);
         TEST_METHOD(GitStatusProviderSetsSafeGitConfigEnvironment);
         TEST_METHOD(AgentCwdInvalidatesOnlyTrustedGitStatusField);
+        TEST_METHOD(DetachedSessionDoesNotReuseOldGitMetadata);
     };
 
     void RichTabProviderTests::AgentCwdInvalidatesOnlyTrustedGitStatusField()
@@ -89,7 +90,10 @@ namespace TerminalAppUnitTests
         auto& git = session.providers[trusted.manifest.id];
         git.snapshot.emplace();
         git.snapshot->fields.emplace("workingDirectory", std::string{ "C:\\shell" });
+        git.snapshot->fields.emplace("repository", std::string{ "old-repo" });
         git.snapshot->fields.emplace("branch", std::string{ "main" });
+        git.snapshot->fields.emplace("changes", std::string{ "2" });
+        git.snapshot->tooltip = "Old repository";
         git.running = true;
         git.runningGeneration = 1;
         auto& thirdParty = session.providers[other.manifest.id];
@@ -102,13 +106,16 @@ namespace TerminalAppUnitTests
 
         VERIFY_ARE_EQUAL(size_t{ 1 }, updates.size());
         VERIFY_IS_FALSE(git.snapshot->fields.contains("workingDirectory"));
-        VERIFY_IS_TRUE(git.snapshot->fields.contains("branch"));
+        VERIFY_IS_FALSE(git.snapshot->fields.contains("repository"));
+        VERIFY_IS_FALSE(git.snapshot->fields.contains("branch"));
+        VERIFY_IS_FALSE(git.snapshot->fields.contains("changes"));
+        VERIFY_IS_FALSE(git.snapshot->tooltip.has_value());
         VERIFY_IS_TRUE(thirdParty.snapshot->fields.contains("workingDirectory"));
         VERIFY_IS_TRUE(git.pending.has_value());
         VERIFY_IS_FALSE(thirdParty.pending.has_value());
         VERIFY_ARE_EQUAL(std::string{ "D:\\agent" }, git.pending->request.firstPartyFields.at("agentWorkingDirectory"));
         VERIFY_ARE_EQUAL(std::string{ "true" }, git.pending->request.firstPartyFields.at("agentCwdActive"));
-        VERIFY_ARE_EQUAL(std::wstring{ L"main\n" L"third-party" }, updates.back().presentation->text);
+        VERIFY_ARE_EQUAL(std::wstring{ L"third-party" }, updates.back().presentation->text);
 
         broker.Notify(1, ActivationEvent::ManualRefresh);
         VERIFY_IS_TRUE(thirdParty.pending.has_value());
@@ -116,6 +123,10 @@ namespace TerminalAppUnitTests
         VERIFY_IS_FALSE(thirdParty.pending->request.firstPartyFields.contains("agentWorkingDirectory"));
 
         git.snapshot->fields.emplace("workingDirectory", std::string{ "D:\\agent" });
+        git.snapshot->fields.emplace("repository", std::string{ "old-repo" });
+        git.snapshot->fields.emplace("branch", std::string{ "main" });
+        git.snapshot->fields.emplace("changes", std::string{ "2" });
+        git.snapshot->tooltip = "Old repository";
         broker._nextAttachment = 2;
         std::vector<BrokerUpdate> duplicateUpdates;
         const auto second = broker.Attach(session.context, [&](const auto& update) {
@@ -123,14 +134,79 @@ namespace TerminalAppUnitTests
         });
         VERIFY_ARE_EQUAL(ProviderBroker::AttachmentId{ 2 }, second);
         VERIFY_IS_FALSE(git.snapshot->fields.contains("workingDirectory"));
+        VERIFY_IS_FALSE(git.snapshot->fields.contains("repository"));
+        VERIFY_IS_FALSE(git.snapshot->fields.contains("branch"));
+        VERIFY_IS_FALSE(git.snapshot->fields.contains("changes"));
+        VERIFY_IS_FALSE(git.snapshot->tooltip.has_value());
         VERIFY_IS_FALSE(duplicateUpdates.empty());
-        VERIFY_ARE_EQUAL(std::wstring{ L"main\n" L"third-party" }, duplicateUpdates.back().presentation->text);
+        VERIFY_ARE_EQUAL(std::wstring{ L"third-party" }, duplicateUpdates.back().presentation->text);
         VERIFY_ARE_EQUAL(std::string{ "true" }, git.pending->request.firstPartyFields.at("agentCwdActive"));
         VERIFY_IS_FALSE(git.pending->request.firstPartyFields.contains("agentWorkingDirectory"));
 
         broker.UpdateAgentWorkingDirectory(second, false, std::nullopt);
         VERIFY_IS_TRUE(session.agentActive);
         VERIFY_IS_FALSE(session.agentWorkingDirectory.has_value());
+        broker.UpdateAgentWorkingDirectory(1, false, std::nullopt);
+        VERIFY_IS_FALSE(session.agentActive);
+        VERIFY_IS_FALSE(session.agentWorkingDirectory.has_value());
+        VERIFY_IS_FALSE(git.pending->request.firstPartyFields.contains("agentCwdActive"));
+
+        broker.UpdateAgentWorkingDirectory(second, true, std::string{ "E:\\agent" });
+        VERIFY_IS_TRUE(session.agentActive);
+        VERIFY_IS_FALSE(session.agentWorkingDirectory.has_value());
+        broker.Detach(1);
+        VERIFY_IS_TRUE(session.agentActive);
+        VERIFY_ARE_EQUAL(std::string{ "E:\\agent" }, *session.agentWorkingDirectory);
+        broker.Detach(second);
+        VERIFY_IS_FALSE(session.agentActive);
+        VERIFY_IS_FALSE(session.agentWorkingDirectory.has_value());
+    }
+
+    void RichTabProviderTests::DetachedSessionDoesNotReuseOldGitMetadata()
+    {
+        ProviderBroker broker{ std::nullopt };
+        Registration gitProvider;
+        gitProvider.manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        gitProvider.manifest.fields = { FieldDeclaration{ "agentStatus", "Status" },
+                                        FieldDeclaration{ "workingDirectory", "Directory" },
+                                        FieldDeclaration{ "repository", "Repository" },
+                                        FieldDeclaration{ "branch", "Branch" },
+                                        FieldDeclaration{ "changes", "Changes" } };
+        gitProvider.kind = RegistrationKind::Managed;
+        gitProvider.root = BuiltInProviderCatalog::PackageRoot() / L"RichTabProviders" / L"GitStatus";
+        gitProvider.enabled = true;
+        gitProvider.integrityValid = true;
+        broker._providers = { gitProvider };
+
+        auto& session = broker._sessions["detached-git"];
+        session.context.sessionId = "detached-git";
+        session.context.workingDirectory = L"C:\\shell";
+        session.sessionIncarnation = 1;
+        session.callbacks.emplace(1, [](const auto&) {});
+        broker._attachmentSessions.emplace(1, session.context.sessionId);
+        auto& snapshot = session.providers[gitProvider.manifest.id].snapshot.emplace();
+        snapshot.fields.emplace("agentStatus", std::string{ "Idle" });
+        snapshot.fields.emplace("workingDirectory", std::string{ "D:\\agent" });
+        snapshot.fields.emplace("repository", std::string{ "old-repo" });
+        snapshot.fields.emplace("branch", std::string{ "old-branch" });
+        snapshot.fields.emplace("changes", std::string{ "2" });
+        snapshot.tooltip = "Old repository";
+
+        broker.Detach(1);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, snapshot.fields.size());
+        VERIFY_IS_TRUE(snapshot.fields.contains("agentStatus"));
+        VERIFY_IS_FALSE(snapshot.tooltip.has_value());
+
+        broker._nextAttachment = 2;
+        std::vector<BrokerUpdate> updates;
+        const auto second = broker.Attach(session.context, [&](const auto& update) {
+            updates.emplace_back(update);
+        });
+        VERIFY_ARE_EQUAL(ProviderBroker::AttachmentId{ 2 }, second);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, updates.size());
+        VERIFY_IS_TRUE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Idle" }, updates.back().presentation->text);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Idle" }, updates.back().presentation->tooltip);
     }
 
     void RichTabProviderTests::ResolveGitUsesExplicitPathAndDetectsMissingExecutable()

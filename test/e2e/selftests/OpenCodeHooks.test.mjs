@@ -101,22 +101,28 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       dispose()
     })
 
-    it("binds an already visible running session on startup and owns its status and deletion", () => {
+    it("binds an already visible running session and tracks V2 execution outcomes and deletion", () => {
       sessions.set("root", { id: "root", title: "Restored", location: { directory: "C:\\restored" } })
       statuses.set("root", "running")
       const dispose = tuiPlugin.setup(context)
       assert.deepEqual(calls.map((call) => call.topic), ["agent.session.start", "agent.prompt.submit"])
-      emit("session.status", { sessionID: "other", status: { type: "busy" } })
-      emit("session.status", { sessionID: "root", status: { type: "idle" } })
+      emit("session.execution.started", { sessionID: "other" })
+      emit("session.execution.succeeded", { sessionID: "root" })
       emit("session.renamed", { sessionID: "root", title: "New title" })
+      emit("session.execution.started", { sessionID: "root" })
+      emit("session.execution.failed", { sessionID: "root" })
+      emit("session.execution.started", { sessionID: "root" })
+      emit("session.execution.interrupted", { sessionID: "root" })
       emit("session.deleted", { sessionID: "root" })
-      emit("session.status", { sessionID: "root", status: { type: "busy" } })
+      emit("session.execution.started", { sessionID: "root" })
       assert.deepEqual(calls.map((call) => call.topic), [
-        "agent.session.start", "agent.prompt.submit", "agent.stop", "agent.session.start", "agent.session.end",
+        "agent.session.start", "agent.prompt.submit", "agent.stop", "agent.session.start",
+        "agent.prompt.submit", "agent.stop", "agent.prompt.submit", "agent.stop", "agent.session.end",
       ])
       assert.equal(calls[3].payload.title, "New title")
-      assert.equal(calls[4].payload.reason, "deleted")
+      assert.equal(calls[8].payload.reason, "deleted")
       dispose()
+      assert.equal(handlers.size, 0)
     })
 
     it("suppresses hooks outside a Terminal pane and in ACP mode", () => {

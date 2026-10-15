@@ -116,6 +116,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             SessionContext context;
             bool agentActive{ false };
             std::optional<std::string> agentWorkingDirectory;
+            std::unordered_map<AttachmentId, std::optional<std::string>> activeAgentWorkingDirectories;
             uint64_t sessionIncarnation{ 0 };
             uint64_t contextRevision{ 0 };
             uint64_t updateSequence{ 0 };
@@ -144,6 +145,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         void _Enqueue(std::function<void()> work);
         void _PruneDetachedSessionsLocked();
         void _InvalidateGitStatusWorkingDirectoryLocked(SessionState& session);
+        bool _RecomputeAgentWorkingDirectoryLocked(SessionState& session);
 
         mutable std::mutex _mutex;
         std::mutex _executorMutex;

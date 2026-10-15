@@ -79,13 +79,16 @@ export default {
         });
       }
     });
-    const onStatus = context.data.on("session.status", ({ data }) => {
+    const onExecutionStarted = context.data.on("session.execution.started", ({ data }) => {
       if (bound?.id !== data.sessionID || !selected(data.sessionID)) return;
-      if (data.status?.type === "idle") bridge("agent.stop", data.sessionID);
-      else if (data.status?.type === "busy" || data.status?.type === "retry") {
-        bridge("agent.prompt.submit", data.sessionID);
-      }
+      bridge("agent.prompt.submit", data.sessionID);
     });
+    const onExecutionStopped = ["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"]
+      .map((event) => context.data.on(event, ({ data }) => {
+        if (bound?.id === data.sessionID && selected(data.sessionID)) {
+          bridge("agent.stop", data.sessionID);
+        }
+      }));
     const onDeleted = context.data.on("session.deleted", ({ data }) => {
       if (bound?.id !== data.sessionID) return;
       bridge("agent.session.end", data.sessionID, { reason: "deleted" });
@@ -97,7 +100,8 @@ export default {
       onCreated();
       onMoved();
       onRenamed();
-      onStatus();
+      onExecutionStarted();
+      for (const dispose of onExecutionStopped) dispose();
       onDeleted();
     };
   },
