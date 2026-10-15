@@ -17,3 +17,7 @@ the caller's immutable revisions, changed-file scope, trust boundary, report
 schema, validation requirements, safe-output policy, and permitted edit paths.
 Do not delegate. Do not execute pull-request-controlled code or claim native
 runtime evidence that was not actually collected.
+
+Static signals are investigation leads, not the review. Follow every domain
+dimension in the skill and produce its evidence-backed review record. Do not
+stop at an empty signal list, an Axe result, or a generic runtime disclaimer.

@@ -89,10 +89,15 @@ The source rules are intentionally conservative:
     validate UIA patterns, focus, announcements, rendering, or scaling.
 11. Re-read the complete final diff. Never repair MEDIUM/LOW findings merely to
     reduce the report, and never add unrelated or untracked files. Fork review
-    is read-only. When the caller requires AM transport, commit the eligible
-    repair once on its verified named PR-head branch, then request that output
-    once. Do not change branches or edit after capture; the trusted gate must
-    verify the captured patch against the recipe-verified candidate.
+    is read-only. When the caller requires one commit per finding, commit each
+    eligible repair separately on the verified PR-head branch before editing
+    the next. Link each commit in that finding's summary row, then request one
+    publication for the complete series. Do not change branches or edit after
+    capture; the trusted gate verifies the captured series against the
+    recipe-verified candidate.
+    Follow the caller's publication policy: when the PR reviewer owns build/test
+    validation, do not add builds, tests, native jobs or environment provisioning
+    as prerequisites to an eligible repair commit or push.
 
 ## Localization
 
@@ -102,6 +107,30 @@ resources or bindings. Never add hard-coded English accessibility text.
 When a repair needs a new or changed string, leave a concrete blocking finding
 for the localization workflow. Do not edit `.resw` or locale YAML from this
 skill.
+
+## Required review record
+
+For a PR review, account for every `required_review_checks` ID from the prepared
+evidence in `review_checks`, including dimensions with no static signal.
+Each record names the classified changed files it covers, explains the actual
+repository mechanism in `assessment`, and cites immutable source as
+`{file, revision: "head"|"base", line, text}`. Use companion styles, handlers,
+resources and peers where needed; `text` must quote the cited source line.
+The union of records must cover every classified changed file.
+
+Use `source-reviewed` only after tracing the relevant source behavior.
+Use `not-applicable` only with source evidence explaining why that dimension
+does not apply to the changed operation. Use `runtime-required` when source
+cannot establish the accessible behavior or a runtime-dependent finding needs
+confirmation; specify the exact scenario and expected observation.
+These statuses are not native PASS attestations. Do not turn a missing test
+into `not-applicable` or claim an Axe scan proves focus, announcements or layout.
+
+Report review checks even when there are no findings. A static-signal-only
+report, generic "followed the skill" statement, or empty findings array does
+not satisfy this procedure. The trusted gate checks coverage and source
+citations, not the semantic truth of the model's assessment. Domain judgment
+must still be supported by the actual source and any available runtime evidence.
 
 ## Axe.Windows and runtime checks
 
@@ -120,8 +149,9 @@ error even when UIA scanning works. In that lane, retain structured Axe rule
 results, per-state UIA hierarchy JSON, state/process/source identity, and logs.
 JSON is not an `.a11ytest` file and does not provide its screenshot or replay
 capabilities; record that capture gap rather than claiming equivalent output.
-The current smoke lane covers FRE, Agents settings, and FRE settings after
-invoking Next; it does not cover every affected product state. Pair scans with:
+Separately requested local smoke checks cover FRE, Agents settings, and FRE
+settings after invoking Next; they do not cover every affected product state
+and are not automatic repair-publication prerequisites. Pair scans with:
 
 - keyboard-only traversal, activation, focus restoration, and trap checks;
 - UIA pattern invocation and property/state assertions;

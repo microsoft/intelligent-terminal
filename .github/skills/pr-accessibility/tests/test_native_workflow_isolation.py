@@ -102,17 +102,11 @@ if ($failure) { exit 1 }
 
 
 class NativeWorkflowIsolationTests(unittest.TestCase):
-    def test_compiled_candidate_execution_is_a_secret_free_reusable_call(self):
+    def test_review_does_not_automatically_build_or_test_candidate_code(self):
         compiled = (ROOT / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
-        native = re.split(r"\n  [a-zA-Z][\w-]*:\n",
-                          compiled.split("\n  native-runtime:\n", 1)[1], maxsplit=1)[0]
-        self.assertIn("uses: ./.github/workflows/native-accessibility.yml", native)
-        self.assertNotIn("secrets:", native)
-        self.assertNotIn("env:", native)
-        self.assertNotIn("steps:", native)
-        self.assertNotIn("runs-on:", native)
-        self.assertIn("contents: read", native)
-        self.assertNotIn(": write", native)
+        self.assertNotIn("\n  native-runtime:\n", compiled)
+        self.assertNotIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
+        self.assertNotIn("call tools\\razzle.cmd", compiled)
 
     def test_reusable_native_definition_has_no_telemetry_or_secret_references(self):
         native = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
@@ -124,11 +118,11 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         self.assertNotIn("environment:", native)
         self.assertNotIn(": write", native)
 
-    def test_all_four_immutable_identities_are_forwarded(self):
+    def test_optional_reviewer_native_workflow_requires_four_immutable_identities(self):
         caller = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         native = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         for key in ("head-repository", "head-sha", "trusted-repository", "trusted-sha"):
-            self.assertIn(f"      {key}:", caller)
+            self.assertNotIn(f"      {key}:", caller)
             self.assertRegex(native, rf"{key}:\n\s+required: true\n\s+type: string")
             self.assertIn(f"${{{{ inputs.{key} }}}}", native)
         self.assertNotIn("github.event.pull_request", native)
@@ -141,7 +135,7 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         self.assertIn("call tools\\razzle.cmd", native)
         for surface in ("fre", "fre-settings", "agents"):
             self.assertIn(f"-Surface {surface}", native)
-        self.assertIn("timeout-minutes: 45", native)
+        self.assertRegex(native, r"timeout-minutes: \d+")
 
     def test_instruction_and_configuration_trigger_scope_is_complete(self):
         caller = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")

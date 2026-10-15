@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import textwrap
 import unittest
 from pathlib import Path
 
@@ -18,6 +17,15 @@ SPEC = importlib.util.spec_from_file_location("accessibility_review", SCRIPT)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader
 SPEC.loader.exec_module(MODULE)
+
+def review_check_fixture(files, text, *, path=None, revision="head", line=1):
+    return [{
+        "id": check_id,
+        "status": "source-reviewed",
+        "files": files,
+        "assessment": "Synthetic validator fixture; not native runtime evidence.",
+        "evidence": [{"file": path or files[0], "revision": revision, "line": line, "text": text}],
+    } for check_id in MODULE.REVIEW_CHECK_IDS] if files else []
 
 
 class StaticAnalysisTests(unittest.TestCase):
@@ -263,6 +271,7 @@ class PrepareIntegrationTests(unittest.TestCase):
                 report_path.write_text(json.dumps({
                     "version": 1, "source_sha": head, "findings": [finding],
                     "patch_files": [], "runtime_checks": prepared["runtime_checks"],
+                    "review_checks": review_check_fixture([relative], original.strip(), revision="base"),
                 }), encoding="utf-8")
                 MODULE.validate(root, head, head, True, prepared_path, report_path)
 
@@ -323,6 +332,7 @@ class PrepareIntegrationTests(unittest.TestCase):
             report_path.write_text(json.dumps({
                 "version": 1, "source_sha": head, "findings": [finding],
                 "patch_files": [relative], "runtime_checks": prepared["runtime_checks"],
+                "review_checks": review_check_fixture([relative], original.strip(), revision="base"),
             }), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "trusted static repair verification failed"):
                 MODULE.validate(root, head, head, True, prepared_path, report_path)
@@ -414,7 +424,7 @@ class ValidationTests(unittest.TestCase):
             )
 
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
+        self.temp = tempfile.TemporaryDirectory(dir=Path.cwd())
         self.workspace = Path(self.temp.name)
         self.root = self.workspace / "repo"
         self.root.mkdir()
@@ -469,6 +479,19 @@ class ValidationTests(unittest.TestCase):
                 "evidence": "Synthetic companion Test2.xaml exposes the Save button in the control view.",
             }]
         report = self.workspace / "report.json"
+        files = json.loads(self.prepared.read_text())["changed_files"]
+        citations = []
+        for path in files:
+            blob = MODULE._source_blob(self.root, self.head, path)
+            if blob:
+                line, text = next((number, text) for number, text in
+                                  enumerate(blob["text"].splitlines(), 1) if text.strip())
+                citations.append({"file": path, "revision": "head", "line": line, "text": text})
+        checks = review_check_fixture(
+            files, citations[0]["text"] if citations else "",
+            path=citations[0]["file"] if citations else None)
+        for check in checks:
+            check["evidence"] = citations
         report.write_text(
             json.dumps(
                 {
@@ -477,6 +500,7 @@ class ValidationTests(unittest.TestCase):
                     "findings": findings or [],
                     "dismissed_signals": dismissed_signals,
                     "patch_files": patch_files or [],
+                    "review_checks": checks,
                     "runtime_checks": [
                         {"id": "axe-windows-uia", "status": "SKIPPED", "reason": "interactive Windows required"}
                     ],
@@ -499,8 +523,8 @@ class ValidationTests(unittest.TestCase):
         subprocess.run(["git", "commit", "-qm", "Restore UIA view [native-accessibility]"], cwd=self.root, check=True)
         transport = self.workspace / "transport"
         transport.mkdir()
-        patch = subprocess.check_output(["git", "format-patch", "-1", "--stdout"], cwd=self.root)
-        (transport / "aw-fixture-head.patch").write_bytes(patch)
+        MODULE._git(self.root, "bundle", "create", str(transport / "aw-fixture-head.bundle"),
+                    "fixture/head", f"^{self.head}")
         prepared = json.loads(self.prepared.read_text())
         prepared["publication"] = {"head_ref": "fixture/head", "repository": "test/accessibility", "pr_number": 1}
         self.prepared.write_text(json.dumps(prepared))
@@ -514,10 +538,139 @@ class ValidationTests(unittest.TestCase):
 
     def test_publication_accepts_exact_captured_commit(self):
         queue, transport = self.publication()
+        report = self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"])
         MODULE.validate(
             self.root, self.head, self.head, True, self.prepared,
-            self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
+            report, queue, transport,
         )
+        self.assertEqual(MODULE._git(self.root, "rev-parse", "HEAD").strip(),
+                         json.loads(report.read_text())["findings"][0]["commit_sha"])
+
+    def two_findings(self):
+        path = self.root / "src/cascadia/TerminalApp/Test.xaml"
+        original = ('<Grid>\n<Button\n AutomationProperties.AccessibilityView="Raw" Content="Open" />\n'
+                    '<Button AutomationProperties.AccessibilityView="Raw" Content="Save" />\n</Grid>\n')
+        path.write_bytes(original.encode("utf-8"))
+        MODULE._git(self.root, "add", ".")
+        MODULE._git(self.root, "commit", "-qm", "Two reviewed controls")
+        self.head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        findings = [self.finding(line=2), self.finding(stable_id="AX-HIGH-2", line=4)]
+        prepared = json.loads(self.prepared.read_text())
+        prepared["source_sha"] = self.head
+        prepared["static_findings"] = [
+            dict(item, rule="AXSTATIC001") for item in findings
+        ]
+        self.prepared.write_text(json.dumps(prepared))
+        return path, original, findings
+
+    def capture_series(self):
+        transport = self.workspace / "transport"
+        transport.mkdir(exist_ok=True)
+        bundle = transport / "aw-fixture-head.bundle"
+        bundle.unlink(missing_ok=True)
+        MODULE._git(self.root, "bundle", "create", str(bundle), "fixture/head", f"^{self.head}")
+        prepared = json.loads(self.prepared.read_text())
+        prepared["publication"] = {"head_ref": "fixture/head", "repository": "test/accessibility", "pr_number": 1}
+        self.prepared.write_text(json.dumps(prepared))
+        queue = self.workspace / "safeoutputs.jsonl"
+        queue.write_text(json.dumps({
+            "type": "push_to_pull_request_branch", "branch": "fixture/head",
+            "head_repo": "test/accessibility", "pull_request_number": 1, "base_commit": self.head,
+        }) + "\n")
+        return queue, transport
+
+    def commit_text(self, path, text, message):
+        path.write_bytes(text.encode("utf-8"))
+        MODULE._git(self.root, "add", ".")
+        MODULE._git(self.root, "commit", "-qm", message)
+        return MODULE._git(self.root, "rev-parse", "HEAD").strip()
+
+    def test_two_high_findings_have_separate_authenticated_commits_and_original_lines(self):
+        path, original, findings = self.two_findings()
+        MODULE._git(self.root, "checkout", "-qb", "fixture/head")
+        first = MODULE._remove_raw_view_at_line(original, 2)
+        commits = [self.commit_text(path, first, "First finding")]
+        # The multiline first removal shifts the second control from original line 4 to line 3.
+        final = MODULE._remove_raw_view_at_line(first, 3)
+        commits.append(self.commit_text(path, final, "Second finding"))
+        queue, transport = self.capture_series()
+        report = self.report(findings, ["src/cascadia/TerminalApp/Test.xaml"])
+        MODULE.validate(self.root, self.head, self.head, True, self.prepared, report, queue, transport)
+        self.assertEqual(commits, [item["commit_sha"] for item in json.loads(report.read_text())["findings"]])
+
+    def test_two_findings_in_one_commit_are_rejected(self):
+        path, original, findings = self.two_findings()
+        MODULE._git(self.root, "checkout", "-qb", "fixture/head")
+        final = MODULE._remove_raw_view_at_line(MODULE._remove_raw_view_at_line(original, 4), 2)
+        self.commit_text(path, final, "Combined findings")
+        queue, transport = self.capture_series()
+        with self.assertRaisesRegex(ValueError, "one repair commit per fixed finding"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                            self.report(findings, ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport)
+
+    def test_one_commit_with_two_fixes_and_empty_padding_is_rejected(self):
+        path, original, findings = self.two_findings()
+        MODULE._git(self.root, "checkout", "-qb", "fixture/head")
+        final = MODULE._remove_raw_view_at_line(MODULE._remove_raw_view_at_line(original, 4), 2)
+        self.commit_text(path, final, "Combined findings")
+        MODULE._git(self.root, "commit", "--allow-empty", "-qm", "Padding")
+        queue, transport = self.capture_series()
+        with self.assertRaisesRegex(ValueError, "exactly its trusted recipe"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                            self.report(findings, ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport)
+
+    def test_reordered_finding_commits_are_rejected(self):
+        path, original, findings = self.two_findings()
+        MODULE._git(self.root, "checkout", "-qb", "fixture/head")
+        first = MODULE._remove_raw_view_at_line(original, 4)
+        self.commit_text(path, first, "Second finding first")
+        self.commit_text(path, MODULE._remove_raw_view_at_line(first, 2), "First finding second")
+        queue, transport = self.capture_series()
+        with self.assertRaisesRegex(ValueError, "exactly its trusted recipe"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                            self.report(findings, ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport)
+
+    def test_report_cannot_self_assert_commit_sha(self):
+        queue, transport = self.publication()
+        with self.assertRaisesRegex(ValueError, "commit_sha does not match"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                            self.report([self.finding(commit_sha="0" * 40)],
+                                        ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport)
+
+    def test_merge_in_repair_series_is_rejected(self):
+        path, original, findings = self.two_findings()
+        MODULE._git(self.root, "checkout", "-qb", "fixture/head")
+        first = MODULE._remove_raw_view_at_line(original, 2)
+        parent = self.commit_text(path, first, "First finding")
+        final = MODULE._remove_raw_view_at_line(first, 3)
+        path.write_bytes(final.encode("utf-8"))
+        MODULE._git(self.root, "add", ".")
+        tree = MODULE._git(self.root, "write-tree").strip()
+        merge = MODULE._git(self.root, "commit-tree", tree, "-p", parent, "-p", self.head,
+                            "-m", "Merge second repair").strip()
+        MODULE._git(self.root, "update-ref", "refs/heads/fixture/head", merge)
+        queue, transport = self.capture_series()
+        with self.assertRaisesRegex(ValueError, "linear series directly"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                            self.report(findings, ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport)
+
+    def test_bundle_cannot_publish_extra_refs(self):
+        queue, transport = self.publication()
+        bundle = transport / "aw-fixture-head.bundle"
+        bundle.unlink()
+        MODULE._git(self.root, "bundle", "create", str(bundle), "fixture/head", "HEAD", f"^{self.head}")
+        with self.assertRaisesRegex(ValueError, "identify only the validated"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                            self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]),
+                            queue, transport)
+
+    def test_bundle_filename_must_match_publisher_identity(self):
+        queue, transport = self.publication()
+        (transport / "aw-fixture-head.bundle").rename(transport / "aw-other-branch.bundle")
+        with self.assertRaisesRegex(ValueError, "filename does not match"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                            self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]),
+                            queue, transport)
 
     def test_publication_rejects_symlink_tree_with_regular_worktree_file(self):
         MODULE._git(self.root, "config", "core.symlinks", "false")
@@ -586,31 +739,31 @@ class ValidationTests(unittest.TestCase):
                 self.report([self.finding()], []), queue, transport,
             )
 
-    def test_publication_rejects_tampered_patch_body(self):
+    def test_publication_rejects_tampered_bundle_body(self):
         queue, transport = self.publication()
-        patch = transport / "aw-fixture-head.patch"
-        patch.write_bytes(patch.read_bytes().replace(b'+<Button Content="Open"', b'+<Button Content="Altered"'))
-        with self.assertRaisesRegex(ValueError, "patch tree differs"):
+        bundle = transport / "aw-fixture-head.bundle"
+        bundle.write_bytes(bundle.read_bytes()[:-20])
+        with self.assertRaisesRegex(ValueError, "publication verification failed"):
             MODULE.validate(
                 self.root, self.head, self.head, True, self.prepared,
                 self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
             )
 
-    def test_publication_rejects_stale_patch_commit_header(self):
+    def test_publication_rejects_stale_bundle_tip(self):
         queue, transport = self.publication()
-        patch = transport / "aw-fixture-head.patch"
+        patch = transport / "aw-fixture-head.bundle"
         candidate = MODULE._git(self.root, "rev-parse", "HEAD").strip()
         patch.write_bytes(patch.read_bytes().replace(candidate.encode("ascii"), b"0" * 40, 1))
-        with self.assertRaisesRegex(ValueError, "does not identify the validated"):
+        with self.assertRaisesRegex(ValueError, "identify only the validated"):
             MODULE.validate(
                 self.root, self.head, self.head, True, self.prepared,
                 self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
             )
 
-    def test_publication_rejects_alternate_bundle_transport(self):
+    def test_publication_rejects_alternate_patch_transport(self):
         queue, transport = self.publication()
-        (transport / "aw-fixture-head.bundle").write_bytes(b"unvalidated alternate transport")
-        with self.assertRaisesRegex(ValueError, "alternate bundle transport"):
+        (transport / "aw-fixture-head.patch").write_bytes(b"unvalidated alternate transport")
+        with self.assertRaisesRegex(ValueError, "alternate patch transport"):
             MODULE.validate(
                 self.root, self.head, self.head, True, self.prepared,
                 self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
@@ -630,7 +783,7 @@ class ValidationTests(unittest.TestCase):
     def test_publication_rejects_multiple_commits(self):
         queue, transport = self.publication()
         subprocess.run(["git", "commit", "--allow-empty", "-qm", "Extra commit"], cwd=self.root, check=True)
-        with self.assertRaisesRegex(ValueError, "one repair commit directly"):
+        with self.assertRaisesRegex(ValueError, "one repair commit per fixed finding"):
             MODULE.validate(
                 self.root, self.head, self.head, True, self.prepared,
                 self.report([self.finding()], ["src/cascadia/TerminalApp/Test.xaml"]), queue, transport,
@@ -1053,252 +1206,78 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "prepared evidence does not match"):
             MODULE.validate(self.root, self.head, self.head, True, self.prepared, self.report())
 
+    def test_signal_only_report_without_domain_review_is_rejected(self):
+        report = self.report()
+        data = json.loads(report.read_text())
+        del data["review_checks"]
+        report.write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, "review_checks must be an array"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+
+    def test_review_dimensions_cannot_be_omitted_repeated_or_invented(self):
+        for change in ("omit", "repeat", "invent"):
+            with self.subTest(change=change):
+                report = self.report()
+                data = json.loads(report.read_text())
+                if change == "omit":
+                    data["review_checks"].pop()
+                elif change == "repeat":
+                    data["review_checks"].append(data["review_checks"][0])
+                else:
+                    data["review_checks"][0]["id"] = "unrecognized"
+                report.write_text(json.dumps(data))
+                with self.assertRaisesRegex(ValueError, "every required review dimension"):
+                    MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+
+    def test_domain_evidence_must_match_immutable_source_not_worktree(self):
+        report = self.report()
+        data = json.loads(report.read_text())
+        data["review_checks"][0]["evidence"][0]["text"] = "Fabricated accessible implementation"
+        report.write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, "does not match immutable"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+
+    def test_model_cannot_mark_a_review_dimension_as_runtime_pass(self):
+        report = self.report()
+        data = json.loads(report.read_text())
+        data["review_checks"][0]["status"] = "PASS"
+        report.write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, "distinguish source review"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+
 
 @unittest.skipUnless(shutil.which("node"), "Node required for trusted report scenarios")
-class RunReportTests(unittest.TestCase):
-    reviewed_sha = "a" * 40
-    published_sha = "b" * 40
-
-    def report(self, *, findings=None, report_sha=None, current_sha=None, published_sha="",
-               agent="success", detection="success", publication="success", native="success",
-               artifact="success", push_failures="0", fail_api=False,
-               summary="## Outcome\nSource review completed.\n\n## Human action\nNone.\n",
-               summary_symlink=False):
-        root = Path(__file__).parents[4]
-        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        job = workflow.split("\n  accessibility-report:\n", 1)[1].split("\n  native-runtime:\n", 1)[0]
-        script = textwrap.dedent(job.split("          script: |\n", 1)[1])
-        with tempfile.TemporaryDirectory() as directory:
-            report_dir = Path(directory) / "accessibility-run-report"
-            report_dir.mkdir()
-            (report_dir / "final.json").write_text(json.dumps({
-                "version": 1, "source_sha": report_sha or self.reviewed_sha,
-                "findings": findings or [],
-            }), encoding="utf-8")
-            if summary is not None:
-                summary_path = report_dir / "summary.md"
-                content = summary if isinstance(summary, bytes) else summary.encode("utf-8")
-                if summary_symlink:
-                    target = Path(directory) / "narrative.md"
-                    target.write_bytes(content)
-                    try:
-                        summary_path.symlink_to(target)
-                    except OSError as error:
-                        if os.name == "nt" and getattr(error, "winerror", None) == 1314:
-                            self.skipTest("Windows symlink creation privilege is unavailable")
-                        raise
-                else:
-                    summary_path.write_bytes(content)
-            data = {
-                "script": script, "currentSha": current_sha or self.reviewed_sha, "failApi": fail_api,
-                "env": {
-                    "RUNNER_TEMP": directory, "REVIEWED_SHA": self.reviewed_sha, "PR_NUMBER": "985",
-                    "AGENT_RESULT": agent, "DETECTION_RESULT": detection, "PUBLICATION_RESULT": publication,
-                    "NATIVE_RESULT": native, "SOURCE_ARTIFACT_OUTCOME": artifact,
-                    "PUBLISHED_SHA": published_sha, "CODE_PUSH_FAILURE_COUNT": push_failures,
-                    "GITHUB_RUN_ATTEMPT": "1",
-                },
-            }
-            runner = r"""
-const fs = require('fs');
-const vm = require('vm');
-const data = JSON.parse(fs.readFileSync(0, 'utf8'));
-const calls = [];
-const errors = [];
-let summary = '';
-const context = {
-  repo: { owner: 'microsoft', repo: 'intelligent-terminal' },
-  serverUrl: 'https://github.com', runId: 12345
-};
-const github = { rest: {
-  pulls: { get: async () => {
-    if (data.failApi) throw new Error('PR metadata unavailable');
-    return { data: { head: { sha: data.currentSha } } };
-  } },
-  checks: { create: async value => { calls.push(value); return {}; } }
-} };
-const core = {
-  error: value => errors.push(value),
-  summary: { addRaw(value) { summary = value; return this; }, async write() {} }
-};
-vm.runInNewContext('(async () => {' + data.script + '\n})()', {
-  require, context, github, core, process: { env: data.env }
-}).then(() => console.log(JSON.stringify({ calls, errors, summary })))
-  .catch(error => { console.error(error.message); process.exitCode = 1; });
-"""
-            result = subprocess.run(
-                ["node", "-e", runner], input=json.dumps(data),
-                capture_output=True, text=True, timeout=30,
-            )
-            if fail_api:
-                return result
-            self.assertEqual(0, result.returncode, result.stderr)
-            output = json.loads(result.stdout)
-            self.assertEqual(1, len(output["calls"]))
-            self.assertEqual("https://github.com/microsoft/intelligent-terminal/actions/runs/12345",
-                             output["calls"][0]["details_url"])
-            self.assertEqual("Native accessibility report", output["calls"][0]["name"])
-            return output
-
-    def test_passed_noop_has_direct_run_link_and_validated_counts(self):
-        result = self.report(findings=[{"severity": "MEDIUM", "disposition": "advice"}])
-        check = result["calls"][0]
-        self.assertEqual("success", check["conclusion"])
-        self.assertEqual(self.reviewed_sha, check["head_sha"])
-        self.assertIn("0 HIGH, 1 MEDIUM, 0 LOW", check["output"]["summary"])
-        self.assertIn("actions/runs/12345", result["summary"])
-        self.assertIn("#artifacts", result["summary"])
-
-    def test_native_failure_is_not_reported_as_pass(self):
-        self.assertEqual("failure", self.report(native="failure")["calls"][0]["conclusion"])
-
-    def test_blocked_high_finding_requires_attention(self):
-        result = self.report(findings=[{"severity": "HIGH", "disposition": "blocked"}])
-        self.assertEqual("action_required", result["calls"][0]["conclusion"])
-
-    def test_agent_handoff_markdown_is_returned_verbatim_to_pr_check(self):
-        narrative = (
-            "## Outcome\nHuman action needed.\n\n"
-            "## Results\n"
-            "| Severity | Disposition | File:line | Finding and user impact | Repair or blocker | Required human action |\n"
-            "| --- | --- | --- | --- | --- | --- |\n"
-            "| HIGH | blocked | src/cascadia/TerminalApp/Test.xaml:7 | Keyboard users cannot activate the control | No trusted recipe | Repair focus and test keyboard activation |\n"
-            "| MEDIUM | advice | src/cascadia/TerminalApp/Test.xaml:9 | Text may clip | Runtime confirmation needed | Inspect scaling |\n\n"
-            "## Human action\nRepair the focus handler and verify keyboard activation on Windows.\n\n"
-            "## Evidence and limits\nSource handler inspected; interactive keyboard test unavailable.\n"
-        )
-        result = self.report(findings=[{"severity": "MEDIUM", "disposition": "advice"},
-                                      {"severity": "HIGH", "disposition": "blocked"}], summary=narrative)
-        self.assertEqual("action_required", result["calls"][0]["conclusion"])
-        self.assertIn(narrative, result["calls"][0]["output"]["summary"])
-        self.assertIn("Agent-authored narrative", result["summary"])
-
-    def test_summary_format_variations_do_not_require_extraction(self):
-        narrative = "# Review notes\n\n| State | Action |\n| --- | --- |\n| Advice | Inspect layout |\n\n```text\nsource evidence\n```\n"
-        for content in (narrative, b"\xef\xbb\xbf" + narrative.encode("utf-8")):
-            with self.subTest(has_byte_order_mark=isinstance(content, bytes)):
-                result = self.report(summary=content)
-                self.assertEqual("success", result["calls"][0]["conclusion"])
-                self.assertIn(narrative, result["summary"])
-
-    def test_agent_success_claim_cannot_override_blocked_high_or_failed_native(self):
-        narrative = "## Outcome\nPASS: all checks passed.\n"
-        result = self.report(findings=[{"severity": "HIGH", "disposition": "blocked"}], summary=narrative)
-        self.assertEqual("action_required", result["calls"][0]["conclusion"])
-        self.assertEqual("failure", self.report(native="failure", summary=narrative)["calls"][0]["conclusion"])
-
-    def test_missing_empty_invalid_or_oversized_agent_summary_is_failure(self):
-        for narrative in (None, "", " \n\t", b"\xef\xbb\xbf", b"\xef\xbb\xbf \n", b"\xff", "x" * (32 * 1024 + 1)):
-            with self.subTest(summary_length=None if narrative is None else len(narrative)):
-                result = self.report(summary=narrative)
-                self.assertEqual("failure", result["calls"][0]["conclusion"])
-                self.assertTrue(result["errors"])
-
-    def test_symlink_agent_summary_is_failure(self):
-        result = self.report(summary_symlink=True)
-        self.assertEqual("failure", result["calls"][0]["conclusion"])
-        self.assertIn("regular Markdown file", result["summary"])
-
-    def test_missing_validated_artifact_is_failure_not_empty_success(self):
-        result = self.report(artifact="failure")
-        self.assertEqual("failure", result["calls"][0]["conclusion"])
-        self.assertTrue(result["errors"])
-        self.assertIn("unavailable", result["summary"])
-
-    def test_wrong_report_revision_is_rejected(self):
-        result = self.report(report_sha="c" * 40)
-        self.assertEqual("failure", result["calls"][0]["conclusion"])
-        self.assertIn("inconsistent revision", result["summary"])
-
-    def test_source_failure_still_publishes_run_link_without_findings(self):
-        result = self.report(agent="failure", artifact="skipped")
-        self.assertEqual("failure", result["calls"][0]["conclusion"])
-        self.assertIn("no source-review PASS is inferred", result["summary"])
-        self.assertIn("Workflow action required", result["summary"])
-        self.assertIn("before retrying", result["summary"])
-
-    def test_skipped_stages_are_not_inferred_successful(self):
-        result = self.report(agent="skipped", detection="skipped", publication="skipped",
-                             native="skipped", artifact="skipped")
-        self.assertEqual("action_required", result["calls"][0]["conclusion"])
-
-    def test_stale_success_stays_on_reviewed_commit_and_is_neutral(self):
-        result = self.report(current_sha=self.published_sha)
-        self.assertEqual("neutral", result["calls"][0]["conclusion"])
-        self.assertEqual(self.reviewed_sha, result["calls"][0]["head_sha"])
-        self.assertIn("earlier reviewed revision", result["summary"])
-
-    def test_stale_failed_validation_remains_failure(self):
-        result = self.report(agent="failure", artifact="skipped", current_sha=self.published_sha)
-        self.assertEqual("failure", result["calls"][0]["conclusion"])
-
-    def test_repair_link_follows_authenticated_published_commit(self):
-        result = self.report(findings=[{"severity": "HIGH", "disposition": "fixed"}],
-                             published_sha=self.published_sha, current_sha=self.published_sha)
-        self.assertEqual("success", result["calls"][0]["conclusion"])
-        self.assertEqual(self.published_sha, result["calls"][0]["head_sha"])
-        self.assertIn("original reviewed revision, not this new repair commit", result["summary"])
-
-    def test_fixed_without_published_commit_is_failure(self):
-        result = self.report(findings=[{"severity": "HIGH", "disposition": "fixed"}])
-        self.assertEqual("failure", result["calls"][0]["conclusion"])
-
-    def test_fixed_report_requires_published_commit_on_current_head(self):
-        result = self.report(findings=[{"severity": "HIGH", "disposition": "fixed"}],
-                             published_sha=self.published_sha)
-        self.assertEqual("failure", result["calls"][0]["conclusion"])
-        self.assertIn("not confirmed on the current PR head", result["summary"])
-
-    def test_fixed_report_for_genuinely_newer_head_retains_stale_handling(self):
-        result = self.report(findings=[{"severity": "HIGH", "disposition": "fixed"}],
-                             published_sha=self.published_sha, current_sha="c" * 40)
-        self.assertEqual("neutral", result["calls"][0]["conclusion"])
-        self.assertEqual(self.reviewed_sha, result["calls"][0]["head_sha"])
-
-    def test_failed_code_push_is_failure_even_if_job_succeeded(self):
-        result = self.report(push_failures="1")
-        self.assertEqual("failure", result["calls"][0]["conclusion"])
-
-    def test_unconfirmed_published_sha_does_not_mark_new_head_passed(self):
-        result = self.report(current_sha=self.published_sha, published_sha=self.published_sha)
-        self.assertEqual("neutral", result["calls"][0]["conclusion"])
-        self.assertEqual(self.reviewed_sha, result["calls"][0]["head_sha"])
-
-    def test_api_failure_surfaces_without_fake_check(self):
-        result = self.report(fail_api=True)
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("PR metadata unavailable", result.stderr)
-
-
 class WorkflowContractTests(unittest.TestCase):
-    def test_agent_summary_is_requested_validated_uploaded_and_rendered_without_parsing(self):
+    def test_agent_summary_is_written_from_template_and_displayed_unchanged(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertIn("--summary /tmp/gh-aw/accessibility/summary.md", workflow)
         self.assertIn("        /tmp/gh-aw/accessibility/summary.md", workflow)
-        self.assertIn("## Human action", workflow)
-        self.assertIn("| Severity | Disposition | File:line | Finding and user impact | Repair or blocker | Required human action |", workflow)
-        self.assertIn("ordered HIGH, MEDIUM, LOW", workflow)
-        self.assertIn("put `remaining`/`blocked` before `fixed`", workflow)
-        self.assertIn("summary.push('', '## Source review summary'", workflow)
-        self.assertIn("'', sourceSummary", workflow)
-        self.assertNotIn("JSON.parse(sourceSummary)", workflow)
+        self.assertIn("## Human action and limits", workflow)
+        self.assertIn("| Proposed fix commit |", workflow)
+        self.assertIn("[commit SHA](COMMIT_URL)", workflow)
+        self.assertIn("`${{ github.server_url }}`", workflow)
+        self.assertIn("prepared `publication.repository`", workflow)
+        self.assertIn('cat /tmp/gh-aw/accessibility/summary.md >> "$GITHUB_STEP_SUMMARY"', workflow)
+        self.assertIn("original PR", workflow)
+        self.assertIn("may revert any fix commit", workflow)
+        self.assertIn("only once below the table", workflow)
+        self.assertIn("set `review_checks`, `findings`, `dismissed_signals` and `patch_files`", workflow)
+        self.assertIn("preserve every prepared runtime", workflow)
+        self.assertIn("Include this paragraph only if repair commits exist; otherwise remove it.", workflow)
+        self.assertNotIn("script: |", workflow)
+        self.assertNotIn("summary.push(", workflow)
 
-    def test_linked_report_runs_after_validation_publication_and_native(self):
+    def test_no_extra_report_job_or_native_build_job_is_required(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        job = workflow.split("\n  accessibility-report:\n", 1)[1].split("\n  native-runtime:\n", 1)[0]
-        self.assertIn("needs: [agent, detection, safe_outputs, native-runtime]", job)
-        self.assertIn("checks: write", job)
-        self.assertIn("details_url: runUrl", job)
-        self.assertNotIn("createComment", job)
+        self.assertNotIn("\n  accessibility-report:", workflow)
+        self.assertNotIn("\n  native-runtime:", workflow)
+        self.assertNotIn("checks: write", workflow)
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
-        compiled_report = re.split(r"\n  [a-zA-Z][\w-]*:\n",
-                                  compiled.split("\n  accessibility-report:\n", 1)[1], maxsplit=1)[0]
-        dependencies = compiled_report.split("    needs:\n", 1)[1].split("\n    if:", 1)[0]
-        for required in ("agent", "detection", "safe_outputs", "native-runtime"):
-            self.assertIn(f"      - {required}", dependencies)
-        self.assertIn("checks: write", compiled_report)
+        self.assertNotIn("\n  accessibility-report:", compiled)
+        self.assertNotIn("\n  native-runtime:", compiled)
+        self.assertIn('cat /tmp/gh-aw/accessibility/summary.md', compiled)
 
     def test_support_paths_trigger_trusted_base_validation(self):
         root = Path(__file__).parents[4]
@@ -1321,50 +1300,6 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("retries: 0", workflow)
 
     @unittest.skipUnless(os.name == "nt" and shutil.which("pwsh"), "Windows PowerShell host required")
-    def test_native_enforcement_rejects_success_without_state_evidence(self):
-        root = Path(__file__).parents[4]
-        workflow = (root / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
-        section = workflow.split("      - name: Enforce native scan results", 1)[1]
-        script = textwrap.dedent(section.split("        run: |\n", 1)[1])
-        with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            sha = "a" * 40
-            markers = {"fre": "NextButton", "fre-settings": "TabModeComboBox", "agents": "AcpAgentComboBox"}
-            for surface, marker in markers.items():
-                output = directory / "accessibility-results" / surface
-                output.mkdir(parents=True)
-                scan_path = output / "axe-results.json"
-                tree_path = output / "uia-tree.json"
-                (output / "result.json").write_text(json.dumps({
-                    "status": "PASS", "source_sha": sha, "surface": surface,
-                    "process_id": 42, "axe_results": str(scan_path),
-                }), encoding="utf-8")
-                scan_path.write_text(json.dumps({
-                    "scan_id": surface, "process_id": 42, "window_count": 1, "error_count": 0,
-                    "visible_state_marker": marker, "uia_tree": str(tree_path),
-                }), encoding="utf-8")
-                tree_path.write_text(json.dumps([{
-                    "automation_id": marker, "is_offscreen": False, "process_id": 42,
-                }]), encoding="utf-8")
-            environment = dict(os.environ, RUNNER_TEMP=temporary, SOURCE_SHA=sha,
-                               FRE_OUTCOME="success", AGENTS_OUTCOME="success", FRE_SETTINGS_OUTCOME="success")
-
-            def enforce():
-                return subprocess.run(
-                    ["pwsh", "-NoProfile", "-Command", script],
-                    env=environment, capture_output=True, text=True, timeout=30,
-                )
-
-            valid = enforce()
-            self.assertEqual(0, valid.returncode, valid.stderr)
-            tree_path.write_text("[]", encoding="utf-8")
-            empty = enforce()
-            self.assertNotEqual(0, empty.returncode)
-            self.assertIn("hierarchy lacks", empty.stderr)
-            (directory / "accessibility-results" / "fre" / "result.json").unlink()
-            missing = enforce()
-            self.assertNotEqual(0, missing.returncode)
-
     def test_compiled_agent_disables_custom_instructions(self):
         root = Path(__file__).parents[4]
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
@@ -1381,8 +1316,9 @@ class WorkflowContractTests(unittest.TestCase):
     def test_validated_report_is_uploaded_after_validation(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        self.assertLess(workflow.index("name: Validate final findings"), workflow.index("name: Upload validated accessibility report"))
-        upload = workflow.split("name: Upload validated accessibility report", 1)[1].split("\n---", 1)[0]
+        self.assertLess(workflow.index("name: Check findings and repair publication policy"),
+                        workflow.index("name: Upload source review and agent-written summary"))
+        upload = workflow.split("name: Upload source review and agent-written summary", 1)[1].split("\n---", 1)[0]
         self.assertIn("/tmp/gh-aw/accessibility/final.json", upload)
         self.assertIn("/tmp/gh-aw/accessibility/summary.md", upload)
 
@@ -1392,7 +1328,7 @@ class WorkflowContractTests(unittest.TestCase):
         stage = workflow.index('git show "$BASE_SHA:.github/skills/pr-accessibility/SKILL.md"')
         checkout = workflow.index('git checkout -B "$HEAD_REF" "$HEAD_SHA"')
         self.assertLess(stage, checkout)
-        self.assertIn("Follow `$RUNNER_TEMP/gh-aw/accessibility-trusted/SKILL.md`", workflow)
+        self.assertRegex(workflow, r"follow the\s+staged skill")
         self.assertIn('--prepared "$TRUSTED_ACCESSIBILITY/prepared.json"', workflow)
         self.assertIn("--no-replace-objects", workflow)
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
@@ -1404,16 +1340,18 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("HEAD_REF: ${{ github.event.pull_request.head.ref }}", workflow)
         self.assertLess(workflow.index('git check-ref-format --branch "$HEAD_REF"'),
                         workflow.index('git checkout -B "$HEAD_REF" "$HEAD_SHA"'))
-        self.assertIn("create\na real local Git commit", workflow)
+        self.assertIn("one separate commit per eligible HIGH finding", workflow)
 
-    def test_compiled_source_review_does_not_wait_for_native_runtime(self):
+    def test_compiled_review_and_publication_do_not_run_native_build_tests(self):
         root = Path(__file__).parents[4]
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
         agent = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  agent:\n", 1)[1], maxsplit=1)[0]
         self.assertRegex(agent, r"(?m)^    needs: activation$")
-        runtime = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  native-runtime:\n", 1)[1], maxsplit=1)[0]
-        self.assertRegex(runtime, r"(?m)^    needs: agent$")
-        self.assertIn("uses: ./.github/workflows/native-accessibility.yml", runtime)
+        self.assertNotIn("\n  native-runtime:\n", compiled)
+        self.assertNotIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
+        publisher = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  safe_outputs:\n", 1)[1], maxsplit=1)[0]
+        dependencies = publisher.split("    needs:\n", 1)[1].split("\n    if:", 1)[0]
+        self.assertNotIn("native", dependencies)
 
     def test_pr_publication_is_single_mode_and_fail_closed(self):
         root = Path(__file__).parents[4]
@@ -1421,19 +1359,15 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("push-to-pull-request-branch:", workflow)
         self.assertIn("fallback-as-pull-request: false", workflow)
         self.assertIn("--current-head \"$CURRENT_HEAD_SHA\"", workflow)
+        self.assertIn('gh api --hostname "${GITHUB_SERVER_URL#*://}"', workflow)
         frontmatter = workflow.split("---", 2)[1]
         self.assertNotIn("add-comment:", frontmatter)
         self.assertNotIn("submit-pull-request-review:", frontmatter)
 
-    def test_native_runtime_job_uses_pinned_ephemeral_windows_lane(self):
+    def test_separate_reviewer_native_workflow_keeps_its_isolated_lane(self):
         root = Path(__file__).parents[4]
         caller = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        native_job = caller.split("\n  native-runtime:\n", 1)[1].split("\nsteps:", 1)[0]
-        self.assertIn("uses: ./.github/workflows/native-accessibility.yml", native_job)
-        self.assertIn("with:", native_job)
-        self.assertNotIn("secrets: inherit", native_job)
-        self.assertNotIn("runs-on:", native_job)
-        self.assertNotIn("steps:", native_job)
+        self.assertNotIn("\n  native-runtime:\n", caller)
         workflow = (root / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         self.assertIn("runs-on: windows-2025-vs2026", workflow)
         self.assertIn("persist-credentials: false", workflow)

@@ -63,6 +63,16 @@ REQUIRED_FINDING_FIELDS = {
     "disposition",
 }
 STATIC_RAW_VIEW_RECIPE = "AXSTATIC001-remove-raw-view"
+REVIEW_CHECK_IDS = (
+    "names_roles_values",
+    "keyboard_focus",
+    "announcements",
+    "disabled_busy",
+    "high_contrast_theme",
+    "scaling_clipping",
+    "localization",
+    "tabs_panes_settings_agent_cards",
+)
 
 
 def _git(root: Path, *args: str, env: dict[str, str] | None = None) -> str:
@@ -353,6 +363,7 @@ def prepare(root: Path, base: str, head: str, output: Path,
         "source_evidence": source_evidence,
         "static_findings": sorted(findings, key=lambda item: (item["file"], item["line"], item["rule"])),
         "review_surfaces": surfaces,
+        "required_review_checks": list(REVIEW_CHECK_IDS) if paths else [],
         "runtime_checks": [
             {
                 "id": "axe-windows-uia",
@@ -403,6 +414,72 @@ def _validate_finding(item: Any) -> list[str]:
             errors.append(f"finding {field} must be a non-empty string")
     if not isinstance(item.get("validation"), list):
         errors.append("finding validation must be an array")
+    return errors
+
+
+def _validate_review_checks(root: Path, prepared: dict[str, Any], report: dict[str, Any]) -> list[str]:
+    checks = report.get("review_checks")
+    if not isinstance(checks, list):
+        return ["report review_checks must be an array"]
+    changed_files = set(prepared.get("changed_files", []))
+    required = set(REVIEW_CHECK_IDS) if changed_files else set()
+    ids = [check.get("id") for check in checks if isinstance(check, dict)]
+    errors: list[str] = []
+    if (len(ids) != len(checks) or any(not isinstance(value, str) for value in ids) or
+            len(ids) != len(set(ids)) or set(ids) != required):
+        errors.append("review_checks must account for every required review dimension exactly once")
+    covered_files: set[str] = set()
+    cited_files: set[str] = set()
+    sources: dict[tuple[str, str], list[str]] = {}
+    for index, check in enumerate(checks):
+        prefix = f"review_checks[{index}]"
+        if not isinstance(check, dict):
+            continue
+        if check.get("status") not in {"source-reviewed", "not-applicable", "runtime-required"}:
+            errors.append(f"{prefix}: status must distinguish source review from required runtime evidence")
+        if not isinstance(check.get("assessment"), str) or not check["assessment"].strip():
+            errors.append(f"{prefix}: assessment must explain the repository mechanism or applicability")
+        files = check.get("files")
+        if (not isinstance(files, list) or not files or
+                any(not isinstance(path, str) or path not in changed_files for path in files)):
+            errors.append(f"{prefix}: files must identify classified changed source")
+        else:
+            covered_files.update(files)
+        evidence = check.get("evidence")
+        if not isinstance(evidence, list) or not evidence:
+            errors.append(f"{prefix}: immutable source citations are required")
+            continue
+        for citation in evidence:
+            if not isinstance(citation, dict):
+                errors.append(f"{prefix}: citation must be an object")
+                continue
+            path, line, text = citation.get("file"), citation.get("line"), citation.get("text")
+            revision = citation.get("revision")
+            sha = prepared.get("source_sha") if revision == "head" else (
+                prepared.get("comparison_base_sha") if revision == "base" else None)
+            if (not isinstance(path, str) or not path or path != _normalize(path) or
+                    path.startswith("/") or ":" in path or ".." in path.split("/") or
+                    type(line) is not int or line < 1 or
+                    not isinstance(text, str) or not text.strip() or not sha):
+                errors.append(f"{prefix}: citation needs a relative file, revision, positive line and source text")
+                continue
+            key = (sha, path)
+            if key not in sources:
+                try:
+                    blob = _source_blob(root, sha, path)
+                except (RuntimeError, ValueError) as error:
+                    errors.append(f"{prefix}: immutable citation could not be read: {error}")
+                    continue
+                sources[key] = blob["text"].splitlines() if blob else []
+            lines = sources[key]
+            if line > len(lines) or text not in lines[line - 1]:
+                errors.append(f"{prefix}: citation does not match immutable {revision} source: {path}:{line}")
+            else:
+                cited_files.add(path)
+    if covered_files != changed_files:
+        errors.append("review_checks must cover every classified changed file")
+    if not changed_files.issubset(cited_files):
+        errors.append("review_checks must cite every classified changed file")
     return errors
 
 
@@ -556,7 +633,8 @@ def _verify_static_repairs(
 
 
 def _verify_publication(root: Path, expected_head: str, fixed: list[dict[str, Any]],
-                        prepared: dict[str, Any], queue: Path, transport_root: Path) -> list[str]:
+                        prepared: dict[str, Any], queue: Path, transport_root: Path,
+                        commit_ids: dict[str, str] | None = None) -> list[str]:
     errors: list[str] = []
     try:
         if queue.is_symlink() or not queue.is_file():
@@ -566,6 +644,7 @@ def _verify_publication(root: Path, expected_head: str, fixed: list[dict[str, An
         if len(entries) != 1 or not isinstance(entries[0], dict) or entries[0].get("type") != mode:
             raise ValueError(f"publication requires exactly one {mode} request")
         if not fixed:
+            # Report-only runs authenticate noop above; they have no repair transport.
             return errors
         context = prepared.get("publication", {})
         entry = entries[0]
@@ -579,29 +658,79 @@ def _verify_publication(root: Path, expected_head: str, fixed: list[dict[str, An
             raise ValueError("repair must remain on the trusted PR head branch")
         if _git(root, "diff", "--name-only", "HEAD", "--").strip():
             raise ValueError("publication requires a clean committed candidate")
-        parents = _git(root, "rev-list", "--parents", "-n", "1", "HEAD").split()
-        if len(parents) != 2 or parents[1] != expected_head:
-            raise ValueError("publication requires one repair commit directly on the reviewed head")
-        candidate_head = parents[0]
-        if any(transport_root.glob("aw-*.bundle")):
-            raise ValueError("AM publication must not contain an alternate bundle transport")
-        patches = list(transport_root.glob("aw-*.patch"))
-        if len(patches) != 1 or patches[0].is_symlink() or not patches[0].is_file():
-            raise ValueError("publication requires exactly one regular captured repair patch")
-        patch = patches[0]
-        if patch.stat().st_size > 4 * 1024 * 1024:
-            raise ValueError("captured repair patch exceeds the publication size limit")
-        headers = re.findall(rb"(?m)^From ([0-9a-f]{40}) Mon Sep 17 00:00:00 2001\r?$", patch.read_bytes())
-        if headers != [candidate_head.encode("ascii")]:
-            raise ValueError("captured repair patch does not identify the validated single commit")
-        with tempfile.TemporaryDirectory(prefix="accessibility-patch-") as directory:
-            index_env = {"GIT_INDEX_FILE": str(Path(directory) / "index")}
-            _git(root, "read-tree", expected_head, env=index_env)
-            _git(root, "apply", "--cached", "--whitespace=nowarn", str(patch.resolve()), env=index_env)
-            captured_tree = _git(root, "write-tree", env=index_env).strip()
-        candidate_tree = _git(root, "rev-parse", "HEAD^{tree}").strip()
-        if captured_tree != candidate_tree:
-            raise ValueError("captured repair patch tree differs from the validated candidate")
+        candidate_head = _git(root, "rev-parse", "HEAD").strip()
+        series = [
+            line.split() for line in
+            _git(root, "rev-list", "--reverse", "--topo-order", "--parents",
+                 f"{expected_head}..{candidate_head}").splitlines()
+        ]
+        if len(series) != len(fixed):
+            raise ValueError("publication requires exactly one repair commit per fixed finding")
+        previous = expected_head
+        completed: dict[str, list[dict[str, Any]]] = {}
+        verified_ids: dict[str, str] = {}
+        for item, parents in zip(fixed, series):
+            if len(parents) != 2 or parents[1] != previous:
+                raise ValueError("repair commits must form a linear series directly on the reviewed head")
+            commit = parents[0]
+            path = item["file"]
+            changed = _git(root, "diff-tree", "--no-commit-id", "--name-only", "--no-renames",
+                           "-r", previous, commit, "--").splitlines()
+            if changed != [path]:
+                raise ValueError(f"{item['stable_id']}: commit must change only its finding file")
+            completed.setdefault(path, []).append(item)
+            expected = _git(root, "show", f"{expected_head}:{path}")
+            for repair in sorted(completed[path], key=lambda value: value["line"], reverse=True):
+                expected = _remove_raw_view_at_line(expected, repair["line"])
+            if (_git(root, "show", f"{commit}:{path}") != expected or
+                    _git(root, "ls-tree", commit, "--", path).split()[0] !=
+                    _git(root, "ls-tree", expected_head, "--", path).split()[0]):
+                raise ValueError(f"{item['stable_id']}: commit delta must contain exactly its trusted recipe")
+            if item.get("commit_sha", commit) != commit:
+                raise ValueError(f"{item['stable_id']}: commit_sha does not match its authenticated repair commit")
+            verified_ids[item["stable_id"]] = commit
+            previous = commit
+        if any(transport_root.glob("aw-*.patch")):
+            raise ValueError("bundle publication must not contain an alternate patch transport")
+        bundles = list(transport_root.glob("aw-*.bundle"))
+        if len(bundles) != 1 or bundles[0].is_symlink() or not bundles[0].is_file():
+            raise ValueError("publication requires exactly one regular captured repair bundle")
+        bundle = bundles[0]
+        def transport_name(value: str) -> str:
+            return re.sub(r"-{2,}", "-", re.sub(r'[/\\:*?"<>|]', "-", value)).strip("-").lower()
+
+        branch_name = transport_name(context["head_ref"])
+        repo_name = transport_name(context["repository"])
+        if bundle.name not in {f"aw-{branch_name}.bundle", f"aw-{repo_name}-{branch_name}.bundle"}:
+            raise ValueError("captured repair bundle filename does not match the trusted publisher identity")
+        if bundle.stat().st_size > 4 * 1024 * 1024:
+            raise ValueError("captured repair bundle exceeds the publication size limit")
+        branch_ref = f"refs/heads/{context['head_ref']}"
+        if _git(root, "bundle", "list-heads", str(bundle.resolve())).splitlines() != [
+                f"{candidate_head} {branch_ref}"]:
+            raise ValueError("captured repair bundle must identify only the validated branch tip")
+        # Import into an isolated bare repository: never check out captured content or run hooks.
+        with tempfile.TemporaryDirectory(prefix="accessibility-bundle-", dir=transport_root.parent) as directory:
+            captured = Path(directory)
+            options = (f"--git-dir={captured}", "-c", f"core.hooksPath={captured / 'no-hooks'}",
+                       "-c", "protocol.file.allow=always", "-c", "fetch.fsckObjects=true")
+            _git(captured, *options, "init", "--bare", "--template=", "-q")
+            fetch = ("fetch", "--no-tags", "--no-recurse-submodules", "--no-auto-maintenance",
+                     "--no-write-fetch-head")
+            _git(captured, *options, *fetch, str(root.resolve()), f"{expected_head}:refs/heads/base")
+            _git(captured, *options, "bundle", "verify", str(bundle.resolve()))
+            _git(captured, *options, *fetch, str(bundle.resolve()), f"{branch_ref}:refs/heads/captured")
+            captured_series = [
+                line.split() for line in
+                _git(captured, *options, "rev-list", "--reverse", "--topo-order", "--parents",
+                     f"{expected_head}..refs/heads/captured").splitlines()
+            ]
+            if (captured_series != series or
+                    _git(captured, *options, "rev-parse", "refs/heads/captured^{tree}").strip() !=
+                    _git(root, "rev-parse", f"{candidate_head}^{{tree}}").strip()):
+                raise ValueError("captured repair bundle series/tree differs from the validated candidate")
+        if commit_ids is not None:
+            commit_ids.update(verified_ids)
     except (OSError, RuntimeError, ValueError) as error:
         errors.append(f"publication verification failed: {error}")
     return errors
@@ -621,6 +750,7 @@ def validate(
     prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
     report = json.loads(report_path.read_text(encoding="utf-8"))
     errors: list[str] = []
+    commit_ids: dict[str, str] = {}
     if summary_path is not None:
         try:
             if summary_path.is_symlink() or not summary_path.is_file():
@@ -644,6 +774,7 @@ def validate(
         errors.append("report findings must be an array")
         findings = []
     errors.extend(_validate_signal_coverage(prepared, report, findings))
+    errors.extend(_validate_review_checks(root, prepared, report))
     runtime_checks = report.get("runtime_checks")
     expected_runtime = prepared.get("runtime_checks", [])
     if not isinstance(runtime_checks, list):
@@ -663,6 +794,9 @@ def validate(
                 f"{item.get('stable_id', f'finding[{index}]')}: model-authored validation is not trusted; "
                 "leave validation empty for the native gate"
             )
+        if isinstance(item, dict) and "commit_sha" in item and (
+                item.get("disposition") != "fixed" or safe_output_queue is None):
+            errors.append(f"{item.get('stable_id', index)}: commit_sha requires authenticated publication")
 
     fixed = [item for item in findings if isinstance(item, dict) and item.get("disposition") == "fixed"]
     if not same_repo and fixed:
@@ -700,7 +834,8 @@ def validate(
         if transport_root is None:
             errors.append("publication verification requires the transport directory")
         else:
-            errors.extend(_verify_publication(root, expected_head, fixed, prepared, safe_output_queue, transport_root))
+            errors.extend(_verify_publication(root, expected_head, fixed, prepared, safe_output_queue,
+                                              transport_root, commit_ids))
 
     known_files = set(prepared.get("changed_files", []))
     for item in findings:
@@ -711,6 +846,8 @@ def validate(
         raise ValueError("\n".join(errors))
 
     for item in fixed:
+        if item["stable_id"] in commit_ids:
+            item["commit_sha"] = commit_ids[item["stable_id"]]
         item["validation"] = [
             {
                 "command": "accessibility_review.py validate",
