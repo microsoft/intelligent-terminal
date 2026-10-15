@@ -102,6 +102,8 @@ namespace TerminalApp
         UInt32 ProgressValue;
         Object IconSource;
         Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
+        TextHighlightColor MetadataHighlightColor;
+        IVector<HighlightedRun> MetadataHighlightRanges;
     };
 
     [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged

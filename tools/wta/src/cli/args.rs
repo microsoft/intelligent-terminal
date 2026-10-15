@@ -276,10 +276,10 @@ pub(crate) enum Command {
     /// List panes in a tab
     #[command(alias = "lsp")]
     ListPanes {
-        /// Tab ID (defaults to active tab)
+        /// Tab ID (defaults to first tab in the selected or first-listed window)
         #[arg(short = 't', long)]
         tab_id: Option<String>,
-        /// Window ID (used with tab_id)
+        /// Window ID (limits the query; explicit tab IDs without it span windows)
         #[arg(short = 'w', long)]
         window_id: Option<String>,
     },

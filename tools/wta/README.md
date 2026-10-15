@@ -394,7 +394,14 @@ wta list-windows --json                   # raw JSON output
 Short aliases are supported: `lsw`, `lst`, `lsp`, `neww`, `splitw`, `capturep`,
 `killp`, `setenv`, and `mon`.
 
-When `-t` (target pane) is omitted, the active pane is used automatically.
+`list-tabs` and `list-panes` accept `-w <window-id>` to select a window.
+They use the native `wtcli` default selection: the first-listed window, not the
+focused window. Without `-t`, `list-panes` lists the first tab in that window,
+not the active tab. Tab IDs are window-local, so use both `-w` and `-t` to query
+a specific window's tab; an explicit `-t` without `-w` queries across windows.
+
+For pane-targeting commands such as `capture-pane` and `kill-pane`, omitting `-t`
+uses the active pane automatically.
 
 ### Protocol Discovery & Environment Setup
 

@@ -895,6 +895,8 @@ namespace winrt::TerminalApp::implementation
                 existing.Title(pane.Title());
                 existing.IsActive(pane.IsActive());
                 existing.MetadataText(pane.MetadataText());
+                existing.MetadataHighlightColor(pane.MetadataHighlightColor());
+                existing.MetadataHighlightRanges(pane.MetadataHighlightRanges());
                 existing.MetadataVisibility(pane.MetadataVisibility());
                 existing.AutomationName(pane.AutomationName());
                 existing.ProgressState(pane.ProgressState());
@@ -1505,10 +1507,11 @@ namespace winrt::TerminalApp::implementation
 
     WUX::Style TabStrip::_historyStatusTextStyle(winrt::hstring const& status)
     {
-        const auto styleKey = status == L"Working"   ? L"HistoryActiveTextStyle" :
-                              status == L"Attention" ? L"HistoryAttentionTextStyle" :
-                              status == L"Error"     ? L"HistoryErrorTextStyle" :
-                                                       L"HistorySubtitleTextStyle";
+        const auto color = TabHeaderControl::AgentStatusHighlightColor(winrt::to_string(status));
+        const auto styleKey = color == TerminalApp::TextHighlightColor::Success  ? L"HistoryActiveTextStyle" :
+                              color == TerminalApp::TextHighlightColor::Caution  ? L"HistoryAttentionTextStyle" :
+                              color == TerminalApp::TextHighlightColor::Critical ? L"HistoryErrorTextStyle" :
+                                                                                   L"HistorySubtitleTextStyle";
         return Resources().Lookup(box_value(styleKey)).as<WUX::Style>();
     }
 

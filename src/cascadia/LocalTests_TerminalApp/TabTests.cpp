@@ -177,6 +177,19 @@ namespace TerminalAppLocalTests
                _progressIndicatorsMatch(root, L"Tab", shown, indeterminate, value);
     }
 
+    static double _effectiveTextOpacity(const TextBlock& text, const Media::Brush& brush)
+    {
+        auto opacity = brush.Opacity() * brush.as<Media::SolidColorBrush>().Color().A / 255.0;
+        for (DependencyObject element = text; element; element = Media::VisualTreeHelper::GetParent(element))
+        {
+            if (const auto visual = element.try_as<UIElement>())
+            {
+                opacity *= visual.Opacity();
+            }
+        }
+        return opacity;
+    }
+
     class TestConnection : public winrt::implements<TestConnection, winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection>
     {
     public:
@@ -554,6 +567,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentTabClassificationTracksSession);
         TEST_METHOD(CliAgentClassifiesTab);
         TEST_METHOD(VisibleFieldsControlRichTabComposition);
+        TEST_METHOD(RichTabAgentStatusColors);
+        TEST_METHOD(RichTabStatusColorsUsePresentationRevision);
+        TEST_METHOD(RichTabPaneStatusColorsAreRetainedOnReuse);
         TEST_METHOD(RichTabMetadataSelectionIsLimitedToTwo);
         TEST_METHOD(RichTabGitAvailabilityControlsFilterOptions);
         TEST_METHOD(RichTabMetadataIsVisibleOnlyInVerticalLayout);
@@ -7708,6 +7724,9 @@ namespace TerminalAppLocalTests
     {
         TestOnUIThread([&]() {
             winrt::TerminalApp::HighlightedTextControl control;
+            ResourceDictionary highlightingResources;
+            highlightingResources.Source(winrt::Windows::Foundation::Uri{ L"ms-resource:///Files/TerminalApp/HighlightedTextControlStyle.xaml" });
+            control.Resources().MergedDictionaries().Append(highlightingResources);
             control.Text(L"PowerShell");
             control.SearchText(L"shell");
             control.ApplyTemplate();
@@ -17699,6 +17718,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(
                 winrt::to_string(winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText("Working")),
                 fields.at("agentStatus"));
+            VERIFY_ARE_EQUAL(currentPaneInfo->status, fields.at("agentStatusId"));
             VERIFY_IS_FALSE(fields.at("branchLabel").empty());
             VERIFY_IS_FALSE(fields.at("changesLabel").empty());
             VERIFY_ARE_EQUAL(
@@ -18321,6 +18341,7 @@ namespace TerminalAppLocalTests
 
         Snapshot snapshot;
         snapshot.fields.emplace("agentStatus", std::string{ "\xE6\xAD\xA3\xE5\x9C\xA8\xE5\xB7\xA5\xE4\xBD\x9C" });
+        snapshot.agentStatus = "Working";
         snapshot.fields.emplace("workingDirectory", std::string{ R"(C:\src\terminal)" });
         snapshot.fields.emplace("repository", std::string{ "\xE7\xBB\x88\xE7\xAB\xAF" });
         snapshot.fields.emplace("branch", std::string{ "\xE4\xB8\xBB\xE5\x88\x86\xE6\x94\xAF" });
@@ -18335,6 +18356,10 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(
             std::wstring{ L"Agent status: \u6B63\u5728\u5DE5\u4F5C, Current working directory: C:\\src\\terminal" },
             defaults->accessibilityText);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, defaults->agentStatusRanges.size());
+        VERIFY_ARE_EQUAL(size_t{ 0 }, defaults->agentStatusRanges[0].start);
+        VERIFY_ARE_EQUAL(size_t{ 4 }, defaults->agentStatusRanges[0].length);
+        VERIFY_ARE_EQUAL(std::string{ "Working" }, defaults->agentStatus);
 
         ProviderBroker::VisibleFieldMap visibleFields;
         visibleFields["git"].emplace("branch");
@@ -18345,9 +18370,417 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(
             std::wstring{ L"Git branch: \u4E3B\u5206\u652F, Git changes: ~12 +200 -35" },
             branchOnly->accessibilityText);
+        VERIFY_IS_TRUE(branchOnly->agentStatusRanges.empty());
+        VERIFY_IS_TRUE(branchOnly->agentStatus.empty());
 
         visibleFields["git"].clear();
         VERIFY_IS_FALSE(ProviderBroker::ComposePresentation({ provider }, snapshots, visibleFields).has_value());
+    }
+
+    void TabTests::RichTabStatusColorsUsePresentationRevision()
+    {
+        using namespace ::Microsoft::Terminal::RichTab::Provider;
+        using winrt::TerminalApp::TextHighlightColor;
+
+        const auto sourceConnection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{78c716ba-666a-44f2-ab6b-771e181545a8}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        Grid host{ nullptr };
+        TestOnUIThread([&]() {
+            host = Grid{};
+            host.Width(1200);
+            host.Height(600);
+        });
+        auto page = _commonSetup(*sourceConnection, host, std::nullopt, true);
+        std::shared_ptr<Pane> source;
+        std::shared_ptr<Pane> split;
+        const auto initialized = std::make_shared<::details::Event>();
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto splitConnection = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{1d084286-a852-4106-a144-8c81ac3cff36}" },
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            split = page->_MakePane(nullptr, page->_GetFocusedTab(), *splitConnection);
+            split->GetTerminalControl().Initialized([initialized](auto&&, auto&&) { initialized->Set(); });
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, split));
+            page->UpdateLayout();
+        });
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(initialized->m_handle, 10000));
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            source = tab->GetRootPane()->FindPaneBySessionId(sourceConnection->SessionId());
+            VERIFY_IS_NOT_NULL(source);
+            page->_richTabAgentStatusSnapshotLoaded = true;
+
+            const auto apply = [&](const std::shared_ptr<Pane>& pane, const std::wstring& text, const std::string& status) {
+                const auto control = pane->GetTerminalControl();
+                VERIFY_IS_NOT_NULL(control);
+                VERIFY_ARE_EQUAL(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected, control.ConnectionState());
+                VERIFY_IS_FALSE(page->_FindSessionIdForControl(control).empty());
+                page->_richTabAgentStatusByPaneId.insert_or_assign(
+                    pane->GetSessionId(),
+                    winrt::TerminalApp::implementation::TerminalPage::_RichTabAgentInfo{
+                        "latest-session", "Error", "custom:agent", std::nullopt, pane->GetSessionId() });
+                page->_AttachOrUpdateRichTabControl(control);
+                const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(control));
+                uint64_t reservation;
+                {
+                    std::lock_guard lock{ page->_richTabAttachmentsMutex };
+                    VERIFY_IS_TRUE(page->_richTabAttachments.contains(key));
+                    reservation = page->_richTabAttachments.at(key).reservation;
+                }
+                Presentation presentation;
+                presentation.text = text;
+                presentation.agentStatus = status;
+                presentation.agentStatusRanges.push_back({ 0, text.size() });
+                BrokerUpdate update;
+                update.sessionId = page->_FindSessionIdForControl(control);
+                update.sessionIncarnation = 1000;
+                update.updateSequence = 1000;
+                update.presentation = presentation;
+                page->_ApplyRichTabUpdate(key, reservation, update);
+            };
+            apply(source, L"Active", "Working");
+            apply(split, L"Waiting", "Attention");
+            VERIFY_ARE_EQUAL(TextHighlightColor::Caution, tab->_headerControl.MetadataHighlightColor());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Waiting" }, tab->_headerControl.MetadataText());
+
+            page->_RefreshRichTabForTab(*tab, false, false);
+            VERIFY_ARE_EQUAL(TextHighlightColor::Caution, tab->_headerControl.MetadataHighlightColor());
+            page->_RefreshTabStripPaneItems(tab);
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = strip->DisplayItemForTab(tab->TabViewItem());
+            VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
+            for (const auto& item : display.PaneItems())
+            {
+                const auto isSource = item.ContentId() == source->ContentId().value();
+                VERIFY_ARE_EQUAL(winrt::hstring{ isSource ? L"Active" : L"Waiting" }, item.MetadataText());
+                VERIFY_ARE_EQUAL(isSource ? TextHighlightColor::Success : TextHighlightColor::Caution, item.MetadataHighlightColor());
+            }
+        });
+    }
+
+    void TabTests::RichTabAgentStatusColors()
+    {
+        using namespace ::Microsoft::Terminal::RichTab::Provider;
+        using winrt::TerminalApp::TextHighlightColor;
+
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        UIElement previousContent{ nullptr };
+        StackPanel host{ nullptr };
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+        winrt::TerminalApp::TabHeaderControl header{ nullptr };
+        winrt::TerminalApp::HighlightedTextControl historyStatus{ nullptr };
+        winrt::TerminalApp::HighlightedTextControl metadata{ nullptr };
+        const auto restore = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                Window::Current().Content(previousContent);
+            });
+        });
+        TestOnUIThread([&]() {
+            previousContent = Window::Current().Content();
+            tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            header = winrt::TerminalApp::TabHeaderControl{};
+            header.Presentation(tab->_headerControl.Presentation());
+            header.IsMetadataVisible(true);
+            historyStatus = winrt::TerminalApp::HighlightedTextControl{};
+            ResourceDictionary highlightingResources;
+            highlightingResources.Source(winrt::Windows::Foundation::Uri{ L"ms-resource:///Files/TerminalApp/HighlightedTextControlStyle.xaml" });
+            historyStatus.Resources().MergedDictionaries().Append(highlightingResources);
+            host = StackPanel{};
+            host.Children().Append(header);
+            host.Children().Append(historyStatus);
+            Window::Current().Content(host);
+            Window::Current().Activate();
+            metadata = header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return header.IsLoaded() && historyStatus.IsLoaded();
+        });
+
+        Registration provider;
+        provider.manifest.id = "git";
+        provider.manifest.fields = {
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "agentStatus", "Agent status", FieldType::String, true },
+        };
+        const std::wstring cwd{ L"C:\\Active" };
+        for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+        {
+            for (const auto status : { "Working", "Attention", "Error", "Idle", "InUse", "Ended" })
+            {
+                winrt::hstring statusText;
+                std::optional<Presentation> presentation;
+                const auto color = std::string_view{ status } == "Working"   ? TextHighlightColor::Success :
+                                   std::string_view{ status } == "Attention" ? TextHighlightColor::Caution :
+                                   std::string_view{ status } == "Error"     ? TextHighlightColor::Critical :
+                                                                               TextHighlightColor::None;
+                TestOnUIThread([&]() {
+                    host.RequestedTheme(theme);
+                    statusText = winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText(status);
+                    Snapshot snapshot;
+                    snapshot.fields.emplace("workingDirectory", winrt::to_string(cwd));
+                    snapshot.fields.emplace("agentStatus", winrt::to_string(statusText));
+                    snapshot.agentStatus = status;
+                    presentation = ProviderBroker::ComposePresentation({ provider }, { { "git", snapshot } });
+                    VERIFY_IS_TRUE(presentation.has_value());
+                    VERIFY_ARE_EQUAL(size_t{ 1 }, presentation->agentStatusRanges.size());
+                    VERIFY_ARE_EQUAL(cwd.size() + 1, presentation->agentStatusRanges[0].start);
+                    tab->SetRichTabPresentation(presentation);
+                    header.SearchText(statusText);
+
+                    auto historyItem = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                    historyItem.Status(winrt::to_hstring(status));
+                    const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+                    strip->CommitHistorySnapshot({ historyItem });
+                    historyStatus.Text(statusText);
+                    historyStatus.TextBlockStyle(historyItem.StatusTextStyle());
+                    metadata.ApplyTemplate();
+                    historyStatus.ApplyTemplate();
+                    host.UpdateLayout();
+                });
+                _waitForContentTransferReviewUI([&]() {
+                    return metadata.Text() == winrt::hstring{ presentation->text } &&
+                           metadata.ColorHighlight() == color &&
+                           metadata.ActualTheme() == theme &&
+                           historyStatus.ActualTheme() == theme;
+                });
+                TestOnUIThread([&]() {
+                    const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
+                    const auto historyText = Media::VisualTreeHelper::GetChild(historyStatus, 0).as<TextBlock>();
+                    VERIFY_ARE_EQUAL(winrt::hstring{ presentation->text }, metadata.Text());
+                    VERIFY_ARE_EQUAL(color, metadata.ColorHighlight());
+                    VERIFY_IS_NOT_NULL(metadata.ColorHighlightRanges());
+                    VERIFY_ARE_EQUAL(1u, metadata.ColorHighlightRanges().Size());
+                    VERIFY_IS_NOT_NULL(metadata.SuccessHighlightBrush());
+                    VERIFY_IS_NOT_NULL(metadata.CautionHighlightBrush());
+                    VERIFY_IS_NOT_NULL(metadata.CriticalHighlightBrush());
+                    const auto highlights = textBlock.TextHighlighters();
+                    VERIFY_ARE_EQUAL(color == TextHighlightColor::None ? 1u : 2u, highlights.Size());
+                    const auto neutral = highlights.GetAt(0);
+                    VERIFY_ARE_EQUAL(textBlock.Foreground().as<Media::SolidColorBrush>().Color(),
+                                     neutral.Foreground().as<Media::SolidColorBrush>().Color());
+                    VERIFY_IS_TRUE(std::abs(_effectiveTextOpacity(textBlock, textBlock.Foreground()) * 0.72 -
+                                            _effectiveTextOpacity(textBlock, neutral.Foreground())) < 0.000001);
+                    if (color != TextHighlightColor::None)
+                    {
+                        const auto highlighter = highlights.GetAt(1);
+                        VERIFY_ARE_EQUAL(1u, highlighter.Ranges().Size());
+                        VERIFY_ARE_EQUAL(gsl::narrow<int32_t>(cwd.size() + 1), highlighter.Ranges().GetAt(0).StartIndex);
+                        VERIFY_ARE_EQUAL(gsl::narrow<int32_t>(statusText.size()), highlighter.Ranges().GetAt(0).Length);
+                        VERIFY_ARE_EQUAL(historyText.Foreground().as<Media::SolidColorBrush>().Color(),
+                                         highlighter.Foreground().as<Media::SolidColorBrush>().Color());
+                        VERIFY_ARE_EQUAL(_effectiveTextOpacity(historyText, historyText.Foreground()),
+                                         _effectiveTextOpacity(textBlock, highlighter.Foreground()));
+                    }
+                    bool highlightedStatus = false;
+                    for (const auto& inlineText : textBlock.Inlines())
+                    {
+                        const auto run = inlineText.as<Documents::Run>();
+                        if (run.Text() == statusText)
+                        {
+                            highlightedStatus = true;
+                            VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, run.FontWeight().Weight);
+                        }
+                    }
+                    VERIFY_IS_TRUE(highlightedStatus);
+                });
+            }
+        }
+
+        TestOnUIThread([&]() {
+            tab->SetRichTabPresentation(std::nullopt);
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return metadata.Text().empty() && metadata.ColorHighlight() == TextHighlightColor::None;
+        });
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(winrt::hstring{}, metadata.Text());
+            VERIFY_ARE_EQUAL(TextHighlightColor::None, metadata.ColorHighlight());
+            VERIFY_IS_NULL(metadata.ColorHighlightRanges());
+            const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
+            VERIFY_ARE_EQUAL(0u, textBlock.TextHighlighters().Size());
+
+            Presentation coloredPresentation;
+            coloredPresentation.text = L"Active";
+            coloredPresentation.agentStatusRanges.push_back({ 0, coloredPresentation.text.size() });
+            coloredPresentation.agentStatus = "Working";
+            tab->SetRichTabPresentation(coloredPresentation);
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return metadata.Text() == L"Active" && metadata.ColorHighlight() == TextHighlightColor::Success;
+        });
+        TestOnUIThread([&]() {
+            Presentation coloredPresentation;
+            coloredPresentation.text = L"Active";
+            coloredPresentation.agentStatusRanges.push_back({ 0, coloredPresentation.text.size() });
+            coloredPresentation.agentStatus = "Attention";
+            auto replacement = winrt::make<winrt::TerminalApp::implementation::TabHeaderPresentation>();
+            replacement.MetadataText(L"neutral metadata");
+            header.Presentation(replacement);
+            tab->SetRichTabPresentation(coloredPresentation);
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return metadata.Text() == L"neutral metadata" && metadata.ColorHighlight() == TextHighlightColor::None;
+        });
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"neutral metadata" }, metadata.Text());
+            VERIFY_ARE_EQUAL(TextHighlightColor::None, metadata.ColorHighlight());
+            VERIFY_IS_NULL(metadata.ColorHighlightRanges());
+
+            Media::SolidColorBrush custom{ winrt::Windows::UI::Colors::Blue() };
+            custom.Opacity(0.8);
+            header.Foreground(custom);
+            host.UpdateLayout();
+            const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
+            VERIFY_ARE_EQUAL(1u, textBlock.TextHighlighters().Size());
+            const auto neutral = textBlock.TextHighlighters().GetAt(0);
+            VERIFY_ARE_EQUAL(custom.Color(), neutral.Foreground().as<Media::SolidColorBrush>().Color());
+            VERIFY_IS_TRUE(std::abs(custom.Opacity() * 0.72 - _effectiveTextOpacity(textBlock, neutral.Foreground())) < 0.000001);
+            custom.Color(winrt::Windows::UI::Colors::Red());
+            custom.Opacity(0.5);
+            const auto updated = textBlock.TextHighlighters().GetAt(0).Foreground();
+            VERIFY_ARE_EQUAL(custom.Color(), updated.as<Media::SolidColorBrush>().Color());
+            VERIFY_IS_TRUE(std::abs(custom.Opacity() * 0.72 - _effectiveTextOpacity(textBlock, updated)) < 0.000001);
+        });
+    }
+
+    void TabTests::RichTabPaneStatusColorsAreRetainedOnReuse()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            winrt::MUX::Controls::TabViewItem tab;
+            strip.TabItems().Append(tab);
+            const auto makePane = [&]() {
+                return winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"Pane", true);
+            };
+            const auto original = makePane();
+            strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ original }), true);
+            const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->DisplayItemForTab(tab);
+            uint32_t collectionChanges = 0;
+            const auto changed = display.PaneItems().VectorChanged(winrt::auto_revoke, [&](auto&&, auto&&) {
+                ++collectionChanges;
+            });
+            auto update = makePane();
+            update.MetadataText(L"Waiting for input");
+            update.MetadataHighlightColor(winrt::TerminalApp::TextHighlightColor::Caution);
+            update.MetadataHighlightRanges(winrt::single_threaded_vector<winrt::TerminalApp::HighlightedRun>({ { 0, 16 } }));
+            strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ update }), true);
+            VERIFY_IS_TRUE(original == display.PaneItems().GetAt(0));
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::TextHighlightColor::Caution, original.MetadataHighlightColor());
+            VERIFY_ARE_EQUAL(1u, original.MetadataHighlightRanges().Size());
+            VERIFY_ARE_EQUAL(uint64_t{ 16 }, original.MetadataHighlightRanges().GetAt(0).End);
+            update = makePane();
+            update.MetadataText(L"main");
+            strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ update }), true);
+            VERIFY_IS_TRUE(original == display.PaneItems().GetAt(0));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"main" }, original.MetadataText());
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::TextHighlightColor::None, original.MetadataHighlightColor());
+            VERIFY_IS_NULL(original.MetadataHighlightRanges());
+            VERIFY_ARE_EQUAL(0u, collectionChanges);
+        });
+
+        UIElement previousContent{ nullptr };
+        winrt::TerminalApp::TabStrip strip{ nullptr };
+        winrt::MUX::Controls::TabViewItem tab{ nullptr };
+        winrt::TerminalApp::TabStripPaneItem pane{ nullptr };
+        winrt::TerminalApp::HighlightedTextControl metadata{ nullptr };
+        ContentPresenter paneContainer{ nullptr };
+        Grid paneRoot{ nullptr };
+        const auto restore = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                Window::Current().Content(previousContent);
+            });
+        });
+        TestOnUIThread([&]() {
+            previousContent = Window::Current().Content();
+            strip = winrt::TerminalApp::TabStrip{};
+            strip.Width(240);
+            strip.Height(200);
+            tab = winrt::MUX::Controls::TabViewItem{};
+            tab.Header(winrt::TerminalApp::TabHeaderControl{});
+            strip.TabItems().Append(tab);
+            pane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"Pane", true);
+            pane.MetadataText(L"main\nActive");
+            pane.MetadataVisibility(Visibility::Visible);
+            strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ pane }), true);
+            Window::Current().Content(strip);
+            Window::Current().Activate();
+            strip.UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return strip.IsLoaded() && strip.ContainerFromIndex(0) != nullptr;
+        });
+        TestOnUIThread([&]() {
+            const auto root = strip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>();
+            const auto panes = root.Children().GetAt(1).as<ItemsControl>();
+            paneContainer = panes.ContainerFromIndex(0).as<ContentPresenter>();
+            paneRoot = Media::VisualTreeHelper::GetChild(paneContainer, 0).as<Grid>();
+            metadata = paneRoot.FindName(L"PaneMetadataText").as<winrt::TerminalApp::HighlightedTextControl>();
+            winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->SetTabSearchText(tab, L"Active");
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return metadata.IsLoaded();
+        });
+        for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+        {
+            for (const auto color : { winrt::TerminalApp::TextHighlightColor::Success,
+                                      winrt::TerminalApp::TextHighlightColor::Caution,
+                                      winrt::TerminalApp::TextHighlightColor::Critical,
+                                      winrt::TerminalApp::TextHighlightColor::None })
+            {
+                TestOnUIThread([&]() {
+                    strip.RequestedTheme(theme);
+                    const auto replacement = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"Pane", true);
+                    replacement.MetadataText(L"main\nActive");
+                    replacement.MetadataVisibility(Visibility::Visible);
+                    replacement.MetadataHighlightColor(color);
+                    replacement.MetadataHighlightRanges(winrt::single_threaded_vector<winrt::TerminalApp::HighlightedRun>({ { 5, 10 } }));
+                    strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ replacement }), true);
+                    strip.UpdateLayout();
+                });
+                _waitForContentTransferReviewUI([&]() {
+                    return metadata.ColorHighlight() == color && metadata.ActualTheme() == theme;
+                });
+                TestOnUIThread([&]() {
+                    const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->DisplayItemForTab(tab);
+                    VERIFY_IS_TRUE(display.PaneItems().GetAt(0) == pane);
+                    VERIFY_IS_TRUE(Media::VisualTreeHelper::GetChild(paneContainer, 0) == paneRoot);
+                    const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
+                    const auto highlights = textBlock.TextHighlighters();
+                    VERIFY_ARE_EQUAL(color == winrt::TerminalApp::TextHighlightColor::None ? 1u : 2u, highlights.Size());
+                    VERIFY_IS_TRUE(std::abs(_effectiveTextOpacity(textBlock, textBlock.Foreground()) * 0.72 -
+                                            _effectiveTextOpacity(textBlock, highlights.GetAt(0).Foreground())) < 0.000001);
+                    if (color != winrt::TerminalApp::TextHighlightColor::None)
+                    {
+                        VERIFY_ARE_EQUAL(1.0, _effectiveTextOpacity(textBlock, highlights.GetAt(1).Foreground()));
+                        const auto expected = color == winrt::TerminalApp::TextHighlightColor::Success ? metadata.SuccessHighlightBrush() :
+                                              color == winrt::TerminalApp::TextHighlightColor::Caution ? metadata.CautionHighlightBrush() :
+                                                                                                         metadata.CriticalHighlightBrush();
+                        VERIFY_IS_TRUE(highlights.GetAt(1).Foreground() == expected);
+                    }
+                    const auto title = paneRoot.FindName(L"PaneTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
+                    VERIFY_ARE_EQUAL(1.0, title.Opacity());
+                    VERIFY_ARE_EQUAL(1.0, title.TextOpacity());
+                    bool bold = false;
+                    for (const auto& inlineText : textBlock.Inlines())
+                    {
+                        const auto run = inlineText.as<Documents::Run>();
+                        bold |= run.Text() == L"Active" && run.FontWeight().Weight == FontWeights::Bold().Weight;
+                    }
+                    VERIFY_IS_TRUE(bold);
+                });
+            }
+        }
+        TestOnUIThread([&]() {
+            const auto replacement = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"Pane", true);
+            strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ replacement }), true);
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, metadata.Visibility());
+            const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
+            VERIFY_ARE_EQUAL(0u, textBlock.TextHighlighters().Size());
+        });
     }
 
     void TabTests::RichTabRequestIncludesFirstPartyFields()

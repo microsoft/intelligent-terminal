@@ -43,6 +43,9 @@ D2D
 -capproval_policy=never\b
 --nocapture\b
 
+# Windows XAML text range API (external SDK member)
+\bTextHighlighters\b
+
 # Windows ICU relative-time APIs and constants
 \b(?:URelativeDateTime(?:Formatter|Unit)|UCalendar(?:DateFields)?|UDate)\b
 \b(?:ureldatefmt_(?:open|close|formatNumeric)|ucal_(?:open|close|setMillis|getFieldDifference)|uloc_forLanguageTag|u_errorName)\b

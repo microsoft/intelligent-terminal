@@ -19,12 +19,13 @@ BeforeAll {
         return $true
     }
 
-    # Frozen legacy declarations from main9994bd10a. New members may only follow
+    # Frozen legacy declarations from main0d5e0f3dd. New members may only follow
     # this prefix (doc/specs/agent-history-sidebar-keyboard.md, WinRT contract).
     $script:headerPrefix = @(
         'String Title;', 'String SearchText;', 'Double RenamerMaxWidth;',
         'TerminalTabStatus TabStatus;', 'String MetadataText;',
-        'String MetadataAutomationName;', 'String AutomationName;'
+        'String MetadataAutomationName;', 'String AutomationName;',
+        'TextHighlightColor MetadataHighlightColor;', 'IVector<HighlightedRun> MetadataHighlightRanges;'
     )
     $script:displayPrefix = @(
         'Microsoft.UI.Xaml.Controls.TabViewItem Tab { get; };',
@@ -51,7 +52,7 @@ BeforeAll {
 }
 
 Describe 'Tab presentation append-only WinRT declarations' -Tag 'Unit' {
-    It 'preserves the header legacy signatures and appends IconSource after AutomationName' {
+    It 'preserves the header legacy signatures and appends IconSource after MetadataHighlightRanges' {
         $actual = Get-IdlDeclarations $script:headerSource TabHeaderPresentation
         Test-DeclarationPrefix $actual ($script:headerPrefix + 'Object IconSource;') | Should -BeTrue
     }
@@ -73,5 +74,11 @@ Describe 'Tab presentation append-only WinRT declarations' -Tag 'Unit' {
         $regressed = ($script:displaySource -replace '(?m)^\s*Int32 LeadingContentColumnSpan;\r?\n', '') -replace
             'Object IconSource;', "Int32 LeadingContentColumnSpan;`n        Object IconSource;"
         Test-DeclarationPrefix (Get-IdlDeclarations $regressed TabStripDisplayItem) $script:displayPrefix | Should -BeFalse
+    }
+
+    It 'rejects inserting IconSource before upstream metadata highlight members' {
+        $regressed = ($script:headerSource -replace '(?m)^\s*Object IconSource;\r?\n', '') -replace
+            'TextHighlightColor MetadataHighlightColor;', "Object IconSource;`n        TextHighlightColor MetadataHighlightColor;"
+        Test-DeclarationPrefix (Get-IdlDeclarations $regressed TabHeaderPresentation) $script:headerPrefix | Should -BeFalse
     }
 }

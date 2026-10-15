@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "ColorPickupFlyout.h"
 #include "Tab.h"
+#include "TabHeaderControl.h"
 #include "AgentPaneContent.h"
 #include "AgentIconUtils.h"
 #include "SettingsPaneContent.h"
@@ -615,6 +616,7 @@ namespace winrt::TerminalApp::implementation
         const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation)
     {
         ASSERT_UI_THREAD();
+        _headerControl.MetadataHighlightColor(presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None);
         if (_richTabPresentation != presentation)
         {
             _richTabPresentation = presentation;
@@ -627,6 +629,7 @@ namespace winrt::TerminalApp::implementation
         std::wstring text;
         std::wstring tooltip;
         std::wstring accessibilityText;
+        Windows::Foundation::Collections::IVector<TerminalApp::HighlightedRun> highlightRanges{ nullptr };
         if constexpr (Feature_RichTabProviders::IsEnabled())
         {
             if (_richTabPresentation)
@@ -634,6 +637,7 @@ namespace winrt::TerminalApp::implementation
                 text = _richTabPresentation->text;
                 tooltip = _richTabPresentation->tooltip;
                 accessibilityText = _richTabPresentation->accessibilityText;
+                highlightRanges = TabHeaderControl::BuildMetadataHighlightRanges(*_richTabPresentation);
             }
         }
 
@@ -641,6 +645,7 @@ namespace winrt::TerminalApp::implementation
         _richTabTooltipText = tooltip;
         _richTabAccessibilityText = accessibilityText;
         _headerControl.MetadataText(text);
+        _headerControl.MetadataHighlightRanges(highlightRanges);
         _headerControl.MetadataAutomationName(_richTabAccessibilityText);
         _headerControl.IsMetadataVisible(_isVerticalTabLayout && hasVisibleMetadata);
 

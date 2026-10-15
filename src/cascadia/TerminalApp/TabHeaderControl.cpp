@@ -90,10 +90,34 @@ namespace winrt::TerminalApp::implementation
                 self->PropertyChanged.raise(*self, args);
             }
         });
-        for (const auto name : { L"Presentation", L"Title", L"SearchText", L"RenamerMaxWidth", L"TabStatus", L"MetadataText", L"MetadataAutomationName" })
+        for (const auto name : { L"Presentation", L"Title", L"SearchText", L"RenamerMaxWidth", L"TabStatus", L"MetadataText", L"MetadataAutomationName", L"MetadataHighlightColor", L"MetadataHighlightRanges" })
         {
             PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ name });
         }
+    }
+
+    TerminalApp::TextHighlightColor TabHeaderControl::AgentStatusHighlightColor(const std::string_view status) noexcept
+    {
+        return status == "Working"   ? TerminalApp::TextHighlightColor::Success :
+               status == "Attention" ? TerminalApp::TextHighlightColor::Caution :
+               status == "Error"     ? TerminalApp::TextHighlightColor::Critical :
+                                       TerminalApp::TextHighlightColor::None;
+    }
+
+    Windows::Foundation::Collections::IVector<TerminalApp::HighlightedRun> TabHeaderControl::BuildMetadataHighlightRanges(
+        const ::Microsoft::Terminal::RichTab::Provider::Presentation& presentation)
+    {
+        if (presentation.agentStatusRanges.empty())
+        {
+            return nullptr;
+        }
+        std::vector<TerminalApp::HighlightedRun> ranges;
+        for (const auto& range : presentation.agentStatusRanges)
+        {
+            THROW_HR_IF(E_INVALIDARG, range.length == 0 || range.start >= presentation.text.size() || range.length > presentation.text.size() - range.start);
+            ranges.push_back({ range.start, range.start + range.length - 1 });
+        }
+        return winrt::single_threaded_vector(std::move(ranges));
     }
 
     // Method Description:

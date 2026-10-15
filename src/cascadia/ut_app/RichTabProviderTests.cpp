@@ -46,6 +46,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(PowerShellProviderPreservesUnicodeAcrossProcessBoundary);
         TEST_METHOD(LocalizedFieldDisplayNamesOverrideManifestFallbacks);
         TEST_METHOD(BrokerClearsSuccessfulSnapshotAfterProviderFailure);
+        TEST_METHOD(BrokerKeepsAgentStatusPairedWithSnapshotDuringRefresh);
         TEST_METHOD(BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected);
         TEST_METHOD(ResolveGitUsesExplicitPathAndDetectsMissingExecutable);
         TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
@@ -339,6 +340,106 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_NOT_EQUAL(
             std::string::npos,
             updates[1].diagnostics[1].find("broker-provider-failure"));
+    }
+
+    void RichTabProviderTests::BrokerKeepsAgentStatusPairedWithSnapshotDuringRefresh()
+    {
+        const auto providerRoot = _TestModuleDirectory() /
+                                  (L"RichTabStatusRevision-" + std::to_wstring(GetCurrentProcessId()) +
+                                   L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(providerRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(providerRoot, error);
+        });
+        const auto script = providerRoot / L"provider.ps1";
+        _WriteFile(
+            script,
+            "$request = [Console]::In.ReadToEnd() | ConvertFrom-Json\n"
+            "@{ protocolVersion = 1; requestId = $request.requestId; result = @{\n"
+            "    fields = @{ agentStatus = $request.params.firstPartyFields.agentStatus }\n"
+            "} } | ConvertTo-Json -Depth 4 -Compress\n");
+
+        Registration provider;
+        provider.manifest.id = "test.status-revision";
+        provider.manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        provider.manifest.runtime.entrypoint = L"provider.ps1";
+        provider.manifest.extensionRoot = providerRoot;
+        provider.manifest.activationEvents = { ActivationEvent::ManualRefresh };
+        provider.manifest.fields = { { "agentStatus", "Agent status", FieldType::String, true } };
+        provider.enabled = true;
+        provider.integrityValid = true;
+
+        std::vector<BrokerUpdate> updates;
+        ProviderBroker broker;
+        broker._providers = { provider };
+        auto& session = broker._sessions["status-revision-session"];
+        session.context.sessionId = "status-revision-session";
+        session.context.workingDirectory = providerRoot;
+        session.context.firstPartyFields = { { "agentStatus", "Active" }, { "agentStatusId", "Working" } };
+        session.sessionIncarnation = 1;
+        session.callbacks.emplace(1, [&](const BrokerUpdate& update) {
+            updates.emplace_back(update);
+        });
+        broker._attachmentSessions.emplace(1, session.context.sessionId);
+        auto& state = session.providers[provider.manifest.id];
+        state.generation = broker._nextGeneration++;
+        state.runningGeneration = state.generation;
+        state.running = true;
+
+        Request request;
+        request.requestId = "initial-status";
+        request.providerId = provider.manifest.id;
+        request.processEpoch = broker.ProcessEpoch();
+        request.sessionId = session.context.sessionId;
+        request.workingDirectory = providerRoot;
+        request.firstPartyFields = session.context.firstPartyFields;
+        broker._RunProvider(provider, request, state.generation);
+        const auto verifyPair = [&](const std::wstring& text, const std::string& status) {
+            VERIFY_IS_TRUE(updates.back().presentation.has_value());
+            const auto& presentation = *updates.back().presentation;
+            VERIFY_ARE_EQUAL(text, presentation.text);
+            VERIFY_ARE_EQUAL(status, presentation.agentStatus);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, presentation.agentStatusRanges.size());
+            VERIFY_ARE_EQUAL(size_t{ 0 }, presentation.agentStatusRanges[0].start);
+            VERIFY_ARE_EQUAL(text.size(), presentation.agentStatusRanges[0].length);
+        };
+        verifyPair(L"Active", "Working");
+
+        // Hold an older invocation open so the first-party change queues its refresh.
+        state.running = true;
+        const auto oldGeneration = state.runningGeneration;
+        broker.UpdateFirstPartyFields(1, { { "agentStatus", "Failed" }, { "agentStatusId", "Error" } });
+        VERIFY_ARE_EQUAL(size_t{ 2 }, updates.size());
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, updates.back().contextRevision);
+        verifyPair(L"Active", "Working");
+        VERIFY_IS_TRUE(state.pending.has_value());
+        auto next = std::move(*state.pending);
+        state.pending.reset();
+        broker._RunProvider(provider, request, oldGeneration);
+        VERIFY_ARE_EQUAL(size_t{ 2 }, updates.size());
+        verifyPair(L"Active", "Working");
+
+        state.running = true;
+        state.runningGeneration = next.generation;
+        broker._RunProvider(provider, next.request, next.generation);
+        VERIFY_ARE_EQUAL(size_t{ 3 }, updates.size());
+        verifyPair(L"Failed", "Error");
+
+        state.running = true;
+        broker.UpdateFirstPartyFields(1, { { "agentStatus", "Waiting" }, { "agentStatusId", "Attention" } });
+        VERIFY_ARE_EQUAL(size_t{ 4 }, updates.size());
+        verifyPair(L"Failed", "Error");
+        VERIFY_IS_TRUE(state.pending.has_value());
+        next = std::move(*state.pending);
+        state.pending.reset();
+        state.runningGeneration = next.generation;
+        _WriteFile(script, "$null = [Console]::In.ReadToEnd()\nexit 23\n");
+        broker._RunProvider(provider, next.request, next.generation);
+        VERIFY_ARE_EQUAL(size_t{ 5 }, updates.size());
+        VERIFY_IS_FALSE(updates.back().presentation.has_value());
+        VERIFY_IS_FALSE(state.snapshot.has_value());
+        VERIFY_IS_FALSE(updates.back().diagnostics.empty());
     }
 
     void RichTabProviderTests::BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected()
