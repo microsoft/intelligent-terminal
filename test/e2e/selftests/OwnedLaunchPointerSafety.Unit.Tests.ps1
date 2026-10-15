@@ -1,7 +1,7 @@
 BeforeDiscovery {
     if (-not (Get-Module ItE2E)) { Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force }
 }
-Describe 'Package membership never establishes launch or cleanup ownership' {
+Describe 'Package membership never establishes launch or cleanup ownership' -Tag Unit {
     InModuleScope ItE2E {
         BeforeEach {
             Mock Write-ItLog {}
@@ -10,6 +10,7 @@ Describe 'Package membership never establishes launch or cleanup ownership' {
             Mock Backup-WtConfig { throw 'Must not mutate configuration' }
             Mock Resolve-ItApp { [pscustomobject]@{ Package = 'Dev'; InstallLocation = 'C:\owned'; WtcliPath = 'owned' } }
             Mock New-Item {}
+            Mock Start-Sleep {}
         }
         It 'refuses inherited cold-start callers rather than closing package members' {
             $app = Resolve-ItApp -Package Dev
@@ -27,7 +28,7 @@ Describe 'Package membership never establishes launch or cleanup ownership' {
             { Stop-AppInstances -App (Resolve-ItApp -Package Dev) } | Should -Throw '*inactivity unknown*'
             Should -Invoke Stop-Process -Times 0
         }
-        It 'retains a completed backup when an unowned process arrives before activation' {
+        It 'refuses an unowned arrival during the quiet window before creating a backup' {
             $script:probes = 0
             Mock Get-WtProcessesForApp {
                 $script:probes++
@@ -45,14 +46,47 @@ Describe 'Package membership never establishes launch or cleanup ownership' {
             Mock Restore-WtConfig { throw 'Must retain the backup while unknown processes remain' }
             Mock Invoke-ItTerminalActivation { throw 'Must not activate after unknown arrival' }
             { Start-Terminal -Package Dev } | Should -Throw '*not test-owned*'
-            Should -Invoke Backup-WtConfig -Times 1 -Exactly
+            Should -Invoke Backup-WtConfig -Times 0
             Should -Invoke Invoke-ItTerminalActivation -Times 0
+            Should -Invoke Restore-WtConfig -Times 0
+            Should -Invoke Stop-Process -Times 0
+        }
+
+        It 'retains a completed backup when an unowned process arrives after the quiet window' {
+            $script:backupCompleted = $false
+            $script:ownedBackup = Join-Path $TestDrive 'settings.json.e2ebak'
+            $script:originalBytes = [byte[]]@(0, 255, 13, 10, 17)
+            Mock Resolve-ItApp {
+                [pscustomobject]@{
+                    Package = 'Dev'; InstallLocation = 'C:\owned'; WtcliPath = 'owned'
+                    LocalStateDir = $TestDrive; SettingsPath = (Join-Path $TestDrive 'settings.json')
+                    StatePath = (Join-Path $TestDrive 'state.json'); LogStartOffset = @{}
+                }
+            }
+            Mock Get-WtProcessesForApp {
+                if ($script:backupCompleted) { [pscustomobject]@{ Id = 992; Path = 'C:\owned\WindowsTerminal.exe' } }
+            }
+            Mock Initialize-LogOffsets {}
+            Mock Backup-WtConfig {
+                [IO.File]::WriteAllBytes($script:ownedBackup, $script:originalBytes)
+                $script:backupCompleted = $true
+            }
+            Mock Clear-WtConfig {}
+            Mock Invoke-FrePass {}
+            Mock Restore-WtConfig { throw 'Must retain the completed backup while an unowned process remains.' }
+            Mock Start-ItCreatedDevTerminal { throw 'Must not activate after an unowned arrival.' }
+
+            { Start-Terminal -Package Dev } | Should -Throw '*not test-owned*'
+
+            [IO.File]::ReadAllBytes($script:ownedBackup) | Should -Be $script:originalBytes
+            Should -Invoke Backup-WtConfig -Times 1 -Exactly
+            Should -Invoke Start-ItCreatedDevTerminal -Times 0
             Should -Invoke Restore-WtConfig -Times 0
             Should -Invoke Stop-Process -Times 0
         }
     }
 }
-Describe 'Pointer safety rejects individual hostile observations before delivery' {
+Describe 'Pointer safety rejects individual hostile observations before delivery' -Tag Unit {
     InModuleScope ItE2E {
         It 'refuses <Threat> without sending mouse input' -ForEach @(
             @{ Threat = 'held button'; Key = 'NoHeldInput' },
@@ -85,7 +119,7 @@ Describe 'Pointer safety rejects individual hostile observations before delivery
         }
     }
 }
-Describe 'Outer fixture startup failure preserves harness recovery ownership' {
+Describe 'Outer fixture startup failure preserves harness recovery ownership' -Tag Unit {
             BeforeAll {
                 function Get-ActualFixtureStartup([string]$File, [string]$BlockName) {
                     $path = Join-Path $PSScriptRoot ("..\tests\" + $File)

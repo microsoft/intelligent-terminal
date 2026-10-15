@@ -118,8 +118,7 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
         $script:app = $null
         $script:configBackedUp = $false
         $script:targetApp = Resolve-ItApp -Package $script:package
-        @(Get-WtProcessesForApp -App $script:targetApp -IncludePackageExecutables).Count |
-            Should -Be 0 -Because 'FRE tests must not close user-owned package processes'
+        Stop-StaleItInstances -App $script:targetApp
         $script:configBefore = @{}
         foreach ($path in @($script:targetApp.SettingsPath, $script:targetApp.StatePath)) {
             if ((Test-Path "$path.e2ebak") -or (Test-Path "$path.e2ebak.missing")) {

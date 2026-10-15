@@ -639,6 +639,19 @@ Describe 'Live test package selection' -Tag 'Unit' {
 }
 
 Describe 'Package-scoped process cleanup' -Tag 'Unit' {
+    It 'reads the Dev family configured for the current worktree' {
+        InModuleScope ItE2E {
+            $original = $script:ItKnownFamilies.Dev
+            try {
+                $script:ItKnownFamilies.Dev = 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr'
+                Get-ItDevPackageFamilyName | Should -Be $script:ItKnownFamilies.Dev
+            }
+            finally { $script:ItKnownFamilies.Dev = $original }
+        }
+        (Get-Command Get-ItDevPackageFamilyName -Module ItE2E).Name |
+            Should -Be 'Get-ItDevPackageFamilyName'
+    }
+
     It 'finds WindowsTerminal processes only under the selected package install location' {
         InModuleScope ItE2E {
             $app = [pscustomobject]@{
@@ -660,6 +673,7 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
         InModuleScope ItE2E {
             $app = [pscustomobject]@{
                 Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                PackageFullName = 'IntelligentTerminal_0.8.0.3_x64__rd9vj3e6a2mbr'
                 InstallLocation = 'C:\DevPackage\AppX'
             }
             Mock Get-CimInstance { $null }
@@ -668,8 +682,111 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
 
             Stop-StaleItInstances -App $app
 
-            Should -Invoke Get-WtProcessesForApp -Times 1 -ParameterFilter { $App -eq $app }
+            Should -Invoke Get-WtProcessesForApp -Times 6 -Exactly -ParameterFilter { $App -eq $app }
             Should -Invoke Get-AppxPackage -Times 0
+        }
+    }
+
+    It 'refuses shutdown without a registered Dev package identity' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Get-CimInstance { $null }
+            $script:processQueryCount = 0
+            Mock Get-WtProcessesForApp {
+                $script:processQueryCount++
+                if ($script:processQueryCount -eq 1) {
+                    [pscustomobject]@{ Id = 901; Path = 'C:\DevPackage\AppX\WindowsTerminal.exe' }
+                }
+            }
+            Mock Test-Until { $false }
+            Mock Stop-Process
+            Mock Write-ItLog
+
+            { Stop-StaleItInstances -App $app } | Should -Throw '*Dev package identity*'
+
+            Should -Invoke Stop-Process -Times 0
+        }
+    }
+
+    It 'does not touch a remaining helper when the Dev descriptor lacks identity' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Get-CimInstance { $null }
+            Mock Get-WtProcessesForApp {
+                if ($IncludePackageExecutables) {
+                    [pscustomobject]@{ Id = 902; Path = 'C:\DevPackage\AppX\wta.exe' }
+                }
+            }
+            Mock Stop-Process
+            Mock Backup-WtConfig
+            Mock Write-ItLog
+
+            { Stop-StaleItInstances -App $app } | Should -Throw '*Dev package identity*'
+
+            Should -Invoke Stop-Process -Times 0
+            Should -Invoke Backup-WtConfig -Times 0
+            Should -Invoke Get-WtProcessesForApp -Times 0 -Exactly -ParameterFilter { $IncludePackageExecutables }
+        }
+    }
+
+    It 'rejects an idle Dev descriptor before settings backup or launch' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                Version = '0.8.0.3'
+                InstallLocation = 'C:\DevPackage\AppX'
+                WtcliPath = 'wtcli.exe'
+            }
+            Mock Resolve-ItApp { $app }
+            Mock Get-WtProcessesForApp { @() }
+            Mock Initialize-LogOffsets {}
+            Mock Backup-WtConfig { throw 'configuration was touched' }
+            Mock Start-ItCreatedDevTerminal { throw 'launch was reached' }
+            Mock Write-ItLog {}
+            $saved = $env:ITE2E_ARTIFACT_ROOT
+            try {
+                $env:ITE2E_ARTIFACT_ROOT = $TestDrive
+                { Start-Terminal -Package Dev } | Should -Throw '*Dev package identity*'
+            }
+            finally {
+                if ($null -eq $saved) { Remove-Item Env:\ITE2E_ARTIFACT_ROOT -ErrorAction SilentlyContinue }
+                else { $env:ITE2E_ARTIFACT_ROOT = $saved }
+            }
+
+            Should -Invoke Get-WtProcessesForApp -Times 0 -Exactly
+            Should -Invoke Backup-WtConfig -Times 0
+            Should -Invoke Start-ItCreatedDevTerminal -Times 0
+        }
+    }
+
+    It 'rejects an unverified Dev descriptor before settings backup or launch' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                Version = '0.0.0.0'
+                WtcliPath = 'wtcli.exe'
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Resolve-ItApp { $app }
+            Mock Get-WtProcessesForApp {
+                [pscustomobject]@{ Id = 903; Path = 'C:\DevPackage\AppX\WindowsTerminal.exe' }
+            }
+            Mock Backup-WtConfig
+            Mock Start-Process
+            Mock Stop-Process
+            Mock Write-ItLog
+
+            { Start-Terminal -Package Dev } | Should -Throw '*Dev package identity*'
+
+            Should -Invoke Backup-WtConfig -Times 0
+            Should -Invoke Start-Process -Times 0
+            Should -Invoke Stop-Process -Times 0
         }
     }
 }
@@ -1078,6 +1195,49 @@ Describe 'Yolo Settings localization contract' -Tag 'Unit' {
                 }
             }
         }
+    }
+}
+
+Describe 'Live command execution oracle' -Tag 'Unit' {
+    BeforeAll {
+        $ast = [Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PSScriptRoot 'ItE2E.Live.Tests.ps1'), [ref]$null, [ref]$null)
+        $case = $ast.Find({
+            param($node)
+            $node -is [Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'It' -and
+                $node.CommandElements[1].Value -eq 'runs a command and captures its output'
+        }, $true)
+        if (-not $case) { throw 'Live command round-trip case was not found.' }
+        $body = $case.CommandElements[-1].ScriptBlock.Extent.Text
+        $script:liveCommandCase = [scriptblock]::Create($body.Substring(1, $body.Length - 2))
+    }
+    BeforeEach {
+        $script:app = @{}
+        $script:sentCommand = ''
+        $script:outputPattern = ''
+        Mock Get-Random { 123456 }
+        Mock Get-ActivePane { @{ session_id = '11111111-1111-1111-1111-111111111111' } }
+        Mock Invoke-RunCommand { $script:sentCommand = $Command; $Command }
+        Mock Assert-Pane { $script:outputPattern = $Match }
+    }
+
+    It 'cannot satisfy its output oracle with only echoed input' {
+        . $script:liveCommandCase
+
+        $script:outputPattern | Should -Not -BeNullOrEmpty
+        $script:sentCommand.Contains($script:outputPattern) | Should -BeFalse
+    }
+
+    It 'executes an encoded payload that really emits the expected marker' {
+        . $script:liveCommandCase
+
+        $match = [regex]::Match($script:sentCommand, '-EncodedCommand (?<Payload>[A-Za-z0-9+/=]+)$')
+        $match.Success | Should -BeTrue
+        $payload = $match.Groups['Payload'].Value
+        $text = & (Get-Command pwsh -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -EncodedCommand $payload
+        $LASTEXITCODE | Should -Be 0
+        $text | Should -Be $script:outputPattern
     }
 }
 
