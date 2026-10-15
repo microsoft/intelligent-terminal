@@ -1152,22 +1152,10 @@ namespace winrt::TerminalApp::implementation
             const auto header = grid.FindName(L"TabHeaderPresenter").try_as<WUX::Controls::Control>();
             const auto close = grid.FindName(L"TabCloseButton").try_as<WUX::Controls::Control>();
             const auto iconPresenter = grid.FindName(L"TabIconPresenter").try_as<ContentPresenter>();
-            // The row remains visible in the rail; its text header does not.
-            // A monochrome identity must not inherit its paint from that
-            // collapsed header.
-            WUX::Controls::Control rowForegroundOwner{ nullptr };
-            for (auto ancestor = root.as<WUX::DependencyObject>(); ancestor; ancestor = WUX::Media::VisualTreeHelper::GetParent(ancestor))
-            {
-                if (const auto container = ancestor.try_as<ListViewItem>())
-                {
-                    rowForegroundOwner = container;
-                    break;
-                }
-            }
             if (tabColor && selected)
             {
                 const auto foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(*tabColor) };
-                for (const auto& control : { header, toggle, close, rowForegroundOwner })
+                for (const auto& control : { header, toggle, close })
                 {
                     if (control)
                     {
@@ -1177,7 +1165,7 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                for (const auto& control : { header, toggle, close, rowForegroundOwner })
+                for (const auto& control : { header, toggle, close })
                 {
                     if (control)
                     {
@@ -1185,7 +1173,7 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
             }
-            _bindMonochromeIconForeground(iconPresenter, rowForegroundOwner ? rowForegroundOwner : header);
+            _bindMonochromeIconForeground(iconPresenter, header);
         }
     }
 

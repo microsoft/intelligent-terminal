@@ -3,7 +3,7 @@
 # Protection: SidebarTabKeyboard, SidebarTelemetry, SessionHookRouting and HookBridgeCli.
 BeforeDiscovery {
     $script:Ready = [bool]((Get-Command winapp -ErrorAction SilentlyContinue) -and
-        (Get-Command pwsh -ErrorAction SilentlyContinue))
+        (Get-Command pwsh -ErrorAction SilentlyContinue) -and $env:ITE2E_PACKAGE)
     if ($script:Ready -and $env:ITE2E_PACKAGE) {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:Ready = [bool](Resolve-ItApp -Package (Get-ItTestPackage) -IfInstalled)
