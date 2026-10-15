@@ -62,6 +62,13 @@ function enabled() {
   )
 }
 
+function confirmedMissingSession(error, sessionID) {
+  // The Promise plugin adapter can wrap typed lookup failures in FiberFailure.
+  const cause = error?.[Symbol.for("effect/Runtime/FiberFailure/Cause")]
+  const failure = cause?._tag === "Fail" ? cause.error ?? cause.failure : error
+  return failure?._tag === "Session.NotFoundError" && failure.sessionID === sessionID
+}
+
 const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true, deliver, onSession }) => {
   const rootSessions = new Map()
   const childSessions = new Set()
@@ -163,14 +170,17 @@ const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true, delive
             rememberSession({ ...info, directory: info.location?.directory })
           }
         } catch (error) {
-          if (isCurrentSession(sessionID, state)) noteFailure("session.get", error, "session lookup")
+          if (isCurrentSession(sessionID, state)) {
+            state.missing = confirmedMissingSession(error, sessionID)
+            if (!state.missing) noteFailure("session.get", error, "session lookup")
+          }
         }
       })()
       await state.lookup
       if (!isCurrentSession(sessionID, state)) return
       if (!rootSessions.has(sessionID) && !childSessions.has(sessionID)) {
         sessionStates.delete(sessionID)
-        return
+        return state
       }
     }
     return state
@@ -178,8 +188,8 @@ const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true, delive
 
   return {
     ensureRoot: async (sessionID) => {
-      await ensureSession(sessionID)
-      return isRootSession(sessionID)
+      const state = await ensureSession(sessionID)
+      return { root: isRootSession(sessionID), missing: state?.missing === true }
     },
     "chat.message": async (input) => {
       const sessionID = input.sessionID
@@ -410,7 +420,7 @@ export default {
       bind: async (input) => {
         if (disposed) throw new Error("OpenCode hook is disposing")
         if (snapshots.get(input.sessionID)?.status !== "deleted" &&
-            !await hooks.ensureRoot(input.sessionID)) {
+            !(await hooks.ensureRoot(input.sessionID)).root) {
           throw new Error(`OpenCode root session not found: ${input.sessionID}`)
         }
         const key = ownerKey(input.terminalID, input.sessionID)
@@ -459,9 +469,14 @@ export default {
       snapshot: async (input) => getSnapshot(input),
       observe: async (input) => {
         if (disposed) throw new Error("OpenCode hook is disposing")
-        if (snapshots.get(input.sessionID)?.status !== "deleted" &&
-            !await hooks.ensureRoot(input.sessionID)) {
-          throw new Error(`OpenCode root session not found: ${input.sessionID}`)
+        if (snapshots.get(input.sessionID)?.status !== "deleted") {
+          const lookup = await hooks.ensureRoot(input.sessionID)
+          if (!lookup.root && snapshots.get(input.sessionID)?.status !== "deleted") {
+            if (!lookup.missing) {
+              throw new Error(`OpenCode root session not found: ${input.sessionID}`)
+            }
+            enqueue("agent.session.end", input.sessionID, { reason: "deleted" })
+          }
         }
         if (!observed.has(input.clientID)) observed.set(input.clientID, new Map())
         const subscriptions = observed.get(input.clientID)

@@ -300,47 +300,82 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
     })
   }
 
-  it("restores a detached deletion observer when the server hook restarts", async () => {
-    const sdk = createContext()
-    let stopServer = await plugin.setup(sdk.context)
-    const handlers = new Map()
-    const session = { id: "root", location: sdk.location }
-    let route = { type: "session", sessionID: "root" }
-    const tui = {
-      location: sdk.location,
-      client: sdk.client,
-      ui: { router: { current: () => route } },
-      data: {
-        session: { get: () => session, status: () => "idle" },
-        on: (name, handler) => {
-          handlers.set(name, handler)
-          return () => handlers.delete(name)
+  for (const scenario of ["active", "deleted during downtime", "transient lookup"]) {
+    it(`restores a detached deletion observer after restart with ${scenario}`, async (t) => {
+      const errors = []
+      if (scenario === "transient lookup") {
+        t.mock.method(console, "error", (...args) => errors.push(String(args[0])))
+      }
+      const directory = "C:\\ite2e\\opencode"
+      let lookup = "present"
+      const sdk = createContext({
+        directory,
+        getSession: async (sessionID) => {
+          if (lookup === "transient") throw new Error("session storage temporarily unavailable")
+          if (lookup === "deleted") {
+            const missing = Object.assign(new Error(`Session not found: ${sessionID}`), {
+              _tag: "Session.NotFoundError", sessionID,
+            })
+            if (scenario === "deleted during downtime") {
+              throw Object.assign(new Error("wrapped missing session"), {
+                [Symbol.for("effect/Runtime/FiberFailure/Cause")]: { _tag: "Fail", failure: missing },
+              })
+            }
+            throw missing
+          }
+          return { id: sessionID, location: { directory } }
         },
-      },
-    }
-    await sdk.event("session.created", { sessionID: "root" })
-    const stopTui = tuiPlugin.setup(tui)
-    try {
-      await new Promise(setImmediate)
-      await stopTui.flush()
-      route = { type: "home" }
-      handlers.get("session.viewed")({ data: {} })
-      await stopTui.flush()
-      await stopServer()
-      stopServer = await plugin.setup(sdk.context)
-      sdk.rpc.publish({ type: "server.connected", data: {} })
-      await new Promise(setImmediate)
-      await stopTui.flush()
-      await sdk.event("session.deleted", { sessionID: "root" })
-      await new Promise(setImmediate)
-      await stopTui.flush()
-      assert.equal(calls.at(-1).topic, "agent.session.end")
-      assert.equal(calls.at(-1).payload.pane_owner, false)
-    } finally {
-      await stopTui()
-      await stopServer()
-    }
-  })
+      })
+      let stopServer = await plugin.setup(sdk.context)
+      const handlers = new Map()
+      const session = { id: "root", location: sdk.location }
+      let route = { type: "session", sessionID: "root" }
+      const tui = {
+        location: sdk.location,
+        client: sdk.client,
+        ui: { router: { current: () => route } },
+        data: {
+          session: { get: () => session, status: () => "idle" },
+          on: (name, handler) => {
+            handlers.set(name, handler)
+            return () => handlers.delete(name)
+          },
+        },
+      }
+      await sdk.event("session.created", { sessionID: "root" })
+      const stopTui = tuiPlugin.setup(tui)
+      try {
+        await new Promise(setImmediate)
+        await stopTui.flush()
+        route = { type: "home" }
+        handlers.get("session.viewed")({ data: {} })
+        await stopTui.flush()
+        await stopServer()
+        if (scenario === "deleted during downtime") lookup = "deleted"
+        if (scenario === "transient lookup") lookup = "transient"
+        stopServer = await plugin.setup(sdk.context)
+        sdk.rpc.publish({ type: "server.connected", data: {} })
+        await new Promise(setImmediate)
+        await stopTui.flush()
+        if (scenario === "transient lookup") {
+          assert.equal(calls.some((call) => call.topic === "agent.session.end"), false)
+          assert.ok(errors.some((message) => message.includes("detached session lookup failed")))
+          lookup = "deleted"
+          sdk.rpc.publish({ type: "server.connected", data: {} })
+        } else if (scenario === "active") {
+          await sdk.event("session.deleted", { sessionID: "root" })
+        }
+        await new Promise(setImmediate)
+        await stopTui.flush()
+        assert.equal(calls.at(-1).topic, "agent.session.end")
+        assert.equal(calls.at(-1).payload.pane_owner, false)
+        assert.equal(calls.filter((call) => call.topic === "agent.session.end").length, 1)
+      } finally {
+        await stopTui()
+        await stopServer()
+      }
+    })
+  }
 
   it("does not let an evicted TUI reclaim a shared session until it is explicitly viewed", async (t) => {
     const refreshes = []
