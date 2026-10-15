@@ -5,23 +5,6 @@ workflows. The inherited Windows Terminal build, architecture, and C++ conventio
 are documented in `.github/copilot-instructions.md`; this file contains only the
 fork-specific context.
 
-## Task-specific instructions
-
-Read the matching instructions before starting a task; follow all applicable rows.
-
-| When | Instructions |
-| --- | --- |
-| Cleaning up a worktree after its PR is merged | [Post-merge cleanup](.github/instructions/post-merge-cleanup.instructions.md) |
-| Changing TerminalApp UI, local tests or packaging | [Incremental Terminal UI builds](.github/instructions/incremental-terminal-ui-build.instructions.md) |
-| Editing Rust code | [Rust conventions](.github/instructions/rust.instructions.md) |
-| Editing WTA Rust code | [WTA Rust conventions](.github/instructions/rust-wta.instructions.md) |
-| Editing RESW resources | [RESW localization](.github/instructions/localization.instructions.md) |
-| Editing WTA locale YAML | [Rust localization](.github/instructions/rust-localization.instructions.md) |
-| Editing Copilot hooks | [Hook authoring](.github/instructions/hooks.instructions.md) |
-| Creating or editing an agent definition | [Custom agents](.github/instructions/agents.instructions.md) |
-| Creating or editing a skill | [Agent skills](.github/instructions/agent-skills.instructions.md) |
-| Creating or editing an instruction file | [Custom instructions](.github/instructions/instructions.instructions.md) |
-
 ## Architecture
 
 ```
