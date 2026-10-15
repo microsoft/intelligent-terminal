@@ -65,9 +65,14 @@ function Get-DescendantWtaIds {
         throw 'Terminal process disappeared during descendant discovery without a confirmed owned exit.'
     }
     # CIM's DMTF timestamp has microsecond precision; Process.StartTime has 100ns ticks.
-    $rootTicks = $RootStartTime.ToUniversalTime().Ticks
-    if ($AsProcess -and $root.CreationDate.ToUniversalTime().Ticks -ne ($rootTicks - $rootTicks % 10)) {
-        throw 'Terminal process identity changed during descendant discovery.'
+    if ($AsProcess) {
+        if (-not $PSBoundParameters.ContainsKey('RootStartTime')) {
+            throw 'Creation-proven descendant discovery requires RootStartTime.'
+        }
+        $rootTicks = $RootStartTime.ToUniversalTime().Ticks
+        if ($root.CreationDate.ToUniversalTime().Ticks -ne ($rootTicks - $rootTicks % 10)) {
+            throw 'Terminal process identity changed during descendant discovery.'
+        }
     }
     $byParent = @{}
     foreach ($p in $all) { $byParent[[int]$p.ParentProcessId] += @($p) }
@@ -176,15 +181,21 @@ function Get-WtProcessesForApp {
         $executableNames = @(Get-ChildItem -LiteralPath $loc -Filter '*.exe' -File -Recurse -ErrorAction Stop |
             Select-Object -ExpandProperty BaseName -Unique)
         if (-not $executableNames.Count) { throw 'Cannot establish package inactivity: no package executables were discoverable.' }
-        # Refusal-only callers opt in; existing process-cleanup callers remain terminal-only.
+        # Package-wide preflight includes helpers; terminal-only queries remain below.
         foreach ($process in @(Get-Process -ErrorAction Stop)) {
             $path = $process.Path
             if (-not $path) {
                 if ($process.HasExited) { continue }
                 if (-not $process.ProcessName -or $process.ProcessName -in $executableNames) {
-                    throw "Cannot establish package inactivity: executable path unavailable for pid=$($process.Id) ($($process.ProcessName))."
+                    try { $path = Get-ItProcessImagePath -Id $process.Id }
+                    catch {
+                        if ($process.HasExited) { continue }
+                        throw "Cannot establish package inactivity: executable path unavailable for pid=$($process.Id) ($($process.ProcessName))."
+                    }
+                    if (-not $path) { throw "Cannot establish package inactivity: empty executable path for pid=$($process.Id)." }
+                } else {
+                    continue
                 }
-                continue
             }
             if ([IO.Path]::GetFullPath($path).StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { $process }
         }
@@ -198,16 +209,13 @@ function Get-WtProcessesForApp {
 function Stop-AppInstances {
     <#
     .SYNOPSIS
-        Require an inactive package without closing or terminating any process.
+        Prepare the selected package for a cold test launch.
     .DESCRIPTION
-        This legacy entry point only calls Assert-WtPackageInactive. Any existing or
-        unknown package process causes refusal; package/path membership is not ownership.
-        Use Stop-Terminal only with a captured creation-proven app for owned cleanup.
-    .PARAMETER GraceSec
-        Retained for caller compatibility; unused because this function performs no shutdown.
+        Only the exact Dev package may be closed automatically. Other packages remain
+        protected; Stop-Terminal still requires captured creation ownership at teardown.
     #>
     [CmdletBinding()] param([Parameter(Mandatory)]$App, [int]$GraceSec = 6)
-    Assert-WtPackageInactive -App $App
+    Stop-StaleItInstances -App $App -GraceSec $GraceSec
 }
 
 function Assert-WtPackageInactive {
@@ -217,20 +225,186 @@ function Assert-WtPackageInactive {
     }
 }
 
+function Assert-ItDevProcessesNotChat {
+    param([Parameter(Mandatory)][object[]]$Processes)
+    $Processes = @($Processes | Where-Object { -not $_.HasExited })
+    if (-not $Processes.Count) { return }
+    $ancestors = [Collections.Generic.HashSet[int]]::new()
+    $oldestObserved = $null
+    $childStart = $null
+    $id = [int]$PID
+    while ($id -gt 0) {
+        if (-not $ancestors.Add($id)) {
+            throw "Cannot establish current chat ancestry: process cycle at pid=$id."
+        }
+        $current = Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction Stop
+        if (-not $current) {
+            if (-not $oldestObserved) {
+                throw "Cannot establish current chat ancestry for pid=$id."
+            }
+            foreach ($process in $Processes) {
+                if ($process.HasExited) { continue }
+                try { $processStart = $process.StartTime }
+                catch {
+                    if ($process.HasExited) { continue }
+                    throw
+                }
+                if (-not $processStart -or
+                    $processStart.ToUniversalTime() -le $oldestObserved) {
+                    if ($process.HasExited) { continue }
+                    throw "Cannot establish current chat ancestry for pid=${id}: live Dev pid=$($process.Id) may predate an observed ancestor or have an unreadable start time."
+                }
+            }
+            break
+        }
+        if ([int]$current.ProcessId -ne $id -or -not $current.CreationDate) {
+            throw "Cannot establish current chat ancestry: missing or changed process identity at pid=$id."
+        }
+        $start = $current.CreationDate.ToUniversalTime()
+        if ($childStart -and $start -gt $childStart) {
+            throw "Cannot establish current chat ancestry: parent pid=$id was reused after its child started."
+        }
+        $childStart = $start
+        if (-not $oldestObserved -or $start -lt $oldestObserved) { $oldestObserved = $start }
+        $parent = [int]$current.ParentProcessId
+        if ($parent -eq $id) {
+            throw "Cannot establish current chat ancestry: self-parented pid=$id."
+        }
+        if ($parent -le 0) { break }
+        $id = $parent
+    }
+    foreach ($process in $Processes) {
+        if (-not $process.HasExited -and $ancestors.Contains([int]$process.Id)) {
+            throw "Refusing to close the current chat process tree (pid=$($process.Id))."
+        }
+    }
+}
+
+function Test-ItPackageQuietWindow {
+    param([Parameter(Mandatory)]$App)
+    foreach ($sample in 1..5) {
+        Start-Sleep -Milliseconds 200
+        if (@(Get-WtProcessesForApp -App $App -IncludePackageExecutables).Count) { return $false }
+    }
+    $true
+}
+
+function Stop-ItDevPackageProcesses {
+    param([Parameter(Mandatory)]$App, [int]$GraceSec = 6)
+    $separator = ([string]$App.Package).LastIndexOf('_')
+    if ($separator -lt 1 -or -not $App.PackageFullName -or
+        $App.PackageFullName -cnotlike "$($App.Package.Substring(0, $separator))_*__rd9vj3e6a2mbr") {
+        throw 'The registered Dev package identity is missing or unexpected.'
+    }
+    $root = [IO.Path]::GetFullPath([string]$App.InstallLocation).TrimEnd('\') + '\'
+    for ($pass = 1; $pass -le 3; $pass++) {
+        $processes = @(Get-WtProcessesForApp -App $App -IncludePackageExecutables)
+        if (-not $processes.Count) {
+            if (Test-ItPackageQuietWindow -App $App) { return }
+            continue
+        }
+        Assert-ItDevProcessesNotChat -Processes $processes
+
+        $targets = @(
+            foreach ($process in $processes) {
+                if ($process.HasExited) { continue }
+                try {
+                    $null = $process.Handle
+                    $path = if ($process.Path) { [string]$process.Path }
+                        else { Get-ItProcessImagePath -Id $process.Id }
+                    if (-not $path) {
+                        throw "Dev process executable path unavailable (pid=$($process.Id))."
+                    }
+                    $path = [IO.Path]::GetFullPath($path)
+                    if (-not $path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -or
+                        (Get-ItCreatedProcessPackage -Process $process) -cne $App.PackageFullName) {
+                        throw "Dev process package identity or path does not match the registered Dev package (pid=$($process.Id))."
+                    }
+                    [pscustomobject]@{
+                        Process = $process
+                        Id = [int]$process.Id
+                        Path = $path
+                        StartTime = $process.StartTime.ToUniversalTime()
+                    }
+                }
+                catch {
+                    if ($process.HasExited) { continue }
+                    throw
+                }
+            }
+        )
+
+        foreach ($target in $targets) {
+            $process = $target.Process
+            if ($process.HasExited -or $process.ProcessName -ne 'WindowsTerminal') { continue }
+            try { $null = $process.CloseMainWindow() }
+            catch { if (-not $process.HasExited) { throw } }
+        }
+        if ($targets.Count -and -not (Test-Until -TimeoutSec $GraceSec -IntervalSec 0.2 -Condition {
+            -not @($targets | Where-Object { -not $_.Process.HasExited }).Count
+        })) {
+            foreach ($target in $targets) {
+                if ($target.Process.HasExited) { continue }
+                Assert-ItDevProcessesNotChat -Processes @($target.Process)
+                try { $live = Get-Process -Id $target.Id -ErrorAction Stop }
+                catch {
+                    if ($_.FullyQualifiedErrorId -like 'NoProcessFoundForGivenId,*' -and
+                        $target.Process.HasExited) { continue }
+                    throw
+                }
+                try {
+                    $null = $live.Handle
+                    # The retained handle prevents Windows from reusing this PID before shutdown.
+                    $livePath = if ($live.Path) { [string]$live.Path }
+                        else { Get-ItProcessImagePath -Id $target.Id }
+                    if (-not $livePath) {
+                        throw "Dev process executable path unavailable before shutdown (pid=$($target.Id))."
+                    }
+                    $livePath = [IO.Path]::GetFullPath($livePath)
+                    if ($live.HasExited -or
+                        $live.StartTime.ToUniversalTime() -ne $target.StartTime -or
+                        -not $livePath.Equals($target.Path, [StringComparison]::OrdinalIgnoreCase) -or
+                        (Get-ItCreatedProcessPackage -Process $live) -cne $App.PackageFullName) {
+                        throw "Dev process identity changed before shutdown (pid=$($target.Id))."
+                    }
+                }
+                catch {
+                    if ($target.Process.HasExited) { continue }
+                    throw
+                }
+                try { Stop-Process -Id $target.Id -Force -ErrorAction Stop }
+                catch {
+                    if ($_.FullyQualifiedErrorId -like 'NoProcessFoundForGivenId,*' -and
+                        $target.Process.HasExited) { continue }
+                    throw
+                }
+            }
+        }
+        if (Test-ItPackageQuietWindow -App $App) { return }
+    }
+    throw 'Dev package is still active after three verified cleanup passes.'
+}
+
 function Stop-StaleItInstances {
     <#
     .SYNOPSIS
-        Refuse startup while any selected-package process already exists.
+        Close exact Dev package processes while protecting other package families.
     .DESCRIPTION
-        Despite its legacy name, this function never adopts or closes a "stale" process.
-        It only verifies inactivity. GraceSec remains an unused compatibility parameter.
+        The Dev family has explicit test-cleanup permission, except for the current
+        chat ancestry. Store and other families may not be closed implicitly.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]$App,
         [int]$GraceSec = 6
     )
-    Assert-WtPackageInactive -App $App
+    if ($App.Package -ceq $script:ItKnownFamilies.Dev) {
+        Stop-ItDevPackageProcesses -App $App -GraceSec $GraceSec
+    }
+    elseif (@(Get-WtProcessesForApp -App $App -IncludePackageExecutables).Count -or
+        -not (Test-ItPackageQuietWindow -App $App)) {
+        throw 'Refusing cold start: protected package processes are not test-owned.'
+    }
 }
 
 function Invoke-ItTerminalActivation {
@@ -258,8 +432,7 @@ namespace ItE2EActivation {
     [ItE2EActivation.Native]::Activate($AppUserModelId)
 }
 
-function Get-ItCreatedProcessPackage {
-    param([Parameter(Mandatory)]$Process)
+function Initialize-ItCreatedPackageNative {
     if (-not ('ItE2ECreatedPackage.Native' -as [type])) {
         Add-Type @'
 using System;
@@ -271,6 +444,16 @@ namespace ItE2ECreatedPackage {
   static extern int GetPackageFullName(IntPtr process, ref uint length, StringBuilder name);
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
   static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder name, ref uint length);
+  [DllImport("kernel32.dll", SetLastError=true)]
+  static extern IntPtr OpenProcess(uint access, bool inherit, uint processId);
+  [DllImport("kernel32.dll")]
+  static extern bool CloseHandle(IntPtr process);
+  public static string ImageNameForId(uint processId) {
+   var process = OpenProcess(0x1000, false, processId);
+   if(process == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+   try { return ImageName(process); }
+   finally { CloseHandle(process); }
+  }
   public static string ImageName(IntPtr process) {
    uint length = 32768; var name = new StringBuilder((int)length);
    if(!QueryFullProcessImageName(process, 0, name, ref length))
@@ -290,6 +473,17 @@ namespace ItE2ECreatedPackage {
 }
 '@
     }
+}
+
+function Get-ItProcessImagePath {
+    param([Parameter(Mandatory)][int]$Id)
+    Initialize-ItCreatedPackageNative
+    [ItE2ECreatedPackage.Native]::ImageNameForId([uint32]$Id)
+}
+
+function Get-ItCreatedProcessPackage {
+    param([Parameter(Mandatory)]$Process)
+    Initialize-ItCreatedPackageNative
     [ItE2ECreatedPackage.Native]::FullName($Process.Handle)
 }
 
@@ -432,9 +626,8 @@ function Start-Terminal {
                          cannot leak into a test that only patches a subset of keys (default
                          $true; ignored when Backup is $false).
     .PARAMETER ShowFre   Leave the agent FRE overlay SHOWING (writes agentFreCompleted=false).
-                         COM resolution is best-effort in this mode. A fresh monarch is always
-                         started (see Stop-StaleItInstances below), which is what lets the FRE
-                         re-read state.json — a running monarch caches ApplicationState.
+                         COM resolution is best-effort in this mode. A cold start is required:
+                         verified Dev processes close automatically; active non-Dev packages are refused.
     #>
     [CmdletBinding()]
     param(
@@ -458,13 +651,8 @@ function Start-Terminal {
     New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
     $script:ItE2ELogFile = Join-Path $logRoot ("ite2e-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 
-    # Clear leftover instances of the selected package BEFORE writing config: a stale window
-    # from a crashed prior test would otherwise be attached-to in a broken state (new-tab ->
-    # CreateTab E_FAIL 0x80004005). Doing it before config write also stops a closing monarch's
-    # flush from clobbering the FRE/settings values we are about to write. Other Intelligent
-    # Terminal products have separate package identities and brand CLSIDs and remain running.
-    # This enforces a cold start for the selected package; -ShowFre separately controls whether
-    # the FRE overlay is left showing.
+    # Only the exact Dev family may be closed before changing settings. Other package
+    # processes remain protected; an active monarch would intercept the new launch.
     Stop-StaleItInstances -App $app
     Initialize-LogOffsets -App $app | Out-Null
     $preLaunchLogStartOffset = if ($app.LogStartOffset) { $app.LogStartOffset.Clone() } else { @{} }
@@ -706,8 +894,8 @@ function Start-TerminalFre {
     <#
     .SYNOPSIS
         Launch with the agent FRE overlay SHOWING so the FRE flow can be driven via UIA.
-        Forces a COLD start (kills any running monarch) because a running monarch caches
-        ApplicationState and would otherwise just open a normal tab instead of the overlay.
+        Requires a COLD start: exact Dev processes may be closed automatically, while
+        an already-running protected package is refused before changing settings.
         Backs up config for restore on Stop-Terminal.
     #>
     [CmdletBinding()]

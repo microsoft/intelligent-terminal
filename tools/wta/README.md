@@ -67,6 +67,113 @@ the host agent, WTA puts the current package family's alias directory first on
 therefore use short `wta.exe` commands without selecting another installed
 branding or reproducing a protected package path.
 
+### Native interactive Agent Profiles (Windows host)
+
+Automatically generated Terminal Agent profiles now discover and launch the
+native CLI directly through C++, without these WTA commands. The commands below
+remain available as standalone CLI utilities; their native flag/argument
+contract is also used by Terminal's managed profile command builder.
+
+```powershell
+wta probe-profile-agents
+wta launch-agent --agent-id copilot
+wta launch-agent --agent-id claude --model sonnet --permission-mode plan
+wta launch-agent --agent-id codex --permission-mode untrusted -- --no-alt-screen
+wta launch-agent --agent-id gemini -- --prompt-interactive "Explain this project"
+wta launch-agent --agent-id antigravity -- --conversation "conversation-id"
+```
+
+`launch-agent` is a thin inherited-console launcher, **not** the ACP agent pane.
+It starts the installed native CLI in the existing ConPTY, preserves cwd,
+environment (including `WT_SESSION`, `WT_COM_CLSID` and existing hook variables),
+inherits stdin/stdout/stderr, waits for the child, and returns its Windows exit
+code after flushing WTA logging. It does not create master/helper processes,
+render a WTA TUI, manufacture session IDs, install hooks or agents, invoke npx,
+log in, download anything, or write provider configuration. The native CLI may
+perform its own normal authentication, networking and configuration behavior.
+Native hooks already installed by the user continue to work normally.
+
+The exact contract is:
+
+```text
+wta launch-agent --agent-id <id> [--model <value>] [--permission-mode <value>] [-- <additional arguments>]
+```
+
+Only the canonical IDs below are accepted. Omitted or empty model/permission
+values mean **no override**: provider defaults, configuration and environment
+remain authoritative. This is not a universal “safe”, “read-only” or
+automatic-approval setting. There is no theme override. All six providers map
+`--model` to their native `--model` flag; OpenCode expects `provider/model`.
+
+| Agent ID | Permission values | Native mapping |
+|---|---|---|
+| `copilot` | `allow-all-tools`, `allow-all` | Corresponding `--allow-all-tools` or `--allow-all` flag |
+| `claude` | `acceptEdits`, `auto`, `bypassPermissions`, `manual`, `dontAsk`, `plan` | `--permission-mode <value>` |
+| `codex` | `untrusted`, `on-request`, `never` | `--ask-for-approval <value>`; does not override the sandbox |
+| `gemini` | `default`, `auto_edit`, `yolo`, `plan` | `--approval-mode <value>` |
+| `opencode` | `auto` | `--auto` |
+| `antigravity` | `accept-edits`, `plan` | `--mode <value>` |
+
+These flags were verified against installed native `--help` output on
+2026-09-24 (Copilot 1.0.88, Claude Code 2.1.218, Codex 0.146.1, Gemini 0.38.1,
+OpenCode 1.17.18). Older CLI versions may reject newer native modes; WTA preserves that
+failure rather than silently choosing a different mode.
+Antigravity's native flags were verified against `agy 1.3.3 --help` on
+2026-10-12. Discovery uses `agy.exe`, not the provider ID or the separate ACP server.
+
+Additional arguments are argv elements, not a shell command. The launcher
+rejects unreviewed flags, subcommands, short-option clusters and conflicting
+model, permission, config or profile overrides instead of guessing whether they
+widen permissions. Supported extras:
+
+| Agent | Additional arguments |
+|---|---|
+| All | `--help`, `--version` |
+| Copilot | `--resume` (picker), `--continue`, `--add-dir <directory>` |
+| Claude | `--continue`, `--resume <session>`, `--add-dir <directory>` |
+| Codex | `--no-alt-screen`, `--add-dir <directory>` |
+| Gemini | `--resume <session>`, `--prompt-interactive <prompt>` |
+| OpenCode | `--continue`, `--session <session>`, `--prompt <prompt>` |
+| Antigravity | `--continue`, `--conversation <session>`, `--add-dir <directory>`, `--prompt-interactive <prompt>` |
+
+Named values also accept `--flag=value`. Values beginning with `-` are rejected.
+For `.cmd` shims, expansion characters (`%`, `!`, `^`), embedded quotes and
+newlines in the executable path or arguments are rejected explicitly; ordinary
+spaces, Unicode and shell metacharacters are passed through Rust's Windows
+batch-argument quoting. Native `.exe` launches use argv directly. WTA registers
+a non-inheritable control handler: Ctrl+C/Ctrl+Break remain the native CLI's
+responsibility, while the wrapper waits. A private kill-on-close job owns only
+the wrapper and its descendants, reclaiming them when the pane/wrapper closes;
+WTA never terminates the terminal host or unrelated agent processes.
+
+Both commands read current policy at invocation under
+`Software\Policies\Microsoft\IntelligentTerminal`, preferring HKLM over HKCU
+independently for each value. `AllowedAgents` (`REG_MULTI_SZ`) is case-insensitive:
+absent means all built-ins, empty means none. Discovery filters disallowed IDs;
+launch checks again. Invalid/unreadable policy fails explicitly rather than
+reporting “not installed”. `AllowAutomaticApproval=0` blocks **all native profile
+launches**, even with no permission override: a native CLI's configuration,
+environment or in-session toggles cannot be reliably constrained by this
+wrapper. Use the policy-enforced ACP agent pane instead. Discovery remains an
+availability probe and does not hide installed agents for this approval policy.
+
+`probe-profile-agents` emits exactly one stdout JSON object, with no resolved
+paths and no authentication/model probe:
+
+```json
+{"agents":[{"id":"copilot","display_name":"GitHub Copilot"},{"id":"claude","display_name":"Claude"}]}
+```
+
+The list follows built-in registry order and contains only installed,
+policy-allowed Windows CLIs. It uses WTA's fresh registry-plus-process PATH and
+the existing per-agent extension search order (`.exe`, then `.cmd`), including
+Claude's native npm shim; Antigravity accepts only its official `agy.exe`,
+not an `agy.cmd` shim. It does **not** require ACP adapters or npx, and does
+not inspect WSL. An empty successful list means no matching native executables;
+nonzero exit with stderr means discovery is unknown/failed, not unavailable.
+`launch-agent` resolves the executable afresh on each launch. The existing
+`probe-host-agents` retains its separate ACP prerequisites and behavior.
+
 ### Sidebar Agent sessions
 
 Master discovers installed, policy-allowed Windows-host agents in the background
@@ -89,13 +196,72 @@ and ACP wrapper prerequisites.
 Sidebar Agent sessions runs
 `wta sessions list --origin shell --json --include-status`.
 This only reads the current registry snapshot; it never starts an agent or waits
-for an ACP history query. Master synchronizes initialized, listing-capable pooled
-connections every five seconds, including already-connected WSL and custom agents.
-Each connection has one refresh in flight; history and title updates share its
-single response. Failed queries retain prior rows and back off up to 60 seconds.
+for an ACP history query. Each initialized, listing-capable agent command/source
+has a separate, reusable history-only ACP process, including already-connected
+WSL and custom agents. It is never used for chat, Autofix, or session restoration.
+Its ACP transport driver owns a `LocalSet` on the blocking boundary, so ordinary
+`Send` tasks can start the history worker safely. Worker exit releases its
+startup ownership, allowing a later refresh to restart it.
+History and title updates share one response. After success, the next query waits
+five seconds from completion; timer, manual, and hook refreshes share this stream
+and cannot queue additional RPCs. Slow title queries never block hook dispatch.
+
+Soft response deadlines widen through 5, 10, 20, 40, and 60 seconds. A soft
+timeout retains the original response receiver and in-flight slot: it does not
+send a new request or pretend to cancel Copilot's work. Checkpoints are measured
+from the original send time, followed by one-minute checks. Three consecutive
+responses faster than five seconds reduce the deadline by one step. Completed
+errors back off through 5, 10, 20, 40, and at most 60 seconds, including manual
+refreshes. Only a successful list resets failure backoff, not ACP initialization.
+An authentication-required response retires the history instance after backoff
+so its replacement can pick up credentials from the normal sign-in flow; it
+never starts a separate interactive login.
+
+At 300 seconds without a response, master recycles only the dedicated history
+process, confirms its exit, then rebuilds after backoff. Windows query launchers
+are assigned to a private kill-on-close Job Object before executing, so their
+descendants are reclaimed too. WSL uses a private process group with a PID/start
+time receipt and a stdin-EOF guardian; recovery checks that the group has exited.
+WSL needs `bash`, `setsid`, `cat`, `ps`, and `grep`. Cleanup failures retain the
+old instance and block replacement, including across chat-process generations.
+Failed queries and recovery retain cached rows; no chat process is restarted.
+
+For optional zero-inference runtime checks, use an authenticated native Copilot
+or explicitly select a WSL distro. These ignored tests are not part of CI:
+
+```powershell
+cargo test --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml history_refresh_live_copilot -- --ignored
+$env:WTA_TEST_WSL_DISTRO = 'Ubuntu'
+cargo test --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml history_wsl_group -- --ignored
+```
+
 The opt-in JSON object contains `sessions` and `history_status` (`loading`, `ready`,
 or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
 ordinary `--json` output remains one session per line.
+
+Session commands without an explicit `--master` rediscover `master-pipe.txt`
+before each connection attempt, so a stale address from a previous Terminal
+process does not pin a startup request to the old pipe. An explicit `--master`
+stays pinned. Missing discovery files, missing pipes, and busy pipes share the
+existing seven-attempt retry budget (1.87 seconds of backoff); permission and
+other failures are not retried. Listing, activation, and born-bound registration
+use the same connection path.
+
+If the master remains temporarily unavailable, `sessions list --json --include-status`
+exits nonzero and writes `{"error":{"kind":"master_unavailable"}}` instead of a
+successful empty snapshot. Other listing failures retain their ordinary error
+behavior. The sidebar keeps loading (or retains existing rows) and retries every
+five seconds for a 15-second recovery window after the first unavailable result.
+A separate deadline timer shows the normal load error at the end of that window,
+even while a retry command is still running; repeated unavailable results do not
+extend the deadline. The running capture retains ownership and can still recover
+normally when it returns a ready snapshot. Once connected, a
+`loading` history snapshot also keeps the sidebar on a five-second refresh interval
+and clears any earlier failure backoff, including when partial rows are already
+visible. `ready` restores the ordinary 60-second interval. These reads do not restart
+agents or request another history scan. The 15-second recovery window applies only
+to an unavailable master, not normal history loading. The command's 15-second total
+capture timeout, history-query timeout behavior, and activation errors are unchanged.
 
 An activity hook cannot claim or alter a pane owned by another live session,
 even if its raw session ID exists in another provider or source. Nested CLI
@@ -112,16 +278,42 @@ other-window action. Missing or malformed membership is unknown, not evidence
 that the pane is attached elsewhere. These fields are refreshed per response,
 not stored as registry ownership or lifecycle state.
 
-Historical/Ended native host Copilot rows may receive response-only activity
-from their exact default-universe SDK session directory. This requires a
+Sessions registered as live in master keep their detailed Idle, Active,
+Waiting for input, or Error status. Historical/Ended native host Copilot rows
+are not live IT registrations; they may instead receive the response-only
+`InUse` status, displayed as **In use**, from their exact default-universe SDK
+session directory. This requires a
 matching PID marker, a live native `copilot.exe` created before that marker,
 and an actively held `inuse.<pid>.hold` lease (observed with Copilot SDK
-1.0.80). A stale marker, released lease, inaccessible process, unknown phase,
+1.0.80). A stale marker, released lease, inaccessible process,
 or nonmatching provider/source/universe leaves the original status unchanged.
-The existing turn classifier supplies activity; individual tool completion
-does not imply Idle. Reads use a bounded 4 MiB bootstrap tail and incremental
-cached appends under a two-second budget. This does not mutate registry state,
-infer a window/pane owner, or enable a running-location indicator.
+External sessions do not expose detailed activity: this probe does not read
+`events.jsonl` or infer Idle/Active from turns. Marker and lease reads have a
+two-second budget and share one process-wide nonblocking admission gate.
+The gate remains occupied until the blocking file operation finishes, even
+when its caller times out or disconnects. Busy list reads retain the original
+snapshot.
+
+List responses reread the registry after the external probe and enrich pane
+ownership from that current snapshot. Registrations made during the probe retain
+their detailed activity and window/background attribution in the same response.
+External evidence applies only to unchanged eligible history rows; it cannot
+restore removed rows or overwrite a newer binding.
+
+Activation checks the same qualified native evidence again before any
+resume path; it never trusts the status returned to the sidebar. An actively
+held external lease rejects activation without changing registry ownership.
+Busy, timed-out, or failed verification also rejects activation instead of
+assuming the session is free. Absent or released evidence allows the normal
+historical resume path. A live IT registration observed after the asynchronous
+probe takes precedence over its older evidence and retains detailed activity.
+This does not infer a window/pane owner or enable a running-location indicator.
+
+Session CLI connections retry transient missing/busy named-pipe instances under
+a bounded backoff (up to 1.87 seconds). Concurrent windows can refresh immediately
+after resume without treating a busy master as stopped; final failures preserve
+the underlying Windows error. This retries connection establishment only; it never
+sends an activation request again.
 
 The initial
 discovery stays `loading` until all eligible host providers finish. Providers that
@@ -147,8 +339,10 @@ a fresh activation ID. See
 [session tracking](../../doc/specs/hybrid-agent-session-tracking.md) for receipt
 retention and refresh cancellation/backoff behavior.
 
-These native-provider ACP processes remain in the master pool after History closes;
-there is no History-specific idle timeout or eviction. Further refreshes reuse them,
+The warm native-provider chat processes remain in the master pool after History
+closes; the dedicated history processes are also reused while their owning pool
+entry remains live. There is no History-view-specific idle eviction.
+Further refreshes reuse healthy processes,
 and concurrent windows share one discovery pass. Registry and discovery-status changes notify the sidebar,
 with a 60-second snapshot poll while the view is open in vertical layout as a fallback. Opening the
 view still fetches immediately. Unavailable or failed
@@ -166,7 +360,7 @@ periodic installation scan. Failed host-agent startup discoveries are retried th
 same discovery worker, with delays of 5, 10, 20, 40, then at most 60 seconds after
 each failure (checked on the existing five-second history timer). Retries recheck
 installation and policy and do not restart healthy resident providers.
-`wta sessions refresh --json` bypasses this startup backoff, schedules discovery and returns the
+`wta sessions refresh --json` schedules discovery while respecting failure backoff and returns the
 current snapshot with `history_status`; it does not wait for discovery to finish.
 The removed `--all-agents` flag is no longer accepted. F5 in a helper's session view
 explicitly refreshes that helper's bound connection without discovering other agents.
@@ -175,8 +369,8 @@ only in nonvertical layout; vertical layout uses the Sidebar fallback instead.
 Live layout changes and helper-ready runtime configuration update this selection per
 window without reconnecting ACP. Push updates remain immediate in either layout,
 and returning to nonvertical layout immediately refreshes an already-open helper view.
-History-query retries do not restart or initialize agents; startup discovery retries
-are separate and retain the existing ACP initialization timeout.
+History-query recovery may rebuild only its history-only process. Startup
+discovery retries are separate and retain the existing ACP initialization timeout.
 
 ### tmux-like CLI
 
@@ -285,8 +479,11 @@ the view clamps to surviving content.
 
 | Key | Action |
 |-----|--------|
-| Type + Enter | Send prompt to agent |
+| Type + Enter | Send a prompt, or queue it while the agent is busy or connecting |
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
+| Ctrl+V / configured Paste shortcut | Paste text or attach a clipboard image to the chat draft |
+| Right-click | Follow the effective `rightClickContextMenu` and `copyOnSelect` settings |
+| Alt+V | Attach a clipboard image to the chat draft |
 | Ctrl+Z | Undo the latest edit in the focused chat draft |
 | Ctrl+Y | Redo an undone edit in the focused chat draft |
 | Up / Down | Browse prompt input history |
@@ -302,6 +499,21 @@ the view clamps to surviving content.
 | Shift+PageUp/Down | Scroll debug panel |
 | Y / N | Quick allow/reject on permission dialog |
 | Up / Down / Enter | Navigate permission options |
+
+Image paste accepts screenshots and copied image files. Images appear as inline
+attachment tokens and are sent with the next prompt, not immediately. The agent
+must advertise image support; otherwise the pane shows a warning and leaves the
+draft unchanged. Ordinary text and non-image file paths retain their paste
+behavior. Alt+V remains an image-only shortcut.
+
+Ctrl+V follows the terminal action map: an explicitly unbound or reassigned
+shortcut is not overridden. With `rightClickContextMenu` enabled, right-click
+opens the terminal context menu instead of copying or pasting. Otherwise, with
+`copyOnSelect` disabled, right-click copies selected text or pastes when nothing
+is selected. With `copyOnSelect` enabled, mouse selections are copied on release
+without removing the highlight, and right-click pastes without re-copying an
+already-copied selection. These settings also update in existing and stashed
+agent panes when terminal settings reload.
 
 Draft undo groups contiguous typing; paste, cut, selection replacement, deletion,
 and idle draft clearing are separate edits. Cursor, selection, focus, and view
@@ -320,6 +532,102 @@ Single clicks in draft text follow the visible wrapped or scrolled input row.
 Wide characters and image attachment tokens keep valid editing boundaries.
 Clicking dismisses full-draft selection without editing text or discarding redo;
 dragging and double/triple clicks retain their text-selection behavior.
+
+### Pending prompts
+
+Each agent pane keeps an in-memory queue for its current conversation. You can
+submit another prompt while a reply is streaming without interrupting that reply.
+User requests run in submission order, one ACP turn at a time; separate messages
+are not merged or injected into an active turn. Text and image attachments belong
+to the request that was submitted, not to the next draft.
+Disconnected or failed agents do not accept new requests: the draft and its
+attachments stay in the editor with a connection error. Automatic Autofix and
+diagnostics activation also reject requests in these states, reporting the error
+in the owning tab rather than leaving work queued that would block `/restart`.
+Requests can be accepted again once the agent is connecting.
+
+Pending requests appear as one dim-gray count line directly above the input box,
+independently of chat scrolling: `1 message queued` or `N messages queued`
+(en-US). The count includes waiting user and automatic requests, increases on
+enqueue, and decreases when a request is dispatched or removed. Active turns do
+not count; an empty queue has no status line. There are no message previews,
+buttons, or queue-management shortcuts (Alt+R, Alt+S, Alt+D).
+The input and active permission/action remain usable. A user message that must wait receives an
+Info notification confirming it was queued. Immediate sends and automatic
+Autofix warm-up do not produce this notification.
+
+Ordinary Up/Down history navigation does not remove a queued request.
+
+Capturing context for an Autofix request is preparation, not queueing: it
+produces neither a queued count nor an enqueue notification, even while the
+agent is connecting or busy. Only successful capture admits the request to the
+queue. A captured request that must wait then counts as queued; typed `/fix`
+requests also receive the usual enqueue notification.
+
+Error detection and its clickable diagnostics hint do not wait for ACP to
+connect. With automatic suggestion off, detection alone does not enqueue work;
+activating the hint captures context and then queues the requested fix until the
+agent is ready.
+Once accepted into the queue, the hint immediately switches to the non-interactive
+pending state; it does not wait for the request to start running.
+Repeated activation of the same detected failure does not add another request,
+including while the session is still connecting. A later fresh failure remains
+eligible for its own activation.
+Cancelling active analysis requested from a detected diagnostic restores its actionable Detected hint unless a newer failure, shell progress, or source-pane closure has superseded or invalidated it.
+
+The count refers to the pending queue, not the chat history. Queue capacity is
+bounded; when a request does not fit, its draft remains in the editor.
+`/stop` and user cancellation cancel the active turn but keep unsent user requests
+in a stopped queue. Request failures also stop automatic sending so dependent
+follow-ups do not run after a failed task. Waiting automatic Autofix requests are
+discarded. A stopped queue uses the same count line. New input can join it
+without restarting automatic sending. The underlying recall, resume, and discard
+logic is retained, but the count-only UI deliberately exposes none of these
+actions. **Temporarily, stopped requests have no recovery or discard UI.**
+
+Permissions, clarification questions, and unresolved action cards still need
+your response before another prompt starts. They are not queued prompts.
+Session and configuration changes must not silently send pending input to a
+different conversation; switching stays blocked while requests are waiting.
+Connection recovery keeps retained input stopped.
+An interrupted request whose delivery is uncertain is never automatically retried.
+
+With automatic error suggestions enabled, shell failures received while the
+helper is running can wait for the agent to connect or finish its current turn.
+Automatic requests run after explicit user requests. While the queue is stopped,
+new failures can show diagnostics but do not automatically start analysis.
+Repeated pending failures
+from the same source pane are coalesced, and shell progress or pane closure
+invalidates obsolete requests. Prompt redraw markers alone do not represent new
+shell work and do not discard a waiting fix. When WTA handles an Autofix trigger,
+it awaits capture of the source pane's output, shell, and working directory as
+part of queue admission, before processing the next helper event. Capture does not
+wait for agent readiness or the current turn to finish. A typed `/fix` uses the
+same admission-time capture. All preparations from one helper event share a
+one-second capture deadline, so an unresponsive terminal read cannot hold up helper
+event processing for wtcli's 30-second deadline. Expiry cancels the read subprocess
+and discards unfinished preparations through the usual capture-failure warning;
+it never admits a late result. Dispatch consumes the frozen evidence without
+reading the pane again. This is a snapshot when WTA handles the trigger, not an
+atomic snapshot at the terminal's command-finished marker. Any failed capture
+shows a warning in the agent pane without creating a queue entry or stopping
+existing work. The diagnostics hint stays detected and can be activated again
+directly, without recalling or discarding a failed request. Cancelling during
+preparation discards it; successfully captured unsent user requests retain the
+existing stopped-queue behavior.
+Disabling automatic suggestions leaves detected errors available for manual analysis.
+
+Input history preserves the `/fix` command prefix but does not retain image
+attachments. Resubmitting a recalled `/fix` captures the current source context
+again, rather than reusing evidence from the earlier request.
+
+Hiding the agent pane or dragging its tab between windows preserves the queue.
+The queue is not persisted across helper/app exit or crashes, and it cannot
+recover shell events emitted before the helper subscribed. Concurrent side
+questions are not supported: additional prompts are follow-up turns in the main
+conversation.
+
+### Session MCP approvals and action history
 
 WTA automatically selects **Allow once** only when the tool matches the exact MCP
 server currently bound to that ACP session by master. Master overwrites provider
@@ -350,7 +658,12 @@ background and then focus its returned pane through the existing protocol focus
 path. This preserves the selected sidebar page and search state. Other delegate
 calls retain ordinary foreground tab creation.
 
-In Agents, duplicate-split uses the target pane's live provider/session binding.
+Split Pane and Duplicate Pane retain the original terminal behavior in both
+Tabs and Agents views. They use the ordinary split direction, size, and profile
+rules without inspecting agent/session identity or invoking WTA delegation.
+AI assistant panes remain fixed panels and cannot themselves be split.
+
+Explicit CLI delegation can still split a live agent terminal:
 `wta delegate --split-pane <pane> --split-session <current-session>
 --delegate-agent <provider>` validates that pair against one live master row
 and uses its exact host or WSL distro before launching a fresh interactive
@@ -362,7 +675,7 @@ wrapper that starts the existing delegate command with an explicit native
 working directory; the split protocol itself has no cwd argument. The wrapper
 preserves native arguments and exit status, including paths with spaces and
 shell metacharacters. WSL retains its existing distro-specific `--cd` launch.
-Sidebar `+` and split launchers use bounded output capture and surface failures
+The sidebar `+` launcher uses bounded output capture and surfaces failures
 through the sidebar's existing error presentation.
 
 ## Debug Panel
@@ -407,6 +720,52 @@ Set `WTA_LOG=debug` for verbose output (debug builds default to `debug`, release
 to `info`). The F12 debug panel in the TUI shows protocol traffic live without
 tailing log files.
 
+### Standalone Copilot ACP CPU probe
+
+On Windows with PowerShell 7, compare idle CPU, five-second `session/list`
+polling, and the idle period after polling stops, without making a model
+request or creating a chat session:
+
+```powershell
+pwsh -File build\scripts\Measure-CopilotAcpCpu.ps1
+```
+
+Add `-CreateTranscript` to create and restore only a new test conversation,
+including restarting ACP with `--resume` pointing to that test session.
+This makes one synthetic, tool-denied model request and consumes model
+credits, disables custom instructions and built-in MCP servers, and limits
+available tools to a denied shell tool for all scenarios. The probe verifies
+both user and agent message replay from `session/load`. Empty ACP sessions
+may not be persisted, so restoration requires the completed synthetic
+conversation. Accepting `--resume` in ACP mode does not itself prove that
+startup replay occurred; that phase only measures the launch mode, and the
+report includes update-type counts.
+
+Results are written to a new directory under `tools\wta\target\acp-cpu-probe`:
+`report.json`, per-phase `phases.json`, per-sample `cpu.csv`, and request
+latencies/timeouts in `rpc.csv`. No chat text or session-list contents are
+recorded. Both stdout and stderr are drained continuously. CPU includes the
+server and observed descendants; very short-lived children between samples
+may be missed. `core_percent` uses one logical core as 100%; `machine_percent`
+divides by the machine's logical processor count, like Task Manager. The
+default sustained-busy indicator requires at least 20% of a core in at least
+80% of samples and at least 20% average CPU; it is a diagnostic threshold,
+not a correctness verdict.
+
+Fixed polling is deliberately a stress comparison, not a reproduction of
+current WTA's failure handling. Use `-PollPolicy Backoff` to retain one
+outstanding request, wait five seconds after success, and apply
+5/10/20/40/60-second delays after error responses. A late success is still
+successful, and an unresolved request remains tracked across observation
+phases. CPU sampling continues while it is pending. This is a query-scheduling
+comparison, not a reproduction of WTA's adaptive deadlines or process recovery.
+A local timeout is recorded separately from a late response: the probe does
+not pretend it cancelled server-side work. It terminates only processes
+identified as its own by PID and creation
+time, does not attach to Terminal or restore existing chats, and leaves its
+new test session available for inspection. A quiet short run does not rule
+out a failure specific to a longer or different session history.
+
 ## Project Structure
 
 ```
@@ -416,6 +775,7 @@ tools/wta/src/
 +-- helper/mod.rs             wta-helper: per-pane entry (reuses the TUI over a pipe)
 +-- app.rs                     TUI state machine, event loop, per-tab sessions
 |   +-- app/autofix.rs         Autofix detection + suggestion
+|   +-- app/prompt_queue.rs    Pending prompts, Autofix snapshots and dispatch gates
 |   +-- app/turn_state.rs      Per-turn state machine
 +-- event.rs                   Crossterm event reader
 +-- coordinator.rs             Delegate (?<prompt>) execution

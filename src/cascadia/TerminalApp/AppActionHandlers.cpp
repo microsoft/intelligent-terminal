@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "TabStrip.h"
 #include "../inc/AgentPaneRestore.h"
+#include "../inc/ProfileSplitPolicy.h"
 #include "App.h"
 
 #include "TerminalPage.h"
@@ -287,14 +288,47 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
 
-            const auto& duplicateFromTab{ realArgs.SplitMode() == SplitType::Duplicate ? _GetFocusedTab() : nullptr };
-
             const auto& activeTab{ _senderOrFocusedTab(sender) };
-            if (_tabStrip.HistoryActive() && realArgs.SplitMode() == SplitType::Duplicate)
+            auto contentArgs = realArgs.ContentArgs();
+            winrt::TerminalApp::Tab duplicateFromTab{ realArgs.SplitMode() == SplitType::Duplicate ? _GetFocusedTab() : nullptr };
+            if (realArgs.SplitMode() == SplitType::Profile && activeTab)
             {
-                _SplitAgentDelegate(activeTab, realArgs.SplitDirection(), realArgs.SplitSize());
-                args.Handled(true);
-                return;
+                const auto decision = ::Microsoft::Terminal::ProfileSplits::Resolve(
+                    _settings, activeTab->GetFocusedProfile(), contentArgs);
+                if (decision.duplicate)
+                {
+                    duplicateFromTab = *activeTab;
+                }
+                else if (decision.target)
+                {
+                    if (decision.unavailable)
+                    {
+                        LOG_HR_MSG(E_INVALIDARG, "Configured default split profile is unavailable; using the global default");
+                        if (auto presenter{ _dialogPresenter.get() })
+                        {
+                            Controls::ContentDialog dialog;
+                            dialog.Title(winrt::box_value(RS_(L"SplitProfileUnavailableTitle")));
+                            dialog.Content(winrt::box_value(RS_(L"SplitProfileUnavailableMessage")));
+                            dialog.CloseButtonText(RS_(L"Ok"));
+                            presenter.ShowDialog(dialog);
+                        }
+                    }
+                    const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>();
+                    NewTerminalArgs splitArgs{ terminalArgs ? terminalArgs.Copy().as<NewTerminalArgs>() : NewTerminalArgs{} };
+                    splitArgs.Profile(::Microsoft::Console::Utils::GuidToString(decision.target.Guid()));
+                    if (splitArgs.StartingDirectory().empty())
+                    {
+                        if (const auto control = activeTab->GetActiveTerminalControl())
+                        {
+                            const auto directory = control.WorkingDirectory();
+                            if (::Microsoft::Console::Utils::IsValidDirectory(directory.c_str()))
+                            {
+                                splitArgs.StartingDirectory(directory);
+                            }
+                        }
+                    }
+                    contentArgs = splitArgs;
+                }
             }
 
             // A persisted agent pane replays as an ordinary splitPane action,
@@ -314,7 +348,7 @@ namespace winrt::TerminalApp::implementation
                                    realArgs.SplitDirection(),
                                    // This is safe, we're already filtering so the value is (0, 1)
                                    realArgs.SplitSize(),
-                                   _MakePane(realArgs.ContentArgs(), duplicateFromTab)));
+                                   _MakePane(contentArgs, duplicateFromTab)));
         }
     }
 
@@ -534,11 +568,34 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalPage::_HandleSwitchToTab(const IInspectable& /*sender*/,
+    void TerminalPage::_HandleSwitchToTab(const IInspectable& sender,
                                           const ActionEventArgs& args)
     {
         if (const auto& realArgs = args.ActionArgs().try_as<SwitchToTabArgs>())
         {
+            if (const auto chord = sender.try_as<KeyChord>(); chord && _isVerticalLayout &&
+                                                             _IsPresentedTabSwitchChord(chord, realArgs.TabIndex()))
+            {
+                const auto map = _settings.ActionMap();
+                const auto command = map ? map.GetActionByKeyChord(chord) : nullptr;
+                const auto effectiveArgs = command && command.ActionAndArgs().Action() == ShortcutAction::SwitchToTab ?
+                                               command.ActionAndArgs().Args().try_as<SwitchToTabArgs>() :
+                                               nullptr;
+                if (!effectiveArgs || effectiveArgs.TabIndex() != realArgs.TabIndex())
+                {
+                    _SelectTab({ realArgs.TabIndex() });
+                    args.Handled(true);
+                    return;
+                }
+                const auto target = _EvaluateTabSwitchTarget(chord);
+                if (target && target->canonicalIndex < _tabs.Size() &&
+                    _GetTabImpl(_tabs.GetAt(target->canonicalIndex)).get() == target->identity)
+                {
+                    _SelectTab({ target->canonicalIndex });
+                }
+                args.Handled(true);
+                return;
+            }
             _SelectTab({ realArgs.TabIndex() });
             args.Handled(true);
         }
@@ -950,7 +1007,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto& realArgs = actionArgs.ActionArgs().try_as<MoveTabArgs>())
         {
-            if (_IsTabListPositionOperationBlocked() && realArgs.Window().empty())
+            if (_IsTabSearchEffective() && realArgs.Window().empty())
             {
                 actionArgs.Handled(false);
                 return;
@@ -1757,32 +1814,44 @@ namespace winrt::TerminalApp::implementation
         args.Handled(true);
     }
 
-    void TerminalPage::_HandleOpenAgentSessions(const IInspectable& /*sender*/,
+    void TerminalPage::_HandleToggleSidebarAgentsOnly(const IInspectable&, const ActionEventArgs& args)
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible || !_tabStrip)
+        {
+            args.Handled(false);
+            return;
+        }
+        const auto filters = _tabStrip.SidebarFilters();
+        filters.ShowAgentsOnly(!filters.ShowAgentsOnly());
+        if (filters.ShowAgentsOnly() && _isVerticalRailCollapsed)
+        {
+            _OnVerticalRailCollapseRequested(nullptr, nullptr);
+        }
+        args.Handled(true);
+    }
+
+    void TerminalPage::_HandleToggleSidebarRecentAgentSessions(const IInspectable&, const ActionEventArgs& args)
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible || !_tabStrip)
+        {
+            args.Handled(false);
+            return;
+        }
+        const auto filters = _tabStrip.SidebarFilters();
+        filters.ShowRecentAgentSessions(!filters.ShowRecentAgentSessions());
+        if (filters.ShowRecentAgentSessions() && _isVerticalRailCollapsed)
+        {
+            _OnVerticalRailCollapseRequested(nullptr, nullptr);
+        }
+        args.Handled(true);
+    }
+
+    void TerminalPage::_HandleOpenAgentSessions(const IInspectable& sender,
                                                 const ActionEventArgs& args)
     {
         if (_isVerticalLayout)
         {
-            if (_tabStrip && _isVerticalRailVisible)
-            {
-                if (_tabStrip.HistoryActive())
-                {
-                    _CloseSidebarHistory(true);
-                }
-                else
-                {
-                    _CaptureSidebarHistoryEntry();
-                    if (_isVerticalRailCollapsed)
-                    {
-                        _OnVerticalRailCollapseRequested(nullptr, nullptr);
-                    }
-                    winrt::get_self<implementation::TabStrip>(_tabStrip)->OpenHistory();
-                    if (!_tabStrip.HistoryActive())
-                    {
-                        _historyEntryState.reset();
-                    }
-                }
-            }
-            args.Handled(true);
+            _HandleToggleSidebarRecentAgentSessions(sender, args);
             return;
         }
 
@@ -1843,8 +1912,7 @@ namespace winrt::TerminalApp::implementation
         using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
         const auto state = impl->GetAutofixState();
         // Open or focus the active tab's agent pane (shared by Detected and
-        // Review). Opening it makes the helper observe pane_open=true and
-        // flip the bar to Idle on its own.
+        // Review). Opening the pane dismisses Review, not Detected.
         const auto openAgentPaneForReview = [&]() {
             const auto agentPane = activeTab->FindAgentPane();
             if (agentPane && !agentPane->IsHidden())

@@ -1,7 +1,7 @@
 {
   "name": "wt-agent-hooks",
   "description": "Forward CLI agent hook events to Windows Terminal for WTA display",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "hooks": "hooks/hooks.json",
   "author": {
     "name": "Agentic Terminal"

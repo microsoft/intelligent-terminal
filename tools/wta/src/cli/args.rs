@@ -22,7 +22,7 @@ pub(crate) struct Cli {
     pub(crate) agent: String,
 
     /// Canonical agent identifier (`copilot` / `claude` / `codex` / `gemini`
-    /// / `opencode` / `custom:<name>`). When the host (Windows Terminal) launches wta it
+    /// / `opencode` / `antigravity` / `custom:<name>`). When the host (Windows Terminal) launches wta it
     /// already knows which entry the user picked in settings, so it passes
     /// the original `acpAgent` value through here. wta uses this id as the
     /// authoritative identity for `current_agent_id` — driving the session-
@@ -463,6 +463,22 @@ pub(crate) enum Command {
     /// share WTA's executable resolution with the actual ACP spawn path.
     #[command(hide = true)]
     ProbeHostAgents,
+    /// Discover installed Windows interactive agent CLIs (not ACP adapters).
+    ProbeProfileAgents,
+    /// Run a built-in agent's native interactive CLI in the current console.
+    LaunchAgent {
+        #[arg(long)]
+        agent_id: String,
+        /// Native model identifier. Omit to preserve the CLI default.
+        #[arg(long)]
+        model: Option<String>,
+        /// Provider-native permission mode. Omit to preserve the CLI default.
+        #[arg(long)]
+        permission_mode: Option<String>,
+        /// Additional supported native arguments, after --.
+        #[arg(last = true, allow_hyphen_values = true)]
+        additional_args: Vec<String>,
+    },
     /// Diagnostic: spawn an agent CLI, ACP `initialize`, then call
     /// `session/list` (`list_sessions`) and print what it returns.
     /// Used to evaluate whether ACP session enumeration can replace
@@ -612,6 +628,7 @@ pub(crate) enum HooksCliFilter {
     Codex,
     #[value(name = "opencode")]
     OpenCode,
+    Antigravity,
 }
 
 impl HooksCliFilter {
@@ -624,6 +641,7 @@ impl HooksCliFilter {
             HooksCliFilter::Gemini => CliScope::One(CliKind::Gemini),
             HooksCliFilter::Codex => CliScope::One(CliKind::Codex),
             HooksCliFilter::OpenCode => CliScope::One(CliKind::OpenCode),
+            HooksCliFilter::Antigravity => CliScope::One(CliKind::Antigravity),
         }
     }
 }

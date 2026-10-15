@@ -867,8 +867,11 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     //
     // v10: emit the dedicated Resume OSC from the PSConsoleHostReadLine
     // boundary immediately after a supported resume command is accepted.
+    // v11: parse literal resume arguments so quoted IDs and additional CLI
+    // options also establish the binding before the first conversation,
+    // including Antigravity, while rejecting option-shaped session IDs.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 10;
+    inline constexpr int kVersion = 11;
 
     inline std::wstring ScriptFileName()
     {
@@ -939,6 +942,65 @@ if (-not $Global:__ShellInteg_Installed) {
     # once per command, BEFORE the user's command executes, so it cannot
     # disturb the $? that the next prompt reads.
     if ($Global:__ShellInteg_CanInspectErrors -and (Test-Path Function:\PSConsoleHostReadLine)) {
+        function Global:__ShellInteg_GetResumeTarget {
+            param([string]$line)
+            $tokens = $null
+            $parseErrors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseInput(
+                $line, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count -ne 0 -or $null -eq $ast.EndBlock -or
+                $ast.BeginBlock -or $ast.ProcessBlock -or $ast.ParamBlock -or
+                $ast.EndBlock.Statements.Count -ne 1) { return }
+            $pipeline = $ast.EndBlock.Statements[0]
+            if ($pipeline -isnot [System.Management.Automation.Language.PipelineAst] -or
+                $pipeline.PipelineElements.Count -ne 1) { return }
+            if ($pipeline.PSObject.Properties['Background'] -and $pipeline.Background) { return }
+            $command = $pipeline.PipelineElements[0]
+            if ($command -isnot [System.Management.Automation.Language.CommandAst] -or
+                $command.InvocationOperator -eq [System.Management.Automation.Language.TokenKind]::Dot) { return }
+            if ($command.GetCommandName() -notmatch '^(?:.*[\\/])?(copilot|claude|gemini|codex|opencode|agy)(?:\.(?:exe|cmd|bat))?$') { return }
+            $resumeAgent = $Matches[1].ToLowerInvariant()
+            if ($resumeAgent -eq 'agy') { $resumeAgent = 'antigravity' }
+            $arguments = @()
+            for ($i = 1; $i -lt $command.CommandElements.Count; $i++) {
+                $element = $command.CommandElements[$i]
+                if ($element -isnot [System.Management.Automation.Language.StringConstantExpressionAst]) { return }
+                $arguments += $element
+            }
+            $resumeSession = $null
+            if ($resumeAgent -eq 'codex') {
+                if ($arguments.Count -lt 2 -or
+                    $arguments[0].StringConstantType -ne [System.Management.Automation.Language.StringConstantType]::BareWord -or
+                    $arguments[0].Value -cne 'resume') { return }
+                $resumeSession = $arguments[1].Value
+            }
+            else {
+                $flag = if ($resumeAgent -eq 'opencode') { '--session' }
+                        elseif ($resumeAgent -eq 'antigravity') { '--conversation' }
+                        else { '--resume' }
+                for ($i = 0; $i -lt $arguments.Count; $i++) {
+                    # Quoted IDs are allowed, but a wholly quoted argument is
+                    # not a resume flag. Preserve the AST's quote boundary.
+                    if ($arguments[$i].StringConstantType -ne [System.Management.Automation.Language.StringConstantType]::BareWord) { continue }
+                    $argument = $arguments[$i].Value
+                    if ($argument -ceq '--') { break }
+                    if ($argument -ceq $flag) {
+                        if ($null -ne $resumeSession -or $i + 1 -ge $arguments.Count) { return }
+                        $resumeSession = $arguments[++$i].Value
+                    }
+                    elseif ($argument.StartsWith($flag + '=', [StringComparison]::Ordinal)) {
+                        if ($null -ne $resumeSession) { return }
+                        $resumeSession = $argument.Substring($flag.Length + 1)
+                    }
+                }
+            }
+            if ($null -eq $resumeSession -or $resumeSession.Length -gt 256 -or
+                $resumeSession.StartsWith('-', [StringComparison]::Ordinal) -or
+                $resumeSession -notmatch '\A[A-Za-z0-9_.:-]+\z' -or
+                $resumeSession.StartsWith('sidekick-', [StringComparison]::Ordinal)) { return }
+            return @{ Agent = $resumeAgent; SessionId = $resumeSession }
+        }
+
         $Global:__ShellInteg_OriginalPSConsoleHostReadLine = $function:PSConsoleHostReadLine
         function Global:PSConsoleHostReadLine {
             __ShellInteg_Rearm
@@ -946,23 +1008,10 @@ if (-not $Global:__ShellInteg_Installed) {
             $Global:__ShellInteg_LastSubmittedLine =
                 if ($line -is [string]) { $line } else { $null }
             if ($line -is [string]) {
-                $resumeAgent = $null
-                $resumeSession = $null
-                if ($line -match '^\s*(copilot|claude|gemini)\s+--resume(?:\s+|=)([A-Za-z0-9_.:-]+)\s*$') {
-                    $resumeAgent = $Matches[1]
-                    $resumeSession = $Matches[2]
-                }
-                elseif ($line -match '^\s*codex\s+resume\s+([A-Za-z0-9_.:-]+)\s*$') {
-                    $resumeAgent = 'codex'
-                    $resumeSession = $Matches[1]
-                }
-                elseif ($line -match '^\s*opencode\s+--session\s+([A-Za-z0-9_.:-]+)\s*$') {
-                    $resumeAgent = 'opencode'
-                    $resumeSession = $Matches[1]
-                }
-                if ($null -ne $resumeAgent) {
+                $resume = __ShellInteg_GetResumeTarget $line
+                if ($null -ne $resume) {
                     $resumeMark = '{0}]9001;Resume;{1};{2}{3}' -f
-                        $Global:__ShellInteg_ESC, $resumeAgent, $resumeSession,
+                        $Global:__ShellInteg_ESC, $resume.Agent, $resume.SessionId,
                         $Global:__ShellInteg_BEL
                     [Console]::Write($resumeMark)
                 }

@@ -29,10 +29,11 @@ Valid agent identifiers:
   codex     — Codex (OpenAI)
   gemini    — Gemini (Google)
   opencode  — OpenCode
+  antigravity — Google Antigravity
 
 These are the only recognized values. Identifiers are case-insensitive.
 
-If this policy is configured, only the listed agents will be available. Agents not in the list are hidden from the UI and blocked at runtime. Unrecognized identifiers (e.g. typos) are silently ignored — if all entries are invalid, the user will see no available agents. If not configured (default), all five agents are available.
+If this policy is configured, only the listed agents will be available. Agents not in the list are hidden from the UI and blocked at runtime. Unrecognized identifiers (e.g. typos) are silently ignored — if all entries are invalid, the user will see no available agents. If not configured (default), all six agents are permitted for their supported roles.
 
 To control custom agent commands (custom:&lt;command&gt;), use the "Allow Custom AI Agents" policy instead.</string>
       <string id="AllowCustomAgents">Allow Custom AI Agents</string>
@@ -48,7 +49,7 @@ If you enable this policy or do not configure it, users can toggle auto-fix in s
 
 Disabling this policy prevents users from configuring, and the feature is disabled.</string>
       <string id="AllowAgentSessionHooks">Allow Agent Session Hooks</string>
-      <string id="AllowAgentSessionHooksText">Controls whether agent session tracking hooks can be installed in Intelligent Terminal. Hooks integrate with agents (GitHub Copilot, Claude, Gemini) to track sessions across tools.
+      <string id="AllowAgentSessionHooksText">Controls whether agent session tracking hooks can be installed in Intelligent Terminal.       Hooks integrate with supported agent CLIs, including Antigravity, to track sessions across tools.
 
 If you enable this policy or do not configure it, users can install and manage agent hooks from the Settings UI. If you disable this policy, the Install hooks button is disabled and users cannot install or modify hooks.</string>
     </stringTable>
@@ -57,7 +58,7 @@ If you enable this policy or do not configure it, users can install and manage a
         <multiTextBox refId="DisabledProfileSources">List of disabled sources (one per line)</multiTextBox>
       </presentation>
       <presentation id="AllowedAgents">
-        <multiTextBox refId="AllowedAgents">Allowed agent identifiers, one per line (copilot, claude, codex, gemini, opencode)</multiTextBox>
+        <multiTextBox refId="AllowedAgents">Allowed agent identifiers, one per line (copilot, claude, codex, gemini, opencode, antigravity)</multiTextBox>
       </presentation>
     </presentationTable>
   </resources>

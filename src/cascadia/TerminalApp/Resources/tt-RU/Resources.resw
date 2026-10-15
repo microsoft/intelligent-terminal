@@ -418,6 +418,14 @@
     <value>Агент · Тоташа</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Бүлү профиле куллану өчен мөмкин түгел</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>Бүлү өчен көйләнгән профиль куллану өчен мөмкин түгел. Аның урынына гомуми килешенгән профиль кулланылачак. Бүлүнең максат профилен үзгәртү өчен settings.json файлында бу профильнең defaultSplitProfile кыйммәтен төзәтегез.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
+  </data>
   <data name="TabCloseBelow" xml:space="preserve">
     <value>Түбәндәге кыстыргычларны ябу</value>
   </data>
@@ -465,8 +473,8 @@
     <comment>Tooltip for the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
-    <value>Фильтр</value>
-    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
+    <value>Күрсәтү</value>
+    <comment>Section heading above independent sidebar display options: show only agent tabs, or also show recent agent sessions.</comment>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>Барлык кыстыргычлар</value>
@@ -525,8 +533,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Соңгы сессияләр</value>
-    <comment>Collapsible noun heading below open agent tabs in the Agents sidebar. Includes prior agent sessions, kept-running background tabs, sessions in other tracked windows, and external sessions not represented by the current window's open agent panes. This is not an archive-only list.</comment>
+    <value>Соңгы агент сессияләре</value>
+    <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Агентлар</value>
@@ -605,8 +613,12 @@
     <comment>Command in the notification-area menu that brings a background tab and its still-running terminal panes back into a window. It does not restart the processes or restore a file backup.</comment>
   </data>
   <data name="KeepTabRunningText" xml:space="preserve">
-    <value>Кыстыргыч эшләвен дәвам итсен</value>
-    <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+    <value>Интерфейссыз режимны кабызу</value>
+    <comment>Command at the top of a vertical terminal tab&apos;s context menu that enables headless mode. Headless mode keeps all existing panes running after the tab or window is closed; it does not immediately hide or pin the tab.</comment>
+  </data>
+  <data name="HeadlessModeOnName" xml:space="preserve">
+    <value>Интерфейссыз режим кабызылган</value>
+    <comment>Accessibility name for the status icon shown on a terminal tab when headless mode is enabled. Describes the current state, not a command. Headless mode keeps existing panes running after the tab or window is closed.</comment>
   </data>
   <data name="PinTabText" xml:space="preserve">
     <value>Кыстыргычны беркетү</value>
@@ -632,19 +644,27 @@
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>Кыстыргыч яки тәрәзә ябылганнан соң да бу кыстыргыч фонда эшләвен дәвам итсен.</value>
-    <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
+    <comment>Tooltip and accessibility help for Turn on headless mode. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
   </data>
   <data name="TurnOffKeepTabRunningText" xml:space="preserve">
-    <value>Эшләүне дәвам итүне сүндерү</value>
-    <comment>Command shown instead of Keep tab running when that tab already has keep running enabled. It only turns off the background-running behavior; it does not close the tab or stop its current processes immediately.</comment>
+    <value>Интерфейссыз режимны сүндерү</value>
+    <comment>Command shown instead of Turn on headless mode when that tab already has headless mode enabled. It only turns off the background-running behavior; it does not close the tab or stop its current processes immediately.</comment>
   </data>
   <data name="TurnOffKeepTabRunningToolTip" xml:space="preserve">
     <value>Кыстыргычны яки тәрәзәне япканнан соң, бу кыстыргыч инде эшләвен дәвам итмәячәк.</value>
-    <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
+    <comment>Tooltip and accessibility help for Turn off headless mode. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
     <value>Буш</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
+    <value>Кулланыла</value>
+    <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
+  </data>
+  <data name="VerticalTabsHistoryInUseToolTip" xml:space="preserve">
+    <value>Бу сессия башка кушымтада ачык.</value>
+    <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
     <value>Актив</value>
@@ -700,7 +720,7 @@
   </data>
   <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
     <value>Фонда эшләүче барлык кыстыргычларны ябу</value>
-    <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by Keep tab running and terminates their panes and processes. Does not close tabs still in a window or only turn off keep running.</comment>
+    <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by headless mode and terminates their panes and processes. Does not close tabs still in a window or only turn off headless mode.</comment>
   </data>
   <data name="PaneProgressStatusNormal" xml:space="preserve">
     <value>Барыш</value>
@@ -719,20 +739,12 @@
     <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
-    <value>Актив һәм соңгы агент сессияләрен эзләү</value>
-    <comment>Shared search placeholder, tooltip, and accessible name in the Agents sidebar. Searches both open AI-agent tabs, including idle open sessions, and the Recent Sessions section. Active does not mean only currently working. Keep the separate Tabs view search labels unchanged.</comment>
+    <value>Кыстыргычларны һәм соңгы агент сессияләрен эзләү</value>
+    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
-    <value>{0} · башка тәрәзә</value>
+    <value>{0} · Башка тәрәзәдә</value>
     <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
-  </data>
-  <data name="VerticalTabsHistoryRestoreBackgroundTab" xml:space="preserve">
-    <value>Фондагы кыстыргычны торгызу</value>
-    <comment>Action for a live agent session in a kept-running background tab. Restores the entire original tab, with all its panes, to the foreground. This does not resume a new conversation or focus another visible window.</comment>
-  </data>
-  <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
-    <value>Башка тәрәзәгә күчү</value>
-    <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
   <data name="TabColorChoose"><value>Кыстыргыч төсен үзгәртү</value></data>
   <data name="RenameTabText"><value>Кыстыргыч исемен үзгәртү</value></data>
@@ -761,12 +773,12 @@
     <comment>Tooltip and accessible action name of the sidebar header button while Agents is selected. One click switches to the Tabs view; it does not change between sidebar and horizontal tab layouts.</comment>
   </data>
   <data name="VerticalTabsExpandRecentSessions" xml:space="preserve">
-    <value>Соңгы сессияләрне җәю</value>
-    <comment>Tooltip for expanding the Recent Sessions section inside the Agents sidebar. Expansion shows its session rows without leaving Agents or resuming a session.</comment>
+    <value>Соңгы агент сессияләрен җәю</value>
+    <comment>Tooltip for expanding the Recent agent sessions section in the sidebar. This shows session rows without resuming a session.</comment>
   </data>
   <data name="VerticalTabsCollapseRecentSessions" xml:space="preserve">
-    <value>Соңгы сессияләрне җыю</value>
-    <comment>Tooltip for collapsing the Recent Sessions section inside the Agents sidebar. Collapse hides its rows without closing agents or deleting sessions.</comment>
+    <value>Соңгы агент сессияләрен җыю</value>
+    <comment>Tooltip for collapsing the Recent agent sessions section in the sidebar. This hides rows without closing agents or deleting sessions.</comment>
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Кыстыргычлар белән идарә итүнең акыллырак ысулы</value>

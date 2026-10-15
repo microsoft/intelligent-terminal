@@ -16,6 +16,7 @@
 // WinRT activation catalog.
 #include "ITerminalProtocol.h"
 #include "../../cascadia/inc/TerminalProtocolProxyRegistration.h"
+#include "../../cascadia/inc/WslDistroName.h"
 
 #include <CLI/CLI.hpp>
 
@@ -335,6 +336,43 @@ static std::string EnvironmentValue(const wchar_t* name)
     }
     value.resize(written);
     return winrt::to_string(winrt::hstring{ value });
+}
+
+static bool IsRegisteredWslDistro(const std::string_view name)
+{
+    if (!::Microsoft::Terminal::WslDistroName::IsSafe(name))
+    {
+        return false;
+    }
+    wil::unique_hkey root;
+    const auto opened = RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Lxss", 0, KEY_READ, root.put());
+    if (opened != ERROR_SUCCESS)
+    {
+        return false;
+    }
+    const std::wstring expected{ name.begin(), name.end() };
+    for (DWORD index = 0;; ++index)
+    {
+        wchar_t keyName[256]{};
+        DWORD keyLength = ARRAYSIZE(keyName);
+        const auto result = RegEnumKeyExW(root.get(), index, keyName, &keyLength, nullptr, nullptr, nullptr, nullptr);
+        if (result == ERROR_NO_MORE_ITEMS)
+        {
+            return false;
+        }
+        if (result != ERROR_SUCCESS)
+        {
+            LOG_WIN32(result);
+            return false;
+        }
+        wchar_t registeredName[257]{};
+        DWORD bytes = sizeof(registeredName);
+        if (RegGetValueW(root.get(), keyName, L"DistributionName", RRF_RT_REG_SZ, nullptr, registeredName, &bytes) == ERROR_SUCCESS &&
+            CompareStringOrdinal(registeredName, -1, expected.c_str(), -1, TRUE) == CSTR_EQUAL)
+        {
+            return true;
+        }
+    }
 }
 
 static std::string AgentSessionIdFromEnvironment(const std::string& cliSource)
@@ -1233,9 +1271,52 @@ int wmain(int argc, wchar_t** argv)
                 return;
             }
 
+            if (event["params"]["cli_source"].asString() == "antigravity")
+            {
+                const auto distro = EnvironmentValue(L"WSL_DISTRO_NAME");
+                const auto hookCwd = EnvironmentValue(L"WTA_HOOK_CWD");
+                Json::Value context;
+                const auto hr = CallJson([&](BSTR* json) {
+                    return server->GetPaneContext(paneGuid, true, 0, 0, json);
+                },
+                                         context);
+                if (FAILED(hr))
+                {
+                    LOG_HR(hr);
+                    return;
+                }
+                const auto& shellValue = context["pane"]["shell"];
+                const auto shell = shellValue.isString() ? shellValue.asString() : std::string{};
+                if (shell.starts_with("wsl:"))
+                {
+                    const auto actualDistro = shell.substr(4);
+                    if (!IsRegisteredWslDistro(actualDistro) ||
+                        (!distro.empty() && hookCwd.starts_with('/') && _stricmp(distro.c_str(), actualDistro.c_str()) != 0))
+                    {
+                        return;
+                    }
+                    event["params"]["wsl_distro"] = actualDistro;
+                }
+                else if (!distro.empty() && hookCwd.starts_with('/'))
+                {
+                    if (!shell.empty() || !IsRegisteredWslDistro(distro))
+                    {
+                        return;
+                    }
+                    event["params"]["wsl_distro"] = distro;
+                }
+                wtcli::ApplyAgentHookPaneCwd(
+                    event["params"]["payload"], context["pane"], event["params"].isMember("wsl_distro"));
+            }
+
             Json::StreamWriterBuilder writer;
             writer["indentation"] = "";
-            wil::unique_bstr eventJson{ Bstr(Json::writeString(writer, event)) };
+            const auto serialized = Json::writeString(writer, event);
+            if (serialized.size() > wtcli::kMaxHookEventChars)
+            {
+                return;
+            }
+            wil::unique_bstr eventJson{ Bstr(serialized) };
             if (eventJson)
             {
                 server->SendEvent(eventJson.get());

@@ -21,6 +21,13 @@ binary and the live logs prove the intended agent command and ACP behavior.
 10. Inspect `git diff --check` and the full diff for unrelated changes. Account
    for this repository's existing CRLF files before treating every reported
    line as newly introduced trailing whitespace.
+11. Check host and WSL discovery independently when their native executables or
+    arguments differ. An installed interactive CLI is not proof that a separately
+    distributed ACP server is available. Keep one shared protocol implementation.
+12. Check native permission-mode and usage registries, host/WSL catalog isolation,
+    and first-run behavior for ACP-only providers with no delegate or hook support.
+13. Check the current main branch again before publication; new provider telemetry
+    buckets and release-checklist IDs may have appeared during a long integration.
 
 ## Automated Tests
 
@@ -30,6 +37,17 @@ Add or update tests for:
 - ACP launch command construction and adapter identification;
 - ACP model flags versus delegate model flags;
 - auth command generation and host-argument handling;
+- cold-auth product sign-in actions, advertised-method selection and the actual
+  initialize/authenticate/session handoff without an external-login seed;
+- private browser-progress ownership, URL validation, diagnostic redaction,
+  cancellation, long authorization waiting and stale/source-mismatched results;
+- real SDK dispatch of browser extension notifications, visible full-link
+  fallback, exact-copy/open actions and retained waiting after browser launch
+  failure, plus cleared links on cancellation/timeout/source changes;
+- source-correct external login argument vectors, including WSL/default-user and
+  preserved host/enterprise behavior;
+- malformed or incomplete explicit WSL metadata at helper/master wire startup,
+  with valid-name parity and explicit rejection before host fallback or launch;
 - resume/new-session metadata when supported;
 - session source parsing, filtering, wire round-trips, labels, and exact resume
   dispatch when session management is supported;
@@ -41,12 +59,27 @@ Add or update tests for:
 - PowerShell 7 and Windows PowerShell 5.1 delegate quoting;
 - WSL delegate quoting and multiline prompts;
 - invalid or empty delegate executable rejection;
+- canonical identity versus interactive/ACP executable aliases;
+- case-insensitive configured IDs through command resolution and profile gates;
+- mixed-case hook CLI arguments through canonical payload and WSL source enrichment;
+- unsafe and overlong provider conversation IDs at hook publication and CLI resume;
+- empty mounted-workspace metadata with actual Windows/WSL hook cwd preservation;
+- stale host-side WSL variables and conflicting per-file plugin ownership;
+- unsafe/unregistered distro metadata at publication and the unquoted resume sink;
+- provider-qualified history and sidebar activation as well as helper-picker resume;
+- existing-only hook delivery after Terminal shutdown and kept-tab focus behavior;
+- shared-config cleanup ownership and explicit refusal when the native manager is absent;
+- missing companion executables, earlier partial PATH entries and native WSL symlinks;
+- source-specific master command reconstruction and Helper reconnect;
+- observed Session MCP tool-name qualification, master-bound server identity,
+  stale/foreign-name rejection, and retained final Terminal action confirmation;
+- explicit rejection of unsupported built-in delegation without changing custom commands;
 - policy filtering or settings serialization when those paths changed.
 
 Run the WTA suite from the repository root:
 
 ```powershell
-cargo test --manifest-path tools\wta\Cargo.toml
+cargo test --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
 ```
 
 Do not treat a successful build as a substitute for tests; WTA test-only code
@@ -54,11 +87,11 @@ is not compiled by the C++ build.
 
 ## Build
 
-Resolve and stop only the specific live WTA process IDs before rebuilding:
+If an output is locked, identify the executable paths first and stop only the
+specific PIDs running the exact output being rebuilt. Do not terminate every WTA
+or Terminal process by name.
 
 ```powershell
-Get-Process wta -ErrorAction SilentlyContinue |
-    ForEach-Object { Stop-Process -Id $_.Id -Force }
 cargo build --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
 ```
 
@@ -76,9 +109,12 @@ Use the Visual Studio/MSBuild version required by the current repository. If
 `.slnx` is not recognized or the toolset mismatches, fix the selected Visual
 Studio environment rather than changing project files.
 
-Deploy `CascadiaPackage` using F5 or its generated
-`CascadiaPackage.build.appxrecipe`. If the first command-line deployment
-reports `ManifestChanged`, retry once and require a successful clean reinstall.
+Deploy `CascadiaPackage` using its generated recipe and the repository's current
+deployment helper. Preserve application data and close only the selected package's
+owned processes. A registration pointing at another layout requires an explicitly
+approved transition, not an automatic destructive reinstall. Verify source,
+recipe/staging, installed binary hashes, and the actual launched package before
+trusting UI results.
 
 ## Live ACP Verification
 
@@ -101,13 +137,49 @@ reports `ManifestChanged`, retry once and require a successful clean reinstall.
    - no unexpected error or panic is present.
 6. Exercise model selection and reconnect. Verify the selected model reaches
    the ACP session through the protocol or supported server flag.
-7. Exercise unauthenticated startup, the advertised login flow, and credential
-   refresh. Verify logout returns the agent to the expected unauthenticated
-   state.
+7. Exercise unauthenticated startup through the normal product sign-in action,
+   select an advertised method and complete authorization without raw JSON or
+   provider configuration edits. Then verify authenticated session creation,
+   cancellation/timeout/error recovery and fresh-process credential reuse.
+   Confirm that the waiting page shows a usable manual link even when automatic
+   browser launch succeeds or fails; copy/open must use the full current link,
+   and cancellation must clear it. Never persist a real authorization URL in
+   screenshot/log evidence; use synthetic fixture URLs or redact in memory.
+   Use a disposable fixture/context for cold-auth controls; never log out or
+   switch an existing user's account without explicit permission.
 8. If session management is supported, open `/sessions`, select a historical
    row from the new agent, and verify Enter chooses the intended CLI/ACP resume
    path rather than `UnknownCli`. Confirm the resumed tab starts with the stored
    session title and the helper log records the typed source.
+   If ACP and ordinary CLI have separate stores, verify each with its own actual
+   session identifier, including WSL routing. Do not retarget provider homes or
+   copy credentials to manufacture cross-interface resume compatibility.
+
+Also verify a fresh agent process can create a session using the established
+authentication. During browser authorization, keep the ACP process and stdin alive
+and let the browser complete the callback; do not actively connect to the OAuth
+listener as a readiness probe.
+
+Perform real first-login acceptance in the selected Windows/WSL source and its
+actual user context. Ordinary CLI sign-in alone is not proof that a separately
+distributed ACP server is authenticated. A successful browser page or a preseeded
+authenticated fixture cannot substitute for this product-owned entry point.
+
+Run the native command for each supported execution source. When a live runtime
+is unavailable, distinguish that prerequisite from product behavior and state
+which platform remains unverified. Do not weaken Windows builds/deterministic
+coverage or silently substitute WSL for a selected Windows source.
+
+Keep quota-consuming provider checks outside the publishable E2E suite and CI.
+Use deterministic fixtures or zero-inference discovery/session checks there;
+real model/tool acceptance must use the exact deployed product through normal
+entry points and remain a distinct result.
+
+Exercise a real Session MCP action, not only chat text. A provider's extra permission
+dialog can reveal an unrecognized scoped tool-name format. Confirm that only the
+current master-bound MCP invocation is recognized, the helper still presents the
+normal action confirmation, and the actual side effect occurs in the owning
+terminal/source rather than an agent-owned shell.
 
 Packaged logs live under the app package's
 `LocalCache\Local\IntelligentTerminal\logs\<package-version>` directory.
@@ -157,6 +229,13 @@ Run this section only when the agent has a bundled session hook/plugin.
    from `PATH`, and confirm only managed files are deleted.
 8. Inspect `wta-ensure-host.log` and the master/helper logs in the packaged
    versioned log directory for the complete native hook event path.
+
+Verify hook payload field names and lifecycle meanings with real callbacks:
+`Stop` can mean a partial background completion, not necessarily idle, and a
+shared plugin directory can also serve a non-CLI frontend. Preserve source and
+cwd through native publication, master state, saved layouts and resume. Validate
+the published event, not merely a guard's zero exit code. Keep inference-based
+callback verification local-only.
 
 ## Policy Verification
 

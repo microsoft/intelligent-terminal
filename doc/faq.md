@@ -21,7 +21,7 @@ The package manifest sets `MinVersion="10.0.19041.0"` (Windows 10, version 2004)
 
 You completed the FRE with one agent (say, Copilot), then later installed Claude or Codex and switched the **agent pane** to it in Settings.
 
-The FRE installs session-tracking hooks only for the agent selected there. With **Session management** enabled, Intelligent Terminal automatically installs or updates hooks for newly detected built-in agents when `wta-master` starts and when you select a different built-in agent.
+The FRE installs session-tracking hooks only for the selected agent when it has a bundled hook integration. With **Session management** enabled, Intelligent Terminal automatically installs or updates those hooks for newly detected supported Windows CLIs when `wta-master` starts and when you select a different built-in agent. Antigravity requires the separate `agy` CLI for its shell-session hooks; the ACP server alone does not provide that CLI.
 
 If the new agent is not tracked:
 
@@ -43,7 +43,33 @@ Yes. Intelligent Terminal can drive any agent CLI that implements the [Agent Cli
 
 You must install and authenticate the agent CLI yourself first (Intelligent Terminal does not install bring-your-own agents — see [`installing-dependencies.md`](./installing-dependencies.md) for the pattern).
 
-**Limitation:** **Agent session management does not yet work for custom agents.** Session-tracking hooks ship for Copilot, Claude, Codex, Gemini, and OpenCode. Other custom agent sessions will not appear in the agent session management panel even after you install hooks; the agent pane and delegate flows themselves still work normally.
+**Limitation:** **Agent session management does not yet work for custom agents.** Session-tracking hooks ship for Copilot, Claude, Codex, Gemini, OpenCode, and Antigravity. Other custom agent sessions will not appear in the agent session management panel even after you install hooks; the agent pane and delegate flows themselves still work normally.
+
+## Can I use Google Antigravity on Windows or WSL?
+
+Antigravity is a built-in ACP provider on both Windows and WSL. Installing `agy`
+alone is not sufficient: install the separate official ACP archive and keep its
+server and companion executable together on `PATH`. Windows uses
+`agy_acp_server.exe`; a WSL distro uses `agy_acp_server.par --uid=`.
+See [the setup instructions](./installing-dependencies.md#google-antigravity-acp-windows-and-wsl).
+
+Complete the authentication offered by the agent pane. An ordinary CLI login is
+not a substitute for selecting the ACP server's authentication method. Models and
+configuration choices come from the connected server, rather than a hard-coded
+model list or `agy --model` flags.
+
+The separately installed `agy` CLI supports interactive delegation, `--conversation`
+resume and session-tracking hooks. Windows hook setup uses `wta hooks install --cli
+antigravity`; install the packaged plugin separately inside WSL with `agy plugin
+install`. Its agent-pane connection uses the same shared ACP and per-tab
+source-routing paths as the other providers.
+
+The CLI and ACP server use separate conversation stores. Known CLI sessions can
+resume through the CLI and saved layouts preserve their Windows/WSL source, but the
+ACP history API cannot discover cold-start CLI history. Hook tracking begins with
+the first model invocation; fully idle completion and provider errors update the
+session, while shell/pane lifecycle supplies exit detection. Shared Terminal BYOK
+configuration and provider-private quota statistics are not supported.
 
 ## 5. Why does the Model dropdown stay greyed out / show "default" after I change agents?
 

@@ -729,10 +729,6 @@
     <value>Agents</value>
     <comment>Header for the "Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment>
   </data>
-  <data name="AIAgents_PageSubtitle.Text" xml:space="preserve">
-    <value>Configure how agents work across your terminal experience</value>
-    <comment>DEPRECATED — do not translate. Superseded by AIAgents_PageSubtitlePrefix + AIAgents_PageSubtitlePrivacyLink. Kept in en-US only as a neutral fallback for the not-yet-updated translations in the other locale resw files (without it, PRI263 warns about a missing neutral resource). Safe to delete once those translations are cleaned up.</comment>
-  </data>
   <data name="AIAgents_PageSubtitlePrefix" xml:space="preserve">
     <value>Configure how agents work across your terminal experience.</value>
     <comment>Subtitle shown beneath the page title on the AI Agents settings page. The hyperlink in AIAgents_PageSubtitlePrivacyLink follows this sentence inline; the trailing period belongs to this prefix.</comment>
@@ -2960,24 +2956,6 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>This text will be inserted between the paths of multiple files dropped into the terminal.</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
-  <!-- Agent display names — localizable. GPO policy values use the English
-       id (copilot, claude, codex, gemini) regardless of locale. -->
-  <data name="AgentName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub","Copilot"} Display name for the GitHub Copilot agent.</comment>
-  </data>
-  <data name="AgentName_Claude" xml:space="preserve">
-    <value>Claude</value>
-    <comment>{Locked="Claude"} Display name for the Anthropic Claude agent.</comment>
-  </data>
-  <data name="AgentName_Codex" xml:space="preserve">
-    <value>Codex</value>
-    <comment>{Locked="Codex"} Display name for the OpenAI Codex agent.</comment>
-  </data>
-  <data name="AgentName_Gemini" xml:space="preserve">
-    <value>Gemini</value>
-    <comment>{Locked="Gemini"} Display name for the Google Gemini agent.</comment>
-  </data>
   <!-- GPO policy-locked indicators shown in Settings UI -->
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>This setting is managed by your organization.</value>
@@ -3083,5 +3061,29 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Remove</value>
     <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
+  </data>
+  <data name="Profile_AgentModel.Header" xml:space="preserve">
+    <value>Agent model</value>
+    <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentModel.HelpText" xml:space="preserve">
+    <value>Enter a model identifier supported by this agent. Leave empty to use the agent's own configuration. Applies to new sessions.</value>
+    <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
+  </data>
+  <data name="Profile_AgentArguments.Header" xml:space="preserve">
+    <value>Additional agent arguments</value>
+    <comment>Additional startup arguments for the native AI agent command-line application.</comment>
+  </data>
+  <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
+    <value>Use Windows command-line quoting for values containing spaces. Arguments that conflict with managed settings or policy are rejected. Shell commands are not supported.</value>
+    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+  </data>
+  <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
+    <value>Use profile split preference</value>
+    <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
+  </data>
+  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
+    <value>Your organization blocks managed native agent launches. The agent must be allowed, and policy must permit automatic approval because native agents control their own approval settings.</value>
+    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
   </data>
 </root>

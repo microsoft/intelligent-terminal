@@ -20,7 +20,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         InitializeComponent();
 
-        Automation::AutomationProperties::SetName(AddBellSoundButton(), RS_(L"Profile_AddBellSound/Text"));
     }
 
     void Profiles_Advanced::OnNavigatedTo(const NavigationEventArgs& e)
@@ -28,6 +27,23 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto args = e.Parameter().as<Editor::NavigateToPageArgs>();
         _Profile = args.ViewModel().as<Editor::ProfileViewModel>();
         _weakWindowRoot = args.WindowRoot();
+        if (!winrt::get_self<ProfileViewModel>(_Profile)->IsAgentProfile())
+        {
+            FindName(L"AntialiasingMode");
+            FindName(L"AltGrAliasing");
+            FindName(L"SnapOnInput");
+            FindName(L"HistorySize");
+            FindName(L"BellStyle");
+            FindName(L"BellSound");
+            FindName(L"RightClickContextMenu");
+            FindName(L"ShowMarks");
+            FindName(L"AutoMarkPrompts");
+            FindName(L"RepositionCursorWithMouse");
+            FindName(L"RainbowSuggestions");
+            FindName(L"PathTranslationStyle");
+            FindName(L"DragDropDelimiter");
+            Automation::AutomationProperties::SetName(AddBellSoundButton(), RS_(L"Profile_AddBellSound/Text"));
+        }
         BringIntoViewWhenLoaded(args.ElementToFocus());
 
         TraceLoggingWrite(

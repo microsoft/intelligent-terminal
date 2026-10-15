@@ -171,6 +171,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 { ShortcutAction::TogglePaneZoom, USES_RESOURCE(L"TogglePaneZoomCommandKey") },
                 { ShortcutAction::ToggleShaderEffects, USES_RESOURCE(L"ToggleShaderEffectsCommandKey") },
                 { ShortcutAction::ToggleSidebar, USES_RESOURCE(L"ToggleSidebarCommandKey") },
+                { ShortcutAction::ToggleSidebarAgentsOnly, USES_RESOURCE(L"ToggleSidebarAgentsOnlyCommandKey") },
+                { ShortcutAction::ToggleSidebarRecentAgentSessions, USES_RESOURCE(L"ToggleSidebarRecentAgentSessionsCommandKey") },
                 { ShortcutAction::ToggleSplitOrientation, USES_RESOURCE(L"ToggleSplitOrientationCommandKey") },
                 { ShortcutAction::Workspaces, USES_RESOURCE(L"WorkspacesCommandKey") },
             };
@@ -563,10 +565,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             if (!keyToActionMap.contains(keys))
             {
                 keyToActionMap.emplace(keys, cmdID);
-            }
-            if (!actionToKeyMap.contains(cmdID))
-            {
-                actionToKeyMap.emplace(cmdID, keys);
+                if (!cmdID.empty() && !actionToKeyMap.contains(cmdID))
+                {
+                    actionToKeyMap.emplace(cmdID, keys);
+                }
             }
         }
 
@@ -984,6 +986,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             _KeyMap.insert_or_assign(oldKeys, L"");
         }
 
+        _RefreshKeyBindingCaches();
         return true;
     }
 
@@ -1008,6 +1011,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             // set to unbound in this layer
             _KeyMap.emplace(keys, L"");
         }
+        _RefreshKeyBindingCaches();
     }
 
     void ActionMap::AddKeyBinding(Control::KeyChord keys, const winrt::hstring& cmdID)

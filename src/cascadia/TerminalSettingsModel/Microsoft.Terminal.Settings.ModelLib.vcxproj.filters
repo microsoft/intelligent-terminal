@@ -21,6 +21,9 @@
     <ClCompile Include="SshHostGenerator.cpp">
       <Filter>profileGeneration</Filter>
     </ClCompile>
+    <ClCompile Include="AgentProfileGenerator.cpp">
+      <Filter>profileGeneration</Filter>
+    </ClCompile>
     <ClCompile Include="CascadiaSettings.cpp" />
     <ClCompile Include="AgentPolicy.cpp" />
     <ClCompile Include="CascadiaSettingsSerialization.cpp" />
@@ -63,6 +66,9 @@
       <Filter>profileGeneration</Filter>
     </ClInclude>
     <ClInclude Include="SshHostGenerator.h">
+      <Filter>profileGeneration</Filter>
+    </ClInclude>
+    <ClInclude Include="AgentProfileGenerator.h">
       <Filter>profileGeneration</Filter>
     </ClInclude>
     <ClInclude Include="CascadiaSettings.h" />

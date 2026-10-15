@@ -8,6 +8,7 @@
 Describe 'Feature: Sidebar provider appearance' -Tag @('Feature', 'SidebarProviderAppearance') {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\SidebarExpansionEvents.ps1')
         Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
         function Find-AppearanceElement {
             param($Parent, [string]$Value, [switch]$Name)
@@ -150,7 +151,7 @@ Describe 'Feature: Sidebar provider appearance' -Tag @('Feature', 'SidebarProvid
         $script:cursor = $null
         $env:ITE2E_PACKAGE | Should -Be Dev
         $script:target = Resolve-ItApp -Package Dev
-        @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables) | Should -HaveCount 0
+        Stop-StaleItInstances -App $script:target
         $head = (& git -C (Join-Path $PSScriptRoot '..\..\..') rev-parse HEAD).Trim()
         if ($LASTEXITCODE -ne 0 -or -not $head) { throw 'Cannot resolve test worktree revision.' }
         if (-not $env:ITE2E_SOURCE_COMMIT -or -not $env:ITE2E_SOURCE_COMMIT.StartsWith($head, [StringComparison]::Ordinal)) {
@@ -246,9 +247,9 @@ Describe 'Feature: Sidebar provider appearance' -Tag @('Feature', 'SidebarProvid
             }
             if ($layout -eq 'vertical') {
                 @(Find-AppearanceElement (Get-AppearanceRoot) 'Tabs' -Name) | Should -HaveCount 1
-                Invoke-UiClick -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
+                Set-TestSidebarScope -App $script:app -AgentsOnly $true -Recent $true
                 Wait-Until -TimeoutSec 5 -Because 'Agents view filters ordinary shell by real native metadata' -Condition {
-                    @(Find-AppearanceElement (Get-AppearanceRoot) 'Agents' -Name).Count -eq 1
+                    @(Find-AppearanceElement (Get-AppearanceRoot) 'Tabs' -Name).Count -eq 1
                 } | Out-Null
                 $list = @(Find-AppearanceElement (Get-AppearanceRoot) ItemsList)
                 $list | Should -HaveCount 1
@@ -282,7 +283,7 @@ Describe 'Feature: Sidebar provider appearance' -Tag @('Feature', 'SidebarProvid
                     $script:selected = $native.session_id
                     Save-AppearanceHeaders 'vertical' "vertical-agents-selected-$($native.provider)"
                 }
-                Invoke-UiClick -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
+                Set-TestSidebarScope -App $script:app -AgentsOnly $false -Recent $false
                 Wait-Until -TimeoutSec 5 -Because 'Tabs view restores before the horizontal round trip' -Condition {
                     @(Find-AppearanceElement (Get-AppearanceRoot) 'Tabs' -Name).Count -eq 1
                 } | Out-Null

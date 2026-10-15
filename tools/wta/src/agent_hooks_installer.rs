@@ -108,6 +108,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::Value;
 
+mod antigravity;
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -145,7 +147,9 @@ const OPENCODE_MANIFEST_MANAGED_BY: &str = "Intelligent Terminal: wt-agent-hooks
 /// Schema version of the JSON returned by [`status`]. Bumped when the shape
 /// or the set of possible string-enum values changes.
 ///
-/// v4 (this version): added the per-CLI `installed_version` and
+/// v5: added Antigravity's native CLI plugin integration.
+///
+/// v4: added the per-CLI `installed_version` and
 /// `bundle_version` fields. Every other field answers "is something
 /// installed?"; neither answered "is it the build this wta ships?", which is
 /// the question a half-finished upgrade or a marketplace pointed at a stale
@@ -159,7 +163,7 @@ const OPENCODE_MANIFEST_MANAGED_BY: &str = "Intelligent Terminal: wt-agent-hooks
 /// v2: `bundle_source.kind` no longer includes `"embedded"` (the embedded
 /// `include_str!` fallback was removed in #20). Possible kinds are
 /// `env` / `exe-sibling` / `dev-tree` / `none`.
-const STATUS_SCHEMA_VERSION: u32 = 4;
+const STATUS_SCHEMA_VERSION: u32 = 5;
 
 /// Schema version of the JSON returned by [`uninstall`].
 ///
@@ -193,6 +197,7 @@ pub enum CliKind {
     Gemini,
     Codex,
     OpenCode,
+    Antigravity,
 }
 
 fn opencode_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -> CliStatus {
@@ -247,6 +252,7 @@ impl CliKind {
         CliKind::Gemini,
         CliKind::Codex,
         CliKind::OpenCode,
+        CliKind::Antigravity,
     ];
 
     pub fn name(self) -> &'static str {
@@ -256,6 +262,7 @@ impl CliKind {
             Self::Gemini => "gemini",
             Self::Codex => "codex",
             Self::OpenCode => "opencode",
+            Self::Antigravity => "antigravity",
         }
     }
 
@@ -266,6 +273,7 @@ impl CliKind {
             "gemini" => Some(Self::Gemini),
             "codex" => Some(Self::Codex),
             "opencode" => Some(Self::OpenCode),
+            "antigravity" => Some(Self::Antigravity),
             _ => None,
         }
     }
@@ -279,7 +287,12 @@ impl CliKind {
             Self::Gemini => "gemini-extension",
             Self::Codex => "codex",
             Self::OpenCode => "opencode",
+            Self::Antigravity => "antigravity",
         }
+    }
+
+    fn executable(self) -> &'static str {
+        crate::agent_registry::lookup_profile_by_id(self.name()).cli_executable
     }
 }
 
@@ -999,6 +1012,7 @@ fn install_one(cli: CliKind, home: &Path) -> InstallOutcome {
         CliKind::Gemini => install_for_gemini(home),
         CliKind::Codex => install_for_codex(home),
         CliKind::OpenCode => install_for_opencode(home),
+        CliKind::Antigravity => antigravity::install(home),
     }
 }
 
@@ -1045,7 +1059,7 @@ fn ensure_installed_in(home: &Path) {
 /// (`locate_binary` below), so detection stays consistent across status and
 /// reconciliation.
 fn cli_binary_on_path(cli: CliKind) -> bool {
-    which::which(cli.name()).is_ok()
+    which::which(cli.executable()).is_ok()
 }
 
 /// Install hooks for Claude Code by spawning `claude plugin install`.
@@ -1687,6 +1701,7 @@ fn status_for(cli: CliKind, home: Option<&Path>) -> CliStatus {
         CliKind::Gemini => gemini_status(on_path, bin_path, home),
         CliKind::Codex => codex_status(on_path, bin_path, home),
         CliKind::OpenCode => opencode_status(on_path, bin_path, home),
+        CliKind::Antigravity => antigravity::status(on_path, bin_path, home),
     };
     // Read unconditionally: the bundle version is the only half of the
     // comparison that still means something when nothing is installed
@@ -1718,6 +1733,7 @@ fn installed_version_from_disk(cli: CliKind, home: Option<&Path>) -> Option<Vers
         CliKind::Copilot => read_installed_copilot_any(home).ok().flatten()?.version,
         CliKind::Gemini => read_installed_gemini(home).ok().flatten()?.version,
         CliKind::OpenCode => read_installed_opencode(home).ok().flatten()?.version,
+        CliKind::Antigravity => antigravity::installed(home).ok().flatten()?.version,
         // Claude and Codex both unpack into `<cache>/<plugin>/<version>/`.
         CliKind::Claude => newest_live_cached_version(&claude_plugin_cache_dir(home)),
         CliKind::Codex => newest_live_cached_version(&codex_plugin_cache_dir(home)),
@@ -1817,7 +1833,7 @@ fn codex_plugin_cache_dir(home: &Path) -> PathBuf {
 }
 
 fn locate_binary(cli: CliKind) -> (bool, Option<String>) {
-    match which::which(cli.name()) {
+    match which::which(cli.executable()) {
         Ok(p) => (true, Some(p.display().to_string())),
         Err(_) => (false, None),
     }
@@ -2212,6 +2228,13 @@ fn populate_marketplace_path(out: &mut CliStatus, cli: CliKind, home: Option<&Pa
         CliKind::Gemini => gemini_marketplace_info(home),
         CliKind::Codex => codex_marketplace_info(home),
         CliKind::OpenCode => opencode_marketplace_info(home),
+        CliKind::Antigravity => {
+            let status = antigravity::status(false, None, Some(home));
+            MarketplaceInfo {
+                path: status.marketplace_path,
+                valid: status.marketplace_path_valid,
+            }
+        }
     };
     out.marketplace_path = info.path;
     out.marketplace_path_valid = info.valid;
@@ -2697,6 +2720,7 @@ fn uninstall_for(cli: CliKind, home: Option<&Path>) -> CliUninstallResult {
         CliKind::Gemini => gemini_uninstall(home),
         CliKind::Codex => uninstall_for_codex(home),
         CliKind::OpenCode => opencode_uninstall(home),
+        CliKind::Antigravity => antigravity::uninstall(home),
     }
 }
 
@@ -3114,7 +3138,7 @@ fn legacy_staging_dirs(cli: CliKind) -> Vec<PathBuf> {
                 .join(GEMINI_EXTENSION_DIR_NAME),
         ),
         CliKind::Codex => dirs.push(root.join("codex-plugin-src").join(MARKETPLACE_NAME)),
-        CliKind::OpenCode => {}
+        CliKind::OpenCode | CliKind::Antigravity => {}
     }
     // #20-first-commit-style embedded-fallback materialization.
     dirs.push(root.join("hook-bundle-fallback").join(cli.dir_name()));
@@ -4131,6 +4155,7 @@ fn bundle_manifest_path(cli: CliKind, dir: &Path) -> PathBuf {
             .join("plugin.json"),
         CliKind::Gemini => dir.join("gemini-extension.json"),
         CliKind::OpenCode => dir.join(OPENCODE_MANIFEST),
+        CliKind::Antigravity => dir.join(antigravity::MANIFEST),
     }
 }
 
@@ -4552,12 +4577,15 @@ fn decide_upgrade(
             // Copilot copied installs predate the live-install shape and
             // record no marketplace path; Gemini and OpenCode have no
             // marketplace at all. Nothing to repoint.
-            CliKind::Copilot | CliKind::Gemini | CliKind::OpenCode => {}
+            CliKind::Copilot | CliKind::Gemini | CliKind::OpenCode | CliKind::Antigravity => {}
         }
     }
     let Some(installed_version) = installed.version else {
         if cli == CliKind::OpenCode {
             return UpgradeAction::OpenCodeCopy;
+        }
+        if cli == CliKind::Antigravity {
+            return UpgradeAction::UpdatePlugin;
         }
         return UpgradeAction::Skip(SkipReason::UnknownInstalledVersion);
     };
@@ -4565,7 +4593,7 @@ fn decide_upgrade(
         return UpgradeAction::Skip(SkipReason::UpToDate);
     }
     match cli {
-        CliKind::Copilot | CliKind::Claude => UpgradeAction::UpdatePlugin,
+        CliKind::Copilot | CliKind::Claude | CliKind::Antigravity => UpgradeAction::UpdatePlugin,
         CliKind::Codex => UpgradeAction::CodexReinstall,
         CliKind::Gemini => {
             // Auto-update only `local` installs; `git`/`link` are user
@@ -4774,6 +4802,7 @@ fn probe_installed(cli: CliKind, home: &Path) -> InstalledProbe {
         }
         CliKind::Gemini => read_installed_gemini(home),
         CliKind::OpenCode => read_installed_opencode(home),
+        CliKind::Antigravity => antigravity::installed(home),
     }
 }
 
@@ -4826,6 +4855,7 @@ fn upgrade_one_cli(
         UpgradeAction::UpdatePlugin => match cli {
             CliKind::Copilot => upgrade_copilot(home),
             CliKind::Claude => upgrade_claude(home),
+            CliKind::Antigravity => antigravity::install(home).installed(),
             CliKind::Codex => {
                 // Defensive: `decide_upgrade` for Codex always returns
                 // `CodexReinstall` (Codex has no `plugin update`

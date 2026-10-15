@@ -163,6 +163,20 @@ the hook-free resume binding, so `handle_session_hook` records them in
 treated as hook-owned and its row would sit at `Idle` forever even as the watcher
 saw activity.
 
+**Native History resume metadata.** Explicit Sidebar activation keeps the
+selected qualified session identity and binds the pane returned by tab
+creation. Historical/Ended becomes Idle; newer live activity is retained.
+After binding, the master invalidates session lists and Terminal's status
+projection through the existing structural notification, without waiting for
+a hook. An exact matching binding established by an earlier hook is successful
+and keeps that hook's activity. Assistant source-pane context uses the existing
+registry lookup for the real native CLI session ID, not the helper's ACP ID.
+This known binding keeps the resumed tab visible under Agents only before its
+first hook. Idle is an initial baseline, not evidence that the CLI loaded or
+that subsequent activity is being observed.
+This initialization does not change subsequent hook-loss activity behavior,
+watcher ownership, or saved-layout restore routing.
+
 **Resume pane ownership.** `ResumePaneAssigned` marks the row's pane binding
 `born_bound_pane` (`session_registry.rs`). WTA creates the resume pane and binds
 it *before* the agent CLI starts, so that pane belongs to exactly one session
@@ -177,6 +191,45 @@ stayed there for the rest of the CLI's life — the watcher's status fallback
 silently dropped every event. The flag clears itself whenever the row gives up
 the pane (`SessionStopped`, `PaneClosed`, `end_entry`) or once a `SessionStarted`
 for the *same* key claims it, so the protection needs no timer.
+
+### User-typed PowerShell resume: binding before the first conversation
+
+When Intelligent Terminal's shell integration is loaded in PowerShell, accepting
+a literal resume command emits `OSC 9001;Resume;<agent>;<session-id>` before the
+CLI starts. `TerminalPage` binds the emitting pane's connection GUID directly to
+that session and publishes `session_born_bound`; neither a hook nor a first
+conversation is required. Saved layouts reuse the binding to persist the agent's
+resume invocation, including when Terminal closes before any conversation.
+
+Both `copilot --resume=<id>` and `copilot --resume <id>` are recognized, including
+quoted literal IDs, additional CLI options, and `.cmd`/`.exe` launchers. Claude
+and Gemini use the same resume flag; Codex uses `resume <id>` and OpenCode uses
+`--session <id>`. Antigravity uses `agy --conversation <id>` for CLI conversations,
+not ACP sessions, and emits the canonical agent ID `antigravity`. Only a single
+foreground command with literal arguments is inspected. Variables, expressions,
+pipelines, compound commands, and duplicate resume flags are not evaluated or
+guessed. Bash/WSL and CMD do not emit this PowerShell-specific mark.
+
+Resume flags and Codex's `resume` subcommand must be unquoted `BareWord` AST
+arguments. Both `copilot --resume="id"` and `copilot --resume "id"` are recognized:
+the session ID may be quoted, but `copilot "--resume=id"` and
+`copilot "--resume" "id"` do not establish an OSC binding. The same rule excludes
+quoted resume-looking prompt text, regardless of which CLI option precedes it.
+
+The detector preserves AST quote boundaries instead of flattening arguments or
+maintaining provider-specific option lists. It does not interpret CLI option
+semantics or infer which options consume values; an unquoted resume-looking word
+used as another option's value remains ambiguous. Unquoted single-dash options
+are PowerShell parameter AST nodes and remain outside the literal-only scope.
+Codex only inspects the leading `resume <id>` subcommand, not later options.
+
+The binding is retired when the shell reports command completion (`OSC 133;D`).
+The v11 script upgrades earlier v10 installations to the literal resume parser.
+After shell-integration installation or an upgrade completes, open a new
+PowerShell session to load the updated script; an already-running shell keeps
+its previously loaded functions. Existing development copies already named v11
+must be refreshed separately. This binding path does not require automatic
+error detection or Autofix to be enabled once the script is loaded.
 
 ### Liveness gate: scoping to this IT window
 
@@ -308,10 +361,17 @@ line with ellipsis; the metadata line below it is unchanged.
 The second line is left-aligned as `Agent name · relative age · status` for Host
 sessions and `Agent name · distro name · relative age · status` for WSL sessions,
 using the provider's display name, the exact WSL distro name, and
-`last_activity_at_ms`. Like the session manager,
-timestamps less than seven days old use localized relative time; timestamps at
-least seven days old use the UTC calendar date formatted with Windows' localized
-long-date format. The display refreshes with each snapshot. Missing,
+`last_activity_at_ms`. The sidebar uses Windows ICU short relative-time formatting
+for minutes, hours, days, weeks, and completed Gregorian UTC months and years.
+It retains the master-provided timestamp and checks the local clock every second
+while the Agents view is loaded and expanded. Age text is recalculated when the
+elapsed-minute bucket changes, and only changed text raises a property notification.
+This does not request a session snapshot or replace unchanged list rows; selection,
+focus, and scroll position are preserved. Search terms follow the updated age text.
+Collapsing or unloading the sidebar, or leaving Agents, stops the local timer;
+showing it again immediately corrects cached ages. Session data refreshes and
+retry backoff remain independent, so retained ages continue advancing during a
+failed or in-flight refresh. Missing,
 zero, or invalid timestamps display Unknown, and future timestamps display just now.
 Active uses a theme-aware green success accent, Waiting for input a yellow caution
 accent, and Error a red critical accent, matching the session management view.
@@ -340,7 +400,7 @@ Missing or unrecognized states display Unknown rather than implying a historical
 session. Search matches both the displayed status and the raw registry value;
 the existing `live` and `history` search terms remain available. This presentation
 does not change shell-session visibility, liveness classification, or focus/resume
-routing. Registry-change notifications and the existing five-second snapshot
+routing. Registry-change notifications and the existing 60-second snapshot
 refresh update the displayed status.
 Rows whose raw status is neither `Ended` nor `Historical` appear first, followed by
 closed/history rows. Within each group, rows retain newest-first ordering by
@@ -380,8 +440,27 @@ and activation errors are independent: a successful refresh clears only the
 refresh warning, not a failed focus/resume result. Existing localized error
 messages are reused.
 
+Provider ACP history queries are separate from these short-lived sidebar list
+commands. Each pooled command/source owns a reusable history-only ACP process;
+chat, Autofix and session restoration keep using the original shared chat agent.
+Only one provider query is outstanding, even after a soft timeout. Its response
+receiver survives the 5/10/20/40/60-second absolute wait checkpoints; after 60
+seconds, checks continue once a minute. Three consecutive responses under five
+seconds reduce the wait budget by one step. Successful queries impose five
+seconds from completion before another send. Completed failures impose
+5/10/20/40/60-second backoff; neither manual refresh nor initialization bypasses
+or resets it.
+
+A query still unresolved after 300 seconds retires the history instance. Its
+Windows launcher and descendants are contained in a private Job Object; WSL
+queries have an identity-checked process group and stdin-EOF cleanup guardian.
+Replacement waits for confirmed exit and failure backoff. Unconfirmed cleanup
+keeps the old instance quarantined across chat-agent replacement. Late retired
+responses cannot mutate the registry, and cached rows remain usable. Hooks only
+schedule the existing worker and never await a slow history response.
+
 Consecutive list failures impose a 5, 10, 20, 40, then 60-second retry delay,
-measured from completion. Both registry notifications and the five-second timer
+measured from completion. Both registry notifications and the 60-second timer
 respect it; the timer retries on its first eligible tick. Failed requests discard
 the coalesced pending refresh instead of immediately retrying. A `ready` snapshot
 or leaving/reopening the Agents view resets the retry delay. A `loading` discovery

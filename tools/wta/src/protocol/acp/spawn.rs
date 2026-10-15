@@ -54,6 +54,7 @@ enum StderrPhase {
 struct AgentStderrLogInner {
     phase: StderrPhase,
     startup_lines: VecDeque<String>,
+    auth_browser: Option<(uuid::Uuid, tokio::sync::mpsc::Sender<String>)>,
 }
 
 /// Keeps routine agent stderr at debug level while preserving startup failures
@@ -64,6 +65,28 @@ pub(crate) struct AgentStderrLog {
     inner: Arc<Mutex<AgentStderrLogInner>>,
 }
 
+pub(crate) struct AuthBrowserProgressGuard {
+    log: AgentStderrLog,
+    subscription_id: uuid::Uuid,
+}
+
+impl Drop for AuthBrowserProgressGuard {
+    fn drop(&mut self) {
+        let mut inner = self
+            .log
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if inner
+            .auth_browser
+            .as_ref()
+            .is_some_and(|(id, _)| *id == self.subscription_id)
+        {
+            inner.auth_browser = None;
+        }
+    }
+}
+
 impl AgentStderrLog {
     pub(crate) fn new(agent: impl Into<Arc<str>>) -> Self {
         Self {
@@ -71,13 +94,35 @@ impl AgentStderrLog {
             inner: Arc::new(Mutex::new(AgentStderrLogInner {
                 phase: StderrPhase::Startup,
                 startup_lines: VecDeque::with_capacity(STARTUP_STDERR_MAX_LINES),
+                auth_browser: None,
             })),
         }
     }
 
+    pub(crate) fn subscribe_auth_browser(
+        &self,
+    ) -> (
+        AuthBrowserProgressGuard,
+        tokio::sync::mpsc::Receiver<String>,
+    ) {
+        let subscription_id = uuid::Uuid::new_v4();
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .auth_browser = Some((subscription_id, tx));
+        (
+            AuthBrowserProgressGuard {
+                log: self.clone(),
+                subscription_id,
+            },
+            rx,
+        )
+    }
+
     pub(crate) fn drain(&self, stderr: tokio::process::ChildStderr) -> tokio::task::JoinHandle<()> {
         let log = self.clone();
-        tokio::task::spawn_local(async move {
+        tokio::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
             loop {
                 match lines.next_line().await {
@@ -163,24 +208,35 @@ impl AgentStderrLog {
         startup_lines
     }
 
-    fn log_line(&self, line: &str) {
+    pub(crate) fn log_line(&self, line: &str) {
+        let redacted = super::authentication::redact_auth_stderr(line);
         {
             let mut inner = self
                 .inner
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some((_, sender)) = &inner.auth_browser {
+                if sender.is_closed() {
+                    inner.auth_browser = None;
+                } else if let Some(url) = super::authentication::browser_url_from_stderr(line) {
+                    // A single bounded ephemeral URL; never back-pressure stderr.
+                    let _ = sender.try_send(url);
+                }
+            }
             match inner.phase {
                 StderrPhase::Startup => {
                     if inner.startup_lines.len() == STARTUP_STDERR_MAX_LINES {
                         inner.startup_lines.pop_front();
                     }
-                    inner.startup_lines.push_back(truncate_stderr_line(line));
+                    inner
+                        .startup_lines
+                        .push_back(truncate_stderr_line(redacted));
                 }
                 StderrPhase::Running | StderrPhase::Failed => {}
             }
         }
 
-        tracing::debug!(target: "agent_stderr", agent = %self.agent, "{line}");
+        tracing::debug!(target: "agent_stderr", agent = %self.agent, "{redacted}");
     }
 }
 
@@ -201,6 +257,8 @@ fn truncate_stderr_line(line: &str) -> String {
 
 pub(crate) struct AgentSpawn {
     pub child: tokio::process::Child,
+    pub history_job: Option<super::history_process::HistoryJob>,
+    pub wsl_history_marker: Option<String>,
     /// Original first token of `agent_cmd`, before path resolution.
     pub raw_program: String,
     /// Resolved program path (post `resolve_bare_agent_name`).
@@ -252,6 +310,24 @@ pub(crate) fn spawn_agent_process_with_provider(
     agent_id: Option<&str>,
     environment_policy: ChildEnvironmentPolicy,
     provider_selection: SharedProviderSelection<'_>,
+) -> Result<AgentSpawn> {
+    spawn_host_agent_process(
+        agent_cmd,
+        cwd,
+        agent_id,
+        environment_policy,
+        provider_selection,
+        false,
+    )
+}
+
+fn spawn_host_agent_process(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+    agent_id: Option<&str>,
+    environment_policy: ChildEnvironmentPolicy,
+    provider_selection: SharedProviderSelection<'_>,
+    history_only: bool,
 ) -> Result<AgentSpawn> {
     let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
     let raw_program = parts
@@ -372,17 +448,26 @@ pub(crate) fn spawn_agent_process_with_provider(
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
-    let child = cmd
-        .args(&args)
+    cmd.args(&args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| anyhow!("failed to spawn agent '{}': {}", agent_cmd, e))?;
+        .kill_on_drop(true);
+    let (child, history_job) = if history_only {
+        let (child, job) = super::history_process::HistoryJob::spawn(&mut cmd)?;
+        (child, Some(job))
+    } else {
+        (
+            cmd.spawn()
+                .map_err(|e| anyhow!("failed to spawn agent '{}': {}", agent_cmd, e))?,
+            None,
+        )
+    };
 
     Ok(AgentSpawn {
         child,
+        history_job,
+        wsl_history_marker: None,
         raw_program: raw_program.to_string(),
         resolved_program,
         is_npx,
@@ -539,8 +624,33 @@ pub(crate) fn spawn_agent_process_for_source_with_provider(
             provider_selection,
         ),
         crate::agent_source::AgentSource::Wsl { distro } => {
-            spawn_wsl_agent_process(agent_cmd, distro, agent_id, environment_policy)
+            spawn_wsl_agent_process(agent_cmd, distro, agent_id, environment_policy, false)
         }
+    }
+}
+
+pub(crate) fn spawn_history_agent_process(
+    agent_cmd: &str,
+    agent_id: &str,
+    source: &crate::agent_source::AgentSource,
+    provider_selection: SharedProviderSelection<'_>,
+) -> Result<AgentSpawn> {
+    match source {
+        crate::agent_source::AgentSource::Host => spawn_host_agent_process(
+            agent_cmd,
+            None,
+            Some(agent_id),
+            ChildEnvironmentPolicy::ApplySharedProvider,
+            provider_selection,
+            true,
+        ),
+        crate::agent_source::AgentSource::Wsl { distro } => spawn_wsl_agent_process(
+            agent_cmd,
+            distro,
+            Some(agent_id),
+            ChildEnvironmentPolicy::ApplySharedProvider,
+            true,
+        ),
     }
 }
 
@@ -549,6 +659,7 @@ fn spawn_wsl_agent_process(
     distro: &str,
     _agent_id: Option<&str>,
     environment_policy: ChildEnvironmentPolicy,
+    history_only: bool,
 ) -> Result<AgentSpawn> {
     let parts = crate::coordinator::split_windows_commandline(agent_cmd);
     let raw_program = parts
@@ -561,13 +672,17 @@ fn spawn_wsl_agent_process(
     let adapter_package = is_npx
         .then(|| parts.iter().find(|arg| arg.starts_with('@')).cloned())
         .flatten();
-    let script = wsl_agent_launch_script(&parts, environment_policy);
+    let mut script = wsl_agent_launch_script(&parts, environment_policy);
+    let wsl_history_marker = history_only.then(|| format!("wta-history-{}", uuid::Uuid::new_v4()));
+    if let Some(marker) = &wsl_history_marker {
+        script = super::history_process::wsl_history_script(&script, marker);
+    }
 
     let mut command = tokio::process::Command::new("wsl.exe");
     command
         .arg("-d")
         .arg(distro)
-        .arg("--")
+        .arg(if history_only { "--exec" } else { "--" })
         .arg("bash")
         .arg("--noprofile")
         .arg("--norc")
@@ -587,17 +702,27 @@ fn spawn_wsl_agent_process(
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
 
-    let child = command.spawn().map_err(|error| {
-        anyhow!(
-            "failed to spawn agent '{}' in WSL distro '{}': {}",
-            agent_cmd,
-            distro,
-            error
+    let (child, history_job) = if history_only {
+        let (child, job) = super::history_process::HistoryJob::spawn(&mut command)?;
+        (child, Some(job))
+    } else {
+        (
+            command.spawn().map_err(|error| {
+                anyhow!(
+                    "failed to spawn agent '{}' in WSL distro '{}': {}",
+                    agent_cmd,
+                    distro,
+                    error
+                )
+            })?,
+            None,
         )
-    })?;
+    };
 
     Ok(AgentSpawn {
         child,
+        history_job,
+        wsl_history_marker,
         raw_program,
         resolved_program: format!("wsl.exe -d {distro}"),
         is_npx,
@@ -958,6 +1083,56 @@ mod tests {
             );
         }
         assert!(script.contains("unset CLAUDECODE"));
+    }
+
+    #[test]
+    fn auth_bridge_stderr_progress_is_transient_and_guard_owned() {
+        const URL: &str = "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2Flocalhost%3A8181%2Fcallback&code=fixture";
+        for phase in [
+            StderrPhase::Startup,
+            StderrPhase::Running,
+            StderrPhase::Failed,
+        ] {
+            let log = AgentStderrLog::new("test-agent");
+            log.inner.lock().unwrap().phase = phase;
+            let (guard, mut receiver) = log.subscribe_auth_browser();
+            log.log_line(&format!("Open {URL}"));
+            assert_eq!(receiver.try_recv().unwrap(), URL);
+            assert!(log
+                .inner
+                .lock()
+                .unwrap()
+                .startup_lines
+                .iter()
+                .all(|line| !line.contains(URL)));
+            drop(guard);
+            assert!(log.inner.lock().unwrap().auth_browser.is_none());
+            log.log_line(&format!("Open {URL}"));
+            assert!(receiver.try_recv().is_err());
+        }
+    }
+
+    #[test]
+    fn auth_bridge_old_guard_cannot_clear_new_subscriber_and_closed_receiver_retires() {
+        let log = AgentStderrLog::new("test-agent");
+        let (old_guard, _) = log.subscribe_auth_browser();
+        let (new_guard, receiver) = log.subscribe_auth_browser();
+        drop(old_guard);
+        assert!(log.inner.lock().unwrap().auth_browser.is_some());
+        drop(receiver);
+        log.log_line("ordinary stderr");
+        assert!(log.inner.lock().unwrap().auth_browser.is_none());
+        drop(new_guard);
+    }
+
+    #[test]
+    fn auth_bridge_stderr_never_retains_oauth_urls() {
+        let log = AgentStderrLog::new("test-agent");
+        log.log_line("Open https://accounts.google.com/o/oauth2/v2/auth?state=private-marker&redirect_uri=http%3A%2F%2Flocalhost%3A8181%2Fcallback");
+        let captured = log.mark_failed().join("\n");
+        assert!(!captured.contains("accounts.google.com"));
+        assert!(!captured.contains("private-marker"));
+        assert!(captured.contains("redacted"));
     }
 
     #[test]

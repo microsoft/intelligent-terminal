@@ -139,10 +139,9 @@ pub struct RowSnapshot {
     /// this is sourced from `AgentProfile::resume_flag` rather than
     /// assumed.
     pub cli_supports_resume_flag: bool,
-    /// Whether the session lives inside a WSL distro. The helper and
-    /// the agent run on the host, so ACP `session/load` can't rehydrate
-    /// a Linux session into a host agent pane — WSL rows always resume
-    /// through the in-distro CLI's own resume flag.
+    /// Whether CLI resume can read the provider's ACP conversation store.
+    pub cli_can_resume_acp_sessions: bool,
+    /// Whether the session lives inside a WSL distro.
     pub is_wsl: bool,
 }
 
@@ -170,9 +169,9 @@ pub fn decide_enter_action(row: &RowSnapshot) -> EnterAction {
             // One resume style per origin:
             //   Class A (AgentPane): ResumeInAgentPane.
             //   Class B (Unknown):   ResumeCliFlag.
-            // WSL rows are always CLI-flag: the agent pane is host-side.
+            // Preserve the existing WSL CLI route only for shared stores.
             let want_agent_pane = match row.origin {
-                SessionOrigin::AgentPane => !row.is_wsl,
+                SessionOrigin::AgentPane => !row.is_wsl || !row.cli_can_resume_acp_sessions,
                 SessionOrigin::Unknown => false,
             };
 
@@ -208,7 +207,8 @@ pub fn decide_enter_action(row: &RowSnapshot) -> EnterAction {
 ///
 /// Mapping mirrors the `activate_agent_session_routed` dispatch
 /// (`Idle | Working | Attention | Error` are all "live"; `Ended` and
-/// `Historical` are the dead buckets).
+/// `Historical` are the dead buckets). External `InUse` preserves the
+/// live-without-pane rejection and cannot acquire a focus target from a hint.
 pub fn liveness_from_status(
     status: &crate::agent_sessions::AgentStatus,
     pane_session_id: Option<String>,
@@ -216,6 +216,9 @@ pub fn liveness_from_status(
     use crate::agent_sessions::AgentStatus::*;
     match status {
         Idle | Working | Attention | Error => Liveness::Live { pane_session_id },
+        InUse => Liveness::Live {
+            pane_session_id: None,
+        },
         Ended => Liveness::Ended,
         Historical => Liveness::Historical,
     }
@@ -243,6 +246,7 @@ mod tests {
                 LoadSessionCapability::Unsupported
             },
             cli_supports_resume_flag,
+            cli_can_resume_acp_sessions: true,
             is_wsl: false,
         }
     }
@@ -613,6 +617,33 @@ mod tests {
             liveness_from_status(&Idle, None),
             Liveness::Live {
                 pane_session_id: None
+            }
+        );
+    }
+
+    #[test]
+    fn external_in_use_cannot_focus_an_it_pane() {
+        let liveness = liveness_from_status(
+            &crate::agent_sessions::AgentStatus::InUse,
+            Some("untrusted-pane".into()),
+        );
+        assert_eq!(
+            liveness,
+            Liveness::Live {
+                pane_session_id: None
+            }
+        );
+        let snapshot = row(
+            SessionOrigin::Unknown,
+            liveness,
+            CliSource::Copilot,
+            true,
+            true,
+        );
+        assert_eq!(
+            decide_enter_action(&snapshot),
+            EnterAction::NotResumable {
+                reason: NotResumableReason::LiveWithoutPane,
             }
         );
     }

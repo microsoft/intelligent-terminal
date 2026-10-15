@@ -16,7 +16,8 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto cmd{ _actionMap.GetActionByKeyChord(kc) })
         {
-            if (cmd.ActionAndArgs().Action() == winrt::Microsoft::Terminal::Settings::Model::ShortcutAction::ToggleSidebar)
+            if (cmd.ActionAndArgs().Action() == winrt::Microsoft::Terminal::Settings::Model::ShortcutAction::ToggleSidebar ||
+                cmd.ActionAndArgs().Action() == winrt::Microsoft::Terminal::Settings::Model::ShortcutAction::SwitchToTab)
             {
                 return _dispatch.DoAction(kc, cmd.ActionAndArgs());
             }

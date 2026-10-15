@@ -201,5 +201,8 @@ namespace Microsoft.Terminal.Settings.Model
         Boolean ClearAgentPaneYoloModeIfUnavailableDefault();
         Boolean CanEnableAgentPaneYoloMode { get; };
         Boolean CanEnableAgentPaneYoloModeForAgent(String agentId);
+
+        INHERITABLE_SETTING(Boolean, SidebarShowAgentsOnly);
+        INHERITABLE_SETTING(Boolean, SidebarShowRecentAgentSessions);
     }
 }

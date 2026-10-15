@@ -50,6 +50,8 @@ namespace winrt::TerminalApp::implementation
 
         void OnPaneAgentSessionChanged(const winrt::hstring& eventJson);
         winrt::hstring AgentSessionEvent(uint64_t contentId);
+        void UpdateKeepRunningTab(const winrt::TerminalApp::Tab& tab);
+        bool IsPaneKeepRunning(const winrt::guid& paneId) const;
         void KeepTab(const winrt::TerminalApp::TerminalPage& owner, const winrt::TerminalApp::Tab& tab);
         bool HasKeptSessions();
         bool IsKeptContent(uint64_t contentId);
@@ -61,12 +63,15 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::Rect KeptGroupBounds(const winrt::guid& groupId);
         winrt::TerminalApp::Tab BeginReattachKeptGroup(const winrt::guid& groupId);
         void CompleteKeptGroupReattach(const winrt::guid& groupId, bool committed);
+        void NotifyPaneWindowChanged(const winrt::guid& paneId, uint64_t windowId);
         void DiscardKeptGroup(const winrt::guid& groupId);
         void DiscardAllKeptGroups();
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::IPaneContent> KeptPanes();
 
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
+        til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeepRunningTabsChanged;
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::hstring> DetachedSessionEvent;
+        til::event<winrt::delegate<winrt::guid, uint64_t>> PaneWindowChanged;
 
     private:
         mutable std::mutex _mutex;
@@ -95,6 +100,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::System::DispatcherQueue _dispatcher{ winrt::Windows::System::DispatcherQueue::GetForCurrentThread() };
         std::unordered_map<uint64_t, AgentBinding> _agentBindings;
         std::unordered_map<winrt::guid, KeptGroup> _keptGroups;
+        // Only kept groups own retention; the sidebar index must not keep tabs alive.
+        std::unordered_map<winrt::hstring, winrt::weak_ref<winrt::TerminalApp::Tab>> _keepRunningTabs;
         void _CheckThread() const;
         void _NotifyKeptSessionsChanged() noexcept;
 

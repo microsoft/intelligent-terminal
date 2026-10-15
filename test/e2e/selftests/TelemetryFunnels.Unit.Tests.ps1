@@ -69,6 +69,29 @@ Describe 'Telemetry funnel scenario helpers' -Tag Unit {
         Get-Command Get-DescendantWtaIds -Module ItE2E -ErrorAction Stop | Should -Not -BeNullOrEmpty
     }
 
+    It 'checks every other package including helpers before changing HKCU policy' {
+        $tokens = $null
+        $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PSScriptRoot '..\tests\Feature.TelemetryFunnels.Tests.ps1'), [ref]$tokens, [ref]$errors)
+        @($errors) | Should -HaveCount 0
+        $guards = @($ast.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'Get-WtProcessesForApp' -and
+                $node.Extent.Text -match '-App\s+\$other\b'
+        }, $true))
+        $guards | Should -HaveCount 1
+        $guards[0].Extent.Text | Should -Match '-IncludePackageExecutables\b'
+        $transaction = $ast.Find({
+            param($node)
+            $node -is [Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'Initialize-TelemetryPolicyTransaction'
+        }, $true)
+        $transaction | Should -Not -BeNullOrEmpty
+        $guards[0].Extent.StartOffset | Should -BeLessThan $transaction.Extent.StartOffset
+    }
+
     It 'Phase process-evidence cleanup preserves an earlier scenario failure' {
         $script:app = @{ Launched = $true; Pid = 123 }
         $script:phases = [ordered]@{}
@@ -118,6 +141,7 @@ Describe 'Telemetry funnel scenario helpers' -Tag Unit {
         @($script:shutdownOrder) | Should -Be $expected
         Should -Invoke Get-AgentPaneSessions -Times ([int]$HostAlive) -Exactly
         Should -Invoke Get-WtWindows -Times 0 -Exactly
+        Should -Invoke Get-WtProcessesForApp -Times 1 -Exactly -ParameterFilter { $IncludePackageExecutables }
         { Stop-TelemetryOwnedTerminal -App @{ Launched = $false } } | Should -Throw '*not launched*'
     }
 

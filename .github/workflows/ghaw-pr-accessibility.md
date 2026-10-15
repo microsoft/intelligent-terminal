@@ -48,7 +48,7 @@ engine:
 
 timeout-minutes: 15
 max-ai-credits: 500
-max-daily-ai-credits: 100000
+max-daily-ai-credits: 5000
 imports:
   - .github/agents/pr-accessibility.agent.md
 

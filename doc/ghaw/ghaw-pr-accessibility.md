@@ -8,6 +8,10 @@ The original PR reviewer, human or agent, owns build/test validation and may
 revert an individual fix commit. A source-review or patch-policy PASS is not
 native accessibility certification.
 
+The source review also classifies TestHost XAML, C++, headers and project files.
+TestHost and project files can require review but are not eligible repair paths.
+The workflow's daily AI-credit cap is 5,000, matching localization.
+
 ## Responsibilities
 
 | Owner | Responsibility |

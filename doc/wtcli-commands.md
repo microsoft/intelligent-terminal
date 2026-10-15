@@ -13,6 +13,10 @@ silent and exit successfully when disconnected; `send-event` reports the
 connection failure, which cached hook wrappers already suppress. External
 `agent.*` publishers still need only `WT_COM_CLSID`, but Terminal must be running.
 Other commands and non-agent `send-event` topics retain normal COM activation.
+`publish --existing-only` and `listen --existing-only` also avoid activation.
+WTA uses these opt-in modes for passive notifications and subscriptions so late
+shutdown messages or listener retries cannot recreate Terminal. Explicit public
+publication and listening retain their existing activation behavior by default.
 
 `listen --existing-only` uses the same non-activating running-factory lookup and
 reports a connection failure if it is unavailable; it never falls back to

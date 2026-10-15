@@ -109,6 +109,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(BuildBlock_HonoursEolParameter);
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
     TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
+    TEST_METHOD(PowerShell_ResumeCommand_EmitsOscBeforeExecution);
     TEST_METHOD(PowerShell_ScriptContent_GatesRestrictedLanguageFeatures);
     TEST_METHOD(PowerShell_ScriptContent_ReArmsFromReadLineBoundary);
     TEST_METHOD(PowerShell_ScriptContent_ReArmIsBestEffortAndSkipsWithoutWrapper);
@@ -128,6 +129,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Install_ReinstallsWhenScriptMissingButBlockMatches);
     TEST_METHOD(Install_RewritesLegacyDotSourceLineAtEnd);
     TEST_METHOD(Install_UpgradesWhenBlockReferencesOlderScriptVersion);
+    TEST_METHOD(Install_UpgradesEarlierResumeScript);
     TEST_METHOD(Install_OverwritesOrphanOpenMarker);
     TEST_METHOD(Install_CreatesBackupForNonEmptyProfile);
     TEST_METHOD(Install_DoesNotCreateBackupForEmptyProfile);
@@ -535,9 +537,6 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
     const auto script = ShellIntegrationScriptContent();
     const auto readLineWrapper = script.find("function Global:PSConsoleHostReadLine");
     const auto lineStored = script.find("$Global:__ShellInteg_LastSubmittedLine =", readLineWrapper);
-    const auto resumeCommandMatch = script.find("copilot|claude|gemini", lineStored);
-    const auto resumeEqualsMatch = script.find("(?:\\s+|=)", resumeCommandMatch);
-    const auto resumeCommandMark = script.find("]9001;Resume;", resumeCommandMatch);
     const auto promptStart = script.find("function prompt");
     const auto lineCaptured = script.find("$submittedLine = $Global:__ShellInteg_LastSubmittedLine", promptStart);
     const auto capture = script.find("$errorRecord", lineCaptured);
@@ -557,10 +556,7 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, consumeLine);
     VERIFY_IS_TRUE(readLineWrapper < lineStored &&
-                       lineStored < resumeCommandMatch &&
-                       resumeCommandMatch < resumeEqualsMatch &&
-                       resumeEqualsMatch < resumeCommandMark &&
-                       resumeCommandMark < promptStart &&
+                       lineStored < promptStart &&
                        promptStart < lineCaptured &&
                        lineCaptured < capture &&
                        capture < historyCheck &&
@@ -577,6 +573,132 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
                        originalPrompt < consumeError &&
                        consumeError < consumeLine,
                    L"Submitted input must be retained at the PSReadLine boundary, parsed only after normal completion signals are absent, and consumed after prompt rendering");
+}
+
+void ShellIntegrationTests::PowerShell_ResumeCommand_EmitsOscBeforeExecution()
+{
+    const auto runner = _scratchDir / L"resume-test.ps1";
+    const auto script = std::string{ "\xef\xbb\xbf" } +
+                        R"($ErrorActionPreference = 'Stop'
+function Global:PSConsoleHostReadLine { return $Global:__ResumeTestLine }
+)" +
+                        ShellIntegrationScriptContent() +
+                        R"PS(
+$cases = @(
+    @{ Line = 'copilot --resume=resume-test'; Agent = 'copilot' }
+    @{ Line = 'copilot --resume resume-test'; Agent = 'copilot' }
+    @{ Line = 'copilot --resume="resume-test"'; Agent = 'copilot' }
+    @{ Line = "copilot --resume='resume-test'"; Agent = 'copilot' }
+    @{ Line = 'copilot --resume "resume-test" --yolo'; Agent = 'copilot' }
+    @{ Line = "copilot --model gpt-5 --resume='resume-test'"; Agent = 'copilot' }
+    @{ Line = 'copilot --model gpt-6.1-sol --resume="resume-test"'; Agent = 'copilot' }
+    @{ Line = 'copilot "-m" "--resume=other" --resume resume-test'; Agent = 'copilot' }
+    @{ Line = 'copilot "-m" "gpt-6.1-sol" --resume resume-test'; Agent = 'copilot' }
+    @{ Line = 'copilot --resume resume-test --interactive "literal prompt"'; Agent = 'copilot' }
+    @{ Line = 'copilot --resume resume-test --prompt "--resume=other"'; Agent = 'copilot' }
+    @{ Line = "copilot --interactive '--resume=other' --resume resume-test"; Agent = 'copilot' }
+    @{ Line = 'copilot --prompt="--resume=other" --resume resume-test'; Agent = 'copilot' }
+    @{ Line = 'copilot --interactive "--" --resume resume-test'; Agent = 'copilot' }
+    @{ Line = 'copilot --unknown-option "--resume=other" --resume resume-test'; Agent = 'copilot' }
+    @{ Line = '& copilot.cmd --resume resume-test'; Agent = 'copilot' }
+    @{ Line = 'claude --resume resume-test --model sonnet'; Agent = 'claude' }
+    @{ Line = 'claude --system-prompt "--resume=other" --resume resume-test'; Agent = 'claude' }
+    @{ Line = 'gemini --prompt-interactive "--resume=other" --resume resume-test'; Agent = 'gemini' }
+    @{ Line = 'codex resume "resume-test" --yolo'; Agent = 'codex' }
+    @{ Line = 'opencode --session=resume-test'; Agent = 'opencode' }
+    @{ Line = 'opencode --session resume-test --prompt "--session=other"'; Agent = 'opencode' }
+    @{ Line = 'agy --conversation resume-test'; Agent = 'antigravity' }
+    @{ Line = 'agy --prompt-interactive "--conversation=other" --conversation resume-test'; Agent = 'antigravity' }
+    @{ Line = 'agy --conversation=resume-test'; Agent = 'antigravity' }
+    @{ Line = '& "C:\Program Files\Antigravity\agy.exe" --model gemini --conversation "resume-test"'; Agent = 'antigravity' }
+    @{ Line = "& agy.cmd --conversation='resume-test' --model gemini"; Agent = 'antigravity' }
+    @{ Line = '& C:\Antigravity\agy.bat --conversation resume-test'; Agent = 'antigravity' }
+    @{ Line = 'codex resume --last'; Agent = '' }
+    @{ Line = 'copilot "--resume=resume-test"'; Agent = '' }
+    @{ Line = "copilot '--resume=resume-test'"; Agent = '' }
+    @{ Line = 'copilot "--resume" "resume-test"'; Agent = '' }
+    @{ Line = "copilot '--resume' resume-test"; Agent = '' }
+    @{ Line = 'claude "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'gemini "--resume" "resume-test"'; Agent = '' }
+    @{ Line = 'codex "resume" resume-test'; Agent = '' }
+    @{ Line = 'opencode "--session=resume-test"'; Agent = '' }
+    @{ Line = 'agy "--conversation=resume-test"'; Agent = '' }
+    @{ Line = 'agy "--conversation" "resume-test"'; Agent = '' }
+    @{ Line = 'copilot --interactive "--resume=resume-test"'; Agent = '' }
+    @{ Line = "copilot --interactive '--resume=resume-test'"; Agent = '' }
+    @{ Line = 'copilot --prompt "--resume=resume-test"'; Agent = '' }
+    @{ Line = "copilot --prompt '--resume=resume-test'"; Agent = '' }
+    @{ Line = 'copilot --prompt "--resume resume-test"'; Agent = '' }
+    @{ Line = 'copilot --interactive "--resume" resume-test'; Agent = '' }
+    @{ Line = 'copilot --interactive="--resume=resume-test"'; Agent = '' }
+    @{ Line = "copilot --prompt='--resume=resume-test'"; Agent = '' }
+    @{ Line = 'copilot --model "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'copilot "-m" "--resume=other"'; Agent = '' }
+    @{ Line = 'copilot -i "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'copilot "-i" "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'copilot "--interactive" "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'claude --append-system-prompt "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'gemini --prompt-interactive "--resume=resume-test"'; Agent = '' }
+    @{ Line = 'opencode --prompt "--session=resume-test"'; Agent = '' }
+    @{ Line = 'agy --prompt-interactive "--conversation=resume-test"'; Agent = '' }
+    @{ Line = 'copilot --resume --model gpt-5'; Agent = '' }
+    @{ Line = 'opencode --session=--last'; Agent = '' }
+    @{ Line = 'agy --conversation "--model"'; Agent = '' }
+    @{ Line = 'agy --conversation resume-test --conversation=other'; Agent = '' }
+    @{ Line = 'agy --conversation=resume-test --conversation=other'; Agent = '' }
+    @{ Line = 'agy --conversation $sessionId'; Agent = '' }
+    @{ Line = 'agy --conversation=$sessionId'; Agent = '' }
+    @{ Line = 'agy --conversation resume-test --model $model'; Agent = '' }
+    @{ Line = 'copilot --resume=$sessionId'; Agent = '' }
+    @{ Line = 'copilot --resume resume-test; echo other'; Agent = '' }
+    @{ Line = 'copilot --resume resume-test | Out-Null'; Agent = '' }
+    @{ Line = 'copilot --resume resume-test --resume other'; Agent = '' }
+    @{ Line = 'copilot -- --resume resume-test'; Agent = '' }
+    @{ Line = 'copilot --resume "bad;id"'; Agent = '' }
+    @{ Line = 'Write-Output "copilot --resume resume-test"'; Agent = '' }
+)
+foreach ($case in $cases) {
+    $Global:__ResumeTestLine = $case.Line
+    $output = New-Object System.IO.StringWriter
+    $original = [Console]::Out
+    [Console]::SetOut($output)
+    try {
+        $returned = PSConsoleHostReadLine
+    }
+    finally {
+        [Console]::SetOut($original)
+    }
+    if ($returned -cne $case.Line) { throw 'ReadLine changed the submitted command' }
+    $expected = if ($case.Agent) {
+        '{0}]9001;Resume;{1};resume-test{2}' -f [char]0x1B, $case.Agent, [char]0x07
+    } else { '' }
+    if ($output.ToString() -cne $expected) { throw "Incorrect Resume OSC for: $($case.Line)" }
+}
+'passed'
+)PS";
+    _WriteFile(runner, script);
+
+    std::vector<std::wstring> hosts{
+        wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    };
+    if (auto pwsh = Powershell::details::ResolvePwshExecutableFromExplicitPath(); !pwsh.empty())
+    {
+        hosts.emplace_back(std::move(pwsh));
+    }
+    for (const auto& host : hosts)
+    {
+        const auto result = Powershell::details::RunPowerShellCommand(
+            host.c_str(), L"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + runner.wstring() + L"\"");
+        VERIFY_ARE_EQUAL(DWORD{ ERROR_SUCCESS }, result.error);
+        VERIFY_IS_TRUE(result.launched);
+        VERIFY_IS_FALSE(result.timedOut);
+        if (result.exitCode != 0)
+        {
+            Log::Comment(result.output.c_str());
+        }
+        VERIFY_ARE_EQUAL(DWORD{ 0 }, result.exitCode);
+        VERIFY_ARE_EQUAL(std::wstring{ L"passed" }, result.output);
+    }
 }
 
 void ShellIntegrationTests::PowerShell_ScriptContent_GatesRestrictedLanguageFeatures()
@@ -979,6 +1101,32 @@ void ShellIntegrationTests::Install_UpgradesWhenBlockReferencesOlderScriptVersio
     const auto scriptPath = profile.parent_path() / ShellIntegrationScriptFileName();
     VERIFY_IS_TRUE(std::filesystem::exists(scriptPath), L"Current-version script must be written on upgrade");
     VERIFY_IS_TRUE(_Contains(_ReadFile(scriptPath), "9001"), L"Upgraded script must emit OSC 9001;ShellType");
+}
+
+void ShellIntegrationTests::Install_UpgradesEarlierResumeScript()
+{
+    const auto profile = _ProfilePath();
+    const auto currentName = til::u16u8(ShellIntegrationScriptFileName());
+    const std::string oldName{ "shell-integration_v10.ps1" };
+    auto oldBlock = BuildShellIntegrationBlock(L"PowerShell", "\n");
+    const auto namePos = oldBlock.find(currentName);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, namePos);
+    oldBlock.replace(namePos, currentName.size(), oldName);
+    const std::string userContent{ "Set-Alias ll Get-ChildItem\n" };
+    _WriteFile(profile, userContent + oldBlock + "\n");
+    _WriteFile(profile.parent_path() / oldName, "# earlier resume script without Antigravity support\n");
+
+    const auto result = Install(profile.wstring());
+    VERIFY_IS_TRUE(result.success);
+    VERIFY_IS_FALSE(result.alreadyInstalled);
+    VERIFY_IS_TRUE(_ReadFile(profile).starts_with(userContent));
+    VERIFY_IS_FALSE(_Contains(_ReadFile(profile), oldName));
+    VERIFY_ARE_EQUAL(ShellIntegrationScriptContent(),
+                     _ReadFile(profile.parent_path() / ShellIntegrationScriptFileName()));
+
+    const auto repeated = Install(profile.wstring());
+    VERIFY_IS_TRUE(repeated.success);
+    VERIFY_IS_TRUE(repeated.alreadyInstalled);
 }
 
 void ShellIntegrationTests::Install_OverwritesOrphanOpenMarker()

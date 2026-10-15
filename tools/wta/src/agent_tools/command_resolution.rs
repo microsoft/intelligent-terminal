@@ -306,7 +306,7 @@ fn host_path_resolution(token: &str, path: &std::path::Path) -> CommandResolutio
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct CommandResolverInvocation {
     executable: String,
     shell: String,
@@ -340,6 +340,10 @@ impl CommandResolverInvocation {
 
     pub(crate) fn cwd(&self) -> Option<&str> {
         self.cwd.as_deref()
+    }
+
+    pub(crate) fn payload_bytes(&self) -> usize {
+        self.executable.len() + self.shell.len() + self.cwd.as_ref().map_or(0, String::len)
     }
 
     pub(crate) fn contract(&self, token: &str) -> CommandResolverContract {

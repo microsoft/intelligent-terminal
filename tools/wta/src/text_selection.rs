@@ -42,10 +42,12 @@ pub(crate) struct TextSelection {
     click_buffer: Option<Buffer>,
     selection: Option<Selection>,
     last_click: Option<ClickRecord>,
+    copied: bool,
 }
 
 impl TextSelection {
     pub(crate) fn select_all(&mut self) {
+        self.copied = false;
         let Some(buffer) = self.buffer.as_ref() else {
             self.clear();
             return;
@@ -101,6 +103,7 @@ impl TextSelection {
 
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
+                self.copied = false;
                 let Some(point) = point else {
                     self.clear();
                     return None;
@@ -141,6 +144,7 @@ impl TextSelection {
                 None
             }
             MouseEventKind::Drag(MouseButton::Left) => {
+                self.copied = false;
                 let Some(point) = point else {
                     return None;
                 };
@@ -184,10 +188,19 @@ impl TextSelection {
         self.last_click.map(|click| click.count)
     }
 
+    pub(crate) fn was_copied(&self) -> bool {
+        self.copied
+    }
+
+    pub(crate) fn mark_copied(&mut self) {
+        self.copied = true;
+    }
+
     pub(crate) fn clear(&mut self) {
         self.click_buffer = None;
         self.selection = None;
         self.last_click = None;
+        self.copied = false;
     }
 
     /// Capture the unmodified frame for text extraction, then paint the
@@ -483,6 +496,29 @@ mod tests {
         state.select_all();
 
         assert_eq!(state.selected_text().as_deref(), Some("visible"));
+    }
+
+    #[test]
+    fn copied_selection_state_resets_on_select_all_mouse_down_drag_and_clear() {
+        let mut state = seeded_selection();
+        for kind in [
+            None,
+            Some(MouseEventKind::Down(MouseButton::Left)),
+            Some(MouseEventKind::Drag(MouseButton::Left)),
+        ] {
+            state.mark_copied();
+            assert!(state.was_copied());
+            if let Some(kind) = kind {
+                state.handle_mouse(mouse(kind, 1, 0, KeyModifiers::NONE));
+            } else {
+                state.select_all();
+            }
+            assert!(!state.was_copied());
+        }
+        state.mark_copied();
+        state.clear();
+        assert!(!state.was_copied());
+        assert!(state.selected_text().is_none());
     }
 
     #[test]

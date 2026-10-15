@@ -2,19 +2,30 @@
 
 ## Status and scope
 
-This specification defines the agreed target behavior, including the October 7,
-2026 PM/UX revision. The single-scroll layout and one-time Sidebar introduction
-supersede the earlier split-scroll/divider design and are being implemented.
+This specification defines the agreed target behavior, including the October 9,
+2026 PM/UX revision. A static Tabs heading and independent display filters replace
+the earlier Tabs/Agents switch. The single-scroll layout and one-time Sidebar
+introduction remain unchanged.
 This is not an acceptance report: build-specific results and remaining validation
 belong in the release checklist and validation evidence.
 
 The scenarios below cover the left sidebar in the **vertical** tab layout. The
-sidebar and the independent **Agent Pane** are different surfaces. The **Agents**
-surface combines open agent tabs above **Recent Sessions**; **History** below
-refers to the existing view lifecycle, search, and focus state, not a page that
-replaces the tab list. The one-time upgrade described below changes the initial
-`tabLayout`; subsequent user choices, horizontal agent-session behavior, and
-other agent/delegation shortcuts remain supported.
+sidebar and the independent **Agent Pane** are different surfaces. The sidebar
+is always **Tabs**. Its **Agents only** and **Recent agent sessions** options are
+independent: recent sessions can appear below ordinary shell tabs as well as
+agent tabs. **History** below refers to the existing session rows and their
+loading/activation lifecycle, not a separate navigation mode. The one-time upgrade
+changes the initial `tabLayout`; subsequent user choices, horizontal agent-session
+behavior, and other agent/delegation shortcuts remain supported.
+
+The two filter preferences are saved independently in `settings.json` as
+`sidebarShowAgentsOnly` and `sidebarShowRecentAgentSessions` (both default to
+`false`). Sidebar menu changes and toggle actions save the selected preference;
+new windows and application restarts restore it. Editing these settings also
+updates open windows through the existing settings reload path. Search queries
+and their temporary scope overrides are not persisted, and switching layouts
+does not clear the saved preferences. A failed save restores the previous
+checkbox value and reports the existing settings-write warning.
 
 Custom native CLI launch identities remain `custom:<name>` when their underlying
 CLI reports activity as a built-in provider. Activity/session bindings still
@@ -65,95 +76,126 @@ instead of letting unordered snapshot rows repeatedly change the icon.
 
 | Default shortcut | Responsibility |
 |---|---|
-| `Ctrl+Shift+/` | Show/hide **Agents** in the sidebar (the History view lifecycle below), preserving whether shared search is open. |
-| `Ctrl+Shift+S` | Enter the sidebar through **Search tabs**, or collapse it and return to the previous input when focus is already inside. |
+| `Ctrl+Shift+G` | Toggle **Agents only** without changing **Recent agent sessions** or the search query. |
+| `Ctrl+Shift+R` | Toggle **Recent agent sessions** without changing **Agents only** or the search query. |
+| `Ctrl+Shift+/` | Retained alias for the recent-session preference in vertical layout; horizontal Agent Pane sessions behavior is unchanged. |
+| `Ctrl+Shift+S` | Enter the sidebar through global search, or collapse it and return to the previous input when focus is already inside. |
 | `Ctrl+Shift+.` | Show/hide the independent Agent Pane; its behavior is unchanged. |
 
 In horizontal layout, `Ctrl+Shift+S` remains a consumed no-op: no layout/chrome
 change and no input leakage into the terminal. User bindings can override or
 unbind the defaults.
 
-## Scenario matrix
-
-The two focus policies referenced here are defined separately below.
+## Filter and search matrix
 
 | State before the action | Action | Resulting surface/state | Focus policy |
 |---|---|---|---|
-| Sidebar collapsed | `Ctrl+Shift+S` | Expand the sidebar and open **Search tabs**. | Remember the current terminal or Agent input, then focus the tab-search box. |
-| Sidebar expanded, focus outside the sidebar | `Ctrl+Shift+S` | Keep the sidebar expanded and open **Search tabs**. | Remember the current input, then focus the tab-search box. |
-| Sidebar expanded, focus inside the sidebar | `Ctrl+Shift+S` | Collapse the sidebar and close tab search or History. | Best-effort return to the input used before entering the sidebar; fall back to a visible terminal. |
-| Sidebar expanded, History hidden | `Ctrl+Shift+/` or the Tabs header | Show the combined Agents surface; remember that the sidebar was expanded. | Remember focused tab search or the source input. Focus shared search only if it was already open; never activate it as a side effect of navigation. |
-| Sidebar collapsed, History hidden | `Ctrl+Shift+/` | Expand the sidebar and show Agents; remember that the sidebar was originally collapsed. | Remember the source input and preserve search state; navigation alone does not open search. |
-| Agents visible; sidebar was collapsed before History opened | `Ctrl+Shift+/` or the Agents header toggle | Return to Tabs **and collapse the sidebar**. | History source-restoration policy. |
-| Agents visible; sidebar was expanded before History opened | `Ctrl+Shift+/` or the Agents header toggle | Return to Tabs; **keep the sidebar expanded**, with its ordinary tab list and no history section. | History source-restoration policy. |
-| Sidebar expanded with History visible and focus inside | `Ctrl+Shift+S` | Collapse the whole sidebar and hide History. | Use the sidebar-hotkey entry input if still available, not History's saved entry state. |
-| Sidebar expanded with History visible and focus outside | `Ctrl+Shift+S` | Hide History, keep the sidebar expanded, and open **Search tabs**. | Remember the current input, then focus tab search. |
+| Sidebar collapsed | `Ctrl+Shift+S` | Expand the sidebar and open global search. | Remember the current terminal or Agent input, then focus the shared search box. |
+| Sidebar expanded, focus outside the sidebar | `Ctrl+Shift+S` | Keep the sidebar expanded and open global search. | Remember the current input, then focus the shared search box. |
+| Sidebar expanded, focus inside the sidebar | `Ctrl+Shift+S` | Collapse the sidebar and close search; keep both filter preferences. | Best-effort return to the input used before entering the sidebar. |
+| Query empty | Both filters off | All open shell/agent tabs; no recent section. | Keep standard menu/input focus. |
+| Query empty | Agents only on, recent off | Open agent tabs; no recent section. | Keep standard menu/input focus. |
+| Query empty | Agents only off, recent on | All open shell/agent tabs plus recent sessions. | Keep standard menu/input focus. |
+| Query empty | Both filters on | Open agent tabs plus recent sessions. | Keep standard menu/input focus. |
+| Either filter combination | Enter a nonempty query | Matching open shell/agent tabs and matching recent sessions, regardless of filters. | Keep focus in shared search. |
+| Nonempty query | Toggle either filter | Results remain global; record the new checked preference. | Preserve query and search/menu focus. |
+| Nonempty query | Clear/close search | Restore results from the exact current filter combination. | Normal search focus policy. |
 
-The History close shortcut and Agents header toggle have the same close
-behavior. The Tabs header opens Agents when the sidebar is expanded; it does
-not expand a collapsed sidebar. By contrast, `Ctrl+Shift+S` intentionally opens
-and focuses ordinary tab search on entry.
+Opening search with an empty query does not override the filters. The static
+Tabs heading has no activation action or keyboard focus stop. Recent-session
+loading is triggered when the section is needed by its preference or a query,
+using the existing backend and matching rules.
 
-## Combined Agents surface
+The default **+** action always opens a normal terminal tab using the configured
+default profile. Filters, search, and tab layout do not change its action,
+accessible name, help text, or tooltip. Creating an agent requires an explicit
+agent action, not an override of the normal new-tab control.
 
-- The toolbar header toggles **Tabs** and **Agents** (reversible via header button
-  or shortcut). A persistent swap icon and button border make the switch
-  discoverable; normal button hover, pressed, and keyboard-focus feedback remain.
-  Its tooltip and accessible action name say **Switch to Agents** in Tabs and
-  **Switch to Tabs** in Agents. It performs one immediate switch, not dropdown
-  navigation. There is no separate redundant Agents icon in the toolbar.
+Activating a pane row in another tab selects that pane before the tab restores
+input focus. The tab's previously active pane must not receive intermediate
+focus or selection highlighting. Selecting the tab itself still restores its
+last active pane. Activating another pane in a zoomed tab exits zoom first.
+
+## Sidebar presentation
+
+- Tab icons use the source terminal's icon when available; tabs without a
+  terminal pane, such as Settings, use their active content's icon. Both layouts
+  honor the theme's icon style and explicit tab icon visibility.
+- The toolbar heading is static **Tabs**, with no switch button, border, or swap
+  icon. The display-options flyout has a **Show** section containing standard
+  checkable **Agents only** and **Recent agent sessions** controls.
 - The display-options button uses **Sidebar display options** for its tooltip
-  and accessible name in both modes. Its menu configures visible tab details and
+  and accessible name regardless of filters. Its menu configures visible tab details and
   any available tab filters; opening it does not itself filter tabs.
-- History rows use a leading 16px provider icon, vertically centered across the
-  title and metadata rows, with both text rows aligned to its right. Metadata is
-  ordered as timestamp, meaningful status, and provider display name.
-  Ended/historical rows omit the redundant
-  Historical status; live Idle/Working/Attention/Error statuses remain visible.
-  An outlined window with an upward restore arrow after the provider name
-  identifies a confirmed background tab; clicking restores the whole original
-  tab. Two overlapping windows identify a session attached to another visible
-  window; clicking focuses its original tab and pane. The status remains plain
-  activity text. Kept-tab membership takes precedence over an old window ID.
-  Unknown ownership leaves the activity status visible without either indicator.
+- History rows have three text lines aligned to the right of a leading 16px
+  provider icon: title, working directory, then status or time. The icon is
+  vertically centered across all three lines. The third line shows only **In use**
+  for live sessions without an IT registration, the detailed
+  Idle/Active/Waiting for input/Error status for live IT registrations, or the
+  relative timestamp for ended/historical sessions. Live rows do not display a
+  timestamp, and historical rows do not display the redundant Historical status.
+  A session attached to another visible IT window ends its detailed status
+  with **In another window**, separated by a middle dot (for example,
+  `Idle · In another window`). This requires confirmed different-window
+  ownership; current-window, external **In use**, historical, and unknown-owner
+  rows do not receive the annotation. Kept-tab membership takes precedence
+  over an old window ID and does not show the other-window annotation.
+  Activity colors apply only to the status label; the window annotation retains
+  the ordinary metadata foreground and opacity through status changes.
+  Entering headless mode clears a stale window annotation immediately from
+  locally known retained rows, without waiting for the next master snapshot.
+  Successful reattachment into a different window migrates locally tracked
+  session bindings even when no hook binding is available. The restored session
+  is excluded from that window's recent rows immediately; existing rows in other
+  windows update their ownership annotation at the committed content handoff.
+  Failed transfers retain the original bindings and headless ownership.
+  There are no dedicated switch-window or restore-background-tab action buttons
+  or icons in recent-session rows. The passive Keep Running badge is unchanged.
+  Unknown ownership leaves the activity status visible without a window annotation.
   Enter uses the same activation: focus or restore an existing bound pane, or
   attempt supported resume in the current window for an explicitly activated
   known-provider shell session with no bound pane. A failed bound-pane focus
   never falls back to creating a new resumed session.
   Bare Enter activates the focused History row even with selection disabled;
-  modified Enter is ignored. A focused ownership button retains its native
-  activation, rather than also activating its containing row.
-  Provider identity remains available through the icon tooltip, highlighted
-  provider-name text, and shared search.
-  Time and provider text share bounded metadata space and may truncate with an ellipsis at the
-  minimum sidebar width; status and the ownership action retain reserved space.
-- History ages use Windows ICU's standard, locale-aware **short numeric relative
-  time** format (CLDR), using the UI resource language rather than private unit
-  abbreviations. For example, English uses `2 min. ago`, `2 hr. ago`, `2 wk. ago`,
-  `2 mo. ago`, and `2 yr. ago`; translations and grammar come from the platform.
-  Below a minute, the existing localized “just now” text remains. Whole elapsed
-  minutes, hours, days, and seven-day weeks are floored; older timestamps use
-  completed Gregorian UTC calendar months and years, including month-end and
-  leap-year adjustment, rather than fixed 30-day/365-day approximations.
+  modified Enter is ignored.
+  Provider identity remains available through the icon tooltip, the focused
+  history row's accessible name (alongside its title), and shared search.
+  The working directory supports search highlighting and a full-path tooltip.
+  For **In use** sessions, hovering the row, working directory, or provider icon
+  instead explains: **This session is open in another application.**
+  The focused history row exposes the same explanation as accessible help text.
+  Both follow status changes without replacing the row, and the help text clears
+  when the session returns to IT or becomes historical.
+  Text may truncate with an ellipsis at the minimum sidebar width.
+- History ages match the original session-management view: localized,
+  unabbreviated numeric relative time below seven days, such as `2 minutes ago`,
+  `2 hours ago`, and `2 days ago`. Below a minute, the existing localized
+  “just now” text remains. Whole elapsed minutes, hours, and days are floored.
+  At exactly seven days and beyond, display the session's UTC calendar date
+  using a localized year/month/day date without a weekday, rather than weeks,
+  months, or years ago (for example, `September 21, 2026` in English).
+  Relative-time translations, plural grammar, date ordering, and month names
+  come from Windows ICU's long CLDR formats, using the UI resource language.
   Missing or unsupported timestamps, or timestamps that cannot be formatted, retain localized “unknown.”
-  ICU's normal locale fallback applies, including for unsupported pseudo-locales.
-- The Agents view has exactly one vertical scrolling viewport containing the
-  live/open agent tabs followed immediately by **Recent Sessions**.
+- The sidebar has exactly one vertical scrolling viewport containing the
+  eligible open tabs followed by **Recent agent sessions** when requested.
   The live section grows or shrinks with its tab, group, and pane rows; this does
-  not mean stretching individual row heights. Recent Sessions follows the last
+  not mean stretching individual row heights. Recent agent sessions follows the last
   live row rather than being pinned to the bottom edge of the window.
 - There is no draggable divider, section-height setting, keyboard section
   resizing, fixed split ratio, or independent section scrollbar. Window resizing
   changes the shared viewport while both sections remain reachable.
-  A theme-aware, noninteractive separator remains above the Recent Sessions
+  A theme-aware, noninteractive separator remains above the Recent agent sessions
   heading in both expanded and collapsed states.
-- Recent Sessions has a keyboard-accessible expand/collapse heading exposing its
+- Recent agent sessions has a keyboard-accessible expand/collapse heading exposing its
   expanded state to UI Automation. It is initially expanded, preserving the
   existing visible-session behavior. Expanded session rows have no additional
   indentation beyond their existing provider-icon and metadata alignment.
-  Collapsing this section does not leave Agents, clear shared search, delete
-  sessions, or close agent tabs. Its action tooltip says **Expand recent sessions**
-  or **Collapse recent sessions**, matching the current expanded state.
+  Collapsing this section does not clear shared search, delete sessions, or close
+  tabs. Its action tooltip says **Expand recent agent sessions** or
+  **Collapse recent agent sessions**, matching the current expanded state.
+  A nonempty global query expands the results and disables manual section
+  collapse without changing the remembered non-search expansion preference.
   Expansion is not selection: the heading retains neutral theme styling rather
   than an accent-colored checked fill, with ordinary hover and pressed feedback.
   Its custom automation peer derives from `ToggleButtonAutomationPeer`, matching
@@ -164,17 +206,13 @@ and focuses ordinary tab search on entry.
   visibility, and existing live-tab/group/pane interactions with the shared
   scroll surface; do not obtain one scrollbar by introducing unbounded nested
   lists.
-- **Unified Search**: There is no separate history search box. The single
-  `SearchTextBox` in the sidebar filters both the upper live agent tabs and the
-  lower history rows concurrently. Entering or leaving Agents does not discard
-  an active search query or activate a search that was closed. The shared search
-  action opens the box explicitly; selecting Agents does not imply searching.
-- In Agents, the search placeholder, automation names, and button tooltip read
-  **Search active and recent agent sessions**; Tabs retains **Search tabs**.
-  Active includes idle open agent sessions, not only currently working agents.
-  The header toggle
-  is disabled while projection controls are blocked, in either direction.
-- Recent Sessions retains its loading, error, and empty-state messages without
+- **Global Search**: There is no separate history search box. The single
+  `SearchTextBox` searches all open tabs and recent agent sessions regardless
+  of the two display preferences. It never rewrites their checked values.
+  Clearing or closing search restores those values immediately.
+- The search placeholder, automation names, and button tooltip read
+  **Search tabs and recent agent sessions**, independent of filters.
+- Recent agent sessions retains its loading, error, and empty-state messages without
   replacing usable retained rows or introducing another scrolling viewport.
   Runtime Narrator/UIA and RTL behavior remain separate validation steps.
 - Exclude only the represented history identity: provider, session ID, source
@@ -190,49 +228,25 @@ and focuses ordinary tab search on entry.
   an unrelated session. Status alone is not identity: an idle or working
   session without a representing open pane remains in the lower section.
 
-## History: restore the entry state and input, best effort
+## Recent-session preference and focus
 
-When transitioning from Tabs to Agents, retain:
-
-- Whether the sidebar was collapsed **before** any expansion needed to show
-  History.
-- The source input location: the Agent Pane chat input or the specific terminal
-  pane, including its particular split.
-- Whether ordinary tab search had keyboard focus, retaining its query.
-
-Do not replace this entry context with the search box when focus moves
-there. When Agents is closed by its shortcut or header toggle, restore the
-remembered sidebar expanded/collapsed state and attempt to restore the source
-input.
-
-If History was opened from focused tab search and the rail remains expanded,
-restore focus to that search box with its query intact. Otherwise:
-
-1. If the source is still visible and focusable, return to that input location,
-   preserving its unsent draft.
-2. If the source has been collapsed, closed, or is otherwise unavailable, fall
-   back to a visible, focusable terminal pane in the current tab.
-3. If no suitable terminal target exists, retain any remaining valid focus and
-   return without a user-facing error, blocking wait, or retry loop.
-
-Do not expand a hidden Agent Pane, create a pane/tab, or resume a session merely
-to recover focus.
-
-**Important:** closing History that originally expanded a collapsed sidebar
-also collapses the sidebar, but this is still a **History close**. It must use
-History's remembered source, not the separate `Ctrl+Shift+S` entry input.
+There is no separate History entry/exit navigation context. Changing its display
+preference does not collapse the rail, clear a query, change the Agents only
+preference, or start a session. New-tab and resume actions retain the chosen
+display preferences. Standard flyout keyboard navigation and checked-state
+automation remain available; the removed heading action is not a tab stop.
 
 ## Sidebar hotkey: enter search and return to input
 
-`Ctrl+Shift+S` navigates between the current input and the sidebar's tab search.
+`Ctrl+Shift+S` navigates between the current input and the sidebar's global search.
 
-- When the sidebar is collapsed, expand it, open ordinary **Search tabs**, and
+- When the sidebar is collapsed, expand it, open **Search tabs and recent agent sessions**, and
   focus its search box. When expanded with focus outside, open/focus the same
   box without collapsing the sidebar.
 - Remember the terminal or Agent chat input used just before this hotkey entry.
   A later entry from another input replaces that best-effort return target.
-  Closing Search tabs with Escape or its button expires the target; opening
-  Search tabs without the hotkey (including its pointer or keyboard button)
+  Closing search with Escape or its button expires the target; opening
+  search without the hotkey (including its pointer or keyboard button)
   starts without a saved hotkey source. A new hotkey entry captures its input
   only after search has opened successfully.
 - When focus is inside the expanded sidebar, collapse it. If the remembered
@@ -244,9 +258,9 @@ History's remembered source, not the separate `Ctrl+Shift+S` entry input.
   display an error, block, or retry indefinitely.
 
 The titlebar's Expand/Collapse button retains its existing visibility behavior;
-it does not itself open tab search. `Ctrl+Shift+S` while History is visible
-does not invoke History's source-restoration path. A subsequent History opening
-captures its own new entry context.
+it does not itself open search. The search hotkey preserves both filter
+preferences, including when recent-session results are visible; there is no
+separate History source-restoration path.
 The public `toggleSidebar` command remains a visibility toggle when invoked
 from the command palette or another non-key source. The titlebar rail toggle
 counts as inside the sidebar for the keybinding's focus policy.
@@ -341,6 +355,34 @@ focus fallback first retains the current visible terminal or Agent input, then
 uses the existing source-shell fallback; this adds no saved focus field,
 selection cache, timer, repair callback or view-model clock.
 
+Sidebar shortcut hints belong to the existing display descriptor, not the
+shared header presentation or canonical horizontal tab. Effective corresponding
+Ctrl+Alt+1..8 bindings use navigation ordinals in the selected All/Agents-only
+filter; Ctrl+Alt+9 targets its last owning tab. Search never renumbers these
+targets, including when a query displays ordinary tabs outside Agents-only scope
+or produces no results. Custom or differently remapped bindings keep their
+canonical meaning. Recognized filter navigation with no eligible owner is
+consumed as a no-op, preserving selection and content without forwarding the
+chord to the shell. An empty query result is not an empty navigation scope.
+Hints use the same effective-binding target evaluator as execution, and advertise a
+chord only for its actual owner. The descriptor retains only resolved tooltip
+and accelerator strings across ordinary presentation sync; projection, tooltip
+changes and settings reload refresh them. Horizontal presentation clears that
+override and retains canonical tab hints and independently owned controls.
+
+`TerminalPage` supplies raw layout, rail, selected-filter and search criteria
+plus a canonical-order snapshot of owner identity, pin/agent state, titles and
+visible metadata/child fields to the data-only `TabListViewModel`. The view model
+derives navigation scope independently of query-dependent display scope,
+ordinary search-field matching, move targets and hint choice; it owns no XAML
+controls. A nonempty global query matches ordinary titles and visible metadata,
+including visible child fields, without changing the selected filter's navigation
+ordinals. Active search, whether empty or nonempty, keeps Move up/down visible
+but disabled. With search closed, Agents-only movement skips hidden ordinary
+neighbors and inserts the whole owner before/after the nearest eligible owner.
+Pin boundaries, canonical public indices, replay, custom remaps and horizontal
+behavior remain unchanged.
+
 Pin state remains shared model data. `TabHeaderControl.ShowPinnedIcon` is an
 appended, view-local property, defaulting to true: the canonical horizontal
 header sets it to false, while newly created sidebar headers retain the default.
@@ -400,9 +442,13 @@ does the color-picker anchor. Rename commits route through that row's current
 canonical tab to `SetTabText`; rename completion uses the existing focus-request
 path. Closing a context menu checks the real row's `InRename` before restoring
 terminal focus.
-Interactive requests reveal the actual row by closing History and expanding a
-collapsed rail through the existing view commands. Filter-hidden rows remain
+Interactive requests reveal the actual row by expanding a collapsed rail through
+the existing view commands, without hiding recent sessions. Filter-hidden rows remain
 unavailable; no invisible native-header fallback is used.
+
+The inline renamer stays at the title's leading edge, including while typing or
+resizing the sidebar. Its maximum width limits the input's size without centering
+it in the wider title column; status icons retain their existing title offset.
 
 Existing WinRT methods retain their ordering and signatures. New members are
 appended. `TabStripDisplayItem.Header` retains its `Object` getter/setter slots,
@@ -433,24 +479,29 @@ elements.
   change. Rebinding changes the displayed chord; unbinding or overriding the
   action hides the obsolete shortcut without leaving an empty gap.
 
-Opening Search tabs with `Ctrl+Shift+S` does not change the separate
-`Ctrl+Shift+/` History shortcut or the ordinary Tab traversal of sidebar items.
+Opening global search with `Ctrl+Shift+S` does not change either checked filter
+preference or the ordinary Tab traversal of sidebar items.
 
 ## Acceptance scenarios
 
 These are required checks for this contract, not claims of completed validation:
 
-- Exercise Agents open/close from both an initially expanded and an initially
-  collapsed sidebar, using the shortcut and header toggle.
-- Check that open agent tabs stay in the upper scrollable section and history
-  stays in the lower scrollable section, separated by the draggable/keyboard-navigable
-  splitter.
+- Exercise all four filter combinations, with pointer and remapped keyboard
+  actions. Verify a static Tabs heading and standard checked menu automation.
+- Check that open tabs and recent sessions remain reachable in the shared
+  scrolling viewport through window shrinking/growing, section collapse, group
+  expansion, and keyboard navigation.
 - Check that only identity-matched represented sessions are absent from history,
   and unattached idle sessions remain available.
-- Check that entering search queries in the single sidebar search box filters
-  both open agent tabs and history rows concurrently.
-- For both entry states, verify restoration to Agent Pane chat and to the exact
-  originating terminal split when each remains available.
+- Check that a nonempty shared search includes matching shell tabs, agent tabs,
+  and recent sessions regardless of filters. Opening empty search must not
+  override filters.
+- Change filters during search, then clear and close the query separately.
+  Verify restoration of the exact checked preferences, not default values.
+- Verify existing recent-row activation and live tab/group/pane
+  actions remain available when their rows are visible.
+- For sidebar-hotkey entry from collapsed and expanded rails, verify restoration
+  to Agent Pane chat and the exact originating terminal split when available.
 - Repeat with an unavailable source and verify the visible-terminal fallback,
   unchanged session data/drafts, and nonblocking behavior.
 - Verify that `Ctrl+Shift+S` from either collapsed or expanded/outside focus

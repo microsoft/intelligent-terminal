@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -496,6 +496,14 @@
   <data name="TogglePaneZoomCommandKey" xml:space="preserve">
     <value>Ťöģĝł℮ рªńέ żθθm !!! !</value>
   </data>
+  <data name="ToggleSidebarAgentsOnlyCommandKey" xml:space="preserve">
+    <value>[Ţöĝĝļé åĝéñţ-öñļý šïďéƀåŕ ƒïļţéŕ !!!!!!!!!!]</value>
+    <comment>Command that toggles whether the sidebar shows only open AI-agent tabs. It does not change the independent Recent agent sessions option. Global sidebar search includes all tabs regardless of this preference.</comment>
+  </data>
+  <data name="ToggleSidebarRecentAgentSessionsCommandKey" xml:space="preserve">
+    <value>[Ţöĝĝļé ŕéçéñţ åĝéñţ šéššïöñš ïñ šïďéƀåŕ !!!!!!!!!!!!!]</value>
+    <comment>Command that toggles the Recent agent sessions section in the sidebar without changing the independent Agents only filter. Recent sessions are also included while a global search query is present.</comment>
+  </data>
   <data name="TogglePaneReadOnlyCommandKey" xml:space="preserve">
     <value>Ŧōĝğľé ρåŋê яэãď-όńļу моđě !!! !!! !</value>
   </data>
@@ -992,4 +1000,8 @@
 <data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>Toggle pane visibility</value></data><data name="ToggleSidebarCommandKey" xml:space="preserve"><value>[Ţôğğļê šîđêƀåŕ !!!]</value><comment>A command that shows or collapses the vertical tabs sidebar.</comment></data><data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>Show Terminal Protocol Info</value></data><data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Open AI assistant sessions list</value></data><data name="PromptActionArgumentLocalized" xml:space="preserve"><value>Prompt</value></data><data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Focus AI assistant pane</value></data><data name="TriggerAutofixCommandKey" xml:space="preserve"><value>Trigger autofix</value></data><data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Toggle AI assistant</value></data><data name="BugReportCommandKey" xml:space="preserve"><value>Report a bug (collect logs)</value></data>  <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>Open background agent in a new tab</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="AgentProfileGeneratorDisplayName" xml:space="preserve">
+    <value>ÅÏ Åģëñŧš !!!</value>
+    <comment>Display name of the native AI agent profile generator source shown in Settings > Extensions. This source generates profiles for installed native AI agent command-line applications.</comment>
+  </data>
 </root>

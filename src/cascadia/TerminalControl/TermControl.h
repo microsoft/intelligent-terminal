@@ -71,6 +71,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void PasteTextFromClipboard();
         void EnableAgentPasteShortcutFallback(bool enabled) noexcept { _agentPasteShortcutFallbackEnabled = enabled; }
         void EnableAgentMouseWheelZoom(bool enabled) noexcept { _agentMouseWheelZoomEnabled = enabled; }
+        void EnableAgentRightClickContextMenu(bool enabled);
         void SelectAll();
         bool ToggleBlockSelection();
         void ToggleMarkMode();

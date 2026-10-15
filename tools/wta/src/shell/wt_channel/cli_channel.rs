@@ -616,6 +616,16 @@ impl Drop for CliChannel {
     }
 }
 
+fn listener_command(wtcli: &str, parent_pid: &str, ready_token: &str) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(wtcli);
+    command
+        .args(managed_listener_args(parent_pid, ready_token))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    command
+}
+
 impl CliChannel {
     #[cfg(test)]
     pub(crate) fn with_test_executable(wtcli_path: String) -> Self {
@@ -684,12 +694,7 @@ impl CliChannel {
                     return;
                 }
 
-                let mut command = tokio::process::Command::new(&wtcli);
-                command
-                    .args(managed_listener_args(&parent_pid_arg, &ready_token))
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .kill_on_drop(true);
+                let mut command = listener_command(&wtcli, &parent_pid_arg, &ready_token);
                 let mut child = match command.spawn() {
                     Ok(child) => child,
                     Err(error) => {
@@ -1243,6 +1248,29 @@ impl WtChannel for CliChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn passive_transport_listener_uses_existing_only() {
+        let command = listener_command("wtcli.exe", "42", "wta-42");
+        let arguments: Vec<_> = command
+            .as_std()
+            .get_args()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            arguments,
+            [
+                "--json",
+                "listen",
+                "--existing-only",
+                "--parent-pid",
+                "42",
+                "--ready-token",
+                "wta-42",
+            ]
+        );
+    }
 
     #[test]
     fn sidebar_activation_distinguishes_transport_uncertainty_from_rejection() {

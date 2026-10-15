@@ -238,7 +238,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // a separate project and can't include TerminalApp headers.
         std::wstring _ResolveEffectiveAcpAgentCmdline() const;
 
-        static bool _IsAgentInstalled(const wchar_t* name);
         static bool _IsKnownAgent(const winrt::hstring& id);
         static winrt::hstring _DeriveId(const winrt::hstring& command);
         Editor::AgentEntry _CreateCustomAgentEntry(

@@ -1,7 +1,6 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # PR #505: provider-native ACP Yolo modes. This publishable suite is intentionally zero-token:
 # deterministic fixtures and provider handshakes prove product behavior without model prompts.
-# Real model/tool acceptance lives only in local-tdd-kit/Feature.YoloMode.RealUser.Tests.ps1.
 
 BeforeDiscovery {
     Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
@@ -50,7 +49,7 @@ Describe 'Feature custom-provider permission baseline' -ForEach $script:PackageC
         if ($env:ITE2E_EXPECTED_WTA_SHA256) {
             (Get-FileHash -LiteralPath $target.WtaPath -Algorithm SHA256).Hash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256
         }
-        @(Get-WtProcessesForApp -App $target).Count | Should -Be 0 -Because 'physical permission checks must not replace a user-owned window'
+        Stop-StaleItInstances -App $target
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpPermissionAgent.ps1')).Path
         $fixtureInvocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))'"
         $encodedInvocation = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureInvocation))

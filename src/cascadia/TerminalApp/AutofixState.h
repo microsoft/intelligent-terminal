@@ -19,4 +19,9 @@ namespace TerminalApp::Autofix
                state == State::Pending ||
                state == State::Review;
     }
+
+    [[nodiscard]] constexpr bool ShouldShowDiagnostics(const State state, const bool detectionEnabled) noexcept
+    {
+        return detectionEnabled && HasDiagnostics(state);
+    }
 }

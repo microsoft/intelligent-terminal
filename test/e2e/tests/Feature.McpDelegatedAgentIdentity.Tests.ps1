@@ -12,15 +12,14 @@
 Describe 'Feature: MCP delegated agent identity' -Tag @('Feature', 'McpDelegatedAgentIdentity') {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\SidebarExpansionEvents.ps1')
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
         $script:app = $null
         $script:ownsConfig = $false
         if ($env:ITE2E_PACKAGE -ne 'Dev') { throw 'MCP delegated identity requires explicit Dev selection.' }
         $script:target = Resolve-ItApp -Package Dev
-        if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
-            throw 'Refusing to adopt or close existing Dev processes.'
-        }
+        Stop-StaleItInstances -App $script:target
         $head = (& git -C (Join-Path $PSScriptRoot '..\..\..') rev-parse HEAD).Trim()
         if ($LASTEXITCODE -ne 0 -or -not $head -or -not $env:ITE2E_SOURCE_COMMIT -or
             -not $env:ITE2E_SOURCE_COMMIT.StartsWith($head, [StringComparison]::Ordinal)) {
@@ -106,12 +105,9 @@ Describe 'Feature: MCP delegated agent identity' -Tag @('Feature', 'McpDelegated
         }
         function Set-IdentityView {
             param([bool]$Agents)
-            $expected = if ($Agents) { 'Agents' } else { 'Tabs' }
-            if ((Get-IdentityElement VerticalTabsHeader).Current.Name -ne $expected) {
-                Invoke-UiClick -App $script:app -Selector VerticalTabsHeaderButton | Out-Null
-            }
+            Set-TestSidebarScope -App $script:app -AgentsOnly $Agents -Recent $Agents
             Wait-Until -TimeoutSec 10 -Because 'requested sidebar projection is visible' -Condition {
-                (Get-IdentityElement VerticalTabsHeader).Current.Name -eq $expected
+                (Get-IdentityElement VerticalTabsHeader).Current.Name -eq 'Tabs'
             } | Out-Null
         }
         function Get-IdentityRows {

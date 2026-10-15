@@ -47,11 +47,15 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         SetupPhase::Reconnecting => {
             lines.push(Line::from(vec![
                 Span::styled(
-                    t!(
-                        "setup.status.connecting_agent",
-                        agent = &setup.preflight.display_name
-                    )
-                    .into_owned(),
+                    if app.acp_authentication_pending() {
+                        t!("auth.waiting_for_authorization", spinner = "").into_owned()
+                    } else {
+                        t!(
+                            "setup.status.connecting_agent",
+                            agent = &setup.preflight.display_name
+                        )
+                        .into_owned()
+                    },
                     Style::new().fg(Color::Reset),
                 ),
                 Span::raw("  "),
@@ -79,6 +83,33 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     if setup.is_busy() {
+        if app.acp_authentication_pending() {
+            lines.push(Line::from(Span::styled(
+                t!("auth.browser_wait_hint").into_owned(),
+                DIM_TEXT,
+            )));
+            if let Some(url) = app.acp_authentication_browser_url() {
+                if let Some((feedback, failed)) = app.acp_authentication_browser_feedback() {
+                    lines.push(Line::from(Span::styled(
+                        feedback,
+                        if failed {
+                            Style::new().fg(Color::Red)
+                        } else {
+                            DIM_TEXT
+                        },
+                    )));
+                }
+                lines.push(Line::from(Span::styled(
+                    t!("auth.browser_link_hint").into_owned(),
+                    DIM_TEXT,
+                )));
+                // Keep actions above the URL so they stay visible in short panes.
+                lines.push(Line::from(Span::styled(
+                    url,
+                    Style::new().fg(SELECTED_COLOR),
+                )));
+            }
+        }
         let paragraph = Paragraph::new(lines)
             .alignment(crate::rtl::text_alignment())
             .wrap(ratatui::widgets::Wrap { trim: false });
@@ -98,6 +129,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 format!("  {}", t!("setup.option.install_hint")),
             ),
             SetupOption::SignIn { display_name, .. } => (
+                t!("setup.option.signin", agent = display_name.as_str()).into_owned(),
+                String::new(),
+            ),
+            SetupOption::Authenticate { display_name, .. } => (
                 t!("setup.option.signin", agent = display_name.as_str()).into_owned(),
                 String::new(),
             ),

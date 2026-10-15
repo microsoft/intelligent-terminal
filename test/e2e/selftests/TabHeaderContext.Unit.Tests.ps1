@@ -488,20 +488,21 @@ Describe 'Evidence-specific point-aware overlay predicate' -Tag 'Unit' {
 }
 
 Describe 'Modern Agents surface fixture contract' -Tag 'Unit' {
-    It 'uses native header and History identities without restoring the removed toolbar or enabling search' {
+    It 'uses standard scope filters and static header identities without restoring the removed toolbar or enabling search' {
         $refresh = Read-FixtureAst Feature.SessionRefresh
         $refresh.Extent.Text | Should -Not -Match 'TabHistoryButton|HistorySearchTextBox'
-        $refresh.Extent.Text | Should -Match 'VerticalTabsHeaderButton'
-        $refresh.Extent.Text | Should -Match 'Test-NativeVisible -Id HistoryList'
-        $refresh.Extent.Text | Should -Match "Should -Be 'Agents'"
+        $refresh.Extent.Text | Should -Not -Match 'VerticalTabsHeaderButton'
+        $refresh.Extent.Text | Should -Match 'Set-TestSidebarScope'
+        $refresh.Extent.Text | Should -Match 'Test-NativeVisible -Id HistoryHeaderButton'
+        $refresh.Extent.Text | Should -Match "Should -Be 'Tabs'"
         $refresh.Extent.Text | Should -Match 'Test-NativeVisible -Id SearchTextBox \| Should -BeFalse'
     }
 
-    It 'keeps the physical Ctrl Shift slash accelerator and native Agents oracle' {
+    It 'keeps the physical Ctrl Shift slash accelerator and static Tabs with native history oracle' {
         $hotkeys = Read-FixtureAst Feature.AgentHotkeys
         $hotkeys.Extent.Text | Should -Match 'Send-WtWindowKey -App \$App -Vk 0xBF -Ctrl -Shift -RequireForeground'
         $hotkeys.Extent.Text | Should -Match "AutomationIdProperty, 'VerticalTabsHeader'"
-        $hotkeys.Extent.Text | Should -Match "header.Current.Name -eq 'Agents'"
+        $hotkeys.Extent.Text | Should -Match "header.Current.Name -eq 'Tabs'"
     }
 }
 

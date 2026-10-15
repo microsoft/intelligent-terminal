@@ -1,12 +1,10 @@
 //! Explicit per-tab turn lifecycle.
 //!
-//! Source of truth for "is the agent doing something for us right now, and
-//! if so what?". Replaces the ~10 scattered boolean / Option fields that
-//! previously encoded the same state implicitly. See
+//! Tracks active work independently of queued input. See
 //! `doc/specs/turn-state-refactor.md`.
 //!
 //! This module is pure data + small pure helpers. All transitions and side
-//! effects live on `App` methods in `app.rs`.
+//! effects live on `App` methods in `app_turn.rs`.
 
 use crate::coordinator::RecommendationSet;
 use crate::turn_context::TurnContext;
@@ -14,7 +12,7 @@ use crate::turn_context::TurnContext;
 /// Per-tab turn state.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TurnState {
-    /// No turn in flight. Input box accepts new prompts.
+    /// No turn in flight. A queued request may start.
     Idle,
     /// Prompt sent over ACP; awaiting first chunk.
     Submitted(SubmittedPrompt),
@@ -30,7 +28,7 @@ pub enum TurnState {
         end_pending: bool,
     },
     /// The user requested cancellation, but the ACP prompt has not reached
-    /// its terminal boundary yet. New prompts remain blocked and all
+    /// its terminal boundary yet. New ACP turns remain blocked and all
     /// turn-scoped updates are discarded until the correlated cancellation
     /// settlement arrives.
     Cancelling { prompt_id: u64 },
@@ -55,7 +53,7 @@ pub struct SubmittedPrompt {
 /// Extra context attached to autofix-initiated turns.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AutofixContext {
-    /// `App.autofix_generation` at submit time. Compared against current
+    /// The tab's autofix generation at dispatch time. Compared against current
     /// generation on every chunk / end event; mismatch means a newer autofix
     /// (or an Esc cancel) has invalidated this turn — drop the response.
     pub generation: u64,

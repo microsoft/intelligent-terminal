@@ -18,7 +18,7 @@ namespace winrt::TerminalApp::implementation
         InitializeComponent();
 
         const auto keepRunningIcon = HeaderKeepRunningIcon();
-        const auto keepRunningName = RS_(L"KeepTabRunningText");
+        const auto keepRunningName = RS_(L"HeadlessModeOnName");
         const auto keepRunningHelp = RS_(L"KeepTabRunningToolTip");
         Windows::UI::Xaml::Automation::AutomationProperties::SetName(keepRunningIcon, keepRunningName);
         Windows::UI::Xaml::Automation::AutomationProperties::SetHelpText(keepRunningIcon, keepRunningHelp);

@@ -224,8 +224,8 @@
     <comment>Tooltip for the sidebar toolbar button that opens display options, including which tab details are shown and any available tab filters. This button does not itself apply a filter.</comment>
   </data>
   <data name="VerticalTabsFilterSection.Text" xml:space="preserve">
-    <value>Filtro</value>
-    <comment>Section heading above the controls that filter which tabs are shown in the sidebar.</comment>
+    <value>Mostra</value>
+    <comment>Section heading above independent sidebar display options: show only agent tabs, or also show recent agent sessions.</comment>
   </data>
   <data name="VerticalTabsFilterAllTabs.Text" xml:space="preserve">
     <value>Tutte le schede</value>
@@ -284,8 +284,8 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Sessioni recenti</value>
-    <comment>Collapsible noun heading below open agent tabs in the Agents sidebar. Includes prior agent sessions, kept-running background tabs, sessions in other tracked windows, and external sessions not represented by the current window's open agent panes. This is not an archive-only list.</comment>
+    <value>Sessioni recenti degli agenti</value>
+    <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
     <value>Agenti AI</value>
@@ -1540,13 +1540,25 @@ Per tutte le opzioni disponibili, esegui 'wt new-tab --help'.</value>
     <value>Agente · Connessione in corso</value>
     <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
+  <data name="SplitProfileUnavailableTitle" xml:space="preserve">
+    <value>Profilo per la divisione non disponibile</value>
+    <comment>Title of a warning shown when a configured default split profile is missing or hidden.</comment>
+  </data>
+  <data name="SplitProfileUnavailableMessage" xml:space="preserve">
+    <value>Il profilo configurato per la divisione non è disponibile. Verrà usato il profilo predefinito globale. Per cambiare il profilo di destinazione della divisione, modifica defaultSplitProfile di questo profilo in settings.json.</value>
+    <comment>Warning for a default split target that is missing, hidden, or invalid. Recovery requires editing the profile's JSON in settings.json; there is no Settings UI control for defaultSplitProfile. {Locked="defaultSplitProfile"} {Locked="settings.json"}</comment>
+  </data>
   <data name="NotificationIconRestoreKeptTab" xml:space="preserve">
     <value>Ripristina</value>
     <comment>Command in the notification-area menu that brings a background tab and its still-running terminal panes back into a window. It does not restart the processes or restore a file backup.</comment>
   </data>
   <data name="KeepTabRunningText" xml:space="preserve">
-    <value>Mantieni la scheda in esecuzione</value>
-    <comment>Command at the top of a vertical terminal tab's context menu that enables keeping all panes running after the tab or window is closed. Also labels the tab's keep-running status indicator. This does not pin the tab or save it for a restart.</comment>
+    <value>Attiva la modalità senza interfaccia</value>
+    <comment>Command at the top of a vertical terminal tab&apos;s context menu that enables headless mode. Headless mode keeps all existing panes running after the tab or window is closed; it does not immediately hide or pin the tab.</comment>
+  </data>
+  <data name="HeadlessModeOnName" xml:space="preserve">
+    <value>Modalità senza interfaccia attivata</value>
+    <comment>Accessibility name for the status icon shown on a terminal tab when headless mode is enabled. Describes the current state, not a command. Headless mode keeps existing panes running after the tab or window is closed.</comment>
   </data>
   <data name="PinTabText" xml:space="preserve">
     <value>Fissa scheda</value>
@@ -1572,19 +1584,27 @@ Per tutte le opzioni disponibili, esegui 'wt new-tab --help'.</value>
   </data>
   <data name="KeepTabRunningToolTip" xml:space="preserve">
     <value>Mantieni questa scheda in esecuzione in background dopo la chiusura della scheda o della finestra.</value>
-    <comment>Tooltip and accessibility help for Keep tab running. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
+    <comment>Tooltip and accessibility help for Turn on headless mode. Includes shell panes and the AI assistant; their current processes and sessions stay alive, rather than restarting later.</comment>
   </data>
   <data name="TurnOffKeepTabRunningText" xml:space="preserve">
-    <value>Disattiva il mantenimento in esecuzione</value>
-    <comment>Command shown instead of Keep tab running when that tab already has keep running enabled. It only turns off the background-running behavior; it does not close the tab or stop its current processes immediately.</comment>
+    <value>Disattiva la modalità senza interfaccia</value>
+    <comment>Command shown instead of Turn on headless mode when that tab already has headless mode enabled. It only turns off the background-running behavior; it does not close the tab or stop its current processes immediately.</comment>
   </data>
   <data name="TurnOffKeepTabRunningToolTip" xml:space="preserve">
     <value>Questa scheda non rimarrà più in esecuzione dopo la chiusura della scheda o della finestra.</value>
-    <comment>Tooltip and accessibility help for Turn off keep running. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
+    <comment>Tooltip and accessibility help for Turn off headless mode. After this action, closing the tab or its window closes its panes normally instead of retaining them in the background. The current tab and processes are not closed by this action.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusIdle" xml:space="preserve">
     <value>Inattivo</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
+  </data>
+  <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
+    <value>In uso</value>
+    <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
+  </data>
+  <data name="VerticalTabsHistoryInUseToolTip" xml:space="preserve">
+    <value>Questa sessione è aperta in un’altra applicazione.</value>
+    <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
     <value>Attivo</value>
@@ -1640,7 +1660,7 @@ Per tutte le opzioni disponibili, esegui 'wt new-tab --help'.</value>
   </data>
   <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
     <value>Chiudi tutte le schede in esecuzione in background</value>
-    <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by Keep tab running and terminates their panes and processes. Does not close tabs still in a window or only turn off keep running.</comment>
+    <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by headless mode and terminates their panes and processes. Does not close tabs still in a window or only turn off headless mode.</comment>
   </data>
   <data name="PaneProgressStatusNormal" xml:space="preserve">
     <value>Avanzamento</value>
@@ -1659,20 +1679,12 @@ Per tutte le opzioni disponibili, esegui 'wt new-tab --help'.</value>
     <comment>Accessibility status for temporarily paused OSC 9;4 progress. A localized percentage is appended; this does not mean waiting for user input or approval.</comment>
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
-    <value>Cerca sessioni attive e recenti degli agenti</value>
-    <comment>Shared search placeholder, tooltip, and accessible name in the Agents sidebar. Searches both open AI-agent tabs, including idle open sessions, and the Recent Sessions section. Active does not mean only currently working. Keep the separate Tabs view search labels unchanged.</comment>
+    <value>Cerca schede e sessioni recenti degli agenti</value>
+    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
-    <value>{0} · altra finestra</value>
+    <value>{0} · In un’altra finestra</value>
     <comment>Status annotation for a live agent session attached to a different Intelligent Terminal window. {0} is the already-localized activity status, such as Working or Idle. Keep the status first. This does not mean another tab, WSL distro, historical session, or detached background tab.</comment>
-  </data>
-  <data name="VerticalTabsHistoryRestoreBackgroundTab" xml:space="preserve">
-    <value>Ripristina scheda in background</value>
-    <comment>Action for a live agent session in a kept-running background tab. Restores the entire original tab, with all its panes, to the foreground. This does not resume a new conversation or focus another visible window.</comment>
-  </data>
-  <data name="VerticalTabsHistorySwitchOtherWindow" xml:space="preserve">
-    <value>Passa a un’altra finestra</value>
-    <comment>Action for a live agent session attached to another visible Intelligent Terminal window. Brings that existing window and original tab/pane to the foreground without creating or resuming a session.</comment>
   </data>
   <data name="VerticalTabsSwitchToAgents" xml:space="preserve">
     <value>Passa ad Agenti AI</value>
@@ -1683,12 +1695,12 @@ Per tutte le opzioni disponibili, esegui 'wt new-tab --help'.</value>
     <comment>Tooltip and accessible action name of the sidebar header button while Agents is selected. One click switches to the Tabs view; it does not change between sidebar and horizontal tab layouts.</comment>
   </data>
   <data name="VerticalTabsExpandRecentSessions" xml:space="preserve">
-    <value>Espandi sessioni recenti</value>
-    <comment>Tooltip for expanding the Recent Sessions section inside the Agents sidebar. Expansion shows its session rows without leaving Agents or resuming a session.</comment>
+    <value>Espandi sessioni recenti degli agenti</value>
+    <comment>Tooltip for expanding the Recent agent sessions section in the sidebar. This shows session rows without resuming a session.</comment>
   </data>
   <data name="VerticalTabsCollapseRecentSessions" xml:space="preserve">
-    <value>Comprimi sessioni recenti</value>
-    <comment>Tooltip for collapsing the Recent Sessions section inside the Agents sidebar. Collapse hides its rows without closing agents or deleting sessions.</comment>
+    <value>Comprimi sessioni recenti degli agenti</value>
+    <comment>Tooltip for collapsing the Recent agent sessions section in the sidebar. This hides rows without closing agents or deleting sessions.</comment>
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Un modo più intelligente di gestire le schede</value>

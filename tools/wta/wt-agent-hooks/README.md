@@ -1,7 +1,7 @@
 # wt-agent-hooks
 
 Static plugin/extension bundle that forwards CLI agent lifecycle events from
-**Claude Code**, **Copilot CLI**, **Codex CLI**, **Gemini CLI**, and **OpenCode**
+**Claude Code**, **Copilot CLI**, **Codex CLI**, **Gemini CLI**, **OpenCode**, and **Antigravity**
 to Windows Terminal (WTA)
 via `wtcli`. This lets the WTA agent pane display real-time tool
 use, prompts, and session events from any agent CLI session running in another
@@ -32,14 +32,24 @@ wt-agent-hooks/
 │   └── wt-agent-hooks/hooks/hooks.json     # native hook commands
 ├── opencode/                                # copied to OpenCode's global plugins dir
 │   ├── plugin.json                          # managed bundle version
-│   └── wt-agent-hooks.js                    # OpenCode V1 plugin
+│   └── wt-agent-hooks.js                    # OpenCode V1/V2 plugin
 └── hook-debug/                             # dev utility, not part of the install bundle
     └── state-logger.ps1
 ```
 
 Every integration dispatches through the native `wtcli agent-hook` command,
 invoked directly from `hooks.json` with no script or batch launcher in between.
-Claude and Copilot share the same plugin manifest and event schema.
+Claude and Copilot share the same non-version plugin metadata and event schema.
+
+Hook versions are independent per provider. Bump only the manifest for the
+provider whose installed payload changes; for Claude and Copilot, also update
+that provider's marketplace plugin version. Keep the already-shipped versions
+of unchanged providers: do not roll them back to undo a coordinated release.
+Update only that provider's exact expected release version in the version-policy
+test with its manifest; unrelated providers keep their own expected versions.
+Reconciliation compares each provider's installed version against its own
+bundle version. A JavaScript-only OpenCode change still needs a version bump
+because its installed plugin is a copy, not a live link to the bundle.
 
 ## How install works
 
@@ -92,6 +102,71 @@ Bundle resolution chain (first hit wins, see
 
 ## Event vocabulary
 
+### Antigravity CLI
+
+The `antigravity` subtree contains a native `plugin.json`, `hooks.json`, and a
+separate ownership/version marker. `wta hooks install --cli antigravity` invokes
+`agy plugin install` and verifies the copied files under
+`~/.gemini/config/plugins/wt-agent-hooks`; it commits the version marker last.
+The status reader combines `import_manifest.json` and the plugin's enablement in
+`config.json`. Existing `local-install` registrations are also recognized when
+the plugin has an Intelligent Terminal ownership marker or managed descriptor.
+These legacy plugins are uninstalled through `agy` before reinstalling, because
+native install otherwise retains the old entry alongside its new registration.
+The same migration repairs a partial reinstall with one entry from each source;
+duplicate entries from the same source or foreign sources are rejected.
+Ordinary upgrades use native install directly. Uninstall checks
+ownership and invokes the native plugin manager, then verifies removal. If the
+native CLI is absent, cleanup fails explicitly without rewriting shared JSON or
+discarding managed files. This does not claim a cross-provider filesystem transaction.
+
+`PreInvocation` maps to `agent.prompt.submit`, `PreToolUse` to
+`agent.tool.starting`, and `Stop` to `agent.stop` only when `fullyIdle` is true;
+provider errors become `agent.error`. The native bridge projects `conversationId`
+and the first `workspacePaths` entry onto the shared session/cwd fields and drops
+transcript, model, artifact and injected-content metadata. Only callbacks with a
+CLI transcript are accepted, because the upstream plugin directory is also shared
+by other Antigravity frontends. The ordinary `WT_SESSION`/COM gate still suppresses
+shared ACP processes.
+
+Antigravity's Windows hook executor splits the command into argv without stripping
+quote characters. Keep the script after PowerShell's `-Command` **unquoted**:
+PowerShell joins those arguments into a script. Quoting the entire script instead
+makes PowerShell evaluate a string literal and print the script rather than execute
+it. This uses the same readable `try`/`catch` guard as the Copilot, Codex, and Gemini
+hooks, with no Base64 or additional launcher:
+
+```text
+powershell.exe -NoLogo -NoProfile -NonInteractive -Command try { wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } catch { }; [Console]::Out.WriteLine('{}'); exit 0
+```
+
+Antigravity parses hook responses as JSON even though `wtcli agent-hook` itself is
+silent. `PreInvocation` and `Stop` return `{}` without injecting steps or requesting
+that the execution loop continue. `PreToolUse` requires a permission decision:
+return `{"decision":"ask"}` so the provider retains normal approval and existing
+"Always Allow" grants. An empty response denies tools, while `"allow"` bypasses
+their approval. Do not return either for `PreToolUse`, including when `wtcli.exe`
+is unavailable.
+
+The executable bundle tests reproduce the provider's Windows argv dispatch, rather
+than incorrectly treating the command as a PowerShell or Bash shell expression.
+The `antigravity-wsl` bundle uses a Bash launch guard and single-quotes the readable
+PowerShell script so Bash preserves its inner double quotes.
+Child-scoped `WSLENV` propagation preserves the distro and actual hook cwd for
+callbacks without mounted-workspace metadata.
+Its guard returns the same event-specific response even outside Terminal or when
+Windows interop is unavailable. The bridge never automatically grants provider
+tool permissions. WSL plugins are installed separately
+with the in-distro `agy plugin install`, not by host-profile reconciliation.
+The bridge uses that source metadata, or queries only the exact pane's shell
+metadata (no terminal text), so WSL sessions keep their distro even when a
+delegated CLI starts without an interactive shell prompt. No dedicated session-start/end or notification hook
+exists in the exercised API; shell/pane lifecycle supplies exit detection.
+
+The ordinary CLI and native ACP server use different default history stores.
+Do not treat an ACP session ID as a CLI `--conversation` ID or claim cold-start
+CLI history enumeration from ACP `session/list`.
+
 WTA normalises hook events from all supported CLIs into a single set of topic
 names. Event vocabularies differ per CLI:
 
@@ -140,11 +215,34 @@ hook, so the CLI blocks on it. Turn-level Working is unaffected because
 `UserPromptSubmit` already maps to `ToolStarting`; what is given up is the
 tool's name in the session row, not its status.
 
-OpenCode uses its V1 plugin API rather than a hook manifest. The plugin maps
-`session.created/updated`, `chat.message`, `tool.execute.before`,
-`permission.*`, `question.*`, `session.idle/error/deleted`, and `dispose` to
-the same WTA topics. Child sessions with `parentID` are ignored so OpenCode's
-internal subagents do not create extra rows.
+OpenCode uses a plugin definition with a V1 `server()` entrypoint and a V2
+`setup()` entrypoint rather than a hook manifest. Both forward prompt, tool,
+session lifecycle, and permission/question events to the same WTA topics.
+Child sessions with `parentID` are ignored so OpenCode's internal subagents
+do not create extra rows.
+OpenCode's explicit session titles reach both the helper and master registry;
+rename events replace the previous title, while prompts without a title retain
+it. Other providers keep their existing title/history behavior.
+
+The V1 server path has been checked with OpenCode 1.17.20 and 1.18.16; older
+loaders that accept only function exports are not supported. The V2 entrypoint
+targets the `id`/`setup()` plugin API; the original loading report used
+OpenCode 2.0.22. Automated real-server evidence records the CLI version actually
+tested and does not imply V2 acceptance when run with a V1 CLI. Entry selection
+belongs to OpenCode's loader, not a version probe inside this plugin.
+Hook attribution uses the server process's inherited
+`WT_SESSION`; location filtering does not establish ownership for multiple
+Terminal clients sharing one external server.
+
+Run the dependency-free Windows component regressions from the repository root:
+
+```powershell
+node --test test\e2e\selftests\OpenCodeHooks.test.mjs
+```
+
+These execute both entrypoints with controlled SDK inputs and capture bridge
+requests. The packaged delivery tests are documented in `test\e2e\README.md`;
+controlled SDK inputs do not substitute for validation of a real V2 loader.
 
 OpenCode's `question` tool is recognized as a user-input tool by both the native
 hook bridge and WTA. Its `agent.tool.starting` event and the `agent.notification`

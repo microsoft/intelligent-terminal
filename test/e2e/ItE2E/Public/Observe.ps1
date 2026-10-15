@@ -113,6 +113,8 @@ function Start-WtEventListener {
     .PARAMETER WaitForReady
         Wait for wtcli to confirm Subscribe before returning. The internal readiness
         marker is removed from the buffered events so callers see only product events.
+    .PARAMETER ExistingOnly
+        Require an already-running Terminal and a previously resolved COM class.
     #>
     [CmdletBinding()]
     param(
@@ -120,13 +122,18 @@ function Start-WtEventListener {
         [string]$EventFilter,
         [string]$SessionId,
         [switch]$SkipAuthenticate,
-        [switch]$WaitForReady
+        [switch]$WaitForReady,
+        [switch]$ExistingOnly
     )
     process {
-        if (-not $App.ComClsid) { Resolve-WtComClsid -App $App | Out-Null }
+        if (-not $App.ComClsid) {
+            if ($ExistingOnly) { throw 'Existing-only listeners require a resolved COM class without activating the package.' }
+            Resolve-WtComClsid -App $App | Out-Null
+        }
         $args = @('--json')
         if ($SkipAuthenticate) { $args += '--skip-authenticate' }
         $args += 'listen'
+        if ($ExistingOnly) { $args += '--existing-only' }
         $readyToken = [guid]::NewGuid().ToString('N')
         if ($WaitForReady) { $args += @('--ready-token', $readyToken) }
         if ($SessionId) { $args += @('-t', $SessionId) }

@@ -19,6 +19,20 @@
 
 namespace Microsoft::Terminal::AgentAvailability
 {
+    inline bool IsAgentCliInstalled(const std::wstring_view agentId)
+    {
+        const std::wstring executable{
+            ::Microsoft::Terminal::Settings::Model::AgentRegistry::CliExecutable(agentId)
+        };
+        wchar_t path[MAX_PATH];
+        if (SearchPathW(nullptr, executable.c_str(), L".exe", MAX_PATH, path, nullptr) > 0)
+        {
+            return true;
+        }
+        const auto shim = executable + L".cmd";
+        return SearchPathW(nullptr, shim.c_str(), nullptr, MAX_PATH, path, nullptr) > 0;
+    }
+
     struct HostAgentAvailability
     {
         bool nativeCliFound{ false };

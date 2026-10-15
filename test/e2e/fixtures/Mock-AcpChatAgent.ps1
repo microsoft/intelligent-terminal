@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory)][string]$LogPath,
     [string]$ReleasePromptPath,
     [string]$HistoryPath,
+    [string]$HistoryControlPath,
     [switch]$SupportsImages
 )
 
@@ -22,12 +23,30 @@ function Write-FixtureLog {
     Add-Content -LiteralPath $LogPath -Value "$PID|$Message" -Encoding utf8
 }
 
+function Test-HistoryHeld {
+    if (-not $HistoryControlPath -or -not (Test-Path -LiteralPath $HistoryControlPath)) { return $false }
+    $control = Get-Content -LiteralPath $HistoryControlPath -Raw | ConvertFrom-Json -AsHashtable
+    return $control.mode -eq 'hold' -and [int]$control.pid -eq $PID
+}
+
+function Complete-HistoryRequest {
+    param([Parameter(Mandatory)]$Request)
+    $history = Get-Content -LiteralPath $HistoryPath -Raw | ConvertFrom-Json -AsHashtable
+    Send-AcpMessage @{ jsonrpc = '2.0'; id = $Request.id; result = @{ sessions = @($history.sessions) } }
+    Write-FixtureLog -Message "list-complete|$([DateTimeOffset]::UtcNow.ToString('o'))|$($Request.id)"
+}
+
 $pendingPrompt = $null
-if ($ReleasePromptPath) {
+$pendingHistory = $null
+if ($ReleasePromptPath -or $HistoryControlPath) {
     $reader = [System.IO.StreamReader]::new([Console]::OpenStandardInput(), [Text.Encoding]::UTF8)
     $readTask = $reader.ReadLineAsync()
 }
 while ($true) {
+    if ($pendingHistory -and -not (Test-HistoryHeld)) {
+        Complete-HistoryRequest $pendingHistory
+        $pendingHistory = $null
+    }
     # An opt-in held turn keeps reading ACP, including cancellation, until the test
     # releases it. Ordinary fixture prompts retain their immediate response.
     if ($pendingPrompt -and (Test-Path -LiteralPath $ReleasePromptPath)) {
@@ -50,7 +69,7 @@ while ($true) {
         }
         $pendingPrompt = $null
     }
-    if ($ReleasePromptPath) {
+    if ($ReleasePromptPath -or $HistoryControlPath) {
         if (-not $readTask.Wait(50)) { continue }
         $line = $readTask.GetAwaiter().GetResult()
         $readTask = $reader.ReadLineAsync()
@@ -96,9 +115,18 @@ while ($true) {
                 Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; error = @{ code = -32601; message = 'Method not found' } }
                 break
             }
-            $history = Get-Content -LiteralPath $HistoryPath -Raw | ConvertFrom-Json -AsHashtable
-            Write-FixtureLog -Message "list|$([DateTimeOffset]::UtcNow.ToString('o'))"
-            Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; result = @{ sessions = @($history.sessions) } }
+            Write-FixtureLog -Message "list|$([DateTimeOffset]::UtcNow.ToString('o'))|$($request.id)"
+            if (Test-HistoryHeld) {
+                if ($pendingHistory) {
+                    Write-FixtureLog -Message "duplicate-list|$([DateTimeOffset]::UtcNow.ToString('o'))"
+                    throw 'another history request arrived while the previous request was held'
+                }
+                $pendingHistory = $request
+                Write-FixtureLog -Message "history-held|$([DateTimeOffset]::UtcNow.ToString('o'))|$($request.id)"
+            }
+            else {
+                Complete-HistoryRequest $request
+            }
         }
         'session/close' {
             if (-not $HistoryPath) {

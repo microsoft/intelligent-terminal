@@ -29,6 +29,14 @@ def review_check_fixture(files, text, *, path=None, revision="head", line=1):
 
 
 class StaticAnalysisTests(unittest.TestCase):
+    def test_native_test_host_sources_and_project_are_relevant(self):
+        for suffix in (".xaml", ".cpp", ".h", ".vcxproj"):
+            with self.subTest(suffix=suffix):
+                self.assertTrue(MODULE._is_relevant(
+                    f"src/cascadia/LocalTests_TerminalApp/TestHostApp/Test{suffix}"))
+        self.assertFalse(MODULE._is_relevant("tools/Example.vcxproj"))
+        self.assertNotIn(".vcxproj", MODULE.PATCH_SUFFIXES)
+
     def test_comment_text_is_not_a_trusted_control_name(self):
         source = '<Button AutomationProperties.AccessibilityView="Raw"><FontIcon Glyph="x" /><!-- 2 > 1 --></Button>'
         with self.assertRaisesRegex(ValueError, "existing accessible name source"):
@@ -118,6 +126,40 @@ class StaticAnalysisTests(unittest.TestCase):
 
 
 class PrepareIntegrationTests(unittest.TestCase):
+    def test_test_host_only_changes_require_review(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            host = root / "src/cascadia/LocalTests_TerminalApp/TestHostApp"
+            host.mkdir(parents=True)
+            sources = {
+                "UnitTestApp.xaml": '<Button Content="Open" />\n',
+                "UnitTestApp.xaml.cpp": "void ShowHost() {}\n",
+                "TestHostApp.vcxproj": "<Project />\n",
+            }
+            for name, content in sources.items():
+                (host / name).write_text(content, encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "Base host"], cwd=root, check=True)
+            base = MODULE._git(root, "rev-parse", "HEAD").strip()
+            (host / "UnitTestApp.xaml").write_text(
+                '<Button Content="Open" AutomationProperties.AccessibilityView="Raw" />\n', encoding="utf-8")
+            (host / "UnitTestApp.xaml.cpp").write_text("void ShowHost() { Open(); }\n", encoding="utf-8")
+            (host / "TestHostApp.vcxproj").write_text("<Project><PropertyGroup /></Project>\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "Change only host"], cwd=root, check=True)
+            head = MODULE._git(root, "rev-parse", "HEAD").strip()
+            output = root / "prepared.json"
+            MODULE.prepare(root, base, head, output)
+            prepared = json.loads(output.read_text())
+            self.assertTrue(prepared["relevant"])
+            self.assertEqual(sorted(f"{host.relative_to(root).as_posix()}/{name}" for name in sources),
+                             prepared["changed_files"])
+            self.assertEqual(list(MODULE.REVIEW_CHECK_IDS), prepared["required_review_checks"])
+            self.assertEqual("AXSTATIC001", prepared["static_findings"][0]["rule"])
+
     def test_base_only_policy_and_ui_updates_are_not_pr_changes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1116,6 +1158,16 @@ class ValidationTests(unittest.TestCase):
         self.assertIn(".idl", MODULE.UI_SUFFIXES)
         self.assertNotIn(".idl", MODULE.PATCH_SUFFIXES)
 
+    def test_test_host_review_does_not_expand_publication_paths(self):
+        relative = f"{MODULE.TEST_HOST_ROOT}Test.xaml"
+        path = self.root / relative
+        path.parent.mkdir(parents=True)
+        path.write_text('<Button Content="Open" />\n', encoding="utf-8")
+        subprocess.run(["git", "add", relative], cwd=self.root, check=True)
+        with self.assertRaisesRegex(ValueError, "outside the native UI/test allowlist"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                            self.report([], [relative]))
+
     def test_changed_ambient_configuration_blocks_preparation(self):
         for relative in ("AGENTS.md", ".github/hooks/launch.json", "src/cascadia/TerminalApp/AGENTS.md",
                          "test/accessibility/Invoke-AxeWindowsScan.ps1"):
@@ -1293,7 +1345,7 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertIn("  model: auto", workflow)
-        self.assertIn("max-daily-ai-credits: 100000", workflow)
+        self.assertIn("max-daily-ai-credits: 5000", workflow)
         self.assertEqual(1, workflow.count("max-ai-credits: 500"))
         self.assertEqual(1, workflow.count("max-ai-credits: 30"))
         self.assertIn("timeout-minutes: 15", workflow)

@@ -31,6 +31,15 @@ use std::time::SystemTime;
 
 pub type AgentKey = String;
 
+pub(crate) fn is_safe_cli_resume_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && !value.starts_with("sidekick-")
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+}
+
 /// Canonical pane identity across native GUIDs, WT_SESSION and registry keys.
 /// Preserve non-GUID identifiers used by synthetic panes, apart from case.
 pub(crate) fn pane_key(pane_session_id: &str) -> String {
@@ -46,6 +55,7 @@ pub enum CliSource {
     Copilot,
     Gemini,
     OpenCode,
+    Antigravity,
     Unknown(String),
 }
 
@@ -57,6 +67,7 @@ impl CliSource {
             "copilot" => Self::Copilot,
             "gemini" => Self::Gemini,
             "opencode" => Self::OpenCode,
+            "antigravity" => Self::Antigravity,
             "" => Self::Unknown(String::new()),
             other => Self::Unknown(other.to_string()),
         }
@@ -74,6 +85,7 @@ impl CliSource {
             "copilot" => Some(Self::Copilot),
             "gemini" => Some(Self::Gemini),
             "opencode" => Some(Self::OpenCode),
+            "antigravity" => Some(Self::Antigravity),
             _ => None,
         }
     }
@@ -85,6 +97,7 @@ impl CliSource {
             Self::Copilot => "copilot",
             Self::Gemini => "gemini",
             Self::OpenCode => "opencode",
+            Self::Antigravity => "antigravity",
             Self::Unknown(id) => id.trim(),
         };
         (!id.is_empty()).then(|| id.to_ascii_lowercase())
@@ -120,6 +133,8 @@ pub enum AgentStatus {
     Error,
     Ended,
     Historical,
+    /// Response-only evidence of use without a live IT registration.
+    InUse,
 }
 
 /// 2D session-state model — **activity** dimension.
@@ -138,6 +153,8 @@ pub enum AgentStatus {
 /// variants imply liveness vs. activity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ActivityState {
+    /// The session is in use, but IT does not track its activity.
+    Unknown,
     /// Sitting waiting for input.
     Idle,
     /// Running an autonomous tool.
@@ -165,6 +182,8 @@ pub enum LivenessState {
     Ended,
     /// Reconstructed from on-disk history; no live pane.
     Historical,
+    /// In use without a live IT registration or an authoritative pane binding.
+    InUse,
 }
 
 /// Where this session was first created from, used purely as UX metadata
@@ -318,12 +337,14 @@ impl AgentSession {
     /// Derive the [`ActivityState`] dimension from the legacy
     /// one-dimensional `status` field.
     ///
-    /// For non-Live rows (`Ended`/`Historical`) this returns
+    /// For `InUse` rows this returns [`ActivityState::Unknown`].
+    /// For other non-Live rows (`Ended`/`Historical`) this returns
     /// [`ActivityState::Idle`] — the caller should consult
     /// [`Self::liveness`] first and only read `activity` when
     /// liveness is `Live`.
     pub fn activity(&self) -> ActivityState {
         match self.status {
+            AgentStatus::InUse => ActivityState::Unknown,
             AgentStatus::Working => ActivityState::Working,
             AgentStatus::Attention => ActivityState::Attention,
             AgentStatus::Error => ActivityState::Error,
@@ -341,6 +362,7 @@ impl AgentSession {
             | AgentStatus::Error => LivenessState::Live,
             AgentStatus::Ended => LivenessState::Ended,
             AgentStatus::Historical => LivenessState::Historical,
+            AgentStatus::InUse => LivenessState::InUse,
         }
     }
 }
@@ -653,7 +675,10 @@ impl AgentSessionRegistry {
                 if is_new_entry
                     || matches!(
                         entry.status,
-                        AgentStatus::Ended | AgentStatus::Error | AgentStatus::Historical
+                        AgentStatus::Ended
+                            | AgentStatus::Error
+                            | AgentStatus::Historical
+                            | AgentStatus::InUse
                     )
                 {
                     entry.status = AgentStatus::Idle;
@@ -1287,7 +1312,7 @@ impl AgentSessionRegistry {
                         "alive snapshot bound pane to Live-without-pane row",
                     );
                 }
-                LivenessState::Historical => {
+                LivenessState::Historical | LivenessState::InUse => {
                     entry.status = AgentStatus::Idle;
                     entry.last_activity_at = now;
                     entry.current_tool = None;
@@ -1509,6 +1534,32 @@ impl AgentSessionRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_resume_identifier_grammar_is_bounded_and_shell_safe() {
+        for id in ["session-123", "session_id.part:one", "A", "9"] {
+            assert!(is_safe_cli_resume_id(id), "{id}");
+        }
+        assert!(is_safe_cli_resume_id(&"a".repeat(256)));
+        assert!(!is_safe_cli_resume_id(&"a".repeat(257)));
+        for id in [
+            "",
+            "sidekick-worker",
+            "bad id",
+            "bad;id",
+            "bad&id",
+            "bad%id",
+            "bad$id",
+            "bad`id",
+            "bad\"id",
+            "bad/id",
+            "bad\\id",
+            "bad\nid",
+            "\u{e9}",
+        ] {
+            assert!(!is_safe_cli_resume_id(id), "{id:?}");
+        }
+    }
     use std::path::PathBuf;
 
     fn k(s: &str) -> AgentKey {
@@ -2940,6 +2991,11 @@ mod tests {
                 AgentStatus::Historical,
                 ActivityState::Idle,
                 LivenessState::Historical,
+            ),
+            (
+                AgentStatus::InUse,
+                ActivityState::Unknown,
+                LivenessState::InUse,
             ),
         ];
         for (st, want_act, want_live) in cases {

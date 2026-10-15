@@ -24,6 +24,7 @@
 // probe pays the one-time cold-start cost.
 
 #pragma once
+#include "WslDistroName.h"
 
 #include <mutex>
 #include <set>
@@ -45,23 +46,7 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
         // shell into the parent CreateProcessW command line.
         inline bool IsSafeDistroName(std::wstring_view name) noexcept
         {
-            if (name.empty() || name.size() > 256)
-            {
-                return false;
-            }
-            for (const auto c : name)
-            {
-                const bool ok =
-                    (c >= L'A' && c <= L'Z') ||
-                    (c >= L'a' && c <= L'z') ||
-                    (c >= L'0' && c <= L'9') ||
-                    c == L'.' || c == L'-' || c == L'_' || c == L'+';
-                if (!ok)
-                {
-                    return false;
-                }
-            }
-            return true;
+            return ::Microsoft::Terminal::WslDistroName::IsSafe(name);
         }
 
         // True for posix-looking absolute paths we'd accept as a $HOME

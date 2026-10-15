@@ -80,7 +80,7 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 ## Get Started
 
-1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine (Copilot/Claude/Codex/Gemini/OpenCode). If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
+1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agents on your machine (Copilot/Claude/Codex/Gemini/OpenCode/Antigravity). Antigravity uses its separately installed native ACP server, not the ordinary `agy` CLI. If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
 2. If you aren't already authenticated, the agent pane walks you through sign-in. For GitHub Copilot Enterprise, press <kbd>E</kbd> at the sign-in prompt and enter your enterprise host (for example, `your-org.ghe.com`); the last host you used is remembered.
 3. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed. The agent pane does not run commands in your shell without your explicit approval: you choose whether to run its suggested command, copy it into your shell to run yourself, or dismiss it.
 
@@ -124,6 +124,16 @@ Everything is configurable through Intelligent Terminal settings, under "Agent" 
 | Token usage display | Show or hide token usage and cost in the agent status bar |
 
 You can also pin a specific agent to a profile. Open a profile in Settings (for example, "PowerShell" or "Ubuntu") and set the agent you want its agent pane to use. For a WSL profile, the picker also lists agents installed inside that distro, so an Ubuntu profile can run a Linux-side agent. Profiles you don't configure keep using the global agent.
+
+Installed Windows agent CLIs also appear as individual profiles in the new-tab dropdown, alongside shells and with their own agent icons. These launch the agent's native interactive interface, independently of the built-in agent pane. Configure their working directory, appearance, and supported agent options in the profile editor. To change the default split target, edit the profile's `defaultSplitProfile` in `settings.json`; this setting is not available in the profile editor. See [Native agent profiles](doc/agent-profiles.md).
+
+Google Antigravity is supported in the agent pane on Windows and inside WSL.
+Install the native ACP package for the selected source and keep its server directory
+on that source's `PATH`; see [Antigravity setup](./doc/installing-dependencies.md#google-antigravity-acp-windows-and-wsl).
+Authentication, model selection, and permission modes use the server's ACP APIs.
+Install the separate `agy` CLI for interactive delegation and shell-session hooks.
+ACP conversations and CLI conversations retain their own source and resume path;
+the upstream ACP interface does not enumerate the CLI's cold-start history.
 
 When **Settings > Agents > Sessions** is off, session management shows a subtle reminder below its title to turn it on for the best experience. Existing hooks are not removed and may continue to report activity; the setting controls their installation and updates. The reminder disappears when Sessions is enabled and is not shown when organization policy prevents enabling it.
 
@@ -192,6 +202,8 @@ API key:   <optional>
 View all active agents, their status, and past sessions. Pick up a workflow where you left off or check on a long-running task. Click the agent management icon in the status bar or press <kbd>Ctrl+Shift+/</kbd> to open it.
 
 While a tracked built-in agent session is live, its terminal pane uses the agent's icon. Vertical pane rows show their own icons; tab headers in both layouts follow the focused terminal pane. Focusing the AI helper keeps its associated terminal pane as the source. When the session ends, or the provider is custom or unknown, the profile icon is used instead. This works whether or not Agent status is selected as visible tab metadata.
+
+Sidebar tab metadata, including Agent status, follows the same terminal source. Focusing the AI helper does not replace it with the helper's status, and the terminal's status continues updating while you use the helper.
 
 ### Error Detection
 

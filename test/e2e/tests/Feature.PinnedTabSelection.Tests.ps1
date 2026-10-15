@@ -20,7 +20,7 @@ Describe 'Feature: pinned tab selection' -Tag @('Feature', 'PinnedTabSelection')
             throw 'Supply TerminalApp.dll and wta.exe hashes from the intended source build receipt.'
         }
         $script:target = Resolve-ItApp -Package Dev
-        @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables) | Should -HaveCount 0
+        Stop-StaleItInstances -App $script:target
         foreach ($path in @($script:target.SettingsPath, $script:target.StatePath)) {
             if ((Test-Path "$path.e2ebak") -or (Test-Path "$path.e2ebak.missing")) {
                 throw "Recover existing configuration backup first: $path"

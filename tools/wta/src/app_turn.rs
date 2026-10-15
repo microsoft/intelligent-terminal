@@ -70,6 +70,19 @@ impl App {
         let is_autofix = prompt.autofix.is_some();
         let user_text = prompt.text.clone();
         let tab = self.tab_mut(tab_id);
+        tab.autofix.admitted_diagnostic = (is_autofix
+            && tab.autofix.detected_request_id == Some(prompt.id))
+        .then(|| {
+            prompt.context.target_pane_id().map(|pane| {
+                (
+                    prompt.id,
+                    pane.to_owned(),
+                    prompt.text.clone(),
+                    tab.autofix.detected_offer.as_ref().map(|(_, id)| *id),
+                )
+            })
+        })
+        .flatten();
         // Per Decision #3, every Idle→Submitted transition explicitly clears
         // these orthogonal fields rather than relying on side effects from a
         // grab-bag helper.
@@ -753,11 +766,13 @@ impl App {
         let tab = self.session_tab(session_id);
         let TurnState::Surfaced {
             outcome: TurnOutcome::Recommendation(recommendations),
+            prompt,
             ..
         } = &tab.turn
         else {
             return;
         };
+        let prompt_id = prompt.id;
         let recommendation_summary = format_recommendations_for_chat(recommendations, None);
         let direct_proposal_id = self
             .session_tab(session_id)
@@ -787,6 +802,7 @@ impl App {
         } else {
             None
         };
+        self.session_tab_mut(session_id).pending_queue_action = Some(prompt_id);
         let run = if insert_only {
             None
         } else {
@@ -799,8 +815,16 @@ impl App {
                 choice,
                 insert_only,
                 context,
+                completion: Some((target_tab.clone(), prompt_id)),
             })
             .is_ok();
+        if !dispatched {
+            let tab = self.session_tab_mut(session_id);
+            tab.pending_queue_action = None;
+            tab.pause_pending_prompts();
+            tab.messages
+                .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+        }
         if let Some(claim) = confirmation_claim {
             let status = if dispatched {
                 crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
@@ -808,10 +832,10 @@ impl App {
                 crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Unavailable
             };
             self.proposal_channels.finalize_confirmation(claim, status);
-            if !dispatched {
-                self.turn_cancel(session_id);
-                return;
-            }
+        }
+        if !dispatched {
+            self.teardown_turn_for_tab(&target_tab, false);
+            return;
         }
         if self
             .session_tab(session_id)
@@ -882,12 +906,39 @@ impl App {
     }
 
     pub(super) fn request_turn_cancel_for_tab(&mut self, target_tab: &str) {
+        let diagnostic = self.tab_sessions.get(target_tab).and_then(|tab| {
+            tab.autofix
+                .admitted_diagnostic
+                .clone()
+                .filter(|(id, _, _, _)| {
+                    tab.turn.prompt_id() == Some(*id)
+                        && tab.autofix.detected_request_id == Some(*id)
+                        && tab.turn.is_autofix()
+                })
+        });
+        if let Some(tab) = self.tab_sessions.get_mut(target_tab) {
+            tab.pause_pending_prompts();
+        }
+        self.request_background_turn_cancel_for_tab(target_tab);
+        if let Some((_, pane, summary, detection_id)) = diagnostic {
+            self.emit_autofix_state_detected(target_tab, &pane, &summary);
+            let tab = self.tab_mut(target_tab);
+            tab.autofix.detected_request_id = None;
+            tab.autofix.detected_offer = detection_id.map(|id| (pane, id));
+        }
+    }
+
+    pub(super) fn request_background_turn_cancel_for_tab(&mut self, target_tab: &str) {
         self.turn_cancel_for_tab(target_tab);
     }
 
     /// Cancel the in-flight turn owned by a tab. Pane lifecycle cleanup uses
     /// this before a lazily-created ACP session necessarily has an ID.
     pub(super) fn turn_cancel_for_tab(&mut self, target_tab: &str) {
+        self.teardown_turn_for_tab(target_tab, true);
+    }
+
+    fn teardown_turn_for_tab(&mut self, target_tab: &str, user_cancelled: bool) {
         let Some(tab) = self.tab_sessions.get(target_tab) else {
             return;
         };
@@ -933,7 +984,16 @@ impl App {
                 })
                 .or_else(|| tab.autofix.pane_id.clone())
         };
-        if pane_id.is_some() {
+        let newer_diagnostic = self.tab_sessions.get(target_tab).is_some_and(|tab| {
+            matches!(
+                tab.autofix.bar_snapshot,
+                AutofixBarSnapshot::Detected { .. }
+            ) || tab
+                .autofix
+                .detected_request_id
+                .is_some_and(|id| tab.turn.prompt_id() != Some(id))
+        });
+        if pane_id.is_some() && !newer_diagnostic {
             self.emit_autofix_state_cleared(target_tab);
         }
         let tab = self.tab_mut(target_tab);
@@ -952,14 +1012,14 @@ impl App {
                     Some(_) => t!("chat.autofix_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
-                Some((label, None, Some(canceled_marker.clone())))
+                Some((label, None, user_cancelled.then(|| canceled_marker.clone())))
             }
             TurnState::Streaming { prompt } => {
                 let label = match prompt.autofix.as_ref() {
                     Some(_) => t!("chat.autofix_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
-                Some((label, None, Some(canceled_marker.clone())))
+                Some((label, None, user_cancelled.then(|| canceled_marker.clone())))
             }
             TurnState::Surfaced {
                 prompt,
@@ -974,7 +1034,7 @@ impl App {
                     label,
                     Some(format_recommendations_for_chat(
                         recommendations,
-                        Some(&canceled_marker),
+                        user_cancelled.then_some(canceled_marker.as_str()),
                     )),
                     None,
                 ))
@@ -999,7 +1059,10 @@ impl App {
                 ..
             } => Some((
                 format_recommendations_for_chat(recommendations, None),
-                format_recommendations_for_chat(recommendations, Some(&canceled_marker)),
+                format_recommendations_for_chat(
+                    recommendations,
+                    user_cancelled.then_some(canceled_marker.as_str()),
+                ),
             )),
             _ => None,
         };
@@ -1047,7 +1110,11 @@ impl App {
         if let Some(proposal_id) = direct_proposal_id.as_deref() {
             self.proposal_channels.resolve_final(
                 proposal_id,
-                crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled,
+                if user_cancelled {
+                    crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled
+                } else {
+                    crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Unavailable
+                },
             );
         }
 

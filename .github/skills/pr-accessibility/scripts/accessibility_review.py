@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 
+TEST_HOST_ROOT = "src/cascadia/LocalTests_TerminalApp/TestHostApp/"
 UI_ROOTS = (
     "src/cascadia/TerminalApp/",
     "src/cascadia/TerminalControl/",
@@ -22,8 +23,9 @@ UI_ROOTS = (
     "src/cascadia/WindowsTerminal/",
     "src/cascadia/WindowsTerminal_UIATests/",
     "src/cascadia/UIMarkdown/",
+    TEST_HOST_ROOT,
 )
-UI_SUFFIXES = {".xaml", ".cpp", ".h", ".idl", ".resw", ".cs"}
+UI_SUFFIXES = {".xaml", ".cpp", ".h", ".idl", ".resw", ".cs", ".vcxproj"}
 PATCH_SUFFIXES = {".xaml", ".cpp", ".h", ".cs"}
 INTERACTIVE_TAGS = {
     "AppBarButton",
@@ -824,7 +826,8 @@ def validate(
     if fixed and not patch_files:
         errors.append("fixed findings require an actual candidate patch")
     for path in patch_files:
-        if not path.startswith(UI_ROOTS) or Path(path).suffix.lower() not in PATCH_SUFFIXES:
+        if (not path.startswith(UI_ROOTS) or path.startswith(TEST_HOST_ROOT) or
+                Path(path).suffix.lower() not in PATCH_SUFFIXES):
             errors.append(f"patch path is outside the native UI/test allowlist: {path}")
         if path.endswith(".resw"):
             errors.append(f"resource edits must use the localization workflow, not accessibility auto-fix: {path}")

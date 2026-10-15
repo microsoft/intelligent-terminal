@@ -2,6 +2,7 @@
 //!
 //! Basic functions (atomic, single-responsibility):
 //!   - `find_exe`          — find agent executable on PATH (registry-fresh)
+//!   - `build_login_invocation` — build source-aware executable + arguments
 //!   - `build_login_cmd`   — build login command with full path
 //!   - `install`           — install agent via winget (async, streaming logs)
 //!   - `refresh_path`      — re-read PATH from Windows registry
@@ -21,6 +22,13 @@ const CODEX_PATH: &str = "CODEX_PATH";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 // ─── Data types ─────────────────────────────────────────────────────────────
+
+/// Executable and native arguments for an external login, not a display string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LoginInvocation {
+    pub program: String,
+    pub args: Vec<String>,
+}
 
 /// Status of a single agent, combining CLI detection and setup hints.
 #[derive(Debug, Clone)]
@@ -69,7 +77,12 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
         }
     }
 
-    let resolved = agent_registry::resolve_bare_agent_name(agent_id);
+    let executable = if profile.cli_executable.is_empty() {
+        agent_id
+    } else {
+        profile.cli_executable
+    };
+    let resolved = agent_registry::resolve_bare_agent_name(executable);
 
     // Try resolved name first (e.g. "copilot.exe")
     for dir in std::env::split_paths(&path_var) {
@@ -96,6 +109,37 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Find the native executable required by the ACP entry point, independently
+/// of an optional interactive CLI distributed by the same provider.
+pub fn find_acp_exe(agent_id: &str) -> Option<String> {
+    let profile = agent_registry::lookup_profile_by_id(agent_id);
+    let executable = profile.acp_executable(&crate::agent_source::AgentSource::Host);
+    if executable.is_empty() || executable == profile.cli_executable {
+        return find_exe(agent_id);
+    }
+    let path = spawn_path()
+        .map(std::ffi::OsString::from)
+        .or_else(|| std::env::var_os("PATH"))?;
+    find_standalone_acp_executable_in_path(profile, &path, Path::is_file)
+        .map(|candidate| candidate.to_string_lossy().into_owned())
+}
+
+fn find_standalone_acp_executable_in_path(
+    profile: &agent_registry::AgentProfile,
+    path: &OsStr,
+    is_file: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let executable = profile.acp_executable(&crate::agent_source::AgentSource::Host);
+    std::env::split_paths(path)
+        .map(|directory| directory.join(executable))
+        .find(|candidate| is_file(candidate))
+        .filter(|candidate| {
+            profile
+                .acp_companion_executable
+                .is_none_or(|companion| is_file(&candidate.with_file_name(companion)))
+        })
 }
 
 fn find_claude_executable_in_path(
@@ -174,7 +218,7 @@ fn find_configured_executable(
 /// PATH are rejected so a source is never advertised when it cannot run with
 /// Linux dependencies.
 pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
-    if distro.trim().is_empty() || executable.trim().is_empty() {
+    if !crate::agent_source::is_safe_wsl_distro_name(distro) || executable.trim().is_empty() {
         return None;
     }
 
@@ -183,7 +227,7 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
         let mut cmd = tokio::process::Command::new("wsl.exe");
         cmd.arg("-d")
             .arg(distro)
-            .arg("--")
+            .arg("--exec")
             .arg("bash")
             .arg("-lc")
             .arg(wsl_agent_probe_script(executable))
@@ -238,42 +282,105 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
     }
     let output = output?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let resolved = stdout
-        .lines()
-        .skip_while(|line| *line != "__WTA_PROBE_BEGIN__")
-        .skip(1)
-        .take_while(|line| *line != "__WTA_PROBE_END__")
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .unwrap_or_default()
-        .to_string();
-    let available = is_native_wsl_resolution(&resolved);
+    let resolved = match parse_wsl_agent_probe_output(&output) {
+        Ok(resolved) => resolved,
+        Err(reason) => {
+            tracing::warn!(
+                target: "agent_source",
+                distro,
+                executable,
+                exit_code = ?output.status.code(),
+                stdout_bytes = output.stdout.len(),
+                stderr_bytes = output.stderr.len(),
+                reason,
+                "WSL agent availability is indeterminate"
+            );
+            return None;
+        }
+    };
     tracing::info!(
         target: "agent_source",
         distro,
         executable,
-        resolved_path = %resolved,
-        available,
+        available = resolved.is_some(),
         "WSL agent availability probe"
     );
-    available.then_some(resolved)
+    resolved
+}
+
+fn parse_wsl_agent_probe_output(
+    output: &std::process::Output,
+) -> Result<Option<String>, &'static str> {
+    if !output.status.success() {
+        return Err("WSL login-shell probe exited unsuccessfully; availability is indeterminate");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut lines = stdout.lines();
+    if !lines.any(|line| line == "__WTA_PROBE_BEGIN__") {
+        return Err("WSL login-shell probe did not start; availability is indeterminate");
+    }
+    let mut resolved = None;
+    for line in lines {
+        if line == "__WTA_PROBE_END__" {
+            return Ok(resolved.filter(|path: &String| is_native_wsl_resolution(path)));
+        }
+        let line = line.trim();
+        if resolved.is_none() && !line.is_empty() {
+            resolved = Some(line.to_string());
+        }
+    }
+    Err("WSL login-shell probe did not complete; availability is indeterminate")
 }
 
 /// Whether a known ACP agent can start inside `distro`.
 pub async fn wsl_agent_available(distro: &str, agent_id: &str) -> bool {
-    if find_wsl_exe(distro, agent_id).await.is_none() {
+    let profile = agent_registry::lookup_profile_by_id(agent_id);
+    let source = crate::agent_source::AgentSource::Wsl {
+        distro: distro.to_string(),
+    };
+    let executable = profile.acp_executable(&source);
+    let executable = if executable.is_empty() {
+        agent_id
+    } else {
+        executable
+    };
+    if find_wsl_exe(distro, executable).await.is_none() {
         return false;
     }
 
-    let profile = agent_registry::lookup_profile_by_id(agent_id);
-    if profile.acp_launch_command.starts_with("npx ") {
+    if profile.acp_command_override(&source).starts_with("npx ") {
         return find_wsl_exe(distro, "npx").await.is_some();
     }
     true
 }
 
 pub(crate) fn wsl_agent_probe_script(executable: &str) -> String {
+    let profile = agent_registry::lookup_profile(executable);
+    let basename = executable.rsplit(['/', '\\']).next().unwrap_or(executable);
+    if profile
+        .wsl_acp_launch_command
+        .split_ascii_whitespace()
+        .next()
+        == Some(basename)
+    {
+        if let Some(companion) = profile.wsl_acp_companion_executable {
+            return format!(
+                "printf '__WTA_PROBE_BEGIN__\\n'; \
+                 resolved=$(command -v {} 2>/dev/null); \
+                 native=$(readlink -f -- \"$resolved\" 2>/dev/null); \
+                 companion=$(readlink -f -- \"${{native%/*}}/\"{} 2>/dev/null); \
+                 case \"$native\" in /mnt/*|'') ;; *) \
+                 case \"$companion\" in /mnt/*|'') ;; *) \
+                 if [ -f \"$native\" ] && [ -x \"$native\" ] && \
+                 [ -f \"$companion\" ] && [ -x \"$companion\" ]; then \
+                 printf '%s\\n' \"$resolved\"; fi ;; esac ;; esac; \
+                 printf '__WTA_PROBE_END__\\n'",
+                crate::coordinator::sh_quote(executable),
+                crate::coordinator::sh_quote(companion)
+            );
+        }
+    }
     format!(
         "printf '__WTA_PROBE_BEGIN__\\n'; command -v {} 2>/dev/null; \
          printf '__WTA_PROBE_END__\\n'",
@@ -283,6 +390,73 @@ pub(crate) fn wsl_agent_probe_script(executable: &str) -> String {
 
 fn is_native_wsl_resolution(resolved: &str) -> bool {
     !resolved.is_empty() && !resolved.starts_with("/mnt/")
+}
+
+/// Build an external login without launching it. WSL resolves the trusted CLI
+/// in the selected distro's default-user login shell, never on Windows PATH.
+pub(crate) fn build_login_invocation(
+    agent_id: &str,
+    source: &crate::agent_source::AgentSource,
+    enterprise_host: Option<&str>,
+) -> Result<LoginInvocation, String> {
+    build_login_invocation_with_resolver(agent_id, source, enterprise_host, find_exe)
+}
+
+fn build_login_invocation_with_resolver(
+    agent_id: &str,
+    source: &crate::agent_source::AgentSource,
+    enterprise_host: Option<&str>,
+    resolve_host: impl FnOnce(&str) -> Option<String>,
+) -> Result<LoginInvocation, String> {
+    use crate::agent_source::AgentSource;
+
+    if let AgentSource::Wsl { distro } = source {
+        if !crate::agent_source::is_safe_wsl_distro_name(distro) {
+            return Err("Invalid or incomplete WSL login source".to_string());
+        }
+    }
+    let profile = agent_registry::lookup_profile_by_id(agent_id);
+    if profile.acp_auth_flow != agent_registry::AcpAuthFlow::External {
+        return Err("This agent does not support external login".to_string());
+    }
+
+    let mut args: Vec<String> = match profile.id {
+        agent_registry::CODEX_AGENT_ID => vec!["auth".to_string()],
+        agent_registry::OPENCODE_AGENT_ID => vec!["auth".to_string(), "login".to_string()],
+        _ => vec!["login".to_string()],
+    };
+    if profile.id == agent_registry::COPILOT_AGENT_ID {
+        if let Some(host) = enterprise_host.and_then(normalize_enterprise_host) {
+            args.push("--host".to_string());
+            args.push(format!("https://{host}"));
+        }
+    }
+
+    match source {
+        AgentSource::Host => {
+            let program = resolve_host(agent_id)
+                .ok_or_else(|| "Agent executable was not found on Windows PATH".to_string())?;
+            Ok(LoginInvocation { program, args })
+        }
+        AgentSource::Wsl { distro } => {
+            let command = std::iter::once(profile.cli_executable)
+                .chain(args.iter().map(String::as_str))
+                .map(crate::coordinator::sh_quote)
+                .collect::<Vec<_>>()
+                .join(" ");
+            Ok(LoginInvocation {
+                program: "wsl.exe".to_string(),
+                args: vec![
+                    "-d".to_string(),
+                    distro.clone(),
+                    "--exec".to_string(),
+                    "bash".to_string(),
+                    "-lc".to_string(),
+                    format!("exec {command}"),
+                ],
+            })
+        }
+    }
 }
 
 /// Build the login command for an agent, resolving the full executable path.
@@ -326,7 +500,10 @@ pub fn normalize_enterprise_host(raw: &str) -> Option<String> {
     let mut host = raw.trim();
     // Strip an optional scheme, case-insensitively (so `HTTPS://…` works too).
     for scheme in ["https://", "http://"] {
-        if host.len() >= scheme.len() && host[..scheme.len()].eq_ignore_ascii_case(scheme) {
+        if host
+            .get(..scheme.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(scheme))
+        {
             host = &host[scheme.len()..];
             break;
         }
@@ -359,7 +536,7 @@ pub fn load_copilot_enterprise_host() -> Option<String> {
         .and_then(|v| v.as_str())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-    tracing::debug!(target: "agent_check", host = ?host, "loaded copilot enterprise host");
+    tracing::debug!(target: "agent_check", enterprise_host_set = host.is_some(), "loaded copilot enterprise host");
     host
 }
 
@@ -375,7 +552,7 @@ pub fn save_copilot_enterprise_host(host: &str) {
     if let Ok(text) = serde_json::to_string_pretty(&body) {
         let _ = std::fs::write(&path, text);
     }
-    tracing::debug!(target: "agent_check", host = %host, "saved copilot enterprise host");
+    tracing::debug!(target: "agent_check", enterprise_host_set = !host.trim().is_empty(), "saved copilot enterprise host");
 }
 
 /// Install an agent via winget. Streams output lines through `on_line` callback.
@@ -510,7 +687,7 @@ pub fn host_npx_available() -> bool {
 
 pub fn check_host_agent_availability(agent_id: &str, npx_found: bool) -> HostAgentAvailability {
     let profile = agent_registry::lookup_profile_by_id(agent_id);
-    let cli_path = find_exe(agent_id);
+    let cli_path = find_acp_exe(agent_id);
     let native_cli_found = cli_path.is_some();
     let requires_npx = profile.acp_launch_command.starts_with("npx ");
     let launch_ready = host_requirements_available(profile, native_cli_found, || npx_found);
@@ -539,12 +716,18 @@ pub async fn check_agent_in_source(
         crate::agent_source::AgentSource::Host => check_agent(agent_id),
         crate::agent_source::AgentSource::Wsl { distro } => {
             let profile = agent_registry::lookup_profile_by_id(agent_id);
-            let cli_path = find_wsl_exe(distro, agent_id).await;
+            let executable = profile.acp_executable(source);
+            let executable = if executable.is_empty() {
+                agent_id
+            } else {
+                executable
+            };
+            let cli_path = find_wsl_exe(distro, executable).await;
             AgentStatus {
                 id: agent_id.to_string(),
                 display_name: format!("{} — {} (WSL)", profile.display_name, distro),
                 cli_found: cli_path.is_some()
-                    && (!profile.acp_launch_command.starts_with("npx ")
+                    && (!profile.acp_command_override(source).starts_with("npx ")
                         || find_wsl_exe(distro, "npx").await.is_some()),
                 cli_path,
                 install_hint: profile.install_hint.to_string(),
@@ -865,6 +1048,239 @@ fn expand_env_vars(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn login_invocation_wsl_uses_selected_distro_without_host_resolution() {
+        let source = crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu-24.04".to_string(),
+        };
+        let invocation = build_login_invocation_with_resolver("copilot", &source, None, |_| {
+            panic!("WSL login must not resolve the Windows executable")
+        })
+        .unwrap();
+        assert_eq!(invocation.program, "wsl.exe");
+        assert_eq!(
+            invocation.args,
+            [
+                "-d",
+                "Ubuntu-24.04",
+                "--exec",
+                "bash",
+                "-lc",
+                "exec 'copilot' 'login'"
+            ]
+        );
+        assert_eq!(
+            build_login_invocation("copilot", &source, None).unwrap(),
+            invocation
+        );
+    }
+
+    #[test]
+    fn login_invocation_host_keeps_executable_and_arguments_separate() {
+        let invocation = build_login_invocation_with_resolver(
+            "copilot",
+            &crate::agent_source::AgentSource::Host,
+            Some(" HTTPS://corp.ghe.com:8443/path?token=discarded#fragment "),
+            |agent| {
+                assert_eq!(agent, "copilot");
+                Some(r"C:\Agent Tools\copilot.exe".to_string())
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            invocation,
+            LoginInvocation {
+                program: r"C:\Agent Tools\copilot.exe".to_string(),
+                args: vec![
+                    "login".to_string(),
+                    "--host".to_string(),
+                    "https://corp.ghe.com:8443".to_string(),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn login_invocation_wsl_quotes_untrusted_host_as_one_argument() {
+        let invocation = build_login_invocation(
+            "copilot",
+            &crate::agent_source::AgentSource::Wsl {
+                distro: "Debian".to_string(),
+            },
+            Some("corp'; touch injected; $(echo secret).ghe.com"),
+        )
+        .unwrap();
+        assert_eq!(
+            invocation.args.last().unwrap(),
+            "exec 'copilot' 'login' '--host' 'https://corp'\\''; touch injected; $(echo secret).ghe.com'"
+        );
+    }
+
+    #[test]
+    fn login_invocation_preserves_unicode_host_without_panicking() {
+        let invocation = build_login_invocation_with_resolver(
+            "copilot",
+            &crate::agent_source::AgentSource::Host,
+            Some("🦀🦀.example"),
+            |_| Some("copilot.exe".to_string()),
+        )
+        .unwrap();
+        assert_eq!(invocation.args, ["login", "--host", "https://🦀🦀.example"]);
+    }
+
+    #[test]
+    fn login_invocation_default_host_and_other_agents_preserve_argument_grammar() {
+        for (agent, args) in [
+            ("copilot", vec!["login"]),
+            ("claude", vec!["login"]),
+            ("codex", vec!["auth"]),
+            ("opencode", vec!["auth", "login"]),
+        ] {
+            let invocation = build_login_invocation_with_resolver(
+                agent,
+                &crate::agent_source::AgentSource::Host,
+                Some("HTTP://GitHub.com/path"),
+                |_| Some("native.exe".to_string()),
+            )
+            .unwrap();
+            assert_eq!(invocation.args, args);
+        }
+    }
+
+    #[test]
+    fn login_invocation_rejects_incomplete_source_before_resolution() {
+        for distro in [
+            "",
+            " ",
+            "Ubuntu;echo injected",
+            "Ubuntu\n",
+            "Ubuntu/../../root",
+        ] {
+            assert!(build_login_invocation_with_resolver(
+                "copilot",
+                &crate::agent_source::AgentSource::Wsl {
+                    distro: distro.to_string(),
+                },
+                None,
+                |_| panic!("invalid source must fail before executable resolution"),
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn login_invocation_rejects_missing_host_cli_and_in_protocol_auth() {
+        assert!(build_login_invocation_with_resolver(
+            "copilot",
+            &crate::agent_source::AgentSource::Host,
+            None,
+            |_| None,
+        )
+        .is_err());
+        for agent in ["antigravity", "gemini", "custom:example"] {
+            assert!(build_login_invocation_with_resolver(
+                agent,
+                &crate::agent_source::AgentSource::Host,
+                None,
+                |_| panic!("in-protocol or unknown agents have no external login"),
+            )
+            .is_err());
+        }
+    }
+
+    fn probe_output(exit_code: u32, stdout: &str) -> std::process::Output {
+        use std::os::windows::process::ExitStatusExt;
+        std::process::Output {
+            status: std::process::ExitStatus::from_raw(exit_code),
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: b"profile contained a secret URL".to_vec(),
+        }
+    }
+
+    #[test]
+    fn wsl_probe_nonzero_exit_is_indeterminate_not_agent_absence() {
+        for stdout in [
+            "",
+            "__WTA_PROBE_BEGIN__\n/home/me/.local/bin/copilot\n__WTA_PROBE_END__\n",
+        ] {
+            let error = parse_wsl_agent_probe_output(&probe_output(23, stdout)).unwrap_err();
+            assert!(error.contains("indeterminate"));
+            assert!(!error.contains("secret"));
+            assert!(!error.contains(stdout) || stdout.is_empty());
+        }
+    }
+
+    #[test]
+    fn wsl_probe_requires_complete_framing_and_ignores_profile_output() {
+        assert_eq!(
+            parse_wsl_agent_probe_output(&probe_output(
+                0,
+                "profile secret URL\n__WTA_PROBE_BEGIN__\n/home/me/.local/bin/copilot\n__WTA_PROBE_END__\nprofile secret",
+            )),
+            Ok(Some("/home/me/.local/bin/copilot".to_string()))
+        );
+        for stdout in [
+            "profile secret URL",
+            "__WTA_PROBE_BEGIN__\n/home/me/copilot",
+        ] {
+            assert!(parse_wsl_agent_probe_output(&probe_output(0, stdout)).is_err());
+        }
+        for path in ["", "/mnt/c/Windows/copilot.exe"] {
+            assert_eq!(
+                parse_wsl_agent_probe_output(&probe_output(
+                    0,
+                    &format!("__WTA_PROBE_BEGIN__\n{path}\n__WTA_PROBE_END__\n"),
+                )),
+                Ok(None)
+            );
+        }
+    }
+
+    #[test]
+    fn antigravity_host_discovery_requires_the_server_and_its_sibling() {
+        let profile = agent_registry::lookup_profile_by_id("antigravity");
+        let root = Path::new(r"C:\Agent Tools");
+        let server = root.join("agy_acp_server.exe");
+        let companion = root.join("localharness_external.exe");
+        assert_eq!(
+            find_standalone_acp_executable_in_path(profile, root.as_os_str(), |path| path
+                == server),
+            None
+        );
+        assert_eq!(
+            find_standalone_acp_executable_in_path(profile, root.as_os_str(), |path| {
+                path == server || path == companion
+            }),
+            Some(server)
+        );
+    }
+
+    #[test]
+    fn antigravity_host_discovery_rejects_a_shadowing_partial_install() {
+        let profile = agent_registry::lookup_profile_by_id("antigravity");
+        let first = Path::new(r"C:\Partial\agy_acp_server.exe");
+        let later = Path::new(r"C:\Complete\agy_acp_server.exe");
+        let companion = Path::new(r"C:\Complete\localharness_external.exe");
+        assert_eq!(
+            find_standalone_acp_executable_in_path(
+                profile,
+                OsStr::new(r"C:\Partial;C:\Complete"),
+                |path| path == first || path == later || path == companion,
+            ),
+            None,
+            "launch resolves the first PATH match, not a later complete installation"
+        );
+    }
+
+    #[test]
+    fn antigravity_wsl_discovery_requires_a_native_companion() {
+        let script = wsl_agent_probe_script("agy_acp_server.par");
+        assert!(script.contains("localharness_external"));
+        assert!(script.contains("readlink -f"));
+        assert!(!wsl_agent_probe_script("agy").contains("localharness_external"));
+        println!("__ANTIGRAVITY_PROBE_SCRIPT_BEGIN__\n{script}\n__ANTIGRAVITY_PROBE_SCRIPT_END__");
+    }
 
     #[test]
     fn claude_resolution_prefers_configured_native_executable() {

@@ -6,7 +6,8 @@ param(
     [switch]$Resume,
     [string]$SessionId,
     [string]$WtcliPath,
-    [string]$SessionStartGate
+    [string]$SessionStartGate,
+    [switch]$SuppressTitleBeforeHook
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,8 +29,12 @@ if ($Canonical) {
     }
     $session = $SessionId
     if ($SessionStartGate) {
-        $title = "ITE2E prehook $session"
-        [Console]::Write("$([char]27)]0;$title$([char]7)")
+        $title = if ($SuppressTitleBeforeHook) {
+            [IO.Path]::GetFileName([IO.Directory]::GetCurrentDirectory())
+        } else {
+            "ITE2E-INTERACTIVE-DELEGATE $RunId"
+        }
+        if (-not $SuppressTitleBeforeHook) { [Console]::Write("`e]0;$title`a") }
         @{ pane_session_id = $env:WT_SESSION; session_id = $session; title = $title; phase = 'before-hook' } |
             ConvertTo-Json -Compress |
             Set-Content -LiteralPath "$SessionStartGate.waiting-$session.json"

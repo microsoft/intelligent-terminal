@@ -87,8 +87,9 @@ Important invariants:
   ACP session, or chat history.
 - Per-tab events carry tab and window identity. Route responses to the owning
   tab instead of broadcasting across panes or windows.
-- Autofix requires a connected helper session. Failures received before the
-  session connects are not replayed later.
+- Autofix detection and its actionable hint do not wait for ACP readiness.
+  The running helper captures failures and queues fix requests until connected;
+  events missed before the helper subscribed are not recovered.
 - Terminal mutation requested by an agent goes through the confirmation-gated
   session MCP action path. Agent-owned shell tools are a separate execution
   path.
@@ -150,6 +151,13 @@ After C++, XAML, IDL, packaging, resource, or mixed Debug changes, deploy with:
 
 Do not perform a full package deployment for a `wta.exe`-only change. Static
 assets such as `wt-agent-hooks` do require packaging.
+
+When parallel worktrees need their own Dev deployments, follow
+[`doc/dev-worktree-package.md`](doc/dev-worktree-package.md) and the separate
+worktree manifest template. Use temporary, uncommitted identity, single-instance,
+COM and E2E overrides; never replace another worktree's registered
+Dev layout. Ordinary Dev builds remain unchanged. Package isolation does not
+make foreground keyboard/mouse or other desktop-global tests parallel-safe.
 
 ## Runtime data and diagnostics
 
