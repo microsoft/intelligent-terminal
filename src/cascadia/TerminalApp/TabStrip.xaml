@@ -587,6 +587,7 @@
                                                       Height="15"
                                                       MinWidth="0"
                                                       MinHeight="0"
+                                                      AutomationProperties.Name="{x:Bind Presentation.AutomationName, Mode=OneWay}"
                                                       IsActive="{x:Bind ShowProgressRing, Mode=OneWay}"
                                                       IsIndeterminate="False"
                                                       Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(Presentation.TabStatus.IsProgressRingIndeterminate), Mode=OneWay}"
@@ -597,6 +598,7 @@
                                                                      Height="15"
                                                                      MinWidth="0"
                                                                      MinHeight="0"
+                                                                     AutomationProperties.Name="{x:Bind Presentation.AutomationName, Mode=OneWay}"
                                                                      Foreground="{Binding Foreground, ElementName=TabProgressRing, Mode=OneWay}"
                                                                      IsActive="{x:Bind ShowProgressRing, Mode=OneWay}"
                                                                      Visibility="{x:Bind Presentation.TabStatus.IsProgressRingIndeterminate, Mode=OneWay}" />

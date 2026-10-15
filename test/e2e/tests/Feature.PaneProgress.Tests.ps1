@@ -4,6 +4,10 @@
 BeforeDiscovery {
     $script:Ready = [bool]((Get-Command winapp -ErrorAction SilentlyContinue) -and
         (Get-Command pwsh -ErrorAction SilentlyContinue))
+    if ($script:Ready -and $env:ITE2E_PACKAGE) {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:Ready = [bool](Resolve-ItApp -Package (Get-ItTestPackage) -IfInstalled)
+    }
 }
 
 Describe 'Feature: pane progress user routes' -Tag @('Feature', 'PaneProgress') -Skip:(-not $script:Ready) {
