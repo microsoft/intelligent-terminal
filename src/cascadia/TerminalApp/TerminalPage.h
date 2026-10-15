@@ -1133,6 +1133,7 @@ namespace winrt::TerminalApp::implementation
         bool _richTabAgentStatusSnapshotLoaded{ false };
         bool _richTabAgentStatusRefreshInFlight{ false };
         bool _richTabAgentStatusRefreshPending{ false };
+        bool _richTabAgentStatusAutoRefreshBlocked{ false };
         uint64_t _richTabAgentStatusRequestGeneration{ 0 };
         uint64_t _nextRichTabAttachmentReservation{ 1 };
         void _RequestRichTabAgentStatusRefresh();

@@ -24,6 +24,9 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
         $script:pluginPath = Join-Path $selected.InstallLocation 'wt-agent-hooks\opencode\wt-agent-hooks.js'
         $sourcePlugin = Join-Path $PSScriptRoot '..\..\..\tools\wta\wt-agent-hooks\opencode\wt-agent-hooks.js'
         (Get-FileHash -LiteralPath $script:pluginPath).Hash | Should -Be (Get-FileHash -LiteralPath $sourcePlugin).Hash
+        $script:tuiPluginPath = Join-Path $selected.InstallLocation 'wt-agent-hooks\opencode\wt-agent-hooks\tui.js'
+        $sourceTuiPlugin = Join-Path $PSScriptRoot '..\..\..\tools\wta\wt-agent-hooks\opencode\wt-agent-hooks\tui.js'
+        (Get-FileHash -LiteralPath $script:tuiPluginPath).Hash | Should -Be (Get-FileHash -LiteralPath $sourceTuiPlugin).Hash
         $mock = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
         $customCommand = '"' + (Get-Command pwsh).Source + '" -NoProfile -File "' + $mock + '" -LogPath "' + (Join-Path $TestDrive 'acp.jsonl') + '"'
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
@@ -66,7 +69,7 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
             $start.RedirectStandardInput = $true
             $start.RedirectStandardOutput = $true
             $start.RedirectStandardError = $true
-            foreach ($argument in @($script:driverPath, $script:pluginPath, $Mode, $script:fixtureDirectory)) {
+            foreach ($argument in @($script:driverPath, $script:pluginPath, $Mode, $script:fixtureDirectory, $script:tuiPluginPath)) {
                 $start.ArgumentList.Add($argument)
             }
             $start.Environment['WT_COM_CLSID'] = $script:app.ComClsid
@@ -145,6 +148,7 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
             $driver = Start-HookDriver $mode
             $id = "ite2e-opencode-$mode-$([guid]::NewGuid().ToString('N'))"
             Send-HookAction $driver @{ action = 'event'; type = 'session.created'; data = @{ sessionID = $id; title = 'Original' } }
+            if ($mode -eq 'v2') { Send-HookAction $driver @{ action = 'view'; id = $id } }
             Assert-HookState $id 'Idle' 'agent.session.start' | Out-Null
             Send-HookAction $driver @{ action = 'event'; type = 'session.renamed'; data = @{ sessionID = $id; title = "Renamed $mode" } }
             Wait-Until -TimeoutSec 15 -Because 'renaming updates the authoritative row title' -Condition {
@@ -178,6 +182,7 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
         $prefix = "ite2e-opencode-negative-$([guid]::NewGuid().ToString('N'))"
         $root = "$prefix-root"
         Send-HookAction $driver @{ action = 'event'; type = 'session.created'; data = @{ sessionID = $root } }
+        Send-HookAction $driver @{ action = 'view'; id = $root }
         Assert-HookState $root 'Idle' 'agent.session.start' | Out-Null
         Send-HookAction $driver @{ action = 'event'; type = 'session.created'; data = @{ sessionID = "$prefix-child"; parentID = $root } }
         Send-HookAction $driver @{ action = 'prompt'; id = "$prefix-child" }
@@ -250,6 +255,8 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
         $version = Invoke-Native -FilePath $executable -Arguments @('--version') -TimeoutSec 15
         $version.ExitCode | Should -Be 0 -Because $version.StdErr
         $version.StdOut.Trim() | Should -Not -BeNullOrEmpty
+        $majorVersion = [regex]::Match($version.StdOut, 'v?(\d+)\.').Groups[1].Value
+        $majorVersion | Should -Not -BeNullOrEmpty -Because 'the native loader contract depends on the OpenCode major version'
         Write-ItLog -Message "Real OpenCode loader version: $($version.StdOut.Trim())"
         $config = Join-Path $TestDrive 'server-config'
         $plugins = Join-Path $config 'opencode\plugins'
@@ -301,14 +308,24 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
             $created = Invoke-RestMethod -Method Post -Uri "$base/session" -Headers $headers -ContentType 'application/json' `
                 -Body '{"title":"ITE2E native OpenCode hook"}' -TimeoutSec 45
             $created.id | Should -Not -BeNullOrEmpty
-            Assert-HookState $created.id 'Idle' 'agent.session.start' | Out-Null
+            if ([int]$majorVersion -lt 2) {
+                Assert-HookState $created.id 'Idle' 'agent.session.start' | Out-Null
+            }
             Invoke-RestMethod -Method Patch -Uri "$base/session/$($created.id)" -Headers $headers -ContentType 'application/json' `
                 -Body '{"title":"ITE2E native OpenCode renamed"}' -TimeoutSec 15 | Out-Null
-            Wait-Until -TimeoutSec 15 -Because 'the real CLI rename reaches the master row' -Condition {
-                @(Read-HookSessions | Where-Object { $_.session_id -eq $created.id -and $_.title -eq 'ITE2E native OpenCode renamed' }).Count -eq 1
-            } | Should -BeTrue
+            if ([int]$majorVersion -lt 2) {
+                Wait-Until -TimeoutSec 15 -Because 'the real CLI rename reaches the master row' -Condition {
+                    @(Read-HookSessions | Where-Object { $_.session_id -eq $created.id -and $_.title -eq 'ITE2E native OpenCode renamed' }).Count -eq 1
+                } | Should -BeTrue
+            }
             Invoke-RestMethod -Method Delete -Uri "$base/session/$($created.id)" -Headers $headers -TimeoutSec 15 | Out-Null
-            Assert-HookState $created.id 'Ended' 'agent.session.end' | Out-Null
+            if ([int]$majorVersion -lt 2) {
+                Assert-HookState $created.id 'Ended' 'agent.session.end' | Out-Null
+            }
+            else {
+                @(Read-HookSessions | Where-Object session_id -eq $created.id).Count | Should -Be 0 `
+                    -Because 'V2 server-only hooks must not claim a pane without a TUI'
+            }
         }
         finally {
             if (-not $server.HasExited) { $server.Kill() }

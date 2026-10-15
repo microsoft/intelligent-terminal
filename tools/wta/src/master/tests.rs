@@ -17366,6 +17366,59 @@ async fn master_com_hook_source_unique_id_preserves_live_pane_corroboration() {
 }
 
 #[tokio::test]
+async fn master_opencode_end_from_old_pane_preserves_new_owner() {
+    use crate::agent_sessions::AgentStatus;
+
+    let state = make_state();
+    let sid = SessionId::new("opencode-rebound");
+    for (pane, event) in [
+        ("old-pane", "agent.session.start"),
+        ("new-pane", "agent.session.start"),
+        ("old-pane", "agent.session.end"),
+    ] {
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method": "agent_event",
+                "params": {
+                    "event": event,
+                    "cli_source": "opencode",
+                    "agent_session_id": "opencode-rebound",
+                    "pane_id": pane,
+                    "payload": { "cwd": "C:\\repo", "title": pane }
+                }
+            }),
+        )
+        .await;
+    }
+    let row = state
+        .registry
+        .lookup(&sid)
+        .await
+        .expect("new owner remains");
+    assert_eq!(row.pane_session_id.as_deref(), Some("new-pane"));
+    assert_eq!(row.status, Some(AgentStatus::Idle));
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.session.end",
+                "cli_source": "opencode",
+                "agent_session_id": "opencode-rebound",
+                "pane_id": "new-pane",
+                "payload": {}
+            }
+        }),
+    )
+    .await;
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Ended)
+    );
+}
+
+#[tokio::test]
 async fn master_com_agent_event_routes_directly_into_the_registry() {
     let state = make_state();
     let _capture = crate::wt_protocol_events::capture_test_published_events();

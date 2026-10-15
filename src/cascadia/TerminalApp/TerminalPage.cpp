@@ -11797,7 +11797,8 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         if (!_richTabAgentStatusSnapshotLoaded &&
-            !_richTabAgentStatusRefreshInFlight)
+            !_richTabAgentStatusRefreshInFlight &&
+            !_richTabAgentStatusAutoRefreshBlocked)
         {
             _RequestRichTabAgentStatusRefresh();
         }
@@ -11968,6 +11969,7 @@ namespace winrt::TerminalApp::implementation
         if (generation == page->_richTabAgentStatusRequestGeneration)
         {
             page->_richTabAgentCwdAvailable = parsed;
+            page->_richTabAgentStatusAutoRefreshBlocked = !parsed;
         }
         if (generation == page->_richTabAgentStatusRequestGeneration)
         {

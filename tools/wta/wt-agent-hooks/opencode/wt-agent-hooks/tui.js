@@ -1,7 +1,7 @@
 // Managed by Intelligent Terminal: wt-agent-hooks
 const source = "opencode";
 
-function bridge(topic, sessionID, data) {
+async function bridge(topic, sessionID, data) {
   const executable = process.env.WTCLI_PATH || "wtcli.exe";
   try {
     const child = Bun.spawn({
@@ -11,9 +11,9 @@ function bridge(topic, sessionID, data) {
       stderr: "ignore",
       windowsHide: true,
     });
-    child.exited.then((code) => {
+    await child.exited.then((code) => {
       if (code !== 0) console.error(`wt-agent-hooks: ${topic} exited with ${code}`);
-    }, (error) => console.error(`wt-agent-hooks: ${topic} failed`, error));
+    });
   } catch (error) {
     console.error(`wt-agent-hooks: ${topic} failed`, error);
   }
@@ -30,6 +30,11 @@ export default {
     ) return;
 
     let bound;
+    let delivery = Promise.resolve();
+    let disposed = false;
+    function send(topic, sessionID, data) {
+      delivery = delivery.then(() => bridge(topic, sessionID, data));
+    }
     function selected(sessionID) {
       const route = context.ui.router.current();
       return route.type === "session" && route.sessionID === sessionID;
@@ -40,19 +45,19 @@ export default {
       if (!session || session.parentID) return;
       if (bound?.id !== sessionID) {
         bound = { id: sessionID, directory, title: session.title };
-        bridge("agent.session.start", sessionID, {
+        send("agent.session.start", sessionID, {
           cwd: directory,
           title: session.title,
         });
         if (context.data.session.status(sessionID) === "running") {
-          bridge("agent.prompt.submit", sessionID);
+          send("agent.prompt.submit", sessionID);
         }
       } else if (bound.directory !== directory) {
         bound.directory = directory;
-        bridge("agent.cwd.changed", sessionID, { cwd: directory });
+        send("agent.cwd.changed", sessionID, { cwd: directory });
       } else if (bound.title !== session.title) {
         bound.title = session.title;
-        bridge("agent.session.start", sessionID, { cwd: directory, title: session.title });
+        send("agent.session.start", sessionID, { cwd: directory, title: session.title });
       }
     }
 
@@ -73,7 +78,7 @@ export default {
     const onRenamed = context.data.on("session.renamed", ({ data }) => {
       if (bound?.id === data.sessionID && selected(data.sessionID)) {
         bound.title = data.title;
-        bridge("agent.session.start", data.sessionID, {
+        send("agent.session.start", data.sessionID, {
           cwd: bound.directory,
           title: data.title,
         });
@@ -81,21 +86,23 @@ export default {
     });
     const onExecutionStarted = context.data.on("session.execution.started", ({ data }) => {
       if (bound?.id !== data.sessionID || !selected(data.sessionID)) return;
-      bridge("agent.prompt.submit", data.sessionID);
+      send("agent.prompt.submit", data.sessionID);
     });
     const onExecutionStopped = ["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"]
       .map((event) => context.data.on(event, ({ data }) => {
         if (bound?.id === data.sessionID && selected(data.sessionID)) {
-          bridge("agent.stop", data.sessionID);
+          send("agent.stop", data.sessionID);
         }
       }));
     const onDeleted = context.data.on("session.deleted", ({ data }) => {
       if (bound?.id !== data.sessionID) return;
-      bridge("agent.session.end", data.sessionID, { reason: "deleted" });
+      send("agent.session.end", data.sessionID, { reason: "deleted" });
       bound = undefined;
     });
 
-    return () => {
+    const dispose = async () => {
+      if (disposed) return delivery;
+      disposed = true;
       onViewed();
       onCreated();
       onMoved();
@@ -103,6 +110,13 @@ export default {
       onExecutionStarted();
       for (const dispose of onExecutionStopped) dispose();
       onDeleted();
+      if (bound) {
+        send("agent.session.end", bound.id, { reason: "tui_disposed" });
+        bound = undefined;
+      }
+      await delivery;
     };
+    dispose.flush = () => delivery;
+    return dispose;
   },
 };

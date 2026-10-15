@@ -3,10 +3,12 @@
 
 import assert from "node:assert/strict"
 import { afterEach, beforeEach, describe, it } from "node:test"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { spawn } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { createInterface } from "node:readline"
 import { createContext, deferred, loadPlugin } from "../fixtures/OpenCodeHookContext.mjs"
 
 const pluginPath = process.env.ITE2E_OPENCODE_PLUGIN ??
@@ -70,7 +72,7 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       handlers.get(event)({ data })
     }
 
-    it("binds the visible root and sends moved cwd without attributing other panes or child sessions", () => {
+    it("binds the visible root and sends moved cwd without attributing other panes or child sessions", async () => {
       sessions.set("root", { id: "root", title: "Current", location: { directory: "C:\\first" } })
       sessions.set("other", { id: "other", location: { directory: "C:\\foreign" } })
       sessions.set("child", { id: "child", parentID: "root", location: { directory: "C:\\child" } })
@@ -81,31 +83,31 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       emit("session.moved", { sessionID: "other", location: { directory: "C:\\foreign" } })
       route = { type: "session", sessionID: "child" }
       emit("session.viewed", { sessionID: "child" })
+      await dispose()
       assert.deepEqual(calls.map(({ topic, payload }) => [topic, payload.session_id, payload.cwd]), [
         ["agent.session.start", "root", "C:\\first"],
         ["agent.cwd.changed", "root", "C:\\second"],
+        ["agent.session.end", "root", undefined],
       ])
       assert.equal(calls[0].payload.title, "Current")
       assert.deepEqual(calls[0].options.cmd, [process.env.WTCLI_PATH, "agent-hook", "--cli-source", "opencode", "--event", "agent.session.start"])
-      dispose()
       assert.equal(handlers.size, 0)
     })
 
-    it("does not bind a moved session missing from the TUI cache, then binds it when viewed", () => {
+    it("does not bind a moved session missing from the TUI cache, then binds it when viewed", async () => {
       const dispose = tuiPlugin.setup(context)
       emit("session.moved", { sessionID: "root", location: { directory: "C:\\second" } })
       assert.equal(calls.length, 0)
       sessions.set("root", { id: "root", location: { directory: "C:\\second" } })
       emit("session.viewed", { sessionID: "root" })
-      assert.deepEqual(calls.map((call) => call.payload.cwd), ["C:\\second"])
-      dispose()
+      await dispose()
+      assert.deepEqual(calls.map((call) => call.payload.cwd), ["C:\\second", undefined])
     })
 
-    it("binds an already visible running session and tracks V2 execution outcomes and deletion", () => {
+    it("binds an already visible running session and tracks V2 execution outcomes and deletion", async () => {
       sessions.set("root", { id: "root", title: "Restored", location: { directory: "C:\\restored" } })
       statuses.set("root", "running")
       const dispose = tuiPlugin.setup(context)
-      assert.deepEqual(calls.map((call) => call.topic), ["agent.session.start", "agent.prompt.submit"])
       emit("session.execution.started", { sessionID: "other" })
       emit("session.execution.succeeded", { sessionID: "root" })
       emit("session.renamed", { sessionID: "root", title: "New title" })
@@ -115,14 +117,35 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       emit("session.execution.interrupted", { sessionID: "root" })
       emit("session.deleted", { sessionID: "root" })
       emit("session.execution.started", { sessionID: "root" })
+      await dispose()
       assert.deepEqual(calls.map((call) => call.topic), [
         "agent.session.start", "agent.prompt.submit", "agent.stop", "agent.session.start",
         "agent.prompt.submit", "agent.stop", "agent.prompt.submit", "agent.stop", "agent.session.end",
       ])
       assert.equal(calls[3].payload.title, "New title")
       assert.equal(calls[8].payload.reason, "deleted")
-      dispose()
       assert.equal(handlers.size, 0)
+    })
+
+    it("serializes bridge children and ends the bound session exactly once on disposal", async () => {
+      sessions.set("root", { id: "root", title: "Current", location: { directory: "C:\\first" } })
+      const first = deferred()
+      globalThis.Bun.spawn = (options) => {
+        calls.push({ topic: options.cmd.at(-1), payload: JSON.parse(new TextDecoder().decode(options.stdin)) })
+        return { exited: calls.length === 1 ? first.promise : Promise.resolve(0) }
+      }
+      const dispose = tuiPlugin.setup(context)
+      emit("session.moved", { sessionID: "root", location: { directory: "C:\\second" } })
+      const ending = dispose()
+      await Promise.resolve()
+      assert.deepEqual(calls.map((call) => call.topic), ["agent.session.start"])
+      first.resolve(0)
+      await ending
+      await dispose()
+      assert.deepEqual(calls.map((call) => call.topic), [
+        "agent.session.start", "agent.cwd.changed", "agent.session.end",
+      ])
+      assert.equal(calls.at(-1).payload.reason, "tui_disposed")
     })
 
     it("suppresses hooks outside a Terminal pane and in ACP mode", () => {
@@ -273,6 +296,62 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       assert.match(log, /session lookup failed.*lookup unavailable/)
       assert.match(log, /bridge spawn failed.*bridge unavailable/)
     } finally { await dispose() }
+  })
+
+  it("V2 driver combines the server and TUI hooks for start, cwd, and disposal", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "ite2e-opencode-driver-"))
+    t.after(() => rm(directory, { recursive: true }))
+    const log = join(directory, "events.jsonl")
+    await writeFile(join(directory, "agent-hook"), `
+      const fs = require("node:fs")
+      let input = ""
+      process.stdin.on("data", (chunk) => { input += chunk })
+      process.stdin.on("end", () => fs.appendFileSync(process.env.MOCK_HOOK_LOG,
+        JSON.stringify({ topic: process.argv.at(-1), payload: JSON.parse(input) }) + "\\n"))
+    `)
+    const driver = spawn(process.execPath, [
+      fileURLToPath(new URL("../fixtures/OpenCodeHookDriver.mjs", import.meta.url)),
+      pluginPath, "v2", directory, tuiPluginPath,
+    ], {
+      cwd: directory,
+      env: {
+        ...process.env,
+        WTCLI_PATH: process.execPath,
+        MOCK_HOOK_LOG: log,
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    })
+    const output = createInterface({ input: driver.stdout })[Symbol.asyncIterator]()
+    let errors = ""
+    driver.stderr.on("data", (chunk) => { errors += chunk })
+    const exited = new Promise((resolve, reject) => {
+      driver.once("error", reject)
+      driver.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`driver exited ${code}: ${errors}`)))
+    })
+    try {
+      assert.equal(JSON.parse((await output.next()).value).ready, true)
+      async function action(token, request) {
+        driver.stdin.write(JSON.stringify({ ...request, token }) + "\n")
+        assert.equal(JSON.parse((await output.next()).value).completed, token)
+      }
+      await action("create", { action: "event", type: "session.created", data: { sessionID: "root", title: "Root" } })
+      await action("view", { action: "view", id: "root" })
+      await action("move", { action: "event", type: "session.moved", data: {
+        sessionID: "root", location: { directory: "C:\\moved" },
+      } })
+      await action("dispose", { action: "dispose" })
+      assert.deepEqual((await readFile(log, "utf8")).trim().split("\n").map((line) => {
+        const { topic, payload } = JSON.parse(line)
+        return [topic, payload.cwd, payload.reason]
+      }), [
+        ["agent.session.start", directory, undefined],
+        ["agent.cwd.changed", "C:\\moved", undefined],
+        ["agent.session.end", undefined, "tui_disposed"],
+      ])
+    } finally {
+      driver.stdin.end()
+      await exited
+    }
   })
 
   it("ACP mode and missing Terminal identity suppress V2 registration and V1 bridge emission", async () => {

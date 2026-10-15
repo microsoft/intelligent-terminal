@@ -1190,6 +1190,37 @@ fn prompt_refreshes_existing_session_cwd_without_rebinding_its_pane() {
 /// a first-observed connection failure silently no-ops, losing the only signal
 /// that the agent broke.
 #[test]
+fn stale_opencode_end_does_not_stop_a_session_rebound_to_another_pane() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus};
+
+    let mut reg = AgentSessionRegistry::new();
+    let hook = |event, pane| {
+        json!({
+            "event": event,
+            "cli_source": "opencode",
+            "agent_session_id": "rebound",
+            "payload": { "cwd": r"C:\repo", "title": pane }
+        })
+    };
+    for pane in ["old-pane", "new-pane"] {
+        route_agent_event_to_registry(&mut reg, pane, &hook("agent.session.start", pane));
+    }
+    assert!(!route_agent_event_to_registry(
+        &mut reg,
+        "old-pane",
+        &hook("agent.session.end", "old-pane"),
+    ));
+    let row = reg.get(&"rebound".to_string()).unwrap();
+    assert_eq!(row.status, AgentStatus::Idle);
+    assert_eq!(row.pane_session_id.as_deref(), Some("new-pane"));
+    route_agent_event_to_registry(&mut reg, "new-pane", &hook("agent.session.end", "new-pane"));
+    assert_eq!(
+        reg.get(&"rebound".to_string()).unwrap().status,
+        AgentStatus::Ended
+    );
+}
+
+#[test]
 fn agent_error_for_unknown_session_still_records_the_failure() {
     use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, SessionEvent};
 

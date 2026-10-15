@@ -10556,8 +10556,22 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         .cloned()
         .unwrap_or(serde_json::Value::Null);
     let pane_key = crate::agent_sessions::pane_key(pane_id);
+    let rows = state.registry.snapshot().await;
+    if crate::app::opencode_end_from_another_pane(
+        &cli_source,
+        event,
+        rows.iter()
+            .find(|row| {
+                row.session_id.0.as_ref() == key && row.cli_source.as_ref() == Some(&cli_source)
+            })
+            .and_then(|row| row.pane_session_id.as_deref()),
+        pane_id,
+    ) {
+        tracing::debug!(target: "master_wt_event", key, pane_id, "ignored stale OpenCode end from another pane");
+        return;
+    }
     let pane_owned_by_other = !pane_key.is_empty()
-        && state.registry.snapshot().await.iter().any(|row| {
+        && rows.iter().any(|row| {
             (row.session_id.0.as_ref() != key || row.cli_source.as_ref() != Some(&cli_source))
                 && matches!(
                     row.status,

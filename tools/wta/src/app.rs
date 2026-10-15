@@ -815,6 +815,19 @@ fn session_removed_matches_scope(
     })
 }
 
+pub(crate) fn opencode_end_from_another_pane(
+    cli_source: &crate::agent_sessions::CliSource,
+    event: &str,
+    bound_pane: Option<&str>,
+    incoming_pane: &str,
+) -> bool {
+    *cli_source == crate::agent_sessions::CliSource::OpenCode
+        && matches!(event, "agent.session.end" | "agent.session.stopped")
+        && bound_pane.is_some_and(|pane| {
+            crate::agent_sessions::pane_key(pane) != crate::agent_sessions::pane_key(incoming_pane)
+        })
+}
+
 /// As [`route_agent_event_to_registry`], but reports every event it applied.
 /// The sink is an observation point for tests — it is not a publish path.
 pub fn route_agent_event_to_registry_with_hook_sink<F>(
@@ -928,6 +941,15 @@ where
         }
     }
     let key_for_refresh = key.clone();
+    if opencode_end_from_another_pane(
+        &cli_source,
+        event,
+        reg.get(&key).and_then(|row| row.pane_session_id.as_deref()),
+        pane_session_id,
+    ) {
+        tracing::debug!(target: "agent_route", key, pane_session_id, "ignored stale OpenCode end from another pane");
+        return false;
+    }
     // Per-agent-event — debug, not info.
     tracing::debug!(
         target: "agent_route",
