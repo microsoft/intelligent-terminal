@@ -175,8 +175,8 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             param([ValidateSet('vertical', 'horizontal')][string]$Layout)
             $hwnd = [IntPtr][long]$script:app.Hwnd
             $ownedPid = $script:app.Pid
-            $runToken = $env:ITE2E_RUN_TOKEN
-            $processReceipt = $env:ITE2E_OWNED_PROCESS_RECEIPT
+            $runToken = $script:app.InputRunToken
+            $processReceipt = $script:app.InputReceiptPath
             Open-TabMenu
             $label = if ($Layout -eq 'vertical') { 'Switch to sidebar' } else { 'Switch to horizontal tabs' }
             $ownedRoot = {
@@ -191,8 +191,8 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                         [ItE2E.ItWtWin32Input]::GetForegroundWindow(), $hwnd, [uint32]$ownedPid)) {
                     throw 'Layout invocation requires the original owned root and process lease.'
                 }
-                if (-not $runToken -or -not $processReceipt -or $env:ITE2E_RUN_TOKEN -cne $runToken -or
-                    $env:ITE2E_OWNED_PROCESS_RECEIPT -cne $processReceipt) { throw 'Layout invocation run identity changed.' }
+                if (-not $runToken -or -not $processReceipt -or $script:app.InputRunToken -cne $runToken -or
+                    $script:app.InputReceiptPath -cne $processReceipt) { throw 'Layout invocation run identity changed.' }
                 $records = @(Get-Content -LiteralPath $processReceipt -ErrorAction Stop | ForEach-Object { $_ | ConvertFrom-Json })
                 if (@($records | Where-Object { $_.pid -eq $ownedPid -and $_.path -eq $current.Path -and
                     $_.run_token -ceq $runToken -and ([datetimeoffset]$_.start_utc).UtcDateTime.Ticks -eq
@@ -804,7 +804,16 @@ $endHook
                 } | Out-Null
             }
             if ($Surface -eq 'horizontal') { Switch-ContextLayout horizontal }
-            elseif ($Surface -eq 'collapsed') { Invoke-UiElement -App $script:app -Selector 'Collapse sidebar' | Out-Null }
+            elseif ($Surface -eq 'collapsed') {
+                Invoke-UiElement -App $script:app -Selector 'Collapse sidebar' | Out-Null
+                Wait-Until -TimeoutSec 10 -Because 'the collapsed rail has removed pane rows and completed compact row layout' -Condition {
+                    if (@(Get-OwnedElements AutomationId PaneActivateButton).Count -or
+                        @(Get-OwnedElements AutomationId ItemsList).Count -ne 1) { return $false }
+                    $leading = Get-LeadingSlot collapsed
+                    $leading.row.Current.BoundingRectangle.Height -le 40 * $script:scale
+                } | Out-Null
+            }
+            Save-CompositorFrame "$token-$Surface-baseline-window"
             $baseline = Get-LeadingSlot $Surface
             @(Get-RowProgress $baseline.row) | Should -HaveCount 0
             $icon = Get-VisualDigest -Bounds $baseline.slot -Name "$token-baseline" -Icon
@@ -834,6 +843,7 @@ $endHook
                 @(Get-LeadingIdentityPeers $baseline.row $baseline.slot) | Should -HaveCount 0 -Because 'a spinner must replace, not overlay, a visible profile/provider icon'
             }
             Get-VisualDigest -Bounds $baseline.slot -Name "$token-progress" | Should -Not -Be $icon
+            Save-CompositorFrame "$token-$Surface-progress-window"
             @(Get-RowProgress $control.row) | Should -HaveCount 0
             Get-VisualDigest -Bounds $control.slot -Name "$token-control-progress" -Icon | Should -Be $controlIcon
             if ($Surface -eq 'expanded') {
@@ -848,6 +858,7 @@ $endHook
             Wait-Until -TimeoutSec 10 -Because 'clear restores the identical profile/provider raster in the same slot' -Condition {
                 (Get-VisualDigest -Bounds $baseline.slot -Name "$token-restored" -Icon) -eq $icon
             } | Out-Null
+            Save-CompositorFrame "$token-$Surface-restored-window"
             if ($Identity -eq 'provider') { Assert-NativeStatus $sid Working }
             @((Get-WtPanes -App $script:app -TabId $script:tab.tab_id).session_id | Sort-Object) |
                 Should -Be @(@($script:a.session_id, $script:b.session_id) | Sort-Object)
