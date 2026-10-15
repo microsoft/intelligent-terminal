@@ -15274,7 +15274,11 @@ namespace TerminalAppLocalTests
             return resources.GetValue(key).ValueAsString();
         };
         const auto brushColor = [&](const wchar_t* key) {
-            return ThemeLookup(Application::Current().Resources(), page->_tabStrip.ActualTheme(), winrt::box_value(key)).as<Media::SolidColorBrush>().Color();
+            winrt::Windows::UI::Color color{};
+            TestOnUIThread([&]() {
+                color = ThemeLookup(Application::Current().Resources(), page->_tabStrip.ActualTheme(), winrt::box_value(key)).as<Media::SolidColorBrush>().Color();
+            });
+            return color;
         };
         const auto paneProgressRoot = [&](const uint32_t contentId) {
             const auto display = displayForTab();

@@ -80,6 +80,10 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             throw
         }
         $script:app.Launched | Should -BeTrue
+        # Compositor proof needs the owned root, not best-effort activation.
+        # The harness permits only an uncovered caption on this captured
+        # executable/PID/start-time identity; it never clicks a foreign window.
+        $script:app | Add-Member -NotePropertyName RequireOwnedForeground -NotePropertyValue $true -Force
         & (Get-Module ItE2E) { Initialize-WtWin32Input }
         $script:cursor = [ItE2E.ItWtWin32Input]::GetCursorPosition()
         $dpi = [ItE2E.ItPaneProgressDpi]::GetDpiForWindow([IntPtr][long]$script:app.Hwnd)
@@ -254,7 +258,14 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                     [ItE2E.ItWtWin32Input]::GetForegroundWindow(),
                     [IntPtr][long]$script:app.Hwnd, [uint32]$script:app.Pid) | Should -BeTrue
             }
-            else { Set-WtWindowForeground -App $script:app | Should -BeTrue }
+            else {
+                $previousReceipt = $env:ITE2E_INPUT_FAILURE_RECEIPT
+                try {
+                    $env:ITE2E_INPUT_FAILURE_RECEIPT = Join-Path $script:evidence "$Name-foreground.json"
+                    Set-WtWindowForeground -App $script:app | Should -BeTrue
+                }
+                finally { $env:ITE2E_INPUT_FAILURE_RECEIPT = $previousReceipt }
+            }
             $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd).Current.BoundingRectangle
             [ItE2E.ItWtWin32Input]::SetCursorPos([int]($window.Right - 30), [int]($window.Bottom - 30)) | Should -BeTrue
             Start-Sleep -Milliseconds 350
