@@ -13788,6 +13788,9 @@ namespace TerminalAppLocalTests
             const auto bounds = iconPresenter.TransformToVisual(root).TransformBounds({ 0, 0, 16, 16 });
             VERIFY_IS_TRUE(bounds.X >= 0 && bounds.X + bounds.Width <= root.ActualWidth());
             VERIFY_IS_TRUE(std::abs(bounds.X + bounds.Width / 2 - root.ActualWidth() / 2) <= 1.0);
+            const auto foreground = profileVisual.Foreground().try_as<Media::SolidColorBrush>();
+            VERIFY_IS_NOT_NULL(foreground);
+            VERIFY_IS_TRUE(foreground.Color().A > 0 && foreground.Opacity() > 0);
             VERIFY_IS_TRUE(display.IconSource() == profileIcon);
             VERIFY_IS_TRUE(iconPresenter.Content() == profileVisual);
         });
@@ -15271,7 +15274,11 @@ namespace TerminalAppLocalTests
                                    .MainResourceMap()
                                    .GetSubtree(L"TerminalApp/Resources");
         const auto statusText = [&](const winrt::hstring& key) {
-            return resources.GetValue(key).ValueAsString();
+            winrt::hstring text;
+            TestOnUIThread([&]() {
+                text = resources.GetValue(key).ValueAsString();
+            });
+            return text;
         };
         const auto brushColor = [&](const wchar_t* key) {
             winrt::Windows::UI::Color color{};
@@ -15365,6 +15372,7 @@ namespace TerminalAppLocalTests
                                             const bool expectedIndeterminate,
                                             const std::optional<winrt::Windows::UI::Color>& expectedForeground,
                                             const winrt::hstring& expectedStatusToken) {
+            bool logged = false;
             _waitForContentTransferReviewUI([&]() {
                 const auto paneItem = findPaneItem(contentId);
                 const auto root = paneProgressRoot(contentId);
@@ -15389,6 +15397,16 @@ namespace TerminalAppLocalTests
                                                    foreground == nullptr :
                                                    foreground != nullptr && foreground.Color() == *expectedForeground;
                 const auto progressSlot = Media::VisualTreeHelper::GetParent(ring).as<Grid>();
+                if (!logged)
+                {
+                    logged = true;
+                    Log::Comment(automationName.c_str());
+                    Log::Comment(expectedStatusToken.c_str());
+                    Log::Comment(foregroundMatches ? L"Pane foreground matches" : L"Pane foreground differs");
+                    Log::Comment(containsStatus ? L"Pane status token matches" : L"Pane status token differs");
+                    Log::Comment(_progressIndicatorsMatch(root, L"Pane", expectedVisibility == Visibility::Visible, expectedIndeterminate, expectedState != 0 && !expectedIndeterminate ? std::optional{ expectedValue } : std::nullopt) ?
+                                     L"Pane indicators match" : L"Pane indicators differ");
+                }
                 return paneItem.ProgressState() == expectedState &&
                        paneItem.ProgressValue() == expectedValue &&
                        icon.Visibility() == (expectedState == 0 ? Visibility::Visible : Visibility::Collapsed) &&
