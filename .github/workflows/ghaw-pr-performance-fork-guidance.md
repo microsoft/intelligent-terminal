@@ -26,7 +26,6 @@ engine:
   model: auto
 imports:
   - .github/agents/performance-review.agent.md
-  - .github/workflows/ghaw-pr-performance/report-contract.md
 
 checkout:
   ref: ${{ github.workflow_sha }}
@@ -45,39 +44,27 @@ tools:
     min-integrity: unapproved
 
 mcp-scripts:
-  validate_performance_report:
-    description: 'Capture fixed summary and validated guide JSON for controller reporting; never executes or mutates fork source or submits comments.'
+  submit_performance_summary:
+    description: 'Capture the agent-written Markdown summary at the fixed artifact path; never formats findings, executes fork code or posts comments.'
     inputs:
       summaryMarkdown:
         type: string
         required: true
         description: 'Review-time Markdown using the skill summary template; captured only to the fixed summary artifact, never validation authority.'
-      report_json:
-        type: string
-        required: true
-        description: 'Complete version-1 performance report as JSON.'
     env:
-      TRUSTED_REVIEW_RUNTIME: '${{ runner.temp }}/performance-trusted.mjs'
-      PR_NUMBER: ${{ github.event.inputs.pr_number }}
-      BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
       HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
     script: |
       const fs = await import('node:fs');
-      const { pathToFileURL } = await import('node:url');
-      const runtime = await import(pathToFileURL(process.env.TRUSTED_REVIEW_RUNTIME).href);
-      const reportPath = '/tmp/gh-aw/performance-report.json';
-      try {
-        fs.unlinkSync(reportPath);
-      } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
+      if (typeof summaryMarkdown !== 'string' || !summaryMarkdown.trim() ||
+          Buffer.byteLength(summaryMarkdown, 'utf8') > 48 * 1024 ||
+          summaryMarkdown.replaceAll('@', '@\u200b').length > 48 * 1024) {
+        throw new Error('Summary must fit the UTF-8 and mention-escaped artifact limits.');
       }
-      runtime.captureReviewSummary('/tmp/gh-aw', summaryMarkdown);
-      const report = runtime.validateReport(JSON.parse(report_json), {
-        mode: 'guide', prNumber: Number(process.env.PR_NUMBER),
-        baseSha: process.env.BASE_SHA, headSha: process.env.HEAD_SHA
-      });
-      fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-      return { renderedCard: runtime.renderReport(report) };
+      if (new TextDecoder('utf-8', { fatal: true }).decode(Buffer.from(summaryMarkdown)) !== summaryMarkdown)
+        throw new Error('Summary must preserve valid UTF-8 text.');
+      fs.writeFileSync('/tmp/gh-aw/.performance-summary.md', summaryMarkdown, 'utf8');
+      fs.writeFileSync('/tmp/gh-aw/review-head.txt', process.env.HEAD_SHA, 'utf8');
+      return { captured: true };
 
 jobs:
   conclusion:
@@ -114,9 +101,6 @@ jobs:
           BASE_REF: ${{ github.event.inputs.base_ref }}
         run: |
           $ErrorActionPreference = 'Stop'
-          & node .github/workflows/ghaw-pr-performance/scripts/performance-review.mjs repository-policy --root .
-          if ($LASTEXITCODE -ne 0) { throw 'Trusted repository policy no longer matches the native workflow.' }
-
           if ($env:PR_NUMBER -notmatch '^[1-9][0-9]*$') {
               throw 'PR_NUMBER must be a positive decimal number.'
           }
@@ -128,9 +112,7 @@ jobs:
           if ($env:REPOSITORY -cne $env:GITHUB_REPOSITORY) {
               throw 'Dispatch repository must match the workflow repository.'
           }
-          if ($env:SAME_REPO -notin @('true', 'false')) {
-              throw 'SAME_REPO must be true or false.'
-          }
+          if ($env:SAME_REPO -cne 'false') { throw 'Guide worker requires a fork PR.' }
 
           $metadataPath = Join-Path $env:RUNNER_TEMP 'performance-live-pr.json'
           $metadata = & gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER"
@@ -157,13 +139,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Could not summarize the immutable PR change size.' }
           "change_summary=$changeSummary" >> $env:GITHUB_OUTPUT
 
-          if ($env:SAME_REPO -eq 'true') {
-              $context = $env:AW_CONTEXT | ConvertFrom-Json
-              if ($context.item_type -cne 'pull_request' -or $context.item_number -ne [int]$env:PR_NUMBER -or
-                  $context.repo -cne $env:REPOSITORY -or $context.head_sha -cne $env:HEAD_SHA) {
-                  throw 'Repair requires the controller-supplied native aw_context for this exact PR.'
-              }
-          }
           "trusted_code_revision=$env:WORKFLOW_SHA" >> $env:GITHUB_OUTPUT
   agent:
     needs: [prepare]
@@ -178,22 +153,19 @@ pre-agent-steps:
   - name: Classify immutable performance scope
     shell: bash
     env:
-      GH_TOKEN: ${{ github.token }}
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
       BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
       HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
       SAME_REPO: ${{ github.event.inputs.same_repo }}
       TRUSTED_SHA: ${{ github.workflow_sha }}
-      GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
     run: |
       set -euo pipefail
       test "$SAME_REPO" = "false"
-      mkdir -p /tmp/gh-aw "$(dirname "$GH_AW_SAFE_OUTPUTS")"
+      mkdir -p /tmp/gh-aw
       git show "${TRUSTED_SHA}:.github/workflows/ghaw-pr-performance/scripts/performance-review.mjs" \
         > "$RUNNER_TEMP/performance-trusted.mjs"
       node "$RUNNER_TEMP/performance-trusted.mjs" prepare \
         --output-dir /tmp/gh-aw \
-        --safe-outputs "$GH_AW_SAFE_OUTPUTS" \
         --pr "$PR_NUMBER" --base "$BASE_SHA" --head "$HEAD_SHA"
 
 safe-outputs:
@@ -207,7 +179,6 @@ safe-outputs:
   missing-data: false
   upload-artifact:
     allowed-paths:
-      - /tmp/gh-aw/performance-report.json
       - /tmp/gh-aw/.performance-summary.md
     retention-days: 7
 
@@ -217,7 +188,9 @@ post-steps:
     uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
     with:
       name: performance-summary-${{ github.event.inputs.pr_number }}-${{ github.event.inputs.expected_head_sha }}
-      path: /tmp/gh-aw/.performance-summary.md
+      path: |
+        /tmp/gh-aw/.performance-summary.md
+        /tmp/gh-aw/review-head.txt
       include-hidden-files: true
       if-no-files-found: warn
       retention-days: 7
@@ -237,27 +210,6 @@ post-steps:
         exit 1
       }
 
-  - name: Validate guidance report for controller publication
-    shell: bash
-    env:
-      PR_NUMBER: ${{ github.event.inputs.pr_number }}
-      BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
-      HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
-      TRUSTED_SHA: ${{ github.workflow_sha }}
-      TRUSTED_REVIEW_RUNTIME: '${{ runner.temp }}/performance-trusted.mjs'
-    run: |
-      set -euo pipefail
-      git show "${TRUSTED_SHA}:.github/workflows/ghaw-pr-performance/scripts/performance-review.mjs" \
-        > "$RUNNER_TEMP/performance-trusted.mjs"
-      node "$RUNNER_TEMP/performance-trusted.mjs" fork-report
-
-  - name: Upload validated performance verdict
-    uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-    with:
-      name: performance-result
-      path: /tmp/gh-aw/performance-result/performance-verdict.json
-      if-no-files-found: error
-      retention-days: 7
 
 timeout-minutes: 30
 max-ai-credits: 500
@@ -308,21 +260,16 @@ without invented rows. Never claim `Fixed`; this is review-time guidance.
 The caller captures only this fixed output artifact before parsing report JSON;
 it never executes or mutates fork source. The summary is not validation authority.
 
-Construct the complete version-1 guide report using the imported workflow
-report contract. First call
-`validate_performance_report` with `summaryMarkdown` and `report_json` to capture
-the human summary and validate and preview the
-deterministic card. Correct any validation errors before completion.
-The tool captures only the caller-fixed summary and validated report files.
+Call `submit_performance_summary` with your complete Markdown, written from
+the shared template. Every Commit cell is None because fork source is not edited.
+The tool captures that text verbatim; it does not generate a second summary.
 Then request exactly one `noop` and stop. Never request `add_comment`:
 the controller is the sole PR Conversation publisher and checks the live head
 immediately before creating or updating its result comment. Trusted
-post-processing validates the captured JSON again and emits its verdict.
 All HIGH findings remain
 `manual_required` or `unsafe`; MEDIUM/LOW remain `advice_only`.
 Omit all repository, PR/issue number, target, comment ID, and reply ID fields
-from the tool call: the trusted caller fixes the destination. The gate rejects
-these overrides even when the body is correct.
+from the tool call: the caller fixes the destination.
 
 Shell execution, CLI proxies, edits, and direct report file writes are disabled.
 Use only the read tool, read-only GitHub MCP, the scoped report validator,

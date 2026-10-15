@@ -108,9 +108,13 @@ HIGH defect in the same file does not authorize editing an advice-only finding.
 
 Only HIGH findings are eligible for authorized autofix, and only when they are
 high-confidence, small and localized, behavior-preserving, and supported by
-repository-specific proof and an existing focused native test. Required input
-analysis must be complete and comparable. Broad threading, caching, architecture,
+repository-specific evidence. Build and test are not prerequisites for committing
+an authorized proposal: the original reviewer owns validation and may revert
+the proposed fix commit. Broad threading, caching, architecture,
 dependency or policy changes require separate design work.
+When committing is authorized, make one separate minimal commit per HIGH
+finding and put its commit link in that finding's table row. Do not combine
+findings or add unrelated cleanup.
 
 Preserve existing tests and intended semantics. Analyzer replacements need the
 same proof as hand-written changes: a reference parameter can affect ABI or
@@ -118,6 +122,9 @@ coroutine lifetime, and reserved capacity can increase retained memory.
 Insufficient evidence or validation results in an unresolved handoff rather
 than a broader edit. Report source changes and validation separately so a
 proposal cannot be mistaken for a verified improvement.
+When proposals are committed, include one notice below the findings table:
+"Proposed fixes committed without build/test. The original reviewer owns
+validation and may revert the fix commit." Do not repeat it for each finding.
 
 ## Results template
 
@@ -134,9 +141,12 @@ instead of placeholder rows.
 
 ### Findings
 
-| Severity | Rule / location | Finding and impact | Disposition | Validation |
-| --- | --- | --- | --- | --- |
-| HIGH / MEDIUM / LOW | <rule ID; path:line> | <scenario and evidenced cost> | Validated correction / Proposed repair / Manual handoff / Advice only | <performed check or missing proof> |
+| Severity | Rule / location | Finding and impact | Disposition | Commit | Validation |
+| --- | --- | --- | --- | --- | --- |
+| HIGH / MEDIUM / LOW | <rule ID; path:line> | <scenario and evidenced cost> | Proposed fix commit / Manual handoff / Advice only | <actual commit link, or None> | <performed check or Not built/tested> |
+
+<For committed proposals, put one shared build/test ownership and rollback
+notice here; omit it when nothing was committed.>
 
 ### Checks performed
 

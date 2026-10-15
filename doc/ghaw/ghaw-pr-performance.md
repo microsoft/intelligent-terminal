@@ -1,244 +1,117 @@
-# Performance review workflow
+# Performance PR review
 
-The workflow investigates changes that can worsen typing, rendering, tab
-switching, session refresh or repeated work. Findings require an affected
-scenario, baseline comparison and concrete impact. Ordinary compilation and
-analyzer warnings alone cannot establish caller frequency, ownership or
-user-visible cost.
-
-Same-repository PRs can receive small, native-tested HIGH WTA corrections.
-MEDIUM/LOW findings remain advice-only; C++ corrections and fork PRs remain
-manual. The controller automatically maintains a severity-ordered result in
-the PR Conversation, with controller, worker and repair links.
+Review changes affecting rendering, typing, tab/pane interactions, WTA sessions,
+repeated work, memory and CI cost. Classify each finding HIGH, MEDIUM or LOW
+before deciding whether to edit it.
 
 ## Ownership
 
-| Layer | Responsibility | Location |
-| --- | --- | --- |
-| Agent | Goal, domain principles and scope | `.github/agents/performance-review.agent.md` |
-| Skill | Reusable investigation, evidence, triage and human results | `.github/skills/performance-review/SKILL.md` |
-| Workflow | PR identity, permissions, tools, artifacts and orchestration | `ghaw-pr-performance.md`, `ghaw-pr-performance-fork-guidance.md` |
-| Shared workflow contract | Structured report handoff used by both workers | `.github/workflows/ghaw-pr-performance/report-contract.md` |
-| Node adapter | Classification, report validation, exact-source sealing and publication | `.github/workflows/ghaw-pr-performance/scripts/performance-review.mjs` |
-| Windows runner | Native tooling, process deadlines and physical source invariants | `.github/workflows/ghaw-pr-performance/scripts/run-native-performance-checks.ps1` |
-| Controller | Correlated dispatch, server-result verification, publication and Conversation delivery | `ghaw-pr-performance-controller.yml` |
-
-The agent and skill support local diffs, commit ranges and branch comparisons
-as well as PRs. They have no workflow-specific tools, JSON schema, job protocol
-or publication branches. The caller supplies those contracts.
-
-The two runtimes follow platform and trust boundaries. Node supplies one
-report/Git-object contract to Linux workers and the JavaScript publisher.
-PowerShell owns Windows process lifetimes, MSBuild and native command
-execution, and calls the same Node proposal validator before Cargo runs.
-Moving those adapters out of the skill removes caller coupling; rewriting
-the Windows runner in Node would not remove its validation responsibility.
-Neither runtime is a second performance detector.
-
-## Repository policy and drift
-
-The backend is intentionally bounded to this repository, not a portable
-arbitrary-project builder. Explicit source/project recipes and repair limits
-are policy; the agent performs the performance reasoning.
-
-Trusted preparation checks WTA's `rust-toolchain.toml`, the extended Cargo
-analysis alias and the declared C++ owning projects before review. The public
-Rust backend must match the CI language/library version. A changed CI pin,
-missing alias or stale project recipe produces an explicit failure requiring
-the binding to be updated, rather than silently using old coverage.
-The fully expanded Rust command must match the pinned ordered profile,
-including `--frozen`, JSON diagnostics, the `--` separator and all five lint
-flags. Removing, reordering or overriding arguments requires an explicit
-binding update; equivalent manifest-path separators remain accepted.
-
-New/unmapped `src` source paths remain review candidates with manual scope.
-Project prefixes select possible owners, while evaluated native MSBuild
-`ClCompile` membership establishes actual translation-unit coverage.
-Shared headers, unsupported languages and revision-absent files remain
-explicit gaps. Referenced prerequisite builds are not extra analyzer coverage.
-
-## Analysis
-
-| Profile | Added capability |
+| Owner | Responsibility |
 | --- | --- |
-| C++ `PerformanceAnalysis=Extended` | Four selected Clang-Tidy performance checks on top of AuditMode/MSVC/CppCoreCheck infrastructure. |
-| Rust `cargo wta-perf` / `cargo wta-perf-extended` | Developer Clippy entrypoints; the extended alias adds `needless_collect` and `large_futures` individually. Ordinary Cargo builds do not run Clippy. |
-| Shared skill rules | Repeated work, UI blocking, MVVM amplification, async contention and owner lifetime, investigated only where triggered. |
+| `performance-review` agent and shared skill | Source investigation, severity, minimal corrections and the Markdown summary template. |
+| Repair worker | One separate proposal commit per eligible HIGH finding; native gh-aw branch push. |
+| Fork worker | Read-only guidance; no execution, editing or branch push. |
+| Controller | Immutable PR routing and delivery of the agent-written Markdown. |
+| Original reviewer | Build/test, acceptance and optional rollback of a proposed fix commit. |
 
-The opt-in C++ profile explicitly enables Clang-Tidy. BASE/HEAD analysis also
-passes enablement as a trusted global property alongside the frozen checks;
-ordinary builds without that profile/property remain unchanged.
+The agent writes the findings table, including each proposal's actual commit
+link. No script builds a second findings summary, and no JSON report/card
+protocol is required.
 
-Before same-repository inference, separate read-only Windows BASE/HEAD jobs
-use the same HEAD-derived plan and trusted profiles. Their metadata and raw
-logs are diagnostic inputs, not repair validation. Failed or partial analysis
-still permits a human source review, but blocks automatic repair.
+## Autofix policy
 
-Version-2 metadata separates completed WTA crate analysis
-(`analyzedScope.wtaRustCrate`, zero-exit `rust-analysis`) from actual C++
-translation units (`analyzedCppTranslationUnits`). Empty C++ coverage is
-normal for a Rust-only plan. Both bound records must have matching
-revisions/profiles/tools and completed required checks for repair eligibility.
+Only high-confidence HIGH findings supported by relevant scenario evidence
+qualify for small, localized, behavior-preserving proposals. Easy replacement
+does not make an uncertain-impact optimization HIGH. MEDIUM/LOW remain advice;
+unsafe or broad changes require manual handoff.
 
-Rust analysis freezes trusted Cargo aliases in disposable checkouts.
-Unexpected ancestor configuration blocks analysis because array aliases can
-concatenate and change the command. Existing warnings, explicit lock drops,
-intentional snapshots and bounded work require contextual triage.
+Each HIGH finding gets one minimal commit with a distinct stable identifier:
+`Propose HIGH PERF-<id>: <remedy>`. Do not combine findings, rebase, merge, amend
+or include unrelated cleanup. Existing inline tests are preserved.
 
-## Repair and publication
+Automatic edits remain limited to original candidate WTA Rust files: at most
+three files, 100 added-plus-deleted lines and 16 KiB of aggregate zero-context
+diff. Dedicated tests and dependency/toolchain configuration are not repaired.
+Budgets sum every parent-to-fix-commit diff and count the union of touched files,
+not merely the final net change; later commits cannot hide an oversized rewrite.
+C++ source can be reviewed, but corrections require manual handoff.
 
-1. The controller resolves immutable PR identity and dispatches the permitted
-   same-repository or fork worker.
-2. The worker uses the shared skill and submits its report through the
-   workflow-owned contract. Repair writes Markdown and the accepted JSON;
-   fork guidance captures them through its scoped tool and emits `noop`.
-3. After the agent stops, trusted processing reconstructs the proposal from
-   immutable Git objects and exact replacement bytes, outside the agent's
-   mutable Git metadata.
-4. Three independent read-only Windows jobs validate the original test
-   identity, the focused candidate, and the complete candidate suite.
-5. The controller verifies server-recorded success in that correlated run
-   and publishes the exact sealed tree with immutable-head compare-and-swap.
+**The workflow does not build or test proposals before push.** Neither a
+compiler, native toolchain, existing focused selector nor completed analyzer run
+is a publication prerequisite. Available analyzer/measurement evidence can
+support review, but missing coverage is recorded honestly.
 
-| Native tool/job | Required phase | Required server-recorded step |
-| --- | --- | --- |
-| `validate_performance_original_tests` | Original exact test listing; no patch applied | `List the exact test on original HEAD` |
-| `validate_performance_focused_tests` | Candidate formatting and exact focused test | `Format and test the exact focused candidate` |
-| `validate_performance_repair` | Independent complete explicit-target candidate suite | `Test the exact candidate full suite` |
+The summary contains one shared notice below the findings table:
 
-All three requests use `confirm: true`. Missing, skipped, failed or zero-test
-results block publication. Each job has a fresh VM, checkout, installed
-toolchain and original artifact download, with no cache/process state imported
-from another phase.
+> Proposed fixes committed without build/test. The original reviewer owns
+> validation and may revert the fix commit.
 
-Corrections are confined to original candidate WTA Rust files, with at most
-three replacements, 100 added-plus-deleted lines and 16 KiB of UTF-8
-zero-context diff. The independent replacement transport cap is 256 KiB.
-Every replacement is associated with a proposed finding through a canonical
-`path:line` anchor. This is file association, not line-existence validation or
-semantic attribution of every edited hunk. HIGH eligibility and the necessity
-of each edit remain review obligations; uncertain attribution requires manual
-handoff. Native tests do not establish severity or measured performance gain.
-C++ findings cannot authorize unrelated WTA edits.
+That notice is not repeated per finding. Committed proposals are not described
+as verified or tested fixes.
 
-Original tests remain unchanged. A conservative lexical suffix guard can
-reject otherwise valid repairs involving comments, early attributes/modules
-or custom test arrangements; those require a manual handoff.
-It is not a Rust parser or a semantic
-equivalence proof. Source replacements are read and decoded before candidate
-code runs; later mutable proposal/helper files cannot authorize other bytes.
-The post-agent trust checkout runs only after its absent-path guard succeeds;
-summary extraction and sealing require that checkout's success. A preexisting
-trust directory or symlink is rejected before the checkout action touches it.
+## Workflow
 
-Native stages enforce physical tracked-source inventories, reject
-untracked/ignored paths and reparse points, and preserve ancestor Cargo
-configuration. They use `--locked`, fresh external `CARGO_HOME` and target
-directories. PR changes to root Cargo configuration or WTA CI toolchain policy
-require manual validation. Product tests and receipts never become publication
-authority.
+1. The controller fetches the immutable PR head, resolves the merge base and
+   skips agent execution when no performance-sensitive source changed.
+2. The repair worker inspects source and callers, creates a separate local
+   commit for each eligible HIGH finding, then writes the shared summary
+   template with those commit links. No eligible fix means `noop`.
+3. Trusted post-processing checks the actual captured bundle's commit range
+   from the immutable reviewed head, not just the current checkout. Its tip
+   must match the recorded proposal. Existing authored C++/Cargo/documentation
+   changes stay outside this new-fix range. It does not parse Rust test items;
+   the agent preserves tests and the original reviewer checks the diff.
+4. gh-aw's existing `push-to-pull-request-branch` handler pushes one bundle.
+   `signed-commits: false` preserves the agent's separate commit IDs; fallback
+   PRs and extra CI-trigger commits are not enabled.
+5. The controller delivers that same Markdown with execution links. It does
+   not create a new findings table or insert per-finding validation claims.
 
-These controls are not a full sandbox for code executed by Cargo. Passing
-tests cover their actual assertions, not all behavior or production speedup.
+The native push handler is fixed to the originating PR, uses its Actions token,
+restricts files to WTA source and blocks protected files. The reviewed head is
+checked before handoff; an incompatible branch advance fails the push rather
+than being automatically rebased.
 
-## Reporting and operational bounds
+Fork source is fetched only for immutable comparison and read through permitted
+tools. The fork worker can capture Markdown and request `noop`; its output job
+is read-only/staged, and the framework conclusion job is disabled to avoid
+automatic issue creation.
 
-The human summary comes directly from the agent's results template, not log
-extraction. JSON governs identity, eligibility and source handoff; it cannot
-replace the human explanation or declare native success.
+## Reporting
 
-The controller is the sole Conversation publisher. It updates only its own
-marked `github-actions[bot]` comment, checks the live head immediately before
-posting, suppresses mentions in that copy, and keeps an otherwise-successful
-check non-green until delivery succeeds. Workers do not combine comment and
-commit operations.
-After a published repair, reporting waits at most ten seconds for PR metadata
-to advance from the reviewed head to that known commit. A different head stops
-the wait immediately; missing delivery stays visible and cannot leave green.
-The bot marker also records controller run/attempt ordering. A recorded newer
-run blocks an older report before check creation, with another freshness read
-before comment mutation. PR concurrency serializes controllers; GitHub comment
-updates themselves do not provide an atomic compare-and-swap operation.
+The controller updates only its own marked `github-actions[bot]` comment.
+Numeric run/attempt markers prevent an older rerun from replacing a newer
+report, including when duplicate marked comments exist: the greatest recorded
+run/attempt determines freshness and the update target. It checks the live head against the worker's recorded head before
+delivery and suppresses mentions in the Conversation copy.
 
-The controller reads an identity-validated verdict status and records it before
-deliberately failing on `action_required` or `blocked`. Summary artifacts retain
-the 48 KiB UTF-8 limit and additionally reserve report-wrapper space by bounding
-mention-escaped text to 48 Ki characters. The final Conversation body is checked
-against GitHub's 65,536-character limit; it is not silently truncated.
-Invalid identities or
-malformed statuses cannot populate the report output.
+Summary artifacts must be bounded, regular UTF-8 files, not symlinks/reparse
+paths. Missing or unreadable required summaries and failed delivery do not
+produce a green check. A successful workflow check means execution/delivery
+completed; action-required delivery also fails the controller's publishing step.
+It does **not** mean the proposed changes were built or tested.
 
-An entered fork submission invalidates previous accepted JSON before summary
-capture and validation. The fork safe-output layer is staged, explicitly
-artifact-only, and disables automatic failure/incomplete/noop issue reporting.
-An empty output block is not safe: the pinned compiler otherwise injects issue
-creation. Its framework conclusion job still declares issue-write permission;
-its entire conclusion job is explicitly disabled because the pinned detection
-handler can otherwise create tracking issues. Controller reporting and agent
-artifacts remain authoritative for results. This is not a claim that every
-generated job's permission map is read-only.
-Rejected replacement data therefore cannot reuse an
-old report; transport rejection before the handler changes neither artifact.
+Comment mutation is not atomic compare-and-swap: concurrency and final
+freshness checks reduce races but do not constitute atomicity.
 
-| Bound | Enforcement |
-| --- | --- |
-| BASE/HEAD analysis | 12-minute jobs, 10-minute command deadline |
-| Native phase | 30-minute validator / 32-minute step, plus bounded 10-minute toolchain installation |
-| Controller | 150-minute worker wait within a 175-minute job |
-| Model | Auto; 500 main-agent and 100000 daily AI-credit caps; framework detection has a separate budget |
-
-The conservative phase budget is 140 minutes, including controller-observed
-five-minute activation and three-minute conclusion deadlines. Activation and
-analysis can overlap; the budget does not depend on that optimization. The
-controller still waits 150 minutes within its 175-minute job.
-The pinned compiler cannot set job timeouts for those two framework jobs.
-The controller checks their running-job timestamps on its existing polling
-loop and cancels only the correlated worker on expiry. Polling and GitHub
-cancellation are asynchronous; these are watchdogs, not generated job limits.
-After ordinary cancellation, the controller allows two ten-second status
-checks before using GitHub's force-cancel endpoint for an unresponsive run
-(including `always()` jobs). Both requests target only the correlated worker.
-Queue/setup delays can still exhaust the controller headroom.
-Pinned gh-aw v0.87.10 does not emit a custom
-safe-job timeout override; step deadlines and controller cancellation are the
-enforced bounds, not a claimed 35-minute native job limit.
-
-## Validation and evidence
+## Local workflow-contract checks
 
 ```powershell
 node --test .github\workflows\ghaw-pr-performance\tests\*.test.mjs
-pwsh -NoProfile -File .github\workflows\ghaw-pr-performance\tests\RepairValidationPhase.Tests.ps1
-pwsh -NoProfile -File .github\workflows\ghaw-pr-performance\tests\RepairValidationPhase.Tests.ps1 -AnalysisOnly
 gh aw compile ghaw-pr-performance ghaw-pr-performance-fork-guidance --validate --no-check-update
-actionlint -shellcheck= -pyflakes= -ignore 'unknown permission scope "copilot-requests"' -ignore 'unexpected key "queue" for "concurrency" section' .github\workflows\ghaw-pr-performance.lock.yml .github\workflows\ghaw-pr-performance-fork-guidance.lock.yml .github\workflows\ghaw-pr-performance-controller.yml
+actionlint -shellcheck= -pyflakes= -ignore 'unknown permission scope "copilot-requests"' -ignore 'unexpected key "queue" for "concurrency" section' .github\workflows\ghaw-pr-performance-controller.yml .github\workflows\ghaw-pr-performance.lock.yml .github\workflows\ghaw-pr-performance-fork-guidance.lock.yml
 ```
 
-Use actionlint 1.7.12; only its two known field-schema gaps are excluded.
-Fixtures exercise report, scope, drift, native and immutable-publication
-contracts. They do not establish product speedup or detector superiority.
-Report feedback rejects ranged or noncanonical proposed locations before
-handoff; sealed-file binding and all three native gates remain mandatory.
-Allocation/copy warnings without relevant-impact evidence remain advice-only,
-including when another finding in the same file is repair-eligible.
+These are development checks of the automation, not builds/tests performed on
+an autofix before push. No new tooling or paid model trial is required by them.
 
-| Historical hosted evidence | Verified outcome |
-| --- | --- |
-| [Controller 37758597556](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37758597556) / [worker 37758613236](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37758613236) | Synthetic Rust fixture: all three Windows phases passed; one test in focused/full phases; HIGH repaired, MEDIUM unchanged. |
-| [Published repair](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/commit/23c87098fd0e01c70abed0bb1d20edb1cb0ba68e) | Exact reviewed parent and sealed native-tested tree; one source file changed, original inline tests preserved. |
-| [Reporting replay 37768180616](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/actions/runs/37768180616) | Actual controller created then updated the same [bot result](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261004/pull/5#issuecomment-6058555491), without another repair/inference run. |
+## Historical evidence
 
-This evidence predates the instruction/ownership correction and is not a new
-hosted run of that correction. No production performance, hosted C++ coverage,
-MSRustup equivalence or detection superiority is claimed. The earlier
-single-phase success is not proof of the current three-phase architecture;
-failed trials remain failure evidence. Private performance workflows were
-disabled after verification; merge and deployment remain separate decisions.
+The [October 14 trial](https://github.com/yeelam-gordon/ghaw-pr-performance-private-20261014/pull/1)
+proved the previous native-tested implementation's agent, three Windows gates,
+exact-tree publication, bot result and cleanup. The model also promoted
+uncalled allocation advice to HIGH; that observation remains recorded.
 
-## References
-
-- Existing localization controller and repair/guide workers: caller-owned
-  orchestration with shared domain expertise.
-- #1073: immutable preparation and explicit permitted tools.
-- [gh-aw custom safe outputs](https://github.com/github/gh-aw/blob/v0.87.10/docs/src/content/docs/reference/custom-safe-outputs.md).
-- [GraphQL createCommitOnBranch](https://docs.github.com/en/graphql/reference/input-objects#createcommitonbranchinput).
-- [Chromium measurement discipline](https://github.com/chromium/chromium/blob/c7ea1cb426922e7541d010aaed7f68e469e674f2/docs/speed/microbenchmark_regressions.md).
+That trial used a synthetic one-test library and Luna test-model overrides.
+It does not prove production performance, Auto selection or this simplified
+commit-without-build/test policy. Historical artifacts are not rewritten.

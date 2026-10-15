@@ -8,7 +8,7 @@ on:
 permissions:
   actions: write
   checks: write
-  contents: write
+  contents: read
   pull-requests: write
 
 concurrency:
@@ -22,7 +22,6 @@ jobs:
     timeout-minutes: 175
     outputs:
       worker_run_id: ${{ steps.worker.outputs.run_id }}
-      review_status: ${{ steps.verdict.outputs.status }}
       comparison_base_sha: ${{ steps.gate.outputs.comparison_base_sha }}
     steps:
       - name: Checkout trusted base
@@ -200,92 +199,12 @@ jobs:
             await cancelWorker();
             throw new Error(`${worker} run ${run.id} exceeded 150 minutes.`);
 
-      - name: Enforce domain verdict rather than workflow success alone
-        id: verdict
-        if: steps.worker.outputs.conclusion == 'success'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ steps.worker.outputs.run_id }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_SHA: ${{ steps.gate.outputs.comparison_base_sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
-            --name performance-result --dir "$RUNNER_TEMP/performance-result"
-          status="$(node .github/workflows/ghaw-pr-performance/scripts/performance-review.mjs verdict-status \
-            --input "$RUNNER_TEMP/performance-result/performance-verdict.json" \
-            --pr "$PR_NUMBER" --base "$BASE_SHA" --head "$HEAD_SHA")"
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          case "$status" in
-            action_required|blocked)
-              echo "::error::Performance review requires action: $status"
-              exit 1
-              ;;
-          esac
-
-      - name: Download immutable sealed proposal
-        if: steps.verdict.outputs.status == 'pending_validation' && github.event.pull_request.head.repo.id == github.repository_id
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ steps.worker.outputs.run_id }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
-            --name performance-result --dir "$RUNNER_TEMP/performance-native-result"
-          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
-            fetch --no-tags origin "refs/pull/${PR_NUMBER}/head:refs/remotes/origin/performance-publish-${PR_NUMBER}"
-      - name: Publish only the tested tree with immutable-head CAS
-        id: publish_repair
-        if: steps.verdict.outputs.status == 'pending_validation' && github.event.pull_request.head.repo.id == github.repository_id
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          RUN_ID: ${{ steps.worker.outputs.run_id }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          COMPARISON_BASE_SHA: ${{ steps.gate.outputs.comparison_base_sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-        with:
-          github-token: ${{ github.token }}
-          script: |
-            const path = require("path");
-            const { pathToFileURL } = require("url");
-            const { publishRepair } = await import(pathToFileURL(
-              path.join(process.env.GITHUB_WORKSPACE, ".github/workflows/ghaw-pr-performance/scripts/performance-review.mjs")).href);
-            const result = await publishRepair({
-              github,
-              proposalPath: path.join(process.env.RUNNER_TEMP, "performance-native-result/performance-proposal.json"),
-              workerRunId: Number(process.env.RUN_ID),
-              expected: {
-                prNumber: Number(process.env.PR_NUMBER),
-                baseSha: process.env.COMPARISON_BASE_SHA,
-                headSha: process.env.HEAD_SHA,
-                expectedBaseSha: process.env.BASE_SHA,
-                repository: `${context.repo.owner}/${context.repo.repo}`,
-                headRepository: process.env.HEAD_REPO,
-                headRef: process.env.HEAD_REF, baseRef: process.env.BASE_REF
-              }
-            });
-            core.setOutput("head_sha", result.commitSha);
-            core.setOutput("commit_url", result.url);
-            await core.summary.addRaw(result.card)
-              .addLink("Validated commit", result.url).write();
-
       - name: Publish linked PR run report
         if: always() && steps.gate.outputs.applicable == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RUN_OUTCOME: ${{ job.status }}
-          REVIEW_STATUS: ${{ steps.verdict.outputs.status }}
           REVIEWED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PUBLISHED_HEAD_SHA: ${{ steps.publish_repair.outputs.head_sha }}
-          PUBLISHED_COMMIT_URL: ${{ steps.publish_repair.outputs.commit_url }}
           CONTROLLER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WORKER_RUN_URL: ${{ steps.worker.outputs.run_url }}
           WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
@@ -303,6 +222,7 @@ jobs:
               path.join(process.env.GITHUB_WORKSPACE, ".github/workflows/ghaw-pr-performance/scripts/performance-review.mjs")).href);
             let reviewSummary = "Review summary missing; see worker run";
             let summaryDelivered = false;
+            let head = process.env.REVIEWED_HEAD_SHA;
             if (process.env.WORKER_RUN_ID) {
               try {
                 const { execFileSync } = require("child_process");
@@ -315,6 +235,9 @@ jobs:
                     env: process.env, timeout: 30000, stdio: "pipe"
                   });
                 reviewSummary = readReviewSummary(directory);
+                const recordedHead = fs.readFileSync(path.join(directory, "review-head.txt"), "utf8").trim();
+                if (!/^[0-9a-f]{40}$/.test(recordedHead)) throw new Error("Worker report head is malformed.");
+                if (process.env.RUN_OUTCOME === "success") head = recordedHead;
                 summaryDelivered = true;
               } catch (error) {
                 core.warning(`Review summary missing or unreadable: ${error.message}; see worker run`);
@@ -322,36 +245,42 @@ jobs:
             } else {
               core.warning("Review summary missing: no correlated worker run; see controller run");
             }
-            const head = process.env.PUBLISHED_HEAD_SHA || process.env.REVIEWED_HEAD_SHA;
             let conclusion = process.env.RUN_OUTCOME === "success" && !summaryDelivered
               ? "action_required" : process.env.RUN_OUTCOME;
-            const result = process.env.PUBLISHED_HEAD_SHA ? "fixed" : process.env.REVIEW_STATUS || "see worker report";
             const summary = [
-              `Run outcome: **${process.env.RUN_OUTCOME}**; review result: **${result}**`,
+              `Run outcome: **${process.env.RUN_OUTCOME}** (workflow execution, not build/test validation)`,
               `Summary delivery: **${summaryDelivered ? "completed" : "missing or unreadable; action required"}**`,
               `Reviewed head: \`${process.env.REVIEWED_HEAD_SHA}\``,
               `[Controller run report](${process.env.CONTROLLER_RUN_URL})`,
               process.env.WORKER_RUN_URL
                 ? `[Agentic worker report](${process.env.WORKER_RUN_URL}) — ${process.env.WORKER_CONCLUSION}`
                 : "Agentic worker was not started or could not be correlated.",
-              process.env.PUBLISHED_COMMIT_URL ? `[Validated repair commit](${process.env.PUBLISHED_COMMIT_URL})` : "",
-              "### Review-time agent summary (not native-validation or publication authority)",
+              "### Agent-written review",
               reviewSummary
             ].filter(Boolean).join("\n\n");
             const marker = "<!-- ghaw-pr-performance-report -->";
             const runMarker = `<!-- ghaw-pr-performance-run:${context.runId}:${runAttempt} -->`;
+            const reportVersion = comment => {
+              const recorded = /^<!-- ghaw-pr-performance-report -->\r?\n<!-- ghaw-pr-performance-run:([1-9][0-9]*):([1-9][0-9]*) -->/.exec(comment?.body ?? "");
+              return recorded ? [BigInt(recorded[1]), BigInt(recorded[2])] : [0n, 0n];
+            };
             const readExistingReport = async () => {
               const comments = await github.paginate(github.rest.issues.listComments, {
                 ...context.repo, issue_number: Number(process.env.PR_NUMBER), per_page: 100
               });
-              return comments.find(comment =>
-                comment.user?.login === "github-actions[bot]" &&
-                comment.body?.startsWith(marker));
+              return comments.filter(comment =>
+                comment.user?.login === "github-actions[bot]" && comment.body?.startsWith(marker))
+                .reduce((latest, comment) => {
+                  if (!latest) return comment;
+                  const [run, attempt] = reportVersion(comment);
+                  const [latestRun, latestAttempt] = reportVersion(latest);
+                  return run > latestRun || (run === latestRun && attempt > latestAttempt) ||
+                    (run === latestRun && attempt === latestAttempt && comment.id > latest.id) ? comment : latest;
+                }, undefined);
             };
             const newerReport = comment => {
-              const recorded = /<!-- ghaw-pr-performance-run:([1-9][0-9]*):([1-9][0-9]*) -->/.exec(comment?.body ?? "");
-              return recorded && (BigInt(recorded[1]) > BigInt(context.runId) ||
-                (BigInt(recorded[1]) === BigInt(context.runId) && BigInt(recorded[2]) > BigInt(runAttempt)));
+              const [run, attempt] = reportVersion(comment);
+              return run > BigInt(context.runId) || (run === BigInt(context.runId) && attempt > BigInt(runAttempt));
             };
             if (newerReport(await readExistingReport())) {
               core.warning("Older controller result skipped: a newer run already owns the Conversation report.");
@@ -374,7 +303,7 @@ jobs:
               ({ data: currentPr } = await github.rest.pulls.get({
                 ...context.repo, pull_number: Number(process.env.PR_NUMBER)
               }));
-              if (currentPr.head.sha === head || !process.env.PUBLISHED_HEAD_SHA ||
+              if (currentPr.head.sha === head || head === process.env.REVIEWED_HEAD_SHA ||
                   currentPr.head.sha !== process.env.REVIEWED_HEAD_SHA || attempt === 5) break;
               await require("timers/promises").setTimeout(2000);
             }
@@ -405,3 +334,4 @@ jobs:
               ...context.repo, check_run_id: check.id, conclusion,
               output: { title: "Performance review run report", summary: `Conversation delivery: **${conversationDelivery}**\n\n${summary}` }
             });
+            if (conclusion === "action_required") throw new Error("Performance report delivery requires action.");

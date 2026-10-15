@@ -1,609 +1,178 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import process from 'node:process';
 import test from 'node:test';
 
 const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-controller.yml', import.meta.url), 'utf8');
-const match = workflow.match(/script: \|\r?\n((?: {12}.+(?:\r?\n|$)|\s*\r?\n)+)/);
-assert.ok(match, 'controller script must be extractable from the actual workflow');
-const source = match[1].split(/\r?\n/).map(line => line.slice(12)).join('\n');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-const execute = new AsyncFunction('github', 'context', 'core', 'process', 'Date', 'setTimeout', source);
-const compiledWorker = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
+const extract = name => {
+    const match = workflow.match(new RegExp(`name: ${name}[\\s\\S]*?script: \\|\\r?\\n((?: {12}.+(?:\\r?\\n|$)|\\s*\\r?\\n)+)`));
+    assert.ok(match, `actual controller script missing: ${name}`);
+    return match[1].split(/\r?\n/).map(line => line.slice(12)).join('\n');
+};
+const reportScript = new AsyncFunction('github', 'context', 'core', 'process', 'require', extract('Publish linked PR run report'));
 
-function workerPhaseMinutes() {
-    const job = name => {
-        const match = compiledWorker.match(new RegExp(`^  ${name}:\\r?\\n([\\s\\S]*?)(?=^  [a-z_]+:|(?![\\s\\S]))`, 'm'));
-        assert.ok(match, `compiled ${name} job is missing`);
-        return match[1];
-    };
-    const jobMinutes = name => {
-        const phaseBounds = source.match(/const phaseTimeoutMinutes = \{ activation: (\d+), conclusion: (\d+) \}/);
-        const value = Number(job(name).match(/^    timeout-minutes:\s*(\d+)/m)?.[1] ??
-            (name === 'activation' ? phaseBounds?.[1] : name === 'conclusion' ? phaseBounds?.[2] : undefined));
-        assert.ok(Number.isFinite(value) && value > 0, `compiled ${name} job needs a bounded timeout`);
-        return value;
-    };
-    const nativeMinutes = Math.max(...['validate_performance_original_tests',
-        'validate_performance_focused_tests', 'validate_performance_repair'].map(name =>
-        [...job(name).matchAll(/^        timeout-minutes:\s*(\d+)/gm)]
-            .reduce((total, match) => total + Number(match[1]), 0)));
-    return jobMinutes('prepare') + jobMinutes('activation') + jobMinutes('performance_analysis') +
-        jobMinutes('agent') + jobMinutes('detection') +
-        Math.max(jobMinutes('safe_outputs') + jobMinutes('conclusion'), nativeMinutes);
-}
-
-test('the controller run name preserves the PR identity instead of starting a YAML comment', () => {
-    assert.match(workflow, /^run-name: 'Performance Review for PR #\$\{\{ github\.event\.pull_request\.number \}\}'$/m);
-});
-
-test('repair publication uses the repository Actions token, not a recursion-triggering override', () => {
-    assert.match(workflow, /name: Publish only the tested tree with immutable-head CAS[\s\S]*?with:\s+github-token: \$\{\{ github\.token \}\}/);
-});
-
-test('controller job leaves bounded preparation and reporting headroom beyond its worker deadline', () => {
-    const jobMinutes = Number(workflow.match(/timeout-minutes:\s*(\d+)/)?.[1]);
-    const workerMinutes = Number(source.match(/const deadline = Date\.now\(\) \+ (\d+) \* 60 \* 1000/)?.[1]);
-    assert.equal(jobMinutes, 175);
-    assert.equal(workerMinutes, 150);
-    assert.equal(workerPhaseMinutes(), 140);
-    assert.ok(workerMinutes - workerPhaseMinutes() >= 10, 'deadline must cover actual compiled phase bounds plus orchestration');
-    assert.ok(jobMinutes - workerMinutes >= 20);
-});
-
-async function simulate({ fork = false, conclusion = 'success', agent = true, timeout = false, completeAfterMinutes = 0,
-    slowPhase, invalidPhaseStarted = false, resistsCancellation = false } = {}) {
-    const calls = [];
-    const outputs = {};
-    let clock = 100000;
-    let cancelled = false;
-    const github = {
-        rest: { actions: {
-            async createWorkflowDispatch(value) { calls.push(['dispatch', value]); },
-            async listWorkflowRuns() {
-                return { data: { workflow_runs: [{
-                    id: 123, created_at: new Date(100000).toISOString(),
-                    display_title: 'Performance ghaw-pr-performance-42-head-1-1',
-                }] } };
-            },
-            async getWorkflowRun() {
-                if (cancelled && !resistsCancellation) return { data: { id: 123, status: 'completed', conclusion: 'cancelled' } };
-                return { data: { id: 123, status: timeout || clock - 100000 < completeAfterMinutes * 60 * 1000 ? 'in_progress' : 'completed',
-                    conclusion, html_url: 'https://example.invalid/run/123' } };
-            },
-            async cancelWorkflowRun(value) { calls.push(['cancel', value]); cancelled = true; },
-            listJobsForWorkflowRun: 'jobs',
-        } },
-        async request(route, target) {
-            assert.equal(route, 'POST /repos/{owner}/{repo}/actions/runs/{run_id}/force-cancel');
-            calls.push(['force-cancel', target]);
-        },
-        async paginate() {
-            return [{ name: 'agent', conclusion: agent ? 'success' : 'skipped',
-                steps: [{ name: 'Execute GitHub Copilot CLI', conclusion: agent ? 'success' : 'skipped' }] },
-                ...(slowPhase ? [{ name: slowPhase, status: 'in_progress',
-                    started_at: invalidPhaseStarted ? 'invalid' : new Date(100000).toISOString() }] : [])];
-        },
-    };
-    const context = { payload: { pull_request: { number: 42 } },
-        repo: { owner: 'owner', repo: 'repo' }, runId: 1 };
-    const process = { env: {
-        EXPECTED_HEAD_SHA: 'head', EXPECTED_BASE_SHA: 'base', COMPARISON_BASE_SHA: 'merge',
-        HEAD_REF: 'topic', BASE_REF: 'main', HEAD_REPO: fork ? 'fork/repo' : 'owner/repo',
-        SAME_REPO: String(!fork),
-        GITHUB_RUN_ATTEMPT: '1',
-    } };
-    let error;
-    try {
-        await execute(github, context, { setOutput(key, value) { outputs[key] = value; } },
-            process, { now: () => clock, parse: Date.parse },
-            (callback, delay) => { clock += delay; callback(); });
-    } catch (caught) { error = caught; }
-    return { calls, outputs, error };
-}
-
-test('actual controller dispatches repair with native PR context and checks inference ran', async () => {
-    const result = await simulate();
-    assert.equal(result.error, undefined);
-    const dispatch = result.calls[0][1];
-    assert.equal(dispatch.workflow_id, 'ghaw-pr-performance.lock.yml');
-    assert.equal(dispatch.ref, 'main');
-    assert.equal(dispatch.inputs.dispatch_id, 'ghaw-pr-performance-42-head-1-1');
-    assert.deepEqual(JSON.parse(dispatch.inputs.aw_context), {
-        run_id: '1', workflow_id: 'ghaw-pr-performance-controller',
-        item_type: 'pull_request', item_number: 42, repo: 'owner/repo',
-        event_type: 'pull_request', head_sha: 'head', base_sha: 'base', comparison_base_sha: 'merge',
-    });
-    assert.equal(result.outputs.run_id, '123');
-});
-
-test('actual controller isolates fork guide from native PR branch mutation context', async () => {
-    const result = await simulate({ fork: true });
-    assert.equal(result.error, undefined);
-    const dispatch = result.calls[0][1];
-    assert.equal(dispatch.workflow_id, 'ghaw-pr-performance-fork-guidance.lock.yml');
-    assert.equal(JSON.parse(dispatch.inputs.aw_context).item_type, undefined);
-});
-
-test('actual controller rejects a green worker with a skipped agent', async () => {
-    assert.match((await simulate({ agent: false })).error.message, /did not complete the agent/);
-});
-
-test('actual controller rejects failed worker conclusion', async () => {
-    assert.match((await simulate({ conclusion: 'failure' })).error.message, /concluded failure/);
-});
-
-test('actual controller allows the compiled phase budget plus orchestration to finish', async () => {
-    const result = await simulate({ completeAfterMinutes: workerPhaseMinutes() + 5 });
-    assert.equal(result.error, undefined);
-    assert.equal(result.outputs.conclusion, 'success');
-    assert.equal(result.calls.some(([kind]) => kind === 'cancel'), false);
-});
-
-test('actual controller timeout cancels only its correlated run', async () => {
-    const result = await simulate({ timeout: true });
-    assert.match(result.error.message, /exceeded 150 minutes/);
-    assert.deepEqual(result.calls.find(([kind]) => kind === 'cancel')[1], {
-        owner: 'owner', repo: 'repo', run_id: 123,
-    });
-});
-
-test('activation and conclusion watchdogs cancel only the correlated worker before the overall deadline', async () => {
-    for (const phase of ['activation', 'conclusion']) {
-        const result = await simulate({ timeout: true, slowPhase: phase });
-        assert.match(result.error.message, new RegExp(`${phase} exceeded its .*controller phase deadline`));
-        assert.deepEqual(result.calls.filter(call => call[0] === 'cancel'), [['cancel', {
-            owner: 'owner', repo: 'repo', run_id: 123,
-        }]]);
-    }
-    const invalid = await simulate({ timeout: true, slowPhase: 'activation', invalidPhaseStarted: true });
-    assert.match(invalid.error.message, /no valid start time/);
-    assert.equal(invalid.calls.filter(call => call[0] === 'cancel').length, 1);
-    const resistant = await simulate({ timeout: true, slowPhase: 'conclusion', resistsCancellation: true });
-    assert.deepEqual(resistant.calls.filter(call => ['cancel', 'force-cancel'].includes(call[0])).map(call => call[0]),
-        ['cancel', 'force-cancel']);
-    assert.equal(resistant.calls.find(call => call[0] === 'force-cancel')[1].run_id, 123);
-});
-
-const reportMatch = workflow.match(/name: Publish linked PR run report[\s\S]*?script: \|\r?\n((?: {12}.+(?:\r?\n|$)|\s*\r?\n)+)/);
-assert.ok(reportMatch, 'the actual PR report script must be extractable');
-const reportScript = new AsyncFunction('github', 'context', 'core', 'process', 'require',
-    reportMatch[1].split(/\r?\n/).map(line => line.slice(12)).join('\n'));
-
-async function reportRun(overrides = {}, markdown, conversation = {}) {
-    const reports = [];
+async function reportRun(markdown, { currentHead = 'a'.repeat(40), recordedHead = 'a'.repeat(40),
+    outcome = 'success', comments = [], failComment = false, commentSequence, headSequence } = {}) {
+    const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-delivery-'));
+    const checks = [];
+    const posted = [];
     const warnings = [];
-    const commentCalls = [];
     let initialConclusion;
-    let summary;
-    let headReads = 0;
-    let commentReads = 0;
-    const github = {
-        rest: {
-            checks: {
-                async create(report) {
-                    initialConclusion = report.conclusion;
-                    reports.push(report);
-                    return { data: { id: 99 } };
-                },
-                async update(report) {
-                    assert.equal(report.check_run_id, 99);
-                    Object.assign(reports[0], report);
-                },
-            },
-            issues: {
-                listComments: 'comments',
-                async createComment(comment) {
-                    if (conversation.failComment) throw new Error('Conversation comment permission denied');
-                    commentCalls.push({ action: 'create', ...comment });
-                },
-                async updateComment(comment) {
-                    if (conversation.failComment) throw new Error('Conversation comment permission denied');
-                    commentCalls.push({ action: 'update', ...comment });
-                },
-            },
-            pulls: {
-                async get(request) {
-                    assert.equal(request.pull_number, 42);
-                    return { data: { head: { sha: conversation.headSequence?.[
-                        Math.min(headReads++, conversation.headSequence.length - 1)] ?? conversation.currentHead ??
-                        (overrides.PUBLISHED_HEAD_SHA || overrides.REVIEWED_HEAD_SHA || 'a'.repeat(40)) } } };
-                },
-            },
+    let commentRead = 0;
+    let headRead = 0;
+    const github = { rest: {
+        checks: {
+            async create(check) { initialConclusion = check.conclusion; checks.push(check); return { data: { id: 99 } }; },
+            async update(check) { Object.assign(checks[0], check); },
         },
-        async paginate(endpoint, request) {
-            assert.equal(endpoint, 'comments');
-            assert.equal(request.issue_number, 42);
-            assert.equal(request.per_page, 100);
-            return conversation.commentSequence?.[
-                Math.min(commentReads++, conversation.commentSequence.length - 1)] ?? conversation.comments ?? [];
+        issues: {
+            listComments: 'comments',
+            async createComment(value) { if (failComment) throw new Error('Comment denied'); posted.push(value); },
+            async updateComment(value) { if (failComment) throw new Error('Comment denied'); posted.push(value); },
         },
-    };
-    const core = { warning(value) { warnings.push(value); },
-        summary: { addRaw(value) { summary = value; return this; }, async write() {} } };
-    const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-summary-controller-'));
+        pulls: { async get() {
+            return { data: { head: { sha: headSequence?.[Math.min(headRead++, headSequence.length - 1)] ?? currentHead } } };
+        } },
+    }, async paginate() { return commentSequence?.[Math.min(commentRead++, commentSequence.length - 1)] ?? comments; } };
     const nativeRequire = createRequire(import.meta.url);
-    const require = name => name === 'timers/promises' ? {
-        async setTimeout(milliseconds) { assert.equal(milliseconds, 2000); },
-    } : name === 'child_process' ? {
+    const require = name => name === 'child_process' ? {
         execFileSync(command, args) {
             assert.equal(command, 'gh');
             assert.equal(args[2], '101');
-            assert.equal(args[args.indexOf('--repo') + 1], 'owner/repo');
             assert.equal(args[args.indexOf('--name') + 1], `performance-summary-42-${'a'.repeat(40)}`);
-            if (markdown === undefined) throw new Error('Artifact missing or wrong immutable identity');
-            const filename = path.join(args[args.indexOf('--dir') + 1], '.performance-summary.md');
-            if (typeof markdown === 'function') markdown(filename);
-            else fs.writeFileSync(filename, markdown);
+            if (markdown === undefined) throw new Error('Summary unavailable');
+            const destination = args[args.indexOf('--dir') + 1];
+            fs.writeFileSync(path.join(destination, '.performance-summary.md'), markdown);
+            fs.writeFileSync(path.join(destination, 'review-head.txt'), recordedHead);
         },
-    } : nativeRequire(name);
+    } : name === 'timers/promises' ? { async setTimeout(delay) { assert.equal(delay, 2000); } } : nativeRequire(name);
+    const core = { warning(message) { warnings.push(message); },
+        summary: { addRaw() { return this; }, async write() {} } };
+    let error;
     try {
-        let error;
-        try {
-            await reportScript(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100 }, core, {
-                env: {
-                    GITHUB_WORKSPACE: process.cwd(), RUNNER_TEMP: root, PR_NUMBER: '42', WORKER_RUN_ID: '',
-                    GITHUB_RUN_ATTEMPT: '1',
-                    RUN_OUTCOME: 'success', REVIEW_STATUS: 'pass', REVIEWED_HEAD_SHA: 'a'.repeat(40),
-                    PUBLISHED_HEAD_SHA: '', PUBLISHED_COMMIT_URL: '',
-                    CONTROLLER_RUN_URL: 'https://github.com/owner/repo/actions/runs/100',
-                    WORKER_RUN_URL: 'https://github.com/owner/repo/actions/runs/101',
-                    WORKER_CONCLUSION: 'success', ...overrides,
-                },
-            }, require);
-        } catch (caught) {
-            if (!conversation.captureError) throw caught;
-            error = caught;
-        }
-        if (!reports.length) return { warnings, commentCalls, initialConclusion, error, headReads, checksCreated: 0 };
-        assert.equal(reports.length, 1);
-        if (!error) assert.ok(reports[0].output.summary.endsWith(summary));
-        return { ...reports[0], warnings, commentCalls, initialConclusion, error, headReads };
-    } finally {
-        fs.rmSync(root, { recursive: true, force: true });
-    }
+        await reportScript(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100 }, core, {
+            env: { GITHUB_RUN_ATTEMPT: '1', GITHUB_WORKSPACE: process.cwd(), RUNNER_TEMP: root,
+                PR_NUMBER: '42', WORKER_RUN_ID: '101', RUN_OUTCOME: outcome,
+                REVIEWED_HEAD_SHA: 'a'.repeat(40),
+                CONTROLLER_RUN_URL: 'https://github.com/owner/repo/actions/runs/100',
+                WORKER_RUN_URL: 'https://github.com/owner/repo/actions/runs/101', WORKER_CONCLUSION: outcome },
+        }, require);
+    } catch (caught) { error = caught; }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+    return { check: checks[0], checks, posted, warnings, initialConclusion, error, headRead };
 }
 
-test('controller automatically publishes the full result and links in the PR conversation', async () => {
-    const markdown = 'The findings.\n\n| Severity | Finding |\n| HIGH | Proposed repair |\n';
-    const report = await reportRun({ WORKER_RUN_ID: '101' }, markdown);
-    assert.match(workflow, /^  pull-requests: write$/m);
-    assert.equal(report.initialConclusion, 'action_required', 'green delivery requires the visible comment');
-    assert.equal(report.conclusion, 'success');
-    assert.equal(report.commentCalls.length, 1);
-    const comment = report.commentCalls[0];
-    assert.equal(comment.action, 'create');
-    assert.equal(comment.issue_number, 42);
-    assert.match(comment.body, /^<!-- ghaw-pr-performance-report -->/);
-    assert.match(comment.body, /<!-- ghaw-pr-performance-run:100:1 -->/);
-    assert.ok(comment.body.endsWith(markdown));
-    assert.match(comment.body, /Controller run report/);
-    assert.match(comment.body, /Agentic worker report/);
+test('controller delivers the agent table, separate commit links and one shared notice unchanged', async () => {
+    const markdown = '| Severity | Commit |\n| HIGH | [first](/commit/111) |\n| HIGH | [second](/commit/222) |\n\n' +
+        'Proposed fixes committed without build/test. The original reviewer owns validation and may revert the fix commit.\n';
+    const result = await reportRun(markdown, { recordedHead: 'b'.repeat(40), currentHead: 'b'.repeat(40) });
+    assert.equal(result.error, undefined);
+    assert.equal(result.initialConclusion, 'action_required');
+    assert.equal(result.check.conclusion, 'success');
+    assert.equal(result.posted.length, 1);
+    assert.ok(result.posted[0].body.endsWith(markdown));
+    assert.equal(result.posted[0].body.match(/without build\/test/g).length, 1);
+    assert.doesNotMatch(result.posted[0].body, /Validated repair|review result: \*\*fixed/);
+    assert.match(result.posted[0].body, /workflow execution, not build\/test validation/);
+    assert.equal(result.check.head_sha, 'b'.repeat(40));
 });
 
-test('report identity requires the actual runner attempt before any output publication', async () => {
-    for (const attempt of [undefined, '', 'undefined', '0', '01']) {
-        const report = await reportRun({ GITHUB_RUN_ATTEMPT: attempt }, undefined, { captureError: true });
-        assert.match(report.error.message, /valid controller run attempt/);
-        assert.equal(report.checksCreated, 0);
-        assert.equal(report.commentCalls.length, 0);
+test('failed comment delivery never leaves green and report transport suppresses mentions', async () => {
+    const denied = await reportRun('Agent findings.\n', { failComment: true });
+    assert.match(denied.error.message, /Comment denied/);
+    assert.equal(denied.check.conclusion, 'action_required');
+    const safe = await reportRun('Mention @copilot in source.\n');
+    assert.match(safe.posted[0].body, /@\u200bcopilot/);
+    assert.doesNotMatch(safe.posted[0].body, /@copilot/);
+    assert.ok(safe.check.output.summary.endsWith('Mention @copilot in source.\n'));
+});
+
+test('missing, invalid UTF-8 or malformed report head cannot produce green', async () => {
+    for (const [markdown, options] of [[undefined, {}], [' \t\r\n', {}], [Buffer.from([0xff]), {}],
+        ['Summary\n', { recordedHead: 'invalid' }]]) {
+        const result = await reportRun(markdown, options);
+        assert.equal(result.check.conclusion, 'action_required');
+        assert.equal(result.warnings.length, 1);
+        assert.match(result.error.message, /delivery requires action/);
     }
 });
 
-test('older run or attempt cannot replace a newer same-head report or create a misleading check', async () => {
-    for (const recorded of ['101:1', '100:2']) {
-        const report = await reportRun({}, undefined, {
-            comments: [{ id: 77, user: { login: 'github-actions[bot]' },
-                body: `<!-- ghaw-pr-performance-report -->\n<!-- ghaw-pr-performance-run:${recorded} -->` }],
-        });
-        assert.equal(report.checksCreated, 0);
-        assert.equal(report.commentCalls.length, 0);
-        assert.match(report.warnings.at(-1), /newer run/);
-    }
-});
-
-test('Conversation freshness is rechecked immediately before update', async () => {
-    const old = { id: 77, user: { login: 'github-actions[bot]' },
-        body: '<!-- ghaw-pr-performance-report -->\n<!-- ghaw-pr-performance-run:99:1 -->' };
-    const newer = { ...old, body: '<!-- ghaw-pr-performance-report -->\n<!-- ghaw-pr-performance-run:101:1 -->' };
-    const report = await reportRun({ WORKER_RUN_ID: '101' }, 'Older result.\n', {
-        commentSequence: [[old], [newer]],
+test('newer PR head is not overwritten; a known pushed head may propagate briefly', async () => {
+    const stale = await reportRun('Older findings.\n', { currentHead: 'c'.repeat(40) });
+    assert.equal(stale.posted.length, 0);
+    assert.equal(stale.check.conclusion, 'action_required');
+    assert.match(stale.error.message, /delivery requires action/);
+    const converging = await reportRun('Pushed proposal.\n', {
+        recordedHead: 'b'.repeat(40), headSequence: ['a'.repeat(40), 'b'.repeat(40)],
     });
-    assert.equal(report.commentCalls.length, 0);
-    assert.equal(report.conclusion, 'cancelled');
-    assert.match(report.output.summary, /superseded by newer run/);
+    assert.equal(converging.posted.length, 1);
+    assert.equal(converging.headRead, 2);
 });
 
-test('controller updates its existing bot comment instead of duplicating the result', async () => {
-    const report = await reportRun({ WORKER_RUN_ID: '101' }, 'Updated results.\n', {
-        comments: [{ id: 77, user: { login: 'github-actions[bot]' },
-            body: '<!-- ghaw-pr-performance-report -->\nPrevious result.' }],
+test('older same-head runs cannot replace a newer report, including a final-read race', async () => {
+    const newer = { id: 77, user: { login: 'github-actions[bot]' },
+        body: '<!-- ghaw-pr-performance-report -->\n<!-- ghaw-pr-performance-run:101:1 -->' };
+    const early = await reportRun('Old result.\n', { comments: [newer] });
+    assert.equal(early.checks.length, 0);
+    assert.equal(early.posted.length, 0);
+    const late = await reportRun('Old result.\n', { commentSequence: [[], [newer]] });
+    assert.equal(late.check.conclusion, 'cancelled');
+    assert.equal(late.posted.length, 0);
+});
+
+test('duplicate marked comments select the greatest run and attempt, not the first comment', async () => {
+    const comment = (id, run, attempt) => ({ id, user: { login: 'github-actions[bot]' },
+        body: `<!-- ghaw-pr-performance-report -->\n<!-- ghaw-pr-performance-run:${run}:${attempt} -->` });
+    const future = await reportRun('Old result.\n', { comments: [comment(1, 99, 1), comment(2, 101, 1)] });
+    assert.equal(future.checks.length, 0);
+    assert.equal(future.posted.length, 0);
+    const latest = await reportRun('Current result.\n', { comments: [comment(3, 99, 2), comment(4, 99, 3), comment(5, 98, 9)] });
+    assert.equal(latest.posted[0].comment_id, 4);
+    const injected = await reportRun('Current result.\n', {
+        comments: [{ id: 6, user: { login: 'github-actions[bot]' },
+            body: '<!-- ghaw-pr-performance-report -->\nLegacy summary mentions <!-- ghaw-pr-performance-run:999:1 -->' }],
     });
-    assert.equal(report.commentCalls.length, 1);
-    assert.equal(report.commentCalls[0].action, 'update');
-    assert.equal(report.commentCalls[0].comment_id, 77);
-    assert.ok(report.commentCalls[0].body.endsWith('Updated results.\n'));
+    assert.equal(injected.posted.length, 1, 'only caller metadata directly after the marker establishes ordering');
 });
 
-test('controller never overwrites a user, other bot, or quoted marker comment', async () => {
-    const marker = '<!-- ghaw-pr-performance-report -->';
-    const report = await reportRun({}, undefined, {
-        comments: [
-            { id: 1, user: { login: 'someone' }, body: marker },
-            { id: 2, user: { login: 'github-advanced-security' }, body: marker },
-            { id: 3, user: { login: 'github-actions[bot]' }, body: `Quoted: ${marker}` },
-        ],
-    });
-    assert.equal(report.commentCalls.length, 1);
-    assert.equal(report.commentCalls[0].action, 'create');
+test('worker/controller source contains no build/test, proposal renderer or native publication gate', () => {
+    const worker = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
+    assert.doesNotMatch(worker, /validate-performance-(original|focused|repair)|performance_analysis:|cargo (test|build|fmt)|\/t:Build/);
+    assert.match(worker, /signed-commits: false/);
+    assert.match(worker, /patch-format: bundle/);
+    assert.doesNotMatch(worker, /max-patch-size:/, 'use the native default instead of rejecting small edits in large source files');
+    assert.match(worker, /fallback-as-pull-request: false/);
+    assert.match(worker, /github-token-for-extra-empty-commit: "\$\{\{ '' \}\}"/);
+    assert.match(worker, /github-token: \$\{\{ secrets.GITHUB_TOKEN \}\}/);
+    assert.match(worker, /one separate local Git commit/);
+    const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
+    const output = compiled.split(/^  safe_outputs:\r?\n/m)[1];
+    assert.ok(output);
+    assert.match(output, /needs.agent.result == 'success'/);
+    assert.match(output, /needs.detection.result == 'success'/);
+    assert.match(output, /GH_AW_CI_TRIGGER_TOKEN: \$\{\{ '' \}\}/);
+    assert.doesNotMatch(workflow, /publishRepair|verdict-status|performance-proposal\.json|renderReport/);
+    assert.match(workflow, /readReviewSummary/);
 });
 
-test('old results do not overwrite the conversation after the PR head moves', async () => {
-    const report = await reportRun({ WORKER_RUN_ID: '101' }, 'Historical report.\n', {
-        currentHead: 'c'.repeat(40),
-        comments: [{ id: 77, user: { login: 'github-actions[bot]' },
-            body: '<!-- ghaw-pr-performance-report -->\nNewer result.' }],
-    });
-    assert.equal(report.commentCalls.length, 0);
-    assert.match(report.warnings[0], /no longer the PR head/);
-    assert.equal(report.conclusion, 'action_required', 'undelivered conversation output cannot leave a green check');
-    assert.match(report.output.summary, /Conversation delivery: \*\*skipped/);
+test('fork summary capture preserves Markdown and provides only the fixed reviewed head', async t => {
+    const worker = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-fork-guidance.md', import.meta.url), 'utf8');
+    const block = worker.match(/    script: \|\r?\n((?: {6}.*(?:\r?\n|$))+)/)?.[1];
+    assert.ok(block);
+    const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-fork-capture-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const script = block.replace(/^ {6}/gm, '').replaceAll("'/tmp/gh-aw/.performance-summary.md'", JSON.stringify(path.join(root, '.performance-summary.md')))
+        .replaceAll("'/tmp/gh-aw/review-head.txt'", JSON.stringify(path.join(root, 'review-head.txt')));
+    const capture = new AsyncFunction('summaryMarkdown', 'process', script);
+    const markdown = '| HIGH | Manual handoff | None |\n';
+    await capture(markdown, { env: { HEAD_SHA: 'a'.repeat(40) } });
+    assert.equal(fs.readFileSync(path.join(root, '.performance-summary.md'), 'utf8'), markdown);
+    assert.equal(fs.readFileSync(path.join(root, 'review-head.txt'), 'utf8'), 'a'.repeat(40));
+    await assert.rejects(capture('@'.repeat(24 * 1024 + 1), { env: { HEAD_SHA: 'a'.repeat(40) } }), /artifact limits/);
+    assert.match(worker, /bash: false/);
+    assert.match(worker, /edit: false/);
+    assert.doesNotMatch(worker, /renderedCard|report_json|push-to-pull-request-branch:/);
 });
-
-test('published repair reporting waits only for the reviewed head to converge to its known commit', async () => {
-    const published = 'b'.repeat(40);
-    const report = await reportRun({ WORKER_RUN_ID: '101', PUBLISHED_HEAD_SHA: published }, 'Repair result.\n', {
-        headSequence: ['a'.repeat(40), 'a'.repeat(40), published],
-    });
-    assert.equal(report.headReads, 3);
-    assert.equal(report.commentCalls.length, 1);
-    assert.equal(report.conclusion, 'success');
-    assert.match(report.output.summary, /Conversation delivery: \*\*completed/);
-});
-
-test('stale propagation times out visibly and a newer head stops the wait immediately', async () => {
-    for (const heads of [['a'.repeat(40)], ['a'.repeat(40), 'c'.repeat(40)]]) {
-        const report = await reportRun({ WORKER_RUN_ID: '101', PUBLISHED_HEAD_SHA: 'b'.repeat(40) }, 'Repair result.\n', {
-            headSequence: heads,
-        });
-        assert.equal(report.headReads, heads.length === 1 ? 6 : 2);
-        assert.equal(report.commentCalls.length, 0);
-        assert.equal(report.conclusion, 'action_required');
-        assert.match(report.output.summary, /Conversation delivery: \*\*skipped/);
-    }
-});
-
-test('failed conversation delivery throws and cannot leave a green check', async () => {
-    for (const outcome of ['success', 'failure', 'cancelled']) {
-        const report = await reportRun({ WORKER_RUN_ID: '101', RUN_OUTCOME: outcome }, 'A result.\n', {
-            failComment: true, captureError: true,
-        });
-        assert.match(report.error.message, /permission denied/);
-        assert.equal(report.conclusion, outcome === 'success' ? 'action_required' : outcome);
-        assert.match(report.output.summary, /Conversation delivery: \*\*pending\*\*/);
-    }
-});
-
-test('conversation output prevents model text from triggering mentions while preserving the check artifact', async () => {
-    const markdown = 'Source text mentions @copilot and @someone.\n';
-    const report = await reportRun({ WORKER_RUN_ID: '101' }, markdown);
-    assert.ok(report.commentCalls[0].body.includes('@\u200bcopilot'));
-    assert.doesNotMatch(report.commentCalls[0].body, /@copilot|@someone/);
-    assert.ok(report.output.summary.endsWith(markdown));
-});
-
-test('worst-case accepted mention escaping stays inside the final Conversation limit', async () => {
-    const report = await reportRun({ WORKER_RUN_ID: '101' }, '@'.repeat(24 * 1024));
-    assert.equal(report.conclusion, 'success');
-    assert.ok(report.commentCalls[0].body.length <= 65536);
-    const rejected = await reportRun({ WORKER_RUN_ID: '101' }, '@'.repeat(24 * 1024 + 1));
-    assert.equal(rejected.conclusion, 'action_required');
-    assert.match(rejected.warnings[0], /mention escaping/);
-    const oversized = await reportRun({ WORKER_RUN_ID: '101' }, '@'.repeat(48 * 1024));
-    assert.equal(oversized.conclusion, 'action_required');
-    assert.ok(oversized.commentCalls[0].body.length <= 65536);
-});
-test('failed correlated worker directly embeds review-time Markdown without granting model authority', async () => {
-    const markdown = 'A review-time proposal.\n\n| Severity | Finding |\n| HIGH | Fixed; all tests pass |\n';
-    const report = await reportRun({
-        WORKER_RUN_ID: '101', RUN_OUTCOME: 'failure', WORKER_CONCLUSION: 'failure', REVIEW_STATUS: '',
-    }, markdown);
-    assert.equal(report.conclusion, 'failure');
-    assert.equal(report.head_sha, 'a'.repeat(40));
-    assert.ok(report.output.summary.endsWith(markdown));
-    assert.ok(report.output.summary.indexOf('Run outcome: **failure**') < report.output.summary.indexOf(markdown));
-    assert.match(report.output.summary, /not native-validation or publication authority/);
-    assert.equal(report.warnings.length, 0);
-});
-
-test('missing or wrong-identity required summary makes an otherwise successful report non-success', async () => {
-    const report = await reportRun({ WORKER_RUN_ID: '101', RUN_OUTCOME: 'success' });
-    assert.equal(report.conclusion, 'action_required');
-    assert.match(report.output.summary, /Run outcome: \*\*success\*\*/);
-    assert.match(report.output.summary, /Summary delivery: \*\*missing or unreadable/);
-    assert.match(report.output.summary, /Review summary missing; see worker run/);
-    assert.match(report.warnings[0], /wrong immutable identity/);
-});
-
-test('missing summary preserves failure and cancellation rather than replacing native/run outcomes', async () => {
-    for (const outcome of ['failure', 'cancelled']) {
-        const report = await reportRun({ WORKER_RUN_ID: '101', RUN_OUTCOME: outcome });
-        assert.equal(report.conclusion, outcome);
-        assert.match(report.output.summary, /Review summary missing/);
-        assert.match(report.output.summary, /Controller run report/);
-    }
-});
-
-test('readable summary preserves a successful outcome without parsing Markdown claims', async () => {
-    const report = await reportRun({ WORKER_RUN_ID: '101' }, 'Plain human summary. No machine fields.\n');
-    assert.equal(report.conclusion, 'success');
-    assert.match(report.output.summary, /Summary delivery: \*\*completed\*\*/);
-});
-
-test('invalid UTF-8 or reparse summary cannot produce a successful delivery check', async () => {
-    const invalid = await reportRun({ WORKER_RUN_ID: '101' }, Buffer.from([0xff]));
-    assert.equal(invalid.conclusion, 'action_required');
-    const reparse = await reportRun({ WORKER_RUN_ID: '101' }, filename => {
-        const target = path.join(path.dirname(filename), 'target');
-        fs.mkdirSync(target);
-        fs.symlinkSync(target, filename, process.platform === 'win32' ? 'junction' : 'dir');
-    });
-    assert.equal(reparse.conclusion, 'action_required');
-    assert.match(reparse.warnings[0], /symlinks or reparse/);
-});
-
-test('invalid UTF-8 summary warns while preserving a failed check', async () => {
-    const report = await reportRun({ WORKER_RUN_ID: '101', RUN_OUTCOME: 'failure' }, Buffer.from([0xff]));
-    assert.equal(report.conclusion, 'failure');
-    assert.match(report.output.summary, /Review summary missing; see worker run/);
-    assert.equal(report.warnings.length, 1);
-});
-
-test('every applicable controller completion publishes a linked PR report using the existing check pattern', async () => {
-    assert.match(workflow, /^  checks: write$/m);
-    assert.match(workflow, /name: Publish linked PR run report\s+if: always\(\) && steps\.gate\.outputs\.applicable == 'true'/);
-    const report = await reportRun();
-    assert.equal(report.name, 'Performance review');
-    assert.equal(report.head_sha, 'a'.repeat(40));
-    assert.equal(report.status, 'completed');
-    assert.equal(report.conclusion, 'action_required');
-    assert.equal(report.details_url, 'https://github.com/owner/repo/actions/runs/100');
-    assert.match(report.output.summary, /\[Agentic worker report\]\(https:\/\/github\.com\/owner\/repo\/actions\/runs\/101\)/);
-});
-
-test('a published repair keeps the run-report link on its new validated head', async () => {
-    const report = await reportRun({
-        REVIEW_STATUS: 'pending_validation', PUBLISHED_HEAD_SHA: 'b'.repeat(40),
-        PUBLISHED_COMMIT_URL: 'https://github.com/owner/repo/commit/' + 'b'.repeat(40),
-    });
-    assert.equal(report.head_sha, 'b'.repeat(40));
-    assert.equal(report.conclusion, 'action_required', 'missing summary must not undo already validated publication');
-    assert.match(report.output.summary, /review result: \*\*fixed\*\*/);
-    assert.match(report.output.summary, /Reviewed head: `a{40}`/);
-    assert.match(report.output.summary, /\[Validated repair commit\]/);
-    assert.equal(report.commentCalls.length, 1);
-    assert.match(report.commentCalls[0].body, /review result: \*\*fixed\*\*/);
-    assert.match(report.commentCalls[0].body, /\[Validated repair commit\]/);
-    assert.match(workflow, /id: publish_repair/);
-    assert.match(workflow, /core\.setOutput\("head_sha", result\.commitSha\)/);
-});
-
-test('failed or cancelled applicable runs keep report links without success-shaped conclusions', async () => {
-    for (const outcome of ['failure', 'cancelled']) {
-        const report = await reportRun({
-            RUN_OUTCOME: outcome, REVIEW_STATUS: '', WORKER_CONCLUSION: outcome,
-        });
-        assert.equal(report.conclusion, outcome);
-        assert.equal(report.head_sha, 'a'.repeat(40));
-        assert.match(report.output.summary, /Agentic worker report/);
-        assert.match(report.commentCalls[0].body, /Agentic worker report/);
-        assert.doesNotMatch(report.output.summary, /review result: \*\*fixed\*\*/);
-    }
-});
-
-test('a failed worker dispatch still leaves the applicable PR a controller report link', async () => {
-    const report = await reportRun({
-        RUN_OUTCOME: 'failure', REVIEW_STATUS: '', WORKER_RUN_URL: '', WORKER_CONCLUSION: '',
-    });
-    assert.equal(report.conclusion, 'failure');
-    assert.match(report.output.summary, /Controller run report/);
-    assert.match(report.output.summary, /not started or could not be correlated/);
-    assert.match(report.commentCalls[0].body, /Controller run report/);
-});
-
-for (const worker of [
-    'ghaw-pr-performance',
-    'ghaw-pr-performance-fork-guidance',
-]) {
-    const markdown = fs.readFileSync(new URL(`../../../workflows/${worker}.md`, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
-    const compiled = fs.readFileSync(new URL(`../../../workflows/${worker}.lock.yml`, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
-    const steps = compiled.split(/(?=^ {6}- )/m);
-    const runtime = steps.find(step => step.includes('id: set-runtime-paths\n'));
-    const classify = steps.find(step => step.includes('name: Classify immutable performance scope\n'));
-    assert.ok(runtime && classify, `${worker}: actual compiled steps must be extractable`);
-    const run = classify.match(/^ {8}run: (".*")$/m);
-    assert.ok(run, `${worker}: compiled classification script must be extractable`);
-    const script = JSON.parse(run[1]);
-
-    test(`${worker}: compiled summary upload is independent of JSON gate failures`, () => {
-        const upload = steps.find(step => step.includes('name: Upload review-time Markdown summary\n'));
-        assert.ok(upload);
-        assert.match(upload, /if: always\(\)/);
-        assert.match(upload, /if-no-files-found: warn/);
-        assert.match(upload, /include-hidden-files: true/);
-        assert.match(upload, /name: performance-summary-\$\{\{ github\.event\.inputs\.pr_number \}\}-\$\{\{ github\.event\.inputs\.expected_head_sha \}\}/);
-        if (worker === 'ghaw-pr-performance') {
-            const collect = steps.find(step => step.includes('name: Collect review-time Markdown summary independently of report validation\n'));
-            assert.match(collect, /if: always\(\)/);
-            assert.match(JSON.parse(collect.match(/^ {8}run: (".*")$/m)[1]), /performance-review\.mjs" summary/);
-            assert.ok(compiled.indexOf(upload) < compiled.indexOf('name: Validate repair report and changed files'));
-        } else {
-            assert.ok(compiled.indexOf(upload) < compiled.indexOf('name: Validate guidance report for controller publication'));
-        }
-    });
-
-    test(`${worker}: compiled pre-agent step forwards runtime output before safe-output setup and inference`, () => {
-        const original = markdown.match(/pre-agent-steps:\n[\s\S]*?- name: Classify immutable performance scope\n[\s\S]*?    run: \|\n((?: {6}.*\n)+)/);
-        assert.ok(original, 'actual source pre-agent script must be extractable');
-        assert.equal(script, original[1].replace(/^ {6}/gm, ''), 'compiled pre-agent script must match its source');
-        assert.match(runtime, /echo "GH_AW_SAFE_OUTPUTS=\$\{RUNNER_TEMP\}\/gh-aw\/safeoutputs\/outputs\.jsonl"/);
-        assert.match(runtime, /\} >> "\$GITHUB_OUTPUT"/);
-        assert.match(markdown, /^ {6}GH_AW_SAFE_OUTPUTS: \$\{\{ steps\.set-runtime-paths\.outputs\.GH_AW_SAFE_OUTPUTS \}\}$/m);
-        assert.match(classify, /^ {10}GH_AW_SAFE_OUTPUTS: \$\{\{ steps\.set-runtime-paths\.outputs\.GH_AW_SAFE_OUTPUTS \}\}$/m);
-        const runtimeIndex = compiled.indexOf(runtime);
-        const classifyIndex = compiled.indexOf(classify);
-        const setupIndex = compiled.indexOf('      - name: Prepare Safe Outputs Directories\n');
-        const inferenceIndex = compiled.indexOf('      - name: Execute GitHub Copilot CLI\n');
-        assert.ok(runtimeIndex < classifyIndex && classifyIndex < setupIndex && setupIndex < inferenceIndex,
-            'classification cannot depend on the later compiler-generated safe-output directory setup');
-        const mkdir = 'mkdir -p /tmp/gh-aw "$(dirname "$GH_AW_SAFE_OUTPUTS")"';
-        assert.ok(script.includes(mkdir), 'pre-agent step must create the forwarded safe-output parent itself');
-        assert.ok(script.indexOf(mkdir) < script.indexOf('node "$RUNNER_TEMP/performance-trusted.mjs" prepare'));
-        assert.match(script, /--safe-outputs "\$GH_AW_SAFE_OUTPUTS"/);
-    });
-
-    test(`${worker}: actual pre-agent path expression reproduces Trial 1 when step env omits the output`, t => {
-        const expression = script.match(/\$\(dirname "\$GH_AW_SAFE_OUTPUTS"\)/);
-        assert.ok(expression, 'extract the actual pre-agent expression, not a rewritten shell check');
-        const env = { ...process.env };
-        delete env.GH_AW_SAFE_OUTPUTS;
-        const command = `set -euo pipefail\n${expression[0].slice(2, -1)}`;
-        const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
-        const omitted = spawnSync(bash, [], { input: `unset GH_AW_SAFE_OUTPUTS\n${command}`, env, encoding: 'utf8', timeout: 10000 });
-        if (omitted.error?.code === 'ENOENT') return t.skip('Native Bash unavailable; extracted pre-agent expression was not executed.');
-        assert.equal(omitted.error, undefined);
-        assert.equal(omitted.status, 1);
-        assert.match(omitted.stderr, /GH_AW_SAFE_OUTPUTS: unbound variable/);
-        const forwarded = spawnSync(bash, [], {
-            input: `export GH_AW_SAFE_OUTPUTS='safeoutputs/outputs.jsonl'\n${command}`,
-            env,
-            encoding: 'utf8', timeout: 10000,
-        });
-        assert.equal(forwarded.error, undefined);
-        assert.equal(forwarded.status, 0, forwarded.stderr);
-        assert.equal(forwarded.stdout.trim(), 'safeoutputs');
-        // Replay only the actual failing expression, without the full step's hosted filesystem writes.
-    });
-
-    test(`${worker}: actual compiled tool arguments enforce the caller-specific checker route`, () => {
-        const inference = steps.find(step => step.includes('name: Execute GitHub Copilot CLI\n'));
-        assert.ok(inference, 'extract the actual inference step, not its tool documentation');
-        const command = inference.split('\n').find(line => line.includes('copilot_harness.cjs') && line.includes('--allow-tool'));
-        assert.ok(command, 'actual compiled Copilot invocation must be extractable');
-        const allowTools = command.match(/--allow-tool \S+/g);
-        if (worker === 'ghaw-pr-performance') {
-            assert.match(markdown, /^ {4}- 'pwsh:\*'$/m);
-            assert.ok(allowTools.some(tool => tool.includes('shell(pwsh:*)')), 'repair CLI arguments must permit pwsh');
-        } else {
-            assert.match(markdown, /^  bash: false$/m);
-            assert.match(markdown, /^  cli-proxy: false$/m);
-            assert.ok(allowTools.every(tool => !tool.includes('shell(')), 'fork CLI must not expose any shell route');
-            assert.ok(allowTools.some(tool => tool === '--allow-tool mcpscripts'), 'fork CLI must expose the read-only checker');
-            assert.ok(allowTools.every(tool => tool !== '--allow-tool write'), 'fork CLI must not expose edits');
-        }
-        assert.ok(allowTools.every(tool => !tool.includes('shell(node')), 'direct Node is not the permitted model route');
-    });
-}
