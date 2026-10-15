@@ -18449,6 +18449,143 @@ async fn master_opencode_server_only_activity_requires_a_tui_binding() {
 }
 
 #[tokio::test]
+async fn master_opencode_unbind_preserves_live_server_session_and_rejects_stale_owner() {
+    use crate::agent_sessions::AgentStatus;
+
+    let state = make_state();
+    let sid = SessionId::new("server-lifecycle");
+    let hook = |event: &str, pane: &str, payload: serde_json::Value, provider: &str| {
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": event, "cli_source": provider, "agent_session_id": "server-lifecycle",
+                "pane_id": pane, "payload": payload
+            }
+        })
+    };
+    let local = |event, pane| {
+        hook(
+            event,
+            pane,
+            serde_json::json!({"cwd":"C:\\repo"}),
+            "opencode",
+        )
+    };
+    let server = |event, payload| hook(event, "server-pane", payload, "opencode");
+    let server_payload = serde_json::json!({"pane_owner":false});
+    handle_master_wt_event(&state, server("agent.session.end", server_payload.clone())).await;
+    assert!(state.registry.lookup(&sid).await.is_none());
+    handle_master_wt_event(&state, local("agent.session.start", "first-pane")).await;
+    handle_master_wt_event(&state, local("agent.session.unbind", "wrong-pane")).await;
+    assert_eq!(
+        state
+            .registry
+            .lookup(&sid)
+            .await
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some("first-pane")
+    );
+    handle_master_wt_event(
+        &state,
+        hook(
+            "agent.session.unbind",
+            "first-pane",
+            serde_json::json!({}),
+            "claude",
+        ),
+    )
+    .await;
+    assert_eq!(
+        state
+            .registry
+            .lookup(&sid)
+            .await
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some("first-pane")
+    );
+    handle_master_wt_event(&state, local("agent.session.unbind", "first-pane")).await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Idle));
+    assert_eq!(row.pane_session_id, None);
+    handle_master_wt_event(
+        &state,
+        server(
+            "agent.session.renamed",
+            serde_json::json!({"pane_owner":false,"title":"unbound"}),
+        ),
+    )
+    .await;
+    assert_ne!(
+        state.registry.lookup(&sid).await.unwrap().title.as_deref(),
+        Some("unbound")
+    );
+    handle_master_wt_event(&state, local("agent.session.start", "second-pane")).await;
+    handle_master_wt_event(&state, local("agent.session.unbind", "first-pane")).await;
+    handle_master_wt_event(
+        &state,
+        server(
+            "agent.session.renamed",
+            serde_json::json!({"pane_owner":false,"title":"renamed"}),
+        ),
+    )
+    .await;
+    handle_master_wt_event(
+        &state,
+        server(
+            "agent.cwd.changed",
+            serde_json::json!({"pane_owner":false,"new_cwd":"C:\\moved"}),
+        ),
+    )
+    .await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.pane_session_id.as_deref(), Some("second-pane"));
+    assert_eq!(row.title.as_deref(), Some("renamed"));
+    assert_eq!(row.cwd, PathBuf::from("C:\\moved"));
+    handle_master_wt_event(&state, server("agent.session.end", server_payload.clone())).await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Ended));
+    assert_eq!(row.pane_session_id, None);
+
+    handle_master_wt_event(&state, local("agent.session.start", "third-pane")).await;
+    handle_master_wt_event(&state, local("agent.session.unbind", "third-pane")).await;
+    handle_master_wt_event(&state, server("agent.session.end", server_payload)).await;
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Ended)
+    );
+
+    let other = make_state();
+    let other_sid = SessionId::new("server-lifecycle");
+    handle_master_wt_event(
+        &other,
+        hook(
+            "agent.session.start",
+            "other-pane",
+            serde_json::json!({"cwd":"C:\\other"}),
+            "claude",
+        ),
+    )
+    .await;
+    handle_master_wt_event(
+        &other,
+        server(
+            "agent.session.end",
+            serde_json::json!({"pane_owner":false}),
+        ),
+    )
+    .await;
+    assert_eq!(
+        other.registry.lookup(&other_sid).await.unwrap().status,
+        Some(AgentStatus::Idle),
+        "an OpenCode server event cannot end a different provider's row"
+    );
+}
+
+#[tokio::test]
 async fn master_opencode_rename_cannot_rebind_after_handoff() {
     use crate::agent_sessions::AgentStatus;
 

@@ -1097,6 +1097,42 @@ fn cwd_hook_requires_a_known_session_and_prefers_new_cwd() {
 }
 
 #[test]
+fn opencode_unbind_plan_never_synthesizes_or_claims_a_pane() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    let facts = crate::app::AgentEventFacts {
+        key: "session".into(),
+        session_known: false,
+        session_status: None,
+        pane_owned_by_other: false,
+    };
+    assert!(crate::app::plan_agent_event(
+        "agent.session.unbind",
+        &json!({}),
+        "pane",
+        &CliSource::OpenCode,
+        &facts
+    )
+    .events
+    .is_empty());
+    let known = crate::app::AgentEventFacts {
+        session_known: true,
+        ..facts
+    };
+    assert!(matches!(crate::app::plan_agent_event(
+        "agent.session.unbind", &json!({}), "pane", &CliSource::OpenCode, &known
+    ).events.as_slice(), [SessionEvent::SessionUnbound { pane_session_id, .. }] if pane_session_id == "pane"));
+    assert!(crate::app::plan_agent_event(
+        "agent.session.unbind",
+        &json!({}),
+        "pane",
+        &CliSource::Claude,
+        &known
+    )
+    .events
+    .is_empty());
+}
+
+#[test]
 fn prompt_refreshes_existing_session_cwd_without_rebinding_its_pane() {
     use crate::agent_sessions::{AgentSessionRegistry, CliSource, SessionEvent};
 

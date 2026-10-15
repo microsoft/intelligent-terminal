@@ -11087,6 +11087,7 @@ namespace winrt::TerminalApp::implementation
         const auto eventName = params.get("event", "").asString();
         const bool sessionEnded = eventName == "agent.session.stopped" ||
                                   eventName == "agent.session.end";
+        const bool sessionUnbound = eventName == "agent.session.unbind";
         const bool sessionStarted = eventName == "agent.session.started" ||
                                     eventName == "agent.session.start";
         const bool promptSubmitted = eventName == "agent.prompt.submit";
@@ -11102,7 +11103,7 @@ namespace winrt::TerminalApp::implementation
         {
             resumeCommandline = winrt::to_string(_BuildAgentResumeCommandline(agent, agentSessionId));
         }
-        if (!eventName.empty() && !sessionEnded && !sessionStarted && !promptSubmitted)
+        if (!eventName.empty() && !sessionEnded && !sessionStarted && !promptSubmitted && !sessionUnbound)
         {
             return;
         }
@@ -11113,6 +11114,53 @@ namespace winrt::TerminalApp::implementation
                 if (const auto rootPane = tabImpl->GetRootPane();
                     rootPane && rootPane->FindPaneBySessionId(*paneSessionId))
                 {
+                    if (sessionUnbound)
+                    {
+                        const auto binding = _paneAgentSessions.find(*paneSessionId);
+                        if (agent != "opencode" || agentSessionId.empty() ||
+                            binding == _paneAgentSessions.end() ||
+                            binding->second.agent != L"opencode" ||
+                            binding->second.sessionId != winrt::to_hstring(agentSessionId))
+                        {
+                            return;
+                        }
+                        _paneAgentSessions.erase(binding);
+                        if (const auto interactive = _interactiveResumeSessions.find(*paneSessionId);
+                            interactive != _interactiveResumeSessions.end() &&
+                            interactive->second.agent == L"opencode" &&
+                            interactive->second.sessionId == winrt::to_hstring(agentSessionId))
+                        {
+                            _interactiveResumeSessions.erase(interactive);
+                        }
+                        if (const auto active = _activeCliAgentPanes.find(*paneSessionId);
+                            active != _activeCliAgentPanes.end() &&
+                            active->second.sessionId == winrt::to_hstring(agentSessionId))
+                        {
+                            _activeCliAgentPanes.erase(active);
+                        }
+                        if (const auto pending = _pendingRestoredSessionBindings.find(*paneSessionId);
+                            pending != _pendingRestoredSessionBindings.end() &&
+                            pending->second.sessionId == winrt::to_hstring(agentSessionId))
+                        {
+                            _pendingRestoredSessionBindings.erase(pending);
+                        }
+                        if (const auto ended = _richTabEndedSessionByPaneId.find(*paneSessionId);
+                            ended != _richTabEndedSessionByPaneId.end() && ended->second == agentSessionId)
+                        {
+                            _richTabEndedSessionByPaneId.erase(ended);
+                        }
+                        if (_RichTabCwdDependentFieldsVisible())
+                        {
+                            if (const auto control = rootPane->FindPaneBySessionId(*paneSessionId)->GetTerminalControl())
+                            {
+                                _UpdateRichTabFirstPartyFields(control);
+                            }
+                            _RequestRichTabAgentStatusRefresh();
+                        }
+                        _UpdateTabIcon(*tabImpl);
+                        _ApplyTabListProjection(tab);
+                        return;
+                    }
                     if (sessionEnded)
                     {
                         if (const auto active = _activeCliAgentPanes.find(*paneSessionId);

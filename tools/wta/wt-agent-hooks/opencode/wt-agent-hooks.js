@@ -1,6 +1,7 @@
 // Managed by Intelligent Terminal: wt-agent-hooks
 
 import { appendFileSync, mkdirSync } from "node:fs"
+import { bindingRpc } from "./wt-agent-hooks/rpc.js"
 
 function eventMessage(value) {
   if (typeof value === "string") return value
@@ -61,15 +62,19 @@ function enabled() {
   )
 }
 
-const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true }) => {
+const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true, deliver, onSession }) => {
   const rootSessions = new Map()
   const childSessions = new Set()
   const sessionStates = new Map()
   let disposed = false
-  const active = enabled()
+  const active = ownsPane ? enabled() : true
   function emit(topic, sessionID, payload = {}) {
     if (!active || !sessionID) return
 
+    if (deliver) {
+      deliver(topic, sessionID, payload)
+      return
+    }
     try {
       const child = Bun.spawn({
         cmd: [
@@ -115,6 +120,7 @@ const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true }) => {
       title: info.title || previous?.title || "",
     }
     rootSessions.set(info.id, session)
+    onSession?.(info.id, session, previous)
     if (ownsPane && previous && session.cwd !== previous.cwd) {
       emit("agent.cwd.changed", info.id, { cwd: session.cwd })
     }
@@ -171,6 +177,10 @@ const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true }) => {
   }
 
   return {
+    ensureRoot: async (sessionID) => {
+      await ensureSession(sessionID)
+      return isRootSession(sessionID)
+    },
     "chat.message": async (input) => {
       const sessionID = input.sessionID
       if (!sessionID) return
@@ -220,6 +230,11 @@ const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true }) => {
             rememberSession({ id: properties.sessionID, title: properties.title })
           }
           return
+        case "session.moved":
+          if (isRootSession(properties.sessionID) && properties.location?.directory) {
+            rememberSession({ id: properties.sessionID, directory: properties.location.directory })
+          }
+          return
         case "session.status": {
           if (!isRootSession(properties.sessionID)) return
           if (properties.status?.type === "idle") {
@@ -247,7 +262,7 @@ const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true }) => {
         case "session.deleted": {
           const sessionID = properties.info?.id || properties.sessionID
           sessionStates.delete(sessionID)
-          if (ownsPane && sessionID && isRootSession(sessionID)) {
+          if (sessionID && isRootSession(sessionID)) {
             emit("agent.session.end", sessionID, { reason: "deleted" })
           }
           rootSessions.delete(sessionID)
@@ -295,13 +310,140 @@ export default {
   id: "wt-agent-hooks",
   server: WtAgentHooks,
   async setup(ctx) {
-    if (!enabled()) return
+    if (process.env.OPENCODE_CLIENT === "acp") return
 
     const directory = ctx.location.directory
+    const bindings = new Map()
+    const clients = new Map()
+    const snapshots = new Map()
+    let revision = 0
+    let delivery = Promise.resolve()
+    let disposed = false
+    let registration
+
+    function enqueue(topic, sessionID, payload = {}) {
+      const previous = snapshots.get(sessionID) ?? {
+        revision: 0, status: "unknown", cwd: "", title: "", error: "", notification: "",
+      }
+      const next = { ...previous, revision: ++revision }
+      switch (topic) {
+        case "agent.session.renamed":
+          next.title = payload.title
+          break
+        case "agent.cwd.changed":
+          next.cwd = payload.cwd
+          break
+        case "agent.prompt.submit":
+        case "agent.tool.starting":
+          next.status = "working"
+          next.error = ""
+          next.notification = ""
+          break
+        case "agent.stop":
+          next.status = "idle"
+          next.error = ""
+          next.notification = ""
+          break
+        case "agent.notification":
+          next.status = "attention"
+          next.notification = payload.message
+          break
+        case "agent.error":
+          next.status = "error"
+          next.error = payload.error
+          break
+        case "agent.session.end":
+          next.status = "deleted"
+          break
+      }
+      snapshots.set(sessionID, next)
+      const owners = [...bindings.values()]
+        .filter((owner) => owner.sessionID === sessionID)
+      delivery = delivery.then(async () => {
+        for (const owner of owners) {
+          await registration.events.emit("signal", {
+            ...owner, revision: next.revision, topic, payload,
+          })
+        }
+      }).catch((error) => noteFailure(topic, error, "RPC event"))
+    }
+
+    function remember(sessionID, session, previous) {
+      if (previous?.cwd !== session.cwd) enqueue("agent.cwd.changed", sessionID, { cwd: session.cwd })
+      if (session.title && previous?.title !== session.title) {
+        enqueue("agent.session.renamed", sessionID, { title: session.title })
+      }
+    }
+
     const hooks = await WtAgentHooks({
       directory,
       resolveSession: (sessionID) => ctx.session.get({ sessionID }),
       ownsPane: false,
+      deliver: enqueue,
+      onSession: remember,
+    })
+    function ownerKey(terminalID, sessionID) {
+      return `${terminalID}\0${sessionID}`
+    }
+    function isOwner(input) {
+      const owner = bindings.get(ownerKey(input.terminalID, input.sessionID))
+      return owner?.clientID === input.clientID &&
+        owner.paneID === input.paneID &&
+        owner.generation === input.generation
+    }
+    function getSnapshot(input) {
+      if (disposed || !isOwner(input)) throw new Error("OpenCode pane binding is no longer current")
+      return snapshots.get(input.sessionID)
+    }
+    registration = await ctx.rpc.register(bindingRpc, {
+      bind: async (input) => {
+        if (disposed) throw new Error("OpenCode hook is disposing")
+        if (snapshots.get(input.sessionID)?.status !== "deleted" &&
+            !await hooks.ensureRoot(input.sessionID)) {
+          throw new Error(`OpenCode root session not found: ${input.sessionID}`)
+        }
+        const key = ownerKey(input.terminalID, input.sessionID)
+        const priorClient = clients.get(input.clientID)
+        if (priorClient && priorClient.generation > input.generation) {
+          throw new Error("Outdated OpenCode pane binding generation")
+        }
+        if (priorClient) {
+          bindings.delete(ownerKey(priorClient.terminalID, priorClient.sessionID))
+        }
+        const previous = bindings.get(key)
+        if (previous && previous.clientID !== input.clientID) {
+          delivery = delivery.then(() => registration.events.emit("signal", {
+            ...previous,
+            revision: snapshots.get(input.sessionID)?.revision ?? 0,
+            topic: "agent.session.unbind",
+            payload: {},
+          })).catch((error) => noteFailure("agent.session.unbind", error, "RPC event"))
+          clients.delete(previous.clientID)
+        }
+        const owner = {
+          clientID: input.clientID,
+          terminalID: input.terminalID,
+          paneID: input.paneID,
+          sessionID: input.sessionID,
+          generation: input.generation,
+        }
+        bindings.set(key, owner)
+        clients.set(input.clientID, owner)
+        const snapshot = snapshots.get(input.sessionID)
+        if (snapshot.status === "unknown") {
+          snapshot.status = input.running ? "working" : "idle"
+        }
+        return { ...snapshot, cwd: snapshot.cwd || input.cwd, title: snapshot.title || input.title }
+      },
+      unbind: async (input) => {
+        const detached = isOwner(input)
+        if (detached) {
+          bindings.delete(ownerKey(input.terminalID, input.sessionID))
+          clients.delete(input.clientID)
+        }
+        return { detached }
+      },
+      snapshot: async (input) => getSnapshot(input),
     })
     await ctx.session.hook("prompt", hooks["chat.message"])
     await ctx.tool.hook("execute.before", (event) =>
@@ -327,9 +469,14 @@ export default {
     })()
 
     return async () => {
+      disposed = true
       controller.abort()
       await hooks.dispose()
       await events
+      await delivery
+      await registration.dispose()
+      bindings.clear()
+      clients.clear()
     }
   },
 }

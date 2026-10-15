@@ -31,6 +31,8 @@ const sdk = createContext({
   directory,
   getSession: async (id) => id === pendingID ? pendingLookup.promise : sessions.get(id) ?? { id, location: sdk.location },
 })
+tuiContext.client = sdk.client
+tuiContext.location = sdk.location
 const hooks = mode === "v1" ? await plugin.server({ directory }) : undefined
 const serverDispose = mode === "v1" ? () => hooks.dispose() : await plugin.setup(sdk.context)
 const tuiDispose = mode === "v2" ? (await loadPlugin(tuiPluginPath)).setup(tuiContext) : undefined
@@ -103,6 +105,7 @@ try {
       default:
         throw new Error(`Unknown hook action: ${request.action}`)
     }
+    await new Promise(setImmediate)
     await tuiDispose?.flush()
     await flush()
     console.log(JSON.stringify({ completed: request.token }))

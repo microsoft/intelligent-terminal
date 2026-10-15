@@ -41,178 +41,155 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
     }
   })
 
-  describe("OpenCode V2 TUI cwd binding", () => {
-    let sessions
-    let handlers
-    let route
-    let context
-    let statuses
-
-    beforeEach(() => {
-      sessions = new Map()
-      statuses = new Map()
-      handlers = new Map()
-      route = { type: "session", sessionID: "root" }
-      context = {
-        ui: { router: { current: () => route } },
-        data: {
-          session: {
-            get: (sessionID) => sessions.get(sessionID),
-            status: (sessionID) => statuses.get(sessionID) ?? "idle",
-          },
-          on: (event, handler) => {
-            handlers.set(event, handler)
-            return () => handlers.delete(event)
-          },
+  it("relays server-owned status through a bound local TUI without server Terminal identity", async () => {
+    delete process.env.WT_SESSION
+    delete process.env.WT_COM_CLSID
+    const sdk = createContext()
+    const stopServer = await plugin.setup(sdk.context)
+    assert.equal(typeof stopServer, "function")
+    process.env.WT_COM_CLSID = "{00000000-0000-0000-0000-000000000001}"
+    process.env.WT_SESSION = "00000000-0000-0000-0000-000000000002"
+    const session = { id: "root", title: "Original", location: sdk.location }
+    const handlers = new Map()
+    const tui = {
+      location: sdk.location,
+      client: sdk.client,
+      ui: { router: { current: () => ({ type: "session", sessionID: "root" }) } },
+      data: {
+        session: {
+          get: () => session,
+          status: () => "running",
         },
-      }
-    })
-
-    function emit(event, data) {
-      handlers.get(event)({ data })
+        on: (name, handler) => {
+          handlers.set(name, handler)
+          return () => handlers.delete(name)
+        },
+      },
     }
-
-    it("binds the visible root and sends moved cwd without attributing other panes or child sessions", async () => {
-      sessions.set("root", { id: "root", title: "Current", location: { directory: "C:\\first" } })
-      sessions.set("other", { id: "other", location: { directory: "C:\\foreign" } })
-      sessions.set("child", { id: "child", parentID: "root", location: { directory: "C:\\child" } })
-      const dispose = tuiPlugin.setup(context)
-      emit("session.viewed", { sessionID: "root" })
-      emit("session.moved", { sessionID: "root", location: { directory: "C:\\second" } })
-      emit("session.moved", { sessionID: "root", location: { directory: "C:\\second" } })
-      emit("session.moved", { sessionID: "other", location: { directory: "C:\\foreign" } })
-      route = { type: "session", sessionID: "child" }
-      emit("session.viewed", { sessionID: "child" })
-      await dispose()
-      assert.deepEqual(calls.map(({ topic, payload }) => [topic, payload.session_id, payload.cwd]), [
-        ["agent.session.start", "root", "C:\\first"],
-        ["agent.session.start", "root", "C:\\first"],
-        ["agent.cwd.changed", "root", "C:\\second"],
-        ["agent.session.end", "root", undefined],
-      ])
-      assert.equal(calls[0].payload.title, "Current")
-      assert.deepEqual(calls[0].options.cmd, [process.env.WTCLI_PATH, "agent-hook", "--cli-source", "opencode", "--event", "agent.session.start"])
-      assert.equal(handlers.size, 0)
-    })
-
-    it("does not bind a moved session missing from the TUI cache, then binds it when viewed", async () => {
-      const dispose = tuiPlugin.setup(context)
-      emit("session.moved", { sessionID: "root", location: { directory: "C:\\second" } })
-      assert.equal(calls.length, 0)
-      sessions.set("root", { id: "root", location: { directory: "C:\\second" } })
-      emit("session.viewed", { sessionID: "root" })
-      await dispose()
-      assert.deepEqual(calls.map((call) => call.payload.cwd), ["C:\\second", undefined])
-    })
-
-    it("binds an already visible running session and tracks V2 execution outcomes and deletion", async () => {
-      sessions.set("root", { id: "root", title: "Restored", location: { directory: "C:\\restored" } })
-      statuses.set("root", "running")
-      const dispose = tuiPlugin.setup(context)
-      emit("session.execution.started", { sessionID: "other" })
-      emit("session.execution.succeeded", { sessionID: "root" })
-      emit("session.renamed", { sessionID: "root", title: "New title" })
-      emit("session.execution.started", { sessionID: "root" })
-      emit("session.execution.failed", { sessionID: "root" })
-      emit("session.execution.started", { sessionID: "root" })
-      emit("session.execution.interrupted", { sessionID: "root" })
-      emit("session.deleted", { sessionID: "root" })
-      emit("session.execution.started", { sessionID: "root" })
-      await dispose()
-      assert.deepEqual(calls.map((call) => call.topic), [
-        "agent.session.start", "agent.stop", "agent.session.renamed",
-        "agent.prompt.submit", "agent.stop", "agent.prompt.submit", "agent.stop", "agent.session.end",
-      ])
+    await sdk.event("session.created", { sessionID: "root", title: "Original" })
+    const stopTui = tuiPlugin.setup(tui)
+    try {
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      assert.deepEqual(calls.map(({ topic }) => topic), ["agent.session.start"])
       assert.equal(calls[0].payload.running, true)
-      assert.equal(calls[2].payload.title, "New title")
-      assert.equal(calls[7].payload.reason, "deleted")
-      assert.equal(handlers.size, 0)
-    })
-
-    it("serializes bridge children and ends the bound session exactly once on disposal", async () => {
-      sessions.set("root", { id: "root", title: "Current", location: { directory: "C:\\first" } })
-      const first = deferred()
-      globalThis.Bun.spawn = (options) => {
-        calls.push({ topic: options.cmd.at(-1), payload: JSON.parse(new TextDecoder().decode(options.stdin)) })
-        return { exited: calls.length === 1 ? first.promise : Promise.resolve(0) }
-      }
-      const dispose = tuiPlugin.setup(context)
-      emit("session.moved", { sessionID: "root", location: { directory: "C:\\second" } })
-      const ending = dispose()
-      await Promise.resolve()
-      assert.deepEqual(calls.map((call) => call.topic), ["agent.session.start"])
-      first.resolve(0)
-      await ending
-      await dispose()
-      assert.deepEqual(calls.map((call) => call.topic), [
-        "agent.session.start", "agent.cwd.changed", "agent.session.end",
+      assert.equal([...handlers.keys()].some((name) => name.startsWith("session.execution.")), false)
+      await sdk.event("session.status", { sessionID: "root", status: { type: "idle" } })
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      assert.equal(calls.at(-1).topic, "agent.stop")
+      assert.equal(calls.at(-1).payload.pane_owner, false)
+      await sdk.event("session.renamed", { sessionID: "root", title: "Updated" })
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      assert.equal(calls.at(-1).topic, "agent.session.renamed")
+      await sdk.event("session.deleted", { sessionID: "root" })
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      assert.deepEqual(calls.slice(-2).map(({ topic }) => topic), [
+        "agent.session.end", "agent.session.unbind",
       ])
-      assert.equal(calls.at(-1).payload.reason, "tui_disposed")
-    })
+      assert.equal(calls.at(-2).payload.pane_owner, false)
+    } finally {
+      await stopTui()
+      await stopServer()
+    }
+    assert.equal(handlers.size, 0)
+  })
 
-    it("two visible TUIs send metadata updates rather than binding starts on a shared rename", async () => {
-      sessions.set("root", { id: "root", title: "Original", location: { directory: "C:\\repo" } })
-      const secondHandlers = new Map()
-      const secondContext = {
-        ...context,
-        data: {
-          ...context.data,
-          on: (event, handler) => {
-            secondHandlers.set(event, handler)
-            return () => secondHandlers.delete(event)
-          },
+  it("reconciles missed server events and detaches a pane without deleting its server session", async () => {
+    const sdk = createContext()
+    const stopServer = await plugin.setup(sdk.context)
+    const handlers = new Map()
+    const session = { id: "root", title: "Original", location: sdk.location }
+    let route = { type: "session", sessionID: "root" }
+    const tui = {
+      location: sdk.location,
+      client: sdk.client,
+      ui: { router: { current: () => route } },
+      data: {
+        session: { get: () => session, status: () => "idle" },
+        on: (name, handler) => {
+          handlers.set(name, handler)
+          return () => handlers.delete(name)
         },
+      },
+    }
+    await sdk.event("session.created", { sessionID: "root", title: "Original" })
+    const stopTui = tuiPlugin.setup(tui)
+    try {
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      sdk.rpc.setSignalDelivery(false)
+      await sdk.event("session.status", { sessionID: "root", status: { type: "busy" } })
+      await sdk.event("session.renamed", { sessionID: "root", title: "Updated" })
+      await new Promise(setImmediate)
+      assert.equal(calls.some((call) => call.topic === "agent.prompt.submit"), false)
+      sdk.rpc.publish({ type: "server.connected", data: {} })
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      assert.equal(calls.at(-1).topic, "agent.session.start")
+      assert.equal(calls.at(-1).payload.running, true)
+      assert.equal(calls.at(-1).payload.title, "Updated")
+      route = { type: "home" }
+      handlers.get("session.viewed")({ data: {} })
+      await stopTui.flush()
+      assert.equal(calls.at(-1).topic, "agent.session.unbind")
+      assert.equal(calls.some((call) => call.topic === "agent.session.end"), false)
+      const owner = {
+        clientID: "second", terminalID: "terminal", paneID: "pane",
+        generation: 1, sessionID: "root", cwd: sdk.location.directory, title: "", running: false,
       }
-      const firstDispose = tuiPlugin.setup(context)
-      const secondDispose = tuiPlugin.setup(secondContext)
-      sessions.get("root").title = "Shared rename"
-      emit("session.renamed", { sessionID: "root", title: "Shared rename" })
-      secondHandlers.get("session.renamed")({ data: { sessionID: "root", title: "Shared rename" } })
-      await Promise.all([firstDispose(), secondDispose()])
-      assert.equal(calls.filter((call) => call.topic === "agent.session.start").length, 2)
-      assert.deepEqual(calls.filter((call) => call.topic === "agent.session.renamed").map((call) => call.payload.title),
-        ["Shared rename", "Shared rename"])
-      assert.equal(handlers.size + secondHandlers.size, 0)
-    })
+      assert.equal((await sdk.client.rpc(sdk.rpc.definition).bind(owner)).status, "working")
+    } finally {
+      await stopTui()
+      await stopServer()
+    }
+    assert.equal(handlers.size, 0)
+    assert.equal(sdk.rpc.listeners, 0)
+  })
 
-    it("a local view reclaims a shared session after the other TUI closes", async () => {
-      for (const activity of ["idle", "running"]) {
-        calls.length = 0
-        sessions.set("root", { id: "root", title: "Shared", location: { directory: "C:\\repo" } })
-        statuses.set("root", activity)
-        const secondHandlers = new Map()
-        const secondContext = {
-          ...context,
-          data: {
-            ...context.data,
-            on: (event, handler) => {
-              secondHandlers.set(event, handler)
-              return () => secondHandlers.delete(event)
-            },
-          },
-        }
-        const firstDispose = tuiPlugin.setup(context)
-        const secondDispose = tuiPlugin.setup(secondContext)
-        await secondDispose()
-        emit("session.viewed", { sessionID: "root" })
-        await firstDispose.flush()
-        assert.deepEqual(calls.filter((call) => call.topic === "agent.session.start").map((call) => call.payload.running),
-          activity === "running" ? [true, true, true] : [undefined, undefined, undefined])
-        assert.equal(calls.filter((call) => call.topic === "agent.prompt.submit").length, 0)
-        assert.equal(calls.at(-1).topic, "agent.session.start")
-        await firstDispose()
-        assert.equal(calls.at(-1).topic, "agent.session.end")
-      }
-    })
+  it("reconciles a deletion missed while disconnected instead of leaving a stale pane binding", async () => {
+    const sdk = createContext()
+    const stopServer = await plugin.setup(sdk.context)
+    const session = { id: "root", location: sdk.location }
+    const tui = {
+      location: sdk.location,
+      client: sdk.client,
+      ui: { router: { current: () => ({ type: "session", sessionID: "root" }) } },
+      data: {
+        session: { get: () => session, status: () => "idle" },
+        on: () => () => {},
+      },
+    }
+    await sdk.event("session.created", { sessionID: "root" })
+    const stopTui = tuiPlugin.setup(tui)
+    try {
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      sdk.rpc.setSignalDelivery(false)
+      await sdk.event("session.deleted", { sessionID: "root" })
+      await new Promise(setImmediate)
+      assert.equal(calls.some((call) => call.topic === "agent.session.end"), false)
+      sdk.rpc.publish({ type: "server.connected", data: {} })
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      assert.deepEqual(calls.slice(-2).map((call) => call.topic), [
+        "agent.session.end", "agent.session.unbind",
+      ])
+    } finally {
+      await stopTui()
+      await stopServer()
+    }
+  })
 
-    it("suppresses hooks outside a Terminal pane and in ACP mode", () => {
-      delete process.env.WT_SESSION
-      assert.equal(tuiPlugin.setup(context), undefined)
-      process.env.WT_SESSION = "00000000-0000-0000-0000-000000000002"
-      process.env.OPENCODE_CLIENT = "acp"
-      assert.equal(tuiPlugin.setup(context), undefined)
-      assert.equal(handlers.size, 0)
-    })
+  it("does not install TUI hooks outside a Terminal pane or in ACP mode", () => {
+    const context = { data: { on: () => { throw new Error("unexpected TUI hook") } } }
+    delete process.env.WT_SESSION
+    assert.equal(tuiPlugin.setup(context), undefined)
+    process.env.WT_SESSION = "00000000-0000-0000-0000-000000000002"
+    process.env.OPENCODE_CLIENT = "acp"
+    assert.equal(tuiPlugin.setup(context), undefined)
   })
 
   afterEach(() => {
@@ -247,10 +224,11 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
     assert.equal(calls.at(-1).topic, "agent.session.end")
   })
 
-  it("V2 forwards rename, waiting, replies and execution outcomes without treating children as roots", async () => {
+  it("V2 keeps server-owned status, metadata and deletion without a local Terminal pane", async () => {
     const sdk = createContext({ getSession: async (id) => ({ id, parentID: id === "child" ? "root" : undefined }) })
     const dispose = await plugin.setup(sdk.context)
     try {
+      await sdk.event("session.created", { sessionID: "root", title: "Original" })
       await sdk.prompt("root")
       await sdk.prompt("child")
       await sdk.tool("child", "bash", {})
@@ -262,19 +240,23 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       for (const type of ["session.execution.succeeded", "session.execution.interrupted", "session.execution.failed"]) {
         await sdk.event(type, { sessionID: "root", error: { data: { message: "Fixture failure" } } })
       }
-      assert.equal(calls.some((call) => call.payload.session_id === "child"), false)
-      assert.deepEqual(calls.filter((call) => call.topic === "agent.notification").map((call) => call.payload.message),
-        ["Permission required: edit", "OpenCode is waiting for input"])
-      assert.equal(calls.filter((call) => call.topic === "agent.stop").length, 2)
-      assert.equal(calls.find((call) => call.topic === "agent.error").payload.error, "Fixture failure")
-      assert.equal(calls.some((call) => call.topic === "agent.session.start"), false)
-      assert.equal(calls.every((call) => call.payload.pane_owner === false), true)
-      assert.deepEqual(calls.find((call) => call.topic === "agent.tool.starting").payload.tool_input, { questions: ["Continue?"] })
+      const owner = {
+        clientID: "client", terminalID: "terminal", paneID: "pane", generation: 1,
+        sessionID: "root", cwd: "C:\\root", title: "", running: false,
+      }
+      const snapshot = await sdk.client.rpc(sdk.rpc.definition).bind(owner)
+      assert.equal(snapshot.title, "Renamed")
+      assert.equal(snapshot.status, "error")
+      assert.equal(snapshot.error, "Fixture failure")
+      assert.equal(calls.length, 0)
       await sdk.event("session.deleted", { sessionID: "root" })
-      assert.equal(calls.some((call) => call.topic === "agent.session.end"), false)
+      await new Promise(setImmediate)
+      assert.equal((await sdk.client.rpc(sdk.rpc.definition).snapshot(owner)).status, "deleted")
+      assert.deepEqual(sdk.rpc.emitted.filter((event) => event.data.topic === "agent.session.end")
+        .map((event) => event.data.sessionID), ["root"])
     } finally { await dispose() }
     assert.equal(sdk.aborted, true)
-    assert.equal(calls.some((call) => call.topic === "agent.session.end"), false)
+    assert.equal(calls.length, 0)
   })
 
   it("V2 location filtering rejects both foreign directories and foreign workspaces", async () => {
@@ -286,8 +268,12 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       assert.equal(calls.length, 0)
       await sdk.event("session.created", { sessionID: "owned", title: "Owned" })
       await sdk.prompt("owned")
-      assert.deepEqual(calls.map((call) => call.topic), ["agent.prompt.submit"])
-      assert.equal(calls[0].payload.session_id, "owned")
+      assert.equal(calls.length, 0)
+      const owner = {
+        clientID: "client", terminalID: "terminal", paneID: "pane", generation: 1,
+        sessionID: "owned", cwd: "C:\\owned", title: "", running: false,
+      }
+      assert.equal((await sdk.client.rpc(sdk.rpc.definition).bind(owner)).status, "working")
     } finally { await dispose() }
   })
 
@@ -297,9 +283,8 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
     await sdk.event("session.created", { sessionID: "unowned", title: "Unowned" })
     await sdk.prompt("unowned")
     await dispose()
-    assert.deepEqual(calls.map((call) => [call.topic, call.payload.pane_owner]), [
-      ["agent.prompt.submit", false],
-    ])
+    assert.equal(calls.length, 0)
+    assert.equal(sdk.rpc.emitted.length, 0)
   })
 
   for (const teardown of ["delete", "dispose"]) {
@@ -339,11 +324,15 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       newLookup.resolve({ id: "reused", title: "Current", location: sdk.location })
       await newPrompt
       assert.equal(calls.some((call) => call.payload.title === "Stale"), false)
-      assert.equal(calls.filter((call) => call.topic === "agent.prompt.submit").length, 1)
+      const owner = {
+        clientID: "client", terminalID: "terminal", paneID: "pane", generation: 1,
+        sessionID: "reused", cwd: "C:\\current", title: "", running: false,
+      }
+      assert.equal((await sdk.client.rpc(sdk.rpc.definition).bind(owner)).status, "working")
     } finally { await dispose() }
   })
 
-  it("V2 lookup and bridge failures are diagnosed without blocking hooks, and lookup can retry", async (t) => {
+  it("V2 lookup failures are diagnosed without blocking hooks, and lookup can retry", async (t) => {
     const logDirectory = await mkdtemp(join(tmpdir(), "ite2e-opencode-log-"))
     t.after(() => rm(logDirectory, { recursive: true }))
     process.env.WTA_HOOK_LOG_DIR = logDirectory
@@ -358,12 +347,13 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       assert.equal(calls.length, 0)
       failLookup = false
       await sdk.prompt("resumed")
-      assert.equal(calls.at(-1).topic, "agent.prompt.submit")
-      globalThis.Bun.spawn = () => { throw new Error("bridge unavailable") }
-      await sdk.tool("resumed", "bash", {})
+      const owner = {
+        clientID: "client", terminalID: "terminal", paneID: "pane", generation: 1,
+        sessionID: "resumed", cwd: "C:\\resumed", title: "", running: false,
+      }
+      assert.equal((await sdk.client.rpc(sdk.rpc.definition).bind(owner)).status, "working")
       const log = await readFile(join(logDirectory, "hook-trace.log"), "utf8")
       assert.match(log, /session lookup failed.*lookup unavailable/)
-      assert.match(log, /bridge spawn failed.*bridge unavailable/)
     } finally { await dispose() }
   })
 
@@ -419,7 +409,7 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
         ["agent.session.start", directory, undefined],
         ["agent.session.renamed", undefined, undefined],
         ["agent.cwd.changed", "C:\\moved", undefined],
-        ["agent.session.end", undefined, "tui_disposed"],
+        ["agent.session.unbind", undefined, undefined],
       ])
     } finally {
       driver.stdin.end()
@@ -427,14 +417,20 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
     }
   })
 
-  it("ACP mode and missing Terminal identity suppress V2 registration and V1 bridge emission", async () => {
+  it("ACP suppresses V2 registration; missing Terminal identity suppresses only V1 bridge emission", async () => {
     for (const suppressed of ["acp", "WT_SESSION", "WT_COM_CLSID"]) {
       const previous = { ...process.env }
       if (suppressed === "acp") process.env.OPENCODE_CLIENT = "acp"
       else delete process.env[suppressed]
       const sdk = createContext()
-      assert.equal(await plugin.setup(sdk.context), undefined)
-      assert.equal(sdk.registered, 0)
+      const dispose = await plugin.setup(sdk.context)
+      if (suppressed === "acp") {
+        assert.equal(dispose, undefined)
+        assert.equal(sdk.registered, 0)
+      } else {
+        assert.equal(typeof dispose, "function")
+        await dispose()
+      }
       const hooks = await plugin.server({ directory: sdk.location.directory })
       await hooks["chat.message"]({ sessionID: "suppressed" })
       await hooks.dispose()

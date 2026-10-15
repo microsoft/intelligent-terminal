@@ -162,6 +162,11 @@ fn write_opencode_test_bundle(root: &Path, js: &str) {
     )
     .unwrap();
     fs::write(
+        root.join(OPENCODE_SUPPORT_DIR).join(OPENCODE_RPC_JS),
+        OPENCODE_RPC_JS_CONTENT,
+    )
+    .unwrap();
+    fs::write(
         root.join(OPENCODE_MANIFEST),
         r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
     )
@@ -830,6 +835,10 @@ fn copy_opencode_bundle_installs_managed_files() {
         fs::read_to_string(support_dir.join(OPENCODE_TUI_JS)).unwrap(),
         OPENCODE_TUI_JS_CONTENT
     );
+    assert_eq!(
+        fs::read_to_string(support_dir.join(OPENCODE_RPC_JS)).unwrap(),
+        OPENCODE_RPC_JS_CONTENT
+    );
 }
 
 #[test]
@@ -919,7 +928,9 @@ fn copy_opencode_bundle_preserves_non_managed_tui_file() {
         fs::read_to_string(support.join(OPENCODE_TUI_JS)).unwrap(),
         "user plugin"
     );
-    assert!(!opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).exists());
+    assert!(!opencode_plugins_dir(&home)
+        .join(OPENCODE_PLUGIN_JS)
+        .exists());
 }
 
 #[test]
@@ -943,6 +954,11 @@ fn copy_opencode_bundle_rolls_back_partial_first_install() {
     fs::write(
         source.join(OPENCODE_SUPPORT_DIR).join(OPENCODE_TUI_JS),
         OPENCODE_TUI_JS_CONTENT,
+    )
+    .unwrap();
+    fs::write(
+        source.join(OPENCODE_SUPPORT_DIR).join(OPENCODE_RPC_JS),
+        OPENCODE_RPC_JS_CONTENT,
     )
     .unwrap();
 
@@ -1005,8 +1021,15 @@ fn opencode_status_requires_complete_managed_install() {
     .unwrap();
     let complete = opencode_status(true, Some("opencode.exe".into()), Some(&home));
     assert!(!complete.plugin_installed);
-    assert!(read_installed_opencode(&home).unwrap().unwrap().version.is_none());
+    assert!(read_installed_opencode(&home)
+        .unwrap()
+        .unwrap()
+        .version
+        .is_none());
     fs::write(support_dir.join(OPENCODE_TUI_JS), OPENCODE_TUI_JS_CONTENT).unwrap();
+    let complete = opencode_status(true, Some("opencode.exe".into()), Some(&home));
+    assert!(!complete.plugin_installed);
+    fs::write(support_dir.join(OPENCODE_RPC_JS), OPENCODE_RPC_JS_CONTENT).unwrap();
     let complete = opencode_status(true, Some("opencode.exe".into()), Some(&home));
     assert!(complete.marketplace_path_valid);
     assert!(complete.plugin_installed);
@@ -1242,6 +1265,8 @@ const OPENCODE_PLUGIN_JS_CONTENT: &str =
     include_str!("../wt-agent-hooks/opencode/wt-agent-hooks.js");
 const OPENCODE_TUI_JS_CONTENT: &str =
     include_str!("../wt-agent-hooks/opencode/wt-agent-hooks/tui.js");
+const OPENCODE_RPC_JS_CONTENT: &str =
+    include_str!("../wt-agent-hooks/opencode/wt-agent-hooks/rpc.js");
 const OPENCODE_PLUGIN_JSON: &str = include_str!("../wt-agent-hooks/opencode/plugin.json");
 
 /// Every manifest-driven CLI invokes the native wtcli bridge directly; no
@@ -2310,7 +2335,7 @@ fn native_hook_bundle_versions_match_their_marketplaces() {
         ("copilot", COPILOT_PLUGIN_JSON, "0.1.7"),
         ("gemini", GEMINI_EXTENSION_JSON, "0.1.7"),
         ("codex", CODEX_PLUGIN_JSON, "0.1.9"),
-        ("opencode", OPENCODE_PLUGIN_JSON, "0.1.12"),
+        ("opencode", OPENCODE_PLUGIN_JSON, "0.1.13"),
         (
             "antigravity",
             include_str!("../wt-agent-hooks/antigravity/intelligent-terminal.json"),

@@ -601,6 +601,7 @@ pub fn plan_agent_event(
             | "agent.session.renamed"
             | "agent.session.stopped"
             | "agent.session.end"
+            | "agent.session.unbind"
             | "agent.cwd.changed"
     ) && !facts.session_known;
     if facts.pane_owned_by_other
@@ -768,6 +769,14 @@ pub fn plan_agent_event(
                 .unwrap_or("")
                 .to_string(),
         },
+        "agent.session.unbind"
+            if *cli_source == crate::agent_sessions::CliSource::OpenCode && facts.session_known =>
+        {
+            SessionEvent::SessionUnbound {
+                key,
+                pane_session_id: pane_session_id.to_string(),
+            }
+        }
         "agent.error" => SessionEvent::ConnectionFailed {
             pane_session_id: pane_session_id.to_string(),
             reason: payload

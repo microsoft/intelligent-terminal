@@ -8703,6 +8703,8 @@ async fn handle_session_hook(
             &event,
             SessionEvent::SessionStarted { .. }
                 | SessionEvent::SessionStopped { .. }
+                | SessionEvent::SessionStoppedIfOwner { .. }
+                | SessionEvent::SessionUnbound { .. }
                 | SessionEvent::ConnectionFailed { .. }
                 | SessionEvent::PaneClosed { .. }
         );
@@ -8859,6 +8861,8 @@ async fn apply_master_session_event(
             let unseen_terminal = matches!(
                 &event,
                 crate::agent_sessions::SessionEvent::SessionStopped { .. }
+                    | crate::agent_sessions::SessionEvent::SessionStoppedIfOwner { .. }
+                    | crate::agent_sessions::SessionEvent::SessionUnbound { .. }
             ) && state.registry.lookup(&sid).await.is_none();
             if !unseen_terminal {
                 state.hook_owned.lock().await.insert(sid.clone());
@@ -10626,6 +10630,9 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
                     | "agent.stop"
                     | "agent.notification"
                     | "agent.error"
+                    | "agent.session.renamed"
+                    | "agent.cwd.changed"
+                    | "agent.session.end"
             )
         {
             return;
@@ -10649,14 +10656,23 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         {
             return;
         }
-        let Some(pane) = row
+        match row
             .pane_session_id
             .as_deref()
             .filter(|pane| !pane.is_empty())
-        else {
-            return;
-        };
-        pane.to_string()
+        {
+            Some(pane) => pane.to_string(),
+            None if event == "agent.session.end"
+                && state
+                    .hook_owned
+                    .lock()
+                    .await
+                    .contains(&acp::schema::v1::SessionId::new(key.clone())) =>
+            {
+                String::new()
+            }
+            None => return,
+        }
     } else {
         pane_id.to_string()
     };
@@ -10670,17 +10686,34 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         };
 
     let pane_key = crate::agent_sessions::pane_key(&owner_pane);
-    if crate::app::opencode_end_from_another_pane(
-        &cli_source,
-        event,
-        rows.iter()
-            .find(|row| {
-                row.session_id.0.as_ref() == key && row.cli_source.as_ref() == Some(&cli_source)
-            })
-            .and_then(|row| row.pane_session_id.as_deref()),
-        pane_id,
-    ) {
+    if !non_binding_opencode
+        && crate::app::opencode_end_from_another_pane(
+            &cli_source,
+            event,
+            rows.iter()
+                .find(|row| {
+                    row.session_id.0.as_ref() == key && row.cli_source.as_ref() == Some(&cli_source)
+                })
+                .and_then(|row| row.pane_session_id.as_deref()),
+            pane_id,
+        )
+    {
         tracing::debug!(target: "master_wt_event", key, pane_id, "ignored stale OpenCode end from another pane");
+        return;
+    }
+    if cli_source == CliSource::OpenCode
+        && event == "agent.session.end"
+        && !non_binding_opencode
+        && !rows.iter().any(|row| {
+            row.session_id.0.as_ref() == key
+                && row.cli_source.as_ref() == Some(&cli_source)
+                && row.pane_session_id.as_deref().is_some_and(|pane| {
+                    !pane_id.is_empty()
+                        && crate::agent_sessions::pane_key(pane)
+                            == crate::agent_sessions::pane_key(pane_id)
+                })
+        })
+    {
         return;
     }
     let pane_owned_by_other = !pane_key.is_empty()
@@ -10722,6 +10755,20 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
     let mut refresh_keys = HashSet::new();
     let transition_count = plan.events.len();
     for ev in plan.events {
+        let ev = if cli_source == CliSource::OpenCode && event == "agent.session.end" {
+            match ev {
+                crate::agent_sessions::SessionEvent::SessionStopped { key, reason } => {
+                    crate::agent_sessions::SessionEvent::SessionStoppedIfOwner {
+                        key,
+                        pane_session_id: (!owner_pane.is_empty()).then(|| pane_key.clone()),
+                        reason,
+                    }
+                }
+                other => other,
+            }
+        } else {
+            ev
+        };
         tracing::debug!(
             target: "master_wt_event",
             event = ?ev,
@@ -11144,6 +11191,8 @@ fn session_event_key(event: &crate::agent_sessions::SessionEvent) -> Option<&str
         | SessionEvent::ToolCompleted { key }
         | SessionEvent::Notification { key, .. }
         | SessionEvent::SessionStopped { key, .. }
+        | SessionEvent::SessionStoppedIfOwner { key, .. }
+        | SessionEvent::SessionUnbound { key, .. }
         | SessionEvent::ResumeDispatched { key }
         | SessionEvent::ResumeFailed { key, .. }
         | SessionEvent::ResumePaneAssigned { key, .. } => Some(key.as_str()),

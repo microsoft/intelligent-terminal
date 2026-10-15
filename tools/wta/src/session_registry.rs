@@ -1050,6 +1050,15 @@ pub enum SessionHookParams {
         key: crate::agent_sessions::AgentKey,
         reason: String,
     },
+    SessionUnbound {
+        key: crate::agent_sessions::AgentKey,
+        pane_session_id: String,
+    },
+    SessionStoppedIfOwner {
+        key: crate::agent_sessions::AgentKey,
+        pane_session_id: Option<String>,
+        reason: String,
+    },
     ConnectionFailed {
         pane_session_id: String,
         reason: String,
@@ -1116,6 +1125,22 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
             },
             SessionEvent::SessionStopped { key, reason } => Self::SessionStopped {
                 key: key.clone(),
+                reason: reason.clone(),
+            },
+            SessionEvent::SessionUnbound {
+                key,
+                pane_session_id,
+            } => Self::SessionUnbound {
+                key: key.clone(),
+                pane_session_id: pane_session_id.clone(),
+            },
+            SessionEvent::SessionStoppedIfOwner {
+                key,
+                pane_session_id,
+                reason,
+            } => Self::SessionStoppedIfOwner {
+                key: key.clone(),
+                pane_session_id: pane_session_id.clone(),
                 reason: reason.clone(),
             },
             SessionEvent::ConnectionFailed {
@@ -1186,6 +1211,22 @@ impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
             SessionHookParams::SessionStopped { key, reason } => {
                 Self::SessionStopped { key, reason }
             }
+            SessionHookParams::SessionUnbound {
+                key,
+                pane_session_id,
+            } => Self::SessionUnbound {
+                key,
+                pane_session_id,
+            },
+            SessionHookParams::SessionStoppedIfOwner {
+                key,
+                pane_session_id,
+                reason,
+            } => Self::SessionStoppedIfOwner {
+                key,
+                pane_session_id,
+                reason,
+            },
             SessionHookParams::ConnectionFailed {
                 pane_session_id,
                 reason,
@@ -2313,6 +2354,22 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             pane_session_id: pane_key(&pane_session_id),
             title,
         },
+        SessionEvent::SessionUnbound {
+            key,
+            pane_session_id,
+        } => SessionEvent::SessionUnbound {
+            key,
+            pane_session_id: pane_key(&pane_session_id),
+        },
+        SessionEvent::SessionStoppedIfOwner {
+            key,
+            pane_session_id,
+            reason,
+        } => SessionEvent::SessionStoppedIfOwner {
+            key,
+            pane_session_id: pane_session_id.map(|pane| pane_key(&pane)),
+            reason,
+        },
         SessionEvent::ConnectionFailed {
             pane_session_id,
             reason,
@@ -2656,6 +2713,71 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             entry.attention_reason = Some(message);
             entry.last_activity_at_ms = Some(now);
             true
+        }
+        SessionEvent::SessionUnbound {
+            key,
+            pane_session_id,
+        } => {
+            if pane_session_id.is_empty() {
+                return false;
+            }
+            let sid = acp::schema::v1::SessionId::new(key);
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
+            if state.active_by_pane.get(&pane_session_id) != Some(&identity)
+                || !state.sessions.get(&identity).is_some_and(|row| {
+                    row.cli_source == Some(crate::agent_sessions::CliSource::OpenCode)
+                        && row.pane_session_id.as_deref() == Some(pane_session_id.as_str())
+                        && matches!(
+                            row.status,
+                            Some(
+                                AgentStatus::Idle
+                                    | AgentStatus::Working
+                                    | AgentStatus::Attention
+                                    | AgentStatus::Error
+                            )
+                        )
+                })
+            {
+                return false;
+            }
+            state.active_by_pane.remove(&pane_session_id);
+            let revision = advance_cwd_revision(state);
+            let row = state.sessions.get_mut(&identity).expect("checked above");
+            row.pane_session_id = None;
+            row.born_bound_pane = false;
+            row.cwd_evidence.revision = revision;
+            true
+        }
+        SessionEvent::SessionStoppedIfOwner {
+            key,
+            pane_session_id,
+            reason,
+        } => {
+            let sid = acp::schema::v1::SessionId::new(key.clone());
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
+            if !state.sessions.get(&identity).is_some_and(|row| {
+                row.cli_source == Some(crate::agent_sessions::CliSource::OpenCode)
+                    && matches!(
+                        row.status,
+                        Some(
+                            AgentStatus::Idle
+                                | AgentStatus::Working
+                                | AgentStatus::Attention
+                                | AgentStatus::Error
+                        )
+                    )
+                    && row.pane_session_id == pane_session_id
+                    && pane_session_id
+                        .as_deref()
+                        .is_none_or(|pane| state.active_by_pane.get(pane) == Some(&identity))
+            }) {
+                return false;
+            }
+            apply_event_locked(state, SessionEvent::SessionStopped { key, reason })
         }
         SessionEvent::SessionStopped { key, reason } => {
             let sid = acp::schema::v1::SessionId::new(key);
@@ -4681,6 +4803,67 @@ mod tests {
         assert_eq!(
             resumed.status,
             Some(crate::agent_sessions::AgentStatus::Working)
+        );
+    }
+
+    #[tokio::test]
+    async fn opencode_unbind_and_server_end_are_conditional_on_current_owner() {
+        use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        let sid = acp::schema::v1::SessionId::new("opencode-unbind");
+        let start = |pane: &str| SessionEvent::SessionStarted {
+            key: sid.to_string(),
+            cli_source: CliSource::OpenCode,
+            pane_session_id: pane.into(),
+            cwd: PathBuf::from("C:\\repo"),
+            title: "title".into(),
+        };
+        reg.apply_event(start("pane-a")).await;
+        reg.apply_event(start("pane-b")).await;
+        assert!(
+            !reg.apply_event(SessionEvent::SessionUnbound {
+                key: sid.to_string(),
+                pane_session_id: "pane-a".into(),
+            })
+            .await
+        );
+        assert!(
+            !reg.apply_event(SessionEvent::SessionStoppedIfOwner {
+                key: sid.to_string(),
+                pane_session_id: Some("pane-a".into()),
+                reason: "deleted".into(),
+            })
+            .await
+        );
+        assert!(
+            reg.apply_event(SessionEvent::SessionUnbound {
+                key: sid.to_string(),
+                pane_session_id: "pane-b".into(),
+            })
+            .await
+        );
+        let row = reg.lookup(&sid).await.unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Idle));
+        assert_eq!(row.pane_session_id, None);
+        assert!(
+            !reg.apply_event(SessionEvent::SessionStoppedIfOwner {
+                key: sid.to_string(),
+                pane_session_id: Some("pane-b".into()),
+                reason: "deleted".into(),
+            })
+            .await
+        );
+        assert!(
+            reg.apply_event(SessionEvent::SessionStoppedIfOwner {
+                key: sid.to_string(),
+                pane_session_id: None,
+                reason: "deleted".into(),
+            })
+            .await
+        );
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().status,
+            Some(AgentStatus::Ended)
         );
     }
 
