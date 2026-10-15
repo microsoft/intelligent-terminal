@@ -53,6 +53,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(GitStatusProviderKnownMissingGitDoesNotFallBack);
         TEST_METHOD(GitStatusProviderInvokesLiteralApplicationPath);
         TEST_METHOD(GitStatusProviderSkipsGitWhenNoGitFieldsVisible);
+        TEST_METHOD(GitStatusProviderUsesSessionWorkingDirectoryUntilShellReportsCwd);
         TEST_METHOD(GitStatusProviderHandlesGitFailureGracefully);
         TEST_METHOD(GitStatusProviderSetsSafeGitConfigEnvironment);
     };
@@ -974,6 +975,84 @@ function Get-Command {
             VERIFY_IS_TRUE(std::filesystem::remove(probeFile));
             VERIFY_IS_TRUE(std::filesystem::remove(sentinelFile));
         }
+    }
+
+    void RichTabProviderTests::GitStatusProviderUsesSessionWorkingDirectoryUntilShellReportsCwd()
+    {
+        const auto fixtureRoot = std::filesystem::temp_directory_path() /
+                                 (L"RichTabSessionCwd-" + std::to_wstring(GetCurrentProcessId()) +
+                                  L"-" + std::to_wstring(GetTickCount64()));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(fixtureRoot, error);
+        });
+        const auto sessionRoot = fixtureRoot / L"session-repository";
+        const auto shellRoot = fixtureRoot / L"shell-repository";
+        for (const auto& root : { sessionRoot, shellRoot })
+        {
+            const auto gitDirectory = root / L".git";
+            std::filesystem::create_directories(gitDirectory / L"objects");
+            std::filesystem::create_directories(gitDirectory / L"refs" / L"heads");
+            std::filesystem::create_directories(gitDirectory / L"logs");
+            _WriteFile(
+                gitDirectory / L"config",
+                "[core]\n\t"
+                "repository"
+                "format"
+                "version = 0\n\tbare = false\n");
+            _WriteFile(gitDirectory / L"HEAD", "ref: refs/heads/main\n");
+            _WriteFile(root / L"untracked.txt", "content\n");
+        }
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "workingDirectory", "Current working directory", FieldType::String, true },
+            { "repository", "Git repo", FieldType::String, true },
+            { "branch", "Git branch", FieldType::String, true },
+            { "changes", "Git changes", FieldType::String, true },
+        };
+
+        Request request;
+        request.requestId = "session-cwd";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "resumed-session";
+        request.workingDirectory = shellRoot;
+        const auto run = [&]() {
+            const auto serialized = SerializeRequest(request, manifest);
+            VERIFY_IS_TRUE(static_cast<bool>(serialized));
+            const auto command = CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+            VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
+            VERIFY_ARE_EQUAL(0u, command.exitCode);
+            const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
+            VERIFY_IS_TRUE(static_cast<bool>(parsed));
+            return *parsed.value;
+        };
+
+        VERIFY_IS_TRUE(run().fields.empty());
+        request.firstPartyFields["sessionWorkingDirectory"] = sessionRoot.string();
+        const auto resumed = run();
+        VERIFY_ARE_EQUAL(sessionRoot.string(), std::get<std::string>(resumed.fields.at("workingDirectory")));
+        VERIFY_ARE_EQUAL(std::string{ "session-repository" }, std::get<std::string>(resumed.fields.at("repository")));
+        VERIFY_ARE_EQUAL(std::string{ "main" }, std::get<std::string>(resumed.fields.at("branch")));
+        VERIFY_ARE_EQUAL(std::string{ "~1 +0 -0" }, std::get<std::string>(resumed.fields.at("changes")));
+
+        for (const auto& invalid : { std::string{}, std::string{ "relative-directory" }, (fixtureRoot / L"missing").string(), (sessionRoot / L"untracked.txt").string() })
+        {
+            request.firstPartyFields["sessionWorkingDirectory"] = invalid;
+            VERIFY_IS_TRUE(run().fields.empty());
+        }
+
+        request.firstPartyFields["sessionWorkingDirectory"] = sessionRoot.string();
+        request.workingDirectoryAuthoritative = true;
+        const auto reported = run();
+        VERIFY_ARE_EQUAL(shellRoot.string(), std::get<std::string>(reported.fields.at("workingDirectory")));
+        VERIFY_ARE_EQUAL(std::string{ "shell-repository" }, std::get<std::string>(reported.fields.at("repository")));
     }
 
     void RichTabProviderTests::GitStatusProviderHandlesGitFailureGracefully()

@@ -3555,6 +3555,17 @@ namespace winrt::TerminalApp::implementation
             if (!sessionId.empty() && !status.empty() &&
                 _ApplyAgentSessionStatusDelta(sessionId, paneSessionId, providerId, lastActivityAtMs, status))
             {
+                if (const auto info = _richTabAgentStatusBySessionId.find(sessionId);
+                    info != _richTabAgentStatusBySessionId.end() &&
+                    info->second.paneSessionId &&
+                    info->second.workingDirectory.empty() &&
+                    !info->second.workingDirectoryLookupCompleted &&
+                    info->second.status != "Ended" &&
+                    info->second.status != "Historical")
+                {
+                    // Status deltas omit cwd, including the first report after resume.
+                    _RequestRichTabAgentStatusRefresh();
+                }
                 if (_AreRecentAgentSessionsVisible())
                 {
                     _RequestSidebarHistoryRefresh(false);
@@ -3629,6 +3640,11 @@ namespace winrt::TerminalApp::implementation
                 info.providerId = report.providerId;
             }
             info.lastActivityAtMs = report.lastActivityAtMs;
+            if (report.workingDirectoryLookupCompleted || !report.workingDirectory.empty())
+            {
+                info.workingDirectory = report.workingDirectory;
+            }
+            info.workingDirectoryLookupCompleted = info.workingDirectoryLookupCompleted || report.workingDirectoryLookupCompleted;
         };
         ++_richTabAgentStatusRequestGeneration;
         if (_richTabAgentStatusRefreshInFlight)
@@ -3637,17 +3653,23 @@ namespace winrt::TerminalApp::implementation
         }
         auto& sessionInfo = _richTabAgentStatusBySessionId[sessionIdString];
         updateInfo(sessionInfo, incoming);
+        bool refreshSessionWorkingDirectory = false;
         if (paneId)
         {
+            const auto workingDirectoryFallback = [](const _RichTabAgentInfo& info) -> std::string_view {
+                return info.status == "Ended" || info.status == "Historical" ? std::string_view{} : info.workingDirectory;
+            };
             auto& paneInfo = _richTabAgentStatusByPaneId[*paneId];
+            const std::string previousWorkingDirectory{ workingDirectoryFallback(paneInfo) };
             updateInfo(paneInfo, sessionInfo);
+            refreshSessionWorkingDirectory = previousWorkingDirectory != workingDirectoryFallback(paneInfo);
         }
         for (const auto& runtimeTab : _RuntimeTabs())
         {
             if (const auto tab = _GetTabImpl(runtimeTab))
             {
                 _UpdateTabIcon(*tab);
-                if (_tabStrip.RichTabAgentStatusVisible())
+                if (_tabStrip.RichTabAgentStatusVisible() || refreshSessionWorkingDirectory)
                 {
                     if (const auto rootPane = tab->GetRootPane())
                     {
@@ -11758,6 +11780,12 @@ namespace winrt::TerminalApp::implementation
         if (const auto agentInfo = _RichTabAgentInfoForControl(control))
         {
             firstPartyFields.emplace("agentStatus", winrt::to_string(_SidebarHistoryStatusText(agentInfo->status)));
+            if (!agentInfo->workingDirectory.empty() &&
+                agentInfo->status != "Ended" &&
+                agentInfo->status != "Historical")
+            {
+                firstPartyFields.emplace("sessionWorkingDirectory", agentInfo->workingDirectory);
+            }
         }
         firstPartyFields.emplace("branchLabel", winrt::to_string(RS_(L"VerticalTabsMetadataBranch/Text")));
         firstPartyFields.emplace("changesLabel", winrt::to_string(RS_(L"VerticalTabsMetadataChanges/Text")));
@@ -11925,7 +11953,8 @@ namespace winrt::TerminalApp::implementation
                 const auto paneId = _TryParsePaneSessionId(row.get("pane_session_id", "").asString());
                 if (const auto sessionId = row.get("session_id", "").asString(); !sessionId.empty())
                 {
-                    rows.push_back(_RichTabAgentInfo{ sessionId, status, providerId, lastActivityAtMs, paneId });
+                    const auto workingDirectory = row["cwd"].isString() ? row["cwd"].asString() : std::string{};
+                    rows.push_back(_RichTabAgentInfo{ sessionId, status, providerId, lastActivityAtMs, paneId, workingDirectory, true });
                 }
             }
         }

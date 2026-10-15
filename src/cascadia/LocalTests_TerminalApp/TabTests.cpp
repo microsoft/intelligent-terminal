@@ -424,6 +424,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabProgressPercentUsesLocaleFormatting);
         TEST_METHOD(AgentBillingUsesLocaleCurrencyFormatting);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
+        TEST_METHOD(RichTabSessionWorkingDirectoryTracksPaneBinding);
+        TEST_METHOD(RichTabEmptyWorkingDirectorySnapshotDoesNotReload);
         TEST_METHOD(LatestBuiltinAgentReportWinsForPane);
         TEST_METHOD(AgentSnapshotTiesPreserveLastReceivedPaneReport);
         TEST_METHOD(AgentSnapshotSelectionIsIndependentOfRowOrder);
@@ -8014,6 +8016,142 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(updated.IsHistorical());
 
             VERIFY_IS_FALSE(page->_ApplyAgentSessionStatusDelta("session-a", "", "claude", std::nullopt, "FutureStatus"));
+        });
+    }
+
+    void TabTests::RichTabSessionWorkingDirectoryTracksPaneBinding()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_tabStrip.RichTabAgentStatusVisible(false);
+            page->_richTabAgentStatusSnapshotLoaded = true;
+            winrt::guid paneId;
+            VERIFY_SUCCEEDED(CoCreateGuid(reinterpret_cast<GUID*>(&paneId)));
+            const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+            NewTerminalArgs args;
+            args.StartingDirectory(L"C:\\profile-default");
+            const auto pane = page->_MakePane(args, nullptr, *connection);
+            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+            const auto control = pane->GetTerminalControl();
+            const auto paneIdString = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(paneId));
+            const auto fields = [&]() {
+                return page->_BuildRichTabFirstPartyFields(control);
+            };
+            VERIFY_IS_FALSE(control.WorkingDirectoryReportedByShell());
+            VERIFY_IS_FALSE(fields().contains("sessionWorkingDirectory"));
+
+            const Page::_RichTabAgentInfo resumed{
+                "resumed-session", "Idle", "copilot", 1000, paneId, "C:\\session-repository"
+            };
+            auto snapshot = Page::_BuildAgentStatusSnapshot({ resumed }, {});
+            page->_richTabAgentStatusBySessionId = std::move(snapshot.bySession);
+            page->_richTabAgentStatusByPaneId = std::move(snapshot.byPane);
+            VERIFY_ARE_EQUAL(resumed.workingDirectory, fields().at("sessionWorkingDirectory"));
+            VERIFY_IS_FALSE(control.WorkingDirectoryReportedByShell());
+
+            winrt::guid otherPaneId;
+            VERIFY_SUCCEEDED(CoCreateGuid(reinterpret_cast<GUID*>(&otherPaneId)));
+            const auto otherConnection = winrt::make_self<TestConnection>(otherPaneId, State::Connected);
+            const auto otherPane = page->_MakePane(args, nullptr, *otherConnection);
+            VERIFY_IS_FALSE(page->_BuildRichTabFirstPartyFields(otherPane->GetTerminalControl()).contains("sessionWorkingDirectory"));
+
+            auto& broker = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance();
+            const auto revision = std::make_shared<std::atomic<uint64_t>>(0);
+            const auto uiThreadId = GetCurrentThreadId();
+            const auto observer = broker.Attach(
+                {
+                    page->_FindSessionIdForControl(control),
+                    std::filesystem::path{ control.WorkingDirectory().c_str() },
+                    false,
+                    std::nullopt,
+                    fields(),
+                },
+                [revision, uiThreadId](const auto& update) {
+                    // Observe context invalidation, not asynchronous provider completion.
+                    if (GetCurrentThreadId() == uiThreadId)
+                    {
+                        revision->store(update.contextRevision);
+                    }
+                });
+            VERIFY_ARE_NOT_EQUAL(uint64_t{ 0 }, observer);
+            const auto detachObserver = wil::scope_exit([&broker, observer]() {
+                broker.Detach(observer);
+            });
+            broker.UpdateFirstPartyFields(observer, fields());
+            const auto initialRevision = revision->load();
+
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                resumed.sessionId, paneIdString, "copilot", 2000, "Working"));
+            VERIFY_ARE_EQUAL(resumed.workingDirectory, fields().at("sessionWorkingDirectory"));
+            VERIFY_ARE_EQUAL(initialRevision, revision->load());
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                resumed.sessionId, paneIdString, "copilot", 2500, "Attention"));
+            VERIFY_ARE_EQUAL(initialRevision, revision->load());
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                resumed.sessionId, paneIdString, "copilot", 3000, "Ended"));
+            VERIFY_IS_FALSE(fields().contains("sessionWorkingDirectory"));
+            VERIFY_IS_TRUE(revision->load() > initialRevision);
+            const auto endedRevision = revision->load();
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                resumed.sessionId, paneIdString, "copilot", 3500, "Historical"));
+            VERIFY_ARE_EQUAL(endedRevision, revision->load());
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                "replacement-session", paneIdString, "claude", 4000, "Idle"));
+            VERIFY_IS_FALSE(fields().contains("sessionWorkingDirectory"));
+            VERIFY_ARE_EQUAL(endedRevision, revision->load());
+            page->_tabStrip.RichTabAgentStatusVisible(true);
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                "replacement-session", paneIdString, "claude", 4500, "Working"));
+            VERIFY_IS_TRUE(revision->load() > endedRevision);
+        });
+    }
+
+    void TabTests::RichTabEmptyWorkingDirectorySnapshotDoesNotReload()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_tabStrip.RichTabAgentStatusVisible(false);
+            page->_richTabAgentStatusSnapshotLoaded = true;
+            page->_richTabAgentStatusRefreshInFlight = false;
+            page->_richTabAgentStatusRefreshPending = false;
+            page->_richTabAgentStatusRequestGeneration = 41;
+            const winrt::guid paneId{ L"00000000-0000-0000-0000-000000000001" };
+            const auto paneIdString = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(paneId));
+            const Page::_RichTabAgentInfo knownEmpty{
+                "empty-cwd-session", "Idle", "copilot", 1000, paneId, {}, true
+            };
+            auto snapshot = Page::_BuildAgentStatusSnapshot({ knownEmpty }, {});
+            page->_richTabAgentStatusBySessionId = std::move(snapshot.bySession);
+            page->_richTabAgentStatusByPaneId = std::move(snapshot.byPane);
+            auto generation = page->_richTabAgentStatusRequestGeneration;
+            uint64_t activity = 1000;
+            for (const auto status : { "Working", "Attention", "Idle", "Working", "Error" })
+            {
+                Json::Value event;
+                event["params"]["session_id"] = knownEmpty.sessionId;
+                event["params"]["pane_session_id"] = paneIdString;
+                event["params"]["provider_id"] = "copilot";
+                event["params"]["last_activity_at_ms"] = Json::UInt64{ ++activity };
+                event["params"]["status"] = status;
+                page->OnSessionRegistryChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+                ++generation;
+                VERIFY_ARE_EQUAL(generation, page->_richTabAgentStatusRequestGeneration);
+                VERIFY_IS_FALSE(page->_richTabAgentStatusRefreshInFlight);
+                VERIFY_IS_FALSE(page->_richTabAgentStatusRefreshPending);
+                VERIFY_IS_TRUE(page->_richTabAgentStatusBySessionId.at(knownEmpty.sessionId).workingDirectory.empty());
+                VERIFY_IS_TRUE(page->_richTabAgentStatusBySessionId.at(knownEmpty.sessionId).workingDirectoryLookupCompleted);
+                VERIFY_IS_TRUE(page->_richTabAgentStatusByPaneId.at(paneId).workingDirectoryLookupCompleted);
+            }
+
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                knownEmpty.sessionId, "00000000-0000-0000-0000-000000000002", "copilot", 2000, "Idle"));
+            VERIFY_IS_FALSE(page->_richTabAgentStatusBySessionId.at(knownEmpty.sessionId).workingDirectoryLookupCompleted);
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                "replacement-session", paneIdString, "copilot", 3000, "Idle"));
+            VERIFY_IS_FALSE(page->_richTabAgentStatusByPaneId.at(paneId).workingDirectoryLookupCompleted);
         });
     }
 

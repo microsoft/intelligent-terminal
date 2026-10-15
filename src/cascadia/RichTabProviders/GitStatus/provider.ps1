@@ -133,10 +133,10 @@ try {
 
     $workingDirectory = [string]$request.params.workingDirectory.value
     $authoritative = [bool]$request.params.workingDirectory.authoritative
+    $sessionWorkingDirectory = ''
+    $hasWorkingDirectory = $authoritative
+    $usingSessionWorkingDirectory = $false
     $baseFields = @{}
-    if ($authoritative -and -not [string]::IsNullOrWhiteSpace($workingDirectory)) {
-        $baseFields.workingDirectory = $workingDirectory
-    }
     $localizedLabels = @{}
     $allowedFirstPartyFields = @('agentStatus')
     $allowedLocalizedLabels = @('branchLabel', 'changesLabel')
@@ -149,6 +149,13 @@ try {
                 -not [string]::IsNullOrWhiteSpace([string]$property.Value)) {
             $localizedLabels[$property.Name] = [string]$property.Value
         }
+        elseif ($property.Name -eq 'sessionWorkingDirectory') {
+            $sessionWorkingDirectory = [string]$property.Value
+        }
+    }
+    if (-not $authoritative -and $sessionWorkingDirectory -match '^[A-Za-z]:[\\/]') {
+        $workingDirectory = $sessionWorkingDirectory
+        $usingSessionWorkingDirectory = $true
     }
 
     $visibleFields = @()
@@ -170,13 +177,21 @@ try {
     }
 
     $isLocalDrivePath = $workingDirectory -match '^[A-Za-z]:[\\/]'
-    $drive = if ($needsGit -and $isLocalDrivePath) {
+    $drive = if (($needsGit -or $usingSessionWorkingDirectory) -and $isLocalDrivePath) {
         Get-PSDrive -Name $workingDirectory.Substring(0, 1) -PSProvider FileSystem -ErrorAction SilentlyContinue
     }
     $isRemoteDrive = $drive -and -not [string]::IsNullOrWhiteSpace([string]$drive.DisplayRoot)
 
+    if ($usingSessionWorkingDirectory -and $drive -and -not $isRemoteDrive -and
+        (Test-Path -LiteralPath $workingDirectory -PathType Container)) {
+        $hasWorkingDirectory = $true
+    }
+    if ($hasWorkingDirectory -and -not [string]::IsNullOrWhiteSpace($workingDirectory)) {
+        $baseFields.workingDirectory = $workingDirectory
+    }
+
     if (-not $needsGit -or
-        -not $authoritative -or
+        -not $hasWorkingDirectory -or
         [string]::IsNullOrWhiteSpace($workingDirectory) -or
         -not $isLocalDrivePath -or
         -not $drive -or
