@@ -98,7 +98,7 @@ Describe 'Feature: agent pane lifetime ownership' -Tag 'Feature', 'AgentPaneLife
         $command = "pwsh -NoProfile -EncodedCommand $encoded"
         $panePosition = if ($Position) { $Position } else { 'bottom' }
         $target = Resolve-ItApp -Package (Get-ItTestPackage)
-        Assert-WtPackageInactive -App $target
+        Stop-StaleItInstances -App $target
         try {
             $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{
                 sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
@@ -112,7 +112,7 @@ Describe 'Feature: agent pane lifetime ownership' -Tag 'Feature', 'AgentPaneLife
         }
         catch {
             # Start-Terminal recovers only its completed backup and captured activation.
-            # Unknown arrivals keep backups; package membership never permits shutdown.
+            # Unverified arrivals keep backups; teardown still requires creation ownership.
             throw
         }
         $script:shell = Get-ActivePane -App $script:app

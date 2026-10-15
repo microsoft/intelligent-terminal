@@ -10,9 +10,7 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
         Add-Type -AssemblyName UIAutomationTypes
         if ((Get-ItTestPackage) -ne 'Dev') { throw 'This PR validation requires an explicitly selected Dev build.' }
         $script:target = Resolve-ItApp -Package Dev
-        if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
-            throw 'Refusing to close an existing Dev instance for session-refresh tests.'
-        }
+        Stop-StaleItInstances -App $script:target
         if (-not $env:ITE2E_EXPECTED_WTA_SHA256 -or -not $env:ITE2E_EXPECTED_APP_SHA256) {
             throw 'Supply WTA and TerminalApp hashes from the intended feature build.'
         }
@@ -31,6 +29,7 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
         New-Item -ItemType Directory -Path $script:evidence -Force | Out-Null
         $script:historyPath = Join-Path $script:evidence 'history.json'
         $script:fixtureLog = Join-Path $script:evidence 'fixture.log'
+        $script:controlPath = Join-Path $script:evidence 'history-control.json'
         $script:historyId = 'refresh-history-' + [guid]::NewGuid().ToString('N')
         $script:provider = 'custom:session-refresh-fixture'
 
@@ -50,10 +49,35 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
             param([string]$Method = 'list')
             if (-not (Test-Path -LiteralPath $script:fixtureLog)) { return }
             foreach ($line in Get-Content -LiteralPath $script:fixtureLog) {
-                if ($line -match ('^(?<pid>\d+)\|' + [regex]::Escape($Method) + '\|(?<at>[^|]+)')) {
-                    [pscustomobject]@{ Pid = [int]$Matches.pid; At = [DateTimeOffset]::Parse($Matches.at) }
+                if ($line -match ('^(?<pid>\d+)\|' + [regex]::Escape($Method) + '\|(?<at>[^|]+)(?:\|(?<request>[^|]+))?')) {
+                    [pscustomobject]@{
+                        Pid = [int]$Matches.pid
+                        At = [DateTimeOffset]::Parse($Matches.at)
+                        RequestId = $Matches['request']
+                    }
                 }
             }
+        }
+        function Set-HistoryHold {
+            param([int]$ProcessId = 0)
+            $control = @{ mode = if ($ProcessId) { 'hold' } else { 'release' }; pid = $ProcessId }
+            $temp = Join-Path $script:evidence ('control-' + [guid]::NewGuid().ToString('N') + '.tmp')
+            [IO.File]::WriteAllText($temp, ($control | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+            Move-Item -LiteralPath $temp -Destination $script:controlPath -Force
+        }
+        function Get-HistoryProcessId {
+            $calls = @(Get-FixtureCalls -Method initialize | Where-Object Pid -ne $script:chatPid)
+            if ($calls.Count) { return ($calls | Sort-Object At | Select-Object -Last 1).Pid }
+        }
+        function Assert-FixtureChat {
+            $marker = 'SCROLL_TURN_01_' + [guid]::NewGuid().ToString('N')
+            Close-SessionList -App $script:app | Out-Null
+            Send-AgentPrompt -App $script:app -Text $marker | Out-Null
+            Assert-AgentPaneText -App $script:app -Pattern ("ACK_" + $marker) -TimeoutSec 15
+            $chatPids = @(Get-FixtureCalls -Method new | Select-Object -ExpandProperty Pid -Unique)
+            $chatPids.Count | Should -Be 1 -Because 'history recovery must not recreate the chat process'
+            $chatPids[0] | Should -Be $script:chatPid
+            (Get-AgentPaneSession -App $script:app).AcpSessionId | Should -Be $script:pane.AcpSessionId
         }
         function Read-MasterSnapshot {
             $result = Invoke-Wta -App $script:app -Arguments @(
@@ -164,7 +188,8 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
 
         Set-FixtureHistory -Title 'Refresh fixture initial'
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpChatAgent.ps1')).Path
-        $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))' -HistoryPath '$($script:historyPath.Replace("'", "''"))'"
+        Set-HistoryHold
+        $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))' -HistoryPath '$($script:historyPath.Replace("'", "''"))' -HistoryControlPath '$($script:controlPath.Replace("'", "''"))'"
         $command = "pwsh -NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation)))"
         $settings = Get-WtSettingsObject -App $script:target
         if (-not $settings) { throw 'Refusing to replace unparseable user settings for a test.' }
@@ -174,6 +199,11 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
             commandline = '"' + (Get-Command pwsh).Source + '" -NoLogo -NoProfile -NoExit'
             startingDirectory = $script:evidence
             acpAgent = $script:provider; acpCustomCommand = $command; acpModel = ''; acpSource = 'host'
+            environment = @{
+                PATH = "$($script:target.InstallLocation);$env:PATH"
+                WT_WTCLI_PATH = $script:target.WtcliPath
+                WTCLI_PATH = $script:target.WtcliPath
+            }
         }
         if ($settings.profiles -is [array]) {
             $profiles = @($settings.profiles) + $profile
@@ -183,9 +213,7 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
             $list = if ($profiles.PSObject.Properties.Name -contains 'list') { @($profiles.list) } else { @() }
             $profiles | Add-Member -NotePropertyName list -NotePropertyValue @($list + $profile) -Force
         }
-        if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
-            throw 'Dev was opened during preparation; refusing to close it.'
-        }
+        Stop-StaleItInstances -App $script:target
         $script:ownsConfig = $true
         $script:app = Start-Terminal -Package Dev -CleanSettings $false -PassFre $true -State @{
             sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
@@ -195,6 +223,8 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
             tabLayout = 'vertical'; tabLayoutVerticalWidth = 320; language = 'en-US'
             acpAgent = $script:provider; acpCustomCommand = $command; acpModel = ''
             customModelSelection = ''; autoFixEnabled = $false
+            # History ACP is independent of native CLI hook reconciliation.
+            agentSessionManagementEnabled = $false
         }
         $script:logApp = $script:app.PSObject.Copy()
         $script:logApp.LogStartOffset = $script:app.PreLaunchLogStartOffset
@@ -202,6 +232,10 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
         (Wait-AgentReady -App $script:app -TimeoutSec 90) | Should -BeTrue
         $script:pane = Get-AgentPaneSession -App $script:app
         $script:pane.AcpSessionId | Should -Match '^chat-fixture-'
+        if ($script:pane.AcpSessionId -notmatch '^chat-fixture-(\d+)-') {
+            throw 'Fixture session did not expose its creation-owned chat PID.'
+        }
+        $script:chatPid = [int]$Matches[1]
         $script:helperId = Wait-Until -TimeoutSec 15 -Because 'the fixture session is bound to its helper' -Condition {
             $pattern = 'session bound to helper.*helper_id=HelperId\((\d+)\).*session_id=SessionId\("' +
                 [regex]::Escape($script:pane.AcpSessionId) + '"\)'
@@ -211,6 +245,13 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
         Wait-Until -TimeoutSec 120 -Because 'startup history discovery has finished' -Condition {
             (Read-MasterSnapshot).history_status -in @('ready', 'error')
         } | Out-Null
+        Wait-Until -TimeoutSec 20 -Because 'the dedicated history fixture has initialized and listed' -Condition {
+            $pidValue = Get-HistoryProcessId
+            $pidValue -and @(Get-FixtureCalls | Where-Object Pid -eq $pidValue).Count -gt 0
+        } | Out-Null
+        $script:historyPid = Get-HistoryProcessId
+        $script:historyPid | Should -Not -Be $script:chatPid
+        (Get-MasterTrace) | Should -Not -Match 'hook reconciliation plan|reconcile_agent_hooks'
         Set-TestLayout vertical
         @{
             package = $script:app.Package; version = $script:app.Version
@@ -258,7 +299,7 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
         }
         $watch.Stop()
         (@(Get-FixtureCalls).Count - $before) | Should -BeLessOrEqual ([math]::Ceiling($watch.Elapsed.TotalSeconds / 5) + 1)
-        @(Get-FixtureCalls -Method initialize).Count | Should -Be 1
+        @(Get-FixtureCalls -Method initialize).Count | Should -Be 2 -Because 'one chat process and one history-only process are reused'
     }
 
     It 'Session fallback follows vertical and horizontal layouts' {
@@ -276,7 +317,7 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
         Set-TestLayout vertical
         Open-TestSidebar
         Measure-QuietFallback -Label vertical-return -Sidebar $true -Helper $false
-        @(Get-FixtureCalls -Method initialize).Count | Should -Be 1 -Because 'layout switches must reuse the ACP connection'
+        @(Get-FixtureCalls -Method initialize).Count | Should -Be 2 -Because 'layout switches reuse both isolated ACP connections'
     }
 
     It 'Closed session views suppress fallback reads' {
@@ -295,7 +336,8 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
         Send-AgentWin32Key -App $script:app -Vk 0x74 -Sc 0x3F -PaneSessionId $script:pane.PaneSessionId | Out-Null
         Wait-Until -TimeoutSec 15 -Because 'explicit helper refresh completes through master' -Condition {
             (Get-MasterTrace) -split '\r?\n' | Where-Object {
-                $_ -match '^(\S+).*sessions/list rescan:' -and [DateTimeOffset]::Parse($Matches[1]) -ge $since
+                $_ -match ('^(\S+).*routing ext_method.*method=intellterm.wta/sessions/list\b.*helper_id=HelperId\(' +
+                    $script:helperId + '\)') -and [DateTimeOffset]::Parse($Matches[1]) -ge $since
             }
         } | Out-Null
         Assert-AgentPaneText -App $script:app -Pattern 'Refresh fixture manual' -TimeoutSec 15
@@ -306,6 +348,95 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
         $removed.ExitCode | Should -Be 2
         $removed.StdErr | Should -Match 'unexpected argument'
         (Get-AgentPaneSession -App $script:app).AcpSessionId | Should -Be $script:pane.AcpSessionId
-        @(Get-FixtureCalls -Method initialize).Count | Should -Be 1
+        @(Get-FixtureCalls -Method initialize).Count | Should -Be 2
+    }
+
+    It 'Slow history queries retain one request without blocking chat' -Tag 'HistoryRecovery' {
+        Set-TestLayout horizontal
+        $since = [DateTimeOffset]::UtcNow
+        $historyPid = Get-HistoryProcessId
+        Set-HistoryHold -ProcessId $historyPid
+        try {
+            $held = Wait-Until -TimeoutSec 15 -Because 'the real history process has received its held request' -Condition {
+                Get-FixtureCalls -Method history-held | Where-Object { $_.Pid -eq $historyPid -and $_.At -ge $since } |
+                    Select-Object -First 1
+            }
+            $requestStart = @(Get-FixtureCalls | Where-Object {
+                $_.Pid -eq $historyPid -and $_.RequestId -eq $held.RequestId
+            })
+            $requestStart.Count | Should -Be 1
+            $requestAt = $requestStart[0].At
+            Set-FixtureHistory -Title 'Refresh fixture late response'
+            Open-SessionList -App $script:app | Out-Null
+            foreach ($i in 1..3) {
+                Send-AgentWin32Key -App $script:app -Vk 0x74 -Sc 0x3F -PaneSessionId $script:pane.PaneSessionId | Out-Null
+                $timer = [Diagnostics.Stopwatch]::StartNew()
+                $null = Read-MasterSnapshot
+                $timer.Elapsed.TotalSeconds | Should -BeLessThan 5
+            }
+            Assert-FixtureChat
+            $remaining = 12 - ([DateTimeOffset]::UtcNow - $held.At).TotalSeconds
+            if ($remaining -gt 0) { Start-Sleep -Milliseconds ([int][Math]::Ceiling($remaining * 1000)) }
+            @(Get-FixtureCalls | Where-Object { $_.Pid -eq $historyPid -and $_.At -ge $requestAt }).Count |
+                Should -Be 1 -Because 'soft timeouts and manual reads cannot send another upstream request'
+            (Get-MasterTrace) | Should -Match ('history soft timeout; retaining original request.*pid=Some\(' + $historyPid + '\)')
+            (Read-MasterSnapshot).sessions | Where-Object session_id -eq $script:historyId |
+                Select-Object -ExpandProperty title | Should -Not -Be 'Refresh fixture late response'
+            Set-HistoryHold
+            Wait-Until -TimeoutSec 20 -Because 'the original late response updates the registry' -Condition {
+                @((Read-MasterSnapshot).sessions | Where-Object {
+                    $_.session_id -eq $script:historyId -and $_.title -eq 'Refresh fixture late response'
+                }).Count -eq 1
+            } | Out-Null
+            Open-SessionList -App $script:app | Out-Null
+            Assert-AgentPaneText -App $script:app -Pattern 'Refresh fixture late response' -TimeoutSec 15
+            @(Get-FixtureCalls -Method initialize).Count | Should -Be 2
+            @(Get-FixtureCalls -Method duplicate-list).Count | Should -Be 0
+        }
+        finally { Set-HistoryHold }
+    }
+
+    It 'Stuck history processes recover after the hard deadline without restarting chat' -Tag 'HistoryRecovery' {
+        Set-TestLayout horizontal
+        $since = [DateTimeOffset]::UtcNow
+        $historyPid = Get-HistoryProcessId
+        Set-HistoryHold -ProcessId $historyPid
+        try {
+            $held = Wait-Until -TimeoutSec 15 -Because 'the old query process holds an unresolved request' -Condition {
+                Get-FixtureCalls -Method history-held | Where-Object { $_.Pid -eq $historyPid -and $_.At -ge $since } |
+                    Select-Object -First 1
+            }
+            $requestStart = @(Get-FixtureCalls | Where-Object {
+                $_.Pid -eq $historyPid -and $_.RequestId -eq $held.RequestId
+            })
+            $requestStart.Count | Should -Be 1
+            $requestAt = $requestStart[0].At
+            $oldProcess = Get-Process -Id $historyPid -ErrorAction Stop
+            $null = $oldProcess.Handle
+            Set-FixtureHistory -Title 'Refresh fixture hard recovery'
+            Assert-FixtureChat
+            $newPid = Wait-Until -TimeoutSec 340 -IntervalSec 1 -Because 'the real 300-second watchdog rebuilds only the query process' -Condition {
+                $candidate = Get-HistoryProcessId
+                if ($candidate -and $candidate -ne $historyPid) { return $candidate }
+            }
+            ([DateTimeOffset]::UtcNow - $held.At).TotalSeconds | Should -BeGreaterOrEqual 299
+            $oldProcess.HasExited | Should -BeTrue -Because 'old process exit is confirmed before replacement'
+            Get-Process -Id $script:chatPid -ErrorAction Stop | Should -Not -BeNullOrEmpty
+            @(Get-FixtureCalls | Where-Object { $_.Pid -eq $historyPid -and $_.At -ge $requestAt }).Count | Should -Be 1
+            @(Get-FixtureCalls -Method initialize).Count | Should -Be 3
+            (Get-MasterTrace) | Should -Match 'history request reached 300s hard deadline; recycling query process'
+            Wait-Until -TimeoutSec 20 -Because 'replacement history response reaches the registry and UI' -Condition {
+                @((Read-MasterSnapshot).sessions | Where-Object {
+                    $_.session_id -eq $script:historyId -and $_.title -eq 'Refresh fixture hard recovery'
+                }).Count -eq 1
+            } | Out-Null
+            Open-SessionList -App $script:app | Out-Null
+            Assert-AgentPaneText -App $script:app -Pattern 'Refresh fixture hard recovery' -TimeoutSec 15
+            Assert-FixtureChat
+            @{ old_query_pid = $historyPid; new_query_pid = $newPid; chat_pid = $script:chatPid
+                held_at = $held.At.ToString('o'); recovered_at = [DateTimeOffset]::UtcNow.ToString('o') } |
+                ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence 'hard-recovery.json') -Encoding utf8
+        }
+        finally { Set-HistoryHold }
     }
 }

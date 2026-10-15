@@ -411,6 +411,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabTooltipsExposeStableShortcuts);
         TEST_METHOD(SidebarHintsFollowEffectiveTargets);
         TEST_METHOD(VerticalTabSearchTracksActivePaneMetadata);
+        TEST_METHOD(VerticalTabAgentStatusIgnoresAssistantFocus);
         TEST_METHOD(VerticalTabSearchUiState);
         TEST_METHOD(LiteralSearchHighlighting);
         TEST_METHOD(VerticalTabStaticHeaderAndIndependentFilterMenu);
@@ -461,6 +462,11 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentsViewUsesOpenPaneSessionBinding);
         TEST_METHOD(AgentsViewDeduplicatesQualifiedHistoryIdentity);
         TEST_METHOD(VerticalTabHistoryStartupLoading);
+        TEST_METHOD(VerticalTabHistoryMasterUnavailableKeepsLoading);
+        TEST_METHOD(VerticalTabHistoryMasterUnavailablePreservesRowsAndExpires);
+        TEST_METHOD(VerticalTabHistoryMasterUnavailableDeadlineDuringCapture);
+        TEST_METHOD(VerticalTabHistoryMasterUnavailableDeadlineResets);
+        TEST_METHOD(VerticalTabHistoryLoadingRefreshesUntilReady);
         TEST_METHOD(VerticalTabHistoryLoadingAndErrorsKeepRows);
         TEST_METHOD(VerticalTabHistoryTimeoutKeepsRowsWithoutError);
         TEST_METHOD(VerticalTabHistoryInitialTimeoutKeepsLoading);
@@ -6585,17 +6591,24 @@ namespace TerminalAppLocalTests
 
     void TabTests::VerticalTabSearchTracksActivePaneMetadata()
     {
+        Grid host{ nullptr };
+        TestOnUIThread([&]() {
+            host = Grid{};
+            host.Width(1200);
+            host.Height(800);
+        });
         const auto rootConnection = winrt::make_self<TestConnection>(
             winrt::guid{ L"{b7c8ba10-99df-41e5-a637-087f325cd186}" },
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
-        auto page = _commonSetup(*rootConnection, nullptr, std::nullopt, true);
+        auto page = _commonSetup(*rootConnection, host, std::nullopt, true);
 
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
             VERIFY_IS_NOT_NULL(tab);
-            const auto rootPane = tab->GetActivePane();
+            auto rootPane = tab->GetActivePane();
             VERIFY_IS_NOT_NULL(rootPane);
             VERIFY_IS_TRUE(rootPane->Id().has_value());
+            const auto rootContentId = rootPane->ContentId().value();
 
             const auto agentConnection = winrt::make_self<TestConnection>(
                 winrt::guid{ L"{a4ac8309-d880-40dc-8822-c22469369419}" },
@@ -6607,13 +6620,14 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane));
             VERIFY_IS_TRUE(agentPane->Id().has_value());
             VERIFY_IS_TRUE(tab->GetActivePane() == agentPane);
+            rootPane = tab->GetRootPane()->FindPaneByContentId(rootContentId);
+            VERIFY_IS_NOT_NULL(rootPane);
 
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             const auto display = stripImpl->DisplayItemForTab(tab->TabViewItem());
             VERIFY_IS_NOT_NULL(display);
             VERIFY_IS_FALSE(display.IsGroup());
             page->UpdateLayout();
-            const auto container = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>();
 
             const auto applyRichTabUpdate = [&](const std::shared_ptr<Pane>& pane,
                                                 const std::wstring_view text,
@@ -6641,16 +6655,16 @@ namespace TerminalAppLocalTests
             };
             const auto search = [&](const winrt::hstring& query) {
                 page->_tabStrip.SearchActive(true);
-                stripImpl->SearchTextBox().Text(query);
+                page->_tabStrip.SearchQuery(query);
                 page->UpdateLayout();
                 VERIFY_ARE_EQUAL(query, page->_tabSearchQuery);
             };
 
             search(L"Committed Search Title");
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
             tab->SetTabText(L"Committed Search Title");
             page->UpdateLayout();
-            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
             VERIFY_ARE_EQUAL(
                 winrt::hstring{ L"Committed Search Title" },
                 display.Presentation().SearchText());
@@ -6661,27 +6675,128 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(display.IsGroup());
 
             search(L"old-shell-metadata");
-            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
             VERIFY_IS_TRUE(tab->FocusPane(agentPane->Id().value()));
             page->UpdateLayout();
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
 
             search(L"new-agent-metadata");
-            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
+            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
             VERIFY_IS_TRUE(tab->FocusPane(rootPane->Id().value()));
             page->UpdateLayout();
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            VERIFY_IS_FALSE(page->_MatchesTabSearch(*tab));
 
             search(L"old-shell-metadata");
-            VERIFY_ARE_EQUAL(Visibility::Visible, container.Visibility());
-            const auto controlLessPane = std::make_shared<Pane>(page->_makeSettingsContent());
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+            const auto controlLessPane = std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>());
             controlLessPane->IsAgentPane(true);
             VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, controlLessPane));
             VERIFY_IS_NULL(controlLessPane->GetTerminalControl());
             VERIFY_IS_TRUE(tab->GetActivePane() == controlLessPane);
             VERIFY_IS_FALSE(display.IsGroup());
             page->UpdateLayout();
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, container.Visibility());
+            VERIFY_IS_TRUE(page->_MatchesTabSearch(*tab));
+        });
+    }
+
+    void TabTests::VerticalTabAgentStatusIgnoresAssistantFocus()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        Grid host{ nullptr };
+        TestOnUIThread([&]() {
+            host = Grid{};
+            host.Width(1200);
+            host.Height(800);
+        });
+        const auto sourceConnection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{4de9fc9a-fc25-4ad8-b03d-db0aa244d357}" }, State::Connected);
+        auto page = _commonSetup(*sourceConnection, host, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto sourceContentId = tab->GetActivePane()->ContentId().value();
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = stripImpl->DisplayItemForTab(tab->TabViewItem());
+            const auto applyStatus = [&](const uint32_t contentId, const std::string_view status, const uint64_t sequence) {
+                const auto pane = tab->GetRootPane()->FindPaneByContentId(contentId);
+                VERIFY_IS_NOT_NULL(pane);
+                const auto control = pane->GetTerminalControl();
+                VERIFY_IS_NOT_NULL(control);
+                page->_AttachOrUpdateRichTabControl(control);
+                const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(control));
+                const auto attachment = page->_richTabAttachments.find(key);
+                VERIFY_IS_TRUE(attachment != page->_richTabAttachments.end());
+                if (attachment == page->_richTabAttachments.end())
+                {
+                    return;
+                }
+
+                ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
+                presentation.text = std::wstring{ Page::_SidebarHistoryStatusText(status) };
+                ::Microsoft::Terminal::RichTab::Provider::BrokerUpdate update;
+                update.sessionId = attachment->second.sessionId;
+                update.sessionIncarnation = std::numeric_limits<uint64_t>::max();
+                update.updateSequence = sequence;
+                update.presentation = std::move(presentation);
+                page->_ApplyRichTabUpdate(key, attachment->second.reservation, update);
+            };
+            const auto verifyStatus = [&](const std::string_view status) {
+                VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText(status), display.Presentation().MetadataText());
+            };
+            const auto focusPane = [&](const uint32_t contentId) {
+                const auto pane = tab->GetRootPane()->FindPaneByContentId(contentId);
+                VERIFY_IS_NOT_NULL(pane);
+                VERIFY_IS_TRUE(tab->FocusPane(pane->Id().value()));
+            };
+
+            applyStatus(sourceContentId, "Working", 1);
+            verifyStatus("Working");
+
+            const auto assistantConnection = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{f1407250-fdf6-4335-a764-17ebd212d42c}" }, State::Connected);
+            const auto assistantPane = page->_WrapInAgentPaneContent(
+                page->_MakePane(nullptr, page->_GetFocusedTab(), *assistantConnection));
+            assistantPane->IsAgentPane(true);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, assistantPane));
+            const auto assistantContentId = assistantPane->ContentId().value();
+            VERIFY_IS_TRUE(tab->GetActivePane() == assistantPane);
+            verifyStatus("Working");
+            applyStatus(assistantContentId, "Idle", 1);
+            verifyStatus("Working");
+
+            applyStatus(sourceContentId, "Attention", 2);
+            verifyStatus("Attention");
+            page->_RefreshRichTabForTab(*tab, false);
+            verifyStatus("Attention");
+            tab->StashAgentPane();
+            verifyStatus("Attention");
+            VERIFY_IS_TRUE(tab->RestoreStashedAgentPane(SplitDirection::Right));
+            verifyStatus("Attention");
+
+            focusPane(sourceContentId);
+            const auto secondConnection = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{273534fb-cfc5-4a13-bc50-5b722e142e1a}" }, State::Connected);
+            const auto secondPane = page->_MakePane(nullptr, page->_GetFocusedTab(), *secondConnection);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, secondPane));
+            const auto secondContentId = secondPane->ContentId().value();
+            VERIFY_IS_TRUE(display.Presentation().MetadataText().empty());
+            focusPane(assistantContentId);
+            VERIFY_IS_TRUE(display.Presentation().MetadataText().empty());
+            applyStatus(secondContentId, "Error", 1);
+            verifyStatus("Error");
+            focusPane(secondContentId);
+            verifyStatus("Error");
+            focusPane(assistantContentId);
+            verifyStatus("Error");
+            applyStatus(sourceContentId, "Working", 3);
+            verifyStatus("Error");
+            applyStatus(secondContentId, "Idle", 2);
+            verifyStatus("Idle");
+            focusPane(sourceContentId);
+            verifyStatus("Working");
+            focusPane(assistantContentId);
+            verifyStatus("Working");
         });
     }
 
@@ -9705,7 +9820,7 @@ namespace TerminalAppLocalTests
                                        .GetSubtree(L"TerminalApp/Resources");
             VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryEmpty").ValueAsString(), strip->HistoryMessage().Text());
 
-            // Transport failures use the default Error outcome, never a successful empty snapshot.
+            // Unclassified failures use the default Error outcome, never a successful empty snapshot.
             page->_CompleteSidebarHistoryRefresh(generation, {});
             VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
             VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsHistoryLoadError").ValueAsString(), strip->HistoryMessage().Text());
@@ -9713,6 +9828,272 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
             VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, strip->HistoryMessage().Visibility());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryMasterUnavailableKeepsLoading()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_historyRefreshInFlight = true;
+            page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
+            page->_ApplySidebarFilterSettings();
+            page->_historyRefreshPending = false;
+            page->UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            return winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HistorySection() != nullptr;
+        });
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            using State = Page::_SidebarHistorySnapshot::State;
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            VERIFY_IS_NOT_NULL(strip->HistoryLoadingIndicator());
+            VERIFY_IS_NOT_NULL(strip->HistoryMessage());
+            const auto generation = page->_historyRequestGeneration;
+            const auto unavailable = Page::_ParseSidebarHistoryFailure(R"({"error":{"kind":"master_unavailable"}})");
+            VERIFY_IS_TRUE(unavailable.state == State::MasterUnavailable);
+            for (auto i = 0; i < 2; ++i)
+            {
+                page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+                VERIFY_IS_TRUE(strip->HistoryLoadingIndicator().IsActive());
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, strip->HistoryMessage().Visibility());
+                VERIFY_ARE_EQUAL(int64_t{ 5 }, page->_historyRetryDelay.count());
+                VERIFY_ARE_EQUAL(int64_t{ 5 }, std::chrono::duration_cast<std::chrono::seconds>(page->_historyRefreshTimer.Interval()).count());
+            }
+            page->_historyMasterUnavailableSince = std::chrono::steady_clock::now() - std::chrono::seconds{ 15 };
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryMessage().Visibility());
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_IS_FALSE(page->_historyMasterUnavailableSince.has_value());
+            VERIFY_ARE_EQUAL(int64_t{ 60 }, std::chrono::duration_cast<std::chrono::seconds>(page->_historyRefreshTimer.Interval()).count());
+
+            for (const auto response : {
+                     R"({"error":{"kind":"permission_denied"}})",
+                     R"({"error":{"kind":true}})",
+                     R"({"sessions":[],"history_status":"loading"})",
+                     R"({"error":{"kind":"master_unavailable"}})"
+                     " trailing",
+                     "not json" })
+            {
+                const auto failure = Page::_ParseSidebarHistoryFailure(response);
+                VERIFY_IS_TRUE(failure.state == State::Error);
+                page->_CompleteSidebarHistoryRefresh(generation, failure);
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+                VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+            }
+        });
+    }
+
+    void TabTests::VerticalTabHistoryMasterUnavailablePreservesRowsAndExpires()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_historyRefreshInFlight = true;
+            page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
+            page->_ApplySidebarFilterSettings();
+            page->_historyRefreshPending = false;
+            page->UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            return winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HistorySection() != nullptr;
+        });
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            VERIFY_IS_NOT_NULL(strip->HistoryMessage());
+            const auto generation = page->_historyRequestGeneration;
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"history_status":"ready","sessions":[{"session_id":"cached","provider_id":"copilot","title":"Cached session","location":"Host","status":"Historical"}]})"));
+            const auto item = page->_tabStrip.HistoryItems().GetAt(0);
+            const auto unavailable = Page::_ParseSidebarHistoryFailure(R"({"error":{"kind":"master_unavailable"}})");
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == item);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip->HistoryMessage().Visibility());
+            const auto since = page->_historyMasterUnavailableSince;
+            page->_CompleteSidebarHistoryRefresh(generation - 1, unavailable);
+            VERIFY_IS_TRUE(page->_historyMasterUnavailableSince == since);
+            page->_historyRefreshInFlight = true;
+            VERIFY_IS_TRUE(page->_ExpireSidebarHistoryMasterRecovery(*since + std::chrono::seconds{ 15 }));
+            VERIFY_IS_TRUE(page->_historyRefreshInFlight);
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == item);
+            VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryMessage().Visibility());
+            page->_StopSidebarHistoryRefreshTimer();
+            VERIFY_IS_FALSE(page->_historyMasterUnavailableSince.has_value());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryMasterUnavailableDeadlineDuringCapture()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_historyRefreshInFlight = true;
+            page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
+            page->_ApplySidebarFilterSettings();
+            page->_historyRefreshPending = false;
+            page->UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            return winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HistorySection() != nullptr;
+        });
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto generation = page->_historyRequestGeneration;
+            const auto unavailable = Page::_ParseSidebarHistoryFailure(R"({"error":{"kind":"master_unavailable"}})");
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            const auto since = *page->_historyMasterUnavailableSince;
+            const auto timer = page->_historyMasterRecoveryTimer;
+            const auto interval = timer.Interval();
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            VERIFY_IS_TRUE(*page->_historyMasterUnavailableSince == since);
+            VERIFY_IS_TRUE(page->_historyMasterRecoveryTimer == timer);
+            VERIFY_ARE_EQUAL(interval.count(), timer.Interval().count());
+            VERIFY_IS_TRUE(page->_historyMasterRecoveryTimer.IsEnabled());
+            const auto cancellation = std::make_shared<std::atomic<bool>>(false);
+            page->_historyRefreshCancellation = cancellation;
+            page->_historyRefreshInFlight = true;
+            VERIFY_IS_FALSE(page->_ExpireSidebarHistoryMasterRecovery(since + std::chrono::seconds{ 15 } - std::chrono::milliseconds{ 1 }));
+            VERIFY_ARE_EQUAL(int64_t{ 1 }, std::chrono::duration_cast<std::chrono::milliseconds>(timer.Interval()).count());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_IS_TRUE(page->_ExpireSidebarHistoryMasterRecovery(since + std::chrono::seconds{ 15 }));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_ARE_EQUAL(Visibility::Visible, strip->HistoryMessage().Visibility());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+            VERIFY_IS_TRUE(page->_historyRefreshInFlight);
+            VERIFY_IS_TRUE(page->_historyRefreshCancellation == cancellation);
+            VERIFY_IS_FALSE(cancellation->load());
+            VERIFY_IS_FALSE(page->_historyMasterRecoveryTimer.IsEnabled());
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
+            VERIFY_IS_FALSE(page->_historyRefreshInFlight);
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_IS_FALSE(page->_historyMasterUnavailableSince.has_value());
+        });
+    }
+
+    void TabTests::VerticalTabHistoryMasterUnavailableDeadlineResets()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_historyRefreshInFlight = true;
+            page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
+            page->_ApplySidebarFilterSettings();
+            page->_historyRefreshPending = false;
+            page->UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            return winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HistorySection() != nullptr;
+        });
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            const auto unavailable = Page::_ParseSidebarHistoryFailure(R"({"error":{"kind":"master_unavailable"}})");
+            auto generation = page->_historyRequestGeneration;
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            const auto deadline = *page->_historyMasterUnavailableSince + std::chrono::seconds{ 15 };
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"loading"})"));
+            VERIFY_IS_FALSE(page->_historyMasterRecoveryTimer.IsEnabled());
+            VERIFY_IS_FALSE(page->_ExpireSidebarHistoryMasterRecovery(deadline));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            page->_StopSidebarHistoryRefreshTimer();
+            VERIFY_IS_FALSE(page->_historyRefreshTimer.IsEnabled());
+            VERIFY_IS_FALSE(page->_historyMasterRecoveryTimer.IsEnabled());
+            page->_isVerticalRailVisible = false;
+            VERIFY_IS_FALSE(page->_ExpireSidebarHistoryMasterRecovery(deadline));
+            page->_isVerticalRailVisible = true;
+            generation = page->_historyRequestGeneration;
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
+            page->_CompleteSidebarHistoryRefresh(generation - 1, unavailable);
+            VERIFY_IS_FALSE(page->_ExpireSidebarHistoryMasterRecovery(deadline));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            page->_tabStrip.HistoryError(L"activation error");
+            page->_tabStrip.HistoryActivating(true);
+            page->_ExpireSidebarHistoryMasterRecovery(*page->_historyMasterUnavailableSince + std::chrono::seconds{ 15 });
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"activation error" }, page->_tabStrip.HistoryError());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActivating());
+            VERIFY_IS_FALSE(page->_historyMasterRecoveryTimer.IsEnabled());
+            page->_tabStrip.HistoryActivating(false);
+            Page::_SidebarHistorySnapshot cancelled;
+            cancelled.state = Page::_SidebarHistorySnapshot::State::Cancelled;
+            page->_CompleteSidebarHistoryRefresh(generation, cancelled);
+            VERIFY_IS_FALSE(page->_ExpireSidebarHistoryMasterRecovery(deadline));
+            VERIFY_IS_FALSE(page->_historyMasterRecoveryTimer.IsEnabled());
+            page->_CompleteSidebarHistoryRefresh(generation, unavailable);
+            page->_historyRefreshInFlight = true;
+            page->_RequestSidebarHistoryRefresh(true);
+            VERIFY_IS_FALSE(page->_historyMasterUnavailableSince.has_value());
+            VERIFY_IS_FALSE(page->_historyMasterRecoveryTimer.IsEnabled());
+            VERIFY_IS_FALSE(page->_ExpireSidebarHistoryMasterRecovery(deadline));
+            VERIFY_IS_TRUE(page->_historyRefreshInFlight);
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryLoading());
+            page->_historyRefreshPending = false;
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
+        });
+    }
+
+    void TabTests::VerticalTabHistoryLoadingRefreshesUntilReady()
+    {
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_historyRefreshInFlight = true;
+            page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
+            page->_ApplySidebarFilterSettings();
+            page->_historyRefreshPending = false;
+            page->UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            return winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HistorySection() != nullptr;
+        });
+        TestOnUIThread([&]() {
+            using Page = winrt::TerminalApp::implementation::TerminalPage;
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            VERIFY_IS_NOT_NULL(strip->HistoryLoadingIndicator());
+            VERIFY_IS_NOT_NULL(strip->HistoryMessage());
+            const auto generation = page->_historyRequestGeneration;
+            page->_historyRetryDelay = std::chrono::seconds{ 60 };
+            page->_historyNextRefresh = std::chrono::steady_clock::now() + page->_historyRetryDelay;
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"loading"})"));
+            VERIFY_ARE_EQUAL(int64_t{ 5 }, std::chrono::duration_cast<std::chrono::seconds>(page->_historyRefreshTimer.Interval()).count());
+            VERIFY_ARE_EQUAL(int64_t{ 0 }, page->_historyRetryDelay.count());
+            VERIFY_IS_TRUE(page->_historyNextRefresh == std::chrono::steady_clock::time_point{});
+            VERIFY_IS_TRUE(strip->HistoryLoadingIndicator().IsActive());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, strip->HistoryMessage().Visibility());
+
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"history_status":"loading","sessions":[{"session_id":"available","provider_id":"copilot","title":"Available session","location":"Host","status":"Historical"}]})"));
+            VERIFY_ARE_EQUAL(1u, page->_tabStrip.HistoryItems().Size());
+            const auto item = page->_tabStrip.HistoryItems().GetAt(0);
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryLoading());
+            VERIFY_ARE_EQUAL(int64_t{ 5 }, std::chrono::duration_cast<std::chrono::seconds>(page->_historyRefreshTimer.Interval()).count());
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"loading"})"));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == item);
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(int64_t{ 5 }, std::chrono::duration_cast<std::chrono::seconds>(page->_historyRefreshTimer.Interval()).count());
+
+            page->_CompleteSidebarHistoryRefresh(generation, {});
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(int64_t{ 5 }, page->_historyRetryDelay.count());
+            VERIFY_ARE_EQUAL(int64_t{ 60 }, std::chrono::duration_cast<std::chrono::seconds>(page->_historyRefreshTimer.Interval()).count());
+            page->_CompleteSidebarHistoryRefresh(generation, page->_ParseSidebarHistorySnapshot(R"({"sessions":[],"history_status":"ready"})"));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(int64_t{ 0 }, page->_historyRetryDelay.count());
+            VERIFY_ARE_EQUAL(int64_t{ 60 }, std::chrono::duration_cast<std::chrono::seconds>(page->_historyRefreshTimer.Interval()).count());
         });
     }
 
@@ -12420,7 +12801,10 @@ namespace TerminalAppLocalTests
     {
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
-            page->_tabStrip.HistoryActive(true);
+            page->_historyRefreshInFlight = true;
+            page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
+            page->_ApplySidebarFilterSettings();
+            page->_historyRefreshPending = false;
             const auto generation = page->_historyRequestGeneration;
             using State = winrt::TerminalApp::implementation::TerminalPage::_SidebarHistorySnapshot::State;
             for (const auto seconds : { 5, 10, 20, 40, 60, 60 })
@@ -12443,10 +12827,10 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_FALSE(page->_historyRefreshInFlight);
                 VERIFY_ARE_EQUAL(generation, page->_historyRequestGeneration);
             }
-            const auto nextRefresh = page->_historyNextRefresh;
             page->_CompleteSidebarHistoryRefresh(generation, { State::Loading, {} });
-            VERIFY_ARE_EQUAL(int64_t{ 60 }, page->_historyRetryDelay.count());
-            VERIFY_IS_TRUE(page->_historyNextRefresh == nextRefresh);
+            VERIFY_ARE_EQUAL(int64_t{ 0 }, page->_historyRetryDelay.count());
+            VERIFY_IS_TRUE(page->_historyNextRefresh == std::chrono::steady_clock::time_point{});
+            VERIFY_ARE_EQUAL(int64_t{ 5 }, std::chrono::duration_cast<std::chrono::seconds>(page->_historyRefreshTimer.Interval()).count());
             page->_CompleteSidebarHistoryRefresh(generation, { State::Ready, {} });
             VERIFY_ARE_EQUAL(int64_t{ 0 }, page->_historyRetryDelay.count());
             VERIFY_IS_TRUE(page->_historyNextRefresh == std::chrono::steady_clock::time_point{});

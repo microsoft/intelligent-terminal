@@ -53,9 +53,7 @@ Describe 'Feature: agent input undo and redo' -Tag 'Feature', 'AgentInputUndoRed
             StartedUtc = [DateTime]::UtcNow.ToString('o')
         } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'package.json') -Encoding utf8NoBOM
 
-        # Require an unused target so a failed Start-Terminal can recover only this run's process/config.
-        @(Get-WtProcessesForApp -App $script:targetApp).Count |
-            Should -Be 0 -Because 'the selected package must have no user-owned window before this physical suite'
+        Stop-StaleItInstances -App $script:targetApp
         foreach ($path in @($script:targetApp.SettingsPath, $script:targetApp.StatePath)) {
             if ((Test-Path "$path.e2ebak") -or (Test-Path "$path.e2ebak.missing")) {
                 throw "Recover the prior run's configuration backup before starting: $path.e2ebak"

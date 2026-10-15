@@ -15,28 +15,34 @@ async fn open_named_pipe(
     pipe_name: &str,
 ) -> std::io::Result<tokio::net::windows::named_pipe::NamedPipeClient> {
     retry_named_pipe_open(pipe_name, || {
-        tokio::net::windows::named_pipe::ClientOptions::new().open(pipe_name)
+        std::future::ready(tokio::net::windows::named_pipe::ClientOptions::new().open(pipe_name))
     })
     .await
 }
 
-async fn retry_named_pipe_open<T>(
-    pipe_name: &str,
-    mut open: impl FnMut() -> std::io::Result<T>,
-) -> std::io::Result<T> {
+fn is_retryable_pipe_error(error: &std::io::Error) -> bool {
     use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PIPE_BUSY};
+    matches!(
+        error.raw_os_error().map(|code| code as u32),
+        Some(ERROR_FILE_NOT_FOUND | ERROR_PIPE_BUSY)
+    )
+}
+
+async fn retry_named_pipe_open<T, F>(
+    pipe_name: &str,
+    mut open: impl FnMut() -> F,
+) -> std::io::Result<T>
+where
+    F: std::future::Future<Output = std::io::Result<T>>,
+{
     const BACKOFF_MS: &[u64] = &[20, 50, 100, 200, 500, 1000];
 
     let mut attempt = 0;
     loop {
-        match open() {
+        match open().await {
             Ok(pipe) => return Ok(pipe),
             Err(error) => {
-                let retryable = matches!(
-                    error.raw_os_error().map(|code| code as u32),
-                    Some(ERROR_FILE_NOT_FOUND | ERROR_PIPE_BUSY)
-                );
-                if !retryable || attempt == BACKOFF_MS.len() {
+                if !is_retryable_pipe_error(&error) || attempt == BACKOFF_MS.len() {
                     return Err(error);
                 }
                 let wait_ms = BACKOFF_MS[attempt];
@@ -215,7 +221,7 @@ mod pipe_tests {
             if attempts <= 4 {
                 assert_eq!(result.as_ref().unwrap_err().raw_os_error(), Some(231));
             }
-            result
+            std::future::ready(result)
         })
         .await;
         let mut client = result.unwrap();
@@ -234,20 +240,20 @@ mod pipe_tests {
         let mut attempts = 0;
         let result = retry_named_pipe_open("starting-master", || {
             attempts += 1;
-            if attempts == 1 {
+            std::future::ready(if attempts == 1 {
                 Err(io::Error::from_raw_os_error(2))
             } else {
                 Ok("connected")
-            }
+            })
         })
         .await;
         assert_eq!(result.unwrap(), "connected");
         assert_eq!(attempts, 2);
         let started = tokio::time::Instant::now();
         let mut attempts = 0;
-        let result = retry_named_pipe_open::<()>("denied-master", || {
+        let result = retry_named_pipe_open::<(), _>("denied-master", || {
             attempts += 1;
-            Err(io::Error::from_raw_os_error(5))
+            std::future::ready(Err(io::Error::from_raw_os_error(5)))
         })
         .await;
         assert_eq!(result.unwrap_err().raw_os_error(), Some(5));
@@ -259,9 +265,9 @@ mod pipe_tests {
     async fn permanently_busy_pipe_preserves_the_error_with_a_bounded_wait() {
         let started = tokio::time::Instant::now();
         let mut attempts = 0;
-        let result = retry_named_pipe_open::<()>("unavailable-master", || {
+        let result = retry_named_pipe_open::<(), _>("unavailable-master", || {
             attempts += 1;
-            Err(io::Error::from_raw_os_error(231))
+            std::future::ready(Err(io::Error::from_raw_os_error(231)))
         })
         .await;
         assert_eq!(result.unwrap_err().raw_os_error(), Some(231));
