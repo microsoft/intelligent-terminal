@@ -251,7 +251,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                 Should -Be @(@($script:a.session_id, $script:b.session_id) | Sort-Object)
         }
         function Get-VisualDigest {
-            param($Bounds, [string]$Name, [switch]$Icon, [switch]$PreserveFlyout)
+            param($Bounds, [string]$Name, [switch]$Icon, [switch]$PreserveFlyout, [scriptblock]$ResolveBounds)
             if ($PreserveFlyout) {
                 # Re-activating the root dismisses the real flyout we are capturing.
                 [ItE2E.ItWtWin32Input]::IsOwnedRootOrPopup(
@@ -269,6 +269,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd).Current.BoundingRectangle
             [ItE2E.ItWtWin32Input]::SetCursorPos([int]($window.Right - 30), [int]($window.Bottom - 30)) | Should -BeTrue
             Start-Sleep -Milliseconds 350
+            if ($ResolveBounds) { $Bounds = & $ResolveBounds }
             $Bounds.Width | Should -BeGreaterThan 0
             $Bounds.Height | Should -BeGreaterThan 0
             $bitmap = [Drawing.Bitmap]::new([int][math]::Ceiling($Bounds.Width), [int][math]::Ceiling($Bounds.Height))
@@ -334,13 +335,34 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             $distinct | Should -BeGreaterThan 1 -Because 'six actual ring frames must animate, not merely expose active bound state'
         }
         function Get-ProfileIconDigest {
-            param([string]$Name, [string]$Title = $script:titleA)
-            $bounds = (Get-PaneRow $Title).Current.BoundingRectangle
-            # PaneActivateButton's template: 3-DIP indicator, 28-DIP icon column, centered 16-DIP icon.
-            $size = 16 * $script:scale
-            $icon = [Windows.Rect]::new($bounds.X + 9 * $script:scale, $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
-            $bounds.Contains($icon) | Should -BeTrue -Because 'the entire profile icon must remain inside its owned row'
-            Get-VisualDigest -Bounds $icon -Name $Name -Icon
+            param([string]$Name, [string]$Title = $script:titleA, [switch]$Progress)
+            # Foreground acquisition and native metadata updates can finish
+            # arranging rows after the caller's first geometry read. Resolve the
+            # actual image immediately before capture, not a stale row-center crop.
+            Get-VisualDigest -Name $Name -Icon -ResolveBounds {
+                $row = Get-PaneRow $Title
+                $bounds = $row.Current.BoundingRectangle
+                if ($Progress) {
+                    $rings = @(Get-RowProgress $row)
+                    $rings | Should -HaveCount 1 -Because 'the replacement slot has one visible progress widget'
+                    @(Get-LeadingIdentityPeers -Row $row) | Should -HaveCount 0 -Because 'progress replaces, not accompanies, the identity'
+                    $ring = $rings[0].Current.BoundingRectangle
+                    $size = 16 * $script:scale
+                    $slot = [Windows.Rect]::new($ring.X + ($ring.Width - $size) / 2,
+                        $ring.Y + ($ring.Height - $size) / 2, $size, $size)
+                    $bounds.Contains($slot) | Should -BeTrue -Because 'the replacement slot remains inside its owned pane'
+                    return $slot
+                }
+                $icons = @(Get-LeadingIdentityPeers -Row $row | ForEach-Object {
+                    $_.Current.BoundingRectangle
+                } | Where-Object {
+                    $_.Width -ge 15 * $script:scale -and $_.Width -le 17 * $script:scale -and
+                    $_.Height -ge 15 * $script:scale -and $_.Height -le 17 * $script:scale
+                } | Sort-Object -Property X, Y, Width, Height -Unique)
+                $icons | Should -HaveCount 1 -Because 'the owned pane has exactly one realized identity'
+                $bounds.Contains($icons[0]) | Should -BeTrue -Because 'the entire profile icon must remain inside its owned row'
+                $icons[0]
+            }
         }
         function Get-LeadingSlot {
             param(
@@ -490,7 +512,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             $rings | Should -HaveCount 1
             $ring = $rings[0].Current.BoundingRectangle
             Assert-ProgressIconSlotGeometry -IconBounds $leading.slot -ProgressBounds $ring -Scale $script:scale
-            Get-ProfileIconDigest "$Phase-spinner" | Should -Not -Be $script:profileIcon
+            Get-ProfileIconDigest "$Phase-spinner" -Progress | Should -Not -Be $script:profileIcon
         }
         function Send-ShellScript {
             param([string]$Pane, [string]$Code, [string]$ExitPath)
@@ -957,7 +979,7 @@ $hook agent.session.end
                 Assert-NativeStatus $sid Working
                 @(Get-OwnedElements AutomationId PaneIndeterminateProgressRing).Count | Should -Be $(if ($state -eq 3) { 1 } else { 0 })
                 Wait-Until -TimeoutSec 20 -Because 'Working native identity replaces the profile raster' -Condition {
-                    (Get-ProfileIconDigest "working-$state") -ne $script:profileIcon
+                    (Get-ProfileIconDigest "working-$state" -Progress:($state -eq 3)) -ne $script:profileIcon
                 } | Out-Null
                 Get-ProfileIconDigest "working-$state-sibling" $script:titleB | Should -Be $script:siblingIcon
                 [IO.File]::WriteAllText($release, 'end')

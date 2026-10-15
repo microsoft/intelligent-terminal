@@ -788,6 +788,7 @@
             <ListView.ItemContainerStyle>
                 <Style BasedOn="{StaticResource DefaultListViewItemStyle}"
                        TargetType="ListViewItem">
+                    <Setter Property="MinWidth" Value="0" />
                     <Setter Property="Padding" Value="0" />
                     <Setter Property="Margin" Value="6,4" />
                     <Setter Property="MinHeight" Value="32" />

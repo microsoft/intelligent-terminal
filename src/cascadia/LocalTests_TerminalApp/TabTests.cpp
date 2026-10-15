@@ -13785,6 +13785,10 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto leading = Media::VisualTreeHelper::GetParent(iconPresenter).as<FrameworkElement>();
             const auto root = Media::VisualTreeHelper::GetParent(leading).as<FrameworkElement>();
+            const auto container = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>();
+            // Desktop's inherited item style must not impose a wider row than
+            // the compact viewport and clip an otherwise correctly centered icon.
+            VERIFY_ARE_EQUAL(0.0, container.MinWidth());
             const auto bounds = iconPresenter.TransformToVisual(root).TransformBounds({ 0, 0, 16, 16 });
             VERIFY_IS_TRUE(bounds.X >= 0 && bounds.X + bounds.Width <= root.ActualWidth());
             VERIFY_IS_TRUE(std::abs(bounds.X + bounds.Width / 2 - root.ActualWidth() / 2) <= 1.0);
