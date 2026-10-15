@@ -502,6 +502,7 @@ pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
     "notification_type",
     "reason",
     "error",
+    "pane_owner",
 ];
 
 /// Members of `payload.tool_input` the routing function reads when the tool is
@@ -592,6 +593,7 @@ pub fn plan_agent_event(
         event,
         "agent.session.started"
             | "agent.session.start"
+            | "agent.session.renamed"
             | "agent.session.stopped"
             | "agent.session.end"
             | "agent.cwd.changed"
@@ -650,6 +652,22 @@ pub fn plan_agent_event(
                 synth_title
             },
         },
+        "agent.session.renamed"
+            if facts.session_known && *cli_source == crate::agent_sessions::CliSource::OpenCode =>
+        {
+            let Some(title) = payload
+                .get("title")
+                .and_then(|value| value.as_str())
+                .filter(|title| !title.trim().is_empty())
+            else {
+                return plan;
+            };
+            SessionEvent::SessionRenamed {
+                key,
+                pane_session_id: pane_session_id.to_string(),
+                title: title.to_string(),
+            }
+        }
         "agent.cwd.changed" if facts.session_known => {
             let Some(cwd) = payload
                 .get("new_cwd")
@@ -966,19 +984,48 @@ where
         .cloned()
         .unwrap_or(serde_json::Value::Null);
 
+    let non_binding_opencode = cli_source == CliSource::OpenCode
+        && payload.get("pane_owner").and_then(|value| value.as_bool()) == Some(false);
+    let owner_pane = if non_binding_opencode {
+        if !matches!(
+            event,
+            "agent.prompt.submit"
+                | "agent.tool.starting"
+                | "agent.stop"
+                | "agent.notification"
+                | "agent.error"
+        ) {
+            return false;
+        }
+        let Some(pane) = reg
+            .get(&key)
+            .filter(|row| {
+                row.cli_source == cli_source
+                    && row.liveness() == crate::agent_sessions::LivenessState::Live
+            })
+            .and_then(|row| row.pane_session_id.clone())
+            .filter(|pane| !pane.is_empty())
+        else {
+            tracing::debug!(target: "agent_route", key, event, "ignored unbound OpenCode server activity");
+            return false;
+        };
+        pane
+    } else {
+        pane_session_id.to_string()
+    };
     let facts = AgentEventFacts {
         key: key.clone(),
         session_known: reg
             .get(&key)
             .is_some_and(|row| row.cli_source == cli_source),
-        pane_owned_by_other: reg.key_for_pane(pane_session_id).is_some_and(|owner| {
+        pane_owned_by_other: reg.key_for_pane(&owner_pane).is_some_and(|owner| {
             reg.get(&owner).is_some_and(|row| {
                 row.liveness() == crate::agent_sessions::LivenessState::Live
                     && (owner != key || row.cli_source != cli_source)
             })
         }),
     };
-    let plan = plan_agent_event(event, &payload, pane_session_id, &cli_source, &facts);
+    let plan = plan_agent_event(event, &payload, &owner_pane, &cli_source, &facts);
 
     // A real `agent.session.started` supersedes any `pane:`-keyed placeholder
     // minted for this pane while the id was still unknown.

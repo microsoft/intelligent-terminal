@@ -1221,6 +1221,82 @@ fn stale_opencode_end_does_not_stop_a_session_rebound_to_another_pane() {
 }
 
 #[test]
+fn opencode_server_activity_does_not_bind_an_unowned_pane() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus};
+
+    let mut reg = AgentSessionRegistry::new();
+    let server_prompt = json!({
+        "event": "agent.prompt.submit",
+        "cli_source": "opencode",
+        "agent_session_id": "server-only",
+        "payload": { "cwd": r"C:\repo", "pane_owner": false }
+    });
+    assert!(!route_agent_event_to_registry(
+        &mut reg,
+        "server-pane",
+        &server_prompt
+    ));
+    assert!(reg.get(&"server-only".to_string()).is_none());
+
+    let start = json!({
+        "event": "agent.session.start",
+        "cli_source": "opencode",
+        "agent_session_id": "server-only",
+        "payload": { "cwd": r"C:\repo", "title": "Original" }
+    });
+    route_agent_event_to_registry(&mut reg, "tui-pane", &start);
+    route_agent_event_to_registry(&mut reg, "server-pane", &server_prompt);
+    let row = reg.get(&"server-only".to_string()).unwrap();
+    assert_eq!(row.status, AgentStatus::Working);
+    assert_eq!(row.pane_session_id.as_deref(), Some("tui-pane"));
+    assert!(reg.key_for_pane("server-pane").is_none());
+}
+
+#[test]
+fn opencode_rename_updates_only_current_pane_metadata() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus};
+
+    let mut reg = AgentSessionRegistry::new();
+    let hook = |event, title| {
+        json!({
+            "event": event,
+            "cli_source": "opencode",
+            "agent_session_id": "shared",
+            "payload": { "cwd": r"C:\repo", "title": title }
+        })
+    };
+    route_agent_event_to_registry(
+        &mut reg,
+        "old-pane",
+        &hook("agent.session.start", "Original"),
+    );
+    route_agent_event_to_registry(
+        &mut reg,
+        "new-pane",
+        &hook("agent.session.start", "Current"),
+    );
+    route_agent_event_to_registry(&mut reg, "new-pane", &hook("agent.prompt.submit", ""));
+    assert!(!route_agent_event_to_registry(
+        &mut reg,
+        "old-pane",
+        &hook("agent.session.renamed", "Stale")
+    ));
+    let row = reg.get(&"shared".to_string()).unwrap();
+    assert_eq!(row.title, "Current");
+    assert_eq!(row.pane_session_id.as_deref(), Some("new-pane"));
+    assert_eq!(row.status, AgentStatus::Working);
+    route_agent_event_to_registry(
+        &mut reg,
+        "new-pane",
+        &hook("agent.session.renamed", "Renamed"),
+    );
+    let row = reg.get(&"shared".to_string()).unwrap();
+    assert_eq!(row.title, "Renamed");
+    assert_eq!(row.pane_session_id.as_deref(), Some("new-pane"));
+    assert_eq!(row.status, AgentStatus::Working);
+}
+
+#[test]
 fn agent_error_for_unknown_session_still_records_the_failure() {
     use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, SessionEvent};
 

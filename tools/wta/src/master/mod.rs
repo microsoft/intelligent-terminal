@@ -8688,6 +8688,12 @@ async fn apply_master_session_event(
     event: crate::agent_sessions::SessionEvent,
     is_born_bound: bool,
 ) -> (bool, Option<String>) {
+    if matches!(
+        &event,
+        crate::agent_sessions::SessionEvent::SessionRenamed { .. }
+    ) {
+        return (state.registry.apply_event(event).await, None);
+    }
     // Capture the session key BEFORE moving `event` into the reducer so
     // we can dispatch the post-apply title refresh against the right
     // row. Pane-keyed variants (PaneClosed, ConnectionFailed) don't
@@ -10542,8 +10548,61 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         return;
     };
 
+    let payload = params
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let rows = state.registry.snapshot().await;
+    let non_binding_opencode = cli_source == CliSource::OpenCode
+        && payload
+            .get("pane_owner")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false);
+    let owner_pane = if non_binding_opencode {
+        if asid.is_empty()
+            || !matches!(
+                event,
+                "agent.prompt.submit"
+                    | "agent.tool.starting"
+                    | "agent.stop"
+                    | "agent.notification"
+                    | "agent.error"
+            )
+        {
+            return;
+        }
+        let mut matches = rows.iter().filter(|row| row.session_id.0.as_ref() == key);
+        let Some(row) = matches.next() else {
+            tracing::debug!(target: "master_wt_event", key, event, "ignored unknown OpenCode server activity");
+            return;
+        };
+        if matches.next().is_some()
+            || row.cli_source.as_ref() != Some(&cli_source)
+            || !matches!(
+                row.status,
+                Some(
+                    crate::agent_sessions::AgentStatus::Idle
+                        | crate::agent_sessions::AgentStatus::Working
+                        | crate::agent_sessions::AgentStatus::Attention
+                        | crate::agent_sessions::AgentStatus::Error
+                )
+            )
+        {
+            return;
+        }
+        let Some(pane) = row
+            .pane_session_id
+            .as_deref()
+            .filter(|pane| !pane.is_empty())
+        else {
+            return;
+        };
+        pane.to_string()
+    } else {
+        pane_id.to_string()
+    };
     let location =
-        match validate_master_hook_source(state, params, &key, pane_id, &cli_source).await {
+        match validate_master_hook_source(state, params, &key, &owner_pane, &cli_source).await {
             Ok(location) => location,
             Err(reason) => {
                 tracing::warn!(target: "master_wt_event", reason, "rejected agent hook source");
@@ -10551,12 +10610,7 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
             }
         };
 
-    let payload = params
-        .get("payload")
-        .cloned()
-        .unwrap_or(serde_json::Value::Null);
-    let pane_key = crate::agent_sessions::pane_key(pane_id);
-    let rows = state.registry.snapshot().await;
+    let pane_key = crate::agent_sessions::pane_key(&owner_pane);
     if crate::app::opencode_end_from_another_pane(
         &cli_source,
         event,
@@ -10589,11 +10643,11 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         });
     let facts = crate::app::AgentEventFacts {
         key,
-        session_known,
+        session_known: session_known || non_binding_opencode,
         pane_owned_by_other,
     };
     let session_key = facts.key.clone();
-    let plan = crate::app::plan_agent_event(event, &payload, pane_id, &cli_source, &facts);
+    let plan = crate::app::plan_agent_event(event, &payload, &owner_pane, &cli_source, &facts);
     if plan.events.is_empty() {
         return;
     }
@@ -11019,6 +11073,7 @@ fn session_event_key(event: &crate::agent_sessions::SessionEvent) -> Option<&str
     use crate::agent_sessions::SessionEvent;
     match event {
         SessionEvent::SessionStarted { key, .. }
+        | SessionEvent::SessionRenamed { key, .. }
         | SessionEvent::WorkingDirectoryChanged { key, .. }
         | SessionEvent::ToolStarting { key, .. }
         | SessionEvent::ToolCompleted { key }

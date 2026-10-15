@@ -57,7 +57,7 @@ export default {
         send("agent.cwd.changed", sessionID, { cwd: directory });
       } else if (bound.title !== session.title) {
         bound.title = session.title;
-        send("agent.session.start", sessionID, { cwd: directory, title: session.title });
+        send("agent.session.renamed", sessionID, { title: session.title });
       }
     }
 
@@ -78,10 +78,7 @@ export default {
     const onRenamed = context.data.on("session.renamed", ({ data }) => {
       if (bound?.id === data.sessionID && selected(data.sessionID)) {
         bound.title = data.title;
-        send("agent.session.start", data.sessionID, {
-          cwd: bound.directory,
-          title: data.title,
-        });
+        send("agent.session.renamed", data.sessionID, { title: data.title });
       }
     });
     const onExecutionStarted = context.data.on("session.execution.started", ({ data }) => {

@@ -181,6 +181,10 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
         $driver = Start-HookDriver 'v2'
         $prefix = "ite2e-opencode-negative-$([guid]::NewGuid().ToString('N'))"
         $root = "$prefix-root"
+        $serverOnly = "$prefix-server-only"
+        Send-HookAction $driver @{ action = 'event'; type = 'session.created'; data = @{ sessionID = $serverOnly } }
+        Send-HookAction $driver @{ action = 'prompt'; id = $serverOnly }
+        Send-HookAction $driver @{ action = 'tool'; id = $serverOnly; tool = 'bash'; args = @{} }
         Send-HookAction $driver @{ action = 'event'; type = 'session.created'; data = @{ sessionID = $root } }
         Send-HookAction $driver @{ action = 'view'; id = $root }
         Assert-HookState $root 'Idle' 'agent.session.start' | Out-Null

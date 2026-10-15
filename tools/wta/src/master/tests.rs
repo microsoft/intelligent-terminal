@@ -17419,6 +17419,109 @@ async fn master_opencode_end_from_old_pane_preserves_new_owner() {
 }
 
 #[tokio::test]
+async fn master_opencode_server_only_activity_requires_a_tui_binding() {
+    use crate::agent_sessions::AgentStatus;
+
+    let state = make_state();
+    let sid = SessionId::new("server-only");
+    let hook = |event, pane, payload| {
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": event,
+                "cli_source": "opencode",
+                "agent_session_id": "server-only",
+                "pane_id": pane,
+                "payload": payload
+            }
+        })
+    };
+    let prompt = serde_json::json!({ "cwd": "C:\\repo", "pane_owner": false });
+    handle_master_wt_event(
+        &state,
+        hook("agent.prompt.submit", "server-pane", prompt.clone()),
+    )
+    .await;
+    handle_master_wt_event(
+        &state,
+        hook(
+            "agent.tool.starting",
+            "server-pane",
+            serde_json::json!({ "tool_name": "bash", "pane_owner": false }),
+        ),
+    )
+    .await;
+    assert!(
+        state.registry.lookup(&sid).await.is_none(),
+        "server-only activity must not create a row"
+    );
+    assert!(state.hook_owned.lock().await.is_empty());
+    handle_master_wt_event(
+        &state,
+        hook(
+            "agent.session.start",
+            "tui-pane",
+            serde_json::json!({ "cwd": "C:\\repo", "title": "Owned" }),
+        ),
+    )
+    .await;
+    handle_master_wt_event(
+        &state,
+        hook("agent.prompt.submit", "server-pane", prompt.clone()),
+    )
+    .await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Working));
+    assert_eq!(row.pane_session_id.as_deref(), Some("tui-pane"));
+    handle_master_wt_event(
+        &state,
+        hook(
+            "agent.session.end",
+            "tui-pane",
+            serde_json::json!({ "reason": "tui_disposed" }),
+        ),
+    )
+    .await;
+    handle_master_wt_event(&state, hook("agent.prompt.submit", "server-pane", prompt)).await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Ended));
+    assert_eq!(row.pane_session_id, None);
+}
+
+#[tokio::test]
+async fn master_opencode_rename_cannot_rebind_after_handoff() {
+    use crate::agent_sessions::AgentStatus;
+
+    let state = make_state();
+    let sid = SessionId::new("shared-rename");
+    let hook = |pane, event, title| {
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": event,
+                "cli_source": "opencode",
+                "agent_session_id": "shared-rename",
+                "pane_id": pane,
+                "payload": { "cwd": "C:\\repo", "title": title }
+            }
+        })
+    };
+    handle_master_wt_event(&state, hook("old-pane", "agent.session.start", "Original")).await;
+    handle_master_wt_event(&state, hook("new-pane", "agent.session.start", "Current")).await;
+    handle_master_wt_event(&state, hook("new-pane", "agent.prompt.submit", "")).await;
+    handle_master_wt_event(&state, hook("old-pane", "agent.session.renamed", "Stale")).await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.title.as_deref(), Some("Current"));
+    assert_eq!(row.pane_session_id.as_deref(), Some("new-pane"));
+    assert_eq!(row.status, Some(AgentStatus::Working));
+    handle_master_wt_event(&state, hook("new-pane", "agent.session.renamed", "Renamed")).await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.title.as_deref(), Some("Renamed"));
+    assert_eq!(row.pane_session_id.as_deref(), Some("new-pane"));
+    assert_eq!(row.status, Some(AgentStatus::Working));
+}
+
+#[tokio::test]
 async fn master_com_agent_event_routes_directly_into_the_registry() {
     let state = make_state();
     let _capture = crate::wt_protocol_events::capture_test_published_events();

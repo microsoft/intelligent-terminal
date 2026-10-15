@@ -376,6 +376,11 @@ pub enum SessionEvent {
         cwd: PathBuf,
         title: String,
     },
+    SessionRenamed {
+        key: AgentKey,
+        pane_session_id: String,
+        title: String,
+    },
     WorkingDirectoryChanged {
         key: AgentKey,
         pane_session_id: String,
@@ -537,6 +542,15 @@ impl AgentSessionRegistry {
                 key,
                 pane_session_id: pane_key(&pane_session_id),
                 cwd,
+            },
+            SessionEvent::SessionRenamed {
+                key,
+                pane_session_id,
+                title,
+            } => SessionEvent::SessionRenamed {
+                key,
+                pane_session_id: pane_key(&pane_session_id),
+                title,
             },
             SessionEvent::ConnectionFailed {
                 pane_session_id,
@@ -705,6 +719,24 @@ impl AgentSessionRegistry {
                     self.active_by_pane.insert(pane_session_id, key);
                 }
                 self.dirty = true;
+            }
+            SessionEvent::SessionRenamed {
+                key,
+                pane_session_id,
+                title,
+            } => {
+                if let Some(entry) = self.sessions.get_mut(&key) {
+                    if entry.cli_source == CliSource::OpenCode
+                        && entry.liveness() == LivenessState::Live
+                        && entry.pane_session_id.as_deref() == Some(pane_session_id.as_str())
+                        && !title.trim().is_empty()
+                        && entry.title != title
+                    {
+                        entry.title = title;
+                        entry.last_activity_at = now;
+                        self.dirty = true;
+                    }
+                }
             }
 
             SessionEvent::WorkingDirectoryChanged {

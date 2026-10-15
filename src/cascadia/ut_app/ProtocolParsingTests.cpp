@@ -38,6 +38,7 @@ namespace TerminalAppUnitTests
         Json::Value payload;
         payload["session_id"] = "opencode-session";
         payload["cwd"] = "C:\\repo";
+        payload["pane_owner"] = false;
         const std::string expected(wtcli::kMaxRetainedFieldChars - 1, 'x');
         payload["title"] = expected + "\xE4\xB8\xAD" + std::string(wtcli::kMaxHookEventChars, 'y');
         Json::StreamWriterBuilder writer;
@@ -50,6 +51,7 @@ namespace TerminalAppUnitTests
         const auto& reduced = event["params"]["payload"];
         VERIFY_IS_TRUE(reduced["_truncated"].asBool());
         VERIFY_ARE_EQUAL(expected, reduced["title"].asString());
+        VERIFY_IS_FALSE(reduced["pane_owner"].asBool());
         VERIFY_ARE_EQUAL("opencode-session", event["params"]["agent_session_id"].asString());
         VERIFY_ARE_EQUAL("pane-a", event["params"]["pane_id"].asString());
         VERIFY_IS_TRUE(Json::writeString(writer, event).size() <= wtcli::kMaxHookEventChars);
@@ -57,6 +59,7 @@ namespace TerminalAppUnitTests
         payload["title"] = "Small \xE4\xB8\xAD";
         VERIFY_IS_TRUE(wtcli::BuildAgentHookEventJson("agent.session.start", "opencode", Json::writeString(writer, payload), "pane-a", "", event));
         VERIFY_ARE_EQUAL(payload["title"].asString(), event["params"]["payload"]["title"].asString());
+        VERIFY_IS_FALSE(event["params"]["payload"]["pane_owner"].asBool());
         VERIFY_IS_FALSE(event["params"]["payload"].isMember("_truncated"));
     }
 

@@ -2310,7 +2310,7 @@ fn native_hook_bundle_versions_match_their_marketplaces() {
         ("copilot", COPILOT_PLUGIN_JSON, "0.1.7"),
         ("gemini", GEMINI_EXTENSION_JSON, "0.1.7"),
         ("codex", CODEX_PLUGIN_JSON, "0.1.9"),
-        ("opencode", OPENCODE_PLUGIN_JSON, "0.1.11"),
+        ("opencode", OPENCODE_PLUGIN_JSON, "0.1.12"),
         (
             "antigravity",
             include_str!("../wt-agent-hooks/antigravity/intelligent-terminal.json"),

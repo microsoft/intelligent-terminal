@@ -10942,6 +10942,12 @@ namespace winrt::TerminalApp::implementation
                                     eventName == "agent.session.start";
         const bool promptSubmitted = eventName == "agent.prompt.submit";
         const auto agent = params.get("agent", params.get("cli_source", "")).asString();
+        const auto& payload = params["payload"];
+        const auto paneOwner = payload.isObject() ? payload.get("pane_owner", Json::Value{}) : Json::Value{};
+        if (agent == "opencode" && paneOwner.isBool() && !paneOwner.asBool())
+        {
+            return;
+        }
         auto resumeCommandline = params.get("resume_commandline", "").asString();
         if (resumeCommandline.empty() && !agent.empty() && !agentSessionId.empty())
         {

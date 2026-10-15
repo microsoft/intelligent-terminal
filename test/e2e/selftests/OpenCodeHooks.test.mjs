@@ -119,7 +119,7 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       emit("session.execution.started", { sessionID: "root" })
       await dispose()
       assert.deepEqual(calls.map((call) => call.topic), [
-        "agent.session.start", "agent.prompt.submit", "agent.stop", "agent.session.start",
+        "agent.session.start", "agent.prompt.submit", "agent.stop", "agent.session.renamed",
         "agent.prompt.submit", "agent.stop", "agent.prompt.submit", "agent.stop", "agent.session.end",
       ])
       assert.equal(calls[3].payload.title, "New title")
@@ -146,6 +146,31 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
         "agent.session.start", "agent.cwd.changed", "agent.session.end",
       ])
       assert.equal(calls.at(-1).payload.reason, "tui_disposed")
+    })
+
+    it("two visible TUIs send metadata updates rather than binding starts on a shared rename", async () => {
+      sessions.set("root", { id: "root", title: "Original", location: { directory: "C:\\repo" } })
+      const secondHandlers = new Map()
+      const secondContext = {
+        ...context,
+        data: {
+          ...context.data,
+          on: (event, handler) => {
+            secondHandlers.set(event, handler)
+            return () => secondHandlers.delete(event)
+          },
+        },
+      }
+      const firstDispose = tuiPlugin.setup(context)
+      const secondDispose = tuiPlugin.setup(secondContext)
+      sessions.get("root").title = "Shared rename"
+      emit("session.renamed", { sessionID: "root", title: "Shared rename" })
+      secondHandlers.get("session.renamed")({ data: { sessionID: "root", title: "Shared rename" } })
+      await Promise.all([firstDispose(), secondDispose()])
+      assert.equal(calls.filter((call) => call.topic === "agent.session.start").length, 2)
+      assert.deepEqual(calls.filter((call) => call.topic === "agent.session.renamed").map((call) => call.payload.title),
+        ["Shared rename", "Shared rename"])
+      assert.equal(handlers.size + secondHandlers.size, 0)
     })
 
     it("suppresses hooks outside a Terminal pane and in ACP mode", () => {
@@ -211,6 +236,7 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       assert.equal(calls.filter((call) => call.topic === "agent.stop").length, 2)
       assert.equal(calls.find((call) => call.topic === "agent.error").payload.error, "Fixture failure")
       assert.equal(calls.some((call) => call.topic === "agent.session.start"), false)
+      assert.equal(calls.every((call) => call.payload.pane_owner === false), true)
       assert.deepEqual(calls.find((call) => call.topic === "agent.tool.starting").payload.tool_input, { questions: ["Continue?"] })
       await sdk.event("session.deleted", { sessionID: "root" })
       assert.equal(calls.some((call) => call.topic === "agent.session.end"), false)
@@ -231,6 +257,17 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       assert.deepEqual(calls.map((call) => call.topic), ["agent.prompt.submit"])
       assert.equal(calls[0].payload.session_id, "owned")
     } finally { await dispose() }
+  })
+
+  it("V2 server-only prompt and disposal never emit a pane-binding lifecycle event", async () => {
+    const sdk = createContext()
+    const dispose = await plugin.setup(sdk.context)
+    await sdk.event("session.created", { sessionID: "unowned", title: "Unowned" })
+    await sdk.prompt("unowned")
+    await dispose()
+    assert.deepEqual(calls.map((call) => [call.topic, call.payload.pane_owner]), [
+      ["agent.prompt.submit", false],
+    ])
   })
 
   for (const teardown of ["delete", "dispose"]) {
@@ -336,6 +373,9 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       }
       await action("create", { action: "event", type: "session.created", data: { sessionID: "root", title: "Root" } })
       await action("view", { action: "view", id: "root" })
+      await action("rename", { action: "event", type: "session.renamed", data: {
+        sessionID: "root", title: "Updated",
+      } })
       await action("move", { action: "event", type: "session.moved", data: {
         sessionID: "root", location: { directory: "C:\\moved" },
       } })
@@ -345,6 +385,7 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
         return [topic, payload.cwd, payload.reason]
       }), [
         ["agent.session.start", directory, undefined],
+        ["agent.session.renamed", undefined, undefined],
         ["agent.cwd.changed", "C:\\moved", undefined],
         ["agent.session.end", undefined, "tui_disposed"],
       ])

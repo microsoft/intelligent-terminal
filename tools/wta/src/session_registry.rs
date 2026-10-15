@@ -1025,6 +1025,11 @@ pub enum SessionHookParams {
         cwd: PathBuf,
         title: String,
     },
+    SessionRenamed {
+        key: crate::agent_sessions::AgentKey,
+        pane_session_id: String,
+        title: String,
+    },
     WorkingDirectoryChanged {
         key: crate::agent_sessions::AgentKey,
         pane_session_id: String,
@@ -1080,6 +1085,15 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
                 cli_source: SessionHookCliSource::from(cli_source),
                 pane_session_id: pane_session_id.clone(),
                 cwd: cwd.clone(),
+                title: title.clone(),
+            },
+            SessionEvent::SessionRenamed {
+                key,
+                pane_session_id,
+                title,
+            } => Self::SessionRenamed {
+                key: key.clone(),
+                pane_session_id: pane_session_id.clone(),
                 title: title.clone(),
             },
             SessionEvent::WorkingDirectoryChanged {
@@ -1144,6 +1158,15 @@ impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
                 cli_source: cli_source.into(),
                 pane_session_id,
                 cwd,
+                title,
+            },
+            SessionHookParams::SessionRenamed {
+                key,
+                pane_session_id,
+                title,
+            } => Self::SessionRenamed {
+                key,
+                pane_session_id,
                 title,
             },
             SessionHookParams::WorkingDirectoryChanged {
@@ -2281,6 +2304,15 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             pane_session_id: pane_key(&pane_session_id),
             cwd,
         },
+        SessionEvent::SessionRenamed {
+            key,
+            pane_session_id,
+            title,
+        } => SessionEvent::SessionRenamed {
+            key,
+            pane_session_id: pane_key(&pane_session_id),
+            title,
+        },
         SessionEvent::ConnectionFailed {
             pane_session_id,
             reason,
@@ -2458,6 +2490,43 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             // session started in the same pane may take over normally.
             entry.born_bound_pane = false;
             upsert_locked(state, entry);
+            true
+        }
+        SessionEvent::SessionRenamed {
+            key,
+            pane_session_id,
+            title,
+        } => {
+            if pane_session_id.is_empty() || title.trim().is_empty() {
+                return false;
+            }
+            let sid = acp::schema::v1::SessionId::new(key);
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
+            if state.active_by_pane.get(&pane_session_id) != Some(&identity) {
+                return false;
+            }
+            let Some(entry) = state.sessions.get_mut(&identity) else {
+                return false;
+            };
+            if entry.cli_source != Some(crate::agent_sessions::CliSource::OpenCode)
+                || entry.pane_session_id.as_deref() != Some(pane_session_id.as_str())
+                || !matches!(
+                    entry.status,
+                    Some(
+                        AgentStatus::Idle
+                            | AgentStatus::Working
+                            | AgentStatus::Attention
+                            | AgentStatus::Error
+                    )
+                )
+                || entry.title.as_deref() == Some(title.as_str())
+            {
+                return false;
+            }
+            entry.title = Some(title);
+            entry.last_activity_at_ms = Some(now);
             true
         }
         SessionEvent::WorkingDirectoryChanged {

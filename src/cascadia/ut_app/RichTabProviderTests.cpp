@@ -656,6 +656,8 @@ namespace TerminalAppUnitTests
 
         Registration provider;
         provider.manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        provider.kind = RegistrationKind::Managed;
+        provider.root = BuiltInProviderCatalog::PackageRoot() / L"RichTabProviders" / L"GitStatus";
         provider.manifest.runtime.kind = RuntimeKind::PowerShellV1;
         provider.manifest.runtime.entrypoint = L"provider.ps1";
         provider.manifest.extensionRoot = providerRoot;

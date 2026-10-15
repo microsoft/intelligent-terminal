@@ -3438,6 +3438,16 @@ namespace TerminalAppLocalTests
             const auto paneSessionId = control.Connection().SessionId();
             const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToString(paneSessionId));
 
+            Json::Value serverOnly;
+            serverOnly["params"]["pane_id"] = paneId;
+            serverOnly["params"]["event"] = "agent.prompt.submit";
+            serverOnly["params"]["agent_session_id"] = "opencode-server-only";
+            serverOnly["params"]["cli_source"] = "opencode";
+            serverOnly["params"]["payload"]["pane_owner"] = false;
+            page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, serverOnly)));
+            VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneSessionId));
+            VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(paneSessionId));
+
             const auto event = [&](const std::string_view name, const std::string_view sessionId = "agent-session-resumed") {
                 Json::Value evt;
                 evt["params"]["pane_id"] = paneId;

@@ -189,6 +189,7 @@ namespace wtcli
         "notification_type",
         "reason",
         "error",
+        "pane_owner",
     };
     inline constexpr const char* kConsumedToolInputKeys[] = {
         "question",
@@ -236,6 +237,10 @@ namespace wtcli
             if (member.isString())
             {
                 reduced[key] = ClampUtf8(member.asString(), kMaxRetainedFieldChars);
+            }
+            else if (member.isBool() && std::string_view{ key } == "pane_owner")
+            {
+                reduced[key] = member;
             }
             else if (member.isObject())
             {

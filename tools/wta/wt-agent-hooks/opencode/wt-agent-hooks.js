@@ -85,6 +85,7 @@ const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true }) => {
             session_id: sessionID,
             cwd: rootSessions.get(sessionID)?.cwd || directory,
             ...payload,
+            ...(ownsPane ? {} : { pane_owner: false }),
           }),
         ),
         stdout: "ignore",
