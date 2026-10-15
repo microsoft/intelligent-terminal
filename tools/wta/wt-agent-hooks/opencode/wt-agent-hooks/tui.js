@@ -45,12 +45,15 @@ export default {
       if (!session || session.parentID) return;
       if (bound?.id !== sessionID || reclaim) {
         const newBinding = bound?.id !== sessionID;
+        const running = context.data.session.status(sessionID) === "running";
         bound = { id: sessionID, directory, title: session.title };
-        send("agent.session.start", sessionID, {
+        const start = {
           cwd: directory,
           title: session.title,
-        });
-        if (newBinding && context.data.session.status(sessionID) === "running") {
+        };
+        if (reclaim && !newBinding && running) start.running = true;
+        send("agent.session.start", sessionID, start);
+        if (newBinding && running) {
           send("agent.prompt.submit", sessionID);
         }
       } else if (bound.directory !== directory) {

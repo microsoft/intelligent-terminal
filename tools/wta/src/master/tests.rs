@@ -18276,36 +18276,55 @@ async fn master_opencode_end_from_old_pane_preserves_new_owner() {
 async fn master_opencode_view_reclaims_session_after_other_pane_disposes() {
     use crate::agent_sessions::AgentStatus;
 
-    let state = make_state();
-    let sid = SessionId::new("opencode-reclaimed");
-    let hook = |pane, event| {
-        serde_json::json!({
-            "method": "agent_event",
-            "params": {
-                "event": event,
-                "cli_source": "opencode",
-                "agent_session_id": "opencode-reclaimed",
-                "pane_id": pane,
-                "payload": { "cwd": "C:\\repo" }
-            }
-        })
-    };
-    for (pane, event) in [
-        ("first-pane", "agent.session.start"),
-        ("second-pane", "agent.session.start"),
-        ("second-pane", "agent.session.end"),
-        ("first-pane", "agent.session.start"),
-        ("second-pane", "agent.session.end"),
-    ] {
-        handle_master_wt_event(&state, hook(pane, event)).await;
+    for running in [false, true] {
+        let state = make_state();
+        let sid = SessionId::new("opencode-reclaimed");
+        let hook = |pane, event, reported_running| {
+            serde_json::json!({
+                "method": "agent_event",
+                "params": {
+                    "event": event,
+                    "cli_source": "opencode",
+                    "agent_session_id": "opencode-reclaimed",
+                    "pane_id": pane,
+                    "payload": { "cwd": "C:\\repo", "running": reported_running }
+                }
+            })
+        };
+        handle_master_wt_event(&state, hook("first-pane", "agent.session.start", false)).await;
+        handle_master_wt_event(&state, hook("second-pane", "agent.session.start", false)).await;
+        if running {
+            handle_master_wt_event(&state, hook("second-pane", "agent.prompt.submit", false)).await;
+            handle_master_wt_event(&state, hook("second-pane", "agent.notification", false)).await;
+            assert_eq!(
+                state.registry.lookup(&sid).await.unwrap().status,
+                Some(AgentStatus::Attention)
+            );
+            handle_master_wt_event(&state, hook("second-pane", "agent.session.start", true)).await;
+            assert_eq!(
+                state.registry.lookup(&sid).await.unwrap().status,
+                Some(AgentStatus::Attention),
+                "viewing an already-live session must preserve Attention"
+            );
+        }
+        handle_master_wt_event(&state, hook("second-pane", "agent.session.end", false)).await;
+        handle_master_wt_event(&state, hook("first-pane", "agent.session.start", running)).await;
+        handle_master_wt_event(&state, hook("second-pane", "agent.session.end", false)).await;
+        let row = state
+            .registry
+            .lookup(&sid)
+            .await
+            .expect("view restores session");
+        assert_eq!(row.pane_session_id.as_deref(), Some("first-pane"));
+        assert_eq!(
+            row.status,
+            Some(if running {
+                AgentStatus::Working
+            } else {
+                AgentStatus::Idle
+            })
+        );
     }
-    let row = state
-        .registry
-        .lookup(&sid)
-        .await
-        .expect("view restores session");
-    assert_eq!(row.pane_session_id.as_deref(), Some("first-pane"));
-    assert_eq!(row.status, Some(AgentStatus::Idle));
 }
 
 #[tokio::test]

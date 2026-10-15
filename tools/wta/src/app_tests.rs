@@ -1066,6 +1066,7 @@ fn cwd_hook_requires_a_known_session_and_prefers_new_cwd() {
     let facts = crate::app::AgentEventFacts {
         key: "cwd-session".into(),
         session_known: false,
+        session_status: None,
         pane_owned_by_other: false,
     };
     let absent = crate::app::plan_agent_event(
@@ -1149,6 +1150,7 @@ fn prompt_refreshes_existing_session_cwd_without_rebinding_its_pane() {
     let facts = crate::app::AgentEventFacts {
         key: "native-session".into(),
         session_known: true,
+        session_status: None,
         pane_owned_by_other: false,
     };
     for (source, payload, foreign_owner) in [

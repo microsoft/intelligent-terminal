@@ -526,6 +526,9 @@ pub struct AgentEventFacts {
     pub key: String,
     /// Whether a row already exists for `key`.
     pub session_known: bool,
+    /// Status before applying this event; a TUI can report current activity
+    /// when reclaiming an ended OpenCode session without changing live Attention.
+    pub session_status: Option<crate::agent_sessions::AgentStatus>,
     /// An existing live session other than `key` owns the hook's pane.
     pub pane_owned_by_other: bool,
 }
@@ -779,6 +782,22 @@ pub fn plan_agent_event(
         }
     };
     plan.events.push(primary);
+    if event == "agent.session.start"
+        && *cli_source == crate::agent_sessions::CliSource::OpenCode
+        && payload.get("running").and_then(|value| value.as_bool()) == Some(true)
+        && matches!(
+            facts.session_status.as_ref(),
+            Some(
+                crate::agent_sessions::AgentStatus::Ended
+                    | crate::agent_sessions::AgentStatus::Historical
+            )
+        )
+    {
+        plan.events.push(SessionEvent::ToolStarting {
+            key: facts.key.clone(),
+            tool_name: "prompt".to_string(),
+        });
+    }
     plan
 }
 
@@ -1019,6 +1038,10 @@ where
         session_known: reg
             .get(&key)
             .is_some_and(|row| row.cli_source == cli_source),
+        session_status: reg
+            .get(&key)
+            .filter(|row| row.cli_source == cli_source)
+            .map(|row| row.status.clone()),
         pane_owned_by_other: reg.key_for_pane(&owner_pane).is_some_and(|owner| {
             reg.get(&owner).is_some_and(|row| {
                 row.liveness() == crate::agent_sessions::LivenessState::Live

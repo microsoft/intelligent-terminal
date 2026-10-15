@@ -175,28 +175,34 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
     })
 
     it("a local view reclaims a shared session after the other TUI closes", async () => {
-      sessions.set("root", { id: "root", title: "Shared", location: { directory: "C:\\repo" } })
-      const secondHandlers = new Map()
-      const secondContext = {
-        ...context,
-        data: {
-          ...context.data,
-          on: (event, handler) => {
-            secondHandlers.set(event, handler)
-            return () => secondHandlers.delete(event)
+      for (const activity of ["idle", "running"]) {
+        calls.length = 0
+        sessions.set("root", { id: "root", title: "Shared", location: { directory: "C:\\repo" } })
+        statuses.set("root", activity)
+        const secondHandlers = new Map()
+        const secondContext = {
+          ...context,
+          data: {
+            ...context.data,
+            on: (event, handler) => {
+              secondHandlers.set(event, handler)
+              return () => secondHandlers.delete(event)
+            },
           },
-        },
+        }
+        const firstDispose = tuiPlugin.setup(context)
+        const secondDispose = tuiPlugin.setup(secondContext)
+        await secondDispose()
+        emit("session.viewed", { sessionID: "root" })
+        await firstDispose.flush()
+        assert.deepEqual(calls.filter((call) => call.topic === "agent.session.start").map((call) => call.payload.running),
+          [undefined, undefined, activity === "running" ? true : undefined])
+        assert.equal(calls.filter((call) => call.topic === "agent.prompt.submit").length,
+          activity === "running" ? 2 : 0)
+        assert.equal(calls.at(-1).topic, "agent.session.start")
+        await firstDispose()
+        assert.equal(calls.at(-1).topic, "agent.session.end")
       }
-      const firstDispose = tuiPlugin.setup(context)
-      const secondDispose = tuiPlugin.setup(secondContext)
-      await secondDispose()
-      emit("session.viewed", { sessionID: "root" })
-      await firstDispose.flush()
-      assert.deepEqual(calls.map((call) => call.topic), [
-        "agent.session.start", "agent.session.start", "agent.session.end", "agent.session.start",
-      ])
-      await firstDispose()
-      assert.equal(calls.at(-1).topic, "agent.session.end")
     })
 
     it("suppresses hooks outside a Terminal pane and in ACP mode", () => {

@@ -10701,6 +10701,12 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
                     .is_some_and(|pane| crate::agent_sessions::pane_key(pane) == pane_key)
         });
     let facts = crate::app::AgentEventFacts {
+        session_status: rows
+            .iter()
+            .find(|row| {
+                row.session_id.0.as_ref() == key && row.cli_source.as_ref() == Some(&cli_source)
+            })
+            .and_then(|row| row.status.clone()),
         key,
         session_known: session_known || non_binding_opencode,
         pane_owned_by_other,
