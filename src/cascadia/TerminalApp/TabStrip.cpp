@@ -308,7 +308,10 @@ namespace winrt::TerminalApp::implementation
 
     WUX::Controls::IconElement TabStripDisplayItem::CreateIcon(IInspectable const& source) const
     {
-        return ::Microsoft::Terminal::UI::AgentIcons::ElementForIconSource(source.as<MUX::Controls::IconSource>(), _iconPath.value_or(winrt::hstring{}));
+        auto element = ::Microsoft::Terminal::UI::AgentIcons::ElementForIconSource(source.as<MUX::Controls::IconSource>(), _iconPath.value_or(winrt::hstring{}));
+        element.Width(16);
+        element.Height(16);
+        return element;
     }
 
     void TabStripDisplayItem::IconSource(IInspectable const& value)

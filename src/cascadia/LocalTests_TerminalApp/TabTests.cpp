@@ -13794,6 +13794,29 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(display.IconSource() == profileIcon);
             VERIFY_IS_TRUE(iconPresenter.Content() == profileVisual);
         });
+
+        // Bitmap icons have no intrinsic layout size. Exercise the actual
+        // collapsed template with a packaged bitmap as well as the font above.
+        TestOnUIThread([&]() {
+            tab->UpdateIcon(L"ms-appx:///taef.png", IconStyle::Default);
+            page->_ApplyTabListProjection(*tab);
+            page->UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            const auto bitmap = iconPresenter.Content().try_as<BitmapIcon>();
+            return bitmap && bitmap.IsLoaded() &&
+                   bitmap.ActualWidth() == 16.0 && bitmap.ActualHeight() == 16.0;
+        });
+        TestOnUIThread([&]() {
+            const auto bitmap = iconPresenter.Content().as<BitmapIcon>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///taef.png" }, bitmap.UriSource().AbsoluteUri());
+            const auto root = Media::VisualTreeHelper::GetParent(Media::VisualTreeHelper::GetParent(iconPresenter)).as<FrameworkElement>();
+            const auto bounds = bitmap.TransformToVisual(root).TransformBounds({ 0, 0, 16, 16 });
+            VERIFY_IS_TRUE(bounds.X >= 0 && bounds.X + bounds.Width <= root.ActualWidth());
+            VERIFY_IS_TRUE(std::abs(bounds.X + bounds.Width / 2 - root.ActualWidth() / 2) <= 1.0);
+            VERIFY_IS_TRUE(display.IconSource() == tab->TabViewItem().IconSource());
+        });
     }
 
     void TabTests::ProgressReplacementPreservesIndependentStatusGlyphs()
@@ -15394,7 +15417,7 @@ namespace TerminalAppLocalTests
                                            actualName.find(std::wstring_view{ expectedPercent.c_str(), expectedPercent.size() }) != std::wstring_view::npos;
                 const auto foreground = ring.Foreground().try_as<Media::SolidColorBrush>();
                 const auto foregroundMatches = !expectedForeground.has_value() ?
-                                                   foreground == nullptr :
+                                                   ring.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue() :
                                                    foreground != nullptr && foreground.Color() == *expectedForeground;
                 const auto progressSlot = Media::VisualTreeHelper::GetParent(ring).as<Grid>();
                 if (!logged)

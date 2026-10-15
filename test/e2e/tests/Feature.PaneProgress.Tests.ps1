@@ -365,9 +365,17 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                 $items | Should -HaveCount 3
                 $row = $items[$TabIndex]
                 $bounds = $row.Current.BoundingRectangle
-                $size = 16 * $script:scale
-                $slot = [Windows.Rect]::new($bounds.X + ($bounds.Width - $size) / 2,
-                    $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
+                $row.Current.Name | Should -BeLike "$Title*" -Because 'the canonical tab index must identify the requested owned title'
+                $visibleIconBounds = @(Get-LeadingIdentityPeers -Row $row | ForEach-Object {
+                    $_.Current.BoundingRectangle
+                } | Where-Object {
+                    $_.Width -ge 15 * $script:scale -and $_.Width -le 17 * $script:scale -and
+                    $_.Height -ge 15 * $script:scale -and $_.Height -le 17 * $script:scale
+                } | Sort-Object -Property X, Y, Width, Height -Unique)
+                $visibleIconBounds | Should -HaveCount 1 -Because 'the compact slot comes from one realized identity, not a guessed row-center crop'
+                $slot = $visibleIconBounds[0]
+                [math]::Abs(($slot.X + $slot.Width / 2) - ($bounds.X + $bounds.Width / 2)) |
+                    Should -BeLessOrEqual $script:scale -Because 'the realized icon must be centered in its compact row'
             }
             else {
                 $titles = @(Get-OwnedElements Name $Title | Where-Object {
@@ -426,7 +434,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                 $peer = $entry.peer
                 $bounds = $peer.Current.BoundingRectangle
                 if (-not $peer.Current.IsOffscreen -and $bounds.Width -gt 0 -and $bounds.Height -gt 0 -and
-                    $Slot.IntersectsWith($bounds) -and
+                    (-not $Slot -or $Slot.IntersectsWith($bounds)) -and
                     $peer.Current.ClassName -match '^(Image|BitmapIcon|ImageIcon|PathIcon|FontIcon|IconElement)$') {
                     $peer
                 }
@@ -438,6 +446,34 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                     }
                 }
             }
+        }
+        function Save-LeadingSlotTree {
+            param($Leading, [string]$Name)
+            # Keep the realized geometry alongside compositor evidence. A model
+            # row center is not evidence that its identity was actually painted.
+            $walker = [Windows.Automation.TreeWalker]::RawViewWalker
+            $queue = [Collections.Generic.Queue[object]]::new()
+            $queue.Enqueue(@{ peer = $Leading.row; depth = 0 })
+            $nodes = @()
+            while ($queue.Count) {
+                $entry = $queue.Dequeue()
+                $current = $entry.peer.Current
+                $nodes += @{
+                    depth = $entry.depth; name = $current.Name; class = $current.ClassName
+                    automationId = $current.AutomationId; controlType = $current.ControlType.ProgrammaticName
+                    bounds = $current.BoundingRectangle.ToString(); offscreen = $current.IsOffscreen
+                    pid = $current.ProcessId; runtimeId = @($entry.peer.GetRuntimeId())
+                }
+                if ($entry.depth -lt 12) {
+                    $child = $walker.GetFirstChild($entry.peer)
+                    while ($child) {
+                        $queue.Enqueue(@{ peer = $child; depth = $entry.depth + 1 })
+                        $child = $walker.GetNextSibling($child)
+                    }
+                }
+            }
+            @{ slot = $Leading.slot.ToString(); scale = $script:scale; nodes = $nodes } |
+                ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $script:evidence "$Name-tree.json")
         }
         function Get-RowProgress {
             param($Row)
@@ -650,20 +686,11 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         try {
             @(Get-OwnedElements AutomationId TabGroupToggleButton) | Should -HaveCount 0
             Save-CompositorFrame group-slot-compact
-            $list = @(Get-OwnedElements AutomationId ItemsList)
-            $list | Should -HaveCount 1
-            $condition = [Windows.Automation.PropertyCondition]::new(
-                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
-            $items = @($list[0].FindAll([Windows.Automation.TreeScope]::Children, $condition) |
-                Where-Object { -not $_.Current.IsOffscreen })
-            $items | Should -HaveCount 3
             $active = Get-ActivePane -App $script:app
             $active.session_id | Should -Be $script:a.session_id
-            $bounds = $items[[int]$active.tab_id].Current.BoundingRectangle
-            $size = 16 * $script:scale
-            $icon = [Windows.Rect]::new($bounds.X + ($bounds.Width - $size) / 2, $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
-            $bounds.Contains($icon) | Should -BeTrue
-            Get-VisualDigest -Bounds $icon -Name compact-group-profile -Icon | Out-Null
+            $leading = Get-LeadingSlot collapsed -TabIndex ([int]$active.tab_id)
+            Save-LeadingSlotTree $leading 'compact-group-profile'
+            Get-VisualDigest -Bounds $leading.slot -Name compact-group-profile -Icon | Out-Null
         }
         finally { Invoke-UiElement -App $script:app -Selector 'Expand sidebar' | Out-Null }
         Wait-UiElement -App $script:app -Selector PaneActivateButton | Out-Null
@@ -826,6 +853,7 @@ $endHook
             }
             Save-CompositorFrame "$token-$Surface-baseline-window"
             $baseline = Get-LeadingSlot $Surface
+            Save-LeadingSlotTree $baseline "$token-$Surface-baseline"
             @(Get-RowProgress $baseline.row) | Should -HaveCount 0
             $icon = Get-VisualDigest -Bounds $baseline.slot -Name "$token-baseline" -Icon
             $identityPeers = @(Get-LeadingIdentityPeers $baseline.row $baseline.slot)
