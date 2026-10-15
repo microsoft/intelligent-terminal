@@ -86,6 +86,7 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       await dispose()
       assert.deepEqual(calls.map(({ topic, payload }) => [topic, payload.session_id, payload.cwd]), [
         ["agent.session.start", "root", "C:\\first"],
+        ["agent.session.start", "root", "C:\\first"],
         ["agent.cwd.changed", "root", "C:\\second"],
         ["agent.session.end", "root", undefined],
       ])
@@ -171,6 +172,31 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       assert.deepEqual(calls.filter((call) => call.topic === "agent.session.renamed").map((call) => call.payload.title),
         ["Shared rename", "Shared rename"])
       assert.equal(handlers.size + secondHandlers.size, 0)
+    })
+
+    it("a local view reclaims a shared session after the other TUI closes", async () => {
+      sessions.set("root", { id: "root", title: "Shared", location: { directory: "C:\\repo" } })
+      const secondHandlers = new Map()
+      const secondContext = {
+        ...context,
+        data: {
+          ...context.data,
+          on: (event, handler) => {
+            secondHandlers.set(event, handler)
+            return () => secondHandlers.delete(event)
+          },
+        },
+      }
+      const firstDispose = tuiPlugin.setup(context)
+      const secondDispose = tuiPlugin.setup(secondContext)
+      await secondDispose()
+      emit("session.viewed", { sessionID: "root" })
+      await firstDispose.flush()
+      assert.deepEqual(calls.map((call) => call.topic), [
+        "agent.session.start", "agent.session.start", "agent.session.end", "agent.session.start",
+      ])
+      await firstDispose()
+      assert.equal(calls.at(-1).topic, "agent.session.end")
     })
 
     it("suppresses hooks outside a Terminal pane and in ACP mode", () => {

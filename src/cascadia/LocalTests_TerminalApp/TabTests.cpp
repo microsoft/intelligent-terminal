@@ -425,6 +425,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentBillingUsesLocaleCurrencyFormatting);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
         TEST_METHOD(FailedAgentStatusRefreshDoesNotRestoreStaleCwds);
+        TEST_METHOD(UnknownAgentSessionDoesNotReusePreviousCwd);
         TEST_METHOD(LatestBuiltinAgentReportWinsForPane);
         TEST_METHOD(AgentSnapshotTiesPreserveLastReceivedPaneReport);
         TEST_METHOD(AgentSnapshotSelectionIsIndependentOfRowOrder);
@@ -8055,7 +8056,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
                 "session-b", "00000000-0000-0000-0000-000000000002", "claude", uint64_t{ 1000 }, "Idle", std::string{ "D:\\old-b" }));
             VERIFY_IS_TRUE(page->_richTabAgentStatusBySessionId.at("session-b").cwd.has_value());
-            page->_InvalidateRichTabAgentCwds();
+            page->_InvalidateRichTabAgentCwdCache();
             VERIFY_IS_FALSE(page->_richTabAgentCwdAvailable);
             VERIFY_IS_FALSE(page->_richTabAgentStatusBySessionId.at("session-a").cwd.has_value());
             VERIFY_IS_FALSE(page->_richTabAgentStatusByPaneId.at(firstPane).cwd.has_value());
@@ -8068,6 +8069,39 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(std::string{ "C:\\new-a" }, page->_richTabAgentStatusByPaneId.at(firstPane).cwd.value());
             VERIFY_IS_FALSE(page->_richTabAgentStatusBySessionId.at("session-b").cwd.has_value());
             VERIFY_IS_FALSE(page->_richTabAgentStatusByPaneId.at(secondPane).cwd.has_value());
+        });
+    }
+
+    void TabTests::UnknownAgentSessionDoesNotReusePreviousCwd()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto control = page->_GetFocusedTabImpl()->GetActiveTerminalControl();
+            const auto paneId = control.Connection().SessionId();
+            const auto paneIdString = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(paneId));
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                "previous-session", paneIdString, "copilot", uint64_t{ 1000 }, "Idle", std::string{ "C:\\previous" }));
+            page->_richTabAgentCwdAvailable = true;
+            page->_paneAgentSessions[paneId] = { L"previous-session", L"copilot", {} };
+            auto [active, cwd] = page->_RichTabAgentCwdForControl(control);
+            VERIFY_IS_TRUE(active);
+            VERIFY_ARE_EQUAL(std::string{ "C:\\previous" }, cwd.value());
+
+            page->_activeCliAgentPanes[paneId] = { {} };
+            std::tie(active, cwd) = page->_RichTabAgentCwdForControl(control);
+            VERIFY_IS_TRUE(active);
+            VERIFY_IS_FALSE(cwd.has_value());
+
+            page->_activeCliAgentPanes.erase(paneId);
+            page->_paneAgentSessions[paneId].sessionId.clear();
+            std::tie(active, cwd) = page->_RichTabAgentCwdForControl(control);
+            VERIFY_IS_TRUE(active);
+            VERIFY_IS_FALSE(cwd.has_value());
+
+            page->_paneAgentSessions[paneId].sessionId = L"next-session";
+            std::tie(active, cwd) = page->_RichTabAgentCwdForControl(control);
+            VERIFY_IS_TRUE(active);
+            VERIFY_IS_FALSE(cwd.has_value());
         });
     }
 

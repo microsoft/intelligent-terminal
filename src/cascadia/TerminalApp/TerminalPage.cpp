@@ -11834,6 +11834,10 @@ namespace winrt::TerminalApp::implementation
                 expectedSession = winrt::to_string(binding->second.sessionId);
             }
         }
+        if (hasOwner && !expectedSession)
+        {
+            return { true, std::nullopt };
+        }
         if (!hasOwner)
         {
             hasOwner = !winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId()).empty();
@@ -12012,7 +12016,7 @@ namespace winrt::TerminalApp::implementation
         _LoadRichTabAgentStatuses(++_richTabAgentStatusRequestGeneration);
     }
 
-    void TerminalPage::_InvalidateRichTabAgentCwds()
+    void TerminalPage::_InvalidateRichTabAgentCwdCache()
     {
         _richTabAgentCwdAvailable = false;
         for (auto& [sessionId, info] : _richTabAgentStatusBySessionId)
@@ -12112,7 +12116,7 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                page->_InvalidateRichTabAgentCwds();
+                page->_InvalidateRichTabAgentCwdCache();
             }
             page->_richTabAgentStatusAutoRefreshBlocked = !parsed;
         }

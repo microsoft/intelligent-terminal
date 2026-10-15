@@ -1908,6 +1908,7 @@ struct HistoryRefreshState {
     last_count: Option<usize>,
     query: history::HistoryQuery,
     owner: Option<AgentInstanceId>,
+    cwd_baseline: Option<HashMap<crate::session_registry::SessionIdentity, (u64, Option<String>)>>,
 }
 
 impl HistoryRefreshState {
@@ -7143,24 +7144,44 @@ async fn sync_host_history(
     search_later_pages: bool,
 ) -> Result<(bool, usize), HistoryRefreshFailure> {
     let host_acp_cwd = host_acp_cwd_enabled(agent);
-    let prior_rows: HashMap<_, _> = if host_acp_cwd {
-        state
-            .registry
-            .snapshot()
-            .await
-            .into_iter()
-            .filter(|row| row_belongs_to_agent(row, agent))
-            .map(|row| {
-                (
-                    crate::session_registry::SessionIdentity::from_info(&row),
-                    (row.cwd_revision(), row.pane_session_id),
-                )
-            })
-            .collect()
+    if host_acp_cwd
+        && (!refresh.query.in_flight()
+            || refresh.owner != Some(agent.instance_id)
+            || refresh.cwd_baseline.is_none())
+    {
+        refresh.cwd_baseline = Some(
+            state
+                .registry
+                .snapshot()
+                .await
+                .into_iter()
+                .filter(|row| row_belongs_to_agent(row, agent))
+                .map(|row| {
+                    (
+                        crate::session_registry::SessionIdentity::from_info(&row),
+                        (row.cwd_revision(), row.pane_session_id),
+                    )
+                })
+                .collect(),
+        );
+    }
+    let listing = match host_session_list_raw(agent, refresh).await {
+        Ok(listing) => listing,
+        Err(error) => {
+            if !refresh.query.in_flight() {
+                refresh.cwd_baseline = None;
+            }
+            return Err(error);
+        }
+    };
+    let prior_rows = if host_acp_cwd {
+        refresh
+            .cwd_baseline
+            .take()
+            .expect("host ACP cwd baseline captured before session/list")
     } else {
         HashMap::new()
     };
-    let listing = host_session_list_raw(agent, refresh).await?;
     let mut listing_complete = listing.next_cursor.is_none();
     let sessions = listing.sessions;
     if agent

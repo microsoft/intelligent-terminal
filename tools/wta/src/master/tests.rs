@@ -14775,6 +14775,67 @@ async fn pooled_opencode_v2_cwd_adopts_listing_but_v1_keeps_hook() {
         .await;
 }
 
+#[tokio::test(start_paused = true)]
+async fn pooled_opencode_v2_late_listing_cannot_override_newer_hook_cwd() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (mut agent, mut requests) =
+                controlled_history_agent("opencode", crate::agent_source::AgentSource::Host);
+            Arc::get_mut(&mut agent)
+                .unwrap()
+                .cached_init_resp
+                .agent_info = Some(acp::schema::v1::Implementation::new("OpenCode", "2.0.24"));
+            let sid = SessionId::new("opencode-late");
+            let mut live = crate::session_registry::SessionInfo::new(
+                sid.clone(),
+                PathBuf::from("C:\\original"),
+            );
+            live.provider_id = Some("opencode".into());
+            live.location = crate::agent_sessions::SessionLocation::Host;
+            live.status = Some(crate::agent_sessions::AgentStatus::Idle);
+            live.pane_session_id = Some("opencode-pane".into());
+            state.registry.upsert(live).await;
+
+            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            tokio::pin!(refresh);
+            let reply = tokio::select! {
+                reply = requests.recv() => reply.unwrap(),
+                _ = &mut refresh => panic!("query ended without a response"),
+            };
+            tokio::time::advance(std::time::Duration::from_secs(5)).await;
+            assert_eq!(refresh.await, None);
+            assert!(agent.history_refresh.gate.lock().await.query.in_flight());
+            state
+                .registry
+                .apply_event(
+                    crate::agent_sessions::SessionEvent::WorkingDirectoryChanged {
+                        key: sid.to_string(),
+                        pane_session_id: "opencode-pane".into(),
+                        cwd: PathBuf::from("C:\\new-hook"),
+                    },
+                )
+                .await;
+
+            let retry = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            tokio::pin!(retry);
+            assert!(futures::poll!(&mut retry).is_pending());
+            assert!(
+                requests.try_recv().is_err(),
+                "retry retains the original query"
+            );
+            let mut old = history_row("opencode-late", "Old listing");
+            old.cwd = PathBuf::from("C:\\old-acp");
+            reply.send(Ok(vec![old])).unwrap();
+            assert_eq!(retry.await, Some(1));
+            assert_eq!(
+                state.registry.lookup(&sid).await.unwrap().cwd,
+                PathBuf::from("C:\\new-hook")
+            );
+        })
+        .await;
+}
+
 #[tokio::test]
 async fn pooled_opencode_v2_finds_bound_cwd_on_later_page() {
     tokio::task::LocalSet::new()
@@ -18209,6 +18270,42 @@ async fn master_opencode_end_from_old_pane_preserves_new_owner() {
         state.registry.lookup(&sid).await.unwrap().status,
         Some(AgentStatus::Ended)
     );
+}
+
+#[tokio::test]
+async fn master_opencode_view_reclaims_session_after_other_pane_disposes() {
+    use crate::agent_sessions::AgentStatus;
+
+    let state = make_state();
+    let sid = SessionId::new("opencode-reclaimed");
+    let hook = |pane, event| {
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": event,
+                "cli_source": "opencode",
+                "agent_session_id": "opencode-reclaimed",
+                "pane_id": pane,
+                "payload": { "cwd": "C:\\repo" }
+            }
+        })
+    };
+    for (pane, event) in [
+        ("first-pane", "agent.session.start"),
+        ("second-pane", "agent.session.start"),
+        ("second-pane", "agent.session.end"),
+        ("first-pane", "agent.session.start"),
+        ("second-pane", "agent.session.end"),
+    ] {
+        handle_master_wt_event(&state, hook(pane, event)).await;
+    }
+    let row = state
+        .registry
+        .lookup(&sid)
+        .await
+        .expect("view restores session");
+    assert_eq!(row.pane_session_id.as_deref(), Some("first-pane"));
+    assert_eq!(row.status, Some(AgentStatus::Idle));
 }
 
 #[tokio::test]

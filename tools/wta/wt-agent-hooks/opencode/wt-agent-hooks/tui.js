@@ -39,17 +39,18 @@ export default {
       const route = context.ui.router.current();
       return route.type === "session" && route.sessionID === sessionID;
     }
-    function bind(sessionID, directory) {
+    function bind(sessionID, directory, reclaim = false) {
       if (!sessionID || !directory || !selected(sessionID)) return;
       const session = context.data.session.get(sessionID);
       if (!session || session.parentID) return;
-      if (bound?.id !== sessionID) {
+      if (bound?.id !== sessionID || reclaim) {
+        const newBinding = bound?.id !== sessionID;
         bound = { id: sessionID, directory, title: session.title };
         send("agent.session.start", sessionID, {
           cwd: directory,
           title: session.title,
         });
-        if (context.data.session.status(sessionID) === "running") {
+        if (newBinding && context.data.session.status(sessionID) === "running") {
           send("agent.prompt.submit", sessionID);
         }
       } else if (bound.directory !== directory) {
@@ -67,7 +68,7 @@ export default {
     }
     const onViewed = context.data.on("session.viewed", ({ data }) => {
       const session = context.data.session.get(data.sessionID);
-      if (session) bind(data.sessionID, session.location?.directory);
+      if (session) bind(data.sessionID, session.location?.directory, true);
     });
     const onCreated = context.data.on("session.created", ({ data }) => {
       bind(data.sessionID, data.location?.directory);
