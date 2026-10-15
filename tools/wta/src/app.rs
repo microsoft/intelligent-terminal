@@ -786,7 +786,6 @@ pub fn plan_agent_event(
     if event == "agent.session.start"
         && *cli_source == crate::agent_sessions::CliSource::OpenCode
         && payload.get("running").and_then(|value| value.as_bool()) == Some(true)
-        && !facts.pane_owned_by_other
         && !matches!(
             facts.session_status.as_ref(),
             Some(

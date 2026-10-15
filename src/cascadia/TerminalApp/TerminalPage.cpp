@@ -11010,6 +11010,40 @@ namespace winrt::TerminalApp::implementation
         _RaiseProtocolEvent("agent_event", params);
     }
 
+    void TerminalPage::_ReconcileShellPromptAgentExit(const TermControl& control)
+    {
+        const auto paneId = _TryParsePaneSessionId(_FindSessionIdForControl(control));
+        if (!paneId)
+        {
+            return;
+        }
+        const auto active = _activeCliAgentPanes.find(*paneId);
+        if (active == _activeCliAgentPanes.end() ||
+            !winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId()).empty())
+        {
+            return;
+        }
+        for (const auto& runtimeTab : _RuntimeTabs())
+        {
+            if (const auto tab = _GetTabImpl(runtimeTab))
+            {
+                if (const auto rootPane = tab->GetRootPane())
+                {
+                    if (const auto ownerPane = rootPane->FindPaneBySessionId(*paneId);
+                        ownerPane && ownerPane->GetContent().try_as<AgentPaneContent>())
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+
+        // The prompt retires activity, not the resumable binding used to restore this pane.
+        _richTabEndedSessionByPaneId.insert_or_assign(*paneId, winrt::to_string(active->second.sessionId));
+        _activeCliAgentPanes.erase(active);
+        _ApplyTabListProjection();
+    }
+
     void TerminalPage::OnPaneAgentSessionChanged(hstring eventJson)
     {
         // COM ingress updates the manager once through TrackPaneAgentSession.
@@ -11834,6 +11868,16 @@ namespace winrt::TerminalApp::implementation
                 expectedSession = winrt::to_string(binding->second.sessionId);
             }
         }
+        if (!_activeCliAgentPanes.contains(*paneId) &&
+            _paneAgentSessions.contains(*paneId))
+        {
+            if (const auto ended = _richTabEndedSessionByPaneId.find(*paneId);
+                ended != _richTabEndedSessionByPaneId.end() &&
+                (!expectedSession || ended->second.empty() || ended->second == *expectedSession))
+            {
+                return { false, std::nullopt };
+            }
+        }
         if (hasOwner && !expectedSession)
         {
             return { true, std::nullopt };
@@ -12414,6 +12458,10 @@ namespace winrt::TerminalApp::implementation
                             {
                                 if (const auto richTabControl = weakTerm.get())
                                 {
+                                    if (seqStr == "osc:133;A")
+                                    {
+                                        page->_ReconcileShellPromptAgentExit(richTabControl);
+                                    }
                                     page->_AttachOrUpdateRichTabControl(richTabControl);
                                     if (seqStr.starts_with("osc:133;D"))
                                     {

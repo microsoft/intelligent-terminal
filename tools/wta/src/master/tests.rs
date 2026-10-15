@@ -18333,6 +18333,52 @@ async fn master_opencode_view_reclaims_session_after_other_pane_disposes() {
 }
 
 #[tokio::test]
+async fn master_opencode_running_start_takes_over_an_occupied_pane() {
+    use crate::agent_sessions::AgentStatus;
+
+    for running in [false, true] {
+        let state = make_state();
+        let hook = |session, reported_running| {
+            serde_json::json!({
+                "method": "agent_event",
+                "params": {
+                    "event": "agent.session.start",
+                    "cli_source": "opencode",
+                    "agent_session_id": session,
+                    "pane_id": "shared-pane",
+                    "payload": { "cwd": "C:\\repo", "running": reported_running }
+                }
+            })
+        };
+        handle_master_wt_event(&state, hook("previous", false)).await;
+        handle_master_wt_event(&state, hook("current", running)).await;
+
+        let previous = state
+            .registry
+            .lookup(&SessionId::new("previous"))
+            .await
+            .unwrap();
+        let current = state
+            .registry
+            .lookup(&SessionId::new("current"))
+            .await
+            .unwrap();
+        assert_eq!(previous.status, Some(AgentStatus::Ended));
+        assert_eq!(previous.pane_session_id, None);
+        assert_eq!(current.pane_session_id.as_deref(), Some("shared-pane"));
+        assert_eq!(
+            current.status,
+            Some(if running {
+                AgentStatus::Working
+            } else {
+                AgentStatus::Idle
+            }),
+            "the new owner's running hint must apply after its explicit start"
+        );
+    }
+}
+
+#[tokio::test]
 async fn master_opencode_server_only_activity_requires_a_tui_binding() {
     use crate::agent_sessions::AgentStatus;
 

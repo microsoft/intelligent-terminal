@@ -523,6 +523,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
         TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
+        TEST_METHOD(ShellPromptRetiresCliActivityWithoutDroppingResumeBinding);
+        TEST_METHOD(ShellPromptVtSequenceRetiresActiveCli);
         TEST_METHOD(KeepRunningAcceptsPlainTerminalTabs);
         TEST_METHOD(KeepRunningSnapshotCountsAttachedTerminalTabs);
         TEST_METHOD(PinnedTabMenuReordersWithoutStealingSelection);
@@ -3505,6 +3507,100 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
             event("agent.session.end", "agent-session-current");
             VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_activeCliAgentPanes.count(paneSessionId)));
+        });
+    }
+
+    void TabTests::ShellPromptRetiresCliActivityWithoutDroppingResumeBinding()
+    {
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+        TestOnUIThread([&]() {
+            const auto control = page->_GetFocusedTabImpl()->GetRootPane()->GetTerminalControl();
+            const auto paneId = control.Connection().SessionId();
+            const auto pane = _formatPaneId(paneId);
+            const auto start = [&](const std::string_view sessionId) {
+                Json::Value event;
+                event["params"]["pane_id"] = pane;
+                event["params"]["event"] = "agent.session.start";
+                event["params"]["agent_session_id"] = std::string{ sessionId };
+                event["params"]["agent"] = "copilot";
+                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+            };
+
+            start("first-session");
+            page->_richTabAgentCwdAvailable = true;
+            page->_richTabAgentStatusByPaneId[paneId] = {
+                "first-session", "Working", "copilot", std::nullopt, paneId, "C:\\agent"
+            };
+            const auto [beforeActive, beforeCwd] = page->_RichTabAgentCwdForControl(control);
+            VERIFY_IS_TRUE(beforeActive);
+            VERIFY_ARE_EQUAL(std::string{ "C:\\agent" }, beforeCwd.value());
+
+            page->_ReconcileShellPromptAgentExit(control);
+            VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(paneId));
+            VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+            VERIFY_ARE_EQUAL(std::string{ "first-session" }, page->_richTabEndedSessionByPaneId.at(paneId));
+            const auto [afterActive, afterCwd] = page->_RichTabAgentCwdForControl(control);
+            VERIFY_IS_FALSE(afterActive);
+            VERIFY_IS_FALSE(afterCwd.has_value());
+
+            page->_richTabAgentStatusByPaneId.clear();
+            const auto [withoutSnapshot, withoutCwd] = page->_RichTabAgentCwdForControl(control);
+            VERIFY_IS_FALSE(withoutSnapshot);
+            VERIFY_IS_FALSE(withoutCwd.has_value());
+
+            start("second-session");
+            VERIFY_IS_FALSE(page->_richTabEndedSessionByPaneId.contains(paneId));
+            VERIFY_IS_TRUE(page->_RichTabAgentCwdForControl(control).first);
+            page->_ReconcileShellPromptAgentExit(control);
+            VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+            VERIFY_ARE_EQUAL(std::string{ "second-session" }, page->_richTabEndedSessionByPaneId.at(paneId));
+        });
+    }
+
+    void TabTests::ShellPromptVtSequenceRetiresActiveCli()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const winrt::guid paneId{ L"{d1f7c0b2-4567-4eab-9cde-891023456789}" };
+        const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+        Grid host{ nullptr };
+        TestOnUIThread([&]() { host = Grid{}; });
+        auto page = _commonSetup(*connection, host);
+        ::details::Event promptSeen;
+        winrt::event_token token{};
+        TestOnUIThread([&]() {
+            const auto pane = _formatPaneId(paneId);
+            Json::Value event;
+            event["params"]["pane_id"] = pane;
+            event["params"]["event"] = "agent.session.start";
+            event["params"]["agent_session_id"] = "shell-agent";
+            event["params"]["agent"] = "copilot";
+            page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+            VERIFY_IS_TRUE(page->_activeCliAgentPanes.contains(paneId));
+            token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                Json::Value received;
+                Json::CharReaderBuilder reader;
+                std::string errors;
+                std::istringstream stream{ winrt::to_string(payload) };
+                if (Json::parseFromStream(reader, stream, &received, &errors) &&
+                    received["method"] == "vt_sequence" &&
+                    received["params"]["sequence"] == "osc:133;A")
+                {
+                    promptSeen.Set();
+                }
+            });
+        });
+        const auto revoke = wil::scope_exit([&]() {
+            TestOnUIThread([&]() { page->ProtocolVtSequenceReceived(token); });
+        });
+
+        const std::u16string_view prompt{ u"\x1b]133;A\x07" };
+        connection->WriteInput({ prompt.data(), prompt.data() + prompt.size() });
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(promptSeen.m_handle, 10000));
+        TestOnUIThread([&]() {
+            VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(paneId));
+            VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+            VERIFY_IS_FALSE(page->_RichTabAgentCwdForControl(page->_GetFocusedTabImpl()->GetActiveTerminalControl()).first);
         });
     }
 

@@ -1207,6 +1207,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring_view agent,
             std::wstring_view sessionId);
         void _CompleteInteractiveResumeBinding(std::string_view paneId, std::string_view tabId);
+        void _ReconcileShellPromptAgentExit(const Microsoft::Terminal::Control::TermControl& control);
 
         winrt::Windows::Foundation::IAsyncAction _HandleCloseTabRequested(winrt::TerminalApp::Tab tab, bool skipConfirmClose = false);
         void _CloseTabAtIndex(uint32_t index);
