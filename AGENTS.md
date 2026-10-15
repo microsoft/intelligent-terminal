@@ -159,10 +159,6 @@ COM and E2E overrides; never replace another worktree's registered
 Dev layout. Ordinary Dev builds remain unchanged. Package isolation does not
 make foreground keyboard/mouse or other desktop-global tests parallel-safe.
 
-Before deploying PR-specific Dev packages or test hosts, record their ownership
-and follow [post-merge cleanup](.github/instructions/post-merge-cleanup.instructions.md)
-after merge. Preserve normal Dev/Store installs, user data, worktrees and branches.
-
 ## Runtime data and diagnostics
 
 Packaged state and cache data are package-private:
