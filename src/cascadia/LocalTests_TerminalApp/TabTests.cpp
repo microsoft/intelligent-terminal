@@ -13770,6 +13770,27 @@ namespace TerminalAppLocalTests
                    _sidebarProgressIndicatorsMatch(page->_tabStrip, tab->TabViewItem(), false, false) &&
                    !tabRing.IsActive();
         });
+
+        TestOnUIThread([&]() {
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+        });
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            const auto leading = Media::VisualTreeHelper::GetParent(iconPresenter).as<FrameworkElement>();
+            return page->_isVerticalRailCollapsed &&
+                   leading.ActualWidth() == 28.0 &&
+                   iconPresenter.ActualWidth() == 16.0 &&
+                   iconPresenter.Visibility() == Visibility::Visible;
+        });
+        TestOnUIThread([&]() {
+            const auto leading = Media::VisualTreeHelper::GetParent(iconPresenter).as<FrameworkElement>();
+            const auto root = Media::VisualTreeHelper::GetParent(leading).as<FrameworkElement>();
+            const auto bounds = iconPresenter.TransformToVisual(root).TransformBounds({ 0, 0, 16, 16 });
+            VERIFY_IS_TRUE(bounds.X >= 0 && bounds.X + bounds.Width <= root.ActualWidth());
+            VERIFY_IS_TRUE(std::abs(bounds.X + bounds.Width / 2 - root.ActualWidth() / 2) <= 1.0);
+            VERIFY_IS_TRUE(display.IconSource() == profileIcon);
+            VERIFY_IS_TRUE(iconPresenter.Content() == profileVisual);
+        });
     }
 
     void TabTests::ProgressReplacementPreservesIndependentStatusGlyphs()

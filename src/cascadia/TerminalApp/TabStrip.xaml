@@ -551,12 +551,10 @@
                                     CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                     IsHitTestVisible="False" />
                             <Grid Grid.ColumnSpan="{x:Bind LeadingContentColumnSpan, Mode=OneWay}"
+                                  Width="28"
                                   Margin="{x:Bind LeadingContentMargin, Mode=OneWay}"
                                   HorizontalAlignment="Center"
                                   VerticalAlignment="Center">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="28" />
-                                </Grid.ColumnDefinitions>
                                 <Button x:Name="TabGroupToggleButton"
                                         Width="28"
                                         Height="28"
