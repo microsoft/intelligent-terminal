@@ -142,6 +142,7 @@ function Stop-OwnedProcess
         executable = $OwnedProcess.Executable
         action = 'already-exited'
         reason = ''
+        exit_code = $null
     }
     $process = $OwnedProcess.Process
     try
@@ -168,6 +169,7 @@ function Stop-OwnedProcess
                 }
             }
         }
+        $evidence.exit_code = $process.ExitCode
     }
     catch
     {

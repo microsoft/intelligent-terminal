@@ -102,11 +102,21 @@ if ($failure) { exit 1 }
 
 
 class NativeWorkflowIsolationTests(unittest.TestCase):
-    def test_review_does_not_automatically_build_or_test_candidate_code(self):
+    def test_windows_discovery_is_wired_without_building_in_the_source_agent(self):
         compiled = (ROOT / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
-        self.assertNotIn("\n  native-runtime:\n", compiled)
-        self.assertNotIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
+        self.assertIn("\n  native-runtime:\n", compiled)
+        self.assertIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
         self.assertNotIn("call tools\\razzle.cmd", compiled)
+
+    def test_problem_discovery_does_not_gate_or_retest_repair_publication(self):
+        compiled = (ROOT / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
+        publication = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  safe_outputs:\n", 1)[1], maxsplit=1)[0]
+        self.assertNotIn("native-runtime", publication)
+        discovery = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  native-runtime:\n", 1)[1], maxsplit=1)[0]
+        self.assertRegex(discovery, r"(?m)^    needs: agent$")
+        self.assertIn("head-sha: ${{ github.event.pull_request.head.sha }}", discovery)
+        self.assertNotIn("published", discovery)
+        self.assertNotIn("safe_outputs", discovery)
 
     def test_reusable_native_definition_has_no_telemetry_or_secret_references(self):
         native = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
@@ -118,14 +128,29 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         self.assertNotIn("environment:", native)
         self.assertNotIn(": write", native)
 
-    def test_optional_reviewer_native_workflow_requires_four_immutable_identities(self):
+    def test_native_discovery_receives_four_immutable_identities(self):
         caller = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         native = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         for key in ("head-repository", "head-sha", "trusted-repository", "trusted-sha"):
-            self.assertNotIn(f"      {key}:", caller)
+            self.assertIn(f"      {key}:", caller)
             self.assertRegex(native, rf"{key}:\n\s+required: true\n\s+type: string")
             self.assertIn(f"${{{{ inputs.{key} }}}}", native)
         self.assertNotIn("github.event.pull_request", native)
+
+    def test_agents_host_uses_production_settings_navigation(self):
+        host = (ROOT / "src/cascadia/LocalTests_TerminalApp/TestHostApp/UnitTestApp.xaml.cpp").read_text(encoding="utf-8")
+        self.assertIn("frame->Navigate(", host)
+        self.assertIn("ref new Microsoft::Terminal::Settings::Editor::AIAgentsViewModel(settings->GlobalSettings)", host)
+        self.assertIn("ref new Microsoft::Terminal::Settings::Editor::NavigateToPageArgs(viewModel, nullptr", host)
+        self.assertIn("Microsoft::Terminal::Settings::Editor::AIAgents::typeid", host)
+        self.assertNotIn("ref new Microsoft::Terminal::Settings::Editor::MainPage(", host)
+        self.assertIn("CoreDispatcherPriority::Normal", host)
+        self.assertNotIn("ref new Microsoft::Terminal::Settings::Editor::AIAgents(", host)
+        header = (ROOT / "src/cascadia/TerminalSettingsEditor/AIAgents.h").read_text(encoding="utf-8")
+        self.assertNotIn("AIAgents(Model::GlobalAppSettings", header)
+        navigation = (ROOT / "src/cascadia/TerminalSettingsEditor/MainPage.idl").read_text(encoding="utf-8")
+        self.assertIn("NavigateToPageArgs(IInspectable viewModel, IHostedInWindow windowRoot, String elementToFocus);",
+                      navigation)
 
     def test_native_step_execution_is_not_duplicated_in_the_privileged_caller(self):
         caller = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")

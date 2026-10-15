@@ -45,6 +45,10 @@ function Wait-VisibleElement
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
     do
     {
+        $startupErrorCondition = [Windows.Automation.PropertyCondition]::new(
+            [Windows.Automation.AutomationElement]::AutomationIdProperty, 'TestHostStartupError')
+        $startupError = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $startupErrorCondition)
+        if ($startupError) { throw "TestHost startup failed: $($startupError.Current.Name)" }
         $element = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
         if ($element -and -not $element.Current.IsOffscreen) { return $element }
         Start-Sleep -Milliseconds 250

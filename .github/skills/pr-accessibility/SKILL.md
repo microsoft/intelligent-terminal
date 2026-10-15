@@ -96,8 +96,10 @@ The source rules are intentionally conservative:
     capture; the trusted gate verifies the captured series against the
     recipe-verified candidate.
     Follow the caller's publication policy: when the PR reviewer owns build/test
-    validation, do not add builds, tests, native jobs or environment provisioning
-    as prerequisites to an eligible repair commit or push.
+    validation, do not add post-fix builds, tests, native jobs or environment
+    provisioning as prerequisites to an eligible repair commit or push.
+    Preserve caller-configured native checks used to discover problems in the
+    original revision; fix-publication policy does not disable that review.
 
 ## Localization
 
@@ -149,9 +151,12 @@ error even when UIA scanning works. In that lane, retain structured Axe rule
 results, per-state UIA hierarchy JSON, state/process/source identity, and logs.
 JSON is not an `.a11ytest` file and does not provide its screenshot or replay
 capabilities; record that capture gap rather than claiming equivalent output.
-Separately requested local smoke checks cover FRE, Agents settings, and FRE
-settings after invoking Next; they do not cover every affected product state
-and are not automatic repair-publication prerequisites. Pair scans with:
+The Windows smoke job covers FRE, Agents settings, and FRE settings after
+invoking Next. It scans the original immutable revision, not a proposed fix,
+and is independent of repair publication. The source agent's unavailable
+runtime records are not the separate Windows job's result; use that job's
+artifacts and outcome. This smoke does not cover every affected product state.
+Pair scans with:
 
 - keyboard-only traversal, activation, focus restoration, and trap checks;
 - UIA pattern invocation and property/state assertions;

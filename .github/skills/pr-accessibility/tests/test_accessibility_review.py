@@ -1320,15 +1320,15 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("script: |", workflow)
         self.assertNotIn("summary.push(", workflow)
 
-    def test_no_extra_report_job_or_native_build_job_is_required(self):
+    def test_native_discovery_is_preserved_without_a_summary_renderer(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertNotIn("\n  accessibility-report:", workflow)
-        self.assertNotIn("\n  native-runtime:", workflow)
+        self.assertIn("\n  native-runtime:", workflow)
         self.assertNotIn("checks: write", workflow)
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
         self.assertNotIn("\n  accessibility-report:", compiled)
-        self.assertNotIn("\n  native-runtime:", compiled)
+        self.assertIn("\n  native-runtime:", compiled)
         self.assertIn('cat /tmp/gh-aw/accessibility/summary.md', compiled)
 
     def test_support_paths_trigger_trusted_base_validation(self):
@@ -1345,7 +1345,7 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertIn("  model: auto", workflow)
-        self.assertIn("max-daily-ai-credits: 5000", workflow)
+        self.assertIn("max-daily-ai-credits: 100000", workflow)
         self.assertEqual(1, workflow.count("max-ai-credits: 500"))
         self.assertEqual(1, workflow.count("max-ai-credits: 30"))
         self.assertIn("timeout-minutes: 15", workflow)
@@ -1394,13 +1394,13 @@ class WorkflowContractTests(unittest.TestCase):
                         workflow.index('git checkout -B "$HEAD_REF" "$HEAD_SHA"'))
         self.assertIn("one separate commit per eligible HIGH finding", workflow)
 
-    def test_compiled_review_and_publication_do_not_run_native_build_tests(self):
+    def test_source_review_and_publication_are_independent_of_native_discovery(self):
         root = Path(__file__).parents[4]
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
         agent = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  agent:\n", 1)[1], maxsplit=1)[0]
         self.assertRegex(agent, r"(?m)^    needs: activation$")
-        self.assertNotIn("\n  native-runtime:\n", compiled)
-        self.assertNotIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
+        self.assertIn("\n  native-runtime:\n", compiled)
+        self.assertIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
         publisher = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  safe_outputs:\n", 1)[1], maxsplit=1)[0]
         dependencies = publisher.split("    needs:\n", 1)[1].split("\n    if:", 1)[0]
         self.assertNotIn("native", dependencies)
@@ -1416,10 +1416,10 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("add-comment:", frontmatter)
         self.assertNotIn("submit-pull-request-review:", frontmatter)
 
-    def test_separate_reviewer_native_workflow_keeps_its_isolated_lane(self):
+    def test_native_discovery_keeps_its_isolated_windows_lane(self):
         root = Path(__file__).parents[4]
         caller = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        self.assertNotIn("\n  native-runtime:\n", caller)
+        self.assertIn("\n  native-runtime:\n", caller)
         workflow = (root / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         self.assertIn("runs-on: windows-2025-vs2026", workflow)
         self.assertIn("persist-credentials: false", workflow)

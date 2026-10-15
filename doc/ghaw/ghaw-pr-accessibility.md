@@ -1,8 +1,9 @@
-# Native accessibility PR source review
+# Native accessibility PR review
 
-The accessibility gh-aw reviews WinUI/XAML/C++ changes and proposes narrowly
-scoped HIGH fixes. It does **not** build the product, run tests, launch native
-jobs or provision a test environment before committing or pushing.
+The accessibility gh-aw reviews WinUI/XAML/C++ changes and runs the Windows
+Axe smoke job on the original PR revision to discover problems. It also
+proposes narrowly scoped HIGH fixes without requiring a post-fix build/test
+before committing or pushing. Those are separate responsibilities.
 
 The original PR reviewer, human or agent, owns build/test validation and may
 revert an individual fix commit. A source-review or patch-policy PASS is not
@@ -10,7 +11,7 @@ native accessibility certification.
 
 The source review also classifies TestHost XAML, C++, headers and project files.
 TestHost and project files can require review but are not eligible repair paths.
-The workflow's daily AI-credit cap is 5,000, matching localization.
+The original daily AI-credit cap is 100,000.
 
 ## Responsibilities
 
@@ -20,7 +21,8 @@ The workflow's daily AI-credit cap is 5,000, matching localization.
 | `pr-accessibility` skill | Evidence-backed domain review across names, keyboard/focus, announcements, busy state, visual behavior, localization and affected UI operations |
 | Existing Python validator | Source/report identity, patch scope, eligible recipe and one-finding commit attribution |
 | Agent | Review judgment, each proposed repair commit, JSON evidence and the Markdown summary |
-| Original PR reviewer | Product builds/tests, runtime validation, acceptance or revert |
+| Windows native job | Build and scan the original immutable PR head; retain scan results and enforce failures |
+| Original PR reviewer | Validate proposed fix commits through builds/tests; accept or revert |
 
 There is no separate summary-rendering script. The agent follows the template
 in `.github/workflows/ghaw-pr-accessibility.md`; the job displays its Markdown
@@ -81,17 +83,29 @@ and verifies the captured bundle matches that exact commit series and tree.
 The freshness check is not a transactional compare-and-swap with publication.
 The PR head can still move afterward; do not claim stronger atomicity.
 
-## Separate runtime work
+## Windows problem discovery
 
-Native Axe.Windows, keyboard/focus, Narrator, contrast and scaling checks can
-be requested separately by the original reviewer. They are not part of this
-auto-fix path and must not become commit/push prerequisites.
+The restored `native-runtime` job calls `native-accessibility.yml` with exact
+head and trusted-source identities, without inheriting source-agent secrets.
+It builds TestHost and scans FRE, FRE settings after Next, and the real Agents
+page reached through production Frame navigation. Native errors, blocked startup and missing state evidence
+remain failures. Its artifacts and job outcome are separate from the source
+agent's Markdown and source-only runtime records.
 
-Existing local test utilities and historical evidence are not deleted by this
-policy change. TestHost launch modes and local safety requirements are documented
-in `src/cascadia/LocalTests_TerminalApp/TestHostApp/AGENTS.md`. Such fixtures do
-not establish full production navigation, persistence, agent/session operations,
-speech or visual acceptance.
+As in the pre-simplification workflow, native discovery follows the source
+agent, independently of branch publication. The publication job does not
+depend on native discovery, and the native job scans the event's original
+head, not a proposed repair commit. It is not post-fix validation.
+
+This smoke is not complete keyboard, Narrator, high-contrast or 200% scaling
+coverage. Axe output uses its supported no-screenshot format; JSON is not an
+`.a11ytest` recording. TestHost uses the production view model and
+`NavigateToPageArgs` constructor with normal Frame navigation; no special
+Agents-page constructor is needed. The full Settings MainPage requires desktop
+filesystem access that this AppContainer test host does not have.
+Launch modes and local safety requirements are in
+`src/cascadia/LocalTests_TerminalApp/TestHostApp/AGENTS.md`. These fixtures do not
+establish persistence, agent/session operations or full terminal-window behavior.
 
 ## Workflow maintenance
 

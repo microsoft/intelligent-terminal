@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "MainPage.h"
 #include "MainPage.g.cpp"
+#include "NavigateToPageArgs.g.cpp"
 #include "Launch.h"
 #include "Interaction.h"
 #include "Compatibility.h"

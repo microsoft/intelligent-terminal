@@ -20,6 +20,14 @@ namespace TestHostApp
             Windows::UI::ViewManagement::ApplicationViewWindowingMode::PreferredLaunchViewSize;
     }
 
+    static void _ShowAccessibilityStartupError(Platform::Exception ^ error)
+    {
+        const auto errorText = ref new Windows::UI::Xaml::Controls::TextBlock();
+        Windows::UI::Xaml::Automation::AutomationProperties::SetAutomationId(errorText, L"TestHostStartupError");
+        errorText->Text = error->ToString();
+        Windows::UI::Xaml::Window::Current->Content = errorText;
+    }
+
     /// <summary>
     /// Initializes the singleton application object.  This is the first line of authored code
     /// executed, and as such is the logical equivalent of main() or WinMain().
@@ -50,10 +58,29 @@ namespace TestHostApp
         if (_IsAccessibilitySurface(e->Arguments, L"--accessibility-page=agents"))
         {
             _PrepareAccessibilityWindow(L"Accessibility Test Host - Agents settings");
-            const auto settings = Microsoft::Terminal::Settings::Model::CascadiaSettings::LoadDefaults();
-            const auto page = ref new Microsoft::Terminal::Settings::Editor::AIAgents(settings->GlobalSettings);
-            Windows::UI::Xaml::Window::Current->Content = page;
+            const auto frame = ref new Windows::UI::Xaml::Controls::Frame();
+            Windows::UI::Xaml::Window::Current->Content = frame;
             Windows::UI::Xaml::Window::Current->Activate();
+            frame->Dispatcher->RunAsync(
+                Windows::UI::Core::CoreDispatcherPriority::Normal,
+                ref new Windows::UI::Core::DispatchedHandler([frame]() {
+                    try
+                    {
+                        const auto settings = Microsoft::Terminal::Settings::Model::CascadiaSettings::LoadDefaults();
+                        const auto viewModel = ref new Microsoft::Terminal::Settings::Editor::AIAgentsViewModel(settings->GlobalSettings);
+                        const auto args = ref new Microsoft::Terminal::Settings::Editor::NavigateToPageArgs(viewModel, nullptr, L"");
+                        if (!frame->Navigate(
+                                Windows::UI::Xaml::Interop::TypeName(Microsoft::Terminal::Settings::Editor::AIAgents::typeid),
+                                args))
+                        {
+                            throw ref new Platform::FailureException(L"Settings Agents navigation failed.");
+                        }
+                    }
+                    catch (Platform::Exception ^ error)
+                    {
+                        _ShowAccessibilityStartupError(error);
+                    }
+                }));
             return;
         }
 

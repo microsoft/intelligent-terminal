@@ -7,7 +7,6 @@
 #include <winrt/Windows.UI.Xaml.Documents.h>
 
 #include "AIAgents.h"
-#include "AIAgentsViewModel.h"
 #include "AIAgents.g.cpp"
 
 using namespace winrt::Windows::UI::Xaml;
@@ -185,12 +184,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
 
         Automation::AutomationProperties::SetName(AcpAgent(), agentHeader);
-    }
-
-    AIAgents::AIAgents(Model::GlobalAppSettings globalSettings) :
-        AIAgents{}
-    {
-        _ViewModel = winrt::make<AIAgentsViewModel>(std::move(globalSettings));
     }
 
     void AIAgents::InlineLinkText_Loaded(const IInspectable& sender, const RoutedEventArgs&)

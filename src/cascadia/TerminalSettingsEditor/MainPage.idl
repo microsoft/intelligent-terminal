@@ -22,6 +22,7 @@ namespace Microsoft.Terminal.Settings.Editor
         IHostedInWindow WindowRoot { get; };
         IInspectable ViewModel { get; };
         String ElementToFocus { get; };
+        NavigateToPageArgs(IInspectable viewModel, IHostedInWindow windowRoot, String elementToFocus);
     }
 
     enum BreadcrumbSubPage

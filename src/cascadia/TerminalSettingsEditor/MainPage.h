@@ -137,4 +137,5 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 namespace winrt::Microsoft::Terminal::Settings::Editor::factory_implementation
 {
     BASIC_FACTORY(MainPage);
+    BASIC_FACTORY(NavigateToPageArgs);
 }
