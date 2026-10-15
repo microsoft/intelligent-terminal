@@ -133,11 +133,11 @@ namespace TerminalApp
         TabHeaderPresentation Presentation { get; };
         Boolean IsMetadataVisible;
         Boolean ShowProgressRing;
-        Int32 LeadingContentColumnSpan;
         // Source identity is retained; each template creates its own element.
         // Object carries MUX IconSource data; the setter validates its type.
         Object IconSource;
         Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
+        Int32 LeadingContentColumnSpan;
     };
 
     [default_interface] runtimeclass TabStripPaneEventArgs

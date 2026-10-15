@@ -11,10 +11,10 @@ namespace TerminalApp
         String SearchText;
         Double RenamerMaxWidth;
         TerminalTabStatus TabStatus;
-        Object IconSource;
         String MetadataText;
         String MetadataAutomationName;
         String AutomationName;
+        Object IconSource;
     };
 
     delegate void TitleChangeRequestedArgs(String title);
