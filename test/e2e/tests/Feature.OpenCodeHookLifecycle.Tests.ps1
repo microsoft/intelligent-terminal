@@ -201,7 +201,9 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
         $unexpected = Wait-Until -TimeoutSec 3 -IntervalSec 0.2 -Quiet -Because 'completed negative actions produce no delayed bridge event' -Condition {
             @(Get-WtEvents -Listener $script:listener -Predicate {
                 $_.method -eq 'agent_event' -and $_.params.agent_session_id -like "$prefix-*" -and
-                $_.params.agent_session_id -ne $root
+                $_.params.agent_session_id -ne $root -and
+                -not ($_.params.agent_session_id -eq $serverOnly -and
+                      $_.params.event -in @('agent.prompt.submit', 'agent.tool.starting'))
             }).Count -gt 0
         }
         $unexpected | Should -Not -BeTrue

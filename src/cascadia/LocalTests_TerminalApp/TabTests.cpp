@@ -423,6 +423,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabProgressPercentUsesLocaleFormatting);
         TEST_METHOD(AgentBillingUsesLocaleCurrencyFormatting);
         TEST_METHOD(SessionRegistryStatusDeltaUpdatesCaches);
+        TEST_METHOD(FailedAgentStatusRefreshDoesNotRestoreStaleCwds);
         TEST_METHOD(LatestBuiltinAgentReportWinsForPane);
         TEST_METHOD(AgentSnapshotTiesPreserveLastReceivedPaneReport);
         TEST_METHOD(AgentSnapshotSelectionIsIndependentOfRowOrder);
@@ -3444,7 +3445,10 @@ namespace TerminalAppLocalTests
             serverOnly["params"]["agent_session_id"] = "opencode-server-only";
             serverOnly["params"]["cli_source"] = "opencode";
             serverOnly["params"]["payload"]["pane_owner"] = false;
-            page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, serverOnly)));
+            const auto serverOnlyEvent = winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, serverOnly));
+            page->_manager.OnPaneAgentSessionChanged(serverOnlyEvent);
+            page->OnPaneAgentSessionChanged(serverOnlyEvent);
+            VERIFY_IS_TRUE(page->_manager.AgentSessionEvent(control.ContentId()).empty());
             VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneSessionId));
             VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(paneSessionId));
 
@@ -7920,6 +7924,35 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(updated.IsHistorical());
 
             VERIFY_IS_FALSE(page->_ApplyAgentSessionStatusDelta("session-a", "", "claude", std::nullopt, "FutureStatus"));
+        });
+    }
+
+    void TabTests::FailedAgentStatusRefreshDoesNotRestoreStaleCwds()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            page->_tabStrip.RichTabAgentStatusVisible(false);
+            page->_richTabAgentStatusRefreshInFlight = true;
+            const auto firstPane = winrt::guid{ L"00000000-0000-0000-0000-000000000001" };
+            const auto secondPane = winrt::guid{ L"00000000-0000-0000-0000-000000000002" };
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                "session-a", "00000000-0000-0000-0000-000000000001", "copilot", uint64_t{ 1000 }, "Idle", std::string{ "C:\\old-a" }));
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                "session-b", "00000000-0000-0000-0000-000000000002", "claude", uint64_t{ 1000 }, "Idle", std::string{ "D:\\old-b" }));
+            VERIFY_IS_TRUE(page->_richTabAgentStatusBySessionId.at("session-b").cwd.has_value());
+            page->_InvalidateRichTabAgentCwds();
+            VERIFY_IS_FALSE(page->_richTabAgentCwdAvailable);
+            VERIFY_IS_FALSE(page->_richTabAgentStatusBySessionId.at("session-a").cwd.has_value());
+            VERIFY_IS_FALSE(page->_richTabAgentStatusByPaneId.at(firstPane).cwd.has_value());
+            VERIFY_IS_FALSE(page->_richTabAgentStatusBySessionId.at("session-b").cwd.has_value());
+            VERIFY_IS_FALSE(page->_richTabAgentStatusByPaneId.at(secondPane).cwd.has_value());
+
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
+                "session-a", "00000000-0000-0000-0000-000000000001", "copilot", uint64_t{ 2000 }, "Working", std::string{ "C:\\new-a" }));
+            VERIFY_IS_TRUE(page->_richTabAgentCwdAvailable);
+            VERIFY_ARE_EQUAL(std::string{ "C:\\new-a" }, page->_richTabAgentStatusByPaneId.at(firstPane).cwd.value());
+            VERIFY_IS_FALSE(page->_richTabAgentStatusBySessionId.at("session-b").cwd.has_value());
+            VERIFY_IS_FALSE(page->_richTabAgentStatusByPaneId.at(secondPane).cwd.has_value());
         });
     }
 
@@ -16528,6 +16561,19 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(winrt::hstring{ L"real-conversation" }, page->_paneAgentSessions.at(paneId).sessionId);
                     VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, manager->NativeAgentProviderId(contentId));
                     VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/claude.svg" }, tab->Icon());
+
+                    Json::Value serverOnly;
+                    serverOnly["params"]["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(paneId));
+                    serverOnly["params"]["event"] = "agent.prompt.submit";
+                    serverOnly["params"]["agent_session_id"] = "server-only";
+                    serverOnly["params"]["cli_source"] = "opencode";
+                    serverOnly["params"]["payload"]["pane_owner"] = false;
+                    const auto serverOnlyEvent = winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, serverOnly));
+                    page->_manager.OnPaneAgentSessionChanged(serverOnlyEvent);
+                    page->OnPaneAgentSessionChanged(serverOnlyEvent);
+                    VERIFY_ARE_EQUAL(started, manager->AgentSessionEvent(contentId));
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, manager->NativeAgentProviderId(contentId));
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"real-conversation" }, page->_paneAgentSessions.at(paneId).sessionId);
                 }
                 else
                 {

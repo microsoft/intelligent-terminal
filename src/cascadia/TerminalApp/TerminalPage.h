@@ -1137,6 +1137,7 @@ namespace winrt::TerminalApp::implementation
         uint64_t _richTabAgentStatusRequestGeneration{ 0 };
         uint64_t _nextRichTabAttachmentReservation{ 1 };
         void _RequestRichTabAgentStatusRefresh();
+        void _InvalidateRichTabAgentCwds();
         safe_void_coroutine _LoadRichTabAgentStatuses(uint64_t generation);
         void _UpdateTabWidthMode();
         void _SetBackgroundImage(const winrt::Microsoft::Terminal::Settings::Model::IAppearanceConfig& newAppearance);

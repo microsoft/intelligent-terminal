@@ -494,6 +494,7 @@ fn open_url_in_browser(url: &str) -> std::io::Result<()> {
 /// outside `USER_INPUT_TOOL_NAMES`.
 pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
     "cwd",
+    "new_cwd",
     "title",
     "tool_name",
     "toolName",

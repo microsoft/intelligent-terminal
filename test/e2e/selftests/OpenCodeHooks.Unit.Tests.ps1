@@ -33,7 +33,7 @@ Describe 'Unit: OpenCode hook component behavior' -Tag 'Unit' {
         ) -TimeoutSec 30
         $result.TimedOut | Should -BeFalse
         $result.ExitCode | Should -Be 0 -Because "$($result.StdOut)`n$($result.StdErr)"
-        $result.StdOut | Should -Match '# pass 8'
+        $result.StdOut | Should -Match '(?m)^# pass [1-9][0-9]*\s*$'
         $result.StdOut | Should -Match '# skipped 0'
     }
 

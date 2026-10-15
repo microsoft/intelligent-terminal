@@ -181,6 +181,7 @@ namespace wtcli
     // fails if they drift.
     inline constexpr const char* kConsumedPayloadKeys[] = {
         "cwd",
+        "new_cwd",
         "title",
         "tool_name",
         "toolName",

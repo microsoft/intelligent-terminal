@@ -183,6 +183,13 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        const auto& payload = params["payload"];
+        const auto paneOwner = payload.isObject() ? payload.get("pane_owner", Json::Value{}) : Json::Value{};
+        if (params.get("agent", params.get("cli_source", "")).asString() == "opencode" &&
+            paneOwner.isBool() && !paneOwner.asBool())
+        {
+            return;
+        }
         const auto paneId = params.get("pane_id", "").asString();
         if (paneId.empty())
         {

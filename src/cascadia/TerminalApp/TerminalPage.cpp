@@ -11893,6 +11893,19 @@ namespace winrt::TerminalApp::implementation
         _LoadRichTabAgentStatuses(++_richTabAgentStatusRequestGeneration);
     }
 
+    void TerminalPage::_InvalidateRichTabAgentCwds()
+    {
+        _richTabAgentCwdAvailable = false;
+        for (auto& [sessionId, info] : _richTabAgentStatusBySessionId)
+        {
+            info.cwd.reset();
+        }
+        for (auto& [paneId, info] : _richTabAgentStatusByPaneId)
+        {
+            info.cwd.reset();
+        }
+    }
+
     safe_void_coroutine TerminalPage::_LoadRichTabAgentStatuses(const uint64_t generation)
     {
         const auto weakThis = get_weak();
@@ -11974,7 +11987,14 @@ namespace winrt::TerminalApp::implementation
         page->_richTabAgentStatusRefreshInFlight = false;
         if (generation == page->_richTabAgentStatusRequestGeneration)
         {
-            page->_richTabAgentCwdAvailable = parsed;
+            if (parsed)
+            {
+                page->_richTabAgentCwdAvailable = true;
+            }
+            else
+            {
+                page->_InvalidateRichTabAgentCwds();
+            }
             page->_richTabAgentStatusAutoRefreshBlocked = !parsed;
         }
         if (generation == page->_richTabAgentStatusRequestGeneration)
