@@ -27,6 +27,9 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
         $script:tuiPluginPath = Join-Path $selected.InstallLocation 'wt-agent-hooks\opencode\wt-agent-hooks\tui.js'
         $sourceTuiPlugin = Join-Path $PSScriptRoot '..\..\..\tools\wta\wt-agent-hooks\opencode\wt-agent-hooks\tui.js'
         (Get-FileHash -LiteralPath $script:tuiPluginPath).Hash | Should -Be (Get-FileHash -LiteralPath $sourceTuiPlugin).Hash
+        $script:rpcPluginPath = Join-Path $selected.InstallLocation 'wt-agent-hooks\opencode\wt-agent-hooks\rpc.js'
+        $sourceRpcPlugin = Join-Path $PSScriptRoot '..\..\..\tools\wta\wt-agent-hooks\opencode\wt-agent-hooks\rpc.js'
+        (Get-FileHash -LiteralPath $script:rpcPluginPath).Hash | Should -Be (Get-FileHash -LiteralPath $sourceRpcPlugin).Hash
         $mock = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
         $customCommand = '"' + (Get-Command pwsh).Source + '" -NoProfile -File "' + $mock + '" -LogPath "' + (Join-Path $TestDrive 'acp.jsonl') + '"'
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
@@ -268,6 +271,9 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
         $plugins = Join-Path $config 'opencode\plugins'
         New-Item -ItemType Directory -Path $plugins -Force | Out-Null
         Copy-Item -LiteralPath $script:pluginPath -Destination (Join-Path $plugins 'wt-agent-hooks.js')
+        $support = Join-Path $plugins 'wt-agent-hooks'
+        New-Item -ItemType Directory -Path $support | Out-Null
+        Copy-Item -LiteralPath $script:rpcPluginPath -Destination (Join-Path $support 'rpc.js')
         $portReservation = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
         $portReservation.Start()
         $port = $portReservation.LocalEndpoint.Port
@@ -311,6 +317,15 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
                 if ($ownedListener.Count -lt 1) { return $false }
                 (Invoke-RestMethod -Uri "$base/global/health" -TimeoutSec 2).healthy
             } | Should -BeTrue
+            if ([int]$majorVersion -ge 2) {
+                $inventory = Invoke-RestMethod -Uri "$base/api/plugin" -Headers $headers -TimeoutSec 15
+                $loaded = @($inventory.data | Where-Object {
+                    $_.id -eq 'wt-agent-hooks' -and $_.source.type -eq 'local'
+                })
+                $loaded.Count | Should -Be 1 -Because 'the isolated server must actually load the copied hook before testing V2 suppression'
+                $loaded[0].state.status | Should -Be 'active' -Because 'setup must register RPC and hooks before the copied plugin becomes active'
+                $loaded[0].features.server | Should -BeTrue
+            }
             $created = Invoke-RestMethod -Method Post -Uri "$base/session" -Headers $headers -ContentType 'application/json' `
                 -Body '{"title":"ITE2E native OpenCode hook"}' -TimeoutSec 45
             $created.id | Should -Not -BeNullOrEmpty

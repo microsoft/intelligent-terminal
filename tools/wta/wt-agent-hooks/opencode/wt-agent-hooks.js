@@ -315,6 +315,7 @@ export default {
     const directory = ctx.location.directory
     const bindings = new Map()
     const clients = new Map()
+    const observed = new Map()
     const snapshots = new Map()
     let revision = 0
     let delivery = Promise.resolve()
@@ -357,8 +358,12 @@ export default {
           break
       }
       snapshots.set(sessionID, next)
-      const owners = [...bindings.values()]
-        .filter((owner) => owner.sessionID === sessionID)
+      const owners = topic === "agent.session.end"
+        ? [...observed.values()].flatMap((sessions) => {
+          const owner = sessions.get(sessionID)
+          return owner ? [owner] : []
+        })
+        : [...bindings.values()].filter((owner) => owner.sessionID === sessionID)
       delivery = delivery.then(async () => {
         for (const owner of owners) {
           await registration.events.emit("signal", {
@@ -392,7 +397,13 @@ export default {
         owner.generation === input.generation
     }
     function getSnapshot(input) {
-      if (disposed || !isOwner(input)) throw new Error("OpenCode pane binding is no longer current")
+      const previous = observed.get(input.clientID)?.get(input.sessionID)
+      const subscribed = previous?.terminalID === input.terminalID &&
+        previous?.paneID === input.paneID &&
+        previous?.generation === input.generation
+      if (disposed || (!isOwner(input) && !subscribed)) {
+        throw new Error("OpenCode pane binding is no longer current")
+      }
       return snapshots.get(input.sessionID)
     }
     registration = await ctx.rpc.register(bindingRpc, {
@@ -429,6 +440,8 @@ export default {
         }
         bindings.set(key, owner)
         clients.set(input.clientID, owner)
+        if (!observed.has(input.clientID)) observed.set(input.clientID, new Map())
+        observed.get(input.clientID).set(input.sessionID, owner)
         const snapshot = snapshots.get(input.sessionID)
         if (snapshot.status === "unknown") {
           snapshot.status = input.running ? "working" : "idle"
@@ -444,6 +457,27 @@ export default {
         return { detached }
       },
       snapshot: async (input) => getSnapshot(input),
+      observe: async (input) => {
+        if (disposed) throw new Error("OpenCode hook is disposing")
+        if (snapshots.get(input.sessionID)?.status !== "deleted" &&
+            !await hooks.ensureRoot(input.sessionID)) {
+          throw new Error(`OpenCode root session not found: ${input.sessionID}`)
+        }
+        if (!observed.has(input.clientID)) observed.set(input.clientID, new Map())
+        const subscriptions = observed.get(input.clientID)
+        if ((subscriptions.get(input.sessionID)?.generation ?? 0) > input.generation) {
+          throw new Error("Outdated OpenCode session observer generation")
+        }
+        subscriptions.set(input.sessionID, input)
+        return snapshots.get(input.sessionID)
+      },
+      forget: async ({ clientID }) => {
+        const owner = clients.get(clientID)
+        if (owner) bindings.delete(ownerKey(owner.terminalID, owner.sessionID))
+        clients.delete(clientID)
+        observed.delete(clientID)
+        return {}
+      },
     })
     await ctx.session.hook("prompt", hooks["chat.message"])
     await ctx.tool.hook("execute.before", (event) =>
@@ -477,6 +511,7 @@ export default {
       await registration.dispose()
       bindings.clear()
       clients.clear()
+      observed.clear()
     }
   },
 }

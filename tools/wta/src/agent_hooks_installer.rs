@@ -3062,12 +3062,12 @@ fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
             out.messages
                 .push(format!("failed to remove {}: {}", tui.display(), e));
         }
-        if removed && rpc.exists() {
-            if let Err(e) = fs::remove_file(&rpc) {
-                removed = false;
-                out.messages
-                    .push(format!("failed to remove {}: {}", rpc.display(), e));
-            }
+    }
+    if removed && rpc.exists() {
+        if let Err(e) = fs::remove_file(&rpc) {
+            removed = false;
+            out.messages
+                .push(format!("failed to remove {}: {}", rpc.display(), e));
         }
     }
     // Keep the JavaScript ownership marker until the support artifacts are

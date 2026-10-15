@@ -72,6 +72,12 @@ export function createRpcLink(location = { directory: "C:\\ite2e\\opencode", wor
         name,
         async (input) => {
           if (!handlers) throw new Error(`RPC ${name} is not registered`)
+          const schema = rpc.methods[name].input
+          const missing = schema.required.filter((key) => !(key in input))
+          const unexpected = Object.keys(input).filter((key) => !(key in schema.properties))
+          if (missing.length || (schema.additionalProperties === false && unexpected.length)) {
+            throw new Error(`Invalid RPC ${name} input: missing ${missing.join(",")}, unexpected ${unexpected.join(",")}`)
+          }
           return handlers[name](input)
         },
       ]))

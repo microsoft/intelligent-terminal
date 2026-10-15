@@ -183,6 +183,227 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
     }
   })
 
+  it("replays an authoritative idle snapshot after a missed stop during binding recovery", async () => {
+    const sdk = createContext()
+    const stopServer = await plugin.setup(sdk.context)
+    const session = { id: "root", location: sdk.location }
+    const tui = {
+      location: sdk.location,
+      client: sdk.client,
+      ui: { router: { current: () => ({ type: "session", sessionID: "root" }) } },
+      data: {
+        session: { get: () => session, status: () => "running" },
+        on: () => () => {},
+      },
+    }
+    await sdk.event("session.created", { sessionID: "root" })
+    const stopTui = tuiPlugin.setup(tui)
+    try {
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      assert.deepEqual(calls.map((call) => call.topic), ["agent.session.start"])
+      sdk.rpc.setSignalDelivery(false)
+      await sdk.event("session.status", { sessionID: "root", status: { type: "idle" } })
+      sdk.rpc.publish({ type: "server.connected", data: {} })
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      assert.deepEqual(calls.slice(-2).map((call) => call.topic), [
+        "agent.session.start", "agent.stop",
+      ])
+      assert.equal(calls.at(-2).payload.running, false)
+      assert.equal(calls.at(-1).payload.pane_owner, false)
+    } finally {
+      await stopTui()
+      await stopServer()
+    }
+  })
+
+  it("polls snapshots with identity-only RPC input after the bound title changes", async (t) => {
+    let refresh
+    const originalSetInterval = globalThis.setInterval
+    globalThis.setInterval = (callback, delay) => {
+      if (delay === 30000) refresh = callback
+      return originalSetInterval(callback, delay)
+    }
+    t.after(() => { globalThis.setInterval = originalSetInterval })
+    const sdk = createContext()
+    const stopServer = await plugin.setup(sdk.context)
+    const session = { id: "root", title: "Original", location: sdk.location }
+    const tui = {
+      location: sdk.location,
+      client: sdk.client,
+      ui: { router: { current: () => ({ type: "session", sessionID: "root" }) } },
+      data: {
+        session: { get: () => session, status: () => "running" },
+        on: () => () => {},
+      },
+    }
+    await sdk.event("session.created", { sessionID: "root", title: "Original" })
+    const stopTui = tuiPlugin.setup(tui)
+    try {
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      await sdk.event("session.renamed", { sessionID: "root", title: "Updated" })
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      sdk.rpc.setSignalDelivery(false)
+      await sdk.event("session.status", { sessionID: "root", status: { type: "idle" } })
+      refresh()
+      await stopTui.flush()
+      assert.equal(calls.at(-1).topic, "agent.stop")
+    } finally {
+      await stopTui()
+      await stopServer()
+    }
+  })
+
+  for (const missed of [false, true]) {
+    it(`relays deletion after pane detachment${missed ? " even when SSE is missed" : ""}`, async () => {
+      const sdk = createContext()
+      const stopServer = await plugin.setup(sdk.context)
+      const handlers = new Map()
+      const session = { id: "root", location: sdk.location }
+      let route = { type: "session", sessionID: "root" }
+      const tui = {
+        location: sdk.location,
+        client: sdk.client,
+        ui: { router: { current: () => route } },
+        data: {
+          session: { get: () => session, status: () => "idle" },
+          on: (name, handler) => {
+            handlers.set(name, handler)
+            return () => handlers.delete(name)
+          },
+        },
+      }
+      await sdk.event("session.created", { sessionID: "root" })
+      const stopTui = tuiPlugin.setup(tui)
+      try {
+        await new Promise(setImmediate)
+        await stopTui.flush()
+        route = { type: "home" }
+        handlers.get("session.viewed")({ data: {} })
+        await stopTui.flush()
+        assert.equal(calls.at(-1).topic, "agent.session.unbind")
+        if (missed) sdk.rpc.setSignalDelivery(false)
+        await sdk.event("session.deleted", { sessionID: "root" })
+        if (missed) sdk.rpc.publish({ type: "server.connected", data: {} })
+        await new Promise(setImmediate)
+        await stopTui.flush()
+        assert.equal(calls.at(-1).topic, "agent.session.end")
+        assert.equal(calls.at(-1).payload.pane_owner, false)
+        assert.equal(calls.filter((call) => call.topic === "agent.session.end").length, 1)
+      } finally {
+        await stopTui()
+        await stopServer()
+      }
+    })
+  }
+
+  it("restores a detached deletion observer when the server hook restarts", async () => {
+    const sdk = createContext()
+    let stopServer = await plugin.setup(sdk.context)
+    const handlers = new Map()
+    const session = { id: "root", location: sdk.location }
+    let route = { type: "session", sessionID: "root" }
+    const tui = {
+      location: sdk.location,
+      client: sdk.client,
+      ui: { router: { current: () => route } },
+      data: {
+        session: { get: () => session, status: () => "idle" },
+        on: (name, handler) => {
+          handlers.set(name, handler)
+          return () => handlers.delete(name)
+        },
+      },
+    }
+    await sdk.event("session.created", { sessionID: "root" })
+    const stopTui = tuiPlugin.setup(tui)
+    try {
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      route = { type: "home" }
+      handlers.get("session.viewed")({ data: {} })
+      await stopTui.flush()
+      await stopServer()
+      stopServer = await plugin.setup(sdk.context)
+      sdk.rpc.publish({ type: "server.connected", data: {} })
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      await sdk.event("session.deleted", { sessionID: "root" })
+      await new Promise(setImmediate)
+      await stopTui.flush()
+      assert.equal(calls.at(-1).topic, "agent.session.end")
+      assert.equal(calls.at(-1).payload.pane_owner, false)
+    } finally {
+      await stopTui()
+      await stopServer()
+    }
+  })
+
+  it("does not let an evicted TUI reclaim a shared session until it is explicitly viewed", async (t) => {
+    const refreshes = []
+    const originalSetInterval = globalThis.setInterval
+    globalThis.setInterval = (callback, delay) => {
+      if (delay === 30000) refreshes.push(callback)
+      return originalSetInterval(callback, delay)
+    }
+    t.after(() => { globalThis.setInterval = originalSetInterval })
+    const sdk = createContext()
+    const stopServer = await plugin.setup(sdk.context)
+    const session = { id: "root", location: sdk.location }
+    function localTui() {
+      const handlers = new Map()
+      return {
+        handlers,
+        context: {
+          location: sdk.location,
+          client: sdk.client,
+          ui: { router: { current: () => ({ type: "session", sessionID: "root" }) } },
+          data: {
+            session: { get: () => session, status: () => "idle" },
+            on: (name, handler) => {
+              handlers.set(name, handler)
+              return () => handlers.delete(name)
+            },
+          },
+        },
+      }
+    }
+    await sdk.event("session.created", { sessionID: "root" })
+    const first = localTui()
+    const stopFirst = tuiPlugin.setup(first.context)
+    let stopSecond
+    try {
+      await new Promise(setImmediate)
+      await stopFirst.flush()
+      const second = localTui()
+      stopSecond = tuiPlugin.setup(second.context)
+      await new Promise(setImmediate)
+      await Promise.all([stopFirst.flush(), stopSecond.flush()])
+      assert.equal(calls.filter((call) => call.topic === "agent.session.start").length, 2)
+      assert.equal(calls.filter((call) => call.topic === "agent.session.unbind").length, 1)
+      refreshes[0]()
+      first.handlers.get("session.created")({ data: { sessionID: "root" } })
+      sdk.rpc.publish({ type: "server.connected", data: {} })
+      await new Promise(setImmediate)
+      await Promise.all([stopFirst.flush(), stopSecond.flush()])
+      assert.equal(calls.filter((call) => call.topic === "agent.session.start").length, 3)
+      first.handlers.get("session.viewed")({ data: { sessionID: "root" } })
+      await new Promise(setImmediate)
+      await Promise.all([stopFirst.flush(), stopSecond.flush()])
+      assert.equal(calls.filter((call) => call.topic === "agent.session.start").length, 4)
+      refreshes[1]()
+      await stopSecond.flush()
+      assert.equal(calls.filter((call) => call.topic === "agent.session.start").length, 4)
+    } finally {
+      await stopSecond?.()
+      await stopFirst()
+      await stopServer()
+    }
+  })
+
   it("does not install TUI hooks outside a Terminal pane or in ACP mode", () => {
     const context = { data: { on: () => { throw new Error("unexpected TUI hook") } } }
     delete process.env.WT_SESSION
@@ -251,7 +472,9 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
       assert.equal(calls.length, 0)
       await sdk.event("session.deleted", { sessionID: "root" })
       await new Promise(setImmediate)
-      assert.equal((await sdk.client.rpc(sdk.rpc.definition).snapshot(owner)).status, "deleted")
+      const { cwd, title, running, ...identity } = owner
+      await assert.rejects(sdk.client.rpc(sdk.rpc.definition).snapshot(owner), /unexpected cwd,title,running/)
+      assert.equal((await sdk.client.rpc(sdk.rpc.definition).snapshot(identity)).status, "deleted")
       assert.deepEqual(sdk.rpc.emitted.filter((event) => event.data.topic === "agent.session.end")
         .map((event) => event.data.sessionID), ["root"])
     } finally { await dispose() }

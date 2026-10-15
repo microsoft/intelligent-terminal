@@ -38,9 +38,15 @@ export default {
     let intent = 0;
     let connected = false;
     let disposed = false;
+    let evictedSessionID;
+    const observed = new Map();
     let delivery = Promise.resolve();
     let pending = [];
 
+    function identity(owner) {
+      const { clientID, terminalID, paneID, sessionID, generation } = owner;
+      return { clientID, terminalID, paneID, sessionID, generation };
+    }
     function enqueue(work) {
       const result = delivery.then(work);
       delivery = result.catch((error) => console.error("wt-agent-hooks: pane sync failed", error));
@@ -69,7 +75,7 @@ export default {
     async function release() {
       if (!bound) return;
       const old = bound;
-      const result = await rpc.unbind(old, options);
+      const result = await rpc.unbind(identity(old), options);
       if (result.detached) await bridge("agent.session.unbind", old.sessionID, {});
       if (bound === old) bound = undefined;
     }
@@ -77,6 +83,7 @@ export default {
       if (snapshot.status === "deleted") {
         await bridge("agent.session.end", owner.sessionID, { reason: "deleted", pane_owner: false });
         await bridge("agent.session.unbind", owner.sessionID, {});
+        observed.delete(owner.sessionID);
         if (bound === owner) bound = undefined;
         return;
       }
@@ -109,7 +116,9 @@ export default {
         await release();
         return;
       }
+      if (evictedSessionID === desired.sessionID) return;
       if (bound?.sessionID === desired.sessionID && !reclaim) return;
+      const recovering = bound?.sessionID === desired.sessionID;
       if (bound && bound.sessionID !== desired.sessionID) await release();
       if (disposed || expected !== intent) return;
       const owner = {
@@ -117,16 +126,17 @@ export default {
       };
       const snapshot = await rpc.bind({ ...owner, ...desired }, options);
       if (disposed || expected !== intent) {
-        await rpc.unbind(owner, options);
+        await rpc.unbind(identity(owner), options);
         return;
       }
       if (snapshot.status === "deleted") {
         if (bound?.sessionID === owner.sessionID) {
           await bridge("agent.session.end", owner.sessionID, { reason: "deleted", pane_owner: false });
           await bridge("agent.session.unbind", owner.sessionID, {});
+          observed.delete(owner.sessionID);
           bound = undefined;
         }
-        await rpc.unbind(owner, options);
+        await rpc.unbind(identity(owner), options);
         return;
       }
       await bridge("agent.session.start", owner.sessionID, {
@@ -135,7 +145,11 @@ export default {
         running: snapshot.status === "working" || snapshot.status === "attention",
       });
       bound = owner;
+      observed.set(owner.sessionID, owner);
       await reconcile(snapshot, owner, true);
+      if (recovering && snapshot.status === "idle") {
+        await bridge("agent.stop", owner.sessionID, { pane_owner: false });
+      }
       const buffered = pending;
       pending = [];
       for (const signal of buffered) {
@@ -146,6 +160,7 @@ export default {
       if (!matches(signal, bound)) return;
       if (signal.topic === "agent.session.unbind") {
         await bridge("agent.session.unbind", signal.sessionID, {});
+        evictedSessionID = signal.sessionID;
         bound = undefined;
         return;
       }
@@ -154,6 +169,7 @@ export default {
       revision = signal.revision;
       if (signal.topic === "agent.session.end") {
         await bridge("agent.session.unbind", signal.sessionID, {});
+        observed.delete(signal.sessionID);
         bound = undefined;
       } else if (signal.topic === "agent.cwd.changed") {
         bound.cwd = signal.payload.cwd;
@@ -161,10 +177,31 @@ export default {
         bound.title = signal.payload.title;
       }
     }
-    function update() {
-      desired = selected();
+    function update(explicitView = false) {
+      const next = selected();
+      if (explicitView || next?.sessionID !== desired?.sessionID) evictedSessionID = undefined;
+      desired = next;
       const expected = ++intent;
       void enqueue(() => synchronize(expected));
+    }
+    async function recoverDetached() {
+      for (const [sessionID, owner] of observed) {
+        if (bound?.sessionID === sessionID) continue;
+        let snapshot;
+        try {
+          snapshot = await rpc.observe(identity(owner), options);
+        } catch (error) {
+          if (!(error instanceof Error) || !error.message.includes("OpenCode root session not found")) {
+            throw error;
+          }
+          console.error("wt-agent-hooks: detached session lookup failed", error);
+          continue;
+        }
+        if (snapshot.status === "deleted") {
+          await bridge("agent.session.end", sessionID, { reason: "deleted", pane_owner: false });
+          observed.delete(sessionID);
+        }
+      }
     }
     function receive(event) {
       const signal = event.data;
@@ -173,6 +210,15 @@ export default {
            event.location.workspaceID !== context.location.workspaceID)) return;
       if (signal.clientID !== clientID || signal.terminalID !== terminalID ||
           signal.paneID !== paneID) return;
+      if (signal.topic === "agent.session.end" && !matches(signal, bound) &&
+          matches(signal, observed.get(signal.sessionID))) {
+        void enqueue(async () => {
+          if (!matches(signal, observed.get(signal.sessionID))) return;
+          await bridge("agent.session.end", signal.sessionID, { ...signal.payload, pane_owner: false });
+          observed.delete(signal.sessionID);
+        });
+        return;
+      }
       if (!bound || matches(signal, bound)) {
         if (!bound) pending.push(signal);
         else void enqueue(() => forward(signal));
@@ -186,7 +232,10 @@ export default {
             if (event.type === "server.connected") {
               connected = true;
               const expected = ++intent;
-              await enqueue(() => synchronize(expected, true));
+              await enqueue(async () => {
+                await synchronize(expected, true);
+                await recoverDetached();
+              });
             } else if (event.type === "rpc.wt-agent-hooks.signal") {
               receive(event);
             }
@@ -202,9 +251,10 @@ export default {
       createEffect(() => { update(); });
       return stop;
     });
-    const onViewed = context.data.on("session.viewed", update);
-    const onCreated = context.data.on("session.created", update);
-    const onDeleted = context.data.on("session.deleted", update);
+    const onViewed = context.data.on("session.viewed", ({ data }) =>
+      update(data?.sessionID === selected()?.sessionID));
+    const onCreated = context.data.on("session.created", () => update());
+    const onDeleted = context.data.on("session.deleted", () => update());
     const watcher = watch();
     const refresh = setInterval(() => {
       if (disposed || !connected) return;
@@ -212,9 +262,10 @@ export default {
         if (!bound) {
           await synchronize(intent);
         } else {
-          const snapshot = await rpc.snapshot(bound, options);
+          const snapshot = await rpc.snapshot(identity(bound), options);
           if (snapshot.revision > revision) await reconcile(snapshot, bound, false);
         }
+        await recoverDetached();
       });
     }, 30000);
 
@@ -229,7 +280,14 @@ export default {
       connected = true;
       disposed = true;
       try {
-        await enqueue(release);
+        await enqueue(async () => {
+          try {
+            await release();
+          } finally {
+            await rpc.forget({ clientID }, options);
+            observed.clear();
+          }
+        });
       } finally {
         await watcher;
       }

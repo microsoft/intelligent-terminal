@@ -57,6 +57,23 @@ export const bindingRpc = {
       input: binding,
       output: snapshot,
     },
+    observe: {
+      input: binding,
+      output: snapshot,
+    },
+    forget: {
+      input: {
+        type: "object",
+        properties: { clientID: text },
+        required: ["clientID"],
+        additionalProperties: false,
+      },
+      output: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
   },
   events: {
     signal: {

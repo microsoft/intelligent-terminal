@@ -1096,6 +1096,27 @@ fn opencode_uninstall_removes_only_managed_files() {
 }
 
 #[test]
+fn opencode_uninstall_removes_rpc_when_tui_is_missing() {
+    let source = unique_dir("opencode-uninstall-rpc-source");
+    let home = unique_dir("opencode-uninstall-rpc-home");
+    write_opencode_test_bundle(&source, OPENCODE_PLUGIN_JS_CONTENT);
+    copy_opencode_bundle(&source, &home).unwrap();
+    let support = opencode_support_dir(&home);
+    fs::remove_file(support.join(OPENCODE_TUI_JS)).unwrap();
+    assert!(support.join(OPENCODE_RPC_JS).is_file());
+
+    let result = opencode_uninstall(Some(&home));
+
+    assert!(result.succeeded());
+    assert_eq!(result.plugin_uninstalled, Some(true));
+    assert!(!support.join(OPENCODE_RPC_JS).exists());
+    assert!(!support.join(OPENCODE_MANIFEST).exists());
+    assert!(!opencode_plugins_dir(&home)
+        .join(OPENCODE_PLUGIN_JS)
+        .exists());
+}
+
+#[test]
 fn opencode_uninstall_retry_removes_orphaned_managed_support_files() {
     let home = unique_dir("opencode-uninstall-retry");
     let support = opencode_support_dir(&home);
@@ -2335,7 +2356,7 @@ fn native_hook_bundle_versions_match_their_marketplaces() {
         ("copilot", COPILOT_PLUGIN_JSON, "0.1.7"),
         ("gemini", GEMINI_EXTENSION_JSON, "0.1.7"),
         ("codex", CODEX_PLUGIN_JSON, "0.1.9"),
-        ("opencode", OPENCODE_PLUGIN_JSON, "0.1.13"),
+        ("opencode", OPENCODE_PLUGIN_JSON, "0.1.14"),
         (
             "antigravity",
             include_str!("../wt-agent-hooks/antigravity/intelligent-terminal.json"),
