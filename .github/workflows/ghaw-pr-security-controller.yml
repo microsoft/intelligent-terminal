@@ -1,0 +1,448 @@
+name: Intelligent Terminal Security Review
+run-name: Security Review for PR #${{ github.event.pull_request.number }}
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - 'AGENTS.md'
+      - '.agents/**'
+      - '.cargo/**'
+      - '.github/**'
+      - 'build/**'
+      - 'installer/**'
+      - 'src/**'
+      - 'tools/**'
+      - 'test/**'
+      - 'doc/security-model.md'
+
+permissions: {}
+
+concurrency:
+  group: ghaw-pr-security-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  GIT_NO_REPLACE_OBJECTS: '1'
+
+jobs:
+  security-review:
+    name: Intelligent Terminal security review
+    runs-on: ubuntu-latest
+    timeout-minutes: 210
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    outputs:
+      publication: ${{ steps.canonical.outputs.publication }}
+      patch_sha256: ${{ steps.canonical.outputs.patch_sha256 }}
+      detector_attested: ${{ steps.canonical.outputs.detector_attested }}
+    steps:
+      - name: Checkout trusted base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve immutable review scope
+        id: scope
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          remote_ref="refs/remotes/origin/security-pr-$PR_NUMBER"
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            fetch --no-tags origin "refs/pull/$PR_NUMBER/head:$remote_ref"
+          fetched_head="$(git rev-parse "$remote_ref")"
+          [ "$fetched_head" = "$HEAD_SHA" ] || {
+            echo "::error::PR head changed before security review."
+            exit 1
+          }
+          comparison_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          worker=ghaw-pr-security-guide-fork.lock.yml
+          if [ "$SAME_REPO" = true ]; then
+            worker=ghaw-pr-security.lock.yml
+          fi
+          scope_file="$RUNNER_TEMP/security-scope.json"
+          node .github/skills/ghaw-pr-security/scripts/security-review.mjs scope \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA" \
+            --pr "$PR_NUMBER" \
+            --relation "$([ "$SAME_REPO" = true ] && echo same-repo || echo fork)" \
+            --mode "$([ "$SAME_REPO" = true ] && echo repair || echo guide)" \
+            --output "$scope_file"
+          applicable="$(node -p "JSON.parse(require('fs').readFileSync('$scope_file','utf8')).applicable")"
+          {
+            echo "comparison_base_sha=$comparison_base"
+            echo "applicable=$applicable"
+            echo "worker=$worker"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$applicable" != true ]; then
+            {
+              echo '## Intelligent Terminal security review'
+              echo
+              echo 'No security-relevant trust-boundary surface was detected by deterministic classification.'
+              echo
+              echo '- AI Credits: **0**'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Dispatch and wait for security worker
+        id: worker
+        if: steps.scope.outputs.applicable == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          WORKER: ${{ steps.scope.outputs.worker }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          COMPARISON_BASE_SHA: ${{ steps.scope.outputs.comparison_base_sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const dispatchId =
+              `ghaw-pr-security-${pr.number}-${process.env.EXPECTED_HEAD_SHA}-${context.runId}-${context.runAttempt}`;
+            core.setOutput("dispatch_id", dispatchId);
+            const inputs = {
+              dispatch_id: dispatchId,
+              pr_number: String(pr.number),
+              repo: `${context.repo.owner}/${context.repo.repo}`,
+              expected_head_sha: process.env.EXPECTED_HEAD_SHA,
+              expected_base_sha: process.env.EXPECTED_BASE_SHA,
+              comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+              head_ref: process.env.HEAD_REF,
+              head_repo: process.env.HEAD_REPO,
+              aw_context: JSON.stringify({
+                source_pr_number: pr.number,
+                repo: `${context.repo.owner}/${context.repo.repo}`,
+                event_type: "workflow_dispatch",
+                head_sha: process.env.EXPECTED_HEAD_SHA,
+                base_sha: process.env.EXPECTED_BASE_SHA,
+                comparison_base_sha: process.env.COMPARISON_BASE_SHA,
+                root_run_id: String(context.runId),
+                root_workflow_id: "ghaw-pr-security-controller"
+              })
+            };
+            const baseRef = await github.rest.git.getRef({
+              ...context.repo, ref: `heads/${pr.base.ref}`
+            });
+            if (baseRef.data.ref !== `refs/heads/${pr.base.ref}` ||
+                baseRef.data.object.type !== "commit" ||
+                baseRef.data.object.sha !== process.env.EXPECTED_BASE_SHA) {
+              throw new Error("Stale security base: the base branch changed before dispatch; refusing to replace the immutable expected base.");
+            }
+            const startedAt = Date.now() - 5000;
+            const response = await github.request(
+              "POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches",
+              { ...context.repo, workflow_id: process.env.WORKER, ref: pr.base.ref, inputs }
+            );
+            let runId = response.data?.workflow_run_id;
+            let run;
+            for (let attempt = 0; !runId && attempt < 20; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                ...context.repo,
+                workflow_id: process.env.WORKER,
+                event: "workflow_dispatch",
+                branch: pr.base.ref,
+                created: `>=${new Date(startedAt).toISOString()}`,
+                per_page: 100
+              });
+              run = runs.find(candidate =>
+                Date.parse(candidate.created_at) >= startedAt &&
+                candidate.display_title.includes(dispatchId));
+              runId = run?.id;
+            }
+            if (!runId) throw new Error(`Could not correlate ${process.env.WORKER} for ${dispatchId}.`);
+            const deadline = Date.now() + 200 * 60 * 1000;
+            while (Date.now() < deadline) {
+              run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: runId })).data;
+              if (run.status === "completed") {
+                core.setOutput("run_id", String(runId));
+                core.setOutput("run_url", run.html_url);
+                core.setOutput("conclusion", run.conclusion || "failure");
+                return;
+              }
+              await new Promise(resolve => setTimeout(resolve, 15000));
+            }
+            await github.rest.actions.cancelWorkflowRun({ ...context.repo, run_id: runId });
+            throw new Error(`Security worker ${runId} exceeded 200 minutes and cancellation was requested.`);
+
+      - name: Canonicalize worker output without publication credentials
+        id: canonical
+        if: always() && steps.worker.outputs.run_id != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.worker.outputs.run_id }}
+          RUN_URL: ${{ steps.worker.outputs.run_url }}
+          WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DISPATCH_ID: ${{ steps.worker.outputs.dispatch_id }}
+        run: |
+          set -euo pipefail
+          [ "$WORKER_CONCLUSION" = success ] || {
+            echo "::error::Refusing to publish output from unsuccessful worker."
+            exit 1
+          }
+          current_head="$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)"
+          [ "$current_head" = "$EXPECTED_HEAD_SHA" ] || {
+            echo "::error::Stale security worker result rejected: expected $EXPECTED_HEAD_SHA, found $current_head."
+            exit 1
+          }
+          report_dir="$RUNNER_TEMP/security-report"
+          mkdir -p "$report_dir"
+          gh run download "$RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "ghaw-pr-security-$PR_NUMBER-$EXPECTED_HEAD_SHA" \
+            --dir "$report_dir"
+          attempt="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .run_attempt)"
+          [[ "$attempt" =~ ^[1-9][0-9]*$ ]]
+          detector_dir="$RUNNER_TEMP/security-detector"
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "ghaw-pr-security-detector-proof-$RUN_ID-$attempt-$PR_NUMBER" --dir "$detector_dir"
+          canonical="$RUNNER_TEMP/security-canonical"
+          mkdir "$canonical"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/security-canonical.index"
+          node .github/skills/ghaw-pr-security/scripts/security-review.mjs prepare-publication \
+            --scope "$RUNNER_TEMP/security-scope.json" --artifacts "$report_dir" \
+            --detector-proof "$detector_dir/security-detector-proof.json" --output "$canonical"
+          cat "$canonical/security-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          printf '\n- Internal GHAW run: [%s](%s/%s/actions/runs/%s)\n' \
+            "$RUN_ID" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload canonical publication handoff
+        if: steps.canonical.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: security-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/security-canonical
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Enforce canonical report
+        if: steps.canonical.outcome == 'success'
+        shell: bash
+        run: node .github/skills/ghaw-pr-security/scripts/security-review.mjs enforce --status "$RUNNER_TEMP/security-canonical/security-status.txt"
+
+      - name: Enforce worker success
+        if: always() && steps.scope.outputs.applicable == 'true'
+        shell: bash
+        env:
+          WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
+        run: |
+          if [ "${WORKER_CONCLUSION:-failure}" != success ]; then
+            echo "::error::The internal security worker did not succeed."
+            exit 1
+          fi
+
+  publish-repair:
+    needs: security-review
+    if: needs.security-review.result == 'success' && needs.security-review.outputs.detector_attested == 'true' && needs.security-review.outputs.publication == 'push' && github.event.pull_request.head.repo.id == github.repository_id
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      published_head: ${{ steps.publish.outputs.published_head }}
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Checkout trusted base only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Download canonical handoff from this controller run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: security-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/security-canonical
+      - name: Publish one canonical index-only proposed-fix commit per finding
+        id: publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PATCH_SHA256: ${{ needs.security-review.outputs.patch_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PATCH_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          git check-ref-format "refs/heads/$HEAD_REF"
+          patch="$RUNNER_TEMP/security-canonical/security-repair.patch"
+          [ "$(sha256sum "$patch" | cut -d ' ' -f 1)" = "$PATCH_SHA256" ]
+          verify_live_pr_identity() {
+            local metadata
+            metadata="$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+            if [ "$(printf '%s' "$metadata" | jq -r .head.sha)" != "$EXPECTED_HEAD_SHA" ] ||
+               [ "$(printf '%s' "$metadata" | jq -r .base.sha)" != "$EXPECTED_BASE_SHA" ] ||
+               [ "$(printf '%s' "$metadata" | jq -r .head.repo.full_name)" != "$GITHUB_REPOSITORY" ] ||
+               [ "$(printf '%s' "$metadata" | jq -r .head.ref)" != "$HEAD_REF" ]; then
+              echo "::error::Stale security publication identity."
+              return 1
+            fi
+          }
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            fetch --no-tags origin "$EXPECTED_HEAD_SHA"
+          verify_live_pr_identity
+          canonical="$RUNNER_TEMP/security-canonical"
+          receipt="$RUNNER_TEMP/security-repair-commits.json"
+          node .github/skills/ghaw-pr-security/scripts/security-review.mjs commit-repairs \
+            --scope "$canonical/security-scope.json" \
+            --report "$canonical/security-findings.json" \
+            --patch "$patch" --output "$receipt"
+          commit="$(node -p "JSON.parse(require('fs').readFileSync('$receipt','utf8')).publishedHeadSha")"
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$EXPECTED_HEAD_SHA" "$commit"
+          verify_live_pr_identity
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            push --force-with-lease="refs/heads/$HEAD_REF:$EXPECTED_HEAD_SHA" \
+              origin "$commit:refs/heads/$HEAD_REF"
+          [ "$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)" = "$commit" ] || {
+            echo "::error::Published repair head readback differs."
+            exit 1
+          }
+          printf 'published_head=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+      - name: Upload published per-finding commit receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: security-repair-commits-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/security-repair-commits.json
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-report:
+    needs: [security-review, publish-repair]
+    if: always() && !cancelled() && needs.security-review.outputs.detector_attested == 'true' && (needs.security-review.outputs.publication != 'push' || needs.publish-repair.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Checkout trusted report-rendering code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Download canonical handoff from this controller run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: security-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/security-canonical
+      - name: Download published per-finding commit receipt
+        if: needs.security-review.outputs.publication == 'push'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: security-repair-commits-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/security-repair-commits
+      - name: Publish idempotent SHA-labelled PR security report
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUBLISHED_HEAD_SHA: ${{ needs.publish-repair.outputs.published_head }}
+          PATCH_SHA256: ${{ needs.security-review.outputs.patch_sha256 }}
+          PUBLICATION: ${{ needs.security-review.outputs.publication }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const head = process.env.EXPECTED_HEAD_SHA;
+            const base = process.env.EXPECTED_BASE_SHA;
+            const published = process.env.PUBLISHED_HEAD_SHA || '';
+            const publication = process.env.PUBLICATION;
+            const sameRepo = process.env.SAME_REPO === 'true';
+            const visibleHead = publication === 'push' ? published : head;
+            const number = process.env.PR_NUMBER;
+            if (!/^[0-9a-f]{40}$/.test(head) || !/^[0-9a-f]{40}$/.test(base) ||
+                !/^[1-9][0-9]*$/.test(number)) throw new Error('Invalid publication identity.');
+            if (!['push', 'comment', 'none'].includes(publication) ||
+                !['true', 'false'].includes(process.env.SAME_REPO) ||
+                !/^[0-9a-f]{40}$/.test(visibleHead) ||
+                (publication === 'push' && (!sameRepo || !published)) ||
+                (publication !== 'push' && published)) throw new Error('Invalid report publication state.');
+            const pull_number = Number(number);
+            const current = (await github.rest.pulls.get({ ...context.repo, pull_number })).data;
+            if (current.head.sha !== visibleHead || current.base?.sha !== base ||
+                (current.head.repo.id === Number(context.payload.repository.id)) !== sameRepo) throw new Error('Stale report identity.');
+            const canonical = `${process.env.RUNNER_TEMP}/security-canonical`;
+            let summary = fs.readFileSync(`${canonical}/security-summary.md`, 'utf8');
+            const report = JSON.parse(fs.readFileSync(`${canonical}/security-findings.json`, 'utf8'));
+            if (report.summaryMarkdown !== summary) throw new Error('Canonical Markdown differs from the authored report.');
+            const expectedIds = report.findings.filter(finding => finding.fixDisposition.state === 'proposed').map(finding => finding.id);
+            const tokens = [...summary.matchAll(/\{\{commit:([^}]*)\}\}/g)].map(match => match[1]);
+            if (tokens.length !== expectedIds.length ||
+                expectedIds.some((id, index) => tokens.filter(token => token === String(index + 1)).length !== 1)) throw new Error('Missing, duplicate or unknown commit placeholder.');
+            const repoUrl = `${context.serverUrl || 'https://github.com'}/${context.repo.owner}/${context.repo.repo}`;
+            if (publication === 'push') {
+              const receipt = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/security-repair-commits/security-repair-commits.json`, 'utf8'));
+              const scope = JSON.parse(fs.readFileSync(`${canonical}/security-scope.json`, 'utf8'));
+              if (scope.headSha !== head || scope.observedBaseSha !== base ||
+                  scope.prNumber !== pull_number || scope.mode !== 'repair' ||
+                  scope.repositoryRelation !== 'same-repo' ||
+                  report.headSha !== head || report.baseSha !== scope.baseSha ||
+                  report.scopeSha256 !== scope.scopeSha256 ||
+                  !/^[0-9a-f]{64}$/.test(process.env.PATCH_SHA256 || '') ||
+                  receipt.patchSha256 !== process.env.PATCH_SHA256 ||
+                  receipt.headSha !== head || receipt.publishedHeadSha !== published ||
+                  !Array.isArray(receipt.commits) || receipt.commits.length !== expectedIds.length ||
+                  receipt.commits.length === 0 ||
+                  new Set(receipt.commits.map(item => item.findingId)).size !== expectedIds.length ||
+                  receipt.commits.some((item, index) => item.findingId !== expectedIds[index])) throw new Error('Invalid per-finding commit receipt.');
+              let parent = head;
+              for (const item of receipt.commits) {
+                if (!/^[0-9a-f]{40}$/.test(item.commitSha)) throw new Error('Invalid finding commit SHA.');
+                const commit = (await github.rest.git.getCommit({ ...context.repo, commit_sha: item.commitSha })).data;
+                if (commit.parents.length !== 1 || commit.parents[0].sha !== parent) throw new Error('Published finding commits do not form the reviewed-head chain.');
+                parent = item.commitSha;
+              }
+              if (parent !== published) throw new Error('Published head does not match the final finding commit.');
+              receipt.commits.forEach((item, index) => {
+                summary = summary.replace(`{{commit:${index + 1}}}`, `[${item.commitSha.slice(0, 12)}](${repoUrl}/commit/${item.commitSha})`);
+              });
+            } else {
+              expectedIds.forEach((id, index) => {
+                summary = summary.replace(`{{commit:${index + 1}}}`, 'Not committed');
+              });
+            }
+            if (summary.includes('{{commit:')) throw new Error('Unbound commit placeholder.');
+            const marker = '<!-- ghaw-pr-security -->';
+            const outcome = publication === 'push'
+              ? '**Outcome: proposed fixes committed.**'
+              : '**Outcome: review completed; findings are reported below.**';
+            const body = `${marker}\n<!-- reviewed-head: ${head} -->\n${outcome}\n\n${summary}\n\nReviewed commit: \`${head}\`\n\nWorkflow: ${repoUrl}/actions/runs/${context.runId}`;
+            const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number: pull_number, per_page: 100 });
+            const existing = comments.filter(comment => comment.user.login === 'github-actions[bot]' && comment.body.startsWith(marker)).at(-1);
+            const latest = (await github.rest.pulls.get({ ...context.repo, pull_number })).data;
+            if (latest.head.sha !== visibleHead || latest.base?.sha !== base ||
+                (latest.head.repo.id === Number(context.payload.repository.id)) !== sameRepo) throw new Error('Head or base changed before report publication.');
+            if (existing) {
+              if (existing.body !== body) await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: pull_number, body });
+            }
