@@ -727,7 +727,7 @@ polling, and the idle period after polling stops, without making a model
 request or creating a chat session:
 
 ```powershell
-pwsh -File tools\wta\Measure-CopilotAcpCpu.ps1
+pwsh -File build\scripts\Measure-CopilotAcpCpu.ps1
 ```
 
 Add `-CreateTranscript` to create and restore only a new test conversation,
@@ -765,12 +765,6 @@ identified as its own by PID and creation
 time, does not attach to Terminal or restore existing chats, and leaves its
 new test session available for inspection. A quiet short run does not rule
 out a failure specific to a longer or different session history.
-
-Run the focused PowerShell scheduling tests without launching an agent:
-
-```powershell
-Invoke-Pester -Path tools\wta\Measure-CopilotAcpCpu.Tests.ps1 -Output Detailed
-```
 
 ## Project Structure
 

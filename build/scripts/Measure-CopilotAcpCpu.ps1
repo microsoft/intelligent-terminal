@@ -23,9 +23,9 @@
     response, waits five seconds after success, and uses 5/10/20/40/60-second
     delays after error responses. It does not implement WTA's process recovery.
 .EXAMPLE
-    pwsh -File tools\wta\Measure-CopilotAcpCpu.ps1
+    pwsh -File build\scripts\Measure-CopilotAcpCpu.ps1
 .EXAMPLE
-    pwsh -File tools\wta\Measure-CopilotAcpCpu.ps1 -CreateTranscript -DurationSeconds 60
+    pwsh -File build\scripts\Measure-CopilotAcpCpu.ps1 -CreateTranscript -DurationSeconds 60
 #>
 [CmdletBinding()]
 param(
@@ -43,7 +43,8 @@ $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'This probe requires Windows process CPU accounting.' }
 $CopilotPath = (Get-Command $CopilotPath -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 if (-not $OutputDir) {
-    $OutputDir = Join-Path $PSScriptRoot "target\acp-cpu-probe\$([DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff'))"
+    $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+    $OutputDir = Join-Path $RepoRoot "tools\wta\target\acp-cpu-probe\$([DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff'))"
 }
 $OutputDir = [IO.Path]::GetFullPath($OutputDir)
 if (Test-Path -LiteralPath $OutputDir) { throw "Output directory already exists: $OutputDir" }
