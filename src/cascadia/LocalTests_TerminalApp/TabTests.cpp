@@ -14198,11 +14198,23 @@ namespace TerminalAppLocalTests
         const auto second = winrt::make_self<TestConnection>(
             winrt::guid{ L"{6239a42c-bbbb-49a3-80bd-e8fdd045185d}" },
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
-        auto page = _commonSetup(*first, nullptr, std::nullopt, true);
+        Grid layoutHost{ nullptr };
+        TestOnUIThread([&]() {
+            layoutHost = Grid{};
+            layoutHost.Width(1280);
+            layoutHost.Height(720);
+        });
+        auto page = _commonSetup(*first, layoutHost, std::nullopt, true);
         winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
         winrt::TerminalApp::TabHeaderControl originalHeader{ nullptr };
         winrt::MUX::Controls::IconSource originalSource{ nullptr };
 
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            const auto focused = page->_GetFocusedTabImpl();
+            return focused && focused->GetActiveTerminalControl().ActualWidth() > 0 &&
+                   winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HeaderForTab(focused->TabViewItem()) != nullptr;
+        });
         TestOnUIThread([&]() {
             tab = page->_GetFocusedTabImpl();
             VERIFY_IS_NOT_NULL(tab);
@@ -15021,13 +15033,19 @@ namespace TerminalAppLocalTests
 
     void TabTests::PaneProgressSurvivesTabLayoutLifecycle()
     {
-        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         const auto first = winrt::make_self<TestConnection>(
             winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
         const auto second = winrt::make_self<TestConnection>(
             winrt::guid{ L"{6239a42c-bbbb-49a3-80bd-e8fdd045185c}" },
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        Grid layoutHost{ nullptr };
+        TestOnUIThread([&]() {
+            layoutHost = Grid{};
+            layoutHost.Width(1280);
+            layoutHost.Height(720);
+        });
+        auto page = _commonSetup(*first, layoutHost, std::nullopt, true);
 
         winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
         uint32_t firstContentId{};
@@ -15258,7 +15276,11 @@ namespace TerminalAppLocalTests
                     return FrameworkElement{ nullptr };
                 }
 
-                const auto templateRoot = displayContainer.ContentTemplateRoot().as<StackPanel>();
+                const auto templateRoot = displayContainer.ContentTemplateRoot().try_as<StackPanel>();
+                if (!templateRoot)
+                {
+                    return FrameworkElement{ nullptr };
+                }
                 const auto paneList = templateRoot.Children().GetAt(1).as<ItemsControl>();
                 const auto paneContainer = paneList.ContainerFromIndex(paneIndex).as<ContentPresenter>();
                 if (!paneContainer || Media::VisualTreeHelper::GetChildrenCount(paneContainer) == 0)
@@ -15292,7 +15314,11 @@ namespace TerminalAppLocalTests
                     return winrt::hstring{};
                 }
 
-                const auto templateRoot = displayContainer.ContentTemplateRoot().as<StackPanel>();
+                const auto templateRoot = displayContainer.ContentTemplateRoot().try_as<StackPanel>();
+                if (!templateRoot)
+                {
+                    return winrt::hstring{};
+                }
                 const auto paneList = templateRoot.Children().GetAt(1).as<ItemsControl>();
                 const auto paneContainer = paneList.ContainerFromIndex(paneIndex).as<ContentPresenter>();
                 if (!paneContainer || Media::VisualTreeHelper::GetChildrenCount(paneContainer) == 0)
@@ -15353,8 +15379,6 @@ namespace TerminalAppLocalTests
         };
 
         TestOnUIThread([&]() {
-            const auto firstPane = page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *first);
-            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(firstPane));
             tab = page->_GetFocusedTabImpl();
             VERIFY_IS_NOT_NULL(tab);
             page->_ApplyTabListProjection(*tab);
@@ -15367,6 +15391,11 @@ namespace TerminalAppLocalTests
             const auto display = displayForTab();
             VERIFY_IS_NOT_NULL(display);
             VERIFY_IS_FALSE(display.IsGroup());
+        });
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            return headerForTab() != nullptr && tab->GetActiveTerminalControl().ActualWidth() > 0 &&
+                   page->_tabStrip.ContainerFromIndex(0) != nullptr;
         });
 
         emitOsc(first, u"\x1b]9;4;3;0\a");
@@ -17230,18 +17259,43 @@ namespace TerminalAppLocalTests
     {
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
         const auto connection = winrt::make_self<TestConnection>(winrt::guid{ L"{436c8552-a3b3-4141-9b6c-c57b3251936e}" }, State::Connected);
-        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        Grid layoutHost{ nullptr };
+        TestOnUIThread([&]() {
+            layoutHost = Grid{};
+            layoutHost.Width(1280);
+            layoutHost.Height(720);
+        });
+        auto page = _commonSetup(*connection, layoutHost, std::nullopt, true);
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+        std::shared_ptr<Pane> sourcePane;
+        winrt::guid paneSessionId{};
+        winrt::hstring profileIcon;
+        winrt::TerminalApp::TabStripDisplayItem display{ nullptr };
+        winrt::TerminalApp::TabHeaderPresentation presentation{ nullptr };
+        winrt::MUX::Controls::IconSource copilotSource{ nullptr };
+        winrt::MUX::Controls::IconSource geminiSource{ nullptr };
+        ContentPresenter iconPresenter{ nullptr };
+        BitmapIcon realizedCopilot{ nullptr };
+        winrt::TerminalApp::TabStripDisplayItem restoredDisplay{ nullptr };
+        winrt::MUX::Controls::IconSource restoredSource{ nullptr };
+        const std::u16string progressStart{ u"\x1b]9;4;3\x07" };
+        const std::u16string progressEnd{ u"\x1b]9;4;0\x07" };
 
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            const auto focused = page->_GetFocusedTabImpl();
+            return focused && focused->GetActiveTerminalControl().ActualWidth() > 0 &&
+                   winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HeaderForTab(focused->TabViewItem()) != nullptr;
+        });
         TestOnUIThread([&]() {
             page->Width(1200);
             page->Height(600);
             page->UpdateLayout();
-            const auto tab = page->_GetFocusedTabImpl();
+            tab = page->_GetFocusedTabImpl();
             tab->SuppressAgentPrewarm();
-            tab->GetActiveTerminalControl().Connection(*connection);
-            auto sourcePane = tab->GetActivePane();
-            const auto paneSessionId = sourcePane->GetSessionId();
-            const auto profileIcon = sourcePane->GetContent().Icon();
+            sourcePane = tab->GetActivePane();
+            paneSessionId = sourcePane->GetSessionId();
+            profileIcon = sourcePane->GetContent().Icon();
             page->_UpdateTabIcon(*tab);
             VERIFY_ARE_EQUAL(profileIcon, tab->Icon());
             page->_tabStrip.RichTabAgentStatusVisible(false);
@@ -17253,7 +17307,6 @@ namespace TerminalAppLocalTests
             sourcePane = tab->GetRootPane()->FindPaneBySessionId(paneSessionId);
             VERIFY_IS_NOT_NULL(sourcePane);
 
-            const std::u16string progressStart{ u"\x1b]9;4;3\x07" };
             connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ progressStart.data(), progressStart.data() + progressStart.size() });
             tab->_UpdateProgressState();
             VERIFY_IS_TRUE(tab->_tabStatus.IsProgressRingActive());
@@ -17270,17 +17323,17 @@ namespace TerminalAppLocalTests
                 tab->Icon());
             VERIFY_IS_NULL(tab->TabViewItem().IconSource());
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
-            const auto display = strip->DisplayItemForTab(tab->TabViewItem());
+            display = strip->DisplayItemForTab(tab->TabViewItem());
             VERIFY_IS_NOT_NULL(display.IconSource().try_as<winrt::MUX::Controls::BitmapIconSource>());
-            const auto presentation = tab->TabViewItem().Header().as<winrt::TerminalApp::TabHeaderControl>().Presentation();
+            presentation = tab->TabViewItem().Header().as<winrt::TerminalApp::TabHeaderControl>().Presentation();
             VERIFY_IS_TRUE(display.IconSource() == presentation.IconSource());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, display.IconVisibility());
-            const auto copilotSource = display.IconSource();
+            copilotSource = display.IconSource().as<winrt::MUX::Controls::IconSource>();
             VERIFY_IS_NOT_NULL(copilotSource.as<winrt::MUX::Controls::BitmapIconSource>().UriSource());
             page->UpdateLayout();
             const auto row = page->_tabStrip.ContainerFromIndex(page->_GetFocusedTabIndex().value()).as<ListViewItem>().ContentTemplateRoot().as<FrameworkElement>();
-            const auto iconPresenter = row.FindName(L"TabIconPresenter").as<ContentPresenter>();
-            const auto realizedCopilot = iconPresenter.Content().as<winrt::Windows::UI::Xaml::Controls::BitmapIcon>();
+            iconPresenter = row.FindName(L"TabIconPresenter").as<ContentPresenter>();
+            realizedCopilot = iconPresenter.Content().as<BitmapIcon>();
             VERIFY_IS_NOT_NULL(realizedCopilot.UriSource());
             VERIFY_IS_TRUE(realizedCopilot.ShowAsMonochrome());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, iconPresenter.Visibility());
@@ -17299,9 +17352,16 @@ namespace TerminalAppLocalTests
                 uint64_t{ 1235 },
                 "Attention"));
             VERIFY_IS_TRUE(display.IconSource() == copilotSource);
-            const std::u16string progressEnd{ u"\x1b]9;4;0\x07" };
             connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ progressEnd.data(), progressEnd.data() + progressEnd.size() });
             tab->_UpdateProgressState();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            page->UpdateLayout();
+            return !tab->_tabStatus.IsProgressRingActive() &&
+                   display.IconVisibility() == Visibility::Visible &&
+                   iconPresenter.Visibility() == Visibility::Visible;
+        });
+        TestOnUIThread([&]() {
             VERIFY_IS_FALSE(tab->_tabStatus.IsProgressRingActive());
             const auto tabIcon = tab->TabViewItem().IconSource().try_as<winrt::Microsoft::UI::Xaml::Controls::BitmapIconSource>();
             VERIFY_IS_NOT_NULL(tabIcon);
@@ -17330,7 +17390,7 @@ namespace TerminalAppLocalTests
                 "gemini",
                 uint64_t{ 1236 },
                 "Working"));
-            const auto geminiSource = presentation.IconSource();
+            geminiSource = presentation.IconSource().as<winrt::MUX::Controls::IconSource>();
             VERIFY_IS_NOT_NULL(geminiSource.as<winrt::MUX::Controls::BitmapIconSource>().UriSource());
             VERIFY_IS_TRUE(geminiSource != copilotSource);
             VERIFY_IS_TRUE(display.IconSource() == geminiSource);
@@ -17359,6 +17419,7 @@ namespace TerminalAppLocalTests
                 winrt::hstring{ L"ms-appx:///AgentIcons/gemini.svg" },
                 tab->Icon());
             VERIFY_IS_NULL(tab->TabViewItem().IconSource());
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             VERIFY_IS_TRUE(strip->DisplayItemForTab(tab->TabViewItem()).IconSource() == geminiSource);
 
             VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(
@@ -17368,8 +17429,8 @@ namespace TerminalAppLocalTests
                 uint64_t{ 2345 },
                 "Ended"));
             VERIFY_ARE_EQUAL(profileIcon, tab->Icon());
-            const auto restoredDisplay = strip->DisplayItemForTab(tab->TabViewItem());
-            const auto restoredSource = presentation.IconSource();
+            restoredDisplay = strip->DisplayItemForTab(tab->TabViewItem());
+            restoredSource = presentation.IconSource().as<winrt::MUX::Controls::IconSource>();
             VERIFY_IS_NOT_NULL(restoredSource);
             VERIFY_IS_TRUE(restoredSource != geminiSource);
             VERIFY_IS_TRUE(restoredDisplay.IconSource() == restoredSource);
@@ -17378,7 +17439,13 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(tab->_tabStatus.IsProgressRingActive());
             connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ progressEnd.data(), progressEnd.data() + progressEnd.size() });
             tab->_UpdateProgressState();
+        });
+        _waitForContentTransferReviewUI([&]() {
             page->UpdateLayout();
+            return !tab->_tabStatus.IsProgressRingActive() &&
+                   restoredDisplay.IconVisibility() == Visibility::Visible;
+        });
+        TestOnUIThread([&]() {
             VERIFY_IS_FALSE(tab->_tabStatus.IsProgressRingActive());
             VERIFY_ARE_EQUAL(Visibility::Visible, restoredDisplay.IconVisibility());
             VERIFY_ARE_EQUAL(profileIcon, tab->Icon());
