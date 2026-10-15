@@ -12,6 +12,42 @@ import zipfile
 ROOT = Path(__file__).parents[4]
 
 
+class TrustedHarnessIdentityTests(unittest.TestCase):
+    def verify(self, expected):
+        workflow = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
+        step = workflow.split("      - name: Verify immutable trusted harness\n", 1)[1]
+        script = textwrap.dedent(step.split("        run: |\n", 1)[1].split("      - name:", 1)[0])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            harness = root / "trusted-accessibility"
+            harness.mkdir()
+            for args in (["init", "-q"], ["config", "user.name", "Test"],
+                         ["config", "user.email", "test@example.com"],
+                         ["commit", "--allow-empty", "-qm", "Trusted fixture"]):
+                subprocess.run(["git", *args], cwd=harness, check=True, capture_output=True, timeout=15)
+            sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=harness, check=True,
+                                 capture_output=True, text=True, timeout=15).stdout.strip()
+            runner = root / "verify.ps1"
+            runner.write_text(f"$env:EXPECTED_TRUSTED_SHA = '{sha if expected is None else expected}'\n" + script,
+                              encoding="utf-8")
+            return subprocess.run(["pwsh", "-NoProfile", "-File", str(runner)], cwd=root,
+                                  capture_output=True, text=True, timeout=30)
+
+    def test_accepts_the_exact_checked_out_commit(self):
+        result = self.verify(None)
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_rejects_a_moving_ref(self):
+        result = self.verify("main")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("exact 40-character", result.stderr)
+
+    def test_rejects_a_different_commit(self):
+        result = self.verify("0" * 40)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("does not match", result.stderr)
+
+
 class FrameworkDependencyInstallationTests(unittest.TestCase):
     publisher = "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
 
