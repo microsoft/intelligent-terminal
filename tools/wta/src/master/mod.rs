@@ -8390,6 +8390,8 @@ where
                             Unknown
                         );
                     };
+                    let lifecycle_gate = session_lifecycle_gate(state, &row.session_id).await;
+                    let lifecycle_guard = lifecycle_gate.lock().await;
                     if state
                         .registry
                         .mark_resume_dispatched_identity(&parsed.identity)
@@ -8433,6 +8435,24 @@ where
                             Unknown
                         );
                     }
+                    // A new native binding needs the same watcher ownership as
+                    // /sessions resume. An earlier hook on this exact pane wins.
+                    if binding_changed
+                        && matches!(row.location, crate::agent_sessions::SessionLocation::Host)
+                        && row.session_universe.is_none()
+                        && state
+                            .registry
+                            .lookup(&row.session_id)
+                            .await
+                            .is_some_and(|current| {
+                                crate::session_registry::SessionIdentity::from_info(&current)
+                                    == parsed.identity
+                            })
+                    {
+                        state.hook_owned.lock().await.remove(&row.session_id);
+                        state.born_bound.lock().await.insert(row.session_id.clone());
+                    }
+                    drop(lifecycle_guard);
                     broadcast_session_status_change(state, None).await;
                     if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
                         &provider_id,
@@ -8750,40 +8770,40 @@ async fn apply_watcher_event(
     emitted: crate::session_watcher::Emitted,
 ) {
     let sid = acp::schema::v1::SessionId::new(emitted.key.clone());
-
-    // Hybrid dedup — the watcher is a *fallback*. Coordinate with authoritative
-    // producers:
-    //   1. a real hook / ACP agent-pane event recorded the session in
-    //      `hook_owned` → drop (the hook owns binding AND activity); or
-    //   2. it's an already-bound fallback row (`born_bound`)
-    //      → the watcher supplies STATUS only (handled just below); or
-    //   3. anything else (a user-typed CLI, or a machine-wide copilot/claude in
-    //      VS Code / another terminal) → drop below; we can't bind it to a pane.
-    if state.hook_owned.lock().await.contains(&sid) {
-        return;
-    }
-
-    // The row already has a live, vetted pane binding. The watcher only moves
-    // status and never changes that binding.
-    if state.born_bound.lock().await.contains(&sid) {
-        let key = emitted.key.clone();
-        let activity_only = session_event_is_activity_only(&emitted.event);
-        let applied = state.registry.apply_event(emitted.event).await;
-        if applied {
-            broadcast_session_status_change(
-                state,
-                Some(key.as_str()).filter(|_| applied && activity_only),
-            )
-            .await;
+    let activity_only = session_event_is_activity_only(&emitted.event);
+    let applied = {
+        // Serialize the ownership check and activity update with resume and
+        // real hooks, so a watcher cannot overwrite a hook that just took over.
+        let gate = session_lifecycle_gate(state, &sid).await;
+        let _guard = gate.lock().await;
+        if state.hook_owned.lock().await.contains(&sid)
+            || !state.born_bound.lock().await.contains(&sid)
+        {
+            return;
         }
-        try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key)).await;
-        return;
-    }
 
-    // Neither hook-owned nor born-bound: a user-typed shell-pane session, or a
-    // machine-wide CLI running in VS Code / another terminal. Surfacing it once
-    // required pane-binding via the removed PEB reader (`proc_bind`), so there
-    // is nothing left to do — drop it.
+        // Watcher records are native, provider-specific evidence. A raw ID
+        // alone cannot identify a WSL, ACP, or colliding history row.
+        let Some(row) = state.registry.lookup(&sid).await else {
+            return;
+        };
+        if row.location != crate::agent_sessions::SessionLocation::Host
+            || row.session_universe.is_some()
+            || row.origin == Some(crate::agent_sessions::SessionOrigin::AgentPane)
+            || row.cli_source.as_ref() != Some(&emitted.cli)
+        {
+            return;
+        }
+        state.registry.apply_event(emitted.event).await
+    };
+    if applied {
+        broadcast_session_status_change(
+            state,
+            Some(emitted.key.as_str()).filter(|_| activity_only),
+        )
+        .await;
+    }
+    try_refresh_title_via_acp(state, &sid).await;
 }
 
 fn build_agent_sessions_retired_event(
