@@ -132,8 +132,9 @@ otherwise leave the sandbox manifest or compiled window name/CLSID cached.
 Run the normal full incremental build with project dependencies enabled, then
 verify the generated ordinary Dev identity and the host's injected Dev CLSID.
 Inspect the staged diff for your token/GUID. Keep the registered private layout
-intact; uninstalling this sandbox and preserving its useful data is a separate
-cleanup decision. Stop only processes whose test ownership was established.
+intact; follow the [post-merge cleanup instructions](../.github/instructions/post-merge-cleanup.instructions.md)
+to record ownership before deployment and review sandbox/test-host removal after
+merge. Stop only processes whose test ownership was established.
 
 **Parallelize per operation.** HWND-scoped UIA reads and supported invoke/value/
 selection actions can target different apps. Shared foreground keyboard/mouse,
