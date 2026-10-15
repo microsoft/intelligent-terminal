@@ -218,6 +218,93 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
     }
   })
 
+  for (const nextRoute of ["same session", "home"]) {
+    it(`reconciles an interrupted reconnect bind after switching to ${nextRoute}`, async (t) => {
+      const errors = []
+      t.mock.method(console, "error", (...args) => errors.push(String(args[0])))
+      let refresh
+      const originalSetInterval = globalThis.setInterval
+      globalThis.setInterval = (callback, delay) => {
+        if (delay === 30000) refresh = callback
+        return originalSetInterval(callback, delay)
+      }
+      t.after(() => { globalThis.setInterval = originalSetInterval })
+      const sdk = createContext()
+      const stopServer = await plugin.setup(sdk.context)
+      const waiting = deferred()
+      const resume = deferred()
+      let bindCount = 0
+      const client = {
+        ...sdk.client,
+        rpc: (definition) => {
+          const rpc = sdk.client.rpc(definition)
+          return {
+            ...rpc,
+            bind: async (...args) => {
+              const snapshot = await rpc.bind(...args)
+              if (++bindCount === 2) {
+                waiting.resolve()
+                await resume.promise
+              }
+              return snapshot
+            },
+          }
+        },
+      }
+      const handlers = new Map()
+      const session = { id: "root", title: "Original", location: sdk.location }
+      let route = { type: "session", sessionID: "root" }
+      const tui = {
+        location: sdk.location,
+        client,
+        ui: { router: { current: () => route } },
+        data: {
+          session: { get: () => session, status: () => "idle" },
+          on: (name, handler) => {
+            handlers.set(name, handler)
+            return () => handlers.delete(name)
+          },
+        },
+      }
+      await sdk.event("session.created", { sessionID: "root" })
+      const stopTui = tuiPlugin.setup(tui)
+      try {
+        await new Promise(setImmediate)
+        await stopTui.flush()
+        assert.equal(calls.filter((call) => call.topic === "agent.session.start").length, 1)
+        sdk.rpc.publish({ type: "server.connected", data: {} })
+        await waiting.promise
+        if (nextRoute === "home") {
+          route = { type: "home" }
+          handlers.get("session.viewed")({ data: {} })
+        } else {
+          session.title = "Updated"
+          handlers.get("session.created")({ data: { sessionID: "root" } })
+        }
+        resume.resolve()
+        await new Promise(setImmediate)
+        await stopTui.flush()
+        refresh()
+        await stopTui.flush()
+        if (nextRoute === "home") {
+          assert.equal(calls.filter((call) => call.topic === "agent.session.unbind").length, 1)
+          await sdk.event("session.deleted", { sessionID: "root" })
+          await new Promise(setImmediate)
+          await stopTui.flush()
+          assert.equal(calls.at(-1).topic, "agent.session.end")
+        } else {
+          assert.equal(calls.filter((call) => call.topic === "agent.session.start").length, 2)
+          assert.equal(calls.at(-1).payload.title, "Updated")
+        }
+        assert.deepEqual(errors, [])
+      } finally {
+        resume.resolve()
+        await stopTui()
+        await stopServer()
+      }
+    })
+  }
+
   it("polls snapshots with identity-only RPC input after the bound title changes", async (t) => {
     let refresh
     const originalSetInterval = globalThis.setInterval
@@ -370,6 +457,66 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
         assert.equal(calls.at(-1).topic, "agent.session.end")
         assert.equal(calls.at(-1).payload.pane_owner, false)
         assert.equal(calls.filter((call) => call.topic === "agent.session.end").length, 1)
+      } finally {
+        await stopTui()
+        await stopServer()
+      }
+    })
+  }
+
+  for (const lookupFailure of ["confirmed missing", "transient then missing"]) {
+    it(`ends a still-viewed session after server downtime with ${lookupFailure}`, async (t) => {
+      const errors = []
+      if (lookupFailure === "transient then missing") {
+        t.mock.method(console, "error", (...args) => errors.push(String(args[0])))
+      }
+      let lookup = "present"
+      const sdk = createContext({
+        getSession: async (sessionID) => {
+          if (lookup === "transient") throw new Error("session lookup temporarily failed")
+          if (lookup === "missing") {
+            throw Object.assign(new Error("session not found"), {
+              _tag: "Session.NotFoundError", sessionID,
+            })
+          }
+          return { id: sessionID, location: sdk.location }
+        },
+      })
+      let stopServer = await plugin.setup(sdk.context)
+      const session = { id: "root", location: sdk.location }
+      const tui = {
+        location: sdk.location,
+        client: sdk.client,
+        ui: { router: { current: () => ({ type: "session", sessionID: "root" }) } },
+        data: {
+          session: { get: () => session, status: () => "idle" },
+          on: () => () => {},
+        },
+      }
+      await sdk.event("session.created", { sessionID: "root" })
+      const stopTui = tuiPlugin.setup(tui)
+      try {
+        await new Promise(setImmediate)
+        await stopTui.flush()
+        await stopServer()
+        lookup = lookupFailure === "confirmed missing" ? "missing" : "transient"
+        stopServer = await plugin.setup(sdk.context)
+        sdk.rpc.publish({ type: "server.connected", data: {} })
+        await new Promise(setImmediate)
+        await stopTui.flush()
+        if (lookup === "transient") {
+          assert.equal(calls.some((call) => call.topic === "agent.session.end"), false)
+          assert.ok(errors.some((message) => message.includes("pane sync failed")))
+          lookup = "missing"
+          for (let retry = 0; retry < 60 && !calls.some((call) => call.topic === "agent.session.end"); retry++) {
+            await new Promise((resolve) => setTimeout(resolve, 50))
+          }
+          await stopTui.flush()
+        }
+        assert.deepEqual(calls.map(({ topic }) => topic), [
+          "agent.session.start", "agent.session.end", "agent.session.unbind",
+        ])
+        assert.equal(calls[1].payload.pane_owner, false)
       } finally {
         await stopTui()
         await stopServer()

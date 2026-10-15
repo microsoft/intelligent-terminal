@@ -125,10 +125,6 @@ export default {
         clientID, terminalID, paneID, sessionID: desired.sessionID, generation: ++generation,
       };
       const snapshot = await rpc.bind({ ...owner, ...desired }, options);
-      if (disposed || expected !== intent) {
-        await rpc.unbind(identity(owner), options);
-        return;
-      }
       if (snapshot.status === "deleted") {
         if (bound?.sessionID === owner.sessionID) {
           await bridge("agent.session.end", owner.sessionID, { reason: "deleted", pane_owner: false });
@@ -137,6 +133,18 @@ export default {
           bound = undefined;
         }
         await rpc.unbind(identity(owner), options);
+        return;
+      }
+      if (disposed || expected !== intent) {
+        await rpc.unbind(identity(owner), options);
+        if (bound?.sessionID === owner.sessionID) {
+          const old = bound;
+          observed.set(owner.sessionID, owner);
+          if (disposed || desired?.sessionID !== old.sessionID) {
+            await bridge("agent.session.unbind", old.sessionID, {});
+          }
+          if (bound === old) bound = undefined;
+        }
         return;
       }
       await bridge("agent.session.start", owner.sessionID, {

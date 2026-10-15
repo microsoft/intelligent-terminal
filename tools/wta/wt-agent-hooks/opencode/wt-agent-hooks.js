@@ -397,6 +397,16 @@ export default {
       deliver: enqueue,
       onSession: remember,
     })
+    async function ensureRootOrReportDeletion(sessionID) {
+      if (snapshots.get(sessionID)?.status === "deleted") return
+      const lookup = await hooks.ensureRoot(sessionID)
+      if (!lookup.root && snapshots.get(sessionID)?.status !== "deleted") {
+        if (!lookup.missing) {
+          throw new Error(`OpenCode root session not found: ${sessionID}`)
+        }
+        enqueue("agent.session.end", sessionID, { reason: "deleted" })
+      }
+    }
     function ownerKey(terminalID, sessionID) {
       return `${terminalID}\0${sessionID}`
     }
@@ -419,10 +429,8 @@ export default {
     registration = await ctx.rpc.register(bindingRpc, {
       bind: async (input) => {
         if (disposed) throw new Error("OpenCode hook is disposing")
-        if (snapshots.get(input.sessionID)?.status !== "deleted" &&
-            !(await hooks.ensureRoot(input.sessionID)).root) {
-          throw new Error(`OpenCode root session not found: ${input.sessionID}`)
-        }
+        await ensureRootOrReportDeletion(input.sessionID)
+        if (snapshots.get(input.sessionID)?.status === "deleted") return snapshots.get(input.sessionID)
         const key = ownerKey(input.terminalID, input.sessionID)
         const priorClient = clients.get(input.clientID)
         if (priorClient && priorClient.generation > input.generation) {
@@ -469,15 +477,7 @@ export default {
       snapshot: async (input) => getSnapshot(input),
       observe: async (input) => {
         if (disposed) throw new Error("OpenCode hook is disposing")
-        if (snapshots.get(input.sessionID)?.status !== "deleted") {
-          const lookup = await hooks.ensureRoot(input.sessionID)
-          if (!lookup.root && snapshots.get(input.sessionID)?.status !== "deleted") {
-            if (!lookup.missing) {
-              throw new Error(`OpenCode root session not found: ${input.sessionID}`)
-            }
-            enqueue("agent.session.end", input.sessionID, { reason: "deleted" })
-          }
-        }
+        await ensureRootOrReportDeletion(input.sessionID)
         if (!observed.has(input.clientID)) observed.set(input.clientID, new Map())
         const subscriptions = observed.get(input.clientID)
         if ((subscriptions.get(input.sessionID)?.generation ?? 0) > input.generation) {

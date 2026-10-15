@@ -294,6 +294,12 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
         $script:nativeRoots.Add($nativeRoot)
         $nativeWork = Join-Path $nativeRoot 'work'
         New-Item -ItemType Directory -Path $nativeWork -Force | Out-Null
+        $shimDirectory = Join-Path $nativeRoot 'bin'
+        New-Item -ItemType Directory -Path $shimDirectory | Out-Null
+        Set-Content -LiteralPath (Join-Path $shimDirectory 'opencode.cmd') -Encoding utf8NoBOM -Value @(
+            '@echo off'
+            ('"{0}" %*' -f $executable.Replace('%', '%%'))
+        )
         $config = Join-Path $nativeRoot 'config'
         $plugins = Join-Path $config 'opencode\plugins'
         $support = Join-Path $plugins 'wt-agent-hooks'
@@ -303,6 +309,7 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
                 XDG_CONFIG_HOME = $config
                 WTA_HOOKS_BUNDLE_DIR = (Join-Path $script:app.InstallLocation 'wt-agent-hooks')
                 WT_COM_CLSID = $script:app.ComClsid
+                PATH = "$shimDirectory$([IO.Path]::PathSeparator)$env:PATH"
             } -TimeoutSec 45
         $install.ExitCode | Should -Be 0 -Because $install.StdErr
         (Get-FileHash -LiteralPath (Join-Path $support 'plugin.json')).Hash | Should -Be `
