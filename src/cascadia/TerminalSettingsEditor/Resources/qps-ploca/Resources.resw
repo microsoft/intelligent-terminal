@@ -3031,4 +3031,12 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <value>[Ŧáƀ Môđë !!!]</value>
     <comment>Header for a control to choose whether tabs are laid out horizontally across the top of the window or vertically down the left side.</comment>
   </data>
+  <data name="AIAgents_RenderAgentMarkdown.Header" xml:space="preserve">
+    <value>[!!_Markdown ｆｏｒｍａｔｔｉｎｇ_!!]</value>
+    <comment>{Locked="Markdown"} Title of the AI agent reply-formatting toggle, shared by Settings and first-run setup. Markdown is a markup format name.</comment>
+  </data>
+  <data name="AIAgents_RenderAgentMarkdown.HelpText" xml:space="preserve">
+    <value>[!!_Ｆｏｒｍａｔ ａｇｅｎｔ ｒｅｐｌｉｅｓ ａｆｔｅｒ ｓｔｒｅａｍｉｎｇ ｓｔｏｐｓ， ｉｎｃｌｕｄｉｎｇ ｒｅｐｌｉｅｓ ｉｎ ｓａｖｅｄ ｈｉｓｔｏｒｙ．_!!]</value>
+    <comment>Description of the reply-formatting toggle, shared by Settings and first-run setup. Only AI agent replies are formatted; live text stays literal. Stopped replies include completed, canceled, or failed responses. History means saved conversations, not shell command history.</comment>
+  </data>
 </root>

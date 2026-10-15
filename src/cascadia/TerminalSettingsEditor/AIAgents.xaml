@@ -519,6 +519,14 @@
                               Style="{StaticResource ToggleSwitchInExpanderStyle}" />
             </local:SettingContainer>
 
+            <local:SettingContainer x:Name="RenderAgentMarkdown"
+                                    x:Uid="AIAgents_RenderAgentMarkdown">
+                <ToggleSwitch AutomationProperties.AutomationId="RenderAgentMarkdownToggle"
+                              AutomationProperties.AccessibilityView="Content"
+                              IsOn="{x:Bind ViewModel.RenderAgentMarkdown, Mode=TwoWay}"
+                              Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+            </local:SettingContainer>
+
             <!--  Default-provider Yolo preference. Policy and provider
                 capability decide whether the toggle is editable.  -->
             <local:SettingContainer x:Name="AgentPaneYoloMode"

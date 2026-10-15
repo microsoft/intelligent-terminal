@@ -131,5 +131,6 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean ShowGeminiYoloInfo { get; };
         Boolean CanEnableAgentPaneYoloMode { get; };
         Windows.UI.Xaml.Visibility AgentPaneYoloModeVisibility { get; };
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, RenderAgentMarkdown);
     }
 }

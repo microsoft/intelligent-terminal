@@ -496,6 +496,7 @@ impl App {
     }
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
+        self.sync_agent_markdown_selection();
         // Async cards can take and release draft ownership without a key/focus event.
         // Typing targets only the active tab; switching/renaming closes the affected groups.
         let owned_input = if needs_input_owner_tracking(&event) {
@@ -2226,6 +2227,7 @@ impl App {
                 tab.finish_thought();
                 if !tab.replay_agent_buffer.is_empty() {
                     let prev = std::mem::take(&mut tab.replay_agent_buffer);
+                    tab.agent_markdown.get_mut().invalidate_current();
                     tab.messages.push(ChatMessage::Agent(prev));
                 }
                 let starts_new_message = matches!(
@@ -2288,6 +2290,7 @@ impl App {
                     tab.flush_replay_user_buffer();
                     if !tab.replay_agent_buffer.is_empty() {
                         let text = std::mem::take(&mut tab.replay_agent_buffer);
+                        tab.agent_markdown.get_mut().invalidate_current();
                         tab.messages.push(ChatMessage::Agent(text));
                     }
                 }
@@ -2482,6 +2485,7 @@ impl App {
                     tab.flush_replay_user_buffer();
                     if !tab.replay_agent_buffer.is_empty() {
                         let text = std::mem::take(&mut tab.replay_agent_buffer);
+                        tab.agent_markdown.get_mut().invalidate_current();
                         tab.messages.push(ChatMessage::Agent(text));
                     }
                 }
@@ -3226,6 +3230,24 @@ impl App {
                         && target_tab == owner_tab
                         && !owner_window.is_empty()
                         && target_window == owner_window;
+
+                    if let Some(value) = params.get("render_agent_markdown") {
+                        match value.as_bool() {
+                            Some(enabled) => {
+                                tracing::info!(
+                                    target: "agent_markdown",
+                                    old = self.render_agent_markdown,
+                                    new = enabled,
+                                    "Markdown preference updated"
+                                );
+                                self.render_agent_markdown = enabled;
+                            }
+                            None => tracing::warn!(
+                                target: "agent_markdown",
+                                "Ignoring non-boolean render_agent_markdown configuration"
+                            ),
+                        }
+                    }
 
                     if let Some(in_sidebar) = params
                         .get("sessions_in_sidebar")

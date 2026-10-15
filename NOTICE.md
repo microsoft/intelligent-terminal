@@ -650,6 +650,7 @@ if it were canonical for the whole group.
 - **futures-task** v0.3.32 -- [https://github.com/rust-lang/futures-rs](https://github.com/rust-lang/futures-rs) -- `Apache-2.0 OR MIT`
 - **futures-util** v0.3.32 -- [https://github.com/rust-lang/futures-rs](https://github.com/rust-lang/futures-rs) -- `Apache-2.0 OR MIT`
 - **generic-array** v0.14.7 -- [https://github.com/fizyk20/generic-array.git](https://github.com/fizyk20/generic-array.git) -- `MIT`
+- **getopts** v0.2.24 -- [https://github.com/rust-lang/getopts](https://github.com/rust-lang/getopts) -- `Apache-2.0 OR MIT`
 - **getrandom** v0.3.4 -- [https://github.com/rust-random/getrandom](https://github.com/rust-random/getrandom) -- `Apache-2.0 OR MIT`
 - **getrandom** v0.4.2 -- [https://github.com/rust-random/getrandom](https://github.com/rust-random/getrandom) -- `Apache-2.0 OR MIT`
 - **glob** v0.3.3 -- [https://github.com/rust-lang/glob](https://github.com/rust-lang/glob) -- `Apache-2.0 OR MIT`
@@ -669,6 +670,7 @@ if it were canonical for the whole group.
 - **is_terminal_polyfill** v1.70.2 -- [https://github.com/polyfill-rs/is_terminal_polyfill](https://github.com/polyfill-rs/is_terminal_polyfill) -- `Apache-2.0 OR MIT`
 - **itertools** v0.11.0 -- [https://github.com/rust-itertools/itertools](https://github.com/rust-itertools/itertools) -- `Apache-2.0 OR MIT`
 - **itertools** v0.14.0 -- [https://github.com/rust-itertools/itertools](https://github.com/rust-itertools/itertools) -- `Apache-2.0 OR MIT`
+- **itertools** v0.15.0 -- [https://github.com/rust-itertools/itertools](https://github.com/rust-itertools/itertools) -- `Apache-2.0 OR MIT`
 - **itoa** v1.0.17 -- [https://github.com/dtolnay/itoa](https://github.com/dtolnay/itoa) -- `Apache-2.0 OR MIT`
 - **kasuari** v0.4.11 -- [https://github.com/ratatui/kasuari](https://github.com/ratatui/kasuari) -- `Apache-2.0 OR MIT`
 - **lab** v0.11.0 -- [https://github.com/TooManyBees/lab](https://github.com/TooManyBees/lab) -- `MIT`
@@ -717,6 +719,8 @@ if it were canonical for the whole group.
 - **portable-atomic** v1.13.1 -- [https://github.com/taiki-e/portable-atomic](https://github.com/taiki-e/portable-atomic) -- `Apache-2.0 OR MIT`
 - **powerfmt** v0.2.0 -- [https://github.com/jhpratt/powerfmt](https://github.com/jhpratt/powerfmt) -- `Apache-2.0 OR MIT`
 - **proc-macro2** v1.0.106 -- [https://github.com/dtolnay/proc-macro2](https://github.com/dtolnay/proc-macro2) -- `Apache-2.0 OR MIT`
+- **pulldown-cmark** v0.13.4 -- [https://github.com/raphlinus/pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) -- `MIT`
+- **pulldown-cmark-escape** v0.11.0 -- [https://github.com/raphlinus/pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) -- `MIT`
 - **pxfm** v0.1.29 -- [https://github.com/awxkee/pxfm](https://github.com/awxkee/pxfm) -- `Apache-2.0 OR BSD-3-Clause`
 - **quote** v1.0.45 -- [https://github.com/dtolnay/quote](https://github.com/dtolnay/quote) -- `Apache-2.0 OR MIT`
 - **rand** v0.8.5 -- [https://github.com/rust-random/rand](https://github.com/rust-random/rand) -- `Apache-2.0 OR MIT`
@@ -802,8 +806,10 @@ if it were canonical for the whole group.
 - **tracing-log** v0.2.0 -- [https://github.com/tokio-rs/tracing](https://github.com/tokio-rs/tracing) -- `MIT`
 - **tracing-subscriber** v0.3.23 -- [https://github.com/tokio-rs/tracing](https://github.com/tokio-rs/tracing) -- `MIT`
 - **triomphe** v0.1.15 -- [https://github.com/Manishearth/triomphe](https://github.com/Manishearth/triomphe) -- `Apache-2.0 OR MIT`
+- **tui-markdown** v0.3.11 -- [https://github.com/joshka/tui-markdown](https://github.com/joshka/tui-markdown) -- `Apache-2.0 OR MIT`
 - **typenum** v1.19.0 -- [https://github.com/paholg/typenum](https://github.com/paholg/typenum) -- `Apache-2.0 OR MIT`
 - **ucd-trie** v0.1.7 -- [https://github.com/BurntSushi/ucd-generate](https://github.com/BurntSushi/ucd-generate) -- `Apache-2.0 OR MIT`
+- **unicase** v2.10.0 -- [https://github.com/seanmonstar/unicase](https://github.com/seanmonstar/unicase) -- `Apache-2.0 OR MIT`
 - **unicode-ident** v1.0.24 -- [https://github.com/dtolnay/unicode-ident](https://github.com/dtolnay/unicode-ident) -- `(MIT OR Apache-2.0) AND Unicode-3.0`
 - **unicode-linebreak** v0.1.5 -- [https://github.com/axelf4/unicode-linebreak](https://github.com/axelf4/unicode-linebreak) -- `Apache-2.0`
 - **unicode-segmentation** v1.12.0 -- [https://github.com/unicode-rs/unicode-segmentation](https://github.com/unicode-rs/unicode-segmentation) -- `Apache-2.0 OR MIT`
@@ -856,7 +862,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 ### `Apache-2.0`
 
-Applies to 190 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.3.0, agent-client-protocol-derive v1.3.0, agent-client-protocol-schema v1.4.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+182 more)
+Applies to 194 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.3.0, agent-client-protocol-derive v1.3.0, agent-client-protocol-schema v1.4.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+186 more)
 
 _Canonical text reproduced from upstream `SPDX:Apache-2.0`:_
 
@@ -951,6 +957,7 @@ Copyright (c) 2014 Chris Wong
 Copyright (c) 2014 Paho Lurie-Gregg
 Copyright (c) 2014 The Rust Project Developers
 Copyright (c) 2014-2026 Alex Crichton
+Copyright (c) 2014-2026 Sean McArthur
 Copyright (c) 2014, Kang Seonghoon.
 Copyright (c) 2015 Alice Maz
 Copyright (c) 2015 Andrew Gallant
@@ -1214,7 +1221,7 @@ _Canonical text reproduced from upstream `SPDX:LLVM-exception`:_
 
 ### `MIT`
 
-Applies to 266 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+258 more)
+Applies to 272 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+264 more)
 
 _Canonical text reproduced from upstream `SPDX:MIT`:_
 
@@ -1258,6 +1265,7 @@ Copyright (c) 2014 The Rust Project Developers
 Copyright (c) 2014-2019 Geoffroy Couprie
 Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
 Copyright (c) 2014-2026 Alex Crichton
+Copyright (c) 2014-2026 Sean McArthur
 Copyright (c) 2014, Kang Seonghoon.
 Copyright (c) 2015 Alice Maz
 Copyright (c) 2015 Andrew Gallant
@@ -1344,6 +1352,7 @@ Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
 Copyright 2012-2016 The Rust Project Developers.
 Copyright 2013-2014 RAD Game Tools and Valve Software
 Copyright 2014 Paho Lurie-Gregg
+Copyright 2015 Google Inc. All rights reserved.
 Copyright 2015 The Fancy Regex Authors.
 Copyright 2016-2026 Frank Denis.
 Copyright 2018 Developers of the Rand project

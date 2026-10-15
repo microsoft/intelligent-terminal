@@ -166,6 +166,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool HasAgentSessionManagementEnabled() const;
         bool CanConfigureAgentSessionManagement() const;
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, ShowTokenUsageAndCost);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, RenderAgentMarkdown);
 
         bool AgentPaneYoloMode() const;
         void AgentPaneYoloMode(bool value);

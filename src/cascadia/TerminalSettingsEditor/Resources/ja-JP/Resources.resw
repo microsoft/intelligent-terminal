@@ -3038,4 +3038,12 @@ Alt+Shift+/ プロンプトを入力; Alt+Shift+B 初期プロンプトなしで
     <value>エージェントへの委任</value>
     <comment>An option to choose from for the "command palette launch mode". Launches in agent delegation mode (with the literal ASCII "?" prefix). {Locked="?"}</comment>
   </data>
+  <data name="AIAgents_RenderAgentMarkdown.Header" xml:space="preserve">
+    <value>Markdown の書式設定</value>
+    <comment>{Locked="Markdown"} Title of the AI agent reply-formatting toggle, shared by Settings and first-run setup. Markdown is a markup format name.</comment>
+  </data>
+  <data name="AIAgents_RenderAgentMarkdown.HelpText" xml:space="preserve">
+    <value>ストリーミングの終了後にエージェントの応答を書式設定します。保存された履歴の応答にも適用されます。</value>
+    <comment>Description of the reply-formatting toggle, shared by Settings and first-run setup. Only AI agent replies are formatted; live text stays literal. Stopped replies include completed, canceled, or failed responses. History means saved conversations, not shell command history.</comment>
+  </data>
 </root>

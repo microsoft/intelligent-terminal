@@ -3074,4 +3074,12 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
     <value>에이전트 위임</value>
     <comment>An option to choose from for the "command palette launch mode". Launches in agent delegation mode (with the literal ASCII "?" prefix). {Locked="?"}</comment>
   </data>
+  <data name="AIAgents_RenderAgentMarkdown.Header" xml:space="preserve">
+    <value>Markdown 서식</value>
+    <comment>{Locked="Markdown"} Title of the AI agent reply-formatting toggle, shared by Settings and first-run setup. Markdown is a markup format name.</comment>
+  </data>
+  <data name="AIAgents_RenderAgentMarkdown.HelpText" xml:space="preserve">
+    <value>스트리밍이 종료되면 에이전트 응답에 서식을 적용합니다. 저장된 기록의 응답에도 적용됩니다.</value>
+    <comment>Description of the reply-formatting toggle, shared by Settings and first-run setup. Only AI agent replies are formatted; live text stays literal. Stopped replies include completed, canceled, or failed responses. History means saved conversations, not shell command history.</comment>
+  </data>
 </root>

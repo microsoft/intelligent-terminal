@@ -589,6 +589,7 @@ namespace winrt::TerminalApp::implementation
             bool yoloPolicyBlocked{ false };
             std::string autofixPolicyState{ "unknown" };
             bool sessionsInSidebar{ false };
+            bool renderAgentMarkdown{ true };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
         bool _agentRuntimeConfigInitialized{ false };

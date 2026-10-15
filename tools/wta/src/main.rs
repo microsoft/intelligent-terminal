@@ -141,6 +141,7 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         delegate_agent_id: cli.delegate_agent_id,
         delegate_model: cli.delegate_model,
         no_autofix: cli.no_autofix,
+        no_agent_markdown: cli.no_agent_markdown,
         autofix_policy_state: cli
             .autofix_policy_state
             .as_deref()

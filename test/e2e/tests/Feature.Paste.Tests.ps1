@@ -30,9 +30,7 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
         $script:fixtureLog = $null
         $script:evidenceDir = $null
         $script:target = Resolve-ItApp -Package (Get-ItTestPackage)
-        if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
-            throw 'The paste suite requires an unused selected package; it will not close user sessions.'
-        }
+        Stop-StaleItInstances -App $script:target
         $binaryHash = (Get-FileHash -LiteralPath $script:target.WtaPath).Hash
         if ($env:ITE2E_EXPECTED_WTA_SHA256) {
             $binaryHash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256 -Because 'the selected package must contain the intended source build'

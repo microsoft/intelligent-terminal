@@ -3081,4 +3081,12 @@ Alt+Shift+/ הזן הנחיה; Alt+Shift+B הפעל ללא הנחיה התחלת
     <value>הארגון שלך חוסם הפעלות מנוהלות של סוכנים מקוריים. יש לאשר את הסוכן, והמדיניות חייבת לאפשר אישור אוטומטי מכיוון שסוכנים מקוריים שולטים בהגדרות האישור שלהם בעצמם.</value>
     <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
   </data>
+  <data name="AIAgents_RenderAgentMarkdown.Header" xml:space="preserve">
+    <value>עיצוב Markdown</value>
+    <comment>{Locked="Markdown"} Title of the AI agent reply-formatting toggle, shared by Settings and first-run setup. Markdown is a markup format name.</comment>
+  </data>
+  <data name="AIAgents_RenderAgentMarkdown.HelpText" xml:space="preserve">
+    <value>עיצוב תשובות הסוכן לאחר סיום ההזרמה, כולל תשובות בהיסטוריה השמורה.</value>
+    <comment>Description of the reply-formatting toggle, shared by Settings and first-run setup. Only AI agent replies are formatted; live text stays literal. Stopped replies include completed, canceled, or failed responses. History means saved conversations, not shell command history.</comment>
+  </data>
 </root>

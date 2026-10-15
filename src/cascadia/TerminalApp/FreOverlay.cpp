@@ -495,6 +495,10 @@ namespace winrt::TerminalApp::implementation
                 settingsResources.GetLocalizedString(L"AIAgents_YoloMode/Header"));
             AutomaticApprovalDescription().Text(
                 settingsResources.GetLocalizedString(L"AIAgents_YoloMode/HelpText"));
+            RenderAgentMarkdownTitle().Text(
+                settingsResources.GetLocalizedString(L"AIAgents_RenderAgentMarkdown/Header"));
+            RenderAgentMarkdownDescription().Text(
+                settingsResources.GetLocalizedString(L"AIAgents_RenderAgentMarkdown/HelpText"));
         }
         // Split the description on "ACP" (locked token) so it can be rendered as an inline Hyperlink.
         {
@@ -566,6 +570,7 @@ namespace winrt::TerminalApp::implementation
             : ErrorDetectionMode::Detect;
         _SetErrorDetectionMode(detectionMode);
         ShowTokenUsageAndCostToggle().IsOn(globals.ShowTokenUsageAndCost());
+        RenderAgentMarkdownToggle().IsOn(globals.RenderAgentMarkdown());
         SessionManagementToggle().IsOn(globals.EffectiveAgentSessionManagementEnabled());
 
         const bool autoFixLocked = globals.IsAutoFixPolicyLocked();
@@ -608,6 +613,10 @@ namespace winrt::TerminalApp::implementation
             ErrorDetectionComboBox(), RS_(L"FreOverlay_ErrorDetectionLabel/Text"));
         Automation::AutomationProperties::SetName(
             ShowTokenUsageAndCostToggle(), RS_(L"FreOverlay_ShowTokenUsageAndCostLabel/Text"));
+        Automation::AutomationProperties::SetName(
+            RenderAgentMarkdownToggle(), RenderAgentMarkdownTitle().Text());
+        Automation::AutomationProperties::SetHelpText(
+            RenderAgentMarkdownToggle(), RenderAgentMarkdownDescription().Text());
         Automation::AutomationProperties::SetName(
             AutomaticApprovalToggle(), AutomaticApprovalTitle().Text());
         Automation::AutomationProperties::SetName(
@@ -1687,6 +1696,7 @@ namespace winrt::TerminalApp::implementation
                 globals.AgentSessionManagementEnabled(SessionManagementToggle().IsOn());
             }
             globals.ShowTokenUsageAndCost(ShowTokenUsageAndCostToggle().IsOn());
+            globals.RenderAgentMarkdown(RenderAgentMarkdownToggle().IsOn());
 
             const auto posIdx = PanePositionComboBox().SelectedIndex();
             switch (posIdx)

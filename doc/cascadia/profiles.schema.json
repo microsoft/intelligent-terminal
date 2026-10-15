@@ -2414,6 +2414,11 @@
           "description": "When set to true, a selection is immediately copied to your clipboard upon creation. When set to false, the selection persists and awaits further action.",
           "type": "boolean"
         },
+        "renderAgentMarkdown": {
+          "default": true,
+          "description": "Format agent replies and saved conversation history as Markdown after each response stops streaming. Live output remains plain text.",
+          "type": "boolean"
+        },
         "focusFollowMouse": {
           "default": false,
           "description": "When set to true, the terminal will focus the pane on mouse hover.",

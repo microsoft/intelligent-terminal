@@ -203,6 +203,8 @@ View all active agents, their status, and past sessions. Pick up a workflow wher
 
 While a tracked built-in agent session is live, its terminal pane uses the agent's icon. Vertical pane rows show their own icons; tab headers in both layouts follow the focused terminal pane. Focusing the AI helper keeps its associated terminal pane as the source. When the session ends, or the provider is custom or unknown, the profile icon is used instead. This works whether or not Agent status is selected as visible tab metadata.
 
+Sidebar tab metadata, including Agent status, follows the same terminal source. Focusing the AI helper does not replace it with the helper's status, and the terminal's status continues updating while you use the helper.
+
 ### Error Detection
 
 <p align="center">

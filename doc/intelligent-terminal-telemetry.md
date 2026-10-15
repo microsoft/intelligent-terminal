@@ -1111,12 +1111,12 @@ AI-specific settings are excluded from inherited `JsonSettingsChanged` and
 | Context | Excluded JSON keys |
 |---|---|
 | `global` agent/model selection | `acpAgent`, `acpModel`, `acpCustomCommand`, `acpCustomCommands`, `delegateAgent`, `delegateModel`, `delegateCustomCommand`, `delegateCustomCommands`, `customModelSelection`, `customModelProviders` |
-| `global` feature configuration | `autoErrorDetectionEnabled`, `autoFixEnabled`, `agentSessionManagementEnabled`, `showTokenUsageAndCost`, `agentPanePosition`, `agentPane.yoloMode` |
+| `global` feature configuration | `autoErrorDetectionEnabled`, `autoFixEnabled`, `agentSessionManagementEnabled`, `showTokenUsageAndCost`, `renderAgentMarkdown`, `agentPanePosition`, `agentPane.yoloMode` |
 | `global` coordinator | `aiIntegration.coordinator.enabled`, `aiIntegration.coordinator.commandline`, `aiIntegration.coordinator.profile` |
 | `global` legacy confirmation | `aiIntegration.confirmation.readOperations`, `aiIntegration.confirmation.createOperations`, `aiIntegration.confirmation.inputOperations` |
 | `profile` and `profileDefaults` | `agentPaneBackend`, `commandPaletteAgent` |
 
-The filter is case-sensitive and context-specific: 22 exact global keys,
+The filter is case-sensitive and context-specific: 23 exact global keys,
 plus two keys in each profile context. Descendants starting with
 `global.customModelProviders.` or `global.customModelProviders[` are also
 excluded. It is not a blanket filter for all future AI settings.

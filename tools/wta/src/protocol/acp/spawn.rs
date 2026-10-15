@@ -122,7 +122,7 @@ impl AgentStderrLog {
 
     pub(crate) fn drain(&self, stderr: tokio::process::ChildStderr) -> tokio::task::JoinHandle<()> {
         let log = self.clone();
-        tokio::task::spawn_local(async move {
+        tokio::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
             loop {
                 match lines.next_line().await {
@@ -257,6 +257,8 @@ fn truncate_stderr_line(line: &str) -> String {
 
 pub(crate) struct AgentSpawn {
     pub child: tokio::process::Child,
+    pub history_job: Option<super::history_process::HistoryJob>,
+    pub wsl_history_marker: Option<String>,
     /// Original first token of `agent_cmd`, before path resolution.
     pub raw_program: String,
     /// Resolved program path (post `resolve_bare_agent_name`).
@@ -308,6 +310,24 @@ pub(crate) fn spawn_agent_process_with_provider(
     agent_id: Option<&str>,
     environment_policy: ChildEnvironmentPolicy,
     provider_selection: SharedProviderSelection<'_>,
+) -> Result<AgentSpawn> {
+    spawn_host_agent_process(
+        agent_cmd,
+        cwd,
+        agent_id,
+        environment_policy,
+        provider_selection,
+        false,
+    )
+}
+
+fn spawn_host_agent_process(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+    agent_id: Option<&str>,
+    environment_policy: ChildEnvironmentPolicy,
+    provider_selection: SharedProviderSelection<'_>,
+    history_only: bool,
 ) -> Result<AgentSpawn> {
     let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
     let raw_program = parts
@@ -428,17 +448,26 @@ pub(crate) fn spawn_agent_process_with_provider(
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
-    let child = cmd
-        .args(&args)
+    cmd.args(&args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| anyhow!("failed to spawn agent '{}': {}", agent_cmd, e))?;
+        .kill_on_drop(true);
+    let (child, history_job) = if history_only {
+        let (child, job) = super::history_process::HistoryJob::spawn(&mut cmd)?;
+        (child, Some(job))
+    } else {
+        (
+            cmd.spawn()
+                .map_err(|e| anyhow!("failed to spawn agent '{}': {}", agent_cmd, e))?,
+            None,
+        )
+    };
 
     Ok(AgentSpawn {
         child,
+        history_job,
+        wsl_history_marker: None,
         raw_program: raw_program.to_string(),
         resolved_program,
         is_npx,
@@ -595,8 +624,33 @@ pub(crate) fn spawn_agent_process_for_source_with_provider(
             provider_selection,
         ),
         crate::agent_source::AgentSource::Wsl { distro } => {
-            spawn_wsl_agent_process(agent_cmd, distro, agent_id, environment_policy)
+            spawn_wsl_agent_process(agent_cmd, distro, agent_id, environment_policy, false)
         }
+    }
+}
+
+pub(crate) fn spawn_history_agent_process(
+    agent_cmd: &str,
+    agent_id: &str,
+    source: &crate::agent_source::AgentSource,
+    provider_selection: SharedProviderSelection<'_>,
+) -> Result<AgentSpawn> {
+    match source {
+        crate::agent_source::AgentSource::Host => spawn_host_agent_process(
+            agent_cmd,
+            None,
+            Some(agent_id),
+            ChildEnvironmentPolicy::ApplySharedProvider,
+            provider_selection,
+            true,
+        ),
+        crate::agent_source::AgentSource::Wsl { distro } => spawn_wsl_agent_process(
+            agent_cmd,
+            distro,
+            Some(agent_id),
+            ChildEnvironmentPolicy::ApplySharedProvider,
+            true,
+        ),
     }
 }
 
@@ -605,6 +659,7 @@ fn spawn_wsl_agent_process(
     distro: &str,
     _agent_id: Option<&str>,
     environment_policy: ChildEnvironmentPolicy,
+    history_only: bool,
 ) -> Result<AgentSpawn> {
     let parts = crate::coordinator::split_windows_commandline(agent_cmd);
     let raw_program = parts
@@ -617,13 +672,17 @@ fn spawn_wsl_agent_process(
     let adapter_package = is_npx
         .then(|| parts.iter().find(|arg| arg.starts_with('@')).cloned())
         .flatten();
-    let script = wsl_agent_launch_script(&parts, environment_policy);
+    let mut script = wsl_agent_launch_script(&parts, environment_policy);
+    let wsl_history_marker = history_only.then(|| format!("wta-history-{}", uuid::Uuid::new_v4()));
+    if let Some(marker) = &wsl_history_marker {
+        script = super::history_process::wsl_history_script(&script, marker);
+    }
 
     let mut command = tokio::process::Command::new("wsl.exe");
     command
         .arg("-d")
         .arg(distro)
-        .arg("--")
+        .arg(if history_only { "--exec" } else { "--" })
         .arg("bash")
         .arg("--noprofile")
         .arg("--norc")
@@ -643,17 +702,27 @@ fn spawn_wsl_agent_process(
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
 
-    let child = command.spawn().map_err(|error| {
-        anyhow!(
-            "failed to spawn agent '{}' in WSL distro '{}': {}",
-            agent_cmd,
-            distro,
-            error
+    let (child, history_job) = if history_only {
+        let (child, job) = super::history_process::HistoryJob::spawn(&mut command)?;
+        (child, Some(job))
+    } else {
+        (
+            command.spawn().map_err(|error| {
+                anyhow!(
+                    "failed to spawn agent '{}' in WSL distro '{}': {}",
+                    agent_cmd,
+                    distro,
+                    error
+                )
+            })?,
+            None,
         )
-    })?;
+    };
 
     Ok(AgentSpawn {
         child,
+        history_job,
+        wsl_history_marker,
         raw_program,
         resolved_program: format!("wsl.exe -d {distro}"),
         is_npx,

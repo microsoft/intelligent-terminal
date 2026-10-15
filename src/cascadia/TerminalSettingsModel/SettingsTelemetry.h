@@ -36,6 +36,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 "autoFixEnabled",
                 "agentSessionManagementEnabled",
                 "showTokenUsageAndCost",
+                "renderAgentMarkdown",
                 "agentPanePosition",
                 "agentPane.yoloMode",
                 "aiIntegration.coordinator.enabled",

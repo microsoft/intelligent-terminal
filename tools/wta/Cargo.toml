@@ -18,6 +18,7 @@ anyhow = "1"
 serde_json = "1"
 clap = { version = "4", features = ["derive"] }
 ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
+tui-markdown = { version = "=0.3.11", default-features = false }
 crossterm = { version = "0.29", features = ["event-stream"] }
 notify = "6"
 futures = "0.3"
@@ -34,6 +35,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Console",
     "Win32_System_DataExchange",
     "Win32_System_Environment",
+    "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_JobObjects",
     "Win32_System_Memory",
     "Win32_System_Registry",

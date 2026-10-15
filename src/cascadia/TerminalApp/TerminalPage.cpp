@@ -2873,6 +2873,7 @@ namespace winrt::TerminalApp::implementation
             globals.IsYoloModePolicyLocked(),
             AgentPolicyTelemetry::AutoFixPolicyName(AgentPolicy::GetAutoFixPolicy()),
             _isVerticalLayout,
+            globals.RenderAgentMarkdown(),
         };
     }
 
@@ -2890,6 +2891,7 @@ namespace winrt::TerminalApp::implementation
         params["autofix_enabled"] = config.autofixEnabled;
         params["autofix_policy_state"] = config.autofixPolicyState;
         params["sessions_in_sidebar"] = config.sessionsInSidebar;
+        params["render_agent_markdown"] = config.renderAgentMarkdown;
         params["delegate_agent"] = winrt::to_string(config.delegateAgent);
         params["delegate_agent_id"] = winrt::to_string(config.delegateAgentId);
         params["delegate_model"] = winrt::to_string(config.delegateModel);
@@ -2907,6 +2909,7 @@ namespace winrt::TerminalApp::implementation
     //   - yolo_enabled + yolo_policy_blocked : the per-tab desired state,
     //     resolved for that tab's current provider, and the administrative gate.
     //   - sessions_in_sidebar : the active window layout's session-list surface.
+    //   - render_agent_markdown : the helper's stopped-reply presentation.
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
         const auto current = _CaptureAgentRuntimeConfig();
@@ -2935,8 +2938,9 @@ namespace winrt::TerminalApp::implementation
                                  last.yoloEnabled != current.yoloEnabled ||
                                  last.yoloPolicyBlocked != current.yoloPolicyBlocked;
         const bool sessionsLayoutChanged = last.sessionsInSidebar != current.sessionsInSidebar;
+        const bool markdownChanged = last.renderAgentMarkdown != current.renderAgentMarkdown;
 
-        if (!autofixChanged && !autofixPolicyChanged && !delegateChanged && !customModelsChanged && !yoloChanged && !sessionsLayoutChanged)
+        if (!autofixChanged && !autofixPolicyChanged && !delegateChanged && !customModelsChanged && !yoloChanged && !sessionsLayoutChanged && !markdownChanged)
         {
             _lastAgentRuntimeConfig = current;
             return;
@@ -2968,7 +2972,11 @@ namespace winrt::TerminalApp::implementation
         {
             params["sessions_in_sidebar"] = current.sessionsInSidebar;
         }
-        const bool commonChanged = autofixChanged || autofixPolicyChanged || delegateChanged || customModelsChanged || sessionsLayoutChanged;
+        if (markdownChanged)
+        {
+            params["render_agent_markdown"] = current.renderAgentMarkdown;
+        }
+        const bool commonChanged = autofixChanged || autofixPolicyChanged || delegateChanged || customModelsChanged || sessionsLayoutChanged || markdownChanged;
         if (commonChanged)
         {
             _agentPaneLog("emitting agent_config_changed (hot settings update)");
@@ -4213,6 +4221,10 @@ namespace winrt::TerminalApp::implementation
         if (!globals.EffectiveAutoFixEnabled())
         {
             helperCmd.append(L" --no-autofix");
+        }
+        if (!globals.RenderAgentMarkdown())
+        {
+            helperCmd.append(L" --no-agent-markdown");
         }
         appendHelperFlagValue(L"--autofix-policy-state", winrt::to_hstring(AgentPolicyTelemetry::AutoFixPolicyName(AgentPolicy::GetAutoFixPolicy())));
         // Settings-owned automatic approval for this binding. The shared
@@ -11786,7 +11798,11 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        const auto pane = tab.GetActivePane();
+        // The auxiliary assistant is not a sidebar pane; its focus must not replace terminal metadata.
+        const auto activePane = tab.GetActivePane();
+        const auto pane = activePane && activePane->IsAgentPane() ?
+                              _SourceTerminalPaneForTab(tab.get_strong()) :
+                              activePane;
         const auto control = pane ? pane->GetTerminalControl() : nullptr;
         if (!control)
         {
@@ -11998,8 +12014,11 @@ namespace winrt::TerminalApp::implementation
                 {
                     continue;
                 }
-                if (const auto activePane = tab->GetActivePane();
-                    activePane && activePane->GetSessionId() == target)
+                const auto activePane = tab->GetActivePane();
+                const auto presentedPane = activePane && activePane->IsAgentPane() ?
+                                               _SourceTerminalPaneForTab(tab) :
+                                               activePane;
+                if (presentedPane && presentedPane->GetSessionId() == target)
                 {
                     tab->SetRichTabPresentation(update.presentation);
                 }

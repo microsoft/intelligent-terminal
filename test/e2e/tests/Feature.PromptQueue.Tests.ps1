@@ -164,7 +164,7 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
                 $script:app = Start-Terminal -Package $script:queuePackage -PassFre $true -Settings $settings
             }
             catch {
-                Stop-StaleItInstances -App $recoveryApp
+                Assert-WtPackageInactive -App $recoveryApp
                 Restore-WtConfig -App $recoveryApp
                 throw
             }

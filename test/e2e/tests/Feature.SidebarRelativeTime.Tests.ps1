@@ -19,9 +19,7 @@ Describe 'Feature: Sidebar compact relative time' -Tag @('Feature', 'SidebarRela
         & (Get-Module ItE2E) { Initialize-WtWin32Input }
         if ((Get-ItTestPackage) -ne 'Dev') { throw 'Select Dev explicitly for PR #1070.' }
         $script:target = Resolve-ItApp -Package Dev
-        if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) {
-            throw 'Dev must be inactive; this suite will not close existing windows.'
-        }
+        Stop-StaleItInstances -App $script:target
         foreach ($pair in @(@('WtaPath', 'ITE2E_EXPECTED_WTA_SHA256'), @('App', 'ITE2E_EXPECTED_APP_SHA256'))) {
             $expected = [Environment]::GetEnvironmentVariable($pair[1])
             if (-not $expected) { throw "Required exact-source receipt: $($pair[1])" }
@@ -88,7 +86,7 @@ Describe 'Feature: Sidebar compact relative time' -Tag @('Feature', 'SidebarRela
             $hashes[$path] = if (Test-Path $path) { (Get-FileHash $path).Hash } else { $null }
         }
         try {
-            if (@(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables).Count) { throw 'Dev became active.' }
+            Stop-StaleItInstances -App $script:target
             $profileId = '{' + [guid]::NewGuid().ToString() + '}'
             $launchStarted = Get-Date
             $script:app = Start-Terminal -Package Dev -PassFre $true -TimeoutSec 60 -State @{

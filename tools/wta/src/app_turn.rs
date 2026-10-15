@@ -87,6 +87,7 @@ impl App {
         // these orthogonal fields rather than relying on side effects from a
         // grab-bag helper.
         tab.messages.clear();
+        tab.agent_markdown.get_mut().invalidate_current();
         tab.streaming_thought = None;
         // Dropping any in-flight responders signals Cancelled back to
         // the agent — appropriate when the user starts a new turn.
@@ -879,6 +880,7 @@ impl App {
                 if let Some(ChatMessage::Agent(text)) = last.details.last_mut() {
                     if text == &recommendation_summary {
                         *text = executed_summary;
+                        tab.agent_markdown.borrow_mut().invalidate(index);
                     }
                 }
                 last.trailing_marker = None;
@@ -1082,6 +1084,7 @@ impl App {
                 if let Some(ChatMessage::Agent(text)) = last.details.last_mut() {
                     if text == &summary {
                         *text = canceled_summary;
+                        tab.agent_markdown.borrow_mut().invalidate(index);
                     }
                 }
                 last.trailing_marker = None;

@@ -7,7 +7,7 @@ BeforeAll {
 
 Describe 'Combined owning-tab exact displayed marker' -Tag 'Unit' {
     BeforeAll {
-        Add-Type -AssemblyName PresentationFramework, UIAutomationClient, UIAutomationTypes
+        Add-Type -AssemblyName WindowsBase, PresentationFramework, UIAutomationClient, UIAutomationTypes
         Add-Type -ReferencedAssemblies ([System.Windows.Rect].Assembly.Location) @'
 namespace CombinedDisplayMock {
     public class TextRange {
@@ -43,13 +43,14 @@ namespace CombinedDisplayMock {
         }, $true)
         . ([scriptblock]::Create($definition.Extent.Text.Replace(
             'Windows.Automation.', 'CombinedDisplayMock.').Replace(
-            'ItE2E.ItWtWin32Input', 'CombinedDisplayMock.ItWtWin32Input')))
+            'ItE2E.ItWtWin32Input', 'CombinedDisplayMock.ItWtWin32Input').Replace(
+            '(Get-Module ItE2E)', '(Get-Module CombinedDisplayMock)')))
         $ui = [Management.Automation.Language.Parser]::ParseFile(
             (Join-Path $PSScriptRoot '..\ItE2E\Public\Ui.ps1'), [ref]$null, [ref]$null)
         $exact = $ui.Find({ param($node)
             $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Find-ItExactTextRange'
         }, $true)
-        $script:displayModule = New-Module -Name ItE2E -ScriptBlock {
+        $script:displayModule = New-Module -Name CombinedDisplayMock -ScriptBlock {
             param($text)
             . ([scriptblock]::Create($text))
             Export-ModuleMember -Function @()
@@ -90,12 +91,12 @@ namespace CombinedDisplayMock {
             $peer
         }
     }
-    AfterAll { Remove-Module $script:displayModule }
+    AfterAll { if ($script:displayModule) { Remove-Module $script:displayModule } }
     BeforeEach {
-        $script:app = @{ Pid = 42; Hwnd = 123; Launched = $true; InstallLocation = 'Q:\fixture'
+        $script:app = @{ Pid = 42; Hwnd = 123; Launched = $true; InstallLocation = $TestDrive
             OwnedProcess = @{ Id = 42; HasExited = $false; StartTime = 123 } }
         $script:launch = @{ pid = 8765 }
-        Mock Get-Process { @{ Id = 42; StartTime = 123; Path = 'Q:\fixture\WindowsTerminal.exe' } }
+        Mock Get-Process { @{ Id = 42; StartTime = 123; Path = (Join-Path $TestDrive 'WindowsTerminal.exe') } }
         $script:peer = New-DisplayPeer 'banner PID=8765 tail'
         $script:displayWindow = [pscustomobject]@{
             Current = @{ ProcessId = 42; IsOffscreen = $false; BoundingRectangle = (New-DisplayBounds 0 0 800 600) }

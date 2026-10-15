@@ -3074,4 +3074,12 @@ Alt+Shift+/ ввести запрос; Alt+Shift+B запустить без н�
     <value>Делегирование агенту</value>
     <comment>An option to choose from for the "command palette launch mode". Launches in agent delegation mode (with the literal ASCII "?" prefix). {Locked="?"}</comment>
   </data>
+  <data name="AIAgents_RenderAgentMarkdown.Header" xml:space="preserve">
+    <value>Форматирование Markdown</value>
+    <comment>{Locked="Markdown"} Title of the AI agent reply-formatting toggle, shared by Settings and first-run setup. Markdown is a markup format name.</comment>
+  </data>
+  <data name="AIAgents_RenderAgentMarkdown.HelpText" xml:space="preserve">
+    <value>Форматировать ответы ИИ-агента после окончания потоковой передачи, включая ответы в сохранённой истории.</value>
+    <comment>Description of the reply-formatting toggle, shared by Settings and first-run setup. Only AI agent replies are formatted; live text stays literal. Stopped replies include completed, canceled, or failed responses. History means saved conversations, not shell command history.</comment>
+  </data>
 </root>

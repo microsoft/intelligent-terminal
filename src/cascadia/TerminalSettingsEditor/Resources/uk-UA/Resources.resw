@@ -3023,4 +3023,12 @@ Alt+Shift+/ введіть запит; Alt+Shift+B запустіть без п�
     <value>Цей текст вставлятиметься між шляхами до кількох файлів, перетягнутих у термінал.</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
+  <data name="AIAgents_RenderAgentMarkdown.Header" xml:space="preserve">
+    <value>Форматування Markdown</value>
+    <comment>{Locked="Markdown"} Title of the AI agent reply-formatting toggle, shared by Settings and first-run setup. Markdown is a markup format name.</comment>
+  </data>
+  <data name="AIAgents_RenderAgentMarkdown.HelpText" xml:space="preserve">
+    <value>Форматувати відповіді агента ШІ після завершення потокового передавання, зокрема відповіді в збереженій історії.</value>
+    <comment>Description of the reply-formatting toggle, shared by Settings and first-run setup. Only AI agent replies are formatted; live text stays literal. Stopped replies include completed, canceled, or failed responses. History means saved conversations, not shell command history.</comment>
+  </data>
 </root>

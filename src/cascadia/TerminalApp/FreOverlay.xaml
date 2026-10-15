@@ -464,6 +464,34 @@
                             </Grid>
                         </Border>
 
+                        <Border Background="{ThemeResource ExpanderHeaderBackground}"
+                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                MinHeight="64"
+                                Padding="16,12">
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock x:Name="RenderAgentMarkdownTitle"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="White" />
+                                    <TextBlock x:Name="RenderAgentMarkdownDescription"
+                                               FontSize="12" Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch x:Name="RenderAgentMarkdownToggle"
+                                              Grid.Column="1"
+                                              AutomationProperties.AutomationId="RenderAgentMarkdownToggle"
+                                              AutomationProperties.AccessibilityView="Content"
+                                              IsOn="True"
+                                              Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+                            </Grid>
+                        </Border>
+
                         <!--  Automatic approval. Copy comes from the SettingsEditor
                               resource scope so Settings and FRE cannot drift.  -->
                         <Border x:Name="AutomaticApprovalSetting"

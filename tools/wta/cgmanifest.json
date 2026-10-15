@@ -851,6 +851,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "getopts",
+          "version": "0.2.24"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "getrandom",
           "version": "0.3.4"
         }
@@ -1015,6 +1024,15 @@
         "cargo": {
           "name": "itertools",
           "version": "0.14.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "itertools",
+          "version": "0.15.0"
         }
       }
     },
@@ -1447,6 +1465,24 @@
         "cargo": {
           "name": "proc-macro2",
           "version": "1.0.106"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "pulldown-cmark",
+          "version": "0.13.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "pulldown-cmark-escape",
+          "version": "0.11.0"
         }
       }
     },
@@ -2219,6 +2255,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "tui-markdown",
+          "version": "0.3.11"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "typenum",
           "version": "1.19.0"
         }
@@ -2230,6 +2275,15 @@
         "cargo": {
           "name": "ucd-trie",
           "version": "0.1.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "unicase",
+          "version": "2.10.0"
         }
       }
     },

@@ -458,7 +458,7 @@ permission_ui: current permission snapshot={"session_id":"old-session","tool_cal
 }
 
 Describe 'Agent settings cleanup' -Tag 'Unit' {
-    It 'removes showTokenUsageAndCost while preserving profiles' {
+    It 'removes agent display preferences while preserving profiles and other keys' {
         $settingsPath = Join-Path $TestDrive 'settings.json'
         @{
             defaultProfile = '{6239a42c-1111-49a3-80bd-e8fdd045185c}'
@@ -468,6 +468,8 @@ Describe 'Agent settings cleanup' -Tag 'Unit' {
             })
             acpAgent = 'copilot'
             showTokenUsageAndCost = $true
+            renderAgentMarkdown = $false
+            renderAgentMarkdownOther = 'keep'
         } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $settingsPath -Encoding utf8
         $app = [pscustomobject]@{ SettingsPath = $settingsPath }
 
@@ -475,6 +477,8 @@ Describe 'Agent settings cleanup' -Tag 'Unit' {
 
         $settings = Get-WtSettingsObject -App $app
         $settings.PSObject.Properties.Name | Should -Not -Contain 'showTokenUsageAndCost'
+        $settings.PSObject.Properties.Name | Should -Not -Contain 'renderAgentMarkdown'
+        $settings.renderAgentMarkdownOther | Should -Be 'keep'
         $settings.PSObject.Properties.Name | Should -Not -Contain 'acpAgent'
         $settings.profiles[0].name | Should -Be 'p0'
     }
@@ -561,6 +565,73 @@ Describe 'Configuration backup and restore' -Tag 'Unit' {
     }
 }
 
+Describe 'Nested startup state verification' -Tag 'Unit' {
+    BeforeEach {
+        InModuleScope ItE2E -Parameters @{ Root = (Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))) } {
+            param($Root)
+            $script:stateFixtureApp = [pscustomobject]@{
+                Package = 'fixture-package'
+                Version = '0.0.0.0'
+                WtcliPath = 'unused-wtcli.exe'
+                InstallLocation = Join-Path $Root 'install'
+                LocalStateDir = $Root
+                SettingsPath = Join-Path $Root 'settings.json'
+                StatePath = Join-Path $Root 'state.json'
+                LogStartOffset = @{}
+            }
+            $script:stateFixtureExpected = @(
+                @{
+                    tabLayout = @(
+                        @{ action = 'newTab'; commandline = 'cmd.exe' }
+                        @{ action = 'splitPane'; type = 'agent'; commandline = 'wta --initial-load-session-id "saved-fixture"' }
+                    )
+                }
+            )
+            $script:stateFixtureActual = $null
+            Mock Resolve-ItApp { $script:stateFixtureApp }
+            Mock Get-WtProcessesForApp { @() }
+            Mock Initialize-LogOffsets {}
+            Mock Write-ItLog {}
+            Mock Start-ItCreatedDevTerminal {
+                $script:stateFixtureActual = Get-WtStateObject -App $script:stateFixtureApp
+                throw 'State verified; stop before activation'
+            }
+        }
+    }
+
+    It 'verifies a persisted layout structurally and preserves its array shape' {
+        InModuleScope ItE2E {
+            {
+                Start-Terminal -Package Dev -PassFre $false -CleanSettings $false -State @{
+                    persistedWindowLayouts = $script:stateFixtureExpected
+                }
+            } | Should -Throw '*State verified; stop before activation*'
+            Should -Invoke Start-ItCreatedDevTerminal -Times 1
+            @($script:stateFixtureActual.persistedWindowLayouts) | Should -HaveCount 1
+            @($script:stateFixtureActual.persistedWindowLayouts[0].tabLayout) | Should -HaveCount 2
+            $script:stateFixtureActual.persistedWindowLayouts[0].tabLayout[1].type | Should -Be 'agent'
+            Test-Path -LiteralPath $script:stateFixtureApp.StatePath | Should -BeFalse
+            Test-Path -LiteralPath "$($script:stateFixtureApp.StatePath).e2ebak.missing" | Should -BeFalse
+        }
+    }
+
+    It 'rejects a changed nested value before attempting activation' {
+        InModuleScope ItE2E {
+            Mock Get-WtStateObject {
+                [pscustomobject]@{
+                    persistedWindowLayouts = @(@{ tabLayout = @(@{ action = 'newTab'; commandline = 'wrong' }) })
+                }
+            }
+            {
+                Start-Terminal -Package Dev -PassFre $false -CleanSettings $false -State @{
+                    persistedWindowLayouts = $script:stateFixtureExpected
+                }
+            } | Should -Throw '*Startup state did not persist: persistedWindowLayouts*'
+            Should -Invoke Start-ItCreatedDevTerminal -Times 0
+        }
+    }
+}
+
 Describe 'Resolve-ItApp' -Tag 'Unit' {
     It 'retains the packaged wta path when WindowsApps denies existence checks' {
         InModuleScope ItE2E {
@@ -639,6 +710,19 @@ Describe 'Live test package selection' -Tag 'Unit' {
 }
 
 Describe 'Package-scoped process cleanup' -Tag 'Unit' {
+    It 'reads the Dev family configured for the current worktree' {
+        InModuleScope ItE2E {
+            $original = $script:ItKnownFamilies.Dev
+            try {
+                $script:ItKnownFamilies.Dev = 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr'
+                Get-ItDevPackageFamilyName | Should -Be $script:ItKnownFamilies.Dev
+            }
+            finally { $script:ItKnownFamilies.Dev = $original }
+        }
+        (Get-Command Get-ItDevPackageFamilyName -Module ItE2E).Name |
+            Should -Be 'Get-ItDevPackageFamilyName'
+    }
+
     It 'finds WindowsTerminal processes only under the selected package install location' {
         InModuleScope ItE2E {
             $app = [pscustomobject]@{
@@ -660,6 +744,7 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
         InModuleScope ItE2E {
             $app = [pscustomobject]@{
                 Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                PackageFullName = 'IntelligentTerminal_0.8.0.3_x64__rd9vj3e6a2mbr'
                 InstallLocation = 'C:\DevPackage\AppX'
             }
             Mock Get-CimInstance { $null }
@@ -668,8 +753,111 @@ Describe 'Package-scoped process cleanup' -Tag 'Unit' {
 
             Stop-StaleItInstances -App $app
 
-            Should -Invoke Get-WtProcessesForApp -Times 1 -ParameterFilter { $App -eq $app }
+            Should -Invoke Get-WtProcessesForApp -Times 6 -Exactly -ParameterFilter { $App -eq $app }
             Should -Invoke Get-AppxPackage -Times 0
+        }
+    }
+
+    It 'refuses shutdown without a registered Dev package identity' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Get-CimInstance { $null }
+            $script:processQueryCount = 0
+            Mock Get-WtProcessesForApp {
+                $script:processQueryCount++
+                if ($script:processQueryCount -eq 1) {
+                    [pscustomobject]@{ Id = 901; Path = 'C:\DevPackage\AppX\WindowsTerminal.exe' }
+                }
+            }
+            Mock Test-Until { $false }
+            Mock Stop-Process
+            Mock Write-ItLog
+
+            { Stop-StaleItInstances -App $app } | Should -Throw '*Dev package identity*'
+
+            Should -Invoke Stop-Process -Times 0
+        }
+    }
+
+    It 'does not touch a remaining helper when the Dev descriptor lacks identity' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Get-CimInstance { $null }
+            Mock Get-WtProcessesForApp {
+                if ($IncludePackageExecutables) {
+                    [pscustomobject]@{ Id = 902; Path = 'C:\DevPackage\AppX\wta.exe' }
+                }
+            }
+            Mock Stop-Process
+            Mock Backup-WtConfig
+            Mock Write-ItLog
+
+            { Stop-StaleItInstances -App $app } | Should -Throw '*Dev package identity*'
+
+            Should -Invoke Stop-Process -Times 0
+            Should -Invoke Backup-WtConfig -Times 0
+            Should -Invoke Get-WtProcessesForApp -Times 0 -Exactly -ParameterFilter { $IncludePackageExecutables }
+        }
+    }
+
+    It 'rejects an idle Dev descriptor before settings backup or launch' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                Version = '0.8.0.3'
+                InstallLocation = 'C:\DevPackage\AppX'
+                WtcliPath = 'wtcli.exe'
+            }
+            Mock Resolve-ItApp { $app }
+            Mock Get-WtProcessesForApp { @() }
+            Mock Initialize-LogOffsets {}
+            Mock Backup-WtConfig { throw 'configuration was touched' }
+            Mock Start-ItCreatedDevTerminal { throw 'launch was reached' }
+            Mock Write-ItLog {}
+            $saved = $env:ITE2E_ARTIFACT_ROOT
+            try {
+                $env:ITE2E_ARTIFACT_ROOT = $TestDrive
+                { Start-Terminal -Package Dev } | Should -Throw '*Dev package identity*'
+            }
+            finally {
+                if ($null -eq $saved) { Remove-Item Env:\ITE2E_ARTIFACT_ROOT -ErrorAction SilentlyContinue }
+                else { $env:ITE2E_ARTIFACT_ROOT = $saved }
+            }
+
+            Should -Invoke Get-WtProcessesForApp -Times 0 -Exactly
+            Should -Invoke Backup-WtConfig -Times 0
+            Should -Invoke Start-ItCreatedDevTerminal -Times 0
+        }
+    }
+
+    It 'rejects an unverified Dev descriptor before settings backup or launch' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                Version = '0.0.0.0'
+                WtcliPath = 'wtcli.exe'
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Resolve-ItApp { $app }
+            Mock Get-WtProcessesForApp {
+                [pscustomobject]@{ Id = 903; Path = 'C:\DevPackage\AppX\WindowsTerminal.exe' }
+            }
+            Mock Backup-WtConfig
+            Mock Start-Process
+            Mock Stop-Process
+            Mock Write-ItLog
+
+            { Start-Terminal -Package Dev } | Should -Throw '*Dev package identity*'
+
+            Should -Invoke Backup-WtConfig -Times 0
+            Should -Invoke Start-Process -Times 0
+            Should -Invoke Stop-Process -Times 0
         }
     }
 }
@@ -1078,6 +1266,49 @@ Describe 'Yolo Settings localization contract' -Tag 'Unit' {
                 }
             }
         }
+    }
+}
+
+Describe 'Live command execution oracle' -Tag 'Unit' {
+    BeforeAll {
+        $ast = [Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PSScriptRoot 'ItE2E.Live.Tests.ps1'), [ref]$null, [ref]$null)
+        $case = $ast.Find({
+            param($node)
+            $node -is [Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'It' -and
+                $node.CommandElements[1].Value -eq 'runs a command and captures its output'
+        }, $true)
+        if (-not $case) { throw 'Live command round-trip case was not found.' }
+        $body = $case.CommandElements[-1].ScriptBlock.Extent.Text
+        $script:liveCommandCase = [scriptblock]::Create($body.Substring(1, $body.Length - 2))
+    }
+    BeforeEach {
+        $script:app = @{}
+        $script:sentCommand = ''
+        $script:outputPattern = ''
+        Mock Get-Random { 123456 }
+        Mock Get-ActivePane { @{ session_id = '11111111-1111-1111-1111-111111111111' } }
+        Mock Invoke-RunCommand { $script:sentCommand = $Command; $Command }
+        Mock Assert-Pane { $script:outputPattern = $Match }
+    }
+
+    It 'cannot satisfy its output oracle with only echoed input' {
+        . $script:liveCommandCase
+
+        $script:outputPattern | Should -Not -BeNullOrEmpty
+        $script:sentCommand.Contains($script:outputPattern) | Should -BeFalse
+    }
+
+    It 'executes an encoded payload that really emits the expected marker' {
+        . $script:liveCommandCase
+
+        $match = [regex]::Match($script:sentCommand, '-EncodedCommand (?<Payload>[A-Za-z0-9+/=]+)$')
+        $match.Success | Should -BeTrue
+        $payload = $match.Groups['Payload'].Value
+        $text = & (Get-Command pwsh -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -EncodedCommand $payload
+        $LASTEXITCODE | Should -Be 0
+        $text | Should -Be $script:outputPattern
     }
 }
 

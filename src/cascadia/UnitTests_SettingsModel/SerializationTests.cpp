@@ -39,6 +39,7 @@ namespace SettingsModelUnitTests
 
         TEST_METHOD(GlobalSettings);
         TEST_METHOD(SidebarFilterSettingsRoundtrip);
+        TEST_METHOD(RenderAgentMarkdown);
         TEST_METHOD(Profile);
         TEST_METHOD(ColorScheme);
         TEST_METHOD(Actions);
@@ -127,6 +128,7 @@ namespace SettingsModelUnitTests
             "autoFixEnabled",
             "agentSessionManagementEnabled",
             "showTokenUsageAndCost",
+            "renderAgentMarkdown",
             "agentPanePosition",
             "agentPane.yoloMode",
             "aiIntegration.coordinator.enabled",
@@ -245,6 +247,21 @@ namespace SettingsModelUnitTests
             VERIFY_IS_TRUE(changes.contains("profileDefaults.historySize"));
             VERIFY_ARE_EQUAL(uiChange, changes.contains("global.copyOnSelect"));
         }
+    }
+
+    void SerializationTests::RenderAgentMarkdown()
+    {
+        RoundtripTest<implementation::GlobalAppSettings>(R"({"actions": [], "keybindings": [], "renderAgentMarkdown": false})");
+        RoundtripTest<implementation::GlobalAppSettings>(R"({"actions": [], "keybindings": [], "renderAgentMarkdown": true})");
+
+        const auto defaults = implementation::GlobalAppSettings::FromJson(VerifyParseSucceeded("{}"));
+        VERIFY_IS_TRUE(defaults->RenderAgentMarkdown());
+        VERIFY_IS_FALSE(defaults->HasRenderAgentMarkdown());
+        defaults->RenderAgentMarkdown(false);
+        VERIFY_IS_FALSE(defaults->RenderAgentMarkdown());
+        const auto reloaded = implementation::GlobalAppSettings::FromJson(defaults->ToJson());
+        VERIFY_IS_FALSE(reloaded->RenderAgentMarkdown());
+        VERIFY_IS_TRUE(reloaded->HasRenderAgentMarkdown());
     }
 
     void SerializationTests::GlobalSettings()

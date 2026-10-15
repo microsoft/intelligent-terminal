@@ -8,6 +8,12 @@ use super::{
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
+    app.begin_agent_markdown_frame();
+    render_content(frame, app);
+    app.end_agent_markdown_frame();
+}
+
+fn render_content(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     app.completed_turn_hits.clear();
     app.completed_turn_action_links.clear();

@@ -87,6 +87,7 @@ Author(s):
     X(bool, AutoFixEnabled, "autoFixEnabled", false)                                                                                                                                                    \
     X(bool, AgentSessionManagementEnabled, "agentSessionManagementEnabled", true)                                                                                                                       \
     X(bool, ShowTokenUsageAndCost, "showTokenUsageAndCost", true)                                                                                                                                       \
+    X(bool, RenderAgentMarkdown, "renderAgentMarkdown", true)                                                                                                                                           \
     X(hstring, AcpCustomCommand, "acpCustomCommand", L"")                                                                                                                                              \
     X(winrt::Windows::Foundation::Collections::IVector<winrt::hstring>, AcpCustomCommands, "acpCustomCommands", winrt::single_threaded_vector<winrt::hstring>())                                         \
     X(hstring, DelegateCustomCommand, "delegateCustomCommand", L"")                                                                                                                                    \

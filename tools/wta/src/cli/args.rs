@@ -120,6 +120,10 @@ pub(crate) struct Cli {
     #[arg(long)]
     pub(crate) no_autofix: bool,
 
+    /// Keep agent replies and history as raw text after streaming stops
+    #[arg(long)]
+    pub(crate) no_agent_markdown: bool,
+
     /// Host-resolved AllowAutoFix policy for telemetry, not an enforcement flag.
     #[arg(long, hide = true, value_parser = ["notConfigured", "enabled", "disabled", "unknown"])]
     pub(crate) autofix_policy_state: Option<String>,

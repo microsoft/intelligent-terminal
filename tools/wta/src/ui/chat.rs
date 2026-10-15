@@ -178,6 +178,7 @@ thread_local! {
     static COMPLETED_TURN_LINE_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
     static TOOL_DETAIL_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
     static RENDERED_HEIGHT_LINE_SCAN_COUNT: Cell<usize> = const { Cell::new(0) };
+    static CHAT_PARAGRAPH_SOURCE_LINES: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -208,6 +209,11 @@ fn reset_rendered_height_line_scan_count() {
 #[cfg(test)]
 fn rendered_height_line_scan_count() -> usize {
     RENDERED_HEIGHT_LINE_SCAN_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+pub(crate) fn chat_paragraph_source_lines() -> usize {
+    CHAT_PARAGRAPH_SOURCE_LINES.with(Cell::get)
 }
 
 #[cfg(test)]
@@ -601,6 +607,34 @@ fn rendered_lines_height(lines: &[Line<'_>], wrap_width: usize) -> usize {
         .sum()
 }
 
+fn paragraph_viewport<'a>(
+    lines: Vec<Line<'a>>,
+    wrap_width: usize,
+    mut scroll: usize,
+    mut visible_height: usize,
+) -> (Vec<Line<'a>>, u16) {
+    let mut visible = Vec::new();
+    let mut local_scroll = 0;
+    for line in lines {
+        if visible_height == 0 {
+            break;
+        }
+        let height = rendered_lines_height(std::slice::from_ref(&line), wrap_width);
+        if scroll >= height {
+            scroll -= height;
+            continue;
+        }
+        if visible.is_empty() {
+            local_scroll = scroll.min(usize::from(u16::MAX)) as u16;
+            visible_height = visible_height.saturating_add(scroll);
+            scroll = 0;
+        }
+        visible.push(line);
+        visible_height = visible_height.saturating_sub(height);
+    }
+    (visible, local_scroll)
+}
+
 fn completed_turn_height(tab: &crate::app::TabSession, index: usize, wrap_width: usize) -> usize {
     if let Some(height) = tab.cached_completed_turn_height(index, wrap_width) {
         return height;
@@ -809,8 +843,16 @@ fn build_active_message_group<'a>(
     let expanded =
         matches!(message, ChatMessage::ToolCall { id, .. } if tab.completed_tool_call_expanded(id));
     let grouped = end - start > 1;
+    let markdown = if matches!(message, ChatMessage::Agent(_)) {
+        tab.current_markdown_lines(start, wrap_width)
+    } else {
+        None
+    };
     let lines = if grouped {
         build_compact_tool_group_lines(&tab.messages[start..end])
+    } else if let Some(mut lines) = markdown {
+        lines.push(Line::default());
+        lines
     } else {
         build_message_lines_with_details(
             message,
@@ -1013,13 +1055,18 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
         .filter(|index| *index < app.current_tab().completed_turns.len());
     let mut viewport_anchor = app.current_tab().completed_turn_viewport_anchor();
     let active_anchor = app.current_tab_mut().active_tool_viewport_anchor.take();
-    let reading_position = app.current_tab().chat_reading_position.filter(|position| {
-        app.current_tab().chat_scroll.offset > 0
-            && position.scroll_offset == app.current_tab().chat_scroll.offset
-            && !selection_pending
-            && viewport_anchor.is_none()
-            && active_anchor.is_none()
-    });
+    let preserve_selection = app.current_tab().holds_markdown_selection();
+    let reading_position = app
+        .current_tab()
+        .markdown_reading_position()
+        .filter(|position| {
+            (preserve_selection
+                || (app.current_tab().chat_scroll.offset > 0
+                    && position.scroll_offset == app.current_tab().chat_scroll.offset))
+                && !selection_pending
+                && viewport_anchor.is_none()
+                && active_anchor.is_none()
+        });
     let mut reading_position_applied = false;
     let mut active_anchor_applied = false;
     let mut effective_offset = app.current_tab().chat_scroll.offset;
@@ -1193,7 +1240,17 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             reading_regions.clear();
         }
         let tab = app.current_tab();
+        let viewport_start = plan
+            .effective_offset
+            .saturating_sub(plan.skipped_rows_below);
         for planned in plan.turns {
+            if visible_height > 0
+                && wrap_width > 0
+                && planned.rows_below < viewport_start.saturating_add(visible_height)
+                && planned.rows_below.saturating_add(planned.height) > viewport_start
+            {
+                tab.prepare_completed_markdown(planned.index, wrap_width);
+            }
             let turn = &tab.completed_turns[planned.index];
             let CompletedTurnLines {
                 lines: mut turn_lines,
@@ -1271,13 +1328,34 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
     let local_offset = effective_offset.saturating_sub(skipped_rows_below);
     let scroll = total_lines.saturating_sub(visible_height.saturating_add(local_offset));
 
+    let tab = app.current_tab();
+    let current_agent_visible = visible_height > 0
+        && reading_regions.iter().any(|region| {
+            region.turn_index == tab.completed_turns.len()
+                && region.message_index.is_some_and(|index| {
+                    matches!(tab.messages.get(index), Some(ChatMessage::Agent(_)))
+                })
+                && region.rows_below < local_offset.saturating_add(visible_height)
+                && region.rows_below.saturating_add(region.height) > local_offset
+        });
+    if current_agent_visible {
+        tab.prepare_current_markdown(wrap_width);
+    }
+
+    // Keep global row offsets for hit testing, but do not ask Paragraph to
+    // wrap every offscreen row again just to reach this viewport.
+    let (lines, paragraph_scroll) = paragraph_viewport(lines, wrap_width, scroll, visible_height);
+    #[cfg(test)]
+    CHAT_PARAGRAPH_SOURCE_LINES.with(|count| count.set(lines.len()));
     let paragraph = Paragraph::new(lines)
         .block(inner)
         .alignment(crate::rtl::text_alignment())
         .wrap(Wrap { trim: false })
-        .scroll((scroll.min(u16::MAX as usize) as u16, 0));
+        .scroll((paragraph_scroll, 0));
 
     frame.render_widget(paragraph, area);
+    app.current_tab_mut()
+        .record_raw_active_presentation(current_agent_visible);
 
     let mut completed_turn_hits = Vec::new();
     let mut visible_completed_turn_anchors = Vec::with_capacity(turn_hit_offsets.len());
@@ -1306,20 +1384,22 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             });
             let row = inner_area.y.saturating_add(header_row as u16);
             let symbol = if expanded { "▼" } else { "▶" };
-            if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
-                .find(|column| {
-                    buffer
-                        .cell((*column, row))
-                        .is_some_and(|cell| cell.symbol() == symbol)
-                })
-            {
-                completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
-                    start_column: column,
-                    end_column: column.saturating_add(1),
-                    row,
-                    turn_index,
-                    kind: crate::app::CompletedTurnHitKind::Triangle,
-                });
+            if !prompt_rows.is_empty() {
+                if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
+                    .find(|column| {
+                        buffer
+                            .cell((*column, row))
+                            .is_some_and(|cell| cell.symbol() == symbol)
+                    })
+                {
+                    completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
+                        start_column: column,
+                        end_column: column.saturating_add(1),
+                        row,
+                        turn_index,
+                        kind: crate::app::CompletedTurnHitKind::Triangle,
+                    });
+                }
             }
         }
 
@@ -1614,6 +1694,8 @@ fn build_completed_turn_lines_with_prompt_rows<'a>(
         pane_focused,
         wrap_width,
         |_| false,
+        |_| None,
+        None,
     );
     (built.lines, built.prompt_rows)
 }
@@ -1626,9 +1708,15 @@ fn build_completed_turn_lines_for_tab<'a>(
     wrap_width: usize,
 ) -> CompletedTurnLines<'a> {
     let turn = &tab.completed_turns[turn_index];
-    build_completed_turn_lines_with_geometry(turn, is_selected, pane_focused, wrap_width, |id| {
-        tab.completed_tool_call_expanded(id)
-    })
+    build_completed_turn_lines_with_geometry(
+        turn,
+        is_selected,
+        pane_focused,
+        wrap_width,
+        |id| tab.completed_tool_call_expanded(id),
+        |segment| tab.completed_markdown_lines(turn_index, segment, wrap_width),
+        tab.held_active_prompt(turn_index),
+    )
 }
 
 fn rendered_header_width(lines: &[Line<'_>], wrap_width: usize) -> usize {
@@ -1647,6 +1735,8 @@ fn build_completed_turn_lines_with_geometry<'a>(
     pane_focused: bool,
     wrap_width: usize,
     tool_expanded: impl Fn(&str) -> bool,
+    mut agent_lines: impl FnMut(usize) -> Option<Vec<Line<'a>>>,
+    active_prompt: Option<bool>,
 ) -> CompletedTurnLines<'a> {
     #[cfg(test)]
     record_completed_turn_line_build();
@@ -1673,7 +1763,14 @@ fn build_completed_turn_lines_with_geometry<'a>(
         theme::DIM
     };
 
-    let mut lines = if turn.expanded {
+    let mut lines = if let Some(show_prompt) = active_prompt {
+        let mut lines = Vec::new();
+        if show_prompt {
+            push_prompt_prefixed_lines(&mut lines, &turn.prompt, wrap_width);
+            lines.push(Line::default());
+        }
+        lines
+    } else if turn.expanded {
         let mut prompt_lines = Vec::new();
         push_prompt_prefixed_lines(
             &mut prompt_lines,
@@ -1713,7 +1810,11 @@ fn build_completed_turn_lines_with_geometry<'a>(
     };
 
     let prompt_line_count = lines.len();
-    let mut trailing_marker = turn.trailing_marker.as_deref();
+    let mut trailing_marker = if active_prompt.is_some() {
+        None
+    } else {
+        turn.trailing_marker.as_deref()
+    };
     // Apply the marker before measuring its line: it can wrap both detail
     // headers and prompts. Empty details must not consume the pending marker.
     let mut append_marker = |lines: &mut [Line<'a>]| {
@@ -1738,6 +1839,7 @@ fn build_completed_turn_lines_with_geometry<'a>(
         // path; details are always finalized by the time they land here.
         let mut rendered_height = rendered_lines_height(&lines, wrap_width);
         let mut detail_index = 0;
+        let mut agent_index = 0;
         while detail_index < turn.details.len() {
             let msg = &turn.details[detail_index];
             let expanded = match msg {
@@ -1804,8 +1906,22 @@ fn build_completed_turn_lines_with_geometry<'a>(
             let display = tool_geometry.map_or(ToolDisplay::ActiveTurn, |(expanded, _)| {
                 ToolDisplay::Completed { expanded }
             });
-            let mut message_lines =
-                build_message_lines_with_details(msg, false, false, None, 0, wrap_width, display);
+            let markdown = if matches!(msg, ChatMessage::Agent(_)) {
+                let lines = agent_lines(agent_index);
+                agent_index += 1;
+                lines
+            } else {
+                None
+            };
+            let mut message_lines = match markdown {
+                Some(mut lines) => {
+                    lines.push(Line::default());
+                    lines
+                }
+                None => build_message_lines_with_details(
+                    msg, false, false, None, 0, wrap_width, display,
+                ),
+            };
             append_marker(&mut message_lines);
             let message_height = rendered_lines_height(&message_lines, wrap_width);
             message_rows.push(MessageRowGeometry {
@@ -1857,7 +1973,11 @@ fn build_completed_turn_lines_with_geometry<'a>(
             }
         }
     }
-    let prompt_rows = completed_turn_prompt_rows(&lines[..prompt_line_count], wrap_width);
+    let prompt_rows = if active_prompt.is_some() {
+        Vec::new()
+    } else {
+        completed_turn_prompt_rows(&lines[..prompt_line_count], wrap_width)
+    };
 
     // Push a trailing blank only if the last detail (or the prompt header
     // for collapsed turns) didn't already supply one. Agent / Error /
@@ -2607,6 +2727,81 @@ mod tests {
     }
 
     #[test]
+    fn paragraph_viewport_matches_full_paragraph_buffer() {
+        let fixtures = [
+            Vec::new(),
+            vec![Line::default(), Line::default()],
+            vec![
+                Line::from("short"),
+                Line::default(),
+                Line::from("alpha beta   gamma delta epsilon"),
+                Line::from("  leading and trailing spaces  "),
+                Line::from(concat!("one", "\t", "two", "\t", "three")),
+                Line::from("abcdefghijklmnopqrstuvwxyz"),
+                Line::default(),
+                Line::from("last"),
+            ],
+            vec![
+                Line::from(vec![
+                    Span::styled("strong ", Style::new().bold()),
+                    Span::styled("colored words ", Style::new().fg(Color::Blue)),
+                    Span::styled("end", Style::new().bg(Color::Yellow).italic()),
+                ])
+                .style(Style::new().fg(Color::Green)),
+                Line::from("\u{4e2d}\u{6587} e\u{301} \u{1f469}\u{200d}\u{1f4bb} tail"),
+                Line::from("centered wrapped words").alignment(Alignment::Center),
+                Line::from("right aligned words").alignment(Alignment::Right),
+                Line::from("left aligned words").alignment(Alignment::Left),
+                Line::default().style(Style::new().bg(Color::Magenta)),
+                Line::from("tail"),
+            ],
+        ];
+        for (fixture, lines) in fixtures.into_iter().enumerate() {
+            for width in [1, 2, 3, 8, 17, 40] {
+                let total = Paragraph::new(lines.clone())
+                    .wrap(Wrap { trim: false })
+                    .line_count(width);
+                for height in [0, 1, 2, 5, 12] {
+                    for alignment in [Alignment::Left, Alignment::Center, Alignment::Right] {
+                        for scroll in 0..=total + 1 {
+                            let area = Rect::new(3, 2, width + 2, height + 2);
+                            let block = Block::new().borders(Borders::ALL);
+                            let style = Style::new().fg(Color::Reset).bg(Color::Reset);
+                            let mut expected = Buffer::empty(area);
+                            Paragraph::new(lines.clone())
+                                .block(block.clone())
+                                .style(style)
+                                .alignment(alignment)
+                                .wrap(Wrap { trim: false })
+                                .scroll((scroll as u16, 0))
+                                .render(area, &mut expected);
+                            let (visible, local_scroll) = paragraph_viewport(
+                                lines.clone(),
+                                usize::from(width),
+                                scroll,
+                                usize::from(height),
+                            );
+                            let mut actual = Buffer::empty(area);
+                            Paragraph::new(visible)
+                                .block(block)
+                                .style(style)
+                                .alignment(alignment)
+                                .wrap(Wrap { trim: false })
+                                .scroll((local_scroll, 0))
+                                .render(area, &mut actual);
+                            assert_eq!(
+                                actual, expected,
+                                "fixture={fixture}, width={width}, height={height}, \
+                                 alignment={alignment:?}, scroll={scroll}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn completed_turn_build_counter_does_not_leak_across_threads() {
         reset_completed_turn_line_build_count();
         std::thread::spawn(|| {
@@ -2858,7 +3053,15 @@ mod tests {
         };
 
         reset_rendered_height_line_scan_count();
-        build_completed_turn_lines_with_geometry(&turn, false, false, 80, |_| false);
+        build_completed_turn_lines_with_geometry(
+            &turn,
+            false,
+            false,
+            80,
+            |_| false,
+            |_| None,
+            None,
+        );
 
         assert!(
             rendered_height_line_scan_count() <= 110,
@@ -2968,8 +3171,15 @@ mod tests {
                 expanded: true,
                 trailing_marker: Some("MARKER".repeat(4)),
             };
-            let built =
-                build_completed_turn_lines_with_geometry(&turn, false, false, 36, |_| false);
+            let built = build_completed_turn_lines_with_geometry(
+                &turn,
+                false,
+                false,
+                36,
+                |_| false,
+                |_| None,
+                None,
+            );
             let mut terminal =
                 ratatui::Terminal::new(ratatui::backend::TestBackend::new(36, 30)).unwrap();
             terminal
@@ -3038,8 +3248,15 @@ mod tests {
                     expanded,
                     trailing_marker: Some("MARKER".into()),
                 };
-                let built =
-                    build_completed_turn_lines_with_geometry(&turn, false, false, 36, |_| false);
+                let built = build_completed_turn_lines_with_geometry(
+                    &turn,
+                    false,
+                    false,
+                    36,
+                    |_| false,
+                    |_| None,
+                    None,
+                );
                 let mut terminal =
                     ratatui::Terminal::new(ratatui::backend::TestBackend::new(36, 10)).unwrap();
                 terminal

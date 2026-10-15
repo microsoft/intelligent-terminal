@@ -204,5 +204,7 @@ namespace Microsoft.Terminal.Settings.Model
 
         INHERITABLE_SETTING(Boolean, SidebarShowAgentsOnly);
         INHERITABLE_SETTING(Boolean, SidebarShowRecentAgentSessions);
+
+        INHERITABLE_SETTING(Boolean, RenderAgentMarkdown);
     }
 }

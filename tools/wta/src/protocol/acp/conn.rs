@@ -168,8 +168,9 @@ impl ClientLink {
     /// loop, so a reentrant `request_permission` / `create_terminal` the agent
     /// issues *during* the prompt can never have its response read — the exact
     /// hazard the ACP `ordering` docs call out. Instead of awaiting, this
-    /// registers `on_response` (run by the SDK when the agent finally replies)
-    /// and returns as soon as the request is on the wire, keeping the loop free.
+    /// registers the response callback and returns as soon as the request is
+    /// queued, keeping the loop free. A separate completion task also settles
+    /// the caller when EOF drops the SDK callback without invoking it.
     pub async fn prompt_forwarding<Fut>(
         &self,
         req: PromptRequest,
@@ -178,10 +179,29 @@ impl ClientLink {
     where
         Fut: Future<Output = acp::Result<()>> + 'static + Send,
     {
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
         self.cx()
             .await?
             .send_request(req)
-            .on_receiving_result(on_response)
+            .on_receiving_result(move |result| async move {
+                // A retired caller may no longer be waiting for this response.
+                let _ = response_tx.send(result);
+                Ok(())
+            })?;
+        tokio::task::spawn_local(async move {
+            let result = response_rx.await.unwrap_or_else(|_| {
+                Err(acp::Error::internal_error()
+                    .data("ACP connection closed before prompt response"))
+            });
+            if let Err(error) = on_response(result).await {
+                tracing::warn!(
+                    target: "acp",
+                    error = %error,
+                    "ACP prompt response forwarding failed"
+                );
+            }
+        });
+        Ok(())
     }
 
     pub async fn cancel(&self, notif: CancelNotification) -> acp::Result<()> {
@@ -214,6 +234,21 @@ impl ClientLink {
         req: ListSessionsRequest,
     ) -> acp::Result<ListSessionsResponse> {
         self.cx().await?.send_request(req).block_task().await
+    }
+
+    pub async fn start_list_sessions(
+        &self,
+    ) -> acp::Result<tokio::sync::oneshot::Receiver<acp::Result<ListSessionsResponse>>> {
+        let (response, receiver) = tokio::sync::oneshot::channel();
+        self.cx()
+            .await?
+            .send_request(ListSessionsRequest::new())
+            .on_receiving_result(move |result| async move {
+                // A retired history instance deliberately drops its receiver.
+                let _ = response.send(result);
+                Ok(())
+            })?;
+        Ok(receiver)
     }
 
     pub async fn ext_method(&self, req: ExtRequest) -> acp::Result<ExtResponse> {
@@ -617,6 +652,93 @@ mod transport_death_tests {
                  dies, but it hung — the helper would stay Connected forever"
             );
         });
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn forwarded_prompt_settles_on_transport_end_without_losing_completed_reply() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                for intentional_shutdown in [false, true] {
+                    let (near, far) = tokio::io::duplex(64 * 1024);
+                    let (near_r, near_w) = tokio::io::split(near);
+                    let (link, handle_io) = spawn_client(
+                        acp::Client.builder().name("forwarding-lifecycle"),
+                        byte_streams(near_w.compat_write(), near_r.compat()),
+                    );
+                    let (completed, mut responses) = tokio::sync::mpsc::unbounded_channel();
+                    for session in ["completed", "interrupted"] {
+                        let completed = completed.clone();
+                        link.prompt_forwarding(
+                            PromptRequest::new(SessionId::new(session), vec!["fixture".into()]),
+                            move |result| async move {
+                                completed.send((session, result)).unwrap();
+                                Ok(())
+                            },
+                        )
+                        .await
+                        .unwrap();
+                    }
+                    drop(completed);
+                    let mut far = tokio::io::BufReader::new(far);
+                    let mut requests = Vec::new();
+                    for _ in 0..2 {
+                        let mut line = String::new();
+                        tokio::time::timeout(
+                            std::time::Duration::from_secs(3),
+                            far.read_line(&mut line),
+                        )
+                        .await
+                        .unwrap()
+                        .unwrap();
+                        requests.push(serde_json::from_str::<serde_json::Value>(&line).unwrap());
+                    }
+                    let reply = serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": requests[0]["id"],
+                        "result": { "stopReason": "end_turn" }
+                    });
+                    far.get_mut()
+                        .write_all(format!("{reply}\n").as_bytes())
+                        .await
+                        .unwrap();
+                    let (session, result) =
+                        tokio::time::timeout(std::time::Duration::from_secs(3), responses.recv())
+                            .await
+                            .unwrap()
+                            .unwrap();
+                    assert_eq!(session, "completed");
+                    assert_eq!(result.unwrap().stop_reason, v1::StopReason::EndTurn);
+
+                    let retained = link.clone();
+                    drop(link);
+                    let mut peer = Some(far);
+                    if intentional_shutdown {
+                        retained.shutdown();
+                    } else {
+                        drop(peer.take());
+                    }
+                    tokio::time::timeout(std::time::Duration::from_secs(3), handle_io)
+                        .await
+                        .expect("the transport driver must terminate")
+                        .unwrap();
+                    let (session, result) =
+                        tokio::time::timeout(std::time::Duration::from_secs(3), responses.recv())
+                            .await
+                            .expect("a retained connection must not strand a forwarded prompt")
+                            .expect("the interrupted prompt must invoke its callback");
+                    assert_eq!(session, "interrupted");
+                    assert!(result.is_err());
+                    assert!(retained.transport_ended());
+                    assert!(
+                        responses.try_recv().is_err(),
+                        "each prompt must settle once"
+                    );
+                    drop(peer);
+                }
+            })
+            .await;
     }
 
     /// Symmetric guard for the master side: when a helper (or the agent CLI) dies,

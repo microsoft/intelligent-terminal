@@ -184,6 +184,10 @@ impl TextSelection {
         selected_text(buffer, selection).filter(|text| !text.is_empty())
     }
 
+    pub(crate) fn has_selection_or_gesture(&self) -> bool {
+        self.selection.is_some()
+    }
+
     pub(crate) fn click_count(&self) -> Option<u8> {
         self.last_click.map(|click| click.count)
     }

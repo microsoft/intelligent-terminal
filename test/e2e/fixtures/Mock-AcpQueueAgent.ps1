@@ -36,7 +36,11 @@ function Send-AcpMessage {
 }
 
 function Send-TextUpdate {
-    param([string]$SessionId, [string]$Text)
+    param(
+        [string]$SessionId,
+        [string]$Text,
+        [ValidateSet('agent_message_chunk', 'user_message_chunk')][string]$SessionUpdate = 'agent_message_chunk'
+    )
 
     Send-AcpMessage @{
         jsonrpc = '2.0'
@@ -44,7 +48,7 @@ function Send-TextUpdate {
         params = @{
             sessionId = $SessionId
             update = @{
-                sessionUpdate = 'agent_message_chunk'
+                sessionUpdate = $SessionUpdate
                 content = @{ type = 'text'; text = $Text }
             }
         }
@@ -57,7 +61,8 @@ function Complete-FixturePrompt {
     $response = @{ jsonrpc = '2.0'; id = $Prompt.requestId }
     switch ($Reason) {
         'end_turn' {
-            Send-TextUpdate -SessionId $Prompt.sessionId -Text "ACK_$($Prompt.marker)"
+            $separator = if ($Prompt.customReply) { "`n`n" } else { '' }
+            Send-TextUpdate -SessionId $Prompt.sessionId -Text "${separator}ACK_$($Prompt.marker)"
             $response.result = @{ stopReason = 'end_turn' }
         }
         'cancelled' { $response.error = @{ code = -32800; message = 'cancelled by fixture' } }
@@ -116,6 +121,30 @@ function Receive-AcpRequest {
             }
             $pendingSessions.Add(@{ requestId = $Request.id; sessionId = $sessionId })
         }
+        'session/load' {
+            $historyPath = Join-Path $ControlDirectory 'history.json'
+            $history = if ([IO.File]::Exists($historyPath)) {
+                [IO.File]::ReadAllText($historyPath, [Text.UTF8Encoding]::new($false, $true)) |
+                    ConvertFrom-Json -AsHashtable
+            }
+            else { @{} }
+            if (-not $history.ContainsKey($sessionId)) {
+                Send-AcpMessage @{
+                    jsonrpc = '2.0'; id = $Request.id
+                    error = @{ code = -32002; message = 'Unknown fixture history' }
+                }
+                return
+            }
+            $saved = $history[$sessionId]
+            if ($saved.prompt -isnot [string] -or $saved.reply -isnot [string]) {
+                throw 'Fixture history requires text prompt and reply fields'
+            }
+            $sessions[$sessionId] = $true
+            Write-FixtureRecord -Kind load -Fields @{ sessionId = $sessionId; requestId = $Request.id }
+            Send-TextUpdate -SessionId $sessionId -Text $saved.prompt -SessionUpdate user_message_chunk
+            Send-TextUpdate -SessionId $sessionId -Text $saved.reply
+            Send-AcpMessage @{ jsonrpc = '2.0'; id = $Request.id; result = @{} }
+        }
         'session/prompt' {
             if (-not $sessions.ContainsKey($sessionId)) {
                 Send-AcpMessage @{
@@ -157,8 +186,14 @@ function Receive-AcpRequest {
                 Complete-FixturePrompt -Prompt $prompt -Reason error -ErrorMessage 'QUEUE_FIXTURE_OVERLAP'
             }
             elseif ($holdMarker) {
+                $replyPath = Join-Path $ControlDirectory "$marker.reply.txt"
+                $prompt.customReply = [IO.File]::Exists($replyPath)
+                $reply = if ($prompt.customReply) {
+                    [IO.File]::ReadAllText($replyPath, [Text.UTF8Encoding]::new($false, $true))
+                }
+                else { "START_$marker" }
                 $heldPrompts[$sessionId] = $prompt
-                Send-TextUpdate -SessionId $sessionId -Text "START_$marker"
+                Send-TextUpdate -SessionId $sessionId -Text $reply
             }
             else {
                 Complete-FixturePrompt -Prompt $prompt -Reason end_turn
@@ -181,16 +216,20 @@ try {
         if ($initializations.Count -gt 0 -and
             (-not $HoldInitialize -or [System.IO.File]::Exists((Join-Path $ControlDirectory 'initialize.release')))) {
             foreach ($requestId in $initializations) {
+                $capabilities = @{
+                    promptCapabilities = @{ image = $true }
+                    mcpCapabilities = @{ http = $true }
+                    sessionCapabilities = @{ close = @{} }
+                }
+                if ([IO.File]::Exists((Join-Path $ControlDirectory 'history.json'))) {
+                    $capabilities.loadSession = $true
+                }
                 Send-AcpMessage @{
                     jsonrpc = '2.0'; id = $requestId
                     result = @{
                         protocolVersion = 1
                         agentInfo = @{ name = 'Queue Fixture'; version = '1.0.0' }
-                        agentCapabilities = @{
-                            promptCapabilities = @{ image = $true }
-                            mcpCapabilities = @{ http = $true }
-                            sessionCapabilities = @{ close = @{} }
-                        }
+                        agentCapabilities = $capabilities
                     }
                 }
                 Write-FixtureRecord -Kind initialized -Fields @{ requestId = $requestId }
@@ -207,6 +246,14 @@ try {
         }
         foreach ($sessionId in @($heldPrompts.Keys)) {
             $prompt = $heldPrompts[$sessionId]
+            if ([IO.File]::Exists((Join-Path $ControlDirectory "$($prompt.marker).disconnect"))) {
+                Write-FixtureRecord -Kind disconnect -Fields @{
+                    sessionId = $sessionId
+                    requestId = $prompt.requestId
+                    marker = $prompt.marker
+                }
+                return
+            }
             $reason = $null
             if ($prompt.cancelled) {
                 if (-not [System.IO.File]::Exists((Join-Path $ControlDirectory 'hold-cancel')) -or

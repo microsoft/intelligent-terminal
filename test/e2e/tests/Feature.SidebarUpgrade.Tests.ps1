@@ -1,5 +1,5 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# No real provider prompts. Each case requires an unused, exact-source Dev package.
+# No real provider prompts. Preflight closes the exact-source Dev package before fixture setup.
 Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
@@ -7,6 +7,7 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
         . (Join-Path $PSScriptRoot 'helpers\SidebarPersistenceFault.ps1')
         if ($env:ITE2E_PACKAGE -ne 'Dev') { throw 'Sidebar upgrade requires explicit Dev.' }
         $script:target = Resolve-ItApp -Package Dev
+        Stop-StaleItInstances -App $script:target
         if (-not $env:ITE2E_EXPECTED_APP_SHA256 -or -not $env:ITE2E_EXPECTED_WTA_SHA256) {
             throw 'Exact-source app and WTA hashes are required.'
         }

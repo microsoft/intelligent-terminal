@@ -195,6 +195,20 @@ pub struct CompletedTurn {
     pub trailing_marker: Option<String>,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct RawActivePresentation {
+    prompt_id: u64,
+    has_user_prompt: bool,
+}
+
+pub(super) struct MarkdownSelectionHold {
+    active: Option<RawActivePresentation>,
+    completed_turn: Option<usize>,
+    was_following: bool,
+    // Queue dispatch may reset ordinary scrolling before this selection is released.
+    reading_position: Option<ChatReadingPosition>,
+}
+
 /// Maximum displayed characters for a collapsed turn header preview.
 /// Picked so the `▶ > <preview>…` row stays well under a typical 120-col
 /// wrap width even after the chevron + prompt prefix; longer prompts get
@@ -587,6 +601,9 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
+    pub(crate) agent_markdown: std::cell::RefCell<super::agent_markdown::AgentMarkdownCache>,
+    pub(super) last_raw_active_presentation: Option<RawActivePresentation>,
+    pub(super) markdown_selection_hold: Option<MarkdownSelectionHold>,
     /// UI-only disclosure state keyed by the ACP session's tool-call IDs.
     pub(crate) expanded_completed_tool_calls: HashSet<String>,
     pub(crate) active_tool_viewport_anchor: Option<(String, u16)>,
@@ -875,10 +892,154 @@ impl TabSession {
 
     pub(crate) fn clear_completed_turns(&mut self) {
         self.completed_turns.clear();
+        self.agent_markdown.get_mut().clear();
+        self.last_raw_active_presentation = None;
+        self.markdown_selection_hold = None;
         self.expanded_completed_tool_calls.clear();
         self.active_tool_viewport_anchor = None;
         self.chat_reading_position = None;
         self.completed_turn_layout = CompletedTurnLayoutState::default();
+    }
+
+    pub(crate) fn begin_agent_markdown_frame(&mut self, enabled: bool, allow_publication: bool) {
+        if self
+            .agent_markdown
+            .get_mut()
+            .set_enabled(enabled, allow_publication)
+        {
+            self.completed_turn_layout.height_cache.get_mut().clear();
+        }
+        self.agent_markdown.get_mut().begin_frame();
+        for index in self.agent_markdown.get_mut().poll(allow_publication) {
+            self.invalidate_completed_turn_height(index);
+        }
+    }
+
+    pub(crate) fn sync_markdown_selection(&mut self, enabled: bool, selecting: bool) {
+        if selecting && (enabled || self.markdown_selection_hold.is_some()) {
+            if self.markdown_selection_hold.is_none() {
+                self.markdown_selection_hold = Some(MarkdownSelectionHold {
+                    active: self.last_raw_active_presentation,
+                    completed_turn: None,
+                    was_following: self.chat_scroll.offset == 0,
+                    reading_position: self.chat_reading_position,
+                });
+            }
+        } else if let Some(held) = self.markdown_selection_hold.take() {
+            if let Some(index) = held.completed_turn {
+                self.invalidate_completed_turn_height(index);
+            }
+            if held.was_following
+                && self
+                    .chat_reading_position
+                    .is_some_and(|position| position.scroll_offset == self.chat_scroll.offset)
+            {
+                self.chat_scroll.offset = 0;
+            }
+        }
+    }
+
+    pub(crate) fn holds_markdown_selection(&self) -> bool {
+        self.markdown_selection_hold.is_some()
+    }
+
+    pub(crate) fn markdown_reading_position(&self) -> Option<ChatReadingPosition> {
+        self.markdown_selection_hold
+            .as_ref()
+            .and_then(|held| held.reading_position)
+            .or(self.chat_reading_position)
+    }
+
+    pub(crate) fn held_active_prompt(&self, index: usize) -> Option<bool> {
+        self.markdown_selection_hold
+            .as_ref()
+            .filter(|held| held.completed_turn == Some(index))
+            .and_then(|held| held.active)
+            .map(|active| active.has_user_prompt)
+    }
+
+    pub(crate) fn record_raw_active_presentation(&mut self, visible: bool) {
+        self.last_raw_active_presentation = if visible && self.turn.is_in_flight() {
+            self.turn
+                .prompt_id()
+                .map(|prompt_id| RawActivePresentation {
+                    prompt_id,
+                    has_user_prompt: self
+                        .messages
+                        .iter()
+                        .any(|message| matches!(message, ChatMessage::User(_))),
+                })
+        } else {
+            None
+        };
+    }
+
+    pub(crate) fn end_agent_markdown_frame(&mut self) {
+        for index in self.agent_markdown.get_mut().end_frame() {
+            self.invalidate_completed_turn_height(index);
+        }
+    }
+
+    pub(crate) fn prepare_completed_markdown(&self, index: usize, width: usize) {
+        let Some(turn) = self.completed_turns.get(index) else {
+            return;
+        };
+        let mut cache = self.agent_markdown.borrow_mut();
+        if turn.expanded {
+            cache.request(
+                index,
+                width,
+                turn.details.iter().filter_map(|message| match message {
+                    ChatMessage::Agent(text) => Some(text.as_str()),
+                    _ => None,
+                }),
+            );
+        } else {
+            cache.touch(index);
+        }
+    }
+
+    pub(crate) fn completed_markdown_lines(
+        &self,
+        index: usize,
+        segment: usize,
+        width: usize,
+    ) -> Option<Vec<ratatui::text::Line<'static>>> {
+        self.agent_markdown
+            .borrow()
+            .rows(index, segment, width)
+            .map(<[_]>::to_vec)
+    }
+
+    pub(crate) fn prepare_current_markdown(&self, width: usize) {
+        if self.loading_session || !self.turn.accepts_new_prompt() {
+            return;
+        }
+        self.agent_markdown.borrow_mut().request_current(
+            width,
+            self.messages.iter().filter_map(|message| match message {
+                ChatMessage::Agent(text) => Some(text.as_str()),
+                _ => None,
+            }),
+        );
+    }
+
+    pub(crate) fn current_markdown_lines(
+        &self,
+        message_index: usize,
+        width: usize,
+    ) -> Option<Vec<ratatui::text::Line<'static>>> {
+        if self.loading_session || !self.turn.accepts_new_prompt() {
+            return None;
+        }
+        let segment = self.messages[..message_index]
+            .iter()
+            .filter(|message| matches!(message, ChatMessage::Agent(_)))
+            .count();
+        self.agent_markdown
+            .borrow()
+            .current_rows(segment, width)
+            .map(<[_]>::to_vec)
     }
 
     pub(crate) fn completed_tool_call_expanded(&self, id: &str) -> bool {
@@ -1117,6 +1278,7 @@ impl TabSession {
             self.active_prompt_cancellation = None;
         }
         self.messages.clear();
+        self.agent_markdown.get_mut().invalidate_current();
         self.streaming_thought = None;
         self.permission.clear();
         self.user_input.clear();
@@ -1145,6 +1307,7 @@ impl TabSession {
         self.flush_replay_user_buffer();
         if !self.replay_agent_buffer.is_empty() {
             let text = std::mem::take(&mut self.replay_agent_buffer);
+            self.agent_markdown.get_mut().invalidate_current();
             self.messages.push(ChatMessage::Agent(text));
         }
     }
@@ -1158,6 +1321,9 @@ impl TabSession {
     }
 
     pub fn append_agent_chunk(&mut self, text: &str) {
+        if !text.is_empty() {
+            self.agent_markdown.get_mut().invalidate_current();
+        }
         match self.messages.last_mut() {
             Some(ChatMessage::Agent(current)) => current.push_str(text),
             _ => {
@@ -1200,7 +1366,11 @@ impl TabSession {
                 .nth(remove_chars)
                 .map_or(current.len(), |(index, _)| index);
             current.drain(..cut_at);
-            if let Some(position) = &mut self.chat_reading_position {
+            for position in self.chat_reading_position.iter_mut().chain(
+                self.markdown_selection_hold
+                    .as_mut()
+                    .and_then(|held| held.reading_position.as_mut()),
+            ) {
                 if position.turn_index == self.completed_turns.len()
                     && position.message_index == Some(index)
                 {
@@ -1353,20 +1523,48 @@ impl TabSession {
 
     pub fn take_current_turn_details(&mut self) -> Vec<ChatMessage> {
         self.finish_thought();
+        self.agent_markdown.get_mut().invalidate_current();
+        let prompt_id = self.turn.prompt_id();
+        if let Some(held) = &mut self.markdown_selection_hold {
+            if held
+                .active
+                .is_some_and(|active| Some(active.prompt_id) == prompt_id)
+                && self
+                    .messages
+                    .iter()
+                    .any(|message| matches!(message, ChatMessage::Agent(_)))
+            {
+                held.completed_turn = Some(self.completed_turns.len());
+            }
+        }
         // Capturing a turn removes its user bubble and renders a prompt header
         // instead. Keep the reading anchor on the same surviving detail.
-        if let Some(position) = &mut self.chat_reading_position {
-            if position.turn_index == self.completed_turns.len() {
-                if let Some(index) = position.message_index {
-                    position.message_index = self.messages.get(index).and_then(|message| {
-                        (!matches!(message, ChatMessage::User(_))).then(|| {
-                            self.messages[..index]
-                                .iter()
-                                .filter(|message| !matches!(message, ChatMessage::User(_)))
-                                .count()
-                        })
-                    });
+        {
+            let messages = &self.messages;
+            let active_index = self.completed_turns.len();
+            let remap = |position: &mut ChatReadingPosition| {
+                if position.turn_index == active_index {
+                    if let Some(index) = position.message_index {
+                        position.message_index = messages.get(index).and_then(|message| {
+                            (!matches!(message, ChatMessage::User(_))).then(|| {
+                                messages[..index]
+                                    .iter()
+                                    .filter(|message| !matches!(message, ChatMessage::User(_)))
+                                    .count()
+                            })
+                        });
+                    }
                 }
+            };
+            if let Some(position) = &mut self.chat_reading_position {
+                remap(position);
+            }
+            if let Some(position) = self
+                .markdown_selection_hold
+                .as_mut()
+                .and_then(|held| held.reading_position.as_mut())
+            {
+                remap(position);
             }
         }
         std::mem::take(&mut self.messages)
@@ -1387,13 +1585,19 @@ impl TabSession {
         let streaming_thought_index = self.streaming_thought_message_index();
         let mut original_index = 0;
         let mut index = 0;
+        let mut removed_agent = false;
         self.messages.retain(|message| {
             let remove = !keep(message);
             if remove {
+                removed_agent |= matches!(message, ChatMessage::Agent(_));
                 if streaming_thought_index == Some(original_index) {
                     self.streaming_thought = None;
                 }
-                if let Some(position) = &mut self.chat_reading_position {
+                for position in self.chat_reading_position.iter_mut().chain(
+                    self.markdown_selection_hold
+                        .as_mut()
+                        .and_then(|held| held.reading_position.as_mut()),
+                ) {
                     if position.turn_index == self.completed_turns.len() {
                         if let Some(anchor_index) = &mut position.message_index {
                             if *anchor_index > index {
@@ -1411,21 +1615,29 @@ impl TabSession {
             original_index += 1;
             !remove
         });
-        if self.messages.is_empty()
-            && self
-                .chat_reading_position
-                .is_some_and(|position| position.turn_index == self.completed_turns.len())
-        {
-            self.chat_reading_position = None;
+        if removed_agent {
+            self.agent_markdown.get_mut().invalidate_current();
         }
-        if let Some(position) = &mut self.chat_reading_position {
-            if position.turn_index == self.completed_turns.len() {
-                position.message_index = position.message_index.and_then(|index| {
-                    self.messages
-                        .len()
-                        .checked_sub(1)
-                        .map(|last| index.min(last))
-                });
+        for position in std::iter::once(&mut self.chat_reading_position).chain(
+            self.markdown_selection_hold
+                .as_mut()
+                .map(|held| &mut held.reading_position),
+        ) {
+            if self.messages.is_empty()
+                && position
+                    .is_some_and(|position| position.turn_index == self.completed_turns.len())
+            {
+                *position = None;
+            }
+            if let Some(position) = position {
+                if position.turn_index == self.completed_turns.len() {
+                    position.message_index = position.message_index.and_then(|index| {
+                        self.messages
+                            .len()
+                            .checked_sub(1)
+                            .map(|last| index.min(last))
+                    });
+                }
             }
         }
         if self.active_tool_viewport_anchor.as_ref().is_some_and(|(id, _)| {
@@ -1500,6 +1712,7 @@ impl TabSession {
             });
         }
         self.messages = kept;
+        self.agent_markdown.get_mut().invalidate_current();
     }
 
     pub fn select_older_completed_turn(&mut self) {

@@ -3081,4 +3081,12 @@ Alt+Shift+/ إدخال طلب؛ Alt+Shift+B التشغيل دون طلب أول�
     <value>تحظر مؤسستك عمليات تشغيل الوكلاء الأصليين المُدارة. يجب السماح بالوكيل، ويجب أن تسمح السياسة بالموافقة التلقائية لأن الوكلاء الأصليين يتحكمون في إعدادات الموافقة الخاصة بهم.</value>
     <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
   </data>
+  <data name="AIAgents_RenderAgentMarkdown.Header" xml:space="preserve">
+    <value>تنسيق Markdown</value>
+    <comment>{Locked="Markdown"} Title of the AI agent reply-formatting toggle, shared by Settings and first-run setup. Markdown is a markup format name.</comment>
+  </data>
+  <data name="AIAgents_RenderAgentMarkdown.HelpText" xml:space="preserve">
+    <value>تنسيق ردود وكلاء الذكاء الاصطناعي بعد توقف البث، بما في ذلك الردود في المحادثات المحفوظة.</value>
+    <comment>Description of the reply-formatting toggle, shared by Settings and first-run setup. Only AI agent replies are formatted; live text stays literal. Stopped replies include completed, canceled, or failed responses. History means saved conversations, not shell command history.</comment>
+  </data>
 </root>

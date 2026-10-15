@@ -174,6 +174,88 @@ BeforeAll {
 }
 
 Describe 'ACP queue fixture' -Tag 'Unit' {
+    It 'loads saved raw history without rewriting it or creating a new session' {
+        $fixture = Start-QueueFixture
+        try {
+            $session = 'markdown-saved-session'
+            $prompt = '**SAVED_USER**'
+            $reply = "# Saved heading`r`n`r`n**SAVED_REPLY**"
+            $historyPath = Join-Path $fixture.Control 'history.json'
+            @{ $session = @{ prompt = $prompt; reply = $reply } } | ConvertTo-Json -Depth 6 |
+                Set-Content -LiteralPath $historyPath -Encoding utf8NoBOM
+            $originalHash = (Get-FileHash -LiteralPath $historyPath).Hash
+            Send-QueueRequest $fixture @{ id = 0; method = 'initialize'; params = @{ protocolVersion = 1 } }
+            (Read-QueueMessage $fixture).result.agentCapabilities.loadSession | Should -BeTrue
+            Send-QueueRequest $fixture @{ id = 1; method = 'session/load'; params = @{ sessionId = $session; cwd = $fixture.Root; mcpServers = @() } }
+            $user = Read-QueueMessage $fixture
+            $user.params.update.sessionUpdate | Should -Be 'user_message_chunk'
+            [string]::Equals($user.params.update.content.text, $prompt, [StringComparison]::Ordinal) | Should -BeTrue
+            $agent = Read-QueueMessage $fixture
+            $agent.params.update.sessionUpdate | Should -Be 'agent_message_chunk'
+            [string]::Equals($agent.params.update.content.text, $reply, [StringComparison]::Ordinal) | Should -BeTrue
+            (Read-QueueMessage $fixture).id | Should -Be 1
+            (Wait-QueueRecord $fixture load).sessionId | Should -Be $session
+            @(Get-QueueRecords $fixture | Where-Object kind -eq session) | Should -HaveCount 0
+            (Get-FileHash -LiteralPath $historyPath).Hash | Should -Be $originalHash
+
+            Send-QueueRequest $fixture @{ id = 2; method = 'session/load'; params = @{ sessionId = 'missing'; cwd = $fixture.Root; mcpServers = @() } }
+            (Read-QueueMessage $fixture).error.code | Should -Be -32002
+            Send-QueuePrompt $fixture $session 3 'QUEUE_AFTER_LOAD'
+            Assert-QueueText $fixture $session 'ACK_QUEUE_AFTER_LOAD'
+            (Read-QueueMessage $fixture).result.stopReason | Should -Be 'end_turn'
+        }
+        finally { Stop-QueueFixture $fixture }
+    }
+
+    It 'closes its own transport when the held reply disconnects' {
+        $fixture = Start-QueueFixture
+        try {
+            Initialize-QueueFixture $fixture
+            $session = New-QueueSession $fixture
+            $marker = 'QUEUE_HOLD_MARKDOWN_DISCONNECT'
+            Send-QueuePrompt $fixture $session 2 $marker
+            Assert-QueueText $fixture $session "START_$marker"
+            Set-QueueGate $fixture "$marker.disconnect"
+            $fixture.Process.WaitForExit(2000) |
+                Should -BeTrue -Because 'the disconnect gate must close the fixture transport'
+            $fixture.ReadTask.GetAwaiter().GetResult() | Should -BeNullOrEmpty
+            (Wait-QueueRecord $fixture disconnect $marker).sessionId | Should -Be $session
+            @(Get-QueueRecords $fixture | Where-Object kind -eq completion) | Should -HaveCount 0
+        }
+        finally { Stop-QueueFixture $fixture }
+    }
+
+    It 'streams exact supplied reply text until controlled completion' {
+        $fixture = Start-QueueFixture
+        try {
+            Initialize-QueueFixture $fixture
+            $session = New-QueueSession $fixture
+            $marker = 'QUEUE_HOLD_MARKDOWN_SOURCE'
+            $source = "# Heading`r`n`r`n**Exact reply** 中文 e$([char]0x301)"
+            [IO.File]::WriteAllText(
+                (Join-Path $fixture.Control "$marker.reply.txt"),
+                $source,
+                [Text.UTF8Encoding]::new($false))
+            Send-QueuePrompt $fixture $session 2 $marker
+            $chunk = Read-QueueMessage $fixture
+            $chunk.method | Should -Be 'session/update'
+            $chunk.params.sessionId | Should -Be $session
+            $chunk.params.update.sessionUpdate | Should -Be 'agent_message_chunk'
+            [string]::Equals($chunk.params.update.content.text, $source, [StringComparison]::Ordinal) |
+                Should -BeTrue -Because 'the fixture must preserve exact UTF-8 text and line endings'
+            Assert-QueueQuiet $fixture
+            Set-QueueGate $fixture "$marker.release"
+            Assert-QueueText $fixture $session "`n`nACK_$marker"
+            (Read-QueueMessage $fixture).result.stopReason | Should -Be 'end_turn'
+            (Wait-QueueRecord $fixture completion $marker).reason | Should -Be 'end_turn'
+
+            Send-QueuePrompt $fixture $session 3 'QUEUE_UNMODIFIED_REPLY'
+            Assert-QueueText $fixture $session 'ACK_QUEUE_UNMODIFIED_REPLY'
+            (Read-QueueMessage $fixture).result.stopReason | Should -Be 'end_turn'
+        }
+        finally { Stop-QueueFixture $fixture }
+    }
+
     It 'gates session creation after initialize without blocking control-file polling' {
         $fixture = Start-QueueFixture -HoldSession
         try {

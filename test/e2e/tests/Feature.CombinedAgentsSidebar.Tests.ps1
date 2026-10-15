@@ -204,6 +204,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         Initialize-TestSidebarExpansionEvents
         if ($env:ITE2E_PACKAGE -ne 'Dev') { throw 'Combined sidebar validation requires ITE2E_PACKAGE=Dev.' }
         $script:target = Resolve-ItApp -Package Dev
+        Stop-StaleItInstances -App $script:target
         $script:initialProcessCheckAt = [DateTimeOffset]::UtcNow.ToString('o')
         $script:initialProcesses = @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables)
         if ($script:initialProcesses.Count) {
