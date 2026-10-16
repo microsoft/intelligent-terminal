@@ -646,6 +646,36 @@ namespace winrt::TerminalApp::implementation
                                winrt::box_value(WUX::Input::KeyEventHandler{ get_weak(), &TabStrip::_onListKeyDown }),
                                true);
         ItemsList().PreviewKeyDown({ get_weak(), &TabStrip::_onHistoryPreviewKeyDown });
+        ItemsList().AddHandler(
+            WUX::UIElement::PointerPressedEvent(),
+            winrt::box_value(WUX::Input::PointerEventHandler{ [weak = get_weak()](const IInspectable&, const WUX::Input::PointerRoutedEventArgs& e) {
+                if (const auto self = weak.get())
+                {
+                    const auto list = self->ItemsList();
+                    if (!e.GetCurrentPoint(list).Properties().IsLeftButtonPressed())
+                    {
+                        return;
+                    }
+                    auto source = e.OriginalSource().try_as<DependencyObject>();
+                    for (; source && source != list; source = WUX::Media::VisualTreeHelper::GetParent(source))
+                    {
+                        if (source.try_as<ListViewItem>() || source.try_as<Primitives::ScrollBar>())
+                        {
+                            return;
+                        }
+                    }
+                    if (source == list)
+                    {
+                        // Blank clicks can focus an island-level ScrollViewer outside
+                        // our key event route. Keep focus in the Sidebar instead.
+                        const auto item = list.SelectedItem();
+                        const auto selected = item ? list.ContainerFromItem(item).try_as<ListViewItem>() : nullptr;
+                        e.Handled((selected && selected.Focus(WUX::FocusState::Pointer)) ||
+                                  self->SearchTabsButton().Focus(WUX::FocusState::Pointer));
+                    }
+                }
+            } }),
+            true);
         _vectorChangedRevoker = _tabItems.VectorChanged(auto_revoke, { get_weak(), &TabStrip::_onItemsVectorChanged });
         _highContrast = _accessibilitySettings.HighContrast();
         _highContrastChangedRevoker = _accessibilitySettings.HighContrastChanged(auto_revoke, [weakThis{ get_weak() }, dispatcher{ Dispatcher() }](auto&&, auto&&) {

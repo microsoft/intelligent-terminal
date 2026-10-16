@@ -37,12 +37,15 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             if (-not $list -or $list.Current.IsOffscreen) { throw 'The ordinary Sidebar tabs list is not visible.' }
             $condition = [Windows.Automation.PropertyCondition]::new(
                 [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
+            $historyHeader = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'HistoryHeaderButton')
             $found = $list.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
             @(
                 for ($i = 0; $i -lt $found.Count; $i++) {
                     $row = $found[$i]
                     $bounds = $row.Current.BoundingRectangle
-                    if (-not $row.Current.IsOffscreen -and $bounds.Width -gt 0 -and $bounds.Height -gt 0) {
+                    if (-not $row.Current.IsOffscreen -and $bounds.Width -gt 0 -and $bounds.Height -gt 0 -and
+                        -not $row.FindFirst([Windows.Automation.TreeScope]::Descendants, $historyHeader)) {
                         $row
                     }
                 }
@@ -276,5 +279,90 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             (Get-WtCapture -App $script:app -SessionId $script:tabB.session_id -MaxLines 30).TrimEnd() |
                 Should -Match ([regex]::Escape($draft) + '$') -Because 'the unsent shell draft must survive both hotkey transitions'
         }
+    }
+
+    It 'Sidebar New Tab shortcut works from empty list focus' -Tag 'SidebarNewTabShortcut' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        if ((Get-SidebarElement -AutomationId 'ItemsList').Current.IsOffscreen) {
+            Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+        }
+        $search = Get-SidebarElement -AutomationId 'SearchTextBox'
+        if ($search -and -not $search.Current.IsOffscreen) {
+            Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+        }
+
+        $baseline = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count
+        foreach ($origin in @('blank-first', 'blank-repeat', 'row', 'terminal')) {
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+            if ($origin -like 'blank-*') {
+                $bounds = (Get-SidebarElement -AutomationId 'ItemsList').Current.BoundingRectangle
+                $rowBottom = (@(Get-VisibleTabRows) | ForEach-Object { $_.Current.BoundingRectangle.Bottom } |
+                    Measure-Object -Maximum).Maximum
+                $y = [int]($bounds.Top + $bounds.Height / 2)
+                $y | Should -BeGreaterThan ($rowBottom + 8) -Because 'the list center must be below every tab row'
+                $y | Should -BeLessThan ($bounds.Bottom - 8) -Because 'the pointer must hit genuine blank list space, not a tab row'
+                Invoke-UiClick -App $script:app -Selector ItemsList | Out-Null
+            }
+            elseif ($origin -eq 'row') {
+                @(Get-VisibleTabRows)[1].SetFocus()
+                (Get-FocusedTabRowIndex) | Should -Be 1
+            }
+            else {
+                [Windows.Automation.AutomationElement]::FocusedElement.Current.ClassName | Should -Be 'TermControl'
+            }
+
+            Initialize-LogOffsets -App $script:app | Out-Null
+            Send-WtWindowKey -App $script:app -Vk 0x54 -Ctrl -Shift -RequireForeground | Out-Null
+            $created = $null
+            try {
+                (Test-Until -TimeoutSec 8 -Condition {
+                    @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count -eq ($baseline + 1)
+                }) | Should -BeTrue -Because "Ctrl+Shift+T from $origin must create exactly one new tab"
+                $created = Get-ActivePane -App $script:app
+                $created.session_id | Should -Not -Be $script:tabB.session_id
+                $trace = Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart
+                $trace | Set-Content -LiteralPath (Join-Path $script:evidenceDir "new-tab-$origin.log") -Encoding utf8
+                $trace | Should -Match "ShortcutTrace pid=$($script:app.Pid) .*stage=win32 ctrl=1 shift=true" `
+                    -Because 'the physical shortcut must reach the selected Dev window'
+            }
+            finally {
+                if ($created) { Close-WtPane -App $script:app -SessionId $created.session_id }
+            }
+            @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count | Should -Be $baseline
+        }
+
+        Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+        Wait-UiElement -App $script:app -Selector SearchTextBox | Out-Null
+        Set-UiValue -App $script:app -Selector SearchTextBox -Value "focus-$script:marker" | Out-Null
+        $search = Get-SidebarElement -AutomationId 'SearchTextBox'
+        $search.SetFocus()
+        Send-WtWindowKey -App $script:app -Vk 0x41 -Ctrl -RequireForeground | Out-Null
+        Send-WtWindowKey -App $script:app -Vk 0x2E -RequireForeground | Out-Null
+        $search.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value |
+            Should -BeNullOrEmpty -Because 'handled Ctrl+A/Delete must still edit search text, not the terminal'
+        @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count | Should -Be $baseline
+
+        $query = "no-matching-tab-$script:marker"
+        Set-UiValue -App $script:app -Selector SearchTextBox -Value $query | Out-Null
+        (Test-Until -TimeoutSec 5 -Condition { @(Get-VisibleTabRows).Count -eq 0 }) | Should -BeTrue
+        Invoke-UiClick -App $script:app -Selector ItemsList | Out-Null
+        Send-WtWindowKey -App $script:app -Vk 0x54 -Ctrl -Shift -RequireForeground | Out-Null
+        $created = $null
+        try {
+            (Test-Until -TimeoutSec 8 -Condition {
+                @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count -eq ($baseline + 1)
+            }) | Should -BeTrue -Because 'blank list shortcuts must also work when there is no visible row to focus'
+            $created = Get-ActivePane -App $script:app
+            $search.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value | Should -Be $query
+        }
+        finally {
+            if ($created) { Close-WtPane -App $script:app -SessionId $created.session_id }
+        }
+        @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count | Should -Be $baseline
+        Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
     }
 }

@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "AppKeyBindings.h"
+#include "AgentPaneLog.h"
 
 #include "AppKeyBindings.g.cpp"
 
@@ -14,16 +15,35 @@ namespace winrt::TerminalApp::implementation
 {
     bool AppKeyBindings::TryKeyChord(const KeyChord& kc)
     {
-        if (const auto cmd{ _actionMap.GetActionByKeyChord(kc) })
+        const auto traceShortcut = kc.Vkey() == 'T' && WI_IsFlagSet(kc.Modifiers(), winrt::Windows::System::VirtualKeyModifiers::Control);
+        const auto cmd{ _actionMap.GetActionByKeyChord(kc) };
+        if (traceShortcut)
         {
-            if (cmd.ActionAndArgs().Action() == winrt::Microsoft::Terminal::Settings::Model::ShortcutAction::ToggleSidebar ||
-                cmd.ActionAndArgs().Action() == winrt::Microsoft::Terminal::Settings::Model::ShortcutAction::SwitchToTab)
-            {
-                return _dispatch.DoAction(kc, cmd.ActionAndArgs());
-            }
-            return _dispatch.DoAction(cmd.ActionAndArgs());
+            _agentPaneLog(fmt::format(
+                "ShortcutTrace pid={} tid={} stage=control-binding modifiers={} matched={} action={}",
+                GetCurrentProcessId(),
+                GetCurrentThreadId(),
+                static_cast<uint32_t>(kc.Modifiers()),
+                static_cast<bool>(cmd),
+                cmd ? static_cast<int>(cmd.ActionAndArgs().Action()) : -1));
         }
-        return false;
+        if (!cmd)
+        {
+            return false;
+        }
+        const auto action = cmd.ActionAndArgs();
+        const auto handled = (action.Action() == winrt::Microsoft::Terminal::Settings::Model::ShortcutAction::ToggleSidebar ||
+                              action.Action() == winrt::Microsoft::Terminal::Settings::Model::ShortcutAction::SwitchToTab) ?
+                                 _dispatch.DoAction(kc, action) :
+                                 _dispatch.DoAction(action);
+        if (traceShortcut)
+        {
+            _agentPaneLog(fmt::format("ShortcutTrace pid={} tid={} stage=control-dispatch handled={}",
+                                      GetCurrentProcessId(),
+                                      GetCurrentThreadId(),
+                                      handled));
+        }
+        return handled;
     }
 
     bool AppKeyBindings::IsKeyChordExplicitlyUnbound(const KeyChord& kc)
