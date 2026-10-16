@@ -942,6 +942,11 @@ namespace winrt::TerminalApp::implementation
         void _OpenWorkspaceWindow(const winrt::hstring name);
 
         void _OpenNewTerminalViaDropdown(const Microsoft::Terminal::Settings::Model::NewTerminalArgs newTerminalArgs);
+        void _OpenNewTerminalViaDropdown(const Microsoft::Terminal::Settings::Model::NewTerminalArgs newTerminalArgs,
+                                         bool altPressed,
+                                         bool shiftPressed,
+                                         bool dispatchToElevatedWindow,
+                                         bool debugTap);
 
         bool _displayingCloseDialog{ false };
         bool _windowCloseAccepted{ false };
@@ -1269,6 +1274,10 @@ namespace winrt::TerminalApp::implementation
         TerminalApp::Tab _GetFocusedTab() const noexcept;
         winrt::com_ptr<Tab> _GetFocusedTabImpl() const noexcept;
         static std::shared_ptr<Pane> _SourceTerminalPaneForTab(const winrt::com_ptr<Tab>& tab);
+        winrt::Microsoft::Terminal::Settings::Model::INewContentArgs _PrepareSplitDirectory(
+            const winrt::com_ptr<Tab>& tab,
+            const winrt::Microsoft::Terminal::Settings::Model::INewContentArgs& content,
+            bool duplicate);
         static winrt::Microsoft::Terminal::Settings::Model::Profile _SourceTerminalProfileForTab(const winrt::com_ptr<Tab>& tab);
         static winrt::Microsoft::Terminal::Settings::Model::Profile _ResolveAgentSourceProfile(const winrt::com_ptr<Tab>& tab, const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
         TerminalApp::Tab _GetTabByTabViewItem(const IInspectable& tabViewItem) const noexcept;

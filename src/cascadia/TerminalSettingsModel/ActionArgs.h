@@ -509,6 +509,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         {
             auto copy{ winrt::make_self<NewTerminalArgs>() };
             copy->_Commandline = _Commandline;
+            copy->_AppendCommandLine = _AppendCommandLine;
             copy->_StartingDirectory = _StartingDirectory;
             copy->_TabTitle = _TabTitle;
             copy->_TabColor = _TabColor;

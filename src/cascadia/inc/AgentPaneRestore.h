@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 #include <shellapi.h>
+#include <til/commandline.h>
 #include <wil/resource.h>
 
 // How an agent session survives a restart.
@@ -94,30 +95,7 @@ namespace Microsoft::Terminal::AgentPaneRestore
     // `\;` here would survive into the parsed value.
     inline void AppendQuoted(std::wstring& out, const std::wstring_view value)
     {
-        out.push_back(L'"');
-
-        size_t backslashes = 0;
-        for (const auto ch : value)
-        {
-            if (ch == L'\\')
-            {
-                ++backslashes;
-            }
-            else
-            {
-                if (ch == L'"')
-                {
-                    // 2n+1 backslashes before a quote parse back as n
-                    // backslashes plus a literal quote.
-                    out.append(backslashes + 1, L'\\');
-                }
-                backslashes = 0;
-            }
-            out.push_back(ch);
-        }
-
-        out.append(backslashes, L'\\');
-        out.push_back(L'"');
+        til::append_quoted_argument(out, value);
     }
 
     inline void AppendFlag(std::wstring& out, const std::wstring_view flag, const std::wstring_view value)

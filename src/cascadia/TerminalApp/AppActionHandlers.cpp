@@ -290,11 +290,15 @@ namespace winrt::TerminalApp::implementation
 
             const auto& activeTab{ _senderOrFocusedTab(sender) };
             auto contentArgs = realArgs.ContentArgs();
-            winrt::TerminalApp::Tab duplicateFromTab{ realArgs.SplitMode() == SplitType::Duplicate ? _GetFocusedTab() : nullptr };
+            winrt::TerminalApp::Tab duplicateFromTab{ nullptr };
+            if (realArgs.SplitMode() == SplitType::Duplicate && activeTab)
+            {
+                duplicateFromTab = *activeTab;
+            }
             if (realArgs.SplitMode() == SplitType::Profile && activeTab)
             {
                 const auto decision = ::Microsoft::Terminal::ProfileSplits::Resolve(
-                    _settings, activeTab->GetFocusedProfile(), contentArgs);
+                    _settings, _SourceTerminalProfileForTab(activeTab), contentArgs);
                 if (decision.duplicate)
                 {
                     duplicateFromTab = *activeTab;
@@ -316,17 +320,6 @@ namespace winrt::TerminalApp::implementation
                     const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>();
                     NewTerminalArgs splitArgs{ terminalArgs ? terminalArgs.Copy().as<NewTerminalArgs>() : NewTerminalArgs{} };
                     splitArgs.Profile(::Microsoft::Console::Utils::GuidToString(decision.target.Guid()));
-                    if (splitArgs.StartingDirectory().empty())
-                    {
-                        if (const auto control = activeTab->GetActiveTerminalControl())
-                        {
-                            const auto directory = control.WorkingDirectory();
-                            if (::Microsoft::Console::Utils::IsValidDirectory(directory.c_str()))
-                            {
-                                splitArgs.StartingDirectory(directory);
-                            }
-                        }
-                    }
                     contentArgs = splitArgs;
                 }
             }
@@ -344,6 +337,7 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
 
+            contentArgs = _PrepareSplitDirectory(activeTab, contentArgs, duplicateFromTab != nullptr);
             args.Handled(_SplitPane(activeTab,
                                    realArgs.SplitDirection(),
                                    // This is safe, we're already filtering so the value is (0, 1)

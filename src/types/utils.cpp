@@ -4,6 +4,7 @@
 #include "precomp.h"
 #include "inc/utils.hpp"
 
+#include <til/commandline.h>
 #include <til/string.h>
 #include <wil/token_helpers.h>
 
@@ -1085,8 +1086,10 @@ std::tuple<std::wstring, std::wstring> Utils::MangleStartingDirectoryForWSL(std:
                     mangledDirectory = std::filesystem::path{ startingDirectory }.make_preferred().wstring();
                 }
 
+                std::wstring quotedDirectory;
+                til::append_quoted_argument(quotedDirectory, mangledDirectory);
                 return {
-                    fmt::format(FMT_COMPILE(LR"("{}" --cd "{}" {})"), executablePath.native(), mangledDirectory, arguments),
+                    fmt::format(FMT_COMPILE(LR"("{}" --cd {} {})"), executablePath.native(), quotedDirectory, arguments),
                     std::wstring{}
                 };
             }

@@ -36,5 +36,7 @@ namespace Microsoft.Terminal.TerminalConnection
                                                                       UInt32 columns,
                                                                       Guid guid,
                                                                       Guid profileGuid);
+
+        String StartingDirectory { get; };
     };
 }

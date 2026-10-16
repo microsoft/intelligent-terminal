@@ -1805,6 +1805,58 @@ namespace winrt::TerminalApp::implementation
         return nullptr;
     }
 
+    INewContentArgs TerminalPage::_PrepareSplitDirectory(const winrt::com_ptr<Tab>& tab,
+                                                         const INewContentArgs& content,
+                                                         const bool duplicate)
+    {
+        const auto original = content.try_as<NewTerminalArgs>();
+        if (content && (!original || !original.Type().empty() || original.ContentId() ||
+                        original.SessionId() != winrt::guid{} || !original.StartingDirectory().empty() ||
+                        ::Microsoft::Terminal::AgentPaneRestore::IsResumeCommandline(original.Commandline())))
+        {
+            return content;
+        }
+        NewTerminalArgs args{ original ? original.Copy().as<NewTerminalArgs>() : NewTerminalArgs{} };
+        if (duplicate && !original)
+        {
+            // A cwd-only argument must not turn an in-process duplicate into
+            // a new elevated window merely because its profile changed.
+            args.Elevate(false);
+        }
+        const auto activePane = tab ? tab->GetActivePane() : nullptr;
+        const auto pane = activePane && activePane->IsAgentPane() ? _SourceTerminalPaneForTab(tab) : activePane;
+        const auto control = pane ? pane->GetTerminalControl() : nullptr;
+        if (!control)
+        {
+            return args;
+        }
+        const auto connection = control.Connection().try_as<TerminalConnection::ConptyConnection>();
+        const auto sourceCommand = connection ? connection.Commandline() : winrt::hstring{};
+        const auto sourceDirectory = connection ? connection.StartingDirectory() : winrt::hstring{};
+        const auto targetSettings = duplicate ?
+                                        Settings::TerminalSettings::CreateWithProfile(_settings, GetClosestProfileForDuplicationOfProfile(_SourceTerminalProfileForTab(tab))) :
+                                        Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, args);
+        const auto targetCommand = wil::ExpandEnvironmentStringsW<std::wstring>(targetSettings.DefaultSettings()->Commandline().c_str());
+        const auto [agentOwned, agentCwd] = _RichTabAgentCwdForControl(control);
+        const auto shellReportedCwd = !agentOwned && control.WorkingDirectoryReportedByShell();
+        const auto sourceCwd = agentCwd ? winrt::to_hstring(*agentCwd) :
+                                          winrt::hstring{ ::Microsoft::Terminal::AgentSource::ResolvePaneCwd(
+                                              shellReportedCwd ? control.WorkingDirectory() : winrt::hstring{},
+                                              shellReportedCwd,
+                                              sourceCommand,
+                                              sourceDirectory) };
+        const auto directory = ::Microsoft::Terminal::AgentSource::ResolveSplitCwd(
+            sourceCwd, sourceCommand, targetCommand, [](const std::wstring_view candidate) {
+                const std::wstring path{ candidate };
+                return ::Microsoft::Console::Utils::IsValidDirectory(path.c_str());
+            });
+        if (!directory.empty())
+        {
+            args.StartingDirectory(winrt::hstring{ directory });
+        }
+        return args;
+    }
+
     static const winrt::guid& _ProfileDefaultsAgentBackendGuid()
     {
         static const winrt::guid value{ L"{6f753615-8b19-4e3f-8f49-aac2ff577d79}" };
@@ -8986,6 +9038,15 @@ namespace winrt::TerminalApp::implementation
 
         const auto dispatchToElevatedWindow = ctrlPressed && !IsRunningElevated();
 
+        _OpenNewTerminalViaDropdown(newTerminalArgs, altPressed, shiftPressed, dispatchToElevatedWindow, debugTap);
+    }
+
+    void TerminalPage::_OpenNewTerminalViaDropdown(const NewTerminalArgs newTerminalArgs,
+                                                   const bool altPressed,
+                                                   const bool shiftPressed,
+                                                   const bool dispatchToElevatedWindow,
+                                                   const bool debugTap)
+    {
         auto sessionType = "";
         if ((shiftPressed || dispatchToElevatedWindow) && !debugTap)
         {
@@ -9014,7 +9075,11 @@ namespace winrt::TerminalApp::implementation
         }
         else
         {
-            const auto newPane = _MakePane(newTerminalArgs);
+            const auto split = altPressed && !debugTap;
+            const auto contentArgs = split ?
+                                         _PrepareSplitDirectory(_GetFocusedTabImpl(), newTerminalArgs, false) :
+                                         newTerminalArgs.as<INewContentArgs>();
+            const auto newPane = _MakePane(contentArgs);
             // If the newTerminalArgs caused us to open an elevated window
             // instead of creating a pane, it may have returned nullptr. Just do
             // nothing then.
@@ -9022,7 +9087,7 @@ namespace winrt::TerminalApp::implementation
             {
                 return;
             }
-            if (altPressed && !debugTap)
+            if (split)
             {
                 this->_SplitPane(_GetFocusedTabImpl(),
                                  SplitDirection::Automatic,
@@ -14450,7 +14515,15 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
-        // Agent panes are fixed panels and cannot be split.
+        std::optional<uint32_t> previousFocus;
+        auto restoreFocus = wil::scope_exit([&]() {
+            if (previousFocus)
+            {
+                activeTab->FocusPane(*previousFocus);
+            }
+        });
+        // Agent panels stay intact: a user split targets their source terminal.
+        // Content transfers still use the existing fixed-panel completion path.
         if (const auto activePane = activeTab->GetActivePane())
         {
             if (activePane->IsAgentPane())
@@ -14458,9 +14531,19 @@ namespace winrt::TerminalApp::implementation
                 const auto content = activePane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>();
                 const bool completingTransfer = content &&
                                                 winrt::get_self<implementation::AgentPaneContent>(content)->AwaitingTransferredTabContent();
-                if (!completingTransfer || !newPane || newPane->IsAgentPane())
+                if (!newPane || newPane->IsAgentPane())
                 {
                     return false;
+                }
+                if (!completingTransfer)
+                {
+                    const auto source = _SourceTerminalPaneForTab(activeTab);
+                    if (_receivingContentTransfer || !source || !source->Id())
+                    {
+                        return false;
+                    }
+                    previousFocus = activePane->Id();
+                    activeTab->FocusPane(*source->Id());
                 }
             }
         }
@@ -14494,6 +14577,16 @@ namespace winrt::TerminalApp::implementation
             _CheckpointContentTransfer(ContentTransferStage::BeforeSplitInsertion, control ? control.ContentId() : 0);
         }
         auto [original, newGuy] = activeTab->SplitPane(*realSplitType, splitSize, newPane);
+        if (focusNewPane)
+        {
+            restoreFocus.release();
+        }
+        else if (previousFocus && original->Id())
+        {
+            // Splitting replaces the source leaf and selects the new pane.
+            // Restore the original source before refocusing its assistant.
+            activeTab->PreparePaneFocus(*original->Id());
+        }
         closeUnattached.release();
         _NotifyRestoredSessionBindings(activeTab);
         if (const auto content = activeTab->FindAgentPaneContent())
@@ -15627,14 +15720,22 @@ namespace winrt::TerminalApp::implementation
 
         if (const auto& tabImpl{ _GetTabImpl(sourceTab) })
         {
-            profile = tabImpl->GetFocusedProfile();
+            profile = newTerminalArgs ? _SourceTerminalProfileForTab(tabImpl) : tabImpl->GetFocusedProfile();
             if (profile)
             {
                 // TODO GH#5047 If we cache the NewTerminalArgs, we no longer need to do this.
                 profile = GetClosestProfileForDuplicationOfProfile(profile);
                 controlSettings = Settings::TerminalSettings::CreateWithProfile(_settings, profile);
-                const auto workingDirectory = tabImpl->GetActiveTerminalControl().WorkingDirectory();
-                if (Utils::IsValidDirectory(workingDirectory.c_str()))
+                if (newTerminalArgs && newTerminalArgs.Elevate())
+                {
+                    NewTerminalArgs duplicateSettingsArgs;
+                    duplicateSettingsArgs.Profile(Utils::GuidToString(profile.Guid()));
+                    duplicateSettingsArgs.Elevate(newTerminalArgs.Elevate());
+                    controlSettings = Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, duplicateSettingsArgs);
+                }
+                const auto workingDirectory = newTerminalArgs ? newTerminalArgs.StartingDirectory() :
+                                                                tabImpl->GetActiveTerminalControl().WorkingDirectory();
+                if (!workingDirectory.empty() && (newTerminalArgs || Utils::IsValidDirectory(workingDirectory.c_str())))
                 {
                     controlSettings.DefaultSettings()->StartingDirectory(workingDirectory);
                 }

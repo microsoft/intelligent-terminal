@@ -33,6 +33,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         uint64_t RootProcessHandle() noexcept;
 
         winrt::hstring Commandline() const;
+        winrt::hstring StartingDirectory() const;
         winrt::hstring StartingTitle() const;
         WORD ShowWindow() const noexcept;
 
