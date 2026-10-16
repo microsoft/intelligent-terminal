@@ -300,9 +300,13 @@ def _verify_instruction_boundary(root: Path, base: str, head: str) -> None:
     configuration_directories = {".github", ".claude", ".copilot", ".agents", ".gemini"}
     instruction_names = {"agents.md", "claude.md", "gemini.md", "copilot-instructions.md", "skill.md", ".mcp.json"}
     trusted_harness_paths = ("test/accessibility/", "build/scripts/get-dependenciesfromappxrecipe.ps1")
+    spelling_wordlists = {
+        ".github/actions/spelling/allow/allow.txt",
+        ".github/actions/spelling/expect/expect.txt",
+    }
     blocked = []
     for path in changed:
-        if not path:
+        if not path or path in spelling_wordlists:
             continue
         parts = Path(path.lower()).parts
         if (configuration_directories.intersection(parts)
