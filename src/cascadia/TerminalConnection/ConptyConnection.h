@@ -79,6 +79,8 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
 
         wil::unique_hfile _pipe;
         wil::unique_handle _hOutputThread;
+        wil::unique_event _outputCloseEvent;
+        wil::unique_event _outputCallbacksDrainedEvent;
         wil::unique_process_information _piClient;
         wil::unique_any<HPCON, decltype(closePseudoConsoleAsync), closePseudoConsoleAsync> _hPC;
 
