@@ -796,10 +796,16 @@ in `selftests/ItE2E.Unit.Tests.ps1` (hermetic, no terminal needed).
 Ownership and pointer-safety regressions participate in the `Unit` tag, including
 both refusal before backup and backup retention after a later process arrival.
 The Live fixture pins completed onboarding and a default-profile horizontal tab.
-It can smoke-test a newly registered isolated Dev package after applying the
-temporary Dev identity substitutions in the
-[worktree package guide](../../doc/dev-worktree-package.md); selecting its PFN
-alone does not make an unmodified harness treat it as Dev.
+It can smoke-test a newly registered isolated Dev package using its explicit PFN
+and the build/package identity overrides in the
+[worktree package guide](../../doc/dev-worktree-package.md). No E2E harness
+substitutions are needed: private manifests are validated before mutation and
+use only their own tokenized alias and unique protocol CLSID. Unlike ordinary
+Dev, private packages refuse pre-existing or unknown processes without cleanup.
+`Feature.SidebarResumeWatcher.Tests.ps1` requires that same explicit private PFN
+in `ITE2E_PACKAGE`, current-source receipts and an inactive package. Its native
+shim configuration is UTF-8 with BOM and compiled with `cl /utf-8`, preserving
+Unicode fixture, package, PowerShell and artifact paths.
 The harness restores the original settings and state once the package is inactive.
 The command smoke emits its marker from an encoded, noninteractive PowerShell
 payload. The marker is absent from the typed command, so an echoed but unexecuted

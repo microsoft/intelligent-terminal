@@ -49,10 +49,13 @@ Make these additional **Dev-only** edits:
 | --- | --- |
 | `src\cascadia\WindowsTerminal\WindowEmperor.cpp` | Change the window prefix `Windows Terminal Dev` to `Windows Terminal Dev <WORKTREE_TOKEN>`; leave the unpackaged AUMID unchanged |
 | `src\cascadia\WindowsTerminal\TerminalProtocolComServer.h` | Set the Dev `__CLSID_TerminalProtocolServer` to your unbraced GUID |
-| `test\e2e\ItE2E\Private\Paths.ps1` | Set `ItKnownFamilies.Dev` to your PFN. In `ItFamilyBrand`, replace the key `IntelligentTerminal_rd9vj3e6a2mbr` with your PFN, keeping its value `'Dev'`. Set `ItBrandClsids.Dev` to your braced GUID |
-| `test\e2e\ItE2E\Public\Harness.ps1` | In `Start-ItCreatedDevTerminal`, use your PFN guard and `wtai-<WORKTREE_TOKEN>.exe` alias |
 
 Do not remove ownership checks or change Release/Preview/Canary branches.
+No E2E Paths/Harness substitutions are needed. Explicit private PFNs opt into
+registered-manifest identity/publisher, tokenized alias, co-located binary and
+unique protocol CLSID validation. Ordinary Dev descriptor defaults and automatic
+cleanup permission remain unchanged: private packages must already be inactive,
+and unknown processes are refused, never adopted or automatically closed.
 
 ## 3. Build and install
 
@@ -87,10 +90,11 @@ $env:ITE2E_PACKAGE = '<your PFN>'
 $env:ITE2E_ARTIFACT_ROOT = '<this run artifact folder>'
 Import-Module .\test\e2e\ItE2E\ItE2E.psd1 -Force
 $app = Resolve-ItApp -Package $env:ITE2E_PACKAGE
+Assert-WtPackageInactive -App $app
 $env:PATH = "$($app.InstallLocation);$env:PATH"
 $env:WT_WTCLI_PATH = $app.WtcliPath # WTA's client override
 $env:WTCLI_PATH = $app.WtcliPath   # Hook bridge path
-$env:WT_COM_CLSID = '{<PROTOCOL_CLSID>}'
+$env:WT_COM_CLSID = $app.PrivateProtocolClsid # verified registered manifest, never brand probing
 ```
 
 Also put `PATH`, `WT_WTCLI_PATH`, and `WTCLI_PATH` in the test profile's

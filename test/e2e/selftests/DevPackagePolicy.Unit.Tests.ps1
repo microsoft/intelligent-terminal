@@ -69,18 +69,120 @@ Describe 'Dev-only automatic cold start' -Tag 'Unit' {
             Should -Invoke Get-WtProcessesForApp -ParameterFilter { $IncludePackageExecutables } -Times 6 -Exactly
         }
 
-        It 'accepts the documented isolated Dev identity substitution without weakening full-name validation' {
-            $priorFamily = $script:ItKnownFamilies.Dev
-            try {
-                $script:ItKnownFamilies.Dev = 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr'
-                $script:app.Package = $script:ItKnownFamilies.Dev
-                $script:app.PackageFullName = 'IntelligentTerminal.Worktree.fixture_0.8.0.11_x64__rd9vj3e6a2mbr'
+        It 'protects private worktree processes without remapping ordinary Dev cleanup permission' {
+            $script:app.Package = 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr'
+            $script:app.PackageFullName = 'IntelligentTerminal.Worktree.fixture_0.8.0.11_x64__rd9vj3e6a2mbr'
+            { Stop-StaleItInstances -App $script:app } | Should -Throw '*not test-owned*'
+            $script:process.Closed | Should -BeFalse
+            $script:ItKnownFamilies.Dev | Should -BeExactly 'IntelligentTerminal_rd9vj3e6a2mbr'
+            Should -Invoke Stop-Process -Times 0
+        }
 
-                Stop-StaleItInstances -App $script:app
-
-                $script:process.Closed | Should -BeTrue
+        Describe 'Explicit private worktree package selection' -Tag Unit {
+            InModuleScope ItE2E {
+                BeforeAll {
+                    $script:privateTemplate = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\..\build\templates\Package-DevWorktree.appxmanifest.template') -Raw
+                }
+                BeforeEach {
+                    $script:privatePfn = 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr'
+                    $script:privateClsid = '{12579AD4-2884-43B3-B558-2F5869730132}'
+                    $script:registeredPrivate = [pscustomobject]@{
+                        Name = 'IntelligentTerminal.Worktree.fixture'; Publisher = 'CN=Intelligent Terminal Dev'
+                        PackageFamilyName = $script:privatePfn
+                        PackageFullName = 'IntelligentTerminal.Worktree.fixture_0.8.0.11_x64__rd9vj3e6a2mbr'
+                        Version = '0.8.0.11'; InstallLocation = 'C:\private-测试\AppX'
+                    }
+                    $script:privateManifest = [xml]($script:privateTemplate.Replace('__WORKTREE_TOKEN__', 'fixture').
+                        Replace('__PROTOCOL_CLSID__', $script:privateClsid.Trim('{}')).
+                        Replace('__DEV_PACKAGE_VERSION__', '0.8.0.11').
+                        Replace('__DEV_PACKAGE_RESOURCES__', '<Resource Language="en-US" />').
+                        Replace('$targetnametoken$.exe', 'WindowsTerminal.exe'))
+                    Mock Get-AppxPackage { $script:registeredPrivate }
+                    Mock Get-AppxPackageManifest { $script:privateManifest }
+                    Mock Get-StartApps {}
+                    Mock Get-Command {}
+                    Mock Test-Path { $true }
+                    Mock Stop-Process { throw 'Never stop private package members.' }
+                    Mock Backup-WtConfig { throw 'Never back up an unverified package.' }
+                    Mock Write-ItLog {}
+                }
+                It 'resolves the exact tokenized alias and manifest CLSID without changing ordinary descriptors' {
+                    $app = Resolve-ItApp -Package $script:privatePfn
+                    $app.LaunchAlias | Should -BeLike '*\IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr\wtai-fixture.exe'
+                    $app.PrivateProtocolClsid | Should -BeExactly $script:privateClsid
+                    $app.ComClsid | Should -BeNullOrEmpty
+                    $app.WtcliPath | Should -BeExactly 'C:\private-测试\AppX\wtcli.exe'
+                }
+                It 'rejects malformed private selectors before package discovery' {
+                    { Resolve-ItApp -Package 'IntelligentTerminal.Worktree.9bad_rd9vj3e6a2mbr' } | Should -Throw '*token*'
+                    Should -Invoke Get-AppxPackage -Times 0
+                }
+                It 'rejects a mismatched registered manifest publisher before backup or cleanup' {
+                    $script:privateManifest.Package.Identity.Publisher = 'CN=Wrong'
+                    { Start-Terminal -Package $script:privatePfn } | Should -Throw '*identity/publisher*'
+                    Should -Invoke Backup-WtConfig -Times 0
+                    Should -Invoke Stop-Process -Times 0
+                }
+                It 'rejects an ordinary brand protocol CLSID' {
+                    $script:privateManifest.SelectSingleNode("//*[local-name()='Class']").Id = $script:ItBrandClsids.Dev.Trim('{}')
+                    { Resolve-ItApp -Package $script:privatePfn } | Should -Throw '*ordinary brand CLSID*'
+                }
+                It 'rejects a mismatched manifest alias' {
+                    $script:privateManifest.SelectSingleNode("//*[local-name()='ExecutionAlias']").Alias = 'wtai.exe'
+                    { Resolve-ItApp -Package $script:privatePfn } | Should -Throw '*tokenized alias*'
+                }
+                It 'rejects a missing co-located client instead of falling back to PATH' {
+                    Mock Test-Path { $false } -ParameterFilter { $LiteralPath -like '*\wtcli.exe' }
+                    { Resolve-ItApp -Package $script:privatePfn } | Should -Throw '*co-located binary: wtcli.exe*'
+                }
+                It 'rejects a protocol CLSID shared by another registered package' {
+                    Mock Get-AppxPackage { @($script:registeredPrivate, [pscustomobject]@{ PackageFullName = 'another-package' }) }
+                    { Resolve-ItApp -Package $script:privatePfn } | Should -Throw '*another package*'
+                }
+                It 'probes only the verified manifest CLSID, never any ordinary brand' {
+                    $app = Resolve-ItApp -Package $script:privatePfn
+                    Mock Wait-Until { & $Condition }
+                    Mock Invoke-Native { [pscustomobject]@{ ExitCode = 0; StdOut = '{"windows":[]}' } }
+                    Resolve-WtComClsid -App $app | Should -BeExactly $script:privateClsid
+                    Should -Invoke Invoke-Native -Times 1 -Exactly -ParameterFilter { $Environment.WT_COM_CLSID -ceq $script:privateClsid }
+                }
+                It 'uses the per-PFN tokenized launch alias and refuses it when unavailable' {
+                    $app = Resolve-ItApp -Package $script:privatePfn
+                    Mock Test-Path { $false } -ParameterFilter { $LiteralPath -like '*\Microsoft\WindowsApps\*\wtai-fixture.exe' }
+                    { Start-ItCreatedDevTerminal -App $app } | Should -Throw '*wtai-fixture.exe*'
+                }
+                It 'refuses active private processes before backup without closing them' {
+                    Mock Get-WtProcessesForApp { [pscustomobject]@{ Id = 91 } }
+                    Mock New-Item {}
+                    { Start-Terminal -Package $script:privatePfn } | Should -Throw '*not test-owned*'
+                    Should -Invoke Backup-WtConfig -Times 0
+                    Should -Invoke Stop-Process -Times 0
+                }
+                It 'rejects a registration changed after descriptor resolution before activation' {
+                    $app = Resolve-ItApp -Package $script:privatePfn
+                    $script:registeredPrivate.InstallLocation = 'C:\another-layout'
+                    Mock Invoke-Native { throw 'Must not probe any COM server.' }
+                    { Resolve-WtComClsid -App $app } | Should -Throw '*registration changed*'
+                    { Start-ItCreatedDevTerminal -App $app } | Should -Throw '*registration changed*'
+                    Should -Invoke Invoke-Native -Times 0
+                }
+                It 'the watcher rejects <Selector> before resolution or cleanup' -TestCases @(
+                    @{ Selector = 'Dev' }, @{ Selector = 'Store' }
+                ) {
+                    param($Selector)
+                    $source = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\tests\Feature.SidebarResumeWatcher.Tests.ps1') -Raw
+                    $start = $source.IndexOf('$script:package = Get-ItTestPackage', [StringComparison]::Ordinal)
+                    $end = $source.IndexOf('foreach ($name in @', $start, [StringComparison]::Ordinal)
+                    $preflight = [scriptblock]::Create($source.Substring($start, $end - $start))
+                    Mock Get-ItTestPackage { $Selector }
+                    Mock Resolve-ItApp { throw 'Must not resolve ordinary Dev or Store.' }
+                    Mock Stop-StaleItInstances { throw 'Must not close any package.' }
+                    { & $preflight } | Should -Throw '*explicitly selected private worktree PFN*'
+                    Should -Invoke Resolve-ItApp -Times 0
+                    Should -Invoke Stop-StaleItInstances -Times 0
+                    Should -Invoke Stop-Process -Times 0
+                }
             }
-            finally { $script:ItKnownFamilies.Dev = $priorFamily }
         }
 
         It 'also reaps a Dev embedding process that appears as the first window exits' {

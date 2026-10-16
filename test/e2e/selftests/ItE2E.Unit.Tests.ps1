@@ -18,6 +18,35 @@ Describe 'Window keyboard-layout guard' -Tag 'Unit' {
     }
 }
 
+Describe 'Watcher native shim Unicode configuration' -Tag Unit {
+    It 'preserves all native wide-literal paths in the actual generated header' {
+        $suite = Join-Path $PSScriptRoot '..\tests\Feature.SidebarResumeWatcher.Tests.ps1'
+        $ast = [Management.Automation.Language.Parser]::ParseFile($suite, [ref]$null, [ref]$null)
+        $writer = @($ast.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.PipelineAst] -and
+                $node.PipelineElements[-1] -is [Management.Automation.Language.CommandAst] -and
+                $node.PipelineElements[-1].GetCommandName() -eq 'Set-Content' -and
+                $node.Extent.Text -match 'Set-Content -LiteralPath \$header '
+        }, $true))
+        $writer | Should -HaveCount 1
+        $header = Join-Path $TestDrive '配置.h'
+        $config = @{
+            ITE2E_SHIM_PWSH = 'C:\工具\PowerShell\pwsh.exe'
+            ITE2E_SHIM_FIXTURE = 'C:\代码\Mock-WatcherResumeCli.ps1'
+            ITE2E_SHIM_LOG = 'C:\证据\launch.jsonl'
+            ITE2E_SHIM_WTCLI = 'C:\包\wtcli.exe'
+        }
+        & ([scriptblock]::Create($writer[0].Extent.Text))
+        $bytes = [IO.File]::ReadAllBytes($header)
+        [Convert]::ToHexString($bytes[0..2]) | Should -BeExactly 'EFBBBF'
+        $text = [IO.File]::ReadAllText($header)
+        foreach ($key in $config.Keys) {
+            $text.Contains("#define $key LR`"ite2e($($config[$key]))ite2e`"") | Should -BeTrue
+        }
+    }
+}
+
 Describe 'Invoke-Native' -Tag 'Unit' {
     It 'captures stdout and a zero exit code' {
         $r = Invoke-Native -FilePath 'cmd.exe' -Arguments @('/c', 'echo', 'hello-ite2e')

@@ -5,12 +5,12 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
-        if ((Get-ItTestPackage) -ne 'Dev') { throw 'Watcher validation requires explicitly selected Dev.' }
-        $script:target = Resolve-ItApp -Package Dev
-        Stop-StaleItInstances -App $script:target
-        if ($script:target.Package -notlike 'IntelligentTerminal.Worktree.*') {
-            throw 'Native fixture placement requires an independent worktree Dev package, not regular Dev.'
+        $script:package = Get-ItTestPackage
+        if ($script:package -cnotmatch '^IntelligentTerminal\.Worktree\.[A-Za-z][A-Za-z0-9]{0,20}_rd9vj3e6a2mbr$') {
+            throw 'Watcher validation requires one explicitly selected private worktree PFN, not regular Dev/Store.'
         }
+        $script:target = Resolve-ItApp -Package $script:package
+        Assert-WtPackageInactive -App $script:target
         foreach ($name in @('ITE2E_EXPECTED_APP_SHA256', 'ITE2E_EXPECTED_WTA_SHA256', 'ITE2E_SOURCE_COMMIT')) {
             if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Supply exact build evidence: $name" }
         }
@@ -50,7 +50,7 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
         }
         $header = Join-Path $script:bin 'config.h'
         @($config.Keys | ForEach-Object { "#define $_ LR`"ite2e($($config[$_]))ite2e`"" }) |
-            Set-Content -LiteralPath $header -Encoding ascii
+            Set-Content -LiteralPath $header -Encoding utf8BOM
         $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
         $vs = Invoke-Native -FilePath $vswhere -Arguments @('-latest', '-products', '*',
             '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath')
@@ -58,13 +58,14 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
         $vcvars = Join-Path $vs.StdOut.Trim() 'VC\Auxiliary\Build\vcvars64.bat'
         $source = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-CopilotDelegate.cpp')).Path
         $builtShim = Join-Path $script:bin 'copilot.exe'
-        $build = "call `"$vcvars`" >nul && cl /nologo /EHsc /std:c++17 /FI`"$header`" `"$source`" /Fe:`"$builtShim`" /Fo:`"$script:bin\copilot.obj`" /link /INCREMENTAL:NO"
+        $build = "call `"$vcvars`" >nul && cl /nologo /utf-8 /EHsc /std:c++17 /FI`"$header`" `"$source`" /Fe:`"$builtShim`" /Fo:`"$script:bin\copilot.obj`" /link /INCREMENTAL:NO"
         $output = & $env:ComSpec /d /c $build 2>&1
         if ($LASTEXITCODE -ne 0) { throw "Native fixture build failed: $output" }
         $script:shim = Join-Path $script:target.InstallLocation 'copilot.exe'
         if (Test-Path -LiteralPath $script:shim) { throw 'Never replace an existing native executable.' }
         # CreateProcess searches the host executable's directory before PATH.
         # This new test-owned file affects only this private package's launches.
+        Assert-WtPackageInactive -App $script:target
         [IO.File]::Copy($builtShim, $script:shim, $false)
         $script:shimHash = (Get-FileHash $script:shim).Hash
         $script:shimCreated = $true
@@ -81,7 +82,7 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
         }
         New-Item -ItemType Directory -Path (Join-Path $script:sandboxHome '.copilot\session-state') -Force | Out-Null
         $profileId = '{907421A8-B17A-469F-8837-9FC25EE81151}'
-        $script:app = Start-Terminal -Package Dev -TimeoutSec 90 -State @{
+        $script:app = Start-Terminal -Package $script:package -TimeoutSec 90 -State @{
             sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
         } -Settings @{
             language = 'en-US'; tabLayout = 'vertical'; tabLayoutVerticalWidth = 420

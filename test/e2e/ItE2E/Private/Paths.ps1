@@ -29,6 +29,55 @@ $script:ItFamilyBrand = @{
     'IntelligentTerminal_rd9vj3e6a2mbr'           = 'Dev'
 }
 
+function Get-ItWorktreePackageInfo {
+    param([Parameter(Mandatory)]$Package)
+    $pfn = [string]$Package.PackageFamilyName
+    if ($pfn -cnotmatch '^IntelligentTerminal\.Worktree\.([A-Za-z][A-Za-z0-9]{0,20})_rd9vj3e6a2mbr$') {
+        throw 'Unsupported private worktree package family/token.'
+    }
+    $token = $Matches[1]
+    $name = "IntelligentTerminal.Worktree.$token"
+    $manifest = Get-AppxPackageManifest -Package $Package.PackageFullName -ErrorAction Stop
+    if ($Package.Name -cne $name -or $Package.Publisher -cne 'CN=Intelligent Terminal Dev' -or
+        $manifest.Package.Identity.Name -cne $name -or
+        $manifest.Package.Identity.Publisher -cne 'CN=Intelligent Terminal Dev' -or
+        [string]$manifest.Package.Identity.Version -cne [string]$Package.Version -or
+        $Package.PackageFullName -cnotmatch ('^' + [regex]::Escape($name + '_' + $Package.Version) + '_(x64|arm64|x86)__rd9vj3e6a2mbr$')) {
+        throw 'Registered private package identity/publisher/version does not match its manifest.'
+    }
+    $app = @($manifest.SelectNodes("//*[local-name()='Application' and @Id='App' and @Executable='WindowsTerminal.exe']"))
+    $alias = "wtai-$token.exe"
+    $aliases = @($manifest.SelectNodes("//*[local-name()='ExecutionAlias']"))
+    $launch = @($app | ForEach-Object {
+        $_.SelectNodes(".//*[local-name()='Extension' and @Category='windows.appExecutionAlias' and @Executable='wtai.exe']//*[local-name()='ExecutionAlias']")
+    })
+    $classes = @($manifest.SelectNodes("//*[local-name()='Extension' and @Category='windows.comServer']//*[local-name()='Class']"))
+    if ($app.Count -ne 1 -or $launch.Count -ne 1 -or $launch[0].Alias -cne $alias -or
+        @($aliases | Where-Object Alias -CEQ $alias).Count -ne 1 -or $classes.Count -ne 1 -or
+        $classes[0].ParentNode.Executable -cne 'WindowsTerminal.exe' -or
+        -not [object]::ReferenceEquals($app[0], $classes[0].SelectSingleNode("ancestor::*[local-name()='Application']"))) {
+        throw 'Private manifest must register its tokenized alias and own Terminal protocol server.'
+    }
+    $guid = [guid]::Parse($classes[0].Id)
+    $clsid = $guid.ToString('B').ToUpperInvariant()
+    if ($guid -eq [guid]::Empty -or $clsid -in $script:ItBrandClsids.Values) {
+        throw 'Private protocol CLSID must be unique, not an ordinary brand CLSID.'
+    }
+    foreach ($other in @(Get-AppxPackage -ErrorAction Stop | Where-Object PackageFullName -CNE $Package.PackageFullName)) {
+        $otherManifest = Get-AppxPackageManifest -Package $other.PackageFullName -ErrorAction Stop
+        foreach ($class in $otherManifest.SelectNodes("//*[local-name()='Extension' and @Category='windows.comServer']//*[local-name()='Class']")) {
+            if ([guid]::Parse($class.Id) -eq $guid) { throw 'Private protocol CLSID is registered by another package.' }
+        }
+    }
+    foreach ($binary in @('WindowsTerminal.exe', 'wtai.exe', 'wtcli.exe', 'wta.exe', 'TerminalApp.dll')) {
+        if (-not $Package.InstallLocation -or
+            -not (Test-Path -LiteralPath (Join-Path $Package.InstallLocation $binary) -PathType Leaf)) {
+            throw "Private package requires co-located binary: $binary"
+        }
+    }
+    [pscustomobject]@{ Alias = $alias; ComClsid = $clsid }
+}
+
 function Resolve-ItApp {
     <#
     .SYNOPSIS
@@ -47,6 +96,10 @@ function Resolve-ItApp {
     if ($Package -match '^Microsoft\.WindowsTerminal') {
         throw 'The ordinary Windows Terminal package is not an Intelligent Terminal test target.'
     }
+    $private = $Package -like 'IntelligentTerminal.Worktree.*'
+    if ($private -and $Package -cnotmatch '^IntelligentTerminal\.Worktree\.[A-Za-z][A-Za-z0-9]{0,20}_rd9vj3e6a2mbr$') {
+        throw 'Unsupported private worktree package family/token.'
+    }
 
     $candidates = switch ($Package) {
         'Store' { @($script:ItKnownFamilies.Store) }
@@ -56,7 +109,9 @@ function Resolve-ItApp {
 
     $pkg = $null; $pfn = $null
     foreach ($c in $candidates) {
-        $p = Get-AppxPackage | Where-Object PackageFamilyName -eq $c | Select-Object -First 1
+        $registered = @(Get-AppxPackage -ErrorAction Stop | Where-Object PackageFamilyName -eq $c)
+        if ($private -and $registered.Count -gt 1) { throw 'Ambiguous registered private package.' }
+        $p = $registered | Select-Object -First 1
         if ($p) {
             # Prefer a candidate whose InstallLocation is readable (co-located binaries).
             if (-not $pkg) { $pkg = $p; $pfn = $c }
@@ -69,6 +124,8 @@ function Resolve-ItApp {
     }
 
     $install = $pkg.InstallLocation
+    if ($private -and $pkg.PackageFamilyName -cne $Package) { throw 'Registered private package family does not exactly match the selector.' }
+    $privateInfo = if ($private) { Get-ItWorktreePackageInfo -Package $pkg }
     $aumid = (Get-StartApps | Where-Object AppID -like "$pfn!*" | Select-Object -First 1 -ExpandProperty AppID)
     if (-not $aumid) { $aumid = "$pfn!App" }
 
@@ -91,7 +148,7 @@ function Resolve-ItApp {
     # that scenario — it is kept here only as a last-resort fallback.
     $launchAlias = (Get-Command 'wtai' -ErrorAction SilentlyContinue | Select-Object -First 1).Source
 
-    [pscustomobject]@{
+    $descriptor = [pscustomobject]@{
         Package          = $pfn
         PackageFullName  = $pkg.PackageFullName
         Version          = [string]$pkg.Version
@@ -110,6 +167,12 @@ function Resolve-ItApp {
         Pid              = $null
         LogStartOffset   = @{}     # per-file byte offset captured at test start
     }
+    if ($private) {
+        $descriptor.AppUserModelId = "$pfn!App"
+        $descriptor.LaunchAlias = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\$pfn\$($privateInfo.Alias)"
+        $descriptor | Add-Member PrivateProtocolClsid $privateInfo.ComClsid
+    }
+    $descriptor
 }
 
 function Get-RunnableWtaPath {
@@ -217,7 +280,16 @@ function Resolve-WtComClsid {
         [Parameter(Mandatory, ValueFromPipeline)]$App,
         [int]$TimeoutSec = 30
     )
-    if ($App.ComClsid) { return $App.ComClsid }
+    $private = $App.Package -like 'IntelligentTerminal.Worktree.*'
+    $verified = if ($private) { Resolve-ItApp -Package $App.Package }
+    if ($private -and ($verified.PackageFullName -cne $App.PackageFullName -or
+        $verified.InstallLocation -cne $App.InstallLocation -or $verified.WtcliPath -cne $App.WtcliPath)) {
+        throw 'Private package registration changed; refuse COM activation.'
+    }
+    if ($App.ComClsid) {
+        if ($private -and $App.ComClsid -cne $verified.PrivateProtocolClsid) { throw 'Private protocol CLSID changed.' }
+        return $App.ComClsid
+    }
     $wtcli = $App.WtcliPath
     if (-not $wtcli) { throw "wtcli not resolved for $($App.Package)." }
 
@@ -228,11 +300,11 @@ function Resolve-WtComClsid {
     # probe ONLY its brand (the Wait-Until retry absorbs startup); an unknown/custom family falls
     # back to scanning every brand.
     $expectedBrand = $script:ItFamilyBrand[$App.Package]
-    $probeOrder = if ($expectedBrand) { @($expectedBrand) } else { @($script:ItBrandClsids.Keys) }
+    $probeOrder = if ($private) { @('Worktree') } elseif ($expectedBrand) { @($expectedBrand) } else { @($script:ItBrandClsids.Keys) }
 
     $found = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 1 -Because "a brand CLSID that wtcli can connect to" -Quiet -Condition {
         foreach ($brand in $probeOrder) {
-            $clsid = $script:ItBrandClsids[$brand]
+            $clsid = if ($private) { $verified.PrivateProtocolClsid } else { $script:ItBrandClsids[$brand] }
             $r = Invoke-Native -FilePath $wtcli -Arguments @('--json', 'list-windows') -TimeoutSec 8 -Environment @{ WT_COM_CLSID = $clsid }
             if ($r.ExitCode -eq 0) {
                 $j = $r.StdOut | ConvertFrom-JsonSafe

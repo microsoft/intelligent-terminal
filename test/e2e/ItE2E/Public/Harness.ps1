@@ -491,10 +491,19 @@ function Get-ItCreatedProcessPackage {
 
 function Start-ItCreatedDevTerminal {
     param([Parameter(Mandatory)]$App, [int]$TimeoutSec = 60)
-    if ($App.Package -cne 'IntelligentTerminal_rd9vj3e6a2mbr') {
+    $aliasName = 'wtai.exe'
+    if ($App.Package -like 'IntelligentTerminal.Worktree.*') {
+        $verified = Resolve-ItApp -Package $App.Package
+        if ($verified.PackageFullName -cne $App.PackageFullName -or
+            $verified.InstallLocation -cne $App.InstallLocation) {
+            throw 'Private package registration changed; refuse process creation.'
+        }
+        $aliasName = Split-Path $verified.LaunchAlias -Leaf
+    }
+    elseif ($App.Package -cne 'IntelligentTerminal_rd9vj3e6a2mbr') {
         throw 'This creation path is restricted to the explicitly registered Dev PFN.'
     }
-    $alias = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\$($App.Package)\wtai.exe"
+    $alias = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\$($App.Package)\$aliasName"
     if (-not (Test-Path -LiteralPath $alias -PathType Leaf)) {
         throw "Registered per-PFN Dev alias is unavailable; recover registration first: $alias"
     }
