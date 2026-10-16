@@ -1726,7 +1726,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
     void ControlCore::_terminalTaskbarProgressChanged()
     {
-        TaskbarProgressChanged.raise(*this, nullptr);
+        // The callback owns the terminal lock; retain this parsed value before dispatch.
+        TaskbarProgressChanged.raise(*this, winrt::box_value(static_cast<uint64_t>(_terminal->GetTaskbarState())));
     }
 
     void ControlCore::_terminalShowWindowChanged(bool showOrHide)

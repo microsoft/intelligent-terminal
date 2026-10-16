@@ -484,7 +484,7 @@ async fn delegate_with_context(
             "wsl delegate commandline",
         );
 
-        let create_resp = create_delegate_target(
+        let create_resp = create_delegate_target_with_source(
             shell_mgr,
             &runtime.id,
             &wsl_commandline,
@@ -493,6 +493,7 @@ async fn delegate_with_context(
             split_pane,
             split_direction,
             split_size,
+            requested_source,
         )
         .await?;
         let pane_guid = create_resp
@@ -539,7 +540,7 @@ async fn delegate_with_context(
         commandline
     };
 
-    let create_resp = create_delegate_target(
+    let create_resp = create_delegate_target_with_source(
         shell_mgr,
         &runtime.id,
         &commandline,
@@ -548,6 +549,7 @@ async fn delegate_with_context(
         split_pane,
         split_direction,
         split_size,
+        requested_source,
     )
     .await?;
     let pane_guid = create_resp
@@ -566,6 +568,45 @@ async fn delegate_with_context(
     }
 
     Ok(())
+}
+
+async fn create_delegate_target_with_source(
+    shell_mgr: &ShellManager,
+    provider_id: &str,
+    commandline: &str,
+    cwd: Option<&str>,
+    preserve_sidebar_view: bool,
+    split_pane: Option<&str>,
+    split_direction: &str,
+    split_size: f64,
+    source: &AgentSource,
+) -> Result<serde_json::Value> {
+    let created = create_delegate_target(
+        shell_mgr,
+        provider_id,
+        commandline,
+        cwd,
+        preserve_sidebar_view,
+        split_pane,
+        split_direction,
+        split_size,
+    )
+    .await?;
+    let pane = created
+        .get("session_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|pane| !pane.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("native pane was created, but Terminal returned no pane identity for source publication"))?;
+    shell_mgr
+        .wt_publish_event(serde_json::json!({
+            "type":"event", "method":"agent_event",
+            "params":{"event":"agent.pane.launch.source","pane_id":pane, "agent":provider_id, "location":source.session_location()}
+        }))
+        .await
+        .map_err(|error| {
+            anyhow::anyhow!("native pane was created, but source publication failed: {error:#}")
+        })?;
+    Ok(created)
 }
 
 async fn create_delegate_target(
@@ -637,13 +678,100 @@ mod tests {
             match method {
                 "create_tab" | "split_pane" => Ok(self.response.clone()),
                 "focus_pane" if self.fail_focus => anyhow::bail!("focus failed"),
-                "focus_pane" => Ok(serde_json::json!({})),
+                "focus_pane" | "publish" => Ok(serde_json::json!({})),
                 _ => anyhow::bail!("unexpected method {method}"),
             }
         }
 
         fn is_available(&self) -> bool {
             true
+        }
+    }
+
+    #[tokio::test]
+    async fn delegate_source_publication_failure_reports_created_pane_without_success() {
+        struct FailingPublication;
+        #[async_trait::async_trait]
+        impl crate::shell::wt_channel::WtChannel for FailingPublication {
+            async fn request(
+                &self,
+                method: &str,
+                _: serde_json::Value,
+            ) -> anyhow::Result<serde_json::Value> {
+                if method == "create_tab" {
+                    Ok(serde_json::json!({"session_id":"created"}))
+                } else {
+                    anyhow::bail!("publication timed out")
+                }
+            }
+            fn is_available(&self) -> bool {
+                true
+            }
+        }
+        let shell = crate::shell::ShellManager::new()
+            .with_wt_channel(std::sync::Arc::new(FailingPublication));
+        let error = super::create_delegate_target_with_source(
+            &shell,
+            "copilot",
+            "copilot",
+            None,
+            false,
+            None,
+            "right",
+            0.5,
+            &crate::agent_source::AgentSource::Host,
+        )
+        .await
+        .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("pane was created, but source publication failed"));
+        assert!(error.to_string().contains("publication timed out"));
+    }
+
+    #[tokio::test]
+    async fn delegate_source_publication_covers_prompt_and_launch_only_host_and_wsl() {
+        for source in [
+            crate::agent_source::AgentSource::Host,
+            crate::agent_source::AgentSource::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        ] {
+            for commandline in ["copilot", "copilot --prompt hello"] {
+                let channel = std::sync::Arc::new(RecordingChannel {
+                    requests: Default::default(),
+                    response: serde_json::json!({"session_id":"actual-created-pane"}),
+                    fail_focus: false,
+                });
+                let shell = crate::shell::ShellManager::new().with_wt_channel(channel.clone());
+                super::create_delegate_target_with_source(
+                    &shell,
+                    "copilot",
+                    commandline,
+                    None,
+                    false,
+                    None,
+                    "right",
+                    0.5,
+                    &source,
+                )
+                .await
+                .unwrap();
+                let requests = channel.requests.lock().unwrap();
+                assert_eq!(requests.len(), 2);
+                assert_eq!(requests[1].0, "publish");
+                let event = &requests[1].1;
+                assert_eq!(event["type"], "event");
+                assert_eq!(event["method"], "agent_event");
+                assert_eq!(event["params"]["event"], "agent.pane.launch.source");
+                assert_eq!(event["params"]["pane_id"], "actual-created-pane");
+                assert_eq!(event["params"]["agent"], "copilot");
+                assert_eq!(
+                    event["params"]["location"],
+                    serde_json::to_value(source.session_location()).unwrap()
+                );
+                assert!(event["params"].get("agent_session_id").is_none());
+            }
         }
     }
 

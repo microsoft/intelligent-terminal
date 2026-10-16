@@ -421,14 +421,52 @@ namespace winrt::TerminalApp::implementation::details
         return true;
     }
 
-    ProcessWaitGenerationTracker::Generation ProcessWaitGenerationTracker::Register(const DWORD pid) noexcept
+    std::optional<std::wstring> BuildMasterEnvironmentBlock(
+        const std::span<const std::pair<std::wstring, std::wstring>> overrides,
+        const uint64_t generation) noexcept
+    {
+        if (generation == 0)
+        {
+            return std::nullopt;
+        }
+        try
+        {
+            std::vector<std::pair<std::wstring, std::wstring>> environment{ overrides.begin(), overrides.end() };
+            std::erase_if(environment, [](const auto& entry) {
+                return _wcsicmp(entry.first.c_str(), L"WTA_MASTER_GENERATION") == 0;
+            });
+            environment.emplace_back(L"WTA_MASTER_GENERATION", std::to_wstring(generation));
+            return BuildEnvironmentBlock(environment);
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            return std::nullopt;
+        }
+    }
+
+    ProcessWaitGenerationTracker::Generation ProcessWaitGenerationTracker::Reserve() noexcept
     {
         do
         {
             ++_nextGeneration;
         } while (_nextGeneration == 0);
 
-        _currentGeneration = _nextGeneration;
+        return _nextGeneration;
+    }
+
+    ProcessWaitGenerationTracker::Generation ProcessWaitGenerationTracker::Register(const DWORD pid) noexcept
+    {
+        return Register(pid, Reserve());
+    }
+
+    ProcessWaitGenerationTracker::Generation ProcessWaitGenerationTracker::Register(const DWORD pid, const Generation generation) noexcept
+    {
+        if (generation == 0 || generation != _nextGeneration)
+        {
+            return 0;
+        }
+        _currentGeneration = generation;
         _pid = pid;
         return _currentGeneration;
     }
@@ -641,6 +679,7 @@ namespace winrt::TerminalApp::implementation
         _job.reset();
         _process.reset();
         _pid = 0;
+        _masterGeneration = 0;
     }
 
     bool SharedWta::IsRunning() const noexcept
@@ -665,6 +704,12 @@ namespace winrt::TerminalApp::implementation
     {
         std::lock_guard lock{ _mtx };
         return _masterPipeName;
+    }
+
+    uint64_t SharedWta::MasterGeneration() const noexcept
+    {
+        std::lock_guard lock{ _mtx };
+        return _masterGeneration;
     }
 
     SharedWtaLease SharedWta::AcquirePane(const std::wstring_view wtaPath,
@@ -926,10 +971,9 @@ namespace winrt::TerminalApp::implementation
         // Refresh the current process's PATH from the Windows registry
         // so the master (which inherits our env) sees PATH entries added
         // after Terminal launched (e.g. WinGet\Links after FRE installs
-        // copilot). With no overrides, lpEnvironment=nullptr inherits it
-        // directly; with overrides, BuildEnvironmentBlock clones it first.
-        // Both preserve process-only variables (WT_COM_CLSID, etc.) that
-        // regenerate() would drop.
+        // copilot). BuildMasterEnvironmentBlock preserves process-only
+        // variables (WT_COM_CLSID, etc.) while adding the owned receiver
+        // generation without changing Terminal's environment.
         try
         {
             ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
@@ -939,7 +983,8 @@ namespace winrt::TerminalApp::implementation
             LOG_CAUGHT_EXCEPTION();
         }
 
-        auto environmentBlock = details::BuildEnvironmentBlock(environment);
+        const auto receiverGeneration = _waitGeneration.Reserve();
+        auto environmentBlock = details::BuildMasterEnvironmentBlock(environment, receiverGeneration);
         if (!environmentBlock)
         {
             return false;
@@ -1004,7 +1049,7 @@ namespace winrt::TerminalApp::implementation
         // replacement wait, and the integer context has no lifetime to
         // manage while non-blocking unregister drains queued callbacks.
         HANDLE waitHandle = nullptr;
-        const auto waitGeneration = _waitGeneration.Register(pid);
+        const auto waitGeneration = _waitGeneration.Register(pid, receiverGeneration);
         if (!RegisterWaitForSingleObject(
                 &waitHandle,
                 process.get(),
@@ -1032,6 +1077,7 @@ namespace winrt::TerminalApp::implementation
         _process = std::move(process);
         _job = std::move(job);
         _pid = pid;
+        _masterGeneration = receiverGeneration;
         _waitHandle = waitHandle;
         if (waitHandle && armUnexpectedExitRecovery)
         {
@@ -1079,6 +1125,7 @@ namespace winrt::TerminalApp::implementation
             _unexpectedExitRecovery.Retire();
         }
         _pid = 0;
+        _masterGeneration = 0;
         return process;
     }
 
@@ -1130,6 +1177,7 @@ namespace winrt::TerminalApp::implementation
             _waitHandle = nullptr;
         }
         _pid = 0;
+        _masterGeneration = 0;
 
         if (_unexpectedExitRecovery.ShouldRespawn(
                 generation,

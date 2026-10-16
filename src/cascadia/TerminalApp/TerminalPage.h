@@ -40,6 +40,11 @@ namespace Microsoft::Terminal::Core
     class ControlKeyStates;
 }
 
+namespace Microsoft::Terminal::WtaProcess
+{
+    struct CaptureResult;
+}
+
 namespace Json
 {
     class Value;
@@ -992,6 +997,11 @@ namespace winrt::TerminalApp::implementation
             std::optional<uint64_t> lastActivityAtMs;
             std::optional<winrt::guid> paneSessionId;
             std::optional<std::string> cwd;
+            std::optional<uint64_t> modeEpoch;
+            uint64_t windowId{ 0 };
+            std::string tabId;
+            Json::Value location;
+            Json::Value inferredHistoryKey;
         };
         static bool _IsBuiltinAgentProviderId(std::string_view id);
         static bool _ShouldUseIncomingAgentProvider(std::string_view existingProviderId, std::string_view incomingProviderId);
@@ -1003,7 +1013,20 @@ namespace winrt::TerminalApp::implementation
             std::unordered_map<winrt::guid, _RichTabAgentInfo> byPane;
         };
         static _RichTabAgentStatusSnapshot _BuildAgentStatusSnapshot(const std::vector<_RichTabAgentInfo>& rows, const std::unordered_map<winrt::guid, _RichTabAgentInfo>& lastReceivedByPane);
+        static std::vector<_RichTabAgentInfo> _ParsePaneAgentStatuses(const Json::Value& response);
+        static bool _NativeAgentReceiverSnapshotReady(const Json::Value& response, uint64_t capturedGeneration, uint64_t currentGeneration);
+        void _PreserveNativeAgentIdentity(const Microsoft::Terminal::Control::TermControl& control);
+        void _ReplayNativeAgentObservationsForReceiver(uint64_t receiverGeneration);
         std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
+        void _SyncNativeAgentStatusMode();
+        void _PublishNativeAgentSignal(const Microsoft::Terminal::Control::TermControl& control, bool attention, uint64_t progressState);
+        void _PublishNativeAgentObservation(const Microsoft::Terminal::Control::TermControl& control, std::string_view kind, bool reset = false, std::optional<uint64_t> progressState = std::nullopt, bool birthBeforeReset = false);
+        static std::string _NativeAgentObservationSource(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& backend);
+        static Json::Value _NativeAgentObservationLocation(std::string_view source);
+        std::optional<bool> _lastEffectiveAgentSessionManagementEnabled;
+        uint64_t _nativeAgentStatusSnapshotReceiverGeneration{ 0 };
+        uint64_t _lastReadyNativeAgentReceiverGeneration{ 0 };
+        std::unordered_set<winrt::guid> _explicitNativeAgentSessions;
         std::pair<bool, std::optional<std::string>> _RichTabAgentCwdForControl(const Microsoft::Terminal::Control::TermControl& control);
         bool _RichTabCwdDependentFieldsVisible() const;
         winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& profileIcon);
@@ -1086,7 +1109,7 @@ namespace winrt::TerminalApp::implementation
         };
         static _SidebarHistorySnapshot _ParseSidebarHistorySnapshot(const std::string& output, uint64_t currentWindowId = 0);
         static _SidebarHistorySnapshot _ParseSidebarHistoryFailure(const std::string& output);
-        safe_void_coroutine _LoadSidebarHistory(uint64_t generation);
+        static std::wstring _BuildSessionsListArguments(std::wstring_view masterPipe);
         void _CompleteSidebarHistoryRefresh(uint64_t generation, _SidebarHistorySnapshot snapshot);
         struct _SidebarHistoryActivationRequest
         {
@@ -1137,15 +1160,27 @@ namespace winrt::TerminalApp::implementation
         std::unordered_map<winrt::guid, _RichTabAgentInfo> _richTabAgentStatusByPaneId;
         std::unordered_map<winrt::guid, std::string> _richTabEndedSessionByPaneId;
         bool _richTabAgentCwdAvailable{ false };
-        bool _richTabAgentStatusSnapshotLoaded{ false };
-        bool _richTabAgentStatusRefreshInFlight{ false };
-        bool _richTabAgentStatusRefreshPending{ false };
-        bool _richTabAgentStatusAutoRefreshBlocked{ false };
-        uint64_t _richTabAgentStatusRequestGeneration{ 0 };
+        bool _agentSnapshotLoaded{ false };
+        bool _agentSnapshotRefreshInFlight{ false };
+        bool _agentSnapshotRefreshPending{ false };
+        bool _agentSnapshotAutoRefreshBlocked{ false };
+        uint64_t _agentSnapshotRequestGeneration{ 0 };
         uint64_t _nextRichTabAttachmentReservation{ 1 };
-        void _RequestRichTabAgentStatusRefresh();
+        void _RequestAgentSnapshotRefresh();
         void _InvalidateRichTabAgentCwdCache();
-        safe_void_coroutine _LoadRichTabAgentStatuses(uint64_t generation);
+        struct _AgentSnapshotRequest
+        {
+            uint64_t generation;
+            uint64_t receiverGeneration;
+            std::optional<uint64_t> historyGeneration;
+            std::shared_ptr<std::atomic<bool>> historyCancellation;
+        };
+        bool _CompleteAgentSnapshot(const _AgentSnapshotRequest& request,
+                                    const ::Microsoft::Terminal::WtaProcess::CaptureResult& capture,
+                                    const Json::Value& response,
+                                    _RichTabAgentStatusSnapshot snapshot,
+                                    bool parsed);
+        safe_void_coroutine _LoadAgentSnapshot(uint64_t generation);
         void _UpdateTabWidthMode();
         void _SetBackgroundImage(const winrt::Microsoft::Terminal::Settings::Model::IAppearanceConfig& newAppearance);
 
