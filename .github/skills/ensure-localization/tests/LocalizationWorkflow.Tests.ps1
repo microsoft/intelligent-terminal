@@ -126,10 +126,13 @@ Describe 'Localization workflow contracts' -Tag 'Unit' {
         $guide | Should -Match 'never check out or execute fork'
         $guide | Should -Match 'Test-PseudoLocale'
         $guide | Should -Match '(?s)add-comment:.*max: 1'
-        $outputContract = [regex]::Match($guide, '(?ms)^## Output contract\r?\n(?<contract>.*?)(?=^## |\z)').Groups['contract'].Value
+        $outputContractPattern = '(?ims)^## Output contract[ \t]*\r?\n(?<contract>.*?)(?=^## |\z)'
+        $outputContract = [regex]::Match($guide, $outputContractPattern).Groups['contract'].Value
         $outputContract | Should -Not -BeNullOrEmpty
         $outputContract | Should -Match '`add_comment`'
         $outputContract | Should -Not -Match 'Emit exactly one concise `add-comment`'
+        $reformattedGuide = $guide -creplace '(?m)^## Output contract\r?$', '## Output Contract  '
+        [regex]::Match($reformattedGuide, $outputContractPattern).Groups['contract'].Value | Should -Match '`add_comment`'
         $guide | Should -Not -Match 'push-to-pull-request-branch:'
     }
 
