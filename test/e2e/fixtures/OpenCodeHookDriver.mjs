@@ -33,7 +33,7 @@ const sdk = createContext({
 })
 tuiContext.client = sdk.client
 tuiContext.location = sdk.location
-const hooks = mode === "v1" ? await plugin.server({ directory }) : undefined
+const hooks = mode === "v1" ? await plugin({ directory }) : undefined
 const serverDispose = mode === "v1" ? () => hooks.dispose() : await plugin.setup(sdk.context)
 const tuiDispose = mode === "v2" ? (await loadPlugin(tuiPluginPath)).setup(tuiContext) : undefined
 if (mode === "v2" && (typeof serverDispose !== "function" || typeof tuiDispose !== "function")) {
@@ -56,7 +56,7 @@ async function event(type, data, location) {
   }
   if (mode === "v2") await sdk.event(type, data, location)
   else {
-    const properties = ["session.created", "session.updated"].includes(type)
+    const properties = ["session.created", "session.updated", "session.deleted"].includes(type)
       ? { info: { ...data, id: data.sessionID, directory } }
       : data
     await hooks.event({ event: { type, properties } })

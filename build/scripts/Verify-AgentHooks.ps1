@@ -72,7 +72,7 @@ Set-StrictMode -Version Latest
 
 # Schema version this script understands. Mirrors STATUS_SCHEMA_VERSION
 # in tools/wta/src/agent_hooks_installer.rs. Bump in lockstep.
-$script:SupportedStatusSchemaVersion = 5
+$script:SupportedStatusSchemaVersion = 6
 
 $script:CliDisplayNames = @{
     copilot = 'Copilot CLI'
@@ -211,6 +211,20 @@ function Get-AgentHookVersionLabel {
     return "v$installed"
 }
 
+function Get-AgentHookDetectionLabel {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][psobject]$Cli)
+
+    if (-not (Get-Member -InputObject $Cli -Name detection_fallback -ErrorAction SilentlyContinue) -or -not $Cli.detection_fallback) {
+        return ''
+    }
+    switch ($Cli.detection_fallback) {
+        'opencode-api-variant-mismatch' { return 'OpenCode API variant mismatch' }
+        'opencode-version-unknown' { return 'OpenCode CLI version unknown' }
+        default { return 'fs fallback' }
+    }
+}
+
 # Render one row of the table as a hashtable (consumed by Format-Table /
 # Write-Host). Returns:
 #   @{ CLI = 'copilot'; OnPath = $true; State = 'installed'; Color = 'Green'; Detail = '...'; Version = 'v0.1.5' }
@@ -267,8 +281,20 @@ function Get-AgentHookCliRow {
         Version = Get-AgentHookVersionLabel -Cli $Cli -PluginInstalled $plugin
     }
 
-    if ((Get-Member -InputObject $Cli -Name detection_fallback -ErrorAction SilentlyContinue) -and $Cli.detection_fallback) {
-        $row.Detail = if ($row.Detail) { "$($row.Detail); fs fallback" } else { 'fs fallback' }
+    if ($Cli.name -eq 'opencode' -and (Get-Member -InputObject $Cli -Name opencode -ErrorAction SilentlyContinue) -and $Cli.opencode) {
+        $compatibility = $Cli.opencode
+        $version = if ($compatibility.cli_version) { $compatibility.cli_version } else { 'unknown' }
+        $required = if ($compatibility.api_variant) { $compatibility.api_variant } else { 'unknown' }
+        $installed = if ($compatibility.installed_api_variant) { $compatibility.installed_api_variant } else { 'none' }
+        $compatibilityDetail = "CLI version=$version; required API=$required; installed API=$installed"
+        if ((Get-Member -InputObject $compatibility -Name error -ErrorAction SilentlyContinue) -and $compatibility.error) {
+            $compatibilityDetail += "; error=$($compatibility.error)"
+        }
+        $row.Detail = if ($row.Detail) { "$($row.Detail); $compatibilityDetail" } else { $compatibilityDetail }
+    }
+    $detectionLabel = Get-AgentHookDetectionLabel -Cli $Cli
+    if ($detectionLabel) {
+        $row.Detail = if ($row.Detail) { "$($row.Detail); $detectionLabel" } else { $detectionLabel }
     }
     return $row
 }
@@ -333,8 +359,11 @@ function Test-AgentHooksConsistent {
             # (which wouldn't be possible without an install). Otherwise
             # we treat it as "user hasn't installed yet", not failure.
         }
-        if ((Get-Member -InputObject $cli -Name detection_fallback -ErrorAction SilentlyContinue) -and $cli.detection_fallback) {
+        $detectionLabel = Get-AgentHookDetectionLabel -Cli $cli
+        if ($detectionLabel -eq 'fs fallback') {
             $reasons += "$($cli.name): wta fell back to fs detection ($($cli.detection_fallback))"
+        } elseif ($detectionLabel) {
+            $reasons += "$($cli.name): $detectionLabel ($($row.Detail))"
         }
     }
 

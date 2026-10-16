@@ -12,10 +12,13 @@ import { createInterface } from "node:readline"
 import { createContext, deferred, loadPlugin } from "../fixtures/OpenCodeHookContext.mjs"
 
 const pluginPath = process.env.ITE2E_OPENCODE_PLUGIN ??
-  fileURLToPath(new URL("../../../tools/wta/wt-agent-hooks/opencode/wt-agent-hooks.js", import.meta.url))
+  fileURLToPath(new URL("../../../tools/wta/wt-agent-hooks/opencode/v2/wt-agent-hooks.js", import.meta.url))
 const plugin = await loadPlugin(pluginPath)
+const v1Plugin = await loadPlugin(fileURLToPath(new URL(
+  "../../../tools/wta/wt-agent-hooks/opencode/v1/wt-agent-hooks.js", import.meta.url,
+)))
 const tuiPluginPath = fileURLToPath(new URL(
-  "../../../tools/wta/wt-agent-hooks/opencode/wt-agent-hooks/tui.js", import.meta.url,
+  "../../../tools/wta/wt-agent-hooks/opencode/v2/tui.js", import.meta.url,
 ))
 const tuiPlugin = await loadPlugin(tuiPluginPath)
 const environmentKeys = ["WT_COM_CLSID", "WT_SESSION", "WTCLI_PATH", "OPENCODE_CLIENT", "WTA_HOOK_LOG_DIR"]
@@ -605,7 +608,7 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
   })
 
   it("V1 root lifecycle retains source, payloads, child suppression and idempotent disposal", async () => {
-    const hooks = await plugin.server({ directory: "C:\\root" })
+    const hooks = await v1Plugin({ directory: "C:\\root" })
     await hooks.event({ event: { type: "session.created", properties: { info: { id: "root", directory: "C:\\root", title: "Original" } } } })
     await hooks.event({ event: { type: "session.created", properties: { info: { id: "child", parentID: "root" } } } })
     await hooks["chat.message"]({ sessionID: "child" })
@@ -822,21 +825,18 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
     }
   })
 
-  it("ACP suppresses V2 registration; missing Terminal identity suppresses only V1 bridge emission", async () => {
+  it("ACP clients stay unbound while the shared server remains available", async () => {
     for (const suppressed of ["acp", "WT_SESSION", "WT_COM_CLSID"]) {
       const previous = { ...process.env }
       if (suppressed === "acp") process.env.OPENCODE_CLIENT = "acp"
       else delete process.env[suppressed]
       const sdk = createContext()
       const dispose = await plugin.setup(sdk.context)
-      if (suppressed === "acp") {
-        assert.equal(dispose, undefined)
-        assert.equal(sdk.registered, 0)
-      } else {
-        assert.equal(typeof dispose, "function")
-        await dispose()
-      }
-      const hooks = await plugin.server({ directory: sdk.location.directory })
+      assert.equal(typeof dispose, "function")
+      await sdk.prompt("unbound")
+      await dispose()
+      if (suppressed === "acp") assert.equal(tuiPlugin.setup({}), undefined)
+      const hooks = await v1Plugin({ directory: sdk.location.directory })
       await hooks["chat.message"]({ sessionID: "suppressed" })
       await hooks.dispose()
       for (const key of environmentKeys) {

@@ -189,6 +189,7 @@ pub(super) fn status(on_path: bool, binary_path: Option<String>, home: Option<&P
         installed_version: None,
         bundle_version: None,
         detection_fallback: None,
+        opencode: None,
     };
     let Some(home) = home else { return result };
     match load(home) {

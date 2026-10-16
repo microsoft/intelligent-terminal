@@ -22,5 +22,12 @@ $env:OPENCODE_SERVER_PASSWORD = [pscredential]::new('opencode', $credential).Get
 foreach ($name in @('OPENCODE_CLIENT', 'OPENCODE_CONFIG', 'OPENCODE_CONFIG_CONTENT')) {
     Remove-Item -LiteralPath "Env:\$name" -ErrorAction SilentlyContinue
 }
-& $Executable --server $BaseUrl --session $SessionId
+New-Item -ItemType Directory -Path $State -Force | Out-Null
+@{
+    WT_SESSION = $env:WT_SESSION
+    WT_COM_CLSID = $env:WT_COM_CLSID
+    WTCLI_PATH = $env:WTCLI_PATH
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $State "ite2e-tui-environment-$PID.log")
+$diagnosticLog = Join-Path $State ("ite2e-tui-$PID.log")
+& $Executable --print-logs --log-level info --server $BaseUrl --session $SessionId 2> $diagnosticLog
 if ($LASTEXITCODE -ne 0) { throw "Native OpenCode TUI exited with $LASTEXITCODE" }

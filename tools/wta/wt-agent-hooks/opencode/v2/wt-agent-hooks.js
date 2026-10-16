@@ -1,7 +1,8 @@
 // Managed by Intelligent Terminal: wt-agent-hooks
+// OpenCode API variant: v2
 
 import { appendFileSync, mkdirSync } from "node:fs"
-import { bindingRpc } from "./wt-agent-hooks/rpc.js"
+import { bindingRpc } from "./rpc.js"
 
 function eventMessage(value) {
   if (typeof value === "string") return value
@@ -314,13 +315,10 @@ const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true, delive
   }
 }
 
-// V1 calls server(); V2 loads id + setup(). Keep this static
-// bundle dependency-free: Plugin.define() returns this same object shape.
 export default {
   id: "wt-agent-hooks",
-  server: WtAgentHooks,
   async setup(ctx) {
-    if (process.env.OPENCODE_CLIENT === "acp") return
+    if (process.platform !== "win32") return
 
     const directory = ctx.location.directory
     const bindings = new Map()

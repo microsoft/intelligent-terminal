@@ -18,7 +18,12 @@ Describe 'Feature: OpenCode session tracking hooks' -Tag 'Feature' -Skip:(-not $
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:opencode = (Get-Command opencode -ErrorAction Stop).Source
-        $script:openCodeStatus = Get-AgentCliStatus -Agent opencode -TimeoutSec 60
+        $script:isV1 = ((& $script:opencode --version) -join "`n") -match '^(?:opencode\s+)?v?1\.'
+        $script:openCodeStatus = if ($script:isV1) {
+            Get-AgentCliStatus -Agent opencode -TimeoutSec 60
+        } else {
+            'unsupported'
+        }
         $script:app = $null
         $script:fixtureSessionId = $null
         $script:fixtureDir = $null
@@ -26,10 +31,19 @@ Describe 'Feature: OpenCode session tracking hooks' -Tag 'Feature' -Skip:(-not $
         $configRoot = if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME '.config' }
         $script:pluginsDir = Join-Path $configRoot 'opencode\plugins'
         $script:supportDir = Join-Path $script:pluginsDir 'wt-agent-hooks'
-        $script:managedPaths = @(
+        $script:requiredPaths = @(
             (Join-Path $script:pluginsDir 'wt-agent-hooks.js'),
-            (Join-Path $script:supportDir 'send-event.ps1'),
+            (Join-Path $script:supportDir 'bridge.js'),
             (Join-Path $script:supportDir 'plugin.json')
+        )
+        $script:managedPaths = $script:requiredPaths + @(
+            (Join-Path $script:supportDir 'send-event.ps1'),
+            (Join-Path $script:supportDir 'wt-agent-hooks.js'),
+            (Join-Path $script:supportDir 'server.js'),
+            (Join-Path $script:supportDir 'rpc.js'),
+            (Join-Path $script:supportDir 'tui.js'),
+            (Join-Path $script:supportDir 'package.json'),
+            (Join-Path $script:supportDir 'wt-agent-hooks\rpc.js')
         )
         $script:pluginsDirExisted = Test-Path $script:pluginsDir
         $script:supportDirExisted = Test-Path $script:supportDir
@@ -72,6 +86,10 @@ Describe 'Feature: OpenCode session tracking hooks' -Tag 'Feature' -Skip:(-not $
     }
 
     It 'OpenCode shell sessions are tracked by installed hooks' {
+        if (-not $script:isV1) {
+            Set-ItResult -Skipped -Because 'This run-mode baseline requires a V1 CLI; V2 client pane registration is covered by Feature.OpenCodeHookBridge'
+            return
+        }
         if ($script:openCodeStatus -ne 'authed') {
             Set-ItResult -Skipped -Because "OpenCode cannot answer non-interactively ($script:openCodeStatus)"
             return
@@ -86,7 +104,7 @@ Describe 'Feature: OpenCode session tracking hooks' -Tag 'Feature' -Skip:(-not $
         $openCodeHook = @($status.clis | Where-Object name -eq 'opencode')
         $openCodeHook | Should -HaveCount 1
         $openCodeHook[0].plugin_installed | Should -BeTrue -Because 'the packaged installer must report the complete OpenCode plugin'
-        foreach ($path in $script:managedPaths) {
+        foreach ($path in $script:requiredPaths) {
             Test-Path $path | Should -BeTrue -Because "the OpenCode hook install must include $path"
         }
 

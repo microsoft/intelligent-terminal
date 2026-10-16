@@ -3,30 +3,40 @@
 
 import { readFile } from "node:fs/promises"
 import { spawn } from "node:child_process"
-import { dirname, join } from "node:path"
+import { dirname, resolve } from "node:path"
+import { existsSync } from "node:fs"
 
 export async function loadPlugin(path) {
-  const rpcPath = path.endsWith("tui.js")
-    ? join(dirname(path), "rpc.js")
-    : join(dirname(path), "wt-agent-hooks", "rpc.js")
-  const rpc = await readFile(rpcPath)
-  const rpcURL = `data:text/javascript;base64,${rpc.toString("base64")}`
-  let source = await readFile(path, "utf8")
-  source = source.replace(/from "\.\/(?:wt-agent-hooks\/)?rpc\.js"/, `from "${rpcURL}"`)
-  if (source.includes('from "solid-js"')) {
-    const shim = [
-      "let root;",
-      "export function createRoot(callback) { const effects = new Set(); root = effects;",
-      "  try { return callback(() => { for (const effect of effects) globalThis.__openCodeHookEffects.delete(effect); }); }",
-      "  finally { root = undefined; } }",
-      "export function createEffect(effect) { root.add(effect);",
-      "  globalThis.__openCodeHookEffects ??= new Set(); globalThis.__openCodeHookEffects.add(effect);",
-      "  queueMicrotask(effect); }",
-    ].join("\n")
-    const shimURL = `data:text/javascript;base64,${Buffer.from(shim).toString("base64")}`
-    source = source.replace('from "solid-js"', `from "${shimURL}"`)
+  const modules = new Map()
+  async function load(file) {
+    if (modules.has(file)) return modules.get(file)
+    let source = await readFile(file, "utf8")
+    for (const match of [...source.matchAll(/\bfrom "(\.[^"]+)"/g)]) {
+      let target = resolve(dirname(file), match[1])
+      if (!existsSync(target) && match[1].endsWith("bridge.js")) {
+        target = resolve(dirname(file), "..", "shared", "bridge.js")
+      }
+      source = source.replaceAll(`from "${match[1]}"`, `from "${await load(target)}"`)
+    }
+    if (source.includes('from "solid-js"')) {
+      const shim = [
+        "let root;",
+        "export function createRoot(callback) { const effects = new Set(); root = effects;",
+        "  try { return callback(() => { for (const effect of effects) globalThis.__openCodeHookEffects.delete(effect); }); }",
+        "  finally { root = undefined; } }",
+        "export function createEffect(effect) { root.add(effect);",
+        "  globalThis.__openCodeHookEffects ??= new Set(); globalThis.__openCodeHookEffects.add(effect);",
+        "  queueMicrotask(effect); }",
+      ].join("\n")
+      const shimURL = `data:text/javascript;base64,${Buffer.from(shim).toString("base64")}`
+      source = source.replace('from "solid-js"', `from "${shimURL}"`)
+    }
+    const url = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+    modules.set(file, url)
+    return url
   }
-  return (await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`)).default
+  const module = await import(await load(resolve(path)))
+  return module.default ?? module.WtAgentHooks
 }
 
 export function deferred() {
@@ -119,7 +129,7 @@ export function createRpcLink(location = { directory: "C:\\ite2e\\opencode", wor
 export function createContext({
   directory = "C:\\ite2e\\opencode",
   workspaceID = "fixture-workspace",
-  getSession = async (sessionID) => ({ id: sessionID, location: { directory } }),
+  getSession,
   rpc = createRpcLink({ directory, workspaceID }),
 } = {}) {
   const promptHooks = new Map()
@@ -136,7 +146,7 @@ export function createContext({
     session: {
       async get({ sessionID }) {
         lookupCount++
-        return getSession(sessionID)
+        return getSession ? getSession(sessionID) : { id: sessionID, location }
       },
       async hook(name, callback) { promptHooks.set(name, callback) },
     },
@@ -190,6 +200,7 @@ export function installNativeBridge() {
       const child = spawn(options.cmd[0], options.cmd.slice(1), {
         stdio: ["pipe", "ignore", "ignore"],
         windowsHide: options.windowsHide,
+        env: options.env,
       })
       const exited = new Promise((resolve, reject) => {
         child.once("error", reject)
