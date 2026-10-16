@@ -364,6 +364,7 @@ pub enum MasterExtRequest {
     SessionBornBound {
         event: crate::agent_sessions::SessionEvent,
         wsl_distro: Option<String>,
+        session_universe: Option<String>,
     },
     SessionResumeDispatched {
         request_id: u64,
@@ -3937,7 +3938,11 @@ pub async fn run_acp_client_over_pipe(
                 let conn_for_hook = conn.clone();
                 lifecycle_tasks.retain(|task| !task.is_finished());
                 lifecycle_tasks.push(tokio::task::spawn_local(async move {
-                    let req = crate::session_registry::build_session_hook_request(&event);
+                    let req = if event.scope == crate::session_registry::SessionHookScope::default() {
+                        crate::session_registry::build_session_hook_request(&event.event)
+                    } else {
+                        crate::session_registry::build_scoped_session_hook_request(&event.event, &event.scope)
+                    };
                     match conn_for_hook.ext_method(req).await {
                         Ok(response) => tracing::debug!(
                             target: "session_hook",
@@ -4244,14 +4249,17 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                     }
                 }
             }
-            MasterExtRequest::SessionBornBound { event, wsl_distro } => {
+            MasterExtRequest::SessionBornBound {
+                event,
+                wsl_distro,
+                session_universe,
+            } => {
                 const BORN_BOUND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
-                let wire = match wsl_distro.as_deref() {
-                    Some(distro) => {
-                        crate::session_registry::build_born_bound_request_wsl(&event, distro)
-                    }
-                    None => crate::session_registry::build_born_bound_request(&event),
-                };
+                let wire = crate::session_registry::build_born_bound_request_scoped(
+                    &event,
+                    wsl_distro.as_deref(),
+                    session_universe.as_deref(),
+                );
                 match tokio::time::timeout(BORN_BOUND_TIMEOUT, conn.ext_method(wire)).await {
                     Ok(Ok(response)) => tracing::debug!(
                         target: "session_hook",
@@ -5401,7 +5409,7 @@ fn close_client_receivers(
     drop_session_rx: &mut mpsc::UnboundedReceiver<DropSessionRequest>,
     rename_session_rx: &mut mpsc::UnboundedReceiver<RenameSessionRequest>,
     restart_rx: &mut mpsc::UnboundedReceiver<AgentLifecycleRequest>,
-    session_hook_rx: &mut mpsc::UnboundedReceiver<crate::agent_sessions::SessionEvent>,
+    session_hook_rx: &mut mpsc::UnboundedReceiver<crate::app::QueuedSessionHook>,
     master_ext_rx: &mut mpsc::UnboundedReceiver<MasterExtRequest>,
 ) {
     retire_queued_prompt_submissions(prompt_rx);

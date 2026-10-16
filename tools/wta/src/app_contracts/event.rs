@@ -341,6 +341,7 @@ pub enum AppEvent {
         result: PreflightResult,
     },
     AgentSessionEvent(crate::agent_sessions::SessionEvent),
+    QualifiedAgentSessionEvent(crate::session_registry::SessionHookUpdate),
     AliveSnapshotLoaded(Vec<crate::session_registry::SessionInfo>),
     AliveSessionAdded(crate::session_registry::SessionInfo),
     AliveSessionRemoved(crate::session_registry::SessionRemovedParams),

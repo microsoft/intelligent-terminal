@@ -15,7 +15,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             [ref]$cleanupTokens, [ref]$cleanupErrors)
         if ($cleanupErrors.Count) { throw 'Shared owned headless cleanup helpers must parse.' }
         foreach ($name in @('Initialize-CombinedCleanupNative', 'Get-CombinedVisibleProcessIds',
-            'Start-CombinedCleanupTab', 'Invoke-CombinedHeadlessRecovery')) {
+            'Start-CombinedCleanupTab', 'Invoke-CombinedHeadlessRecovery', 'Invoke-CombinedCheckedCleanup')) {
             $definition = $cleanupAst.Find({
                 param($node)
                 $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
@@ -176,11 +176,20 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             Test-Path -LiteralPath "$($shimConfig.ITE2E_SHIM_SESSION_START_GATE).emitted-$($Receipt.session_id).json" | Should -BeFalse
             $script:heldRow = $null
             Wait-Until -TimeoutSec 10 -Because 'the exact fixture-owned newly created sidebar row is visible before its hook' -Condition {
+                $context = Invoke-WtCli -App $script:app -Arguments @(
+                        'get-pane-context', '--target', $Receipt.pane_session_id)
+                [string]$context.pane.window_id | Should -Be ([string]$script:app.WindowId)
+                $panes = @(Get-WtPanes -App $script:app -WindowId ([string]$script:app.WindowId) `
+                        -TabId ([string]$context.pane.tab_id) |
+                        Where-Object session_id -EQ $Receipt.pane_session_id)
+                $panes | Should -HaveCount 1
+                $panes[0].native_agent_provider_id | Should -Be $ProviderId
+                $script:heldRowTitle = [string]$panes[0].title
                 $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
                 $window.Current.ProcessId | Should -Be $script:app.Pid
                 $title = $window.FindFirst([Windows.Automation.TreeScope]::Descendants,
-                    [Windows.Automation.PropertyCondition]::new(
-                        [Windows.Automation.AutomationElement]::NameProperty, [string]$Receipt.title))
+                        [Windows.Automation.PropertyCondition]::new(
+                        [Windows.Automation.AutomationElement]::NameProperty, $script:heldRowTitle))
                 if (-not $title -or $title.Current.IsOffscreen) { return $false }
                 $row = $title
                 while ($row -and $row.Current.ControlType -notin @(
@@ -202,7 +211,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             finally { $graphics.Dispose(); $image.Dispose() }
             @{
                 phase = $Phase; provider_id = $ProviderId; pane_session_id = $Receipt.pane_session_id
-                session_id = $Receipt.session_id; title = $Receipt.title; pid = $script:app.Pid
+                session_id = $Receipt.session_id; title = $script:heldRowTitle; pid = $script:app.Pid
                 row_bounds = $bounds.ToString()
                 expected_icon = if ($ProviderId -eq 'copilot') { 'Copilot provider glyph' } else { 'existing generic Message glyph for custom provider without a configured icon' }
                 rendered_icon_review = 'pending parent visual review of row.png; automated assertions cover exact visible row and canonical provider data'
@@ -281,6 +290,18 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             } | Out-Null
             @(Get-ActionTabs | Where-Object tab_id -NotIn $before)[0]
         }
+        function Reset-ActionSearch {
+            Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+            $button = Wait-Until -TimeoutSec 10 -Because 'Sidebar search control is available for cleanup' -Condition {
+                $peer = Get-ActionElement SearchTabsButton
+                if ($peer -and -not $peer.Current.IsOffscreen) { $peer }
+            }
+            $toggle = $button.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+            if ($toggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::On) {
+                Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
+                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            }
+        }
         function Save-ActionUiEvidence {
             param([string]$Phase)
             $search = Get-ActionElement SearchTabsButton
@@ -350,6 +371,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
     It 'Sidebar plus always creates the default profile' {
         $launchCount = @(Get-ActionLaunches).Count + @(Get-CanonicalLaunches).Count
         $created = @()
+        $primaryFailure = $null
         try {
             foreach ($agentsOnly in @($false, $true)) {
                 foreach ($recent in @($false, $true)) {
@@ -419,20 +441,21 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                             $box -and -not $box.Current.IsOffscreen
                         } | Out-Null
                         Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
+                        (Get-ActionElement SearchTabsButton).GetCurrentPattern(
+                            [Windows.Automation.TogglePattern]::Pattern).Current.ToggleState |
+                            Should -Be ([Windows.Automation.ToggleState]::On)
                         Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $query
                     }
                 }
             }
             $created.Count | Should -Be 16
         }
+        catch { $primaryFailure = $_; throw }
         finally {
-            Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
-            Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
-            $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
-            if ($toggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::On) {
-                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            Invoke-CombinedCheckedCleanup -PrimaryFailure $primaryFailure -Action {
+                Reset-ActionSearch
+                Set-ActionView $false
             }
-            Set-ActionView $false
         }
     }
 
@@ -474,7 +497,8 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         try {
             Set-WtDelegateAgent -App $script:app -Agent copilot | Out-Null
             Wait-Until -TimeoutSec 15 -Because 'Terminal settings select the canonical fixture provider' -Condition {
-                $settings = Invoke-Native -FilePath $script:target.WtcliPath -Arguments @('--json', 'get-settings') -TimeoutSec 10
+                $settings = Invoke-Native -FilePath $script:target.WtcliPath -Arguments @('--json', 'get-settings') `
+                    -Environment @{ WT_COM_CLSID = $script:app.ComClsid } -TimeoutSec 10
                 $settings.ExitCode -eq 0 -and ($settings.StdOut | ConvertFrom-Json).delegateAgent -eq 'copilot'
             } | Out-Null
             $tabsBefore = @(Get-ActionTabs).tab_id
@@ -643,6 +667,7 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             'new-tab', '--profile', $script:otherProfile, '-w', [string]$script:app.WindowId)
         $count = @(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count
         $created = @()
+        $primaryFailure = $null
         try {
             foreach ($agentsOnly in @($false, $true)) {
                 foreach ($recent in @($false, $true)) {
@@ -694,6 +719,9 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                                 } | Out-Null
                             }
                             Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
+                            (Get-ActionElement SearchTabsButton).GetCurrentPattern(
+                                [Windows.Automation.TogglePattern]::Pattern).Current.ToggleState |
+                                Should -Be ([Windows.Automation.ToggleState]::On)
                             Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $query
                             Close-WtPane -App $script:app -SessionId $split.session_id
                         }
@@ -705,14 +733,12 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
             Get-WtCapture -App $script:app -SessionId $tab.session_id -MaxLines 30 |
                 Should -Match "ORIGINAL-ALIVE-$script:runId"
         }
+        catch { $primaryFailure = $_; throw }
         finally {
-            Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
-            Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
-            $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
-            if ($toggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::On) {
-                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            Invoke-CombinedCheckedCleanup -PrimaryFailure $primaryFailure -Action {
+                Reset-ActionSearch
+                Close-WtPane -App $script:app -SessionId $tab.session_id
             }
-            Close-WtPane -App $script:app -SessionId $tab.session_id
         }
     }
 
@@ -722,7 +748,8 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         Set-WtPaneFocus -App $script:app -SessionId $tab.session_id | Out-Null
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 30 | Should -BeTrue
-        $helper = Get-AgentPaneSession -App $script:app -OwnerPaneSessionId $tab.session_id
+        $ownerTabId = Resolve-AgentOwnerTabId -App $script:app -OwnerPaneSessionId $tab.session_id
+        $helper = Get-AgentPaneSession -App $script:app -TabId $ownerTabId
         $helper.AcpSessionId | Should -Match '^chat-fixture-'
         $before = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId)).session_id
         $count = @(Get-CanonicalLaunches).Count + @(Get-ActionLaunches).Count
@@ -735,7 +762,8 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                         $peer = Get-ActionElement $(if ($layout -eq 'vertical') { 'ItemsList' } else { 'TabView' })
                         $peer -and -not $peer.Current.IsOffscreen
                     } | Out-Null
-                    Set-WtPaneFocus -App $script:app -SessionId $helper.PaneSessionId | Out-Null
+                    Set-WtPaneFocus -App $script:app -SessionId $helper.PaneSessionId `
+                        -OwnerPaneSessionId $tab.session_id -OwnerTabId $ownerTabId | Out-Null
                     Send-WtWindowKey -App $script:app -Vk 0xBB -Alt -Shift | Out-Null
                     Start-Sleep -Seconds 1
                     $after = @(Get-WtPanes -App $script:app -TabId ([string]$tab.tab_id) -WindowId ([string]$script:app.WindowId)).session_id

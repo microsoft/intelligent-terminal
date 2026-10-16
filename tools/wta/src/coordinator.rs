@@ -1577,6 +1577,16 @@ fn normalize_delegate_resume_alias(
     commandline.to_string()
 }
 
+pub(crate) fn ensure_resume_universe(universe: Option<&str>) -> Result<()> {
+    let Some(_) = universe.filter(|value| !value.trim().is_empty()) else {
+        // Registry source/store helpers use None for the source's current store.
+        return Ok(());
+    };
+    // New panes inherit Terminal's environment, not master's COPILOT_HOME.
+    // Even an explicit home matching master cannot prove the new CLI's store.
+    bail!("CLI resume cannot select the requested session universe");
+}
+
 pub(crate) fn build_delegate_resume_commandline(
     runtime: &DelegateAgentRuntime,
     session_id: &str,
@@ -3742,6 +3752,23 @@ mod tests {
         let runtime = base64_runtime("claude");
         let cmd = build_wsl_delegate_commandline(&runtime, None, None).expect("cmd");
         assert_eq!(cmd, "exec 'claude'");
+    }
+
+    #[test]
+    fn resume_universe_rejects_explicit_stores_before_launch() {
+        for universe in [None, Some(""), Some(" \t")] {
+            assert!(super::ensure_resume_universe(universe).is_ok());
+        }
+        assert!(super::ensure_resume_universe(Some("unavailable-alternate-store")).is_err());
+        for home in [
+            std::env::var_os("COPILOT_HOME"),
+            std::env::var_os("USERPROFILE"),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert!(super::ensure_resume_universe(Some(&home.to_string_lossy())).is_err());
+        }
     }
 
     #[test]

@@ -305,7 +305,43 @@ namespace Microsoft::Terminal::AgentPaneRestore
         std::wstring sessionId;
         std::wstring backend;
         std::wstring cwd;
+        std::wstring universe;
+        std::wstring commandline;
     };
+
+    inline constexpr std::wstring_view PersistedResumePrefix{ L"intellterm-resume-v1 " };
+
+    inline bool IsPersistedResumeCommandline(std::wstring_view commandline)
+    {
+        while (!commandline.empty() && std::iswspace(commandline.front()))
+        {
+            commandline.remove_prefix(1);
+        }
+        constexpr std::wstring_view marker{ L"intellterm-resume-v1" };
+        return commandline.starts_with(marker) &&
+               (commandline.size() == marker.size() || std::iswspace(commandline[marker.size()]));
+    }
+
+    // An inspectable layout envelope, not a shell invocation. Only code-owned
+    // trusted commands may be written here; restoration unwraps before launch.
+    inline std::wstring BuildPersistedResumeCommandline(const ResumeTarget& target)
+    {
+        const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(target.backend);
+        if (!backend || backend->agentId != target.agent || !IsValidSessionId(target.sessionId) ||
+            target.commandline.empty() || IsPersistedResumeCommandline(target.commandline) ||
+            std::ranges::none_of(ResumeInvocations, [&](const auto& entry) { return entry.first == target.agent; }))
+        {
+            return {};
+        }
+        std::wstring result{ PersistedResumePrefix };
+        for (const auto& value : { target.backend, target.sessionId, target.cwd, target.universe, target.commandline })
+        {
+            AppendQuoted(result, value);
+            result.push_back(L' ');
+        }
+        result.pop_back();
+        return result;
+    }
 
     inline ResumeTarget ParseCliResumeInvocation(std::wstring_view inner)
     {
@@ -375,6 +411,25 @@ namespace Microsoft::Terminal::AgentPaneRestore
         {
             commandline.remove_suffix(1);
         }
+        if (IsPersistedResumeCommandline(commandline))
+        {
+            int argc{};
+            const wil::unique_hlocal_ptr<PWSTR[]> argv{
+                ::CommandLineToArgvW(std::wstring{ commandline }.c_str(), &argc)
+            };
+            if (!argv || argc != 6)
+            {
+                return {};
+            }
+            const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(argv.get()[1]);
+            if (!backend)
+            {
+                return {};
+            }
+            ResumeTarget target{ backend->agentId, argv.get()[2], argv.get()[1],
+                                 argv.get()[3], argv.get()[4], argv.get()[5] };
+            return BuildPersistedResumeCommandline(target) == commandline ? target : ResumeTarget{};
+        }
         if (commandline.starts_with(ResumeShellPrefix) && commandline.ends_with(L'"'))
         {
             return ParseCliResumeInvocation(commandline.substr(
@@ -395,7 +450,8 @@ namespace Microsoft::Terminal::AgentPaneRestore
         const auto execIndex = argc == 9 ? 5 : 3;
         if (std::wstring_view{ argv.get()[1] } != L"-d" ||
             (argc == 9 && std::wstring_view{ argv.get()[3] } != L"--cd") ||
-            std::wstring_view{ argv.get()[execIndex] } != L"--exec" ||
+            (std::wstring_view{ argv.get()[execIndex] } != L"--exec" &&
+             std::wstring_view{ argv.get()[execIndex] } != L"--") ||
             std::wstring_view{ argv.get()[execIndex + 1] } != L"bash" ||
             std::wstring_view{ argv.get()[execIndex + 2] } != L"-lc")
         {
@@ -406,7 +462,55 @@ namespace Microsoft::Terminal::AgentPaneRestore
         {
             return {};
         }
-        auto target = ParseCliResumeInvocation(invocation.substr(5));
+        auto inner = invocation.substr(5);
+        // WTA shell-quotes each token, including the executable and resume flag.
+        // Accept only three simple tokens, never shell operators/expansions.
+        std::wstring normalized;
+        for (size_t token = 0; token < 3; ++token)
+        {
+            while (!inner.empty() && std::iswspace(inner.front()))
+            {
+                inner.remove_prefix(1);
+            }
+            if (inner.empty())
+            {
+                return {};
+            }
+            const auto quoted = inner.front() == L'\'';
+            if (quoted)
+            {
+                inner.remove_prefix(1);
+            }
+            const auto end = quoted ? inner.find(L'\'') : inner.find_first_of(L" \t");
+            if (quoted && end == std::wstring_view::npos)
+            {
+                return {};
+            }
+            const auto value = inner.substr(0, end);
+            if (value.empty() || value.find_first_of(L" \t'\";&|$`\\") != std::wstring_view::npos)
+            {
+                return {};
+            }
+            if (token)
+            {
+                normalized.push_back(L' ');
+            }
+            normalized.append(value);
+            inner.remove_prefix(value.size() + (quoted ? 1 : 0));
+            if (quoted && !inner.empty() && !std::iswspace(inner.front()))
+            {
+                return {};
+            }
+        }
+        while (!inner.empty() && std::iswspace(inner.front()))
+        {
+            inner.remove_prefix(1);
+        }
+        if (!inner.empty())
+        {
+            return {};
+        }
+        auto target = ParseCliResumeInvocation(normalized);
         if (target.agent.empty())
         {
             return {};
@@ -416,9 +520,12 @@ namespace Microsoft::Terminal::AgentPaneRestore
         {
             target.cwd = argv.get()[4];
         }
-        return BuildResumeCommandline(target.backend, target.sessionId, target.cwd) == commandline ?
-                   target :
-                   ResumeTarget{};
+        if ((!target.cwd.empty() && !target.cwd.starts_with(L'/')) ||
+            !::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(target.backend))
+        {
+            return {};
+        }
+        return target;
     }
 
     inline bool IsResumeCommandline(const std::wstring_view commandline)

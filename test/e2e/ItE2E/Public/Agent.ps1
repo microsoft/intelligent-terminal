@@ -516,7 +516,7 @@ function Get-AgentPaneSessions {
         Returns newest-first, de-duplicated by PaneSessionId. This is the multi-tab-safe
         primitive; callers can pin a pane before another tab creates or rebuilds its helper.
     #>
-    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [string]$PaneSessionId)
     process {
         $jsonl = Join-Path $App.LocalStateDir 'IntelligentTerminal\agent-pane-sessions.jsonl'
         if (-not (Test-Path $jsonl)) { return }
@@ -531,6 +531,7 @@ function Get-AgentPaneSessions {
         for ($i = $records.Count - 1; $i -ge 0; $i--) {
             $r = $records[$i]
             $paneId = [string]$r.pane_session_id
+            if ($PaneSessionId -and $paneId -ne $PaneSessionId) { continue }
             if ($seen.Add($paneId)) {
                 $alive = $false
                 try { $st = Get-WtPaneStatus -App $App -SessionId $paneId; $alive = ($st -and $st.state -match 'run') } catch { $alive = $false }
@@ -555,7 +556,9 @@ function Resolve-AgentOwnerTabId {
 
     $listener = Start-WtEventListener -App $App -WaitForReady
     try {
-        Invoke-RunCommand -App $App -SessionId $OwnerPaneSessionId -Command 'echo ite2e-tab-id-probe' | Out-Null
+        # NoProfile fixtures have no prompt hook; emit one successful mark for attribution.
+        Invoke-RunCommand -App $App -SessionId $OwnerPaneSessionId -Command `
+            'powershell.exe -NoLogo -NoProfile -Command "[Console]::Write([char]27 + '']133;D;0'' + [char]7)"' | Out-Null
         $event = Wait-WtEvent -Listener $listener -TimeoutSec 15 -Predicate {
             $_.method -eq 'vt_sequence' -and
             "$($_.params.pane_id)" -eq $OwnerPaneSessionId -and
@@ -597,7 +600,7 @@ function Get-AgentPaneSession {
         [string]$OwnerPaneSessionId
     )
     process {
-        $sessions = @(Get-AgentPaneSessions -App $App)
+        $sessions = @(Get-AgentPaneSessions -App $App -PaneSessionId $PaneSessionId)
         if ($PaneSessionId) {
             return $sessions | Where-Object { $_.PaneSessionId -eq $PaneSessionId } | Select-Object -First 1
         }

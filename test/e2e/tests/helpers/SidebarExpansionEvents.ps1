@@ -25,6 +25,14 @@ function Set-TestSidebarScope {
             $item.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
         }
         else { Send-WtWindowKey -App $App -Vk 0x1B -RequireForeground | Out-Null }
+        Wait-Until -TimeoutSec 10 -Because 'the owned filter flyout closes before the next scope action' -Condition {
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$App.Hwnd)
+            if ($root.Current.ProcessId -ne $App.Pid) { throw 'Filter flyout window ownership changed.' }
+            $peer = $root.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::AutomationIdProperty, $entry.Id))
+            -not $peer -or $peer.Current.IsOffscreen
+        } | Out-Null
     }
 }
 

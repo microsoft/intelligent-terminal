@@ -7,6 +7,7 @@
 #include "TabStrip.h"
 #include "TerminalPage.h"
 #include "AgentIconUtils.h"
+#include "AgentPaneLog.h"
 #include "TabStripAutomationPeer.h"
 #include "..\RichTabProvider\ProviderBroker.h"
 #include "TabHeaderControl.h"
@@ -1683,13 +1684,20 @@ namespace winrt::TerminalApp::implementation
             background = WUX::Media::SolidColorBrush{ *color };
             foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(*color) };
         }
-        for (uint32_t index = 0; index < _historyItems.Size(); ++index)
-        {
-            const auto item = _historyItems.GetAt(index);
+        const auto applyCurrent = [&](const auto& item) {
             const auto isCurrent = item == current;
             item.IsCurrent(isCurrent);
             item.CurrentBackground(isCurrent ? background : nullptr);
             item.CurrentForeground(isCurrent ? foreground : nullptr);
+        };
+        for (const auto& item : _historySnapshot)
+        {
+            applyCurrent(item);
+        }
+        for (uint32_t index = 0; index < _historyItems.Size(); ++index)
+        {
+            const auto item = _historyItems.GetAt(index);
+            applyCurrent(item);
             if (const auto container = ItemsList().ContainerFromItem(item).try_as<ListViewItem>())
             {
                 _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), item);
@@ -2275,6 +2283,36 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::OnHistoryExpandedChanged(IInspectable const& sender, RoutedEventArgs const&)
     {
+#if defined(_DEBUG)
+        const auto traceFocus = [weak = get_weak()](const char* phase, const bool attempted = false, const bool succeeded = false) {
+            try
+            {
+                if (const auto self = weak.get())
+                {
+                    const auto root = self->XamlRoot();
+                    const auto heading = self->HistoryHeaderButton();
+                    const auto focused = root ? WUX::Input::FocusManager::GetFocusedElement(root) : nullptr;
+                    const auto dependency = focused.try_as<DependencyObject>();
+                    _agentPaneLog(
+                        std::string{ "HistoryCollapseFocus phase=" } + phase +
+                            " syncing=" + std::to_string(self->_syncingHistorySection) +
+                            " section=" + std::to_string(static_cast<bool>(self->_historySection.get())) +
+                            " expanded=" + std::to_string(self->_historyExpanded) +
+                            " attempted=" + std::to_string(attempted) +
+                            " succeeded=" + std::to_string(succeeded) +
+                            " actual_is_heading=" + std::to_string(heading && focused == heading) +
+                            " heading_enabled=" + std::to_string(heading && heading.IsEnabled()) +
+                            " heading_tabstop=" + std::to_string(heading && heading.IsTabStop()) +
+                            " heading_visible=" + std::to_string(heading && heading.Visibility() == Visibility::Visible) +
+                            " actual_class=" + (focused ? winrt::to_string(winrt::get_class_name(focused)) : "<none>") +
+                            " actual_id=" + (dependency ? winrt::to_string(WUX::Automation::AutomationProperties::GetAutomationId(dependency)) : "<none>"),
+                        AgentPaneLogLevel::Debug);
+                }
+            }
+            CATCH_LOG();
+        };
+        traceFocus("entry");
+#endif
         if (_syncingHistorySection || !_historySection.get())
         {
             return;
@@ -2283,8 +2321,46 @@ namespace winrt::TerminalApp::implementation
         {
             if (button == HistoryHeaderButton())
             {
+                bool restoreHeadingFocus = false;
+                if (!button.IsChecked().Value() && XamlRoot())
+                {
+                    auto focused = WUX::Input::FocusManager::GetFocusedElement(XamlRoot()).try_as<DependencyObject>();
+                    while (focused)
+                    {
+                        if (const auto row = focused.try_as<ListViewItem>())
+                        {
+                            const auto item = row.Content().try_as<TerminalApp::TabStripHistoryItem>();
+                            if (item && ItemsList().ContainerFromItem(item) == row)
+                            {
+                                restoreHeadingFocus = true;
+                            }
+                            break;
+                        }
+                        focused = WUX::Media::VisualTreeHelper::GetParent(focused);
+                    }
+                }
                 _historyExpanded = button.IsChecked().Value();
                 _updateHistoryVisualState();
+                if (restoreHeadingFocus)
+                {
+                    // Removing the focused row can move focus again during
+                    // ListView layout. Focus the surviving heading afterwards.
+                    ItemsList().UpdateLayout();
+                    const auto focusSucceeded = button.Focus(FocusState::Keyboard);
+                    (void)focusSucceeded;
+#if defined(_DEBUG)
+                    traceFocus("after-layout", true, focusSucceeded);
+#endif
+                }
+#if defined(_DEBUG)
+                else
+                {
+                    traceFocus("no-history-focus");
+                }
+                Dispatcher().RunAsync(Windows::UI::Core::CoreDispatcherPriority::Low, [traceFocus]() {
+                    traceFocus("dispatcher-low");
+                });
+#endif
             }
         }
     }
@@ -2744,7 +2820,11 @@ namespace winrt::TerminalApp::implementation
                 for (const auto& item : _historySnapshot)
                 {
                     if (item.SessionId() != session.sessionId ||
-                        (!session.agentId.empty() && item.AgentId() != session.agentId))
+                        (!session.agentId.empty() && item.AgentId() != session.agentId) ||
+                        (session.identityQualified &&
+                         (item.AgentSource() != session.source ||
+                          item.WslDistro() != session.wslDistro ||
+                          item.SessionUniverse() != session.universe)))
                     {
                         continue;
                     }
@@ -3282,10 +3362,52 @@ namespace winrt::TerminalApp::implementation
         return winrt::make<TabStripAutomationPeer>(*this);
     }
 
+    bool TabStrip::_tryMoveHistoryBoundaryFocus(const bool reverse)
+    {
+        const auto root = XamlRoot();
+        const auto heading = HistoryHeaderButton();
+        if (!root || !heading || !_isVerticalPresentation || _isRailCollapsed ||
+            !_sidebarFilters.RecentAgentSessionsVisible() || !heading.IsEnabled())
+        {
+            return false;
+        }
+        const auto focused = WUX::Input::FocusManager::GetFocusedElement(root);
+        if (reverse && focused != heading)
+        {
+            return false;
+        }
+        for (auto index = _displayItems.Size(); index > 0; --index)
+        {
+            const auto display = _displayItems.GetAt(index - 1);
+            const auto tab = display.Tab();
+            if (!tab)
+            {
+                continue;
+            }
+            if (const auto visibility = _tabItemVisibility.find(winrt::get_abi(tab));
+                visibility != _tabItemVisibility.end() && visibility->second.Item.get() == tab && !visibility->second.Visible)
+            {
+                continue;
+            }
+            if (reverse)
+            {
+                ItemsList().ScrollIntoView(display);
+                ItemsList().UpdateLayout();
+            }
+            const auto container = ItemsList().ContainerFromItem(display).try_as<ListViewItem>();
+            if (!container || container.Visibility() != Visibility::Visible)
+            {
+                return false;
+            }
+            return reverse ? container.Focus(FocusState::Keyboard) :
+                             focused == container && heading.Focus(FocusState::Keyboard);
+        }
+        return false;
+    }
+
     void TabStrip::_onHistoryPreviewKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)
     {
-        if (e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::Enter ||
-            _historyActivating || _historyLoading)
+        if (e.Handled())
         {
             return;
         }
@@ -3297,13 +3419,20 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         constexpr auto down = Windows::UI::Core::CoreVirtualKeyStates::Down;
-        if (WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Control), down) ||
-            WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Menu), down) ||
-            WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Shift), down))
+        if (e.OriginalKey() == Windows::System::VirtualKey::Tab)
+        {
+            if (!WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Control), down) &&
+                !WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Menu), down))
+            {
+                e.Handled(_tryMoveHistoryBoundaryFocus(
+                    WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Shift), down)));
+            }
+            return;
+        }
+        if (e.OriginalKey() != Windows::System::VirtualKey::Enter || _historyActivating || _historyLoading)
         {
             return;
         }
-
         auto focused = WUX::Input::FocusManager::GetFocusedElement(root).try_as<DependencyObject>();
         while (focused)
         {
@@ -3316,7 +3445,14 @@ namespace winrt::TerminalApp::implementation
                 const auto item = container.Content().try_as<TerminalApp::TabStripHistoryItem>();
                 if (item && ItemsList().ContainerFromItem(item) == container)
                 {
+                    // Consume modified Enter too, so ListView cannot turn it into ItemClick.
                     e.Handled(true);
+                    if (WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Control), down) ||
+                        WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Menu), down) ||
+                        WI_IsFlagSet(coreWindow.GetKeyState(Windows::System::VirtualKey::Shift), down))
+                    {
+                        return;
+                    }
                     HistoryActivationRequested.raise(*this, winrt::make<TabStripHistoryActivationEventArgs>(item));
                 }
                 return;

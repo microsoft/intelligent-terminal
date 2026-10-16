@@ -263,7 +263,10 @@ Describe 'Representative mouse helper regressions' -Tag 'Unit' {
         }
         Mock -ModuleName ItE2E Start-Sleep {}
         Mock -ModuleName ItE2E Invoke-RunCommand {
+            param($Command)
             if (-not $script:ownerProbeReady) { throw 'Probe emitted before subscription readiness.' }
+            $Command | Should -Match '\[Console\]::Write'
+            $Command | Should -Match '\]133;D;0'
         }
         Mock -ModuleName ItE2E Wait-WtEvent { [pscustomobject]@{ params = @{ tab_id = 'owned-tab' } } }
         Mock -ModuleName ItE2E Stop-WtEventListener {}

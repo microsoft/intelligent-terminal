@@ -96,6 +96,8 @@ namespace winrt::TerminalApp::implementation
     static Protocol::PaneInfo _getProtocolPaneInfo(const std::shared_ptr<Pane>& pane, const TerminalApp::ContentManager& manager)
     {
         Protocol::PaneInfo info{};
+        const auto paneSessionId = _getSessionIdFromPane(pane);
+        info.IsBackgroundTab = paneSessionId != winrt::guid{} && manager.KeptGroupForPane(paneSessionId) != winrt::guid{};
         info.IsAgentPane = pane->IsAgentPane();
         info.Pid = _getPidFromPane(pane);
 
@@ -392,8 +394,15 @@ namespace winrt::TerminalApp::implementation
     IAsyncOperation<Windows::Foundation::Collections::IVector<Protocol::PaneInfo>> TerminalPage::GetProtocolPanes(uint32_t tabIdFilter)
     {
         auto strong = get_strong();
+#ifdef _DEBUG
+        const auto requestedAt = GetTickCount64();
+        _agentPaneLog("protocol pane snapshot queued");
+#endif
 
         co_await wil::resume_foreground(Dispatcher());
+#ifdef _DEBUG
+        _agentPaneLog(fmt::format("protocol pane snapshot dispatched window={} delay_ms={}", _WindowProperties.WindowId(), GetTickCount64() - requestedAt));
+#endif
 
         auto panes = winrt::single_threaded_vector<Protocol::PaneInfo>();
         const auto runtimeTabs = _RuntimeTabs();
@@ -440,6 +449,9 @@ namespace winrt::TerminalApp::implementation
             });
         }
 
+#ifdef _DEBUG
+        _agentPaneLog(fmt::format("protocol pane snapshot completed window={} panes={} elapsed_ms={}", _WindowProperties.WindowId(), panes.Size(), GetTickCount64() - requestedAt));
+#endif
         co_return panes;
     }
 

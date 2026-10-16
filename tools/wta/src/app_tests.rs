@@ -11,6 +11,134 @@ use crate::app_contracts::{PermOption, PlanEntry};
 use serde_json::json;
 use std::sync::Mutex;
 
+fn resume_envelope_arguments(command: &str) -> Vec<String> {
+    let wide: Vec<u16> = command.encode_utf16().chain(Some(0)).collect();
+    let mut count = 0;
+    // The input is NUL terminated; Windows owns the returned allocation until
+    // LocalFree, and each of its count pointers addresses a terminated argument.
+    unsafe {
+        let args = windows_sys::Win32::UI::Shell::CommandLineToArgvW(wide.as_ptr(), &mut count);
+        assert!(!args.is_null());
+        let result = std::slice::from_raw_parts(args, count as usize)
+            .iter()
+            .map(|&arg| {
+                let mut len = 0;
+                while *arg.add(len) != 0 {
+                    len += 1;
+                }
+                String::from_utf16(std::slice::from_raw_parts(arg, len)).unwrap()
+            })
+            .collect();
+        windows_sys::Win32::Foundation::LocalFree(args.cast());
+        result
+    }
+}
+
+#[test]
+fn helper_resume_envelope_preserves_qualified_launch_contract() {
+    let bare_path = helper_resume_launch_envelope(
+        "copilot",
+        "selected-session",
+        &SessionLocation::Host,
+        r"C:\project\",
+        None,
+        "cmd /d /s /c \"copilot --resume selected-session\"",
+    );
+    assert_eq!(resume_envelope_arguments(&bare_path)[3], r"C:\project\");
+    for (location, backend, command) in [
+        (
+            SessionLocation::Host,
+            "host:copilot",
+            r#"cmd /d /s /c ""C:\resolved tools\copilot.cmd" --resume selected-session""#,
+        ),
+        (
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+            "wsl:Ubuntu:copilot",
+            r#"wsl.exe -d Ubuntu --cd "/home/u/a b" -- bash -lc "copilot --resume selected-session""#,
+        ),
+    ] {
+        let envelope = helper_resume_launch_envelope(
+            "copilot",
+            "selected-session",
+            &location,
+            r#"C:\cwd with spaces\"tail\"#,
+            Some("selected-home"),
+            command,
+        );
+        assert_eq!(
+            resume_envelope_arguments(&envelope),
+            [
+                "intellterm-resume-v1",
+                backend,
+                "selected-session",
+                r#"C:\cwd with spaces\"tail\"#,
+                "selected-home",
+                command,
+            ]
+        );
+        assert!(!envelope.contains("echo "));
+        assert!(!envelope.contains("&&"));
+    }
+}
+
+#[test]
+fn helper_persisted_resume_commandline_only_wraps_host_commands() {
+    let host = "copilot --resume session-id";
+    assert_eq!(
+        helper_persisted_resume_commandline(&SessionLocation::Host, host),
+        format!("cmd /d /s /c \"{host}\"")
+    );
+    let wsl = "wsl.exe -d Ubuntu -- bash -lc \"copilot --resume session-id\"";
+    for location in [
+        SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        },
+        SessionLocation::Unknown,
+    ] {
+        assert_eq!(helper_persisted_resume_commandline(&location, wsl), wsl);
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn resumed_pane_host_wrapper_executes_quoted_cmd_shim() {
+    use std::os::windows::process::CommandExt;
+
+    let directory = std::env::current_dir()
+        .unwrap()
+        .join(format!("wta resume shim {}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let shim = directory.join("copilot shim.cmd");
+    std::fs::write(&shim, "@echo off\r\necho resume-args:%~1:%~2\r\n").unwrap();
+    let command = format!("\"{}\" --resume \"session-id\"", shim.display());
+    let persisted = helper_persisted_resume_commandline(&SessionLocation::Host, &command);
+    let output = crate::wt_protocol_events::resumed_pane_binding_event(
+        "copilot",
+        "session-id",
+        "pane-new",
+        &SessionLocation::Host,
+        None,
+        &persisted,
+        None,
+    )
+    .unwrap();
+    let event: serde_json::Value = serde_json::from_str(&output).unwrap();
+    let persisted = event["params"]["resume_commandline"].as_str().unwrap();
+    let result = std::process::Command::new("cmd")
+        .raw_arg(persisted.strip_prefix("cmd ").unwrap())
+        .output();
+    std::fs::remove_file(&shim).unwrap();
+    std::fs::remove_dir(&directory).unwrap();
+    let result = result.unwrap();
+    assert!(result.status.success(), "{:?}", result);
+    assert_eq!(
+        String::from_utf8(result.stdout).unwrap().trim(),
+        "resume-args:--resume:session-id"
+    );
+}
+
 #[test]
 fn qualified_session_removal_only_demotes_matching_helper_scope() {
     let params = crate::session_registry::SessionRemovedParams {
@@ -2378,6 +2506,15 @@ fn helper_still_publishes_events_it_originates() {
         cwd: PathBuf::from("/work"),
         title: "t".into(),
     });
+    let mut row = crate::session_registry::SessionInfo::new(
+        agent_client_protocol::schema::v1::SessionId::new("shell-sid"),
+        PathBuf::from("/work"),
+    );
+    row.cli_source = Some(CliSource::Gemini);
+    row.provider_id = Some("gemini".into());
+    row.location = SessionLocation::Host;
+    row.pane_session_id = Some(pane.into());
+    app.current_tab_mut().agents_view.snapshot = Some(vec![row]);
 
     app.handle_event(AppEvent::WtEvent {
         method: "vt_sequence".to_string(),
@@ -2388,11 +2525,307 @@ fn helper_still_publishes_events_it_originates() {
 
     assert!(
         matches!(
-            rx.try_recv(),
+            rx.try_recv().map(|update| update.event),
             Ok(SessionEvent::PaneClosed { ref pane_session_id }) if pane_session_id == pane
         ),
         "helper exit inference must remain available as a fallback"
     );
+}
+
+#[test]
+fn qualified_resume_completion_preserves_identity_without_new_pane_snapshot() {
+    use crate::agent_sessions::{SessionEvent, SessionLocation};
+    use crate::session_registry::{
+        HistoryRowKey, SessionHookScope, SessionHookUpdate, SessionIdentity,
+    };
+    for (provider, location, universe) in [
+        ("copilot", SessionLocation::Host, None),
+        (
+            "gemini",
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+            None,
+        ),
+        (
+            "claude",
+            SessionLocation::Host,
+            Some("alternate".to_string()),
+        ),
+    ] {
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.set_session_hook_tx(tx);
+        let identity = SessionIdentity {
+            session_id: agent_client_protocol::schema::v1::SessionId::new("shared-id"),
+            history_key: HistoryRowKey::new(provider, location, "shared-id", universe),
+        };
+        let update = SessionHookUpdate {
+            event: SessionEvent::ResumePaneAssigned {
+                key: "shared-id".into(),
+                pane_session_id: "new-pane".into(),
+            },
+            scope: SessionHookScope {
+                identity: Some(identity.clone()),
+                pane_session_id: Some("new-pane".into()),
+                ..Default::default()
+            },
+        };
+        app.handle_event(AppEvent::QualifiedAgentSessionEvent(update));
+        let published = rx.try_recv().unwrap();
+        assert_eq!(published.scope.identity, Some(identity));
+        assert_eq!(published.scope.pane_session_id.as_deref(), Some("new-pane"));
+    }
+}
+
+#[tokio::test]
+async fn qualified_resume_actual_dispatch_and_completion_isolate_colliding_rows() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{
+        InMemoryRegistry, SessionIdentity, SessionInfo, SessionRegistry,
+    };
+    let _capture = crate::shell::wt_channel::capture_test_pane_callbacks();
+    let _events = crate::wt_protocol_events::capture_test_published_events();
+    for selected_location in [
+        SessionLocation::Host,
+        SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        },
+    ] {
+        for initial_status in [AgentStatus::Historical, AgentStatus::Ended] {
+            for working_before_completion in [false, true] {
+                let (mut app, mut master_rx) = test_app_with_master_rx();
+                app.window_id = Some("41".into());
+                let (hook_tx, mut hook_rx) = tokio::sync::mpsc::unbounded_channel();
+                app.set_session_hook_tx(hook_tx);
+                let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+                app.set_agent_event_tx(event_tx);
+                let registry = InMemoryRegistry::new();
+                let mut rows = Vec::new();
+                for location in [
+                    SessionLocation::Host,
+                    SessionLocation::Wsl {
+                        distro: "Ubuntu".into(),
+                    },
+                    SessionLocation::Wsl {
+                        distro: "Debian".into(),
+                    },
+                ] {
+                    let mut row = SessionInfo::new(
+                        agent_client_protocol::schema::v1::SessionId::new("shared-resume"),
+                        std::path::PathBuf::new(),
+                    );
+                    row.provider_id = Some("copilot".into());
+                    row.cli_source = Some(CliSource::Copilot);
+                    row.location = location;
+                    row.status = Some(initial_status.clone());
+                    registry.upsert(row.clone()).await;
+                    rows.push(row);
+                }
+                let mut alternate = rows.last().unwrap().clone();
+                alternate.session_universe = Some("alternate-store".into());
+                registry.upsert(alternate.clone()).await;
+                rows.push(alternate);
+                let selected = rows
+                    .iter()
+                    .find(|row| row.location == selected_location)
+                    .unwrap();
+                let identity = SessionIdentity::from_info(selected);
+                let display_row = session_info_to_agent_session(selected);
+                app.current_tab_mut().agents_view.snapshot = Some(rows.clone());
+                app.agent_sessions
+                    .merge_historical(vec![display_row.clone()]);
+
+                app.dispatch_resume(&display_row);
+                assert!(
+                    master_rx.try_recv().is_err(),
+                    "dispatch must not send a raw-id RPC"
+                );
+                let optimistic = hook_rx.try_recv().expect("actual dispatch must publish");
+                assert!(matches!(
+                    optimistic.event,
+                    SessionEvent::ResumeDispatched { .. }
+                ));
+                assert_eq!(optimistic.scope.identity.as_ref(), Some(&identity));
+                assert!(
+                    registry
+                        .apply_event_identity(&identity, optimistic.event)
+                        .await
+                );
+                assert!(
+                    hook_rx.try_recv().is_err(),
+                    "no duplicate raw-id publication"
+                );
+                assert_eq!(
+                    registry.lookup_identity(&identity).await.unwrap().status,
+                    Some(AgentStatus::Idle)
+                );
+                for row in rows.iter().filter(|row| row.location != selected_location) {
+                    let unchanged = registry
+                        .lookup_identity(&SessionIdentity::from_info(row))
+                        .await
+                        .unwrap();
+                    assert_eq!(unchanged.status, row.status);
+                    assert_eq!(unchanged.pane_session_id, row.pane_session_id);
+                }
+
+                if working_before_completion {
+                    app.handle_event(AppEvent::QualifiedAgentSessionEvent(
+                        crate::session_registry::SessionHookUpdate {
+                            event: SessionEvent::ToolStarting {
+                                key: "shared-resume".into(),
+                                tool_name: "edit".into(),
+                            },
+                            scope: crate::session_registry::SessionHookScope {
+                                identity: Some(identity.clone()),
+                                ..Default::default()
+                            },
+                        },
+                    ));
+                    let working = hook_rx.try_recv().unwrap();
+                    assert_eq!(working.scope.identity.as_ref(), Some(&identity));
+                    assert!(
+                        registry
+                            .apply_event_identity(&identity, working.event)
+                            .await
+                    );
+                }
+                let mut callbacks = crate::shell::wt_channel::take_test_pane_callbacks();
+                assert_eq!(callbacks.len(), 1);
+                callbacks.pop().unwrap()("resumed-pane".into());
+                app.handle_event(
+                    event_rx
+                        .try_recv()
+                        .expect("actual callback must post completion"),
+                );
+                let completion = hook_rx.try_recv().unwrap();
+                assert_eq!(completion.scope.identity.as_ref(), Some(&identity));
+                assert!(matches!(
+                    completion.event,
+                    SessionEvent::ResumePaneAssigned { .. }
+                ));
+                assert!(
+                    registry
+                        .apply_event_identity(&identity, completion.event)
+                        .await
+                );
+                assert!(event_rx.try_recv().is_err());
+                assert!(hook_rx.try_recv().is_err());
+                let resumed = registry.lookup_identity(&identity).await.unwrap();
+                assert_eq!(resumed.pane_session_id.as_deref(), Some("resumed-pane"));
+                assert_eq!(
+                    resumed.status,
+                    Some(if working_before_completion {
+                        AgentStatus::Working
+                    } else {
+                        AgentStatus::Idle
+                    })
+                );
+                for row in rows.iter().filter(|row| row.location != selected_location) {
+                    let unchanged = registry
+                        .lookup_identity(&SessionIdentity::from_info(row))
+                        .await
+                        .unwrap();
+                    assert_eq!(unchanged.status, row.status);
+                    assert_eq!(unchanged.pane_session_id, row.pane_session_id);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn qualified_hooks_helper_queue_preserves_identity_for_tool_and_end() {
+    use crate::agent_sessions::{CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionIdentity, SessionInfo, WtaExtRequest};
+    let mut app = test_app();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.set_session_hook_tx(tx);
+    let mut row = SessionInfo::new(
+        agent_client_protocol::schema::v1::SessionId::new("scoped-helper"),
+        std::path::PathBuf::from("/project"),
+    );
+    row.provider_id = Some("copilot".into());
+    row.cli_source = Some(CliSource::Copilot);
+    row.location = SessionLocation::Wsl {
+        distro: "Ubuntu".into(),
+    };
+    row.session_universe = Some("selected-home".into());
+    row.pane_session_id = Some("pane-b".into());
+    let identity = SessionIdentity::from_info(&row);
+    app.current_tab_mut().agents_view.snapshot = Some(vec![row]);
+    for event in [
+        SessionEvent::ToolStarting {
+            key: "scoped-helper".into(),
+            tool_name: "edit".into(),
+        },
+        SessionEvent::SessionStopped {
+            key: "scoped-helper".into(),
+            reason: "exit".into(),
+        },
+    ] {
+        app.publish_session_hook(event);
+        let update = rx.try_recv().unwrap();
+        assert_eq!(update.scope.identity, Some(identity.clone()));
+        let wire = crate::session_registry::build_scoped_session_hook_request(
+            &update.event,
+            &update.scope,
+        );
+        let WtaExtRequest::SessionHook(parsed) = crate::session_registry::parse_ext_request(wire)
+        else {
+            panic!("hook must parse");
+        };
+        assert_eq!(parsed.scope.identity, Some(identity.clone()));
+        assert_eq!(parsed.event, update.event);
+    }
+}
+
+pub(crate) fn helper_queued_session_hook(
+    rows: Vec<crate::session_registry::SessionInfo>,
+    event: crate::agent_sessions::SessionEvent,
+) -> Option<crate::session_registry::SessionHookUpdate> {
+    let mut app = test_app();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.set_session_hook_tx(tx);
+    app.current_tab_mut().agents_view.snapshot = Some(rows);
+    app.publish_session_hook(event);
+    rx.try_recv().ok()
+}
+
+#[test]
+fn qualified_hooks_helper_pane_queue_requires_unique_owner() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    use crate::session_registry::SessionInfo;
+    let mut row = SessionInfo::new(
+        agent_client_protocol::schema::v1::SessionId::new("pane-owner"),
+        std::path::PathBuf::from("C:\\repo"),
+    );
+    row.cli_source = Some(CliSource::Copilot);
+    row.location = SessionLocation::Host;
+    row.pane_session_id = Some("pane".into());
+    row.provider_id = Some("copilot".into());
+    let mut other = row.clone();
+    other.session_universe = Some("other-home".into());
+    let mut unqualified = row.clone();
+    unqualified.provider_id = None;
+    for event in [
+        SessionEvent::PaneClosed {
+            pane_session_id: "PANE".into(),
+        },
+        SessionEvent::ConnectionFailed {
+            pane_session_id: "PANE".into(),
+            reason: "failed".into(),
+        },
+    ] {
+        for rows in [
+            vec![],
+            vec![unqualified.clone()],
+            vec![row.clone(), other.clone()],
+        ] {
+            assert!(helper_queued_session_hook(rows, event.clone()).is_none());
+        }
+        assert!(helper_queued_session_hook(vec![row.clone(), row.clone()], event).is_some());
+    }
 }
 
 pub(super) fn test_app_with_master_rx() -> (
@@ -4317,6 +4750,35 @@ fn restored_shell_agent_session_registers_as_born_bound() {
             ..
         }) if key == agent_session_id && pane_session_id == pane_id
     ));
+}
+
+#[test]
+fn restored_birth_forwards_qualified_session_universe() {
+    for distro in [None, Some("Ubuntu")] {
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.handle_event(AppEvent::WtEvent {
+            method: "session_born_bound".into(),
+            pane_id: "restored-pane".into(),
+            tab_id: None,
+            params: json!({
+                "agent_session_id": "same-session",
+                "agent": "copilot",
+                "cwd": "/project",
+                "wsl_distro": distro,
+                "session_universe": "selected-home",
+            }),
+        });
+        let crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+            wsl_distro,
+            session_universe,
+            ..
+        } = master_rx.try_recv().expect("restored birth forwarded")
+        else {
+            panic!("expected a born-bound registration");
+        };
+        assert_eq!(wsl_distro.as_deref(), distro);
+        assert_eq!(session_universe.as_deref(), Some("selected-home"));
+    }
 }
 
 #[test]
@@ -8849,26 +9311,15 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
         "resume tab must use the session title: {:?}",
         cmd.argv
     );
-    // The CLI invocation is still wrapped in `cmd /c` so .cmd shims
-    // resolve via PATHEXT, but the legacy `cd /d` prefix is gone —
-    // cwd is threaded through wtcli's `-d` flag now. Issue #135:
-    // a muted "Resuming … session …" banner is prepended so the
-    // user sees immediate feedback while the CLI cold-starts; the
-    // CLI's alt-screen TUI overwrites it on success. (Previously
-    // SGR 1;36;5 — bold + cyan + slow-blink — was used, but the
-    // blink + bold were too noisy. Now SGR 2;37 = dim + white, a
-    // low-contrast tone similar to the cwd line in a typical
-    // Copilot-CLI shell prompt.)
-    assert!(
-        argv.contains("cmd /c echo \x1b[2;37mResuming claude session abc-123...\x1b[0m"),
-        "expected dim-white Resuming banner echo; argv: {:?}",
-        argv
+    let launch = &cmd.argv.windows(2).find(|args| args[0] == "-c").unwrap()[1];
+    let envelope = resume_envelope_arguments(launch);
+    assert_eq!(
+        &envelope[..3],
+        ["intellterm-resume-v1", "host:claude", "abc-123"]
     );
-    assert!(
-        argv.contains("&& claude --resume abc-123"),
-        "expected resume command chained after banner; argv: {}",
-        argv
-    );
+    assert_eq!(envelope[3], real_cwd_str);
+    assert_eq!(envelope[4], "");
+    assert_eq!(envelope[5], "cmd /d /s /c \"claude --resume abc-123\"");
     assert!(
         !argv.contains("cd /d"),
         "argv must NOT contain cd /d (cwd is now passed via -d): {}",
@@ -8938,10 +9389,10 @@ fn enter_on_history_row_with_missing_cwd_omits_d_flag() {
         "argv must omit -d when cwd is missing: {}",
         argv
     );
-    assert!(
-        !argv.contains(&missing.to_string_lossy().to_string()),
-        "argv must not embed the stale cwd: {}",
-        argv
+    let launch = &cmd.argv.windows(2).find(|args| args[0] == "-c").unwrap()[1];
+    assert_eq!(
+        resume_envelope_arguments(launch)[3],
+        missing.to_string_lossy()
     );
 }
 
@@ -26894,6 +27345,45 @@ fn known_cli_id_returns_none_for_unknown_variant() {
 }
 
 #[test]
+fn helper_cli_resume_rejects_alternate_universe_before_dispatch() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::SessionInfo;
+    for location in [
+        SessionLocation::Host,
+        SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        },
+    ] {
+        let mut info = SessionInfo::new(
+            agent_client_protocol::schema::v1::SessionId::new("alternate-home"),
+            std::path::PathBuf::from("/home/u"),
+        );
+        info.cli_source = Some(CliSource::Copilot);
+        info.provider_id = Some("copilot".into());
+        info.location = location;
+        info.origin = Some(SessionOrigin::Unknown);
+        info.status = Some(AgentStatus::Historical);
+        info.session_universe = Some("unavailable-alternate-store".into());
+        let row = session_info_to_agent_session(&info);
+        let mut app = test_app();
+        app.window_id = Some("41".into());
+        app.tab_mut(DEFAULT_TAB_ID).agents_view.snapshot = Some(vec![info]);
+        app.agent_sessions.merge_historical(vec![row.clone()]);
+        app.dispatch_resume(&row);
+        assert!(app.last_dispatched_command_for_test().is_none());
+        assert_eq!(
+            app.agent_sessions
+                .iter_sorted()
+                .into_iter()
+                .find(|session| session.key == row.key)
+                .unwrap()
+                .status,
+            AgentStatus::Historical
+        );
+    }
+}
+
+#[test]
 fn antigravity_resume_keeps_acp_and_cli_sessions_in_their_own_stores() {
     use crate::agent_sessions::{
         AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin,
@@ -26945,7 +27435,12 @@ fn antigravity_resume_keeps_acp_and_cli_sessions_in_their_own_stores() {
             assert_eq!(event["params"]["window_id"], "41");
         } else {
             assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
-            assert!(command.argv.join(" ").contains(
+            let launch = &command
+                .argv
+                .windows(2)
+                .find(|args| args[0] == "-c")
+                .unwrap()[1];
+            assert!(resume_envelope_arguments(launch)[5].contains(
                 "wsl.exe -d Ubuntu --cd \"/home/u/project with spaces\" -- bash -lc \"exec 'agy' '--conversation' 'antigravity-history'\""
             ));
             assert!(!events
@@ -27001,7 +27496,7 @@ fn antigravity_wsl_cli_resume_preserves_literal_cwd_arguments() {
             .find(|args| args[0] == "-c")
             .unwrap();
         assert_eq!(
-            command[1],
+            resume_envelope_arguments(&command[1])[5],
             format!(
                 "wsl.exe -d Ubuntu --cd {argument} -- bash -lc \"exec 'agy' '--conversation' 'antigravity-history'\""
             ),
@@ -27140,18 +27635,20 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
         .expect("a command was dispatched");
     assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
     let argv = cmd.argv.join(" ");
+    let launch = &cmd.argv.windows(2).find(|args| args[0] == "-c").unwrap()[1];
+    let envelope = resume_envelope_arguments(launch);
     assert!(
-        argv.contains(
+        envelope[5].contains(
             "wsl -d Ubuntu --cd \"/home/u/proj\" -- bash -lc \"copilot --resume abc-123\""
         ),
         "expected in-distro resume; argv: {argv}"
     );
-    // The loading banner keeps the short session id and also names the
-    // distro for WSL rows.
-    assert!(
-        argv.contains("Resuming copilot session abc-123 in Ubuntu (WSL)"),
-        "expected distro-named WSL banner; argv: {argv}"
+    assert_eq!(
+        &envelope[..3],
+        ["intellterm-resume-v1", "wsl:Ubuntu:copilot", "abc-123"]
     );
+    assert_eq!(envelope[3], "/home/u/proj");
+    assert!(!launch.contains("echo "));
     // WSL rows must not also pass the Windows `-d <cwd>` flag.
     assert!(
         !argv.contains(" -d /home"),

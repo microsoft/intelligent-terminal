@@ -1932,6 +1932,7 @@ fn make_state_with_retirement_pending_timeout(
         deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
+        scoped_hook_ownership: Mutex::new(HashMap::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
         retired_agent_cells: std::sync::Mutex::new(Vec::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
@@ -10646,13 +10647,13 @@ async fn sessions_list_probe_live_registration_keeps_new_pane_ownership() {
     ] {
         for background in [false, true] {
             let pane = uuid::Uuid::new_v4();
-            let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
-                "pane": {
+            let mock = Arc::new(MockWtChannel::responding(serde_json::json!({ "panes": [
+                {
                     "session_id": pane.to_string(),
                     "window_id": 84,
                     "is_background_tab": background
                 }
-            })));
+            ] })));
             let state = make_state_with_wt(mock.clone());
             let mut row = SessionInfo::new(
                 SessionId::new(uuid::Uuid::new_v4().to_string()),
@@ -10691,18 +10692,130 @@ async fn sessions_list_probe_live_registration_keeps_new_pane_ownership() {
             assert_eq!(raw["sessions"][0]["background_tab"], background);
             assert_eq!(
                 mock.calls(),
-                [(
-                    "get_pane_context".into(),
-                    serde_json::json!({
-                        "session_id": pane.to_string(), "max_lines": 0, "max_chars": 0
-                    })
-                )]
+                [("list_panes".into(), serde_json::json!({ "all": true }))]
             );
             assert_eq!(
                 state.registry.lookup_identity(&identity).await.unwrap(),
                 row
             );
         }
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sessions_list_batches_ownership_without_losing_foreign_or_background_panes() {
+    use crate::agent_sessions::{AgentStatus, SessionLocation};
+    use crate::session_registry::{self, SessionInfo};
+
+    let panes: Vec<_> = (0..24).map(|_| uuid::Uuid::new_v4()).collect();
+    let metadata = serde_json::json!({ "panes": [
+        { "session_id": panes[22].to_string(), "window_id": 2, "is_background_tab": false },
+        { "session_id": panes[23].to_string(), "window_id": 1, "is_background_tab": true },
+        { "session_id": panes[21].to_string(), "window_id": 1, "is_background_tab": false },
+        { "session_id": panes[21].to_string(), "window_id": 2, "is_background_tab": false },
+        { "session_id": panes[20].to_string(), "window_id": 0, "is_background_tab": false }
+    ] });
+    let mock = Arc::new(MockWtChannel::responding(metadata));
+    let state = make_state_with_wt(mock.clone());
+    for (index, pane) in panes.iter().enumerate() {
+        let mut row = SessionInfo::new(
+            SessionId::new(format!("batched-owner-{index}")),
+            PathBuf::from("C:\\repo"),
+        );
+        row.provider_id = Some("copilot".into());
+        row.location = SessionLocation::Host;
+        row.pane_session_id = Some(pane.to_string());
+        row.status = Some(AgentStatus::Working);
+        state.registry.upsert(row).await;
+    }
+    let response = handle_sessions_list_with_probe(
+        &state,
+        None,
+        &Default::default(),
+        |rows| async move { rows },
+    )
+    .await
+    .unwrap();
+    let snapshot = session_registry::parse_sessions_list_response(&response.0).unwrap();
+    assert_eq!(snapshot.sessions.len(), 24);
+    for row in snapshot.sessions {
+        assert_eq!(row.status, Some(AgentStatus::Working));
+        match row.session_id.0.as_ref() {
+            "batched-owner-22" => {
+                assert_eq!(row.owner_window_id, Some(2));
+                assert_eq!(row.background_tab, Some(false));
+            }
+            "batched-owner-23" => {
+                assert_eq!(row.owner_window_id, Some(1));
+                assert_eq!(row.background_tab, Some(true));
+            }
+            _ => {
+                assert_eq!(row.owner_window_id, None);
+                assert_eq!(row.background_tab, None);
+            }
+        }
+    }
+    assert_eq!(
+        mock.calls(),
+        [("list_panes".into(), serde_json::json!({ "all": true }))]
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sessions_list_ownership_timeout_preserves_live_status() {
+    use crate::agent_sessions::{AgentStatus, SessionLocation};
+    use crate::session_registry::{self, SessionInfo};
+
+    for (seconds, expected_owner) in [(0, Some(2)), (3, None)] {
+        let pane = uuid::Uuid::new_v4();
+        let mock = Arc::new(MockWtChannel {
+            response_delay: std::time::Duration::from_secs(seconds),
+            ..MockWtChannel::responding(serde_json::json!({ "panes": [
+                { "session_id": pane.to_string(), "window_id": 2, "is_background_tab": false }
+            ] }))
+        });
+        let mut state = make_state_with_wt(mock.clone());
+        let mut row = SessionInfo::new(SessionId::new("slow-owner"), PathBuf::from("C:\\repo"));
+        row.provider_id = Some("copilot".into());
+        row.location = SessionLocation::Host;
+        row.pane_session_id = Some(pane.to_string());
+        row.status = Some(AgentStatus::Working);
+        state.registry.upsert(row.clone()).await;
+        let response =
+            handle_sessions_list_with_probe(&state, None, &Default::default(), |rows| async move {
+                rows
+            })
+            .await
+            .unwrap();
+        let snapshot = session_registry::parse_sessions_list_response(&response.0).unwrap();
+        assert_eq!(snapshot.ownership_pending, expected_owner.is_none());
+        assert_eq!(snapshot.sessions.len(), 1);
+        let actual = &snapshot.sessions[0];
+        assert_eq!(actual.status, row.status);
+        assert_eq!(actual.owner_window_id, expected_owner);
+        assert_eq!(actual.background_tab, expected_owner.map(|_| false));
+        assert_eq!(
+            mock.calls(),
+            [("list_panes".into(), serde_json::json!({ "all": true }))]
+        );
+        assert_eq!(state.registry.snapshot().await, [row.clone()]);
+        Arc::get_mut(&mut state).unwrap().wt =
+            Some(Arc::new(MockWtChannel::responding(serde_json::json!({
+                "panes": [{
+                    "session_id": pane.to_string(), "window_id": 2, "is_background_tab": false
+                }]
+            }))));
+        let response =
+            handle_sessions_list_with_probe(&state, None, &Default::default(), |rows| async move {
+                rows
+            })
+            .await
+            .unwrap();
+        let recovered = session_registry::parse_sessions_list_response(&response.0).unwrap();
+        assert!(!recovered.ownership_pending);
+        assert_eq!(recovered.sessions[0].owner_window_id, Some(2));
+        assert_eq!(recovered.sessions[0].status, row.status);
+        assert_eq!(state.registry.snapshot().await, [row]);
     }
 }
 
@@ -11145,6 +11258,53 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
         }
     }
     assert_eq!(supported_cases, 40);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sidebar_activation_rejects_alternate_universe_before_creating_or_binding() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    for location in [
+        SessionLocation::Host,
+        SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        },
+    ] {
+        let mock = Arc::new(MockWtChannel::responding(
+            serde_json::json!({"session_id": "wrong-store-pane"}),
+        ));
+        let state = make_state_with_wt(mock.clone());
+        let mut row = SessionInfo::new(
+            SessionId::new("alternate-store-session"),
+            std::path::PathBuf::from("/home/u/project"),
+        );
+        row.provider_id = Some("copilot".into());
+        row.cli_source = Some(CliSource::Copilot);
+        row.location = location;
+        row.origin = Some(SessionOrigin::Unknown);
+        row.status = Some(AgentStatus::Historical);
+        row.session_universe = Some("unavailable-alternate-store".into());
+        let identity = SessionIdentity::from_info(&row);
+        state.registry.upsert(row.clone()).await;
+        let params = SessionActivateParams {
+            identity: identity.clone(),
+            window_id: 42,
+            activation_id: "alternate-store".into(),
+        };
+        let response = tokio::task::LocalSet::new()
+            .run_until(handle_session_activate(&state, &params))
+            .await
+            .unwrap();
+        let response =
+            crate::session_registry::parse_session_activate_response(&response.0).unwrap();
+        assert!(!response.accepted);
+        assert!(mock.calls().is_empty());
+        let unchanged = state.registry.lookup_identity(&identity).await.unwrap();
+        assert_eq!(unchanged.status, row.status);
+        assert_eq!(unchanged.session_universe, row.session_universe);
+        assert!(unchanged.pane_session_id.is_none());
+        assert!(!unchanged.born_bound_pane);
+    }
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -11850,7 +12010,9 @@ async fn sidebar_cli_resume_enables_watcher_activity_for_new_generation() {
     use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
 
     let _resolver = mock_native_delegate_executables();
-    for stale_hook in [false, true] {
+    for (stale_hook, stale_scoped_hook) in
+        [(false, false), (true, false), (false, true), (true, true)]
+    {
         let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
             "session_id": "resumed-watcher-pane"
         })));
@@ -11869,6 +12031,13 @@ async fn sidebar_cli_resume_enables_watcher_activity_for_new_generation() {
         state.registry.upsert(row).await;
         if stale_hook {
             state.hook_owned.lock().await.insert(sid.clone());
+        }
+        if stale_scoped_hook {
+            state
+                .scoped_hook_ownership
+                .lock()
+                .await
+                .insert(identity.clone(), true);
         }
         let response = execute_session_activation(
             &state,
@@ -12786,6 +12955,7 @@ struct MockWtChannel {
     fail_with: Option<String>,
     fail_on_method: Option<&'static str>,
     response: serde_json::Value,
+    response_delay: std::time::Duration,
 }
 
 impl MockWtChannel {
@@ -12795,6 +12965,7 @@ impl MockWtChannel {
             fail_with: None,
             fail_on_method: None,
             response: serde_json::json!({ "ok": true }),
+            response_delay: std::time::Duration::ZERO,
         }
     }
     fn responding(response: serde_json::Value) -> Self {
@@ -12803,6 +12974,7 @@ impl MockWtChannel {
             fail_with: None,
             fail_on_method: None,
             response,
+            response_delay: std::time::Duration::ZERO,
         }
     }
     fn failing(message: &str) -> Self {
@@ -12811,6 +12983,7 @@ impl MockWtChannel {
             fail_with: Some(message.to_string()),
             fail_on_method: None,
             response: serde_json::Value::Null,
+            response_delay: std::time::Duration::ZERO,
         }
     }
     fn calls(&self) -> Vec<(String, serde_json::Value)> {
@@ -12829,6 +13002,9 @@ impl crate::shell::wt_channel::WtChannel for MockWtChannel {
             .lock()
             .unwrap()
             .push((method.to_string(), params));
+        if !self.response_delay.is_zero() {
+            tokio::time::sleep(self.response_delay).await;
+        }
         match &self.fail_with {
             Some(msg) if self.fail_on_method.is_none_or(|target| target == method) => {
                 Err(anyhow::anyhow!("{msg}"))
@@ -12890,6 +13066,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
+        scoped_hook_ownership: Mutex::new(HashMap::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
         retired_agent_cells: std::sync::Mutex::new(Vec::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
@@ -17758,6 +17935,691 @@ async fn session_born_bound_marks_born_bound_not_hook_owned() {
 }
 
 #[tokio::test]
+async fn host_default_birth_preserves_unknown_provider_legacy_fallback() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    for provider in ["", "custom-provider"] {
+        let state = make_state();
+        let sid = acp::schema::v1::SessionId::new("legacy-birth");
+        let event = SessionEvent::SessionStarted {
+            key: sid.to_string(),
+            cli_source: CliSource::Unknown(provider.into()),
+            pane_session_id: "legacy-pane".into(),
+            cwd: std::path::PathBuf::from("C:\\legacy"),
+            title: "Legacy conversation".into(),
+        };
+        handle_scoped_session_born_bound(&state, event, None, None)
+            .await
+            .unwrap();
+        let row = state.registry.lookup(&sid).await.unwrap();
+        assert_eq!(row.pane_session_id.as_deref(), Some("legacy-pane"));
+        assert!(state.born_bound.lock().await.contains(&sid));
+        assert!(state.scoped_hook_ownership.lock().await.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn host_default_birth_preserves_single_foreign_collision() {
+    assert_host_default_birth_preserves_foreign_collisions(false).await;
+}
+
+#[tokio::test]
+async fn host_default_birth_preserves_multiple_foreign_collisions() {
+    assert_host_default_birth_preserves_foreign_collisions(true).await;
+}
+
+async fn assert_host_default_birth_preserves_foreign_collisions(multiple: bool) {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionIdentity, SessionInfo, WtaExtRequest};
+
+    for wsl in [false, true] {
+        let state = make_state();
+        let sid = acp::schema::v1::SessionId::new("host-default-collision");
+        let mut foreign_rows = Vec::new();
+        for index in 0..if multiple { 2 } else { 1 } {
+            let mut foreign =
+                SessionInfo::new(sid.clone(), std::path::PathBuf::from("C:\\foreign"));
+            foreign.provider_id = Some("copilot".into());
+            foreign.cli_source = Some(CliSource::Copilot);
+            foreign.location = SessionLocation::Host;
+            if wsl {
+                foreign.location = SessionLocation::Wsl {
+                    distro: format!("Ubuntu-{index}"),
+                };
+            } else {
+                foreign.session_universe = Some(format!("foreign-home-{index}"));
+            }
+            foreign.status = Some(AgentStatus::Working);
+            foreign.pane_session_id = Some(format!("foreign-pane-{index}"));
+            foreign.title = Some("Foreign conversation".into());
+            foreign.current_tool = Some("Foreign tool".into());
+            state.registry.upsert(foreign.clone()).await;
+            foreign_rows.push(foreign);
+        }
+        let event = SessionEvent::SessionStarted {
+            key: sid.to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "host-pane".into(),
+            cwd: std::path::PathBuf::from("C:\\host"),
+            title: "Host conversation".into(),
+        };
+        // Exercise the same omitted-field wire request used by Host delegates.
+        let request = crate::session_registry::build_born_bound_request(&event);
+        let WtaExtRequest::SessionBornBound(event, distro, universe) =
+            crate::session_registry::parse_ext_request(request)
+        else {
+            panic!("born-bound request must parse");
+        };
+        assert!(distro.is_none());
+        assert!(universe.is_none());
+        handle_scoped_session_born_bound(&state, event, distro, universe)
+            .await
+            .unwrap();
+
+        for foreign in &foreign_rows {
+            let unchanged = state
+                .registry
+                .lookup_identity(&SessionIdentity::from_info(foreign))
+                .await
+                .unwrap();
+            assert_eq!(unchanged.cwd, foreign.cwd);
+            assert_eq!(unchanged.title, foreign.title);
+            assert_eq!(unchanged.pane_session_id, foreign.pane_session_id);
+            assert_eq!(unchanged.status, foreign.status);
+            assert_eq!(unchanged.current_tool, foreign.current_tool);
+            assert_eq!(unchanged.location, foreign.location);
+            assert_eq!(unchanged.session_universe, foreign.session_universe);
+        }
+        let mut expected = SessionInfo::new(sid, std::path::PathBuf::from("C:\\host"));
+        expected.provider_id = Some("copilot".into());
+        expected.cli_source = Some(CliSource::Copilot);
+        expected.location = SessionLocation::Host;
+        let identity = SessionIdentity::from_info(&expected);
+        let host = state.registry.lookup_identity(&identity).await.unwrap();
+        assert_eq!(host.location, SessionLocation::Host);
+        assert!(host.session_universe.is_none());
+        assert_eq!(host.cwd, expected.cwd);
+        assert_eq!(host.title.as_deref(), Some("Host conversation"));
+        assert_eq!(host.pane_session_id.as_deref(), Some("host-pane"));
+        assert_eq!(host.status, Some(AgentStatus::Idle));
+        assert!(host.born_bound_pane);
+        assert_eq!(
+            SessionIdentity::from_info(
+                &state
+                    .registry
+                    .lookup_active_by_pane("host-pane")
+                    .await
+                    .unwrap()
+            ),
+            identity
+        );
+        assert_eq!(
+            state.registry.snapshot().await.len(),
+            foreign_rows.len() + 1
+        );
+    }
+}
+
+#[tokio::test]
+async fn restored_birth_preserves_universe_without_mutating_colliding_row() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+    for distro in [None, Some("Ubuntu")] {
+        let state = make_state();
+        let sid = acp::schema::v1::SessionId::new("same-restored-session");
+        let mut foreign = SessionInfo::new(sid.clone(), std::path::PathBuf::from("C:\\foreign"));
+        foreign.provider_id = Some("copilot".into());
+        foreign.cli_source = Some(CliSource::Copilot);
+        foreign.status = Some(AgentStatus::Working);
+        foreign.pane_session_id = Some("foreign-pane".into());
+        foreign.title = Some("Foreign conversation".into());
+        let foreign_identity = SessionIdentity::from_info(&foreign);
+        state.registry.upsert(foreign.clone()).await;
+        state.hook_owned.lock().await.insert(sid.clone());
+        let event = SessionEvent::SessionStarted {
+            key: sid.to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "restored-pane".into(),
+            cwd: std::path::PathBuf::from("/selected"),
+            title: "Selected conversation".into(),
+        };
+        handle_scoped_session_born_bound(
+            &state,
+            event.clone(),
+            distro.map(str::to_string),
+            Some("selected-home".into()),
+        )
+        .await
+        .unwrap();
+        let location = distro.map_or(SessionLocation::Host, |distro| SessionLocation::Wsl {
+            distro: distro.into(),
+        });
+        let mut selected = SessionInfo::new(sid.clone(), std::path::PathBuf::from("/selected"));
+        selected.provider_id = Some("copilot".into());
+        selected.cli_source = Some(CliSource::Copilot);
+        selected.location = location;
+        selected.session_universe = Some("selected-home".into());
+        let identity = SessionIdentity::from_info(&selected);
+        let restored = state.registry.lookup_identity(&identity).await.unwrap();
+        assert_eq!(restored.pane_session_id.as_deref(), Some("restored-pane"));
+        assert_eq!(restored.status, Some(AgentStatus::Idle));
+        assert!(restored.born_bound_pane);
+        let unchanged = state
+            .registry
+            .lookup_identity(&foreign_identity)
+            .await
+            .unwrap();
+        assert_eq!(unchanged.pane_session_id, foreign.pane_session_id);
+        assert_eq!(unchanged.status, foreign.status);
+        assert_eq!(unchanged.title, foreign.title);
+        assert!(state.hook_owned.lock().await.contains(&sid));
+        handle_scoped_session_born_bound(
+            &state,
+            event.clone(),
+            distro.map(str::to_string),
+            Some("selected-home".into()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(state.registry.snapshot().await.len(), 2);
+        let mut historical = restored;
+        historical.status = Some(AgentStatus::Historical);
+        historical.born_bound_pane = false;
+        state.registry.upsert(historical).await;
+        handle_scoped_session_born_bound(
+            &state,
+            event,
+            distro.map(str::to_string),
+            Some("selected-home".into()),
+        )
+        .await
+        .unwrap();
+        let resumed = state.registry.lookup_identity(&identity).await.unwrap();
+        assert_eq!(resumed.status, Some(AgentStatus::Idle));
+        assert!(resumed.born_bound_pane);
+        assert_eq!(
+            SessionIdentity::from_info(
+                &state
+                    .registry
+                    .lookup_active_by_pane("restored-pane")
+                    .await
+                    .unwrap(),
+            ),
+            identity,
+        );
+        assert_eq!(
+            state
+                .registry
+                .lookup_identity(&foreign_identity)
+                .await
+                .unwrap()
+                .status,
+            foreign.status,
+        );
+    }
+}
+
+#[tokio::test]
+async fn qualified_hooks_helper_pane_queue_preserves_owner_through_master() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionIdentity, SessionInfo, WtaExtRequest};
+    let pane = "abcdefab-1234-5678-9abc-defabcdefabc";
+    let incoming_pane = "{ABCDEFAB-1234-5678-9ABC-DEFABCDEFABC}";
+    for closed in [false, true] {
+        for replace_owner in [false, true] {
+            let state = make_state();
+            let mut old = SessionInfo::new(
+                acp::schema::v1::SessionId::new("queued-owner-a"),
+                std::path::PathBuf::from("C:\\repo"),
+            );
+            old.provider_id = Some("copilot".into());
+            old.cli_source = Some(CliSource::Copilot);
+            old.location = SessionLocation::Host;
+            old.session_universe = Some("selected-home".into());
+            old.status = Some(AgentStatus::Working);
+            old.pane_session_id = Some(pane.into());
+            state.registry.upsert(old.clone()).await;
+            let identity = SessionIdentity::from_info(&old);
+            let event = if closed {
+                SessionEvent::PaneClosed {
+                    pane_session_id: incoming_pane.into(),
+                }
+            } else {
+                SessionEvent::ConnectionFailed {
+                    pane_session_id: incoming_pane.into(),
+                    reason: "queued failure".into(),
+                }
+            };
+            let queued =
+                crate::app::helper_queued_session_hook(vec![old.clone()], event.clone()).unwrap();
+            assert_eq!(queued.scope.identity.as_ref(), Some(&identity));
+            assert_eq!(queued.scope.pane_session_id.as_deref(), Some(incoming_pane));
+            let wire = crate::session_registry::build_scoped_session_hook_request(
+                &queued.event,
+                &queued.scope,
+            );
+            let WtaExtRequest::SessionHook(parsed) =
+                crate::session_registry::parse_ext_request(wire)
+            else {
+                panic!("helper hook must parse");
+            };
+            assert_eq!(parsed.event, event);
+            assert_eq!(parsed.scope, queued.scope);
+            let mut current = old;
+            if replace_owner {
+                current.session_id = acp::schema::v1::SessionId::new("replacement-owner-b");
+                state.registry.upsert(current.clone()).await;
+            }
+            let current_identity = SessionIdentity::from_info(&current);
+            handle_scoped_session_hook(&state, parsed).await.unwrap();
+            let after = state
+                .registry
+                .lookup_identity(&current_identity)
+                .await
+                .unwrap();
+            if replace_owner {
+                assert_eq!(after, current, "delayed A hook must not mutate B");
+            } else {
+                assert_eq!(
+                    after.status,
+                    Some(if closed {
+                        AgentStatus::Ended
+                    } else {
+                        AgentStatus::Error
+                    })
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn qualified_master_ingress_pane_hooks_preserve_replacement_owner() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{
+        SessionHookScope, SessionHookUpdate, SessionIdentity, SessionInfo,
+    };
+    for (closed, legacy) in [(false, false), (true, false), (false, true), (true, true)] {
+        let state = make_state();
+        let mut old = SessionInfo::new(
+            acp::schema::v1::SessionId::new("old-owner"),
+            std::path::PathBuf::from("C:\\repo"),
+        );
+        old.provider_id = Some("copilot".into());
+        old.cli_source = Some(CliSource::Copilot);
+        old.location = SessionLocation::Host;
+        old.status = Some(AgentStatus::Working);
+        old.pane_session_id = Some("reused-pane".into());
+        let old_identity = SessionIdentity::from_info(&old);
+        state.registry.upsert(old.clone()).await;
+        let mut replacement = old.clone();
+        replacement.session_id = acp::schema::v1::SessionId::new("replacement-owner");
+        state.registry.upsert(replacement.clone()).await;
+        let replacement_identity = SessionIdentity::from_info(&replacement);
+        let event = if closed {
+            SessionEvent::PaneClosed {
+                pane_session_id: "REUSED-PANE".into(),
+            }
+        } else {
+            SessionEvent::ConnectionFailed {
+                pane_session_id: "REUSED-PANE".into(),
+                reason: "stale failure".into(),
+            }
+        };
+        for identity in [old_identity, replacement_identity.clone()] {
+            let scope = if legacy && identity == replacement_identity {
+                // Flattened legacy pane events also deserialize their pane
+                // field into scope; that alone is not supplied provenance.
+                SessionHookScope {
+                    pane_session_id: Some("REUSED-PANE".into()),
+                    ..Default::default()
+                }
+            } else {
+                SessionHookScope {
+                    identity: Some(identity.clone()),
+                    ..Default::default()
+                }
+            };
+            handle_scoped_session_hook(
+                &state,
+                SessionHookUpdate {
+                    event: event.clone(),
+                    scope,
+                },
+            )
+            .await
+            .unwrap();
+            let current = state
+                .registry
+                .lookup_identity(&replacement_identity)
+                .await
+                .unwrap();
+            if identity != replacement_identity {
+                assert_eq!(current, replacement);
+            } else {
+                assert_eq!(
+                    current.status,
+                    Some(if closed {
+                        AgentStatus::Ended
+                    } else {
+                        AgentStatus::Error
+                    })
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn qualified_master_ingress_resume_survives_membership_change() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{
+        SessionHookScope, SessionHookUpdate, SessionIdentity, SessionInfo,
+    };
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("replaced-history");
+    let mut selected = SessionInfo::new(sid.clone(), std::path::PathBuf::from("C:\\repo"));
+    selected.provider_id = Some("copilot".into());
+    selected.cli_source = Some(CliSource::Copilot);
+    selected.location = SessionLocation::Host;
+    selected.status = Some(AgentStatus::Ended);
+    let identity = SessionIdentity::from_info(&selected);
+    state.registry.upsert(selected.clone()).await;
+    let gate = session_lifecycle_gate(&state, &sid).await;
+    let guard = gate.lock().await;
+    let hook = handle_scoped_session_hook(
+        &state,
+        SessionHookUpdate {
+            event: SessionEvent::ResumePaneAssigned {
+                key: sid.to_string(),
+                pane_session_id: "occupied-pane".into(),
+            },
+            scope: SessionHookScope {
+                identity: Some(identity.clone()),
+                ..Default::default()
+            },
+        },
+    );
+    tokio::pin!(hook);
+    assert!(futures::poll!(&mut hook).is_pending());
+    state.registry.remove_identity(&identity).await.unwrap();
+    let mut foreign = selected.clone();
+    foreign.session_universe = Some("foreign-home".into());
+    state.registry.upsert(foreign.clone()).await;
+    let foreign_identity = SessionIdentity::from_info(&foreign);
+    let mut owner = selected;
+    owner.session_id = acp::schema::v1::SessionId::new("pane-owner");
+    owner.status = Some(AgentStatus::Working);
+    owner.pane_session_id = Some("occupied-pane".into());
+    let owner_identity = SessionIdentity::from_info(&owner);
+    state.registry.upsert(owner.clone()).await;
+    drop(guard);
+    hook.await.unwrap();
+    assert!(state.registry.lookup_identity(&identity).await.is_none());
+    assert_eq!(
+        state
+            .registry
+            .lookup_identity(&foreign_identity)
+            .await
+            .unwrap(),
+        foreign
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup_identity(&owner_identity)
+            .await
+            .unwrap(),
+        owner
+    );
+}
+
+#[tokio::test]
+async fn qualified_master_ingress_foreign_activity_cannot_claim_pane() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+    let state = make_state();
+    let mut owner = SessionInfo::new(
+        acp::schema::v1::SessionId::new("same-provider-id"),
+        std::path::PathBuf::from("C:\\repo"),
+    );
+    owner.provider_id = Some("copilot".into());
+    owner.cli_source = Some(CliSource::Copilot);
+    owner.location = SessionLocation::Host;
+    owner.status = Some(AgentStatus::Working);
+    owner.pane_session_id = Some("owned-pane".into());
+    let identity = SessionIdentity::from_info(&owner);
+    state.registry.upsert(owner.clone()).await;
+    state
+        .hook_owned
+        .lock()
+        .await
+        .insert(owner.session_id.clone());
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event", "params": {
+                "event": "agent.tool.starting", "cli_source": "copilot",
+                "agent_session_id": "same-provider-id", "pane_id": "owned-pane",
+                "agent_source": "host", "session_universe": "unseen-home",
+                "payload": { "cwd": "C:\\foreign", "tool_name": "foreign tool" }
+            }
+        }),
+    )
+    .await;
+    assert_eq!(state.registry.snapshot().await.len(), 1);
+    assert_eq!(
+        state.registry.lookup_identity(&identity).await.unwrap(),
+        owner
+    );
+}
+
+#[tokio::test]
+async fn qualified_hooks_route_collision_through_com_and_typed_wire() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionHookScope, SessionIdentity, SessionInfo, WtaExtRequest};
+    for typed in [false, true] {
+        for explicit_scope in [false, true] {
+            for location in [
+                SessionLocation::Host,
+                SessionLocation::Wsl {
+                    distro: "Ubuntu".into(),
+                },
+            ] {
+                let state = make_state();
+                let sid = acp::schema::v1::SessionId::new("qualified-hook-collision");
+                let mut a = SessionInfo::new(sid.clone(), std::path::PathBuf::from("C:\\a"));
+                a.provider_id = Some("copilot".into());
+                a.cli_source = Some(CliSource::Copilot);
+                a.location = SessionLocation::Host;
+                a.status = Some(AgentStatus::Working);
+                a.current_tool = Some("A tool".into());
+                a.pane_session_id = Some("pane-a".into());
+                a.title = Some("A title".into());
+                let a_identity = SessionIdentity::from_info(&a);
+                state.registry.upsert(a.clone()).await;
+                state.hook_owned.lock().await.insert(sid.clone());
+                let birth = SessionEvent::SessionStarted {
+                    key: sid.to_string(),
+                    cli_source: CliSource::Copilot,
+                    pane_session_id: "pane-b".into(),
+                    cwd: std::path::PathBuf::from("C:\\b"),
+                    title: "B title".into(),
+                };
+                let distro = match &location {
+                    SessionLocation::Wsl { distro } => Some(distro.clone()),
+                    _ => None,
+                };
+                handle_scoped_session_born_bound(
+                    &state,
+                    birth.clone(),
+                    distro.clone(),
+                    Some("other-home".into()),
+                )
+                .await
+                .unwrap();
+                let mut b = SessionInfo::new(sid.clone(), std::path::PathBuf::from("C:\\b"));
+                b.provider_id = Some("copilot".into());
+                b.cli_source = Some(CliSource::Copilot);
+                b.location = location.clone();
+                b.session_universe = Some("other-home".into());
+                let b_identity = SessionIdentity::from_info(&b);
+                for (name, event, expected) in [
+                    ("agent.session.start", birth, AgentStatus::Idle),
+                    (
+                        "agent.tool.starting",
+                        SessionEvent::ToolStarting {
+                            key: sid.to_string(),
+                            tool_name: "B tool".into(),
+                        },
+                        AgentStatus::Working,
+                    ),
+                    (
+                        "agent.session.end",
+                        SessionEvent::SessionStopped {
+                            key: sid.to_string(),
+                            reason: "exit".into(),
+                        },
+                        AgentStatus::Ended,
+                    ),
+                ] {
+                    if typed {
+                        let scope = SessionHookScope {
+                            identity: explicit_scope.then(|| b_identity.clone()),
+                            cli_source: Some((&CliSource::Copilot).into()),
+                            pane_session_id: Some("pane-b".into()),
+                            agent_source: explicit_scope
+                                .then(|| if distro.is_some() { "wsl" } else { "host" }.to_string()),
+                            wsl_distro: if explicit_scope { distro.clone() } else { None },
+                            session_universe: explicit_scope.then(|| "other-home".into()),
+                            ..Default::default()
+                        };
+                        let wire = crate::session_registry::build_scoped_session_hook_request(
+                            &event, &scope,
+                        );
+                        let WtaExtRequest::SessionHook(update) =
+                            crate::session_registry::parse_ext_request(wire)
+                        else {
+                            panic!("typed hook must parse");
+                        };
+                        assert_eq!(update.scope, scope);
+                        handle_scoped_session_hook(&state, update).await.unwrap();
+                    } else {
+                        let mut params = serde_json::json!({
+                            "event": name, "cli_source": "copilot",
+                            "agent_session_id": sid.to_string(), "pane_id": "pane-b",
+                            "payload": {"cwd": "C:\\b", "title": "B title", "tool_name": "B tool", "reason": "exit"}
+                        });
+                        if explicit_scope {
+                            params["agent_source"] =
+                                serde_json::json!(if distro.is_some() { "wsl" } else { "host" });
+                            if let Some(distro) = &distro {
+                                params["wsl_distro"] = serde_json::json!(distro);
+                            }
+                            params["session_universe"] = serde_json::json!("other-home");
+                        }
+                        handle_master_wt_event(
+                            &state,
+                            serde_json::json!({
+                                "method": "agent_event", "params": params
+                            }),
+                        )
+                        .await;
+                    }
+                    let unchanged = state.registry.lookup_identity(&a_identity).await.unwrap();
+                    assert_eq!(unchanged, a);
+                    assert_eq!(
+                        state
+                            .registry
+                            .lookup_identity(&b_identity)
+                            .await
+                            .unwrap()
+                            .status,
+                        Some(expected)
+                    );
+                    assert_eq!(state.registry.snapshot().await.len(), 2);
+                    if name == "agent.session.start" {
+                        // An optimistic resume can be a reducer no-op, but it
+                        // still starts a hook-free generation for this identity.
+                        let (applied, _) = apply_qualified_master_session_event(
+                            &state,
+                            SessionEvent::ResumeDispatched {
+                                key: sid.to_string(),
+                            },
+                            false,
+                            &b_identity,
+                        )
+                        .await;
+                        assert!(!applied);
+                        assert_eq!(
+                            state.scoped_hook_ownership.lock().await.get(&b_identity),
+                            Some(&false)
+                        );
+                    }
+                }
+                assert_eq!(
+                    state.scoped_hook_ownership.lock().await.get(&b_identity),
+                    Some(&true)
+                );
+                assert!(state.hook_owned.lock().await.contains(&sid));
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn ambiguous_raw_hook_start_does_not_overwrite_default_row() {
+    use crate::agent_sessions::{CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionHookScope, SessionHookUpdate, SessionInfo};
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("ambiguous-hook-start");
+    for universe in [None, Some("other-home")] {
+        let mut row = SessionInfo::new(sid.clone(), std::path::PathBuf::from("C:\\original"));
+        row.provider_id = Some("copilot".into());
+        row.cli_source = Some(CliSource::Copilot);
+        row.location = SessionLocation::Host;
+        row.session_universe = universe.map(str::to_owned);
+        row.pane_session_id = Some(
+            if universe.is_some() {
+                "pane-b"
+            } else {
+                "pane-a"
+            }
+            .into(),
+        );
+        state.registry.upsert(row).await;
+    }
+    let before = state.registry.snapshot().await;
+    let event = SessionEvent::SessionStarted {
+        key: sid.to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: "".into(),
+        cwd: std::path::PathBuf::from("C:\\phantom"),
+        title: "phantom".into(),
+    };
+    assert!(!state.registry.apply_event(event.clone()).await);
+    assert!(
+        !apply_master_session_event(&state, event.clone(), false)
+            .await
+            .0
+    );
+    assert!(handle_scoped_session_hook(
+        &state,
+        SessionHookUpdate {
+            event,
+            scope: SessionHookScope::default()
+        }
+    )
+    .await
+    .is_err());
+    handle_master_agent_event(&state, &serde_json::json!({
+            "event":"agent.session.start", "cli_source":"copilot", "agent_session_id":sid.to_string(),
+            "payload":{"cwd":"C:\\phantom"}
+        })).await;
+    assert_eq!(state.registry.snapshot().await, before);
+    assert!(state.hook_owned.lock().await.is_empty());
+}
+
+#[tokio::test]
 async fn born_bound_wsl_stamps_wsl_location() {
     // A WSL `?<prompt>` delegate registers with a distro; the master must
     // stamp the row `Wsl { distro }` (the reducer defaults to Host) so the
@@ -18515,6 +19377,9 @@ async fn master_com_hook_source_unique_id_preserves_live_pane_corroboration() {
                 "antigravity-unique-id",
                 "owner",
                 &CliSource::Antigravity,
+                &crate::session_registry::SessionIdentity::legacy(SessionId::new(
+                    "antigravity-unique-id"
+                )),
             )
             .await
             .is_ok(),

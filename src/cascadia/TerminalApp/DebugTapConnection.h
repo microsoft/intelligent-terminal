@@ -30,6 +30,7 @@ namespace winrt::Microsoft::TerminalApp::implementation
         til::typed_event<winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection, winrt::Windows::Foundation::IInspectable> StateChanged;
 
     private:
+        const winrt::guid _sessionId;
         void _PrintInput(const std::wstring_view data);
         void _OutputHandler(const winrt::array_view<const char16_t> str);
 

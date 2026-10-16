@@ -660,14 +660,17 @@ mod tests {
                 ],
                 history_status: Some(status),
                 history_error_kind: None,
+                ownership_pending: true,
             };
             filter_snapshot(&mut snapshot, OriginFilter::ShellOnly);
             assert_eq!(snapshot.history_status, Some(status));
+            assert!(snapshot.ownership_pending);
             assert_eq!(snapshot.sessions.len(), 2);
             assert_eq!(snapshot.sessions[0].session_id.0.as_ref(), "newer");
             assert_eq!(snapshot.sessions[1].session_id.0.as_ref(), "older");
             let json = serde_json::to_value(&snapshot).unwrap();
             assert!(json["sessions"].is_array());
+            assert_eq!(json["ownership_pending"], true);
             assert_eq!(
                 json["history_status"],
                 serde_json::to_value(status).unwrap()
@@ -675,6 +678,7 @@ mod tests {
 
             filter_snapshot(&mut snapshot, OriginFilter::AgentPaneOnly);
             assert!(snapshot.sessions.is_empty());
+            assert!(snapshot.ownership_pending);
             assert_eq!(snapshot.history_status, Some(status));
         }
         assert_eq!(

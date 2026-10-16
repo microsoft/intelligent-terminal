@@ -549,9 +549,12 @@ int wmain(int argc, wchar_t** argv)
 
     // ── list-panes ──
     std::string listPanesTabId, listPanesWindowId;
+    bool listPanesAll = false;
     auto* listPanesCmd = app.add_subcommand("list-panes", "List panes in a tab")->alias("lsp");
-    listPanesCmd->add_option("-t,--tab-id", listPanesTabId, "Tab ID");
-    listPanesCmd->add_option("-w,--window-id", listPanesWindowId, "Window ID");
+    auto* listPanesTabOption = listPanesCmd->add_option("-t,--tab-id", listPanesTabId, "Tab ID");
+    auto* listPanesWindowOption = listPanesCmd->add_option("-w,--window-id", listPanesWindowId, "Window ID");
+    listPanesCmd->add_flag("--all", listPanesAll, "List panes in every tab and window, including background tabs")
+        ->excludes(listPanesTabOption)->excludes(listPanesWindowOption);
     listPanesCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
@@ -574,7 +577,7 @@ int wmain(int argc, wchar_t** argv)
             }
             tid = static_cast<uint32_t>(t);
         }
-        if (tid == UINT32_MAX)
+        if (!listPanesAll && tid == UINT32_MAX)
         {
             if (wid == 0)
             {

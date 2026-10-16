@@ -1266,9 +1266,8 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $freCpp | Should -Match 'AIAgents_YoloMode/Header'
         $freCpp | Should -Match 'AIAgents_YoloMode/HelpText'
         $freCpp | Should -Match '_UpdateAutomaticApprovalState\(\)'
-        $freCpp | Should -Match '_refreshingAgentComboBox'
-        $freCpp | Should -Match '(?s)_PopulateAgentComboBox\(\).*?scope_exit.*?_UpdateAutomaticApprovalState\(\)'
-        $freCpp | Should -Match '(?s)_OnAgentSelectionChanged.*?!_refreshingAgentComboBox.*?_UpdateAutomaticApprovalState\(\)'
+        $freCpp | Should -Match '(?s)_PopulateAgentComboBox\(const bool preserveCurrentSelection\).*?_updatingAgentComboBox = true;.*?scope_exit.*?_updatingAgentComboBox = false;.*?_UpdateAutomaticApprovalState\(\)'
+        $freCpp | Should -Match '(?s)_OnAgentSelectionChanged.*?!_updatingAgentComboBox.*?_UpdateAutomaticApprovalState\(\)'
         $freCpp | Should -Match 'CanEnableAgentPaneYoloModeForAgent'
         $freCpp | Should -Match 'AgentPaneYoloMode\(AutomaticApprovalToggle\(\)\.IsOn\(\)\)'
         $freCpp | Should -Match 'ClearAgentPaneYoloModeIfUnavailableDefault\(\)'
@@ -1502,16 +1501,18 @@ Describe 'Live command execution oracle' -Tag 'Unit' {
 
 Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
     It 'waits for the first window before probing COM' {
-        InModuleScope ItE2E {
+        InModuleScope ItE2E -Parameters @{ Root = $TestDrive } {
+            param($Root)
             $script:startupOrder = @()
-            $root = Join-Path $env:TEMP "ite2e-startup-order-$PID"
             $fakeApp = [pscustomobject]@{
                 Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
                 Version = '0.0.0.0'
                 WtcliPath = 'wtcli.exe'
-                LocalStateDir = $root
-                SettingsPath = Join-Path $root 'settings.json'
-                StatePath = Join-Path $root 'state.json'
+                InstallLocation = Join-Path $Root 'install'
+                LocalStateDir = $Root
+                SettingsPath = Join-Path $Root 'settings.json'
+                StatePath = Join-Path $Root 'state.json'
+                LogStartOffset = @{}
                 AppUserModelId = 'IntelligentTerminal_rd9vj3e6a2mbr!App'
                 LaunchAlias = $null
                 ComClsid = $null
@@ -1521,8 +1522,20 @@ Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
 
             Mock Resolve-ItApp { $fakeApp }
             Mock Stop-StaleItInstances
-            Mock Get-WtProcessesForApp { [pscustomobject]@{ Id = 4242 } }
-            Mock Start-Process
+            Mock Get-WtProcessesForApp { @() }
+            Mock Start-ItCreatedDevTerminal {
+                param($App)
+                $process = [pscustomobject]@{
+                    Id = 4242
+                    HasExited = $false
+                    Handle = [IntPtr]4242
+                    StartTime = [datetime]::UtcNow
+                    Path = Join-Path $App.InstallLocation 'WindowsTerminal.exe'
+                }
+                $App | Add-Member OwnedLauncherProcess $process
+                $App | Add-Member CreationObservationPath (Join-Path $App.LocalStateDir 'creation.jsonl')
+                $process
+            }
             Mock Get-WtWindowHwnds {
                 $script:startupOrder += 'hwnd'
                 [pscustomobject]@{ pid = 4242; hwnd = 9001; title = 'PowerShell' }
