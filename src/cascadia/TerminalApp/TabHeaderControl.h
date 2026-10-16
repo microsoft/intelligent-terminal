@@ -7,6 +7,7 @@
 
 #include "TabHeaderControl.g.h"
 #include "TabHeaderPresentation.g.h"
+#include "../RichTabProvider/ProviderBroker.h"
 
 namespace winrt::TerminalApp::implementation
 {
@@ -17,9 +18,12 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, SearchText, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(double, RenamerMaxWidth, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::TerminalTabStatus, TabStatus, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::Foundation::IInspectable, IconSource, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, MetadataText, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, MetadataAutomationName, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, AutomationName, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::TextHighlightColor, MetadataHighlightColor, PropertyChanged.raise, winrt::TerminalApp::TextHighlightColor::None);
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>, MetadataHighlightRanges, PropertyChanged.raise, nullptr);
     };
 
     struct TabHeaderControl : TabHeaderControlT<TabHeaderControl>
@@ -36,6 +40,9 @@ namespace winrt::TerminalApp::implementation
         void IsMetadataVisible(bool value);
         bool ShowProgressRing() const noexcept;
         void ShowProgressRing(bool value);
+        winrt::Windows::UI::Xaml::Controls::Grid ProgressRingPresenter() const noexcept { return _progressRingPresenter; }
+        static winrt::TerminalApp::TextHighlightColor AgentStatusHighlightColor(std::string_view status) noexcept;
+        static winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun> BuildMetadataHighlightRanges(const ::Microsoft::Terminal::RichTab::Provider::Presentation& presentation);
 
         til::event<TerminalApp::TitleChangeRequestedArgs> TitleChangeRequested;
         til::typed_event<> RenameEnded;
@@ -54,6 +61,10 @@ namespace winrt::TerminalApp::implementation
         void MetadataText(const winrt::hstring& value) { _presentation.MetadataText(value); }
         winrt::hstring MetadataAutomationName() const { return _presentation.MetadataAutomationName(); }
         void MetadataAutomationName(const winrt::hstring& value) { _presentation.MetadataAutomationName(value); }
+        winrt::TerminalApp::TextHighlightColor MetadataHighlightColor() const { return _presentation.MetadataHighlightColor(); }
+        void MetadataHighlightColor(winrt::TerminalApp::TextHighlightColor value) { _presentation.MetadataHighlightColor(value); }
+        winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun> MetadataHighlightRanges() const { return _presentation.MetadataHighlightRanges(); }
+        void MetadataHighlightRanges(const winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>& value) { _presentation.MetadataHighlightRanges(value); }
         winrt::TerminalApp::TerminalTabStatus TabStatus() const { return _presentation.TabStatus(); }
         void TabStatus(const winrt::TerminalApp::TerminalTabStatus& value) { _presentation.TabStatus(value); }
         WINRT_OBSERVABLE_PROPERTY(bool, ShowPinnedIcon, PropertyChanged.raise, true);
@@ -65,9 +76,12 @@ namespace winrt::TerminalApp::implementation
         bool _showProgressRing{ true };
         winrt::TerminalApp::TabHeaderPresentation _presentation{ nullptr };
         winrt::Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker _presentationChanged;
+        // This view remains owned here when its visual parent is the native slot.
+        winrt::Windows::UI::Xaml::Controls::Grid _progressRingPresenter{ nullptr };
 
         void _CloseRenameBox(bool notify = true);
         void _UpdateMetadataVisibility();
+        void _AttachProgressToNativeIconSlot();
     };
 }
 

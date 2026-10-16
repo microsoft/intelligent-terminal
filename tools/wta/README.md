@@ -372,6 +372,10 @@ and returning to nonvertical layout immediately refreshes an already-open helper
 History-query recovery may rebuild only its history-only process. Startup
 discovery retries are separate and retain the existing ACP initialization timeout.
 
+Master allows up to 60 seconds for an ACP `initialize` reply from either a
+native agent or an `npx` adapter, including cold starts. Session creation,
+authentication and model-probe timeouts are separate and unchanged.
+
 ### tmux-like CLI
 
 WTA exposes tmux-equivalent subcommands for controlling Windows Terminal from the shell. Useful for humans and AI agents that can shell out.
@@ -394,7 +398,14 @@ wta list-windows --json                   # raw JSON output
 Short aliases are supported: `lsw`, `lst`, `lsp`, `neww`, `splitw`, `capturep`,
 `killp`, `setenv`, and `mon`.
 
-When `-t` (target pane) is omitted, the active pane is used automatically.
+`list-tabs` and `list-panes` accept `-w <window-id>` to select a window.
+They use the native `wtcli` default selection: the first-listed window, not the
+focused window. Without `-t`, `list-panes` lists the first tab in that window,
+not the active tab. Tab IDs are window-local, so use both `-w` and `-t` to query
+a specific window's tab; an explicit `-t` without `-w` queries across windows.
+
+For pane-targeting commands such as `capture-pane` and `kill-pane`, omitting `-t`
+uses the active pane automatically.
 
 ### Protocol Discovery & Environment Setup
 

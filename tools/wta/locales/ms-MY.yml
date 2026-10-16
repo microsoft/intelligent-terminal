@@ -8,8 +8,11 @@ setup.title.sign_in: "Log masuk diperlukan"
 # %{agent} digantikan dengan nama paparan ejen AI semasa masa jalan.
 setup.subtitle.copilot_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Ikuti langkah di bawah untuk memasangnya. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
 setup.subtitle.agent_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Sila pasang semula secara manual, kemudian cuba lagi. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
-setup.subtitle.copilot_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Ikuti langkah di bawah untuk log masuk. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
-setup.subtitle.agent_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Sila log masuk melalui ejen AI, kemudian pilih \"Saya telah log masuk\" di bawah. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
+setup.subtitle.authentication_required: "Ejen AI \"%{agent}\" anda memerlukan pengesahan."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Ikuti langkah di bawah untuk log masuk."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Sila log masuk melalui ejen AI, kemudian pilih \"Saya telah log masuk\" di bawah."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Pilih kaedah log masuk untuk meneruskan di sini."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Kami tidak dapat memulakan %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Domain Enterprise: "
 auth.enterprise_hint_footer: "  Enter untuk daftar masuk · Esc untuk menggunakan github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Tekan Enter untuk mencuba semula, atau Esc untuk menggunakan github.com. Punca biasa: domain tersalah taip atau tidak dapat dicapai, kod tamat tempoh, atau akaun anda tiada akses Copilot pada hos tersebut."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Tekan Enter untuk mencuba semula, atau Esc untuk kembali."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Lengkapkan daftar masuk dalam pelayar anda. Tekan Esc untuk membatalkan penantian."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Pelayar tidak terbuka? Gunakan pautan daftar masuk ini. O: buka · Y: salin."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Tidak dapat membuka pelayar. Buka pautan daftar masuk secara manual."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Tidak dapat menyalin pautan daftar masuk. Pilih dan salin secara manual."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Daftar masuk tidak selesai dalam masa yang ditetapkan. Cuba lagi apabila anda bersedia."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Sedang berfikir…"
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "penyedia ejen AI belum mengesahkan bahawa sesi ber
 system.provider_command_blocked_by_policy: "%{command}: Kelulusan automatik dilumpuhkan oleh dasar organisasi anda."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Model tidak diketahui %{model} — taip /model untuk melihat senarai yang tersedia."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Pilih kaedah daftar masuk untuk meneruskan di sini."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Lengkapkan daftar masuk dalam pelayar anda. Tekan Esc untuk membatalkan penantian."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Pelayar tidak terbuka? Gunakan pautan daftar masuk ini. O: buka · Y: salin."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Tidak dapat membuka pelayar. Buka pautan daftar masuk secara manual."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Tidak dapat menyalin pautan daftar masuk. Pilih dan salin secara manual."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Daftar masuk tidak selesai dalam masa yang ditetapkan. Cuba lagi apabila anda bersedia."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Kami tidak dapat menemui \"%{agent}\" dalam persekitaran log masuk %{distro}. Semak pemasangan, PATH dan profil shell pengguna Linux ini, kemudian cuba lagi."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

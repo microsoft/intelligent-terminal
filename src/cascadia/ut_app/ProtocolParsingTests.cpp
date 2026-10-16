@@ -29,6 +29,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(HookCwdUsesOnlyOwningPaneMetadata);
         TEST_METHOD(HookCwdPreservesProviderWorkspaceAndExecutionSource);
         TEST_METHOD(OversizedOpenCodeHooksRetainTitle);
+        TEST_METHOD(OversizedOpenCodeBindingRetainsRunningState);
+        TEST_METHOD(OversizedCwdChangeRetainsNewDirectory);
         TEST_METHOD(HostClsidOverridesStaleEnvironment);
         TEST_METHOD(UnpublishedStartupRemovesInheritedClsid);
     };
@@ -38,6 +40,7 @@ namespace TerminalAppUnitTests
         Json::Value payload;
         payload["session_id"] = "opencode-session";
         payload["cwd"] = "C:\\repo";
+        payload["pane_owner"] = false;
         const std::string expected(wtcli::kMaxRetainedFieldChars - 1, 'x');
         payload["title"] = expected + "\xE4\xB8\xAD" + std::string(wtcli::kMaxHookEventChars, 'y');
         Json::StreamWriterBuilder writer;
@@ -50,6 +53,7 @@ namespace TerminalAppUnitTests
         const auto& reduced = event["params"]["payload"];
         VERIFY_IS_TRUE(reduced["_truncated"].asBool());
         VERIFY_ARE_EQUAL(expected, reduced["title"].asString());
+        VERIFY_IS_FALSE(reduced["pane_owner"].asBool());
         VERIFY_ARE_EQUAL("opencode-session", event["params"]["agent_session_id"].asString());
         VERIFY_ARE_EQUAL("pane-a", event["params"]["pane_id"].asString());
         VERIFY_IS_TRUE(Json::writeString(writer, event).size() <= wtcli::kMaxHookEventChars);
@@ -57,7 +61,52 @@ namespace TerminalAppUnitTests
         payload["title"] = "Small \xE4\xB8\xAD";
         VERIFY_IS_TRUE(wtcli::BuildAgentHookEventJson("agent.session.start", "opencode", Json::writeString(writer, payload), "pane-a", "", event));
         VERIFY_ARE_EQUAL(payload["title"].asString(), event["params"]["payload"]["title"].asString());
+        VERIFY_IS_FALSE(event["params"]["payload"]["pane_owner"].asBool());
         VERIFY_IS_FALSE(event["params"]["payload"].isMember("_truncated"));
+    }
+
+    void ProtocolParsingTests::OversizedCwdChangeRetainsNewDirectory()
+    {
+        Json::Value payload;
+        payload["session_id"] = "opencode-session";
+        payload["cwd"] = "C:\\old";
+        payload["new_cwd"] = "D:\\new";
+        payload["unrelated"] = std::string(wtcli::kMaxHookEventChars, 'x');
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+
+        Json::Value event;
+        VERIFY_IS_TRUE(wtcli::BuildAgentHookEventJson(
+            "agent.cwd.changed", "opencode", Json::writeString(writer, payload), "pane-a", "", event));
+        const auto& reduced = event["params"]["payload"];
+        VERIFY_IS_TRUE(reduced["_truncated"].asBool());
+        VERIFY_ARE_EQUAL("C:\\old", reduced["cwd"].asString());
+        VERIFY_ARE_EQUAL("D:\\new", reduced["new_cwd"].asString());
+        VERIFY_IS_FALSE(reduced.isMember("unrelated"));
+        VERIFY_IS_TRUE(Json::writeString(writer, event).size() <= wtcli::kMaxHookEventChars);
+    }
+
+    void ProtocolParsingTests::OversizedOpenCodeBindingRetainsRunningState()
+    {
+        Json::Value payload;
+        payload["session_id"] = "opencode-session";
+        payload["cwd"] = "C:\\repo";
+        payload["title"] = std::string(wtcli::kMaxHookEventChars, 'x');
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+
+        for (const bool running : { false, true })
+        {
+            payload["running"] = running;
+            Json::Value event;
+            VERIFY_IS_TRUE(wtcli::BuildAgentHookEventJson(
+                "agent.session.start", "opencode", Json::writeString(writer, payload), "pane-a", "", event));
+            const auto& reduced = event["params"]["payload"];
+            VERIFY_IS_TRUE(reduced["_truncated"].asBool());
+            VERIFY_IS_TRUE(reduced["running"].isBool());
+            VERIFY_ARE_EQUAL(running, reduced["running"].asBool());
+            VERIFY_IS_TRUE(Json::writeString(writer, event).size() <= wtcli::kMaxHookEventChars);
+        }
     }
 
     void ProtocolParsingTests::UnpublishedStartupRemovesInheritedClsid()

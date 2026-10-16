@@ -8,8 +8,11 @@ setup.title.sign_in: "Inicio de sesión necesario"
 # %{agent} se sustituye por el nombre para mostrar del agente en tiempo de ejecución.
 setup.subtitle.copilot_missing: "Su agente \"%{agent}\" no está instalado. Siga los pasos a continuación para instalarlo. Para cambiar de agente, vaya a Configuración de Terminal Inteligente > Agente."
 setup.subtitle.agent_missing: "Su agente \"%{agent}\" no está instalado. Vuelva a instalarlo manualmente y, a continuación, reintente. Para cambiar de agente, vaya a Configuración de Terminal Inteligente > Agente."
-setup.subtitle.copilot_auth: "Su agente \"%{agent}\" requiere autenticación. Siga los pasos a continuación para iniciar sesión. Para cambiar de agente, vaya a Configuración de Terminal Inteligente > Agente."
-setup.subtitle.agent_auth: "Su agente \"%{agent}\" requiere autenticación. Inicie sesión a través del agente y, a continuación, seleccione \"He iniciado sesión\" a continuación. Para cambiar de agente, vaya a Configuración de Terminal Inteligente > Agente."
+setup.subtitle.authentication_required: "Su agente \"%{agent}\" requiere autenticación."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Siga los pasos a continuación para iniciar sesión."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Inicie sesión a través del agente y, a continuación, seleccione \"Ya inicié sesión\" abajo."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Seleccione un método de inicio de sesión para continuar aquí."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Para cambiar de agente, vaya a Terminal Inteligente Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "No se pudo iniciar %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Dominio de Enterprise: "
 auth.enterprise_hint_footer: "  Enter para iniciar sesión · Esc para github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Pulse Enter para reintentar, o Esc para github.com. Causas comunes: un dominio mal escrito o inaccesible, un código expirado o falta de acceso a Copilot en ese host."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Pulse Enter para reintentar, o Esc para volver atrás."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Complete el inicio de sesión en su navegador. Pulse Esc para cancelar la espera."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "¿No se ha abierto el navegador? Use este enlace de inicio de sesión. O: abrir · Y: copiar."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "No se ha podido abrir el navegador. Abra el enlace de inicio de sesión manualmente."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "No se ha podido copiar el enlace de inicio de sesión. Selecciónelo y cópielo manualmente."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "El inicio de sesión no se completó a tiempo. Inténtelo de nuevo cuando esté listo."  # Sign-in wait timeout; the user can retry later.
 
 # ── Vista de chat (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Pensando…"
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "el proveedor no ha confirmado el estado de sesión
 system.provider_command_blocked_by_policy: "%{command}: La aprobación automática está deshabilitada por la directiva de tu organización."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Modelo desconocido %{model} — escriba /model para ver la lista disponible."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Su agente \"%{agent}\" requiere autenticación. Seleccione un método de inicio de sesión para continuar aquí."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Complete el inicio de sesión en su navegador. Pulse Esc para cancelar la espera."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "¿No se ha abierto el navegador? Use este enlace de inicio de sesión. O: abrir · Y: copiar."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "No se ha podido abrir el navegador. Abra el enlace de inicio de sesión manualmente."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "No se ha podido copiar el enlace de inicio de sesión. Selecciónelo y cópielo manualmente."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "El inicio de sesión no se completó a tiempo. Inténtelo de nuevo cuando esté listo."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "No hemos podido encontrar \"%{agent}\" en el entorno de inicio de sesión de %{distro}. Compruebe la instalación, PATH y el perfil del intérprete de comandos de este usuario de Linux y vuelva a intentarlo."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

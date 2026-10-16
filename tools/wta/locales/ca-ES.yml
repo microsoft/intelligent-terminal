@@ -8,8 +8,11 @@ setup.title.sign_in: "Cal iniciar la sessió"
 # %{agent} se substitueix pel nom de visualització de l'agent en temps d'execució.
 setup.subtitle.copilot_missing: "El vostre agent \"%{agent}\" no està instal·lat. Seguiu els passos següents per instal·lar-lo. Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
 setup.subtitle.agent_missing: "El vostre agent \"%{agent}\" no està instal·lat. Reinstal·leu-lo manualment i torneu-ho a provar. Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
-setup.subtitle.copilot_auth: "El vostre agent \"%{agent}\" requereix autenticació. Seguiu els passos següents per iniciar la sessió. Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
-setup.subtitle.agent_auth: "El vostre agent \"%{agent}\" requereix autenticació. Inicieu la sessió mitjançant l'agent i seleccioneu \"He iniciat la sessió\" a continuació. Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
+setup.subtitle.authentication_required: "El vostre agent \"%{agent}\" requereix autenticació."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Seguiu els passos següents per iniciar la sessió."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Inicieu la sessió mitjançant l'agent i seleccioneu \"He iniciat la sessió\" a continuació."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Seleccioneu un mètode d'inici de sessió per continuar aquí."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "No s'ha pogut iniciar %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Domini d'Enterprise: "
 auth.enterprise_hint_footer: "  Enter per iniciar la sessió · Esc per github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Premeu Enter per tornar-ho a provar, o Esc per github.com. Causes habituals: un domini mal escrit o inaccessible, un codi caducat o cap accés a Copilot en aquest amfitrió."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Premeu Enter per tornar-ho a provar, o Esc per tornar enrere."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Completeu l'inici de sessió al navegador. Premeu Esc per cancel·lar l'espera."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "No s'ha obert el navegador? Feu servir aquest enllaç d'inici de sessió. O: obre · Y: copia."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "No s'ha pogut obrir el navegador. Obriu l'enllaç d'inici de sessió manualment."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "No s'ha pogut copiar l'enllaç d'inici de sessió. Seleccioneu-lo i copieu-lo manualment."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "L'inici de sessió no s'ha completat a temps. Torneu-ho a provar quan estigueu a punt."  # Sign-in wait timeout; the user can retry later.
 
 # ── Vista de xat (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Pensant…"
@@ -300,10 +308,4 @@ system.yolo_disable_pending: "el proveïdor no ha confirmat l’estat de sessió
 system.provider_command_blocked_by_policy: "%{command}: L'aprovació automàtica està deshabilitada per la política de la vostra organització."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Model desconegut %{model} — escriviu /model per veure la llista disponible."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "El vostre agent \"%{agent}\" requereix autenticació. Seleccioneu un mètode d'inici de sessió per continuar aquí."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Completeu l'inici de sessió al navegador. Premeu Esc per cancel·lar l'espera."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "No s'ha obert el navegador? Feu servir aquest enllaç d'inici de sessió. O: obre · Y: copia."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "No s'ha pogut obrir el navegador. Obriu l'enllaç d'inici de sessió manualment."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "No s'ha pogut copiar l'enllaç d'inici de sessió. Seleccioneu-lo i copieu-lo manualment."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "L'inici de sessió no s'ha completat a temps. Torneu-ho a provar quan estigueu a punt."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "No hem pogut trobar \"%{agent}\" a l'entorn d'inici de sessió de %{distro}. Comproveu la instal·lació, PATH i el perfil de l'intèrpret d'ordres d'aquest usuari de Linux i torneu-ho a provar."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

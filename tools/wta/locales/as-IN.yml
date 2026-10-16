@@ -8,8 +8,11 @@ setup.title.sign_in: "চাইন ইন প্ৰয়োজন"
 # %{agent} ৰানটাইমত এজেণ্টৰ প্ৰদৰ্শন নামেৰে সলনি হয়।
 setup.subtitle.copilot_missing: "আপোনাৰ এজেণ্ট \"%{agent}\" ইনষ্টল কৰা হোৱা নাই। ইয়াক ইনষ্টল কৰিবলৈ তলৰ পদক্ষেপসমূহ অনুসৰণ কৰক। এজেণ্ট সলনি কৰিবলৈ ইন্টেলিজেন্ট টাৰ্মিনেল Settings > Agent লৈ যাওক।"
 setup.subtitle.agent_missing: "আপোনাৰ এজেণ্ট \"%{agent}\" ইনষ্টল কৰা হোৱা নাই। অনুগ্ৰহ কৰি ইয়াক হাতেৰে পুনৰ ইনষ্টল কৰক, তাৰ পিছত পুনৰ চেষ্টা কৰক। এজেণ্ট সলনি কৰিবলৈ ইন্টেলিজেন্ট টাৰ্মিনেল Settings > Agent লৈ যাওক।"
-setup.subtitle.copilot_auth: "আপোনাৰ এজেণ্ট \"%{agent}\" ৰ প্ৰমাণীকৰণ প্ৰয়োজন। চাইন ইন কৰিবলৈ তলৰ পদক্ষেপসমূহ অনুসৰণ কৰক। এজেণ্ট সলনি কৰিবলৈ ইন্টেলিজেন্ট টাৰ্মিনেল Settings > Agent লৈ যাওক।"
-setup.subtitle.agent_auth: "আপোনাৰ এজেণ্ট \"%{agent}\"-ৰ প্ৰমাণীকৰণৰ প্ৰয়োজন। অনুগ্ৰহ কৰি এজেণ্টৰ জৰিয়তে ছাইন ইন কৰক, তাৰ পিছত তলত \"মই চাইন ইন কৰিলোঁ\" নিৰ্বাচন কৰক। এজেণ্ট সলাবলৈ ইন্টেলিজেন্ট টাৰ্মিনেল Settings > Agent লৈ যাওক।"
+setup.subtitle.authentication_required: "আপোনাৰ এজেণ্ট \"%{agent}\"-ৰ প্ৰমাণীকৰণৰ প্ৰয়োজন।"  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "চাইন ইন কৰিবলৈ তলৰ পদক্ষেপসমূহ অনুসৰণ কৰক।"  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "অনুগ্ৰহ কৰি এজেণ্টৰ জৰিয়তে চাইন ইন কৰক, তাৰ পিছত তলত \"মই চাইন ইন কৰিলোঁ\" নিৰ্বাচন কৰক।"  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "ইয়াত আগবাঢ়িবলৈ এটা চাইন ইন পদ্ধতি নিৰ্বাচন কৰক।"  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "এজেণ্ট সলনি কৰিবলৈ ইন্টেলিজেন্ট টাৰ্মিনেল Settings > Agent লৈ যাওক।"  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "আমি %{agent} আৰম্ভ কৰিব নোৱাৰিলোঁ।"
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise ড'মেইন: "
 auth.enterprise_hint_footer: "  ছাইন ইন কৰিবলৈ Enter · github.com ৰ বাবে Esc"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  পুনৰ চেষ্টা কৰিবলৈ Enter টিপক, বা github.com ৰ বাবে Esc. সাধাৰণ কাৰণ: ভুলকৈ টাইপ কৰা বা পোৱা নাযোৱা ড'মেইন, মেয়াদ উকলি যোৱা ক'ড, বা সেই হ'ষ্টত Copilot অভিগম নথকা."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  পুনৰ চেষ্টা কৰিবলৈ Enter টিপক, বা উভতি যাবলৈ Esc."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "আপোনাৰ ব্ৰাউজাৰত ছাইন ইন সম্পূৰ্ণ কৰক। অপেক্ষা বাতিল কৰিবলৈ Esc টিপক।"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ব্ৰাউজাৰ খোলা নাই? ছাইন ইন কৰিবলৈ এই লিংক ব্যৱহাৰ কৰক। O: খোলক · Y: কপি কৰক।"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ব্ৰাউজাৰ খুলিব পৰা নগ'ল। ছাইন ইন লিংকটো নিজে খোলক।"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "ছাইন ইন লিংকটো কপি কৰিব পৰা নগ'ল। নিজে নিৰ্বাচন কৰি কপি কৰক।"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "নিৰ্ধাৰিত সময়ৰ ভিতৰত ছাইন ইন সম্পূৰ্ণ নহ'ল। আপুনি সাজু হ'লে পুনৰ চেষ্টা কৰক।"  # Sign-in wait timeout; the user can retry later.
 
 # ── চাট দৃশ্য (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "চিন্তা কৰি আছে…"
@@ -301,10 +309,4 @@ system.yolo_disable_pending: "এজেণ্ট প্ৰদানকাৰী�
 system.provider_command_blocked_by_policy: "%{command}: আপোনাৰ সংগঠনৰ নীতি অনুসৰি স্বয়ংক্ৰিয় অনুমোদন নিষ্ক্ৰিয় কৰা হৈছে।"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "অজ্ঞাত মডেল %{model} — উপলব্ধ তালিকা চাবলৈ /model টাইপ কৰক।"  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "আপোনাৰ এজেণ্ট \"%{agent}\"-ৰ প্ৰমাণীকৰণৰ প্ৰয়োজন। ইয়াত আগবাঢ়িবলৈ এটা ছাইন ইন পদ্ধতি নিৰ্বাচন কৰক।"  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "আপোনাৰ ব্ৰাউজাৰত ছাইন ইন সম্পূৰ্ণ কৰক। অপেক্ষা বাতিল কৰিবলৈ Esc টিপক।"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "ব্ৰাউজাৰ খোলা নাই? ছাইন ইন কৰিবলৈ এই লিংক ব্যৱহাৰ কৰক। O: খোলক · Y: কপি কৰক।"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "ব্ৰাউজাৰ খুলিব পৰা নগ'ল। ছাইন ইন লিংকটো নিজে খোলক।"  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "ছাইন ইন লিংকটো কপি কৰিব পৰা নগ'ল। নিজে নিৰ্বাচন কৰি কপি কৰক।"  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "নিৰ্ধাৰিত সময়ৰ ভিতৰত ছাইন ইন সম্পূৰ্ণ নহ'ল। আপুনি সাজু হ'লে পুনৰ চেষ্টা কৰক।"  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "%{distro}-ৰ লগইন পৰিৱেশত \"%{agent}\" বিচাৰি পোৱা নগ'ল। এই Linux ব্যৱহাৰকাৰীৰ ইনষ্টলেশ্বন, PATH আৰু শ্বেল প্ৰ'ফাইল পৰীক্ষা কৰক, তাৰ পিছত পুনৰ চেষ্টা কৰক।"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

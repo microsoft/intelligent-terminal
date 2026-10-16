@@ -495,6 +495,7 @@ fn open_url_in_browser(url: &str) -> std::io::Result<()> {
 /// outside `USER_INPUT_TOOL_NAMES`.
 pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
     "cwd",
+    "new_cwd",
     "title",
     "tool_name",
     "toolName",
@@ -503,6 +504,8 @@ pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
     "notification_type",
     "reason",
     "error",
+    "pane_owner",
+    "running",
 ];
 
 /// Members of `payload.tool_input` the routing function reads when the tool is
@@ -525,6 +528,9 @@ pub struct AgentEventFacts {
     pub key: String,
     /// Whether a row already exists for `key`.
     pub session_known: bool,
+    /// Status before applying this event; a running OpenCode binding must not
+    /// overwrite live Attention when a second TUI views the session.
+    pub session_status: Option<crate::agent_sessions::AgentStatus>,
     /// An existing live session other than `key` owns the hook's pane.
     pub pane_owned_by_other: bool,
 }
@@ -593,8 +599,11 @@ pub fn plan_agent_event(
         event,
         "agent.session.started"
             | "agent.session.start"
+            | "agent.session.renamed"
             | "agent.session.stopped"
             | "agent.session.end"
+            | "agent.session.unbind"
+            | "agent.cwd.changed"
     ) && !facts.session_known;
     if facts.pane_owned_by_other
         && !matches!(event, "agent.session.started" | "agent.session.start")
@@ -610,6 +619,23 @@ pub fn plan_agent_event(
             pane_session_id: pane_session_id.to_string(),
             cwd: cwd.clone(),
             title: synth_title.clone(),
+        });
+    }
+    if facts.session_known
+        && matches!(
+            cli_source,
+            crate::agent_sessions::CliSource::Copilot
+                | crate::agent_sessions::CliSource::Claude
+                | crate::agent_sessions::CliSource::Codex
+                | crate::agent_sessions::CliSource::Gemini
+        )
+        && event == "agent.prompt.submit"
+        && !cwd.as_os_str().is_empty()
+    {
+        plan.events.push(SessionEvent::WorkingDirectoryChanged {
+            key: key.clone(),
+            pane_session_id: pane_session_id.to_string(),
+            cwd: cwd.clone(),
         });
     }
 
@@ -633,6 +659,37 @@ pub fn plan_agent_event(
                 synth_title
             },
         },
+        "agent.session.renamed"
+            if facts.session_known && *cli_source == crate::agent_sessions::CliSource::OpenCode =>
+        {
+            let Some(title) = payload
+                .get("title")
+                .and_then(|value| value.as_str())
+                .filter(|title| !title.trim().is_empty())
+            else {
+                return plan;
+            };
+            SessionEvent::SessionRenamed {
+                key,
+                pane_session_id: pane_session_id.to_string(),
+                title: title.to_string(),
+            }
+        }
+        "agent.cwd.changed" if facts.session_known => {
+            let Some(cwd) = payload
+                .get("new_cwd")
+                .or_else(|| payload.get("cwd"))
+                .and_then(|value| value.as_str())
+                .filter(|value| !value.trim().is_empty())
+            else {
+                return plan;
+            };
+            SessionEvent::WorkingDirectoryChanged {
+                key,
+                pane_session_id: pane_session_id.to_string(),
+                cwd: PathBuf::from(cwd),
+            }
+        }
         "agent.tool.starting" => {
             let tool_name = payload
                 .get("tool_name")
@@ -713,6 +770,14 @@ pub fn plan_agent_event(
                 .unwrap_or("")
                 .to_string(),
         },
+        "agent.session.unbind"
+            if *cli_source == crate::agent_sessions::CliSource::OpenCode && facts.session_known =>
+        {
+            SessionEvent::SessionUnbound {
+                key,
+                pane_session_id: pane_session_id.to_string(),
+            }
+        }
         "agent.error" => SessionEvent::ConnectionFailed {
             pane_session_id: pane_session_id.to_string(),
             reason: payload
@@ -728,6 +793,22 @@ pub fn plan_agent_event(
         }
     };
     plan.events.push(primary);
+    if event == "agent.session.start"
+        && *cli_source == crate::agent_sessions::CliSource::OpenCode
+        && payload.get("running").and_then(|value| value.as_bool()) == Some(true)
+        && !matches!(
+            facts.session_status.as_ref(),
+            Some(
+                crate::agent_sessions::AgentStatus::Working
+                    | crate::agent_sessions::AgentStatus::Attention
+            )
+        )
+    {
+        plan.events.push(SessionEvent::ToolStarting {
+            key: facts.key.clone(),
+            tool_name: "prompt".to_string(),
+        });
+    }
     plan
 }
 
@@ -781,6 +862,19 @@ fn session_removed_matches_scope(
     params.history_key.as_ref().is_none_or(|key| {
         key.provider_id.eq_ignore_ascii_case(agent_id) && &key.location == location
     })
+}
+
+pub(crate) fn opencode_end_from_another_pane(
+    cli_source: &crate::agent_sessions::CliSource,
+    event: &str,
+    bound_pane: Option<&str>,
+    incoming_pane: &str,
+) -> bool {
+    *cli_source == crate::agent_sessions::CliSource::OpenCode
+        && matches!(event, "agent.session.end" | "agent.session.stopped")
+        && bound_pane.is_some_and(|pane| {
+            crate::agent_sessions::pane_key(pane) != crate::agent_sessions::pane_key(incoming_pane)
+        })
 }
 
 /// As [`route_agent_event_to_registry`], but reports every event it applied.
@@ -896,6 +990,15 @@ where
         }
     }
     let key_for_refresh = key.clone();
+    if opencode_end_from_another_pane(
+        &cli_source,
+        event,
+        reg.get(&key).and_then(|row| row.pane_session_id.as_deref()),
+        pane_session_id,
+    ) {
+        tracing::debug!(target: "agent_route", key, pane_session_id, "ignored stale OpenCode end from another pane");
+        return false;
+    }
     // Per-agent-event — debug, not info.
     tracing::debug!(
         target: "agent_route",
@@ -912,19 +1015,52 @@ where
         .cloned()
         .unwrap_or(serde_json::Value::Null);
 
+    let non_binding_opencode = cli_source == CliSource::OpenCode
+        && payload.get("pane_owner").and_then(|value| value.as_bool()) == Some(false);
+    let owner_pane = if non_binding_opencode {
+        if !matches!(
+            event,
+            "agent.prompt.submit"
+                | "agent.tool.starting"
+                | "agent.stop"
+                | "agent.notification"
+                | "agent.error"
+        ) {
+            return false;
+        }
+        let Some(pane) = reg
+            .get(&key)
+            .filter(|row| {
+                row.cli_source == cli_source
+                    && row.liveness() == crate::agent_sessions::LivenessState::Live
+            })
+            .and_then(|row| row.pane_session_id.clone())
+            .filter(|pane| !pane.is_empty())
+        else {
+            tracing::debug!(target: "agent_route", key, event, "ignored unbound OpenCode server activity");
+            return false;
+        };
+        pane
+    } else {
+        pane_session_id.to_string()
+    };
     let facts = AgentEventFacts {
         key: key.clone(),
         session_known: reg
             .get(&key)
             .is_some_and(|row| row.cli_source == cli_source),
-        pane_owned_by_other: reg.key_for_pane(pane_session_id).is_some_and(|owner| {
+        session_status: reg
+            .get(&key)
+            .filter(|row| row.cli_source == cli_source)
+            .map(|row| row.status.clone()),
+        pane_owned_by_other: reg.key_for_pane(&owner_pane).is_some_and(|owner| {
             reg.get(&owner).is_some_and(|row| {
                 row.liveness() == crate::agent_sessions::LivenessState::Live
                     && (owner != key || row.cli_source != cli_source)
             })
         }),
     };
-    let plan = plan_agent_event(event, &payload, pane_session_id, &cli_source, &facts);
+    let plan = plan_agent_event(event, &payload, &owner_pane, &cli_source, &facts);
 
     // A real `agent.session.started` supersedes any `pane:`-keyed placeholder
     // minted for this pane while the id was still unknown.
@@ -4084,7 +4220,11 @@ impl App {
         self.notify_confirmed_agent_available(agent_id);
         self.initial_startup_presentation_eligible = false;
         self.initial_transport_superseded = true;
-        self.update_deferred_acp_agent(agent_id);
+        // Custom providers already carry their resolved command; a registry
+        // lookup of custom:<name> cannot reconstruct it.
+        if !agent_id.starts_with("custom:") {
+            self.update_deferred_acp_agent(agent_id);
+        }
         self.state = ConnectionState::Connecting(t!("connection.reconnecting").into_owned());
         self.preflight_setup_active = false;
         if let Some(setup) = self.setup.as_mut() {
@@ -4351,6 +4491,16 @@ impl App {
         };
         let profile = crate::agent_registry::lookup_profile(&agent_id);
         let reason = SetupReason::AgentError;
+        let (auth_options, _) = self.authentication_setup_presentation(&agent_id);
+        let can_sign_in = agent_id != "copilot"
+            && auth_options
+                .iter()
+                .any(|option| matches!(option, SetupOption::SignIn { .. }));
+        let subtitle = t!(
+            "setup.subtitle.connection_failed",
+            agent = profile.display_name
+        )
+        .into_owned();
         self.mode = AppMode::Setup;
         self.state = ConnectionState::Disconnected;
         self.auth = None;
@@ -4358,7 +4508,7 @@ impl App {
             reason: reason.clone(),
             selected_index: 0,
             preflight: PreflightResult {
-                agent_id: profile.id.to_string(),
+                agent_id,
                 display_name: profile.display_name.to_string(),
                 cli_status: CheckStatus::Passed,
                 cli_path: None,
@@ -4371,30 +4521,66 @@ impl App {
                 kind: SetupFailureKind::Connection,
                 message,
             },
-            options: if !self.acp_auth_methods.is_empty()
-                && (matches!(
-                    profile.acp_auth_flow,
-                    crate::agent_registry::AcpAuthFlow::InProtocol
-                ) || self.current_agent_id.starts_with("custom:"))
-            {
-                vec![
-                    SetupOption::SignIn {
-                        agent_id: self.current_agent_id.clone(),
-                        display_name: profile.display_name.into(),
-                    },
-                    SetupOption::ChooseAgentSource,
-                ]
+            options: if can_sign_in {
+                auth_options
             } else {
                 vec![SetupOption::RetryConnection, SetupOption::ChooseAgentSource]
             },
             title: reason.title(),
-            subtitle: t!(
-                "setup.subtitle.connection_failed",
-                agent = profile.display_name
-            )
-            .into_owned(),
+            subtitle: if can_sign_in {
+                format!(
+                    "{subtitle} {} {}",
+                    t!("setup.auth.sign_in"),
+                    t!("setup.auth.switch_agent")
+                )
+            } else {
+                subtitle
+            },
         });
         self.publish_agent_status();
+    }
+
+    fn has_usable_acp_authentication_methods(&self) -> bool {
+        self.acp_auth_methods
+            .iter()
+            .any(|method| !method.id().0.is_empty())
+    }
+
+    fn authentication_setup_presentation(&self, agent_id: &str) -> (Vec<SetupOption>, String) {
+        let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+        let protocol_auth = matches!(
+            profile.acp_auth_flow,
+            crate::agent_registry::AcpAuthFlow::InProtocol
+        ) || agent_id.starts_with("custom:");
+        let (option, instructions) = if agent_id == "copilot"
+            || (protocol_auth && self.has_usable_acp_authentication_methods())
+        {
+            (
+                SetupOption::SignIn {
+                    agent_id: agent_id.to_string(),
+                    display_name: profile.display_name.to_string(),
+                },
+                Some(t!("setup.auth.sign_in").into_owned()),
+            )
+        } else if protocol_auth {
+            (SetupOption::RetryConnection, None)
+        } else {
+            (
+                SetupOption::Retry,
+                Some(t!("setup.auth.external_sign_in").into_owned()),
+            )
+        };
+        let introduction = t!(
+            "setup.subtitle.authentication_required",
+            agent = profile.display_name
+        )
+        .into_owned();
+        let subtitle = match instructions {
+            Some(instructions) => format!("{introduction} {instructions}"),
+            None => introduction,
+        };
+        let subtitle = format!("{subtitle} {}", t!("setup.auth.switch_agent"));
+        (vec![option, SetupOption::ChooseAgentSource], subtitle)
     }
 
     pub fn set_event_tx(&mut self, tx: mpsc::UnboundedSender<AppEvent>) {
@@ -4573,8 +4759,15 @@ impl App {
             setup.selected_index = 0;
             setup.phase = SetupPhase::Ready;
             setup.title = t!("setup.title.sign_in").into_owned();
-            setup.subtitle =
-                t!("setup.subtitle.protocol_auth", agent = profile.display_name).into_owned();
+            setup.subtitle = format!(
+                "{} {} {}",
+                t!(
+                    "setup.subtitle.authentication_required",
+                    agent = profile.display_name
+                ),
+                t!("setup.auth.select_method"),
+                t!("setup.auth.switch_agent"),
+            );
         }
     }
 
@@ -4927,6 +5120,10 @@ impl App {
                 if let Some(ref setup) = self.setup {
                     let agent_id = setup.preflight.agent_id.clone();
                     if !agent_id.is_empty() {
+                        if agent_id.starts_with("custom:") {
+                            self.reconnect_confirmed_available_agent(&agent_id);
+                            return;
+                        }
                         if matches!(
                             self.current_agent_source,
                             crate::agent_source::AgentSource::Wsl { .. }
@@ -5501,12 +5698,11 @@ impl App {
     fn show_signin_setup_screen(&mut self, agent_id: String) {
         tracing::info!("show_signin_setup_screen: agent_id={}", agent_id);
         let profile = crate::agent_registry::lookup_profile(&agent_id);
-        let reason = SetupReason::AgentError;
         let is_wsl_source = matches!(
             self.current_agent_source,
             crate::agent_source::AgentSource::Wsl { .. }
         );
-        let agent_status = if is_wsl_source {
+        let agent_status = if is_wsl_source || agent_id.starts_with("custom:") {
             crate::agent_check::AgentStatus {
                 id: profile.id.to_string(),
                 display_name: profile.display_name.to_string(),
@@ -5519,29 +5715,42 @@ impl App {
         } else {
             crate::agent_check::check_agent(profile.id)
         };
-        let options = if is_wsl_source {
-            build_setup_options(&reason, None)
-        } else {
-            build_setup_options(&reason, Some(&agent_status))
-        };
+        self.show_signin_setup_screen_with_status(&agent_id, agent_status);
+    }
+
+    fn show_signin_setup_screen_with_status(
+        &mut self,
+        agent_id: &str,
+        agent_status: crate::agent_check::AgentStatus,
+    ) {
         self.mode = AppMode::Setup;
         self.state = ConnectionState::Disconnected;
         self.auth = None;
+        self.current_tab_mut()
+            .retain_current_messages(|message| !matches!(message, ChatMessage::Error(_)));
+        if !agent_status.cli_found {
+            self.show_preflight_setup(PreflightResult {
+                agent_id: agent_id.to_string(),
+                display_name: agent_status.display_name,
+                cli_status: CheckStatus::Failed(t!("agent.status.not_found").into_owned()),
+                cli_path: agent_status.cli_path,
+                auth_status: CheckStatus::Skipped,
+                install_hint: agent_status.install_hint,
+                install_url: String::new(),
+                auth_hint: agent_status.auth_hint,
+            });
+            return;
+        }
+        let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+        let (options, subtitle) = self.authentication_setup_presentation(agent_id);
         self.setup = Some(SetupState {
-            reason,
+            reason: SetupReason::AgentError,
             selected_index: 0,
             preflight: PreflightResult {
-                agent_id: profile.id.to_string(),
+                agent_id: agent_id.to_string(),
                 display_name: profile.display_name.to_string(),
-                // Reflect the CLI's real presence (we just computed
-                // `agent_status`) instead of hard-coding "found" — on the
-                // dead-man fallback the CLI may genuinely be the problem.
-                cli_status: if agent_status.cli_found {
-                    CheckStatus::Passed
-                } else {
-                    CheckStatus::Failed(t!("agent.status.not_found").into_owned())
-                },
-                cli_path: agent_status.cli_path.clone(),
+                cli_status: CheckStatus::Passed,
+                cli_path: agent_status.cli_path,
                 auth_status: CheckStatus::Failed(t!("system.authentication_failed").into_owned()),
                 install_hint: profile.install_hint.to_string(),
                 install_url: String::new(),
@@ -5550,14 +5759,8 @@ impl App {
             phase: SetupPhase::Ready,
             options,
             title: t!("setup.title.sign_in").into_owned(),
-            subtitle: if profile.id == "copilot" {
-                t!("setup.subtitle.copilot_auth", agent = profile.display_name).into_owned()
-            } else {
-                t!("setup.subtitle.agent_auth", agent = profile.display_name).into_owned()
-            },
+            subtitle,
         });
-        let tab = self.current_tab_mut();
-        tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
     }
 
     // Keep the existing agent_paste_text wire event compatible with packaged Terminal.

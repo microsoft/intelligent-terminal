@@ -8,8 +8,11 @@ setup.title.sign_in: "Kirjautuminen vaaditaan"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Agenttiasi \"%{agent}\" ei ole asennettu. Asenna se seuraamalla alla olevia ohjeita. Vaihtaaksesi agenttia siirry kohtaan Älykäs Pääte Settings > Agent."
 setup.subtitle.agent_missing: "Agenttiasi \"%{agent}\" ei ole asennettu. Asenna se uudelleen manuaalisesti ja yritä sitten uudelleen. Vaihtaaksesi agenttia siirry kohtaan Älykäs Pääte Settings > Agent."
-setup.subtitle.copilot_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Kirjaudu sisään seuraamalla alla olevia ohjeita. Vaihtaaksesi agenttia siirry kohtaan Älykäs Pääte Settings > Agent."
-setup.subtitle.agent_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Kirjaudu sisään agentin kautta ja valitse sitten alta \"Olen kirjautunut sisään\". Vaihtaaksesi agenttia siirry kohtaan Älykäs Pääte Settings > Agent."
+setup.subtitle.authentication_required: "Agenttisi \"%{agent}\" vaatii todennuksen."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Kirjaudu sisään seuraamalla alla olevia ohjeita."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Kirjaudu sisään agentin kautta ja valitse sitten alta \"Olen kirjautunut sisään\"."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Valitse kirjautumistapa jatkaaksesi tässä."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Vaihtaaksesi agenttia siirry kohtaan Älykäs Pääte Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Agenttia \"%{agent}\" ei voitu käynnistää."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise-toimialue: "
 auth.enterprise_hint_footer: "  Enter = kirjaudu sisään · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Paina Enter yrittääksesi uudelleen tai Esc valitaksesi github.com. Yleisiä syitä: väärin kirjoitettu tai tavoittamaton toimialue, vanhentunut koodi tai ei Copilot-käyttöoikeutta kyseisessä isännässä."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Paina Enter yrittääksesi uudelleen tai Esc palataksesi takaisin."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Viimeistele kirjautuminen selaimessasi. Peruuta odottaminen painamalla Esc."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Eikö selain avautunut? Käytä tätä kirjautumislinkkiä. O: avaa · Y: kopioi."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Selainta ei voitu avata. Avaa kirjautumislinkki manuaalisesti."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Kirjautumislinkkiä ei voitu kopioida. Valitse ja kopioi se manuaalisesti."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Kirjautuminen ei valmistunut ajoissa. Yritä uudelleen, kun olet valmis."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Ajattelee..."
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "palveluntarjoaja ei ole vahvistanut, että istunto
 system.provider_command_blocked_by_policy: "%{command}: Organisaatiosi käytäntö estää automaattisen hyväksynnän."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Tuntematon malli %{model} — kirjoita /model nähdäksesi käytettävissä olevien mallien luettelon."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Valitse kirjautumistapa jatkaaksesi tässä."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Viimeistele kirjautuminen selaimessasi. Peruuta odottaminen painamalla Esc."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Eikö selain avautunut? Käytä tätä kirjautumislinkkiä. O: avaa · Y: kopioi."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Selainta ei voitu avata. Avaa kirjautumislinkki manuaalisesti."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Kirjautumislinkkiä ei voitu kopioida. Valitse ja kopioi se manuaalisesti."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Kirjautuminen ei valmistunut ajoissa. Yritä uudelleen, kun olet valmis."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Emme löytäneet agenttia \"%{agent}\" jakelun %{distro} kirjautumisympäristöstä. Tarkista tämän Linux-käyttäjän asennus, PATH ja komentotulkin profiili ja yritä sitten uudelleen."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

@@ -8,8 +8,11 @@ setup.title.sign_in: "Feumaidh tu clàradh a-steach"
 # Thèid %{agent} a chur an àite ainm-taisbeanaidh an àidseant aig àm ruith.
 setup.subtitle.copilot_missing: "Chan eil an àidseant agad \"%{agent}\" air a stàladh. Lean na ceumannan gu h-ìosal gus a stàladh. Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."
 setup.subtitle.agent_missing: "Chan eil an àidseant agad \"%{agent}\" air a stàladh. Ath-stàlaich e le làimh, an uair sin feuch a-rithist. Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."
-setup.subtitle.copilot_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Lean na ceumannan gu h-ìosal gus clàradh a-steach. Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."
-setup.subtitle.agent_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Clàraich a-steach tron àidseant, an uair sin tagh \"Chlàraich mi a-steach\" gu h-ìosal. Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."
+setup.subtitle.authentication_required: "Feumaidh an neach-gnìomha agad \"%{agent}\" dearbhadh."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Lean na ceumannan gu h-ìosal gus clàradh a-steach."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Clàraich a-steach tron neach-gnìomha, an uair sin tagh \"Chlàraich mi a-steach\" gu h-ìosal."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Tagh dòigh clàraidh a-steach gus leantainn air adhart an seo."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Cha b' urrainn dhuinn %{agent} a thòiseachadh."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Àrainn Enterprise: "
 auth.enterprise_hint_footer: "  Enter = clàraich a-steach · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Brùth Enter airson feuchainn ris a-rithist, no Esc airson github.com. Adhbharan cumanta: àrainn air a sgrìobhadh ceàrr no nach gabh ruigsinn, còd a dh'fhalbh, no gun inntrigeadh Copilot air an òstair sin."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Brùth Enter airson feuchainn ris a-rithist, no Esc airson a dhol air ais."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Cuir crìoch air a' chlàradh a-steach sa bhrobhsair agad. Brùth Esc gus sgur dhen fheitheamh."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Nach do dh'fhosgail am brabhsair? Cleachd an ceangal clàraidh a-steach seo. O: fosgail · Y: dèan lethbhreac."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Cha b' urrainn dhuinn am brabhsair fhosgladh. Fosgail an ceangal clàraidh a-steach a làimh."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Cha b' urrainn dhuinn lethbhreac dhen cheangal clàraidh a-steach a dhèanamh. Tagh e agus dèan lethbhreac dheth a làimh."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Cha deach an clàradh a-steach a chrìochnachadh ann an àm. Feuch ris a-rithist nuair a bhios tu deiseil."  # Sign-in wait timeout; the user can retry later.
 
 # ── Sealladh còmhraidh (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "A' smaoineachadh…"
@@ -297,10 +305,4 @@ system.yolo_disable_pending: "cha do dhearbh solaraiche an neach-gnìomha staid 
 system.provider_command_blocked_by_policy: "%{command}: Tha cead fèin-ghluasadach à comas le poileasaidh na buidhne agad."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Modail neo-aithnichte %{model} — sgrìobh /model gus an liosta a tha ri làimh fhaicinn."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Tagh dòigh clàraidh a-steach gus leantainn air adhart an seo."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Cuir crìoch air a' chlàradh a-steach sa bhrobhsair agad. Brùth Esc gus sgur dhen fheitheamh."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Nach do dh'fhosgail am brabhsair? Cleachd an ceangal clàraidh a-steach seo. O: fosgail · Y: dèan lethbhreac."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Cha b' urrainn dhuinn am brabhsair fhosgladh. Fosgail an ceangal clàraidh a-steach a làimh."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Cha b' urrainn dhuinn lethbhreac dhen cheangal clàraidh a-steach a dhèanamh. Tagh e agus dèan lethbhreac dheth a làimh."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Cha deach an clàradh a-steach a chrìochnachadh ann an àm. Feuch ris a-rithist nuair a bhios tu deiseil."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Cha b' urrainn dhuinn \"%{agent}\" a lorg ann an àrainneachd clàraidh a-steach %{distro}. Thoir sùil air stàladh, PATH agus pròifil na slige aig a' chleachdaiche Linux seo, agus feuch ris a-rithist."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

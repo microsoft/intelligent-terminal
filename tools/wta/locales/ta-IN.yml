@@ -8,8 +8,11 @@ setup.title.sign_in: "உள்நுழைவு தேவை"
 # %{agent} இயக்க நேரத்தில் ஏஜெண்ட் காட்சிப் பெயரால் மாற்றப்படும்.
 setup.subtitle.copilot_missing: "உங்கள் ஏஜெண்ட் \"%{agent}\" நிறுவப்படவில்லை. நிறுவ கீழே உள்ள படிகளைப் பின்பற்றுங்கள். முகவரை மாற்ற அறிவாண் முனையம் Settings > Agent-க்குச் செல்லுங்கள்."
 setup.subtitle.agent_missing: "உங்கள் ஏஜெண்ட் \"%{agent}\" நிறுவப்படவில்லை. தயவுசெய்து கைமுறையாக மீண்டும் நிறுவி, மீண்டும் முயற்சிக்கவும். முகவரை மாற்ற அறிவாண் முனையம் Settings > Agent-க்குச் செல்லுங்கள்."
-setup.subtitle.copilot_auth: "உங்கள் ஏஜெண்ட் \"%{agent}\"-க்கு அங்கீகாரம் தேவை. உள்நுழைய கீழே உள்ள படிகளைப் பின்பற்றுங்கள். முகவரை மாற்ற அறிவாண் முனையம் Settings > Agent-க்குச் செல்லுங்கள்."
-setup.subtitle.agent_auth: "உங்கள் எஜென்ட் \"%{agent}\" அங்கீகாரம் தேவைப்படுகிறது. எஜென்ட்டின் மூலம் உள்நுழைந்து, பின்னர் கீழே \"நான் உள்நுழைந்துவிட்டேன்\" என்பதைத் தேர்ந்தெடுக்கவும். எஜென்ட்களை மாற்ற, Settings-க்கு செல்லவும்."
+setup.subtitle.authentication_required: "உங்கள் \"%{agent}\" முகவருக்கு அங்கீகாரம் தேவைப்படுகிறது."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "உள்நுழைய கீழே உள்ள படிகளைப் பின்பற்றுங்கள்."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "முகவர் மூலம் உள்நுழைந்து, பின்னர் கீழே \"நான் உள்நுழைந்துவிட்டேன்\" என்பதைத் தேர்ந்தெடுக்கவும்."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "இங்கே தொடர உள்நுழையும் முறையைத் தேர்ந்தெடுக்கவும்."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "முகவரை மாற்ற அறிவாண் முனையம் Settings > Agent-க்குச் செல்லுங்கள்."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "%{agent}-ஐத் தொடங்க முடியவில்லை."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise டொமைன்: "
 auth.enterprise_hint_footer: "  உள்நுழைய Enter · github.com க்கு Esc"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  மீண்டும் முயற்சிக்க Enter ஐ அழுத்தவும், அல்லது github.com க்கு Esc. பொதுவான காரணங்கள்: தவறாக தட்டச்சு செய்யப்பட்ட அல்லது அணுக முடியாத டொமைன், காலாவதியான குறியீடு, அல்லது அந்த ஹோஸ்டில் Copilot அணுகல் இல்லாமை."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  மீண்டும் முயற்சிக்க Enter ஐ அழுத்தவும், அல்லது பின்செல்ல Esc."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "உங்கள் உலாவியில் உள்நுழைவை முடிக்கவும். காத்திருப்பதை ரத்துசெய்ய Esc ஐ அழுத்தவும்."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "உலாவி திறக்கவில்லையா? உள்நுழைவதற்கு இந்த இணைப்பைப் பயன்படுத்தவும். O: திற · Y: நகலெடு."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "உலாவியைத் திறக்க முடியவில்லை. உள்நுழைவு இணைப்பை நீங்களே திறக்கவும்."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "உள்நுழைவு இணைப்பை நகலெடுக்க முடியவில்லை. அதைத் தேர்ந்தெடுத்து நீங்களே நகலெடுக்கவும்."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "உள்நுழைவு உரிய நேரத்தில் முடியவில்லை. நீங்கள் தயாரானதும் மீண்டும் முயற்சிக்கவும்."  # Sign-in wait timeout; the user can retry later.
 
 # ── அரட்டைக் காட்சி (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "யோசிக்கிறது…"
@@ -299,10 +307,4 @@ system.yolo_disable_pending: "சிறப்புரிமை முறை ம
 system.provider_command_blocked_by_policy: "%{command}: உங்கள் நிறுவனத்தின் கொள்கையால் தானியங்கி ஒப்புதல் முடக்கப்பட்டுள்ளது."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "அறியப்படாத மாதிரி %{model} — கிடைக்கும் பட்டியலைக் காண /model எனத் தட்டச்சு செய்யவும்."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "உங்கள் எஜென்ட் \"%{agent}\"-க்கு அங்கீகாரம் தேவைப்படுகிறது. இங்கே தொடர உள்நுழையும் முறையைத் தேர்ந்தெடுக்கவும்."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "உங்கள் உலாவியில் உள்நுழைவை முடிக்கவும். காத்திருப்பதை ரத்துசெய்ய Esc ஐ அழுத்தவும்."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "உலாவி திறக்கவில்லையா? உள்நுழைவதற்கு இந்த இணைப்பைப் பயன்படுத்தவும். O: திற · Y: நகலெடு."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "உலாவியைத் திறக்க முடியவில்லை. உள்நுழைவு இணைப்பை நீங்களே திறக்கவும்."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "உள்நுழைவு இணைப்பை நகலெடுக்க முடியவில்லை. அதைத் தேர்ந்தெடுத்து நீங்களே நகலெடுக்கவும்."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "உள்நுழைவு உரிய நேரத்தில் முடியவில்லை. நீங்கள் தயாரானதும் மீண்டும் முயற்சிக்கவும்."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "%{distro} உள்நுழைவு சூழலில் \"%{agent}\" கிடைக்கவில்லை. இந்த Linux பயனரின் நிறுவல், PATH மற்றும் ஷெல் சுயவிவரத்தைச் சரிபார்த்து, மீண்டும் முயற்சிக்கவும்."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

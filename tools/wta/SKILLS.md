@@ -24,7 +24,7 @@
 ## Discovering Panes
 
 ```bash
-# List all panes (shows PANE_ID, PID, ACTIVE, ROWS, COLS)
+# List panes in the first tab of the first-listed window
 wta list-panes
 
 # Get just the active pane
@@ -33,7 +33,7 @@ wta active-pane
 # Full hierarchy: windows → tabs → panes
 wta list-windows
 wta list-tabs -w 1
-wta list-panes -t 0
+wta list-panes -w 1 -t 0
 ```
 
 Use `--json` on any command for machine-readable output.

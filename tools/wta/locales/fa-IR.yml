@@ -8,8 +8,11 @@ setup.title.sign_in: "ورود به سیستم لازم است"
 # %{agent} در زمان اجرا با نام نمایشی عامل هوش مصنوعی جایگزین می‌شود.
 setup.subtitle.copilot_missing: "عامل هوش مصنوعی \"%{agent}\" نصب نشده است. مراحل زیر را برای نصب آن دنبال کنید. برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."
 setup.subtitle.agent_missing: "عامل هوش مصنوعی \"%{agent}\" نصب نشده است. لطفاً آن را به صورت دستی دوباره نصب کنید، سپس دوباره تلاش کنید. برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."
-setup.subtitle.copilot_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. مراحل زیر را برای ورود دنبال کنید. برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."
-setup.subtitle.agent_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. لطفاً از طریق عامل هوش مصنوعی وارد شوید، سپس \"وارد شدم\" را در زیر انتخاب کنید. برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."
+setup.subtitle.authentication_required: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "مراحل زیر را برای ورود دنبال کنید."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "لطفاً از طریق عامل هوش مصنوعی وارد شوید، سپس \"وارد شدم\" را در زیر انتخاب کنید."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "برای ادامه در اینجا، یک روش ورود انتخاب کنید."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "نتوانستیم %{agent} را راه‌اندازی کنیم."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  دامنه سازمانی: "
 auth.enterprise_hint_footer: "  Enter برای ورود · Esc برای github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  برای تلاش دوباره Enter را فشار دهید، یا Esc برای github.com. علت‌های رایج: دامنه‌ای که اشتباه وارد شده یا قابل دسترسی نیست، کد منقضی‌شده، یا نداشتن دسترسی Copilot در آن میزبان."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  برای تلاش دوباره Enter را فشار دهید، یا Esc برای بازگشت."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "ورود را در مرورگر خود تکمیل کنید. برای لغو انتظار، Esc را فشار دهید."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "مرورگر باز نشده است؟ از این پیوند ورود استفاده کنید. O: باز کردن · Y: کپی کردن."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "باز کردن مرورگر ممکن نشد. پیوند ورود را به‌صورت دستی باز کنید."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "کپی کردن پیوند ورود ممکن نشد. آن را به‌صورت دستی انتخاب و کپی کنید."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "ورود در زمان مقرر تکمیل نشد. هر وقت آماده بودید دوباره تلاش کنید."  # Sign-in wait timeout; the user can retry later.
 
 # ── نمای گفتگو (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "در حال فکر کردن…"
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "ارائه‌دهندهٔ عامل هوش مصنو
 system.provider_command_blocked_by_policy: "%{command}: تأیید خودکار طبق خط‌مشی سازمان شما غیرفعال است."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "مدل ناشناخته %{model} — برای دیدن فهرست در دسترس، /model را تایپ کنید."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. برای ادامه در اینجا، یک روش ورود انتخاب کنید."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "ورود را در مرورگر خود تکمیل کنید. برای لغو انتظار، Esc را فشار دهید."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "مرورگر باز نشده است؟ از این پیوند ورود استفاده کنید. O: باز کردن · Y: کپی کردن."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "باز کردن مرورگر ممکن نشد. پیوند ورود را به‌صورت دستی باز کنید."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "کپی کردن پیوند ورود ممکن نشد. آن را به‌صورت دستی انتخاب و کپی کنید."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "ورود در زمان مقرر تکمیل نشد. هر وقت آماده بودید دوباره تلاش کنید."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "نتوانستیم \"%{agent}\" را در محیط ورود %{distro} پیدا کنیم. نصب، PATH و نمایهٔ پوستهٔ این کاربر Linux را بررسی کنید، سپس دوباره تلاش کنید."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

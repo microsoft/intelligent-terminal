@@ -13,8 +13,11 @@ setup.title.sign_in: "Պահանջվում է մուտք գործել"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Ձեր \"%{agent}\" ագենտը տեղադրված չէ։ Տեղադրելու համար հետեվեք ստորեվ նշված քայլերին։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
 setup.subtitle.agent_missing: "Ձեր \"%{agent}\" ագենտը տեղադրված չէ։ Խնդրում ենք ձեռքով վերատեղադրել և կրկին փորձել։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
-setup.subtitle.copilot_auth: "Ձեր \"%{agent}\" ագենտը պահանջում է նույնականացում։ Մուտք գործելու համար հետեվեք ստորեվ նշված քայլերին։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
-setup.subtitle.agent_auth: "Ձեր \"%{agent}\" ագենտը պահանջում է նույնականացում։ Մուտք գործեք ագենտի միջոցով, ապա ընտրեք ստորև \"Մուտք եմ գործել\"։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
+setup.subtitle.authentication_required: "Ձեր \"%{agent}\" գործակալը պահանջում է նույնականացում։"  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Մուտք գործելու համար հետևեք ստորև նշված քայլերին։"  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Մուտք գործեք գործակալի միջոցով, ապա ընտրեք ստորև \"Մուտք եմ գործել\"։"  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Այստեղ շարունակելու համար ընտրեք մուտք գործելու եղանակ։"  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Չհաջողվեց գործարկել %{agent}-ը։"
 
 setup.option.install: "Տեղադրել %{agent}"
@@ -46,6 +49,11 @@ auth.enterprise_domain_label: "  Enterprise տիրույթ: "
 auth.enterprise_hint_footer: "  Enter՝ մուտք գործելու համար · Esc՝ github.com-ի համար"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Սեղմեք Enter՝ նորից փորձելու համար, կամ Esc՝ github.com-ի համար։ Հաճախակի պատճառներ՝ սխալ մուտքագրված կամ անհասանելի տիրույթ, ժամկետանց կոդ, կամ այդ հոսթում Copilot մուտքի իրավունք չկա."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Սեղմեք Enter՝ նորից փորձելու համար, կամ Esc՝ վերադառնալու համար."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Ավարտեք մուտքը ձեր բրաուզերում։ Սպասումը չեղարկելու համար սեղմեք Esc։"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Բրաուզերը չի՞ բացվել։ Օգտագործեք մուտքի այս հղումը։ O: բացել · Y: պատճենել։"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Չհաջողվեց բացել բրաուզերը։ Բացեք մուտքի հղումը ձեռքով։"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Չհաջողվեց պատճենել մուտքի հղումը։ Ընտրեք այն և պատճենեք ձեռքով։"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Մուտքը ժամանակին չավարտվեց։ Կրկին փորձեք, երբ պատրաստ լինեք։"  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────────────────────────────
 chat.activity_thinking: "Մտածում եմ…"
@@ -313,10 +321,4 @@ system.yolo_disable_pending: "գործակալի մատակարարը չի հա�
 system.provider_command_blocked_by_policy: "%{command}: Ավտոմատ հաստատումն անջատված է ձեր կազմակերպության քաղաքականությամբ։"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Անհայտ մոդել %{model} — մուտքագրեք /model՝ հասանելի ցանկը տեսնելու համար։"  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Ձեր \"%{agent}\" ագենտը պահանջում է նույնականացում։ Այստեղ շարունակելու համար ընտրեք մուտք գործելու եղանակ։"  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Ավարտեք մուտքը ձեր բրաուզերում։ Սպասումը չեղարկելու համար սեղմեք Esc։"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Բրաուզերը չի՞ բացվել։ Օգտագործեք մուտքի այս հղումը։ O: բացել · Y: պատճենել։"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Չհաջողվեց բացել բրաուզերը։ Բացեք մուտքի հղումը ձեռքով։"  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Չհաջողվեց պատճենել մուտքի հղումը։ Ընտրեք այն և պատճենեք ձեռքով։"  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Մուտքը ժամանակին չավարտվեց։ Կրկին փորձեք, երբ պատրաստ լինեք։"  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Չհաջողվեց գտնել \"%{agent}\"-ը %{distro}-ի մուտքի միջավայրում։ Ստուգեք Linux-ի այս օգտատիրոջ տեղադրումը, PATH-ը և հրամանային թաղանթի պրոֆիլը, ապա կրկին փորձեք։"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

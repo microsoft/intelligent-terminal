@@ -8,8 +8,11 @@ setup.title.sign_in: "Potrebna je prijava"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Vaš agent \"%{agent}\" nije instaliran. Pratite korake ispod da biste ga instalirali. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
 setup.subtitle.agent_missing: "Vaš agent \"%{agent}\" nije instaliran. Ponovo ga ručno instalirajte, pa pokušajte ponovo. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Pratite korake ispod da biste se prijavili. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Prijavite se preko agenta, pa izaberite \"Prijavio/la sam se\" ispod. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
+setup.subtitle.authentication_required: "Vaš agent \"%{agent}\" zahteva autentifikaciju."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Pratite korake ispod da biste se prijavili."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Prijavite se preko agenta, pa izaberite \"Prijavio/la sam se\" ispod."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Izaberite način prijavljivanja da biste nastavili ovde."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Za promenu agenta idite u Inteligentni Terminal Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Nismo mogli da pokrenemo %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Domen GitHub Enterprise: "
 auth.enterprise_hint_footer: "  Enter za prijavljivanje · Esc za github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Pritisnite Enter da biste pokušali ponovo ili Esc za github.com. Uobičajeni uzroci: pogrešno unet ili nedostupan domen, istekao kôd ili nema pristupa Copilot na tom hostu."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Pritisnite Enter da biste pokušali ponovo ili Esc za povratak."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Dovršite prijavljivanje u pregledaču. Pritisnite Esc da otkažete čekanje."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Pregledač se nije otvorio? Koristite ovu vezu za prijavljivanje. O: otvori · Y: kopiraj."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Nije moguće otvoriti pregledač. Ručno otvorite vezu za prijavljivanje."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Nije moguće kopirati vezu za prijavljivanje. Ručno je izaberite i kopirajte."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Prijavljivanje nije završeno na vreme. Pokušajte ponovo kada budete spremni."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Razmišljam…"
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "dobavljač nije potvrdio zahtevano neprivilegovano
 system.provider_command_blocked_by_policy: "%{command}: Automatsko odobravanje je onemogućeno politikom vaše organizacije."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Nepoznat model %{model} — unesite /model da vidite dostupnu listu."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Izaberite način prijavljivanja da biste nastavili ovde."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Dovršite prijavljivanje u pregledaču. Pritisnite Esc da otkažete čekanje."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Pregledač se nije otvorio? Koristite ovu vezu za prijavljivanje. O: otvori · Y: kopiraj."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Nije moguće otvoriti pregledač. Ručno otvorite vezu za prijavljivanje."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Nije moguće kopirati vezu za prijavljivanje. Ručno je izaberite i kopirajte."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Prijavljivanje nije završeno na vreme. Pokušajte ponovo kada budete spremni."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Nismo mogli da pronađemo \"%{agent}\" u okruženju za prijavljivanje distribucije %{distro}. Proverite instalaciju, PATH i profil ljuske ovog Linux korisnika, a zatim pokušajte ponovo."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

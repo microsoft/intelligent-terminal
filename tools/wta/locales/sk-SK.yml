@@ -8,8 +8,11 @@ setup.title.sign_in: "Vyžaduje sa prihlásenie"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Váš agent \"%{agent}\" nie je nainštalovaný. Postupujte podľa krokov nižšie a nainštalujte ho. Ak chcete zmeniť agenta, prejdite do Inteligentný Terminál Settings > Agent."
 setup.subtitle.agent_missing: "Váš agent \"%{agent}\" nie je nainštalovaný. Preinštalujte ho manuálne a skúste to znova. Ak chcete zmeniť agenta, prejdite do Inteligentný Terminál Settings > Agent."
-setup.subtitle.copilot_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Postupujte podľa krokov nižšie a prihláste sa. Ak chcete zmeniť agenta, prejdite do Inteligentný Terminál Settings > Agent."
-setup.subtitle.agent_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Prihláste sa cez agenta a potom vyberte nižšie \"Prihlásil/a som sa\". Ak chcete zmeniť agenta, prejdite do Inteligentný Terminál Settings > Agent."
+setup.subtitle.authentication_required: "Váš agent \"%{agent}\" vyžaduje overenie."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Postupujte podľa krokov nižšie a prihláste sa."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Prihláste sa cez agenta a potom vyberte nižšie \"Prihlásil/a som sa\"."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Vyberte spôsob prihlásenia a pokračujte tu."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Ak chcete zmeniť agenta, prejdite do Inteligentný Terminál Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Nepodarilo sa spustiť agenta %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Doména GitHub Enterprise: "
 auth.enterprise_hint_footer: "  Enter na prihlásenie · Esc pre github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Stlačením Enter to skúste znova alebo Esc pre github.com. Bežné príčiny: nesprávne zadaná alebo nedostupná doména, kód s uplynutou platnosťou alebo chýbajúci prístup Copilot na tomto hostiteľovi."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Stlačením Enter to skúste znova alebo Esc na návrat."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Dokončite prihlásenie v prehliadači. Stlačením Esc zrušíte čakanie."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Prehliadač sa neotvoril? Použite tento odkaz na prihlásenie. O: otvoriť · Y: kopírovať."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Prehliadač sa nepodarilo otvoriť. Otvorte odkaz na prihlásenie manuálne."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Odkaz na prihlásenie sa nepodarilo skopírovať. Vyberte ho a skopírujte manuálne."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Prihlásenie sa nedokončilo včas. Keď budete pripravení, skúste to znova."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Premýšľam..."
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "poskytovateľ nepotvrdil požadovaný neprivilegov
 system.provider_command_blocked_by_policy: "%{command}: Automatické schvaľovanie je zakázané politikou vašej organizácie."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Neznámy model %{model} — zadaním /model zobrazíte dostupný zoznam."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Vyberte spôsob prihlásenia a pokračujte tu."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Dokončite prihlásenie v prehliadači. Stlačením Esc zrušíte čakanie."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Prehliadač sa neotvoril? Použite tento odkaz na prihlásenie. O: otvoriť · Y: kopírovať."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Prehliadač sa nepodarilo otvoriť. Otvorte odkaz na prihlásenie manuálne."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Odkaz na prihlásenie sa nepodarilo skopírovať. Vyberte ho a skopírujte manuálne."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Prihlásenie sa nedokončilo včas. Keď budete pripravení, skúste to znova."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "V prihlasovacom prostredí distribúcie %{distro} sa nepodarilo nájsť \"%{agent}\". Skontrolujte inštaláciu, PATH a profil shellu tohto používateľa Linuxu a skúste to znova."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

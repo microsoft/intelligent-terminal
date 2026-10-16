@@ -349,7 +349,7 @@ impl HistoryQuery {
         &mut self,
         target: Option<&HistoryTarget>,
         cancelled: &tokio_util::sync::CancellationToken,
-    ) -> std::result::Result<Vec<acp::schema::v1::SessionInfo>, HistoryRefreshFailure> {
+    ) -> std::result::Result<acp::schema::v1::ListSessionsResponse, HistoryRefreshFailure> {
         match self.poll_inner(target, cancelled).await {
             Ok(result) => result,
             Err(error) => {
@@ -366,7 +366,8 @@ impl HistoryQuery {
         &mut self,
         target: Option<&HistoryTarget>,
         cancelled: &tokio_util::sync::CancellationToken,
-    ) -> Result<std::result::Result<Vec<acp::schema::v1::SessionInfo>, HistoryRefreshFailure>> {
+    ) -> Result<std::result::Result<acp::schema::v1::ListSessionsResponse, HistoryRefreshFailure>>
+    {
         if self.recycling {
             self.stop().await?;
         }
@@ -444,7 +445,7 @@ impl HistoryQuery {
                     }
                 };
                 self.wait.success(elapsed);
-                Ok(Ok(response.sessions))
+                Ok(Ok(response))
             }
             _ = tokio::time::sleep_until(checkpoint) => {
                 self.wait.timed_out();
@@ -457,6 +458,38 @@ impl HistoryQuery {
                     pid = ?self.process.as_ref().and_then(|process| process.child.as_ref()).and_then(|child| child.id()),
                     next_wait_secs = self.wait.budget().as_secs(), "history soft timeout; retaining original request");
                 Ok(Err(HistoryRefreshFailure::Timeout))
+            }
+        }
+    }
+
+    pub async fn list_cwd_page(
+        &mut self,
+        cursor: String,
+        deadline: Instant,
+        cancelled: &tokio_util::sync::CancellationToken,
+    ) -> Option<acp::schema::v1::ListSessionsResponse> {
+        let request = acp::schema::v1::ListSessionsRequest::new().cursor(cursor);
+        let result = match self.process.as_ref().map(HistoryProcess::connection) {
+            Some(Ok(connection)) => {
+                tokio::select! {
+                    biased;
+                    _ = cancelled.cancelled() => Err(anyhow!("history cwd page cancelled")),
+                    response = tokio::time::timeout_at(deadline, connection.list_sessions(request)) => {
+                        response.context("history cwd page timed out").and_then(|response| response.map_err(anyhow::Error::from))
+                    }
+                }
+            }
+            Some(Err(error)) => Err(error),
+            None => Err(anyhow!("history cwd process missing")),
+        };
+        match result {
+            Ok(response) => Some(response),
+            Err(error) => {
+                tracing::warn!(target: "master_history", %error, "dedicated history cwd pagination incomplete");
+                if let Err(stop_error) = self.stop().await {
+                    tracing::error!(target: "master_history", %stop_error, "incomplete history query remains quarantined");
+                }
+                None
             }
         }
     }

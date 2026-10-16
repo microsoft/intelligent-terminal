@@ -3,14 +3,18 @@
 # Protection: SidebarTabKeyboard, SidebarTelemetry, SessionHookRouting and HookBridgeCli.
 BeforeDiscovery {
     $script:Ready = [bool]((Get-Command winapp -ErrorAction SilentlyContinue) -and
-        (Get-Command pwsh -ErrorAction SilentlyContinue) -and
-        (Get-AppxPackage | Where-Object Name -eq 'IntelligentTerminal'))
+        (Get-Command pwsh -ErrorAction SilentlyContinue) -and $env:ITE2E_PACKAGE)
+    if ($script:Ready -and $env:ITE2E_PACKAGE) {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:Ready = [bool](Resolve-ItApp -Package (Get-ItTestPackage) -IfInstalled)
+    }
 }
 
 Describe 'Feature: pane progress user routes' -Tag @('Feature', 'PaneProgress') -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         . (Join-Path $PSScriptRoot 'helpers\TabHeaderContext.ps1')
+        . (Join-Path $PSScriptRoot 'helpers\ProgressIconSlot.ps1')
         Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
         if (-not ('ItE2E.ItPaneProgressDpi' -as [type])) {
             Add-Type -Name ItPaneProgressDpi -Namespace ItE2E -MemberDefinition @'
@@ -28,11 +32,12 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         }
         $script:app = $null
         $script:cursor = $null
-        (Get-ItTestPackage) | Should -Be Dev -Because 'this regression targets the intended feature-branch Dev package'
+        $script:package = Get-ItTestPackage
+        $script:package | Should -Not -Be Store -Because 'unshipped regressions require the feature-branch Dev build or its isolated package family'
         if (-not $env:ITE2E_EXPECTED_APP_SHA256 -or -not $env:ITE2E_EXPECTED_WTA_SHA256) {
             throw 'Supply exact-source build receipt hashes for TerminalApp.dll and wta.exe.'
         }
-        $target = Resolve-ItApp -Package Dev
+        $target = Resolve-ItApp -Package $script:package
         Stop-StaleItInstances -App $target
         foreach ($path in @($target.SettingsPath, $target.StatePath)) {
             if ((Test-Path "$path.e2ebak") -or (Test-Path "$path.e2ebak.missing")) { throw "Recover existing backup first: $path" }
@@ -44,12 +49,14 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         New-Item -ItemType Directory -Path $script:evidence | Out-Null
         $profile = '{' + [guid]::NewGuid().ToString() + '}'
         $script:profile = $profile
-        $pwsh = (Get-Command pwsh).Source
+        # A Store execution alias and the actual packaged image have different
+        # paths. Launch the runner's real PowerShell image for exact PID checks.
+        $pwsh = if ($PSVersionTable.PSEdition -eq 'Core') { [Environment]::ProcessPath } else { (Get-Command pwsh).Source }
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
         $fixtureCode = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:evidence.Replace("'", "''"))\acp.log'"
         $fixtureCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureCode))
         try {
-            $script:app = Start-Terminal -Package Dev -PassFre $true -State @{
+            $script:app = Start-Terminal -Package $script:package -PassFre $true -State @{
                 sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
             } -Settings @{
                 language = 'en-US'; tabLayout = 'vertical'; startupActions = ''
@@ -73,6 +80,10 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             throw
         }
         $script:app.Launched | Should -BeTrue
+        # Compositor proof needs the owned root, not best-effort activation.
+        # The harness permits only an uncovered caption on this captured
+        # executable/PID/start-time identity; it never clicks a foreign window.
+        $script:app | Add-Member -NotePropertyName RequireOwnedForeground -NotePropertyValue $true -Force
         & (Get-Module ItE2E) { Initialize-WtWin32Input }
         $script:cursor = [ItE2E.ItWtWin32Input]::GetCursorPosition()
         $dpi = [ItE2E.ItPaneProgressDpi]::GetDpiForWindow([IntPtr][long]$script:app.Hwnd)
@@ -87,7 +98,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         } | ConvertTo-Json | Set-Content (Join-Path $script:evidence 'package.json')
 
         function Get-OwnedElements {
-            param([string]$Property, [string]$Value, $Parent)
+            param([string]$Property, $Value, $Parent)
             $before = [ordered]@{ utc = [DateTimeOffset]::UtcNow.ToString('o'); hwnd = $script:app.Hwnd
                 pid = $script:app.Pid; property = $Property; value = $Value }
             try {
@@ -148,7 +159,19 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         function Open-TabMenu {
             Set-WtWindowForeground -App $script:app | Should -BeTrue
             Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground -Repeat 2 | Out-Null
-            Invoke-TestTabHeaderContextMenu -App $script:app -PaneSessionId $script:a.session_id -Title $script:titleA
+            $previousRunToken = $env:ITE2E_RUN_TOKEN
+            $previousReceipt = $env:ITE2E_OWNED_PROCESS_RECEIPT
+            try {
+                # Pass the captured creation-proven lease to the existing
+                # physical-header guard; never infer ownership from a PID.
+                $env:ITE2E_RUN_TOKEN = $script:app.InputRunToken
+                $env:ITE2E_OWNED_PROCESS_RECEIPT = $script:app.InputReceiptPath
+                Invoke-TestTabHeaderContextMenu -App $script:app -PaneSessionId $script:a.session_id -Title $script:titleA
+            }
+            finally {
+                $env:ITE2E_RUN_TOKEN = $previousRunToken
+                $env:ITE2E_OWNED_PROCESS_RECEIPT = $previousReceipt
+            }
             Wait-UiElement -App $script:app -Selector 'Move tab' | Out-Null
             Save-CompositorFrame "context-$([guid]::NewGuid().ToString('N'))" -PreserveFlyout
         }
@@ -156,8 +179,8 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             param([ValidateSet('vertical', 'horizontal')][string]$Layout)
             $hwnd = [IntPtr][long]$script:app.Hwnd
             $ownedPid = $script:app.Pid
-            $runToken = $env:ITE2E_RUN_TOKEN
-            $processReceipt = $env:ITE2E_OWNED_PROCESS_RECEIPT
+            $runToken = $script:app.InputRunToken
+            $processReceipt = $script:app.InputReceiptPath
             Open-TabMenu
             $label = if ($Layout -eq 'vertical') { 'Switch to sidebar' } else { 'Switch to horizontal tabs' }
             $ownedRoot = {
@@ -172,8 +195,8 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                         [ItE2E.ItWtWin32Input]::GetForegroundWindow(), $hwnd, [uint32]$ownedPid)) {
                     throw 'Layout invocation requires the original owned root and process lease.'
                 }
-                if (-not $runToken -or -not $processReceipt -or $env:ITE2E_RUN_TOKEN -cne $runToken -or
-                    $env:ITE2E_OWNED_PROCESS_RECEIPT -cne $processReceipt) { throw 'Layout invocation run identity changed.' }
+                if (-not $runToken -or -not $processReceipt -or $script:app.InputRunToken -cne $runToken -or
+                    $script:app.InputReceiptPath -cne $processReceipt) { throw 'Layout invocation run identity changed.' }
                 $records = @(Get-Content -LiteralPath $processReceipt -ErrorAction Stop | ForEach-Object { $_ | ConvertFrom-Json })
                 if (@($records | Where-Object { $_.pid -eq $ownedPid -and $_.path -eq $current.Path -and
                     $_.run_token -ceq $runToken -and ([datetimeoffset]$_.start_utc).UtcDateTime.Ticks -eq
@@ -228,17 +251,25 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                 Should -Be @(@($script:a.session_id, $script:b.session_id) | Sort-Object)
         }
         function Get-VisualDigest {
-            param($Bounds, [string]$Name, [switch]$Icon, [switch]$PreserveFlyout)
+            param($Bounds, [string]$Name, [switch]$Icon, [switch]$PreserveFlyout, [scriptblock]$ResolveBounds)
             if ($PreserveFlyout) {
                 # Re-activating the root dismisses the real flyout we are capturing.
                 [ItE2E.ItWtWin32Input]::IsOwnedRootOrPopup(
                     [ItE2E.ItWtWin32Input]::GetForegroundWindow(),
                     [IntPtr][long]$script:app.Hwnd, [uint32]$script:app.Pid) | Should -BeTrue
             }
-            else { Set-WtWindowForeground -App $script:app | Should -BeTrue }
+            else {
+                $previousReceipt = $env:ITE2E_INPUT_FAILURE_RECEIPT
+                try {
+                    $env:ITE2E_INPUT_FAILURE_RECEIPT = Join-Path $script:evidence "$Name-foreground.json"
+                    Set-WtWindowForeground -App $script:app | Should -BeTrue
+                }
+                finally { $env:ITE2E_INPUT_FAILURE_RECEIPT = $previousReceipt }
+            }
             $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd).Current.BoundingRectangle
             [ItE2E.ItWtWin32Input]::SetCursorPos([int]($window.Right - 30), [int]($window.Bottom - 30)) | Should -BeTrue
             Start-Sleep -Milliseconds 350
+            if ($ResolveBounds) { $Bounds = & $ResolveBounds }
             $Bounds.Width | Should -BeGreaterThan 0
             $Bounds.Height | Should -BeGreaterThan 0
             $bitmap = [Drawing.Bitmap]::new([int][math]::Ceiling($Bounds.Width), [int][math]::Ceiling($Bounds.Height))
@@ -304,13 +335,184 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             $distinct | Should -BeGreaterThan 1 -Because 'six actual ring frames must animate, not merely expose active bound state'
         }
         function Get-ProfileIconDigest {
-            param([string]$Name, [string]$Title = $script:titleA)
-            $bounds = (Get-PaneRow $Title).Current.BoundingRectangle
-            # PaneActivateButton's template: 3-DIP indicator, 28-DIP icon column, centered 16-DIP icon.
-            $size = 16 * $script:scale
-            $icon = [Windows.Rect]::new($bounds.X + 9 * $script:scale, $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
-            $bounds.Contains($icon) | Should -BeTrue -Because 'the entire profile icon must remain inside its owned row'
-            Get-VisualDigest -Bounds $icon -Name $Name -Icon
+            param([string]$Name, [string]$Title = $script:titleA, [switch]$Progress)
+            # Foreground acquisition and native metadata updates can finish
+            # arranging rows after the caller's first geometry read. Resolve the
+            # actual image immediately before capture, not a stale row-center crop.
+            Get-VisualDigest -Name $Name -Icon -ResolveBounds {
+                $row = Get-PaneRow $Title
+                $bounds = $row.Current.BoundingRectangle
+                if ($Progress) {
+                    $rings = @(Get-RowProgress $row)
+                    $rings | Should -HaveCount 1 -Because 'the replacement slot has one visible progress widget'
+                    @(Get-LeadingIdentityPeers -Row $row) | Should -HaveCount 0 -Because 'progress replaces, not accompanies, the identity'
+                    $ring = $rings[0].Current.BoundingRectangle
+                    $size = 16 * $script:scale
+                    $slot = [Windows.Rect]::new($ring.X + ($ring.Width - $size) / 2,
+                        $ring.Y + ($ring.Height - $size) / 2, $size, $size)
+                    $bounds.Contains($slot) | Should -BeTrue -Because 'the replacement slot remains inside its owned pane'
+                    return $slot
+                }
+                $icons = @(Get-LeadingIdentityPeers -Row $row | ForEach-Object {
+                    $_.Current.BoundingRectangle
+                } | Where-Object {
+                    $_.Width -ge 15 * $script:scale -and $_.Width -le 17 * $script:scale -and
+                    $_.Height -ge 15 * $script:scale -and $_.Height -le 17 * $script:scale
+                } | Sort-Object -Property X, Y, Width, Height -Unique)
+                $icons | Should -HaveCount 1 -Because 'the owned pane has exactly one realized identity'
+                $bounds.Contains($icons[0]) | Should -BeTrue -Because 'the entire profile icon must remain inside its owned row'
+                $icons[0]
+            }
+        }
+        function Get-LeadingSlot {
+            param(
+                [ValidateSet('expanded', 'collapsed', 'horizontal', 'compact')][string]$Surface,
+                [string]$Title = $script:titleA,
+                [int]$TabIndex = [int]$script:tab.tab_id
+            )
+            if ($Surface -eq 'expanded') {
+                $row = Get-PaneRow $Title
+                $bounds = $row.Current.BoundingRectangle
+                $size = 16 * $script:scale
+                $slot = [Windows.Rect]::new($bounds.X + 9 * $script:scale,
+                    $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
+            }
+            elseif ($Surface -eq 'collapsed') {
+                $list = @(Get-OwnedElements AutomationId ItemsList)
+                $list | Should -HaveCount 1
+                $condition = [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
+                $items = @($list[0].FindAll([Windows.Automation.TreeScope]::Children, $condition) |
+                    Where-Object { -not $_.Current.IsOffscreen -and $_.Current.ProcessId -eq $script:app.Pid })
+                $items | Should -HaveCount 3
+                $row = $items[$TabIndex]
+                $bounds = $row.Current.BoundingRectangle
+                $row.Current.Name | Should -BeLike "$Title*" -Because 'the canonical tab index must identify the requested owned title'
+                $visibleIconBounds = @(Get-LeadingIdentityPeers -Row $row | ForEach-Object {
+                    $_.Current.BoundingRectangle
+                } | Where-Object {
+                    $_.Width -ge 15 * $script:scale -and $_.Width -le 17 * $script:scale -and
+                    $_.Height -ge 15 * $script:scale -and $_.Height -le 17 * $script:scale
+                } | Sort-Object -Property X, Y, Width, Height -Unique)
+                $visibleIconBounds | Should -HaveCount 1 -Because 'the compact slot comes from one realized identity, not a guessed row-center crop'
+                $slot = $visibleIconBounds[0]
+                [math]::Abs(($slot.X + $slot.Width / 2) - ($bounds.X + $bounds.Width / 2)) |
+                    Should -BeLessOrEqual $script:scale -Because 'the realized icon must be centered in its compact row'
+            }
+            else {
+                $tabs = @(Get-OwnedElements ControlType ([Windows.Automation.ControlType]::TabItem) | Where-Object {
+                    $_.Current.Name.StartsWith($Title)
+                })
+                $tabs | Should -HaveCount 1
+                $row = $tabs[0]
+                $walker = [Windows.Automation.TreeWalker]::RawViewWalker
+                $titles = @(Get-OwnedElements Name $Title -Parent $row | Where-Object {
+                    $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text
+                })
+                $titleBounds = if ($titles.Count) { $titles[0].Current.BoundingRectangle } else { $null }
+                $bounds = $row.Current.BoundingRectangle
+                # Raw view includes decorative icon peers excluded from Control view.
+                $queue = [Collections.Generic.Queue[object]]::new()
+                $queue.Enqueue(@{ peer = $row; depth = 0 })
+                $candidates = @()
+                while ($queue.Count) {
+                    $entry = $queue.Dequeue()
+                    $peer = $entry.peer
+                    $rect = $peer.Current.BoundingRectangle
+                    if (-not $peer.Current.IsOffscreen -and $rect.Width -ge 15 * $script:scale -and
+                        $rect.Width -le 17 * $script:scale -and $rect.Height -ge 15 * $script:scale -and
+                        $rect.Height -le 17 * $script:scale -and
+                        (-not $titleBounds -or $rect.Right -le $titleBounds.Left + $script:scale) -and
+                        $bounds.Contains($rect)) { $candidates += $rect }
+                    if ($entry.depth -lt 12) {
+                        $child = $walker.GetFirstChild($peer)
+                        while ($child) {
+                            $queue.Enqueue(@{ peer = $child; depth = $entry.depth + 1 })
+                            $child = $walker.GetNextSibling($child)
+                        }
+                    }
+                }
+                $unique = @($candidates | Sort-Object -Property X, Y, Width, Height -Unique)
+                $unique | Should -HaveCount 1 -Because 'one realized 16-DIP leading icon slot must precede the horizontal title'
+                $slot = $unique[0]
+            }
+            $bounds.Contains($slot) | Should -BeTrue
+            $texts = @(Get-OwnedElements Name $Title -Parent $row | Where-Object {
+                $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text
+            })
+            $titleOffset = if ($Surface -eq 'collapsed' -or -not $texts.Count) { $null } else {
+                $texts | Should -HaveCount 1
+                $texts[0].Current.BoundingRectangle.X - $bounds.X
+            }
+            @{ row = $row; slot = $slot; titleOffset = $titleOffset }
+        }
+        function Get-LeadingIdentityPeers {
+            param($Row, $Slot)
+            $walker = [Windows.Automation.TreeWalker]::RawViewWalker
+            $queue = [Collections.Generic.Queue[object]]::new()
+            $queue.Enqueue(@{ peer = $Row; depth = 0 })
+            while ($queue.Count) {
+                $entry = $queue.Dequeue()
+                $peer = $entry.peer
+                $bounds = $peer.Current.BoundingRectangle
+                if (-not $peer.Current.IsOffscreen -and $bounds.Width -gt 0 -and $bounds.Height -gt 0 -and
+                    (-not $Slot -or $Slot.IntersectsWith($bounds)) -and
+                    $peer.Current.ClassName -match '^(Image|BitmapIcon|ImageIcon|PathIcon|FontIcon|IconElement)$') {
+                    $peer
+                }
+                if ($entry.depth -lt 12) {
+                    $child = $walker.GetFirstChild($peer)
+                    while ($child) {
+                        $queue.Enqueue(@{ peer = $child; depth = $entry.depth + 1 })
+                        $child = $walker.GetNextSibling($child)
+                    }
+                }
+            }
+        }
+        function Save-LeadingSlotTree {
+            param($Leading, [string]$Name)
+            # Keep the realized geometry alongside compositor evidence. A model
+            # row center is not evidence that its identity was actually painted.
+            $walker = [Windows.Automation.TreeWalker]::RawViewWalker
+            $queue = [Collections.Generic.Queue[object]]::new()
+            $queue.Enqueue(@{ peer = $Leading.row; depth = 0 })
+            $nodes = @()
+            while ($queue.Count) {
+                $entry = $queue.Dequeue()
+                $current = $entry.peer.Current
+                $nodes += @{
+                    depth = $entry.depth; name = $current.Name; class = $current.ClassName
+                    automationId = $current.AutomationId; controlType = $current.ControlType.ProgrammaticName
+                    bounds = $current.BoundingRectangle.ToString(); offscreen = $current.IsOffscreen
+                    pid = $current.ProcessId; runtimeId = @($entry.peer.GetRuntimeId())
+                }
+                if ($entry.depth -lt 12) {
+                    $child = $walker.GetFirstChild($entry.peer)
+                    while ($child) {
+                        $queue.Enqueue(@{ peer = $child; depth = $entry.depth + 1 })
+                        $child = $walker.GetNextSibling($child)
+                    }
+                }
+            }
+            @{ slot = $Leading.slot.ToString(); scale = $script:scale; nodes = $nodes } |
+                ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $script:evidence "$Name-tree.json")
+        }
+        function Get-RowProgress {
+            param($Row)
+            $condition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ProgressBar)
+            @($Row.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) |
+                Where-Object { -not $_.Current.IsOffscreen -and $_.Current.ProcessId -eq $script:app.Pid -and
+                    $_.Current.BoundingRectangle.Width -gt 0 -and $_.Current.BoundingRectangle.Height -gt 0 })
+        }
+        function Assert-PaneSpinnerSlot {
+            param([string]$Phase)
+            $leading = Get-LeadingSlot expanded
+            $rings = @(Get-RowProgress $leading.row)
+            $rings | Should -HaveCount 1
+            $ring = $rings[0].Current.BoundingRectangle
+            Assert-ProgressIconSlotGeometry -IconBounds $leading.slot -ProgressBounds $ring -Scale $script:scale
+            Get-ProfileIconDigest "$Phase-spinner" -Progress | Should -Not -Be $script:profileIcon
         }
         function Send-ShellScript {
             param([string]$Pane, [string]$Code, [string]$ExitPath)
@@ -506,20 +708,11 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         try {
             @(Get-OwnedElements AutomationId TabGroupToggleButton) | Should -HaveCount 0
             Save-CompositorFrame group-slot-compact
-            $list = @(Get-OwnedElements AutomationId ItemsList)
-            $list | Should -HaveCount 1
-            $condition = [Windows.Automation.PropertyCondition]::new(
-                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
-            $items = @($list[0].FindAll([Windows.Automation.TreeScope]::Children, $condition) |
-                Where-Object { -not $_.Current.IsOffscreen })
-            $items | Should -HaveCount 3
             $active = Get-ActivePane -App $script:app
             $active.session_id | Should -Be $script:a.session_id
-            $bounds = $items[[int]$active.tab_id].Current.BoundingRectangle
-            $size = 16 * $script:scale
-            $icon = [Windows.Rect]::new($bounds.X + 6 * $script:scale, $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
-            $bounds.Contains($icon) | Should -BeTrue
-            Get-VisualDigest -Bounds $icon -Name compact-group-profile -Icon | Out-Null
+            $leading = Get-LeadingSlot collapsed -TabIndex ([int]$active.tab_id)
+            Save-LeadingSlotTree $leading 'compact-group-profile'
+            Get-VisualDigest -Bounds $leading.slot -Name compact-group-profile -Icon | Out-Null
         }
         finally { Invoke-UiElement -App $script:app -Selector 'Expand sidebar' | Out-Null }
         Wait-UiElement -App $script:app -Selector PaneActivateButton | Out-Null
@@ -539,7 +732,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             foreach ($move in @(@{ d = 'up'; i = 1 }, @{ d = 'up'; i = 0 }, @{ d = 'down'; i = 1 }, @{ d = 'down'; i = 2 })) {
                 Move-ContextTab $move.d $move.i
                 Assert-ProgressFrames "$($move.d)-$($move.i)"
-                Get-ProfileIconDigest "$($move.d)-$($move.i)-profile" | Should -Be $script:profileIcon
+                Assert-PaneSpinnerSlot "$($move.d)-$($move.i)"
                 Get-ProfileIconDigest "$($move.d)-$($move.i)-sibling" $script:titleB | Should -Be $script:siblingIcon
             }
             foreach ($cycle in 1..2) {
@@ -547,13 +740,13 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                 Assert-ProgressFrames "horizontal-$cycle" -Horizontal
                 Switch-ContextLayout vertical
                 Assert-ProgressFrames "vertical-$cycle"
-                Get-ProfileIconDigest "vertical-$cycle-profile" | Should -Be $script:profileIcon
+                Assert-PaneSpinnerSlot "vertical-$cycle"
                 Get-ProfileIconDigest "vertical-$cycle-sibling" $script:titleB | Should -Be $script:siblingIcon
             }
             Invoke-UiElement -App $script:app -Selector 'Collapse tab group' | Out-Null
             Wait-UiElement -App $script:app -Selector PaneIndeterminateProgressRing -Gone | Out-Null
             Save-CompositorFrame group-collapsed
-            @(Get-OwnedElements AutomationId HeaderIndeterminateProgressRing) | Should -HaveCount 1
+            @(Get-OwnedElements AutomationId TabIndeterminateProgressRing) | Should -HaveCount 1
             Invoke-UiElement -App $script:app -Selector 'Expand tab group' | Out-Null
             Wait-UiElement -App $script:app -Selector PaneIndeterminateProgressRing | Out-Null
             Assert-ProgressFrames group-expanded
@@ -562,7 +755,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             Invoke-UiElement -App $script:app -Selector 'Expand sidebar' | Out-Null
             Wait-UiElement -App $script:app -Selector PaneIndeterminateProgressRing | Out-Null
             Assert-ProgressFrames rail-expanded
-            Get-ProfileIconDigest rail-profile | Should -Be $script:profileIcon
+            Assert-PaneSpinnerSlot rail
             Get-ProfileIconDigest rail-sibling $script:titleB | Should -Be $script:siblingIcon
         }
         finally { [IO.File]::WriteAllText($release, 'clear') }
@@ -630,6 +823,183 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         }
     }
 
+    It 'OSC spinner replaces and restores the <Identity> icon in the <Surface> leading slot' -Tag 'PaneProgressIconSlot' -TestCases @(
+        @{ Identity = 'profile'; Surface = 'expanded' }
+        @{ Identity = 'profile'; Surface = 'collapsed' }
+        @{ Identity = 'profile'; Surface = 'horizontal' }
+        @{ Identity = 'provider'; Surface = 'expanded' }
+        @{ Identity = 'provider'; Surface = 'collapsed' }
+        @{ Identity = 'provider'; Surface = 'horizontal' }
+        @{ Identity = 'profile'; Surface = 'compact' }
+        @{ Identity = 'provider'; Surface = 'compact' }
+    ) {
+        param($Identity, $Surface)
+        # ConPTY OSC -> tab/pane projection -> realized header, not just a bound IsActive value.
+        # Native hooks hold a deterministic provider identity; no provider CLI/model is launched.
+        $token = [guid]::NewGuid().ToString('N')
+        $sid = [guid]::NewGuid().ToString()
+        $start = Join-Path $script:evidence "$token-start"
+        $clear = Join-Path $script:evidence "$token-clear"
+        $release = Join-Path $script:evidence "$token-release"
+        $ready = Join-Path $script:evidence "$token-ready"
+        $done = Join-Path $script:evidence "$token-exit"
+        $payload = @{ session_id = $sid; cwd = $script:evidence; reason = 'user_exit' } | ConvertTo-Json -Compress
+        $hook = "'$payload' | & '$($script:app.WtcliPath)' agent-hook --cli-source copilot --event"
+        $beginHook = if ($Identity -eq 'provider') { "$hook agent.session.start`n$hook agent.prompt.submit" } else { '' }
+        $endHook = if ($Identity -eq 'provider') { "$hook agent.session.end" } else { '' }
+        try {
+            Send-ShellScript $script:a.session_id -ExitPath $done -Code @"
+$beginHook
+[IO.File]::WriteAllText('$ready', 'ready')
+while (-not (Test-Path '$start')) { Start-Sleep -Milliseconds 100 }
+[Console]::Write([char]27+']9;4;3;0'+[char]7)
+while (-not (Test-Path '$clear')) { Start-Sleep -Milliseconds 100 }
+[Console]::Write([char]27+']9;4;0'+[char]7)
+while (-not (Test-Path '$release')) { Start-Sleep -Milliseconds 100 }
+$endHook
+"@
+            Wait-Until -TimeoutSec 20 -Because 'the fixture reached its pre-progress barrier' -Condition { Test-Path $ready } | Out-Null
+            if ($Identity -eq 'provider') {
+                Assert-NativeStatus $sid Working
+                Wait-Until -TimeoutSec 20 -Because 'the provider icon is realized before OSC begins' -Condition {
+                    (Get-ProfileIconDigest "$token-provider-baseline") -ne $script:profileIcon
+                } | Out-Null
+            }
+            if ($Surface -eq 'compact') {
+                Set-WtSetting -App $script:app -Key tabWidthMode -Value compact | Out-Null
+                Switch-ContextLayout horizontal
+            }
+            elseif ($Surface -eq 'horizontal') { Switch-ContextLayout horizontal }
+            elseif ($Surface -eq 'collapsed') {
+                Invoke-UiElement -App $script:app -Selector 'Collapse sidebar' | Out-Null
+                Wait-Until -TimeoutSec 10 -Because 'the collapsed rail has removed pane rows and completed compact row layout' -Condition {
+                    if (@(Get-OwnedElements AutomationId PaneActivateButton).Count -or
+                        @(Get-OwnedElements AutomationId ItemsList).Count -ne 1) { return $false }
+                    $leading = Get-LeadingSlot collapsed
+                    $leading.row.Current.BoundingRectangle.Height -le 40 * $script:scale
+                } | Out-Null
+            }
+            Save-CompositorFrame "$token-$Surface-baseline-window"
+            $baseline = Get-LeadingSlot $Surface
+            Save-LeadingSlotTree $baseline "$token-$Surface-baseline"
+            @(Get-RowProgress $baseline.row) | Should -HaveCount 0
+            $icon = Get-VisualDigest -Bounds $baseline.slot -Name "$token-baseline" -Icon
+            $identityPeers = @(Get-LeadingIdentityPeers $baseline.row $baseline.slot)
+            $control = if ($Surface -eq 'expanded') { Get-LeadingSlot expanded -Title $script:titleB } else {
+                Get-LeadingSlot $Surface -Title "$script:tabTitle-guard" -TabIndex 1
+            }
+            $controlIcon = Get-VisualDigest -Bounds $control.slot -Name "$token-control-baseline" -Icon
+            $compactBaseline = $null
+            if ($Surface -eq 'compact') {
+                Set-WtPaneFocus -App $script:app -SessionId (Get-WtPanes -App $script:app -TabId 1)[0].session_id
+                Wait-Until -TimeoutSec 10 -Because 'compact deselection hides the title, not its identity slot' -Condition {
+                    @(Get-OwnedElements Name $script:titleA -Parent $baseline.row | Where-Object {
+                        $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text
+                    }).Count -eq 0
+                } | Out-Null
+                $compactBaseline = Get-LeadingSlot compact
+                $compactIcon = Get-VisualDigest -Bounds $compactBaseline.slot -Name "$token-compact-baseline" -Icon
+                Set-WtPaneFocus -App $script:app -SessionId $script:a.session_id
+            }
+            [IO.File]::WriteAllText($start, 'start')
+            Wait-Until -TimeoutSec 10 -Because 'the emitting pane projects exactly one visible spinner in its owning row/header' -Condition {
+                @(Get-RowProgress $baseline.row).Count -eq 1
+            } | Out-Null
+            $rings = @(Get-RowProgress $baseline.row)
+            $rings | Should -HaveCount 1
+            $ringBounds = $rings[0].Current.BoundingRectangle
+            $offset = $null
+            if ($Surface -ne 'collapsed') {
+                $titles = @(Get-OwnedElements Name $script:titleA -Parent $baseline.row | Where-Object {
+                    $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text
+                })
+                $titles | Should -HaveCount 1
+                $offset = $titles[0].Current.BoundingRectangle.X - $baseline.row.Current.BoundingRectangle.X
+            }
+            Assert-ProgressIconSlotGeometry -IconBounds $baseline.slot -ProgressBounds $ringBounds -Scale $script:scale `
+                -TitleOffset $baseline.titleOffset -ProgressTitleOffset $offset
+            if ($identityPeers.Count) {
+                @(Get-LeadingIdentityPeers $baseline.row $baseline.slot) | Should -HaveCount 0 -Because 'a spinner must replace, not overlay, a visible profile/provider icon'
+            }
+            Get-VisualDigest -Bounds $baseline.slot -Name "$token-progress" | Should -Not -Be $icon
+            Save-CompositorFrame "$token-$Surface-progress-window"
+            @(Get-RowProgress $control.row) | Should -HaveCount 0
+            Get-VisualDigest -Bounds $control.slot -Name "$token-control-progress" -Icon | Should -Be $controlIcon
+            if ($Surface -eq 'expanded') {
+                (Get-PaneRow $script:titleB).Current.Name | Should -Not -Match 'Indeterminate progress'
+                Get-ProfileIconDigest "$token-sibling-progress" $script:titleB | Should -Be $script:siblingIcon
+            }
+            if ($Identity -eq 'provider') { Assert-NativeStatus $sid Working }
+            if ($Surface -eq 'compact') {
+                Set-WtPaneFocus -App $script:app -SessionId (Get-WtPanes -App $script:app -TabId 1)[0].session_id
+                Wait-Until -TimeoutSec 10 -Because 'the sibling selection enters the native Compact hidden-header state' -Condition {
+                    @(Get-OwnedElements Name $script:titleA -Parent $baseline.row | Where-Object {
+                        $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text
+                    }).Count -eq 0
+                } | Out-Null
+                Save-LeadingSlotTree $compactBaseline "$token-compact-unselected"
+                Save-CompositorFrame "$token-compact-unselected-before-assert"
+                Wait-Until -TimeoutSec 10 -Because 'unselected Compact tab retains exactly one visible replacement spinner' -Condition {
+                    @(Get-RowProgress $baseline.row).Count -eq 1 -and
+                    @(Get-OwnedElements Name $script:titleA -Parent $baseline.row | Where-Object {
+                        $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text
+                    }).Count -eq 0
+                } | Out-Null
+                $unselectedRing = @(Get-RowProgress $baseline.row)[0].Current.BoundingRectangle
+                Assert-ProgressIconSlotGeometry -IconBounds $compactBaseline.slot -ProgressBounds $unselectedRing -Scale $script:scale
+                @(Get-LeadingIdentityPeers $baseline.row $compactBaseline.slot) | Should -HaveCount 0
+                Save-CompositorFrame "$token-compact-unselected-progress"
+            }
+            [IO.File]::WriteAllText($clear, 'clear')
+            Wait-Until -TimeoutSec 10 -Because 'OSC clear removes the spinner without ending the agent session' -Condition {
+                @(Get-RowProgress $baseline.row).Count -eq 0
+            } | Out-Null
+            Wait-Until -TimeoutSec 10 -Because 'clear restores the identical profile/provider raster in the same slot' -Condition {
+                $restoredSlot = if ($compactBaseline) { (Get-LeadingSlot compact).slot } else { $baseline.slot }
+                $expectedIcon = if ($compactBaseline) { $compactIcon } else { $icon }
+                (Get-VisualDigest -Bounds $restoredSlot -Name "$token-restored" -Icon) -eq $expectedIcon
+            } | Out-Null
+            Save-CompositorFrame "$token-$Surface-restored-window"
+            if ($Surface -eq 'compact') {
+                (Get-ActivePane -App $script:app).session_id | Should -Not -Be $script:a.session_id
+                Set-WtPaneFocus -App $script:app -SessionId $script:a.session_id
+                Wait-Until -TimeoutSec 10 -Because 'reselecting after clear restores selected identity without a second icon' -Condition {
+                    (Get-VisualDigest -Bounds (Get-LeadingSlot compact).slot -Name "$token-reselected" -Icon) -eq $icon
+                } | Out-Null
+            }
+            if ($Identity -eq 'provider') { Assert-NativeStatus $sid Working }
+            @((Get-WtPanes -App $script:app -TabId $script:tab.tab_id).session_id | Sort-Object) |
+                Should -Be @(@($script:a.session_id, $script:b.session_id) | Sort-Object)
+            @{
+                surface = $Surface; identity = $Identity; pane = $script:a.session_id; nativeSession = $sid
+                iconBounds = $baseline.slot.ToString(); ringBounds = $ringBounds.ToString()
+                titleOffset = $baseline.titleOffset; baselineRaster = $icon; restored = $true
+                identityPeersAvailable = ($identityPeers.Count -gt 0)
+                singleOccupancyUiaProven = ($identityPeers.Count -gt 0)
+                source = $env:ITE2E_EXPECTED_SOURCE_REVISION
+                visualReview = 'Review baseline/progress/restored crops for a spinner without residual profile/provider strokes.'
+            } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence "$token-slot.json")
+        }
+        finally {
+            foreach ($path in @($start, $clear, $release)) { [IO.File]::WriteAllText($path, 'release') }
+            Wait-Until -TimeoutSec 30 -Because 'the fixture clears progress and exits before another case reuses the shell' -Condition {
+                (Test-Path $done) -and (Get-Content -Raw $done) -eq '0'
+            } | Out-Null
+            if ($Identity -eq 'provider') { Assert-NativeStatus $sid Ended }
+            if ($Surface -eq 'collapsed') { Invoke-UiElement -App $script:app -Selector 'Expand sidebar' | Out-Null }
+            if ($Surface -in @('horizontal', 'compact')) {
+                Set-WtPaneFocus -App $script:app -SessionId $script:a.session_id
+                Switch-ContextLayout vertical
+            }
+            if ($Surface -eq 'compact') { Set-WtSetting -App $script:app -Key tabWidthMode -Value equal | Out-Null }
+            Wait-UiElement -App $script:app -Selector PaneActivateButton | Out-Null
+            Wait-Until -TimeoutSec 10 -Because 'native Ended has propagated to the realized profile icon, not only the session registry' -Condition {
+                (Get-ProfileIconDigest "$token-final-profile") -eq $script:profileIcon
+            } | Out-Null
+            Get-ProfileIconDigest "$token-final-sibling" $script:titleB | Should -Be $script:siblingIcon
+        }
+    }
+
     It 'Native prompt-mode agent identity restores the profile icon' -Tag 'PaneProgressNative' {
         # Contract/title: above; deterministic native CLI fixture, NOT a real Copilot/model claim.
         # Trigger: child shell calls shipped agent-hook start/prompt/end with inherited WT_SESSION.
@@ -660,7 +1030,7 @@ $hook agent.session.end
                 Assert-NativeStatus $sid Working
                 @(Get-OwnedElements AutomationId PaneIndeterminateProgressRing).Count | Should -Be $(if ($state -eq 3) { 1 } else { 0 })
                 Wait-Until -TimeoutSec 20 -Because 'Working native identity replaces the profile raster' -Condition {
-                    (Get-ProfileIconDigest "working-$state") -ne $script:profileIcon
+                    (Get-ProfileIconDigest "working-$state" -Progress:($state -eq 3)) -ne $script:profileIcon
                 } | Out-Null
                 Get-ProfileIconDigest "working-$state-sibling" $script:titleB | Should -Be $script:siblingIcon
                 [IO.File]::WriteAllText($release, 'end')
@@ -670,7 +1040,15 @@ $hook agent.session.end
                 } | Should -Not -BeNullOrEmpty
                 Assert-NativeStatus $sid Ended
                 @(Get-OwnedElements AutomationId PaneIndeterminateProgressRing).Count | Should -Be $(if ($state -eq 3) { 1 } else { 0 })
-                Wait-Until -TimeoutSec 20 -Because 'fixture exit and Ended restore the complete profile icon' -Condition {
+                Wait-Until -TimeoutSec 20 -Because 'the native fixture exits successfully' -Condition {
+                    (Test-Path $done) -and (Get-Content -Raw $done) -eq '0'
+                } | Out-Null
+                if ($state -eq 3) {
+                    Assert-PaneSpinnerSlot "ended-$state"
+                    Send-ShellScript $script:a.session_id "[Console]::Write([char]27+']9;4;0'+[char]7)"
+                    Wait-UiElement -App $script:app -Selector PaneIndeterminateProgressRing -Gone | Out-Null
+                }
+                Wait-Until -TimeoutSec 20 -Because 'Ended identity restores the profile once OSC progress is cleared' -Condition {
                     (Test-Path $done) -and (Get-Content -Raw $done) -eq '0' -and
                     (Get-ProfileIconDigest "ended-$state") -eq $script:profileIcon
                 } | Out-Null

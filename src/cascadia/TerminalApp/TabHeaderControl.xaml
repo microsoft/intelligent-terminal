@@ -34,23 +34,16 @@
         </Grid.ColumnDefinitions>
         <StackPanel x:Name="HeaderStackPanel"
                     Orientation="Horizontal">
-            <Grid Visibility="{x:Bind ShowPinnedIcon, Mode=OneWay}">
-                <FontIcon x:Name="HeaderPinnedIcon"
-                          Margin="0,0,8,0"
-                          FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                          FontSize="12"
-                          Glyph="&#xE718;"
-                          Visibility="{x:Bind TabStatus.IsPinned, Mode=OneWay}" />
-            </Grid>
             <Grid x:Name="HeaderProgressRingPresenter"
                   Visibility="{x:Bind ShowProgressRing, Mode=OneWay}">
-                <Grid Visibility="{x:Bind TabStatus.IsProgressRingActive, Mode=OneWay}">
+                <Grid Width="{ThemeResource TabViewItemHeaderIconSize}"
+                      Height="{ThemeResource TabViewItemHeaderIconSize}"
+                      Visibility="{x:Bind TabStatus.IsProgressRingActive, Mode=OneWay}">
                     <mux:ProgressRing x:Name="HeaderProgressRing"
                                       Width="15"
                                       Height="15"
                                       MinWidth="0"
                                       MinHeight="0"
-                                      Margin="3,0,8,0"
                                       IsActive="{x:Bind TabStatus.IsProgressRingActive, Mode=OneWay}"
                                       IsIndeterminate="False"
                                       Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(TabStatus.IsProgressRingIndeterminate), Mode=OneWay}"
@@ -61,11 +54,18 @@
                                   Height="15"
                                   MinWidth="0"
                                   MinHeight="0"
-                                  Margin="3,0,8,0"
                                   Foreground="{Binding Foreground, ElementName=HeaderProgressRing, Mode=OneWay}"
                                   IsActive="{x:Bind TabStatus.IsProgressRingActive, Mode=OneWay}"
                                   Visibility="{x:Bind TabStatus.IsProgressRingIndeterminate, Mode=OneWay}" />
                 </Grid>
+            </Grid>
+            <Grid Visibility="{x:Bind ShowPinnedIcon, Mode=OneWay}">
+                <FontIcon x:Name="HeaderPinnedIcon"
+                          Margin="0,0,8,0"
+                          FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                          FontSize="12"
+                          Glyph="&#xE718;"
+                          Visibility="{x:Bind TabStatus.IsPinned, Mode=OneWay}" />
             </Grid>
             <FontIcon x:Name="HeaderBellIndicator"
                       Margin="0,0,8,0"
@@ -138,7 +138,12 @@
                                       Grid.Row="1"
                                       Grid.ColumnSpan="2"
                                       Margin="0,1,0,0"
-                                      Opacity="0.72"
+                                      TextOpacity="0.72"
+                                      ColorHighlight="{x:Bind MetadataHighlightColor, Mode=OneWay}"
+                                      ColorHighlightRanges="{x:Bind MetadataHighlightRanges, Mode=OneWay}"
+                                      SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
+                                      CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"
+                                      CriticalHighlightBrush="{ThemeResource SystemFillColorCriticalBrush}"
                                       SearchText="{x:Bind SearchText, Mode=OneWay}"
                                       Text="{x:Bind MetadataText, Mode=OneWay}"
                                       Visibility="Collapsed"

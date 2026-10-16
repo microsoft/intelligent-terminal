@@ -8,8 +8,11 @@ setup.title.sign_in: "Aanmelding vereis"
 # %{agent} word tydens uitvoering vervang met die agent se vertoonnaam.
 setup.subtitle.copilot_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie. Volg die stappe hieronder om dit te installeer. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
 setup.subtitle.agent_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie. Herinstalleer dit handmatig en probeer weer. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
-setup.subtitle.copilot_auth: "Jou agent \"%{agent}\" vereis stawing. Volg die stappe hieronder om aan te meld. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
-setup.subtitle.agent_auth: "Jou agent \"%{agent}\" vereis stawing. Meld aan via die agent en kies dan \"Ek het aangemeld\" hieronder. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
+setup.subtitle.authentication_required: "Jou agent \"%{agent}\" vereis stawing."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Volg die stappe hieronder om aan te meld."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Meld aan via die agent en kies dan \"Ek het aangemeld\" hieronder."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Kies 'n aanmeldmetode om hier voort te gaan."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Kon %{agent} nie begin nie."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise-domein: "
 auth.enterprise_hint_footer: "  Enter om aan te meld · Esc vir github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Druk Enter om weer te probeer, of Esc vir github.com. Algemene oorsake: 'n verkeerd getikte of onbereikbare domein, 'n vervalde kode, of geen Copilot-toegang op daardie gasheer nie."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Druk Enter om weer te probeer, of Esc om terug te gaan."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Voltooi die aanmelding in jou blaaier. Druk Esc om op te hou wag."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Blaaier nie oop nie? Gebruik hierdie aanmeldskakel. O: maak oop · Y: kopieer."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Kon nie die blaaier oopmaak nie. Maak die aanmeldskakel handmatig oop."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Kon nie die aanmeldskakel kopieer nie. Kies dit en kopieer dit handmatig."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Aanmelding is nie betyds voltooi nie. Probeer weer wanneer jy gereed is."  # Sign-in wait timeout; the user can retry later.
 
 # ── Kletsaansig (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Dink na…"
@@ -299,10 +307,4 @@ system.yolo_disable_pending: "die verskaffer het nie die vereiste nie-bevoorregt
 system.provider_command_blocked_by_policy: "%{command}: Outomatiese goedkeuring is deur jou organisasie se beleid gedeaktiveer."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Onbekende model %{model} — tik /model om die beskikbare lys te sien."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Jou agent \"%{agent}\" vereis stawing. Kies 'n aanmeldmetode om hier voort te gaan."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Voltooi die aanmelding in jou blaaier. Druk Esc om op te hou wag."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Blaaier nie oop nie? Gebruik hierdie aanmeldskakel. O: maak oop · Y: kopieer."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Kon nie die blaaier oopmaak nie. Maak die aanmeldskakel handmatig oop."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Kon nie die aanmeldskakel kopieer nie. Kies dit en kopieer dit handmatig."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Aanmelding is nie betyds voltooi nie. Probeer weer wanneer jy gereed is."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Ons kon \"%{agent}\" nie in die %{distro}-aanmeldomgewing vind nie. Gaan hierdie Linux-gebruiker se installasie, PATH en dopprofiel na en probeer dan weer."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

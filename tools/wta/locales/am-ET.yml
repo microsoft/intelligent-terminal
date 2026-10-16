@@ -8,8 +8,11 @@ setup.title.sign_in: "መግባት ያስፈልጋል"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "ኤጅንትዎ \"%{agent}\" አልተጠቀመም። ለመጠቀም ከታች ያሉትን ደረጃዎች ይተግበሩ። ኤጅንትን ለመቀየር ብልህ ተርሚናል Settings > Agent ይሂዱ።"
 setup.subtitle.agent_missing: "ኤጅንትዎ \"%{agent}\" አልተጠቀመም። እባክዎን በእጥ ይጠቅሙት እና እንደገና ይሞክሩ። ኤጅንትን ለመቀየር ብልህ ተርሚናል Settings > Agent ይሂዱ።"
-setup.subtitle.copilot_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገወል። ለመግባት ከታች ያሉትን ደረጃዎች ይተግበሩ። ኤጅንትን ለመቀየር ብልህ ተርሚናል Settings > Agent ይሂዱ።"
-setup.subtitle.agent_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገዋል። እባክዎን በኤጅንቱ በኩል ይግቡ እና ከዚያ በታች \"ገብቻለሁ\" ን ይምረጡ። ኤጅንትን ለመቀየር ብልህ ተርሚናል Settings > Agent ይሂዱ።"
+setup.subtitle.authentication_required: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገዋል።"  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "ለመግባት ከታች ያሉትን ደረጃዎች ይተግበሩ።"  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "እባክዎን በኤጅንቱ በኩል ይግቡ እና ከዚያ በታች \"ገብቻለሁ\" ን ይምረጡ።"  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "እዚህ ለመቀጠል የመግቢያ ዘዴ ይምረጡ።"  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "ኤጅንትን ለመቀየር ብልህ ተርሚናል Settings > Agent ይሂዱ።"  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "%{agent} ማስጀመር አልቻልንም።"
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise ጎራ: "
 auth.enterprise_hint_footer: "  ለመግባት Enter · github.com ለመጠቀም Esc"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  እንደገና ለመሞከር Enter ይጫኑ፣ ወይም github.com ለመጠቀም Esc. የተለመዱ ምክንያቶች፦ በስህተት የተጻፈ ወይም ሊደረስበት የማይችል ጎራ፣ ጊዜው ያለፈ ኮድ፣ ወይም በዚያ አስተናጋጅ ላይ የCopilot መዳረሻ አለመኖር።"  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  እንደገና ለመሞከር Enter ይጫኑ፣ ወይም ለመመለስ Esc."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "በአሳሽዎ ውስጥ መግባቱን ያጠናቅቁ። መጠበቁን ለመሰረዝ Esc ይጫኑ።"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "አሳሹ አልተከፈተም? ይህን የመግቢያ አገናኝ ይጠቀሙ። O: መክፈት · Y: መቅዳት።"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "አሳሹን መክፈት አልተቻለም። የመግቢያ አገናኙን በእጅ ይክፈቱ።"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "የመግቢያ አገናኙን መቅዳት አልተቻለም። በእጅ ይምረጡት እና ይቅዱት።"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "መግባቱ በተፈቀደው ጊዜ አልተጠናቀቀም። ዝግጁ ሲሆኑ እንደገና ይሞክሩ።"  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "በማሰብ…"
@@ -299,10 +307,4 @@ system.yolo_disable_pending: "የኤጅንት አቅራቢው ክፍለ ጊዜ�
 system.provider_command_blocked_by_policy: "%{command}: ራስ-ሰር ማጽደቅ በድርጅትዎ መመሪያ ተሰናክሏል።"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "ያልታወቀ ሞዴል %{model} — የሚገኘውን ዝርዝር ለማየት /model ይተይቡ።"  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገዋል። እዚህ ለመቀጠል የመግቢያ ዘዴ ይምረጡ።"  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "በአሳሽዎ ውስጥ መግባቱን ያጠናቅቁ። መጠበቁን ለመሰረዝ Esc ይጫኑ።"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "አሳሹ አልተከፈተም? ይህን የመግቢያ አገናኝ ይጠቀሙ። O: መክፈት · Y: መቅዳት።"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "አሳሹን መክፈት አልተቻለም። የመግቢያ አገናኙን በእጅ ይክፈቱ።"  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "የመግቢያ አገናኙን መቅዳት አልተቻለም። በእጅ ይምረጡት እና ይቅዱት።"  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "መግባቱ በተፈቀደው ጊዜ አልተጠናቀቀም። ዝግጁ ሲሆኑ እንደገና ይሞክሩ።"  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "በ%{distro} የመግቢያ አካባቢ ውስጥ \"%{agent}\"ን ማግኘት አልቻልንም። የዚህን Linux ተጠቃሚ ጭነት፣ PATH እና የሼል መገለጫ ያረጋግጡ፣ ከዚያ እንደገና ይሞክሩ።"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

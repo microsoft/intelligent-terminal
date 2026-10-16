@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "ColorPickupFlyout.h"
 #include "Tab.h"
+#include "TabHeaderControl.h"
 #include "AgentPaneContent.h"
 #include "AgentIconUtils.h"
 #include "SettingsPaneContent.h"
@@ -498,9 +499,10 @@ namespace winrt::TerminalApp::implementation
         _lastIconStyle = iconStyle;
 
         const auto previousIcon = Icon();
-        TabViewItem().IconSource(iconStyle == IconStyle::Hidden || _iconHidden ?
-                                     IconSource{ nullptr } :
-                                     ::Microsoft::Terminal::UI::AgentIcons::SourceForIconPath(_lastIconPath, iconStyle == IconStyle::Monochrome));
+        _iconSource = iconStyle == IconStyle::Hidden ?
+                          IconSource{ nullptr } :
+                          ::Microsoft::Terminal::UI::AgentIcons::SourceForIconPath(_lastIconPath, iconStyle == IconStyle::Monochrome);
+        _UpdateIconVisibility();
         Icon(iconStyle == IconStyle::Hidden ? winrt::hstring{} : _lastIconPath);
         if (Icon() == previousIcon)
         {
@@ -510,7 +512,7 @@ namespace winrt::TerminalApp::implementation
 
     // Method Description:
     // - Hide or show the tab icon for this tab
-    // - Independent of progress; explicit icon visibility is retained.
+    // - Explicit visibility is independent of OSC progress.
     // Arguments:
     // - hide: if true, we hide the icon; if false, we show the icon
     void Tab::HideIcon(const bool hide)
@@ -519,18 +521,28 @@ namespace winrt::TerminalApp::implementation
 
         if (_iconHidden != hide)
         {
-            if (hide)
-            {
-                TabViewItem().IconSource(IconSource{ nullptr });
-            }
-            else
-            {
-                TabViewItem().IconSource(_lastIconStyle == IconStyle::Hidden ?
-                                             IconSource{ nullptr } :
-                                             ::Microsoft::Terminal::UI::AgentIcons::SourceForIconPath(_lastIconPath, _lastIconStyle == IconStyle::Monochrome));
-            }
             _iconHidden = hide;
+            _UpdateIconVisibility();
             PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Icon" });
+        }
+    }
+
+    void Tab::_UpdateIconVisibility()
+    {
+        // Retain identity independently of progress. Horizontal progress uses
+        // the native icon slot, which survives Compact's hidden header. An empty
+        // native source keeps that slot enabled without painting an identity;
+        // the Sidebar descriptor never receives this presentation-only source.
+        const auto source = _iconHidden ? IconSource{ nullptr } : _iconSource;
+        _headerControl.Presentation().IconSource(source);
+        TabViewItem().IconSource(_tabStatus.IsProgressRingActive() ? _progressIconSource : source);
+        if (Media::VisualTreeHelper::GetChildrenCount(TabViewItem()) > 0)
+        {
+            const auto root = Media::VisualTreeHelper::GetChild(TabViewItem(), 0).as<FrameworkElement>();
+            if (const auto icon = root.FindName(L"IconControl").try_as<WUX::Controls::ContentControl>())
+            {
+                icon.Visibility(_tabStatus.IsProgressRingActive() ? Visibility::Collapsed : Visibility::Visible);
+            }
         }
     }
 
@@ -613,6 +625,7 @@ namespace winrt::TerminalApp::implementation
         const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation)
     {
         ASSERT_UI_THREAD();
+        _headerControl.MetadataHighlightColor(presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None);
         if (_richTabPresentation != presentation)
         {
             _richTabPresentation = presentation;
@@ -625,6 +638,7 @@ namespace winrt::TerminalApp::implementation
         std::wstring text;
         std::wstring tooltip;
         std::wstring accessibilityText;
+        Windows::Foundation::Collections::IVector<TerminalApp::HighlightedRun> highlightRanges{ nullptr };
         if constexpr (Feature_RichTabProviders::IsEnabled())
         {
             if (_richTabPresentation)
@@ -632,6 +646,7 @@ namespace winrt::TerminalApp::implementation
                 text = _richTabPresentation->text;
                 tooltip = _richTabPresentation->tooltip;
                 accessibilityText = _richTabPresentation->accessibilityText;
+                highlightRanges = TabHeaderControl::BuildMetadataHighlightRanges(*_richTabPresentation);
             }
         }
 
@@ -639,6 +654,7 @@ namespace winrt::TerminalApp::implementation
         _richTabTooltipText = tooltip;
         _richTabAccessibilityText = accessibilityText;
         _headerControl.MetadataText(text);
+        _headerControl.MetadataHighlightRanges(highlightRanges);
         _headerControl.MetadataAutomationName(_richTabAccessibilityText);
         _headerControl.IsMetadataVisible(_isVerticalTabLayout && hasVisibleMetadata);
 
@@ -1589,6 +1605,7 @@ namespace winrt::TerminalApp::implementation
         {
             _tabStatus.IsProgressRingActive(false);
         }
+        _UpdateIconVisibility();
 
         // fire an event signaling that our taskbar progress changed.
         TaskbarProgressChanged.raise(nullptr, nullptr);

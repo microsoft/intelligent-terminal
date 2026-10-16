@@ -347,6 +347,15 @@ waiting and the manual link remains available. Press **Esc** to cancel waiting; 
 out the provider or revoke authorization already completed. Do not copy credentials
 between Windows and Linux or between Linux users.
 
+Sign-in guidance is shared across agents that support the same user steps.
+The initial setup offers **Sign in**; method-selection instructions appear only
+after opening the advertised method picker. Agents that require external CLI
+sign-in instead offer **I've signed in — try connecting again**, even if their
+ACP server advertises methods. If no usable in-pane method is available, retry
+the connection or select another agent; Terminal does not invent a login method.
+All authentication setup paths retain the shared reminder to switch agents in
+**Intelligent Terminal Settings > Agent**.
+
 The WSL runtime must be visible in the selected distro's default user's login
 environment. Files installed for another user can exist while discovery cannot
 find them. Check that user's `bash -lc` PATH and profile syntax rather than

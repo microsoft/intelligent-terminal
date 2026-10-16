@@ -89,6 +89,8 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::unordered_map<std::string, FieldValue> fields;
         std::optional<std::string> tooltip;
         std::optional<std::string> accessibilityText;
+        // Broker-owned semantic status from the request that produced these fields.
+        std::string agentStatus;
     };
 
     struct Request

@@ -376,6 +376,16 @@ pub enum SessionEvent {
         cwd: PathBuf,
         title: String,
     },
+    SessionRenamed {
+        key: AgentKey,
+        pane_session_id: String,
+        title: String,
+    },
+    WorkingDirectoryChanged {
+        key: AgentKey,
+        pane_session_id: String,
+        cwd: PathBuf,
+    },
     ToolStarting {
         key: AgentKey,
         tool_name: String,
@@ -389,6 +399,17 @@ pub enum SessionEvent {
     },
     SessionStopped {
         key: AgentKey,
+        reason: String,
+    },
+    /// TUI pane detachment does not imply the server-owned session ended.
+    SessionUnbound {
+        key: AgentKey,
+        pane_session_id: String,
+    },
+    /// Server deletion must still match the owner observed when planned.
+    SessionStoppedIfOwner {
+        key: AgentKey,
+        pane_session_id: Option<String>,
         reason: String,
     },
     ConnectionFailed {
@@ -524,6 +545,40 @@ impl AgentSessionRegistry {
                     title,
                 }
             }
+            SessionEvent::WorkingDirectoryChanged {
+                key,
+                pane_session_id,
+                cwd,
+            } => SessionEvent::WorkingDirectoryChanged {
+                key,
+                pane_session_id: pane_key(&pane_session_id),
+                cwd,
+            },
+            SessionEvent::SessionRenamed {
+                key,
+                pane_session_id,
+                title,
+            } => SessionEvent::SessionRenamed {
+                key,
+                pane_session_id: pane_key(&pane_session_id),
+                title,
+            },
+            SessionEvent::SessionUnbound {
+                key,
+                pane_session_id,
+            } => SessionEvent::SessionUnbound {
+                key,
+                pane_session_id: pane_key(&pane_session_id),
+            },
+            SessionEvent::SessionStoppedIfOwner {
+                key,
+                pane_session_id,
+                reason,
+            } => SessionEvent::SessionStoppedIfOwner {
+                key,
+                pane_session_id: pane_session_id.map(|pane| pane_key(&pane)),
+                reason,
+            },
             SessionEvent::ConnectionFailed {
                 pane_session_id,
                 reason,
@@ -692,6 +747,42 @@ impl AgentSessionRegistry {
                 }
                 self.dirty = true;
             }
+            SessionEvent::SessionRenamed {
+                key,
+                pane_session_id,
+                title,
+            } => {
+                if let Some(entry) = self.sessions.get_mut(&key) {
+                    if entry.cli_source == CliSource::OpenCode
+                        && entry.liveness() == LivenessState::Live
+                        && entry.pane_session_id.as_deref() == Some(pane_session_id.as_str())
+                        && !title.trim().is_empty()
+                        && entry.title != title
+                    {
+                        entry.title = title;
+                        entry.last_activity_at = now;
+                        self.dirty = true;
+                    }
+                }
+            }
+
+            SessionEvent::WorkingDirectoryChanged {
+                key,
+                pane_session_id,
+                cwd,
+            } => {
+                if !cwd.as_os_str().is_empty()
+                    && self.active_by_pane.get(&pane_session_id) == Some(&key)
+                {
+                    if let Some(entry) = self.sessions.get_mut(&key) {
+                        if entry.liveness() == LivenessState::Live && entry.cwd != cwd {
+                            entry.cwd = cwd;
+                            entry.last_activity_at = now;
+                            self.dirty = true;
+                        }
+                    }
+                }
+            }
 
             SessionEvent::ToolStarting { key, tool_name } => {
                 if let Some(entry) = self.sessions.get_mut(&key) {
@@ -736,6 +827,40 @@ impl AgentSessionRegistry {
                 }
             }
 
+            SessionEvent::SessionUnbound {
+                key,
+                pane_session_id,
+            } => {
+                if self.active_by_pane.get(&pane_session_id) == Some(&key)
+                    && self.sessions.get(&key).is_some_and(|entry| {
+                        entry.cli_source == CliSource::OpenCode
+                            && entry.pane_session_id.as_deref() == Some(&pane_session_id)
+                            && entry.liveness() == LivenessState::Live
+                    })
+                {
+                    self.active_by_pane.remove(&pane_session_id);
+                    if let Some(entry) = self.sessions.get_mut(&key) {
+                        entry.pane_session_id = None;
+                    }
+                    self.dirty = true;
+                }
+            }
+            SessionEvent::SessionStoppedIfOwner {
+                key,
+                pane_session_id,
+                reason,
+            } => {
+                if self.sessions.get(&key).is_some_and(|entry| {
+                    entry.cli_source == CliSource::OpenCode
+                        && entry.liveness() == LivenessState::Live
+                        && entry.pane_session_id == pane_session_id
+                        && pane_session_id
+                            .as_deref()
+                            .is_none_or(|pane| self.active_by_pane.get(pane) == Some(&key))
+                }) {
+                    self.apply(SessionEvent::SessionStopped { key, reason });
+                }
+            }
             SessionEvent::SessionStopped { key, reason } => {
                 // `reason` distinguishes two very different end-of-session
                 // events from the same CLI hook:

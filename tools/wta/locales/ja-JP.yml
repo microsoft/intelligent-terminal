@@ -7,8 +7,11 @@ setup.title.sign_in: "サインインが必要です"
 # %{agent} は実行時にエージェントの表示名に置換されます。
 setup.subtitle.copilot_missing: "エージェント \"%{agent}\" がインストールされていません。以下の手順に従ってインストールしてください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
 setup.subtitle.agent_missing: "エージェント \"%{agent}\" がインストールされていません。手動で再インストールしてから再試行してください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
-setup.subtitle.copilot_auth: "エージェント \"%{agent}\" には認証が必要です。以下の手順に従ってサインインしてください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
-setup.subtitle.agent_auth: "エージェント \"%{agent}\" には認証が必要です。エージェントからサインインし、下の \"サインイン済み\" を選択してください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
+setup.subtitle.authentication_required: "エージェント \"%{agent}\" には認証が必要です。"  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "以下の手順に従ってサインインしてください。"  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "エージェントからサインインし、下の \"サインイン済み\" を選択してください。"  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "ここで続行するには、サインイン方法を選択してください。"  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "%{agent} を起動できませんでした。"
 
 setup.option.install: "%{agent} をインストール"
@@ -40,6 +43,11 @@ auth.enterprise_domain_label: "  エンタープライズ ドメイン: "
 auth.enterprise_hint_footer: "  Enter でサインイン · Esc で github.com を使用"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Enter を押して再試行するか、Esc で github.com を使用します。一般的な原因: ドメインの入力ミスまたは到達不能、コードの有効期限切れ、またはそのホストでアカウントに Copilot へのアクセス権がないこと。"  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Enter を押して再試行するか、Esc で戻ります。"  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "ブラウザーでサインインを完了してください。待機をキャンセルするには Esc を押してください。"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ブラウザーが開かない場合は、このサインイン用リンクを使用してください。O: 開く · Y: コピー。"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ブラウザーを開けませんでした。サインイン用リンクを手動で開いてください。"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "サインイン用リンクをコピーできませんでした。手動で選択してコピーしてください。"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "サインインが時間内に完了しませんでした。準備ができたら、もう一度お試しください。"  # Sign-in wait timeout; the user can retry later.
 
 # ── チャット ビュー (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "考え中…"
@@ -293,10 +301,4 @@ system.yolo_disable_pending: "エージェント プロバイダーは、必要�
 system.provider_command_blocked_by_policy: "%{command}: 組織のポリシーにより自動承認が無効になっています。"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "不明なモデル %{model} — 利用可能な一覧を表示するには /model と入力してください。"  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "エージェント \"%{agent}\" には認証が必要です。ここで続行するには、サインイン方法を選択してください。"  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "ブラウザーでサインインを完了してください。待機をキャンセルするには Esc を押してください。"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "ブラウザーが開かない場合は、このサインイン用リンクを使用してください。O: 開く · Y: コピー。"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "ブラウザーを開けませんでした。サインイン用リンクを手動で開いてください。"  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "サインイン用リンクをコピーできませんでした。手動で選択してコピーしてください。"  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "サインインが時間内に完了しませんでした。準備ができたら、もう一度お試しください。"  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "%{distro} のログイン環境で \"%{agent}\" が見つかりませんでした。この Linux ユーザーのインストール状態、PATH、シェルプロファイルを確認してから、もう一度お試しください。"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

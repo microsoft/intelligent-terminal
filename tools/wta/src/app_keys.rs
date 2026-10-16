@@ -272,46 +272,14 @@ impl App {
                         // Go back to setup screen
                         self.mode = AppMode::Setup;
                     } else {
-                        // No setup state to go back to (e.g. preflight auth failure) —
-                        // rebuild setup as AgentMissing for this agent
+                        // No retained setup: rebuild the source-correct sign-in choices.
                         let agent_id = self
                             .auth
                             .as_ref()
                             .map(|a| a.agent_id.clone())
                             .unwrap_or_default();
                         if !agent_id.is_empty() {
-                            let agent_status = crate::agent_check::check_agent(&agent_id);
-                            let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
-                            let reason = SetupReason::AgentError;
-                            let options = build_setup_options(&reason, Some(&agent_status));
-                            self.mode = AppMode::Setup;
-                            self.setup = Some(SetupState {
-                                reason,
-
-                                selected_index: 0,
-                                preflight: PreflightResult {
-                                    agent_id: agent_id.clone(),
-                                    display_name: profile.display_name.to_string(),
-                                    cli_status: CheckStatus::Passed,
-                                    cli_path: None,
-                                    auth_status: CheckStatus::Failed(
-                                        t!("system.authentication_failed").into_owned(),
-                                    ),
-                                    install_hint: profile.install_hint.to_string(),
-                                    install_url: String::new(),
-                                    auth_hint: profile.auth_hint.to_string(),
-                                },
-                                phase: SetupPhase::Ready,
-                                options,
-                                title: t!("setup.title.sign_in").into_owned(),
-                                subtitle: if profile.id == "copilot" {
-                                    t!("setup.subtitle.copilot_auth", agent = profile.display_name)
-                                        .into_owned()
-                                } else {
-                                    t!("setup.subtitle.agent_auth", agent = profile.display_name)
-                                        .into_owned()
-                                },
-                            });
+                            self.show_signin_setup_screen(agent_id);
                         } else {
                             self.mode = AppMode::Chat;
                         }

@@ -8,8 +8,11 @@ setup.title.sign_in: "[!!_Sign in required_!!]"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "[!!_Your agent \"%{agent}\" is not installed. Follow the steps below to install it. To switch agents, go to Intelligent Terminal Settings > Agent._!!]"
 setup.subtitle.agent_missing: "[!!_Your agent \"%{agent}\" is not installed. Please install it manually, then try again. To switch agents, go to Intelligent Terminal Settings > Agent._!!]"
-setup.subtitle.copilot_auth: "[!!_Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Intelligent Terminal Settings > Agent._!!]"
-setup.subtitle.agent_auth: "[!!_Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent._!!]"
+setup.subtitle.authentication_required: "[!!_Ｙｏｕｒ ａｇｅｎｔ \"%{agent}\" ｒｅｑｕｉｒｅｓ ａｕｔｈｅｎｔｉｃａｔｉｏｎ._!!]"  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "[!!_Ｆｏｌｌｏｗ ｔｈｅ ｓｔｅｐｓ ｂｅｌｏｗ ｔｏ ｓｉｇｎ ｉｎ._!!]"  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "[!!_Ｐｌｅａｓｅ ｓｉｇｎ ｉｎ ｖｉａ ｔｈｅ ａｇｅｎｔ, ｔｈｅｎ ｓｅｌｅｃｔ \"Ｉ'ｖｅ ｓｉｇｎｅｄ ｉｎ\" ｂｅｌｏｗ._!!]"  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "[!!_Ｓｅｌｅｃｔ ａ ｓｉｇｎ-ｉｎ ｍｅｔｈｏｄ ｔｏ ｃｏｎｔｉｎｕｅ ｈｅｒｅ._!!]"  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "[!!_Ｔｏ ｓｗｉｔｃｈ ａｇｅｎｔｓ, ｇｏ ｔｏ Intelligent Terminal Settings > Agent._!!]"  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "[!!_We couldn't start %{agent}._!!]"
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise domain: "
 auth.enterprise_hint_footer: "  Enter to sign in · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Press Enter to retry, or Esc for github.com. Common causes: a mistyped or unreachable domain, an expired code, or no Copilot access on that host."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Press Enter to retry, or Esc to go back."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "[!!_Ｃｏｍｐｌｅｔｅ ｓｉｇｎ-ｉｎ ｉｎ ｙｏｕｒ ｂｒｏｗｓｅｒ. Ｐｒｅｓｓ Esc ｔｏ ｃａｎｃｅｌ ｗａｉｔｉｎｇ._!!]"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "[!!_Ｂｒｏｗｓｅｒ ｎｏｔ ｏｐｅｎ? Ｕｓｅ ｔｈｉｓ ｓｉｇｎ-ｉｎ ｌｉｎｋ. O: ｏｐｅｎ · Y: ｃｏｐｙ._!!]"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "[!!_Ｃｏｕｌｄ ｎｏｔ ｏｐｅｎ ｔｈｅ ｂｒｏｗｓｅｒ. Ｏｐｅｎ ｔｈｅ ｓｉｇｎ-ｉｎ ｌｉｎｋ ｍａｎｕａｌｌｙ._!!]"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "[!!_Ｃｏｕｌｄ ｎｏｔ ｃｏｐｙ ｔｈｅ ｓｉｇｎ-ｉｎ ｌｉｎｋ. Ｓｅｌｅｃｔ ａｎｄ ｃｏｐｙ ｉｔ ｍａｎｕａｌｌｙ._!!]"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "[!!_Ｓｉｇｎ-ｉｎ ｄｉｄ ｎｏｔ ｆｉｎｉｓｈ ｉｎ ｔｉｍｅ. Ｔｒｙ ａｇａｉｎ ｗｈｅｎ ｙｏｕ ａｒｅ ｒｅａｄｙ._!!]"  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "[!!_Thinking..._!!]"
@@ -296,10 +304,4 @@ system.yolo_disable_pending: "[!!_the provider has not acknowledged the required
 system.provider_command_blocked_by_policy: "%{command}: [!!_Automatic approval is disabled by your organization's policy._!!]"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "[!!_Unknown model %{model} — type /model to see the available list._!!]"  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "[!!_Ｙｏｕｒ ａｇｅｎｔ \"%{agent}\" ｒｅｑｕｉｒｅｓ ａｕｔｈｅｎｔｉｃａｔｉｏｎ. Ｓｅｌｅｃｔ ａ ｓｉｇｎ-ｉｎ ｍｅｔｈｏｄ ｔｏ ｃｏｎｔｉｎｕｅ ｈｅｒｅ._!!]"  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "[!!_Ｃｏｍｐｌｅｔｅ ｓｉｇｎ-ｉｎ ｉｎ ｙｏｕｒ ｂｒｏｗｓｅｒ. Ｐｒｅｓｓ Esc ｔｏ ｃａｎｃｅｌ ｗａｉｔｉｎｇ._!!]"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "[!!_Ｂｒｏｗｓｅｒ ｎｏｔ ｏｐｅｎ? Ｕｓｅ ｔｈｉｓ ｓｉｇｎ-ｉｎ ｌｉｎｋ. O: ｏｐｅｎ · Y: ｃｏｐｙ._!!]"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "[!!_Ｃｏｕｌｄ ｎｏｔ ｏｐｅｎ ｔｈｅ ｂｒｏｗｓｅｒ. Ｏｐｅｎ ｔｈｅ ｓｉｇｎ-ｉｎ ｌｉｎｋ ｍａｎｕａｌｌｙ._!!]"  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "[!!_Ｃｏｕｌｄ ｎｏｔ ｃｏｐｙ ｔｈｅ ｓｉｇｎ-ｉｎ ｌｉｎｋ. Ｓｅｌｅｃｔ ａｎｄ ｃｏｐｙ ｉｔ ｍａｎｕａｌｌｙ._!!]"  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "[!!_Ｓｉｇｎ-ｉｎ ｄｉｄ ｎｏｔ ｆｉｎｉｓｈ ｉｎ ｔｉｍｅ. Ｔｒｙ ａｇａｉｎ ｗｈｅｎ ｙｏｕ ａｒｅ ｒｅａｄｙ._!!]"  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "[!!_Ｗｅ ｃｏｕｌｄ ｎｏｔ ｆｉｎｄ \"%{agent}\" ｉｎ ｔｈｅ %{distro} ｌｏｇｉｎ ｅｎｖｉｒｏｎｍｅｎｔ. Ｃｈｅｃｋ ｔｈｉｓ Linux ｕｓｅｒ'ｓ ｉｎｓｔａｌｌａｔｉｏｎ, PATH, ａｎｄ ｓｈｅｌｌ ｐｒｏｆｉｌｅ, ｔｈｅｎ ｔｒｙ ａｇａｉｎ._!!]"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

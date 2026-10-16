@@ -7,8 +7,11 @@ setup.title.sign_in: "需要登录"
 # %{agent} 在运行时替换为智能体显示名称。
 setup.subtitle.copilot_missing: "您的智能体 \"%{agent}\" 尚未安装。请按照以下步骤安装。如需切换智能体，请前往智能终端 Settings > Agent。"
 setup.subtitle.agent_missing: "您的智能体 \"%{agent}\" 尚未安装。请手动重新安装，然后重试。如需切换智能体，请前往智能终端 Settings > Agent。"
-setup.subtitle.copilot_auth: "您的智能体 \"%{agent}\" 需要身份验证。请按照以下步骤登录。如需切换智能体，请前往智能终端 Settings > Agent。"
-setup.subtitle.agent_auth: "您的智能体 \"%{agent}\" 需要身份验证。请通过智能体登录，然后选择下方的 \"我已登录\"。如需切换智能体，请前往智能终端 Settings > Agent。"
+setup.subtitle.authentication_required: "您的智能体 \"%{agent}\" 需要身份验证。"  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "请按照以下步骤登录。"  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "请通过智能体登录，然后选择下方的 \"我已登录\"。"  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "请选择一种登录方式以在此处继续。"  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "如需切换智能体，请前往智能终端 Settings > Agent。"  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "无法启动 %{agent}。"
 
 setup.option.install: "安装 %{agent}"
@@ -40,6 +43,11 @@ auth.enterprise_domain_label: "  企业域名："
 auth.enterprise_hint_footer: "  Enter 登录 · Esc 返回 github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  按 Enter 重试,或按 Esc 改用 github.com。常见原因:域名拼写错误或不可达、设备码已过期,或你的账号在该实例没有 Copilot 访问权限。"  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  按 Enter 重试,或按 Esc 返回。"  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "请在浏览器中完成登录。按 Esc 取消等待。"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "浏览器未打开？请使用此登录链接。O: 打开 · Y: 复制。"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "无法打开浏览器。请手动打开登录链接。"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "无法复制登录链接。请选中该链接并手动复制。"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "登录未在规定时间内完成。准备好后请重试。"  # Sign-in wait timeout; the user can retry later.
 
 # ── 聊天视图 (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "思考中…"
@@ -293,10 +301,4 @@ system.yolo_disable_pending: "智能体提供商尚未确认所需的非特权�
 system.provider_command_blocked_by_policy: "%{command}: 你所在组织的策略已禁用自动批准。"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "未知模型 %{model} — 键入 /model 查看可用列表。"  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "您的智能体 \"%{agent}\" 需要身份验证。请选择一种登录方式以在此处继续。"  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "请在浏览器中完成登录。按 Esc 取消等待。"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "浏览器未打开？请使用此登录链接。O: 打开 · Y: 复制。"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "无法打开浏览器。请手动打开登录链接。"  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "无法复制登录链接。请选中该链接并手动复制。"  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "登录未在规定时间内完成。准备好后请重试。"  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "未能在 %{distro} 的登录环境中找到 \"%{agent}\"。请检查此 Linux 用户的安装情况、PATH 和 shell 配置文件，然后重试。"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

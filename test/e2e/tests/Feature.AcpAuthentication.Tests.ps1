@@ -102,9 +102,16 @@ Describe 'Feature: ACP first-login authentication' -Tag 'Feature', 'AcpAuthentic
         }
 
         function Open-AuthenticationMethods {
+            $before = Get-AuthenticationText
+            $before | Should -Match $script:signInInstructionsRegex
+            $before | Should -Not -Match $script:selectMethodInstructionsRegex `
+                -Because 'initial sign-in guidance must describe the action offered, not a picker that is not open'
             Send-AuthenticationKey -Vk 0x0D
             Wait-AuthenticationText -Pattern 'Personal OAuth' -Because 'the advertised authentication methods to render' | Out-Null
-            (Get-AuthenticationText) | Should -Match 'Other method'
+            $picker = Get-AuthenticationText
+            $picker | Should -Match 'Other method'
+            $picker | Should -Match $script:selectMethodInstructionsRegex
+            $picker | Should -Not -Match $script:signInInstructionsRegex
             @(Get-AuthenticationRecords | Where-Object method -eq 'authenticate') | Should -HaveCount 0
             # Exercise real navigation, rather than accepting an assumed first item.
             Send-AuthenticationKey -Vk 0x28
@@ -171,6 +178,11 @@ Describe 'Feature: ACP first-login authentication' -Tag 'Feature', 'AcpAuthentic
         $script:connectedRegex = & (Get-Module ItE2E) { Get-AgentConnectedPlaceholderRegex }
         $script:signInRegex = Get-WtaLocalizedTextRegex -Key 'setup.title.sign_in'
         if (-not $script:signInRegex) { $script:signInRegex = 'Sign in required' }
+        $script:signInInstructionsRegex = Get-WtaLocalizedTextRegex -Key 'setup.auth.sign_in' -AllowLineWrap
+        $script:selectMethodInstructionsRegex = Get-WtaLocalizedTextRegex -Key 'setup.auth.select_method' -AllowLineWrap
+        if (-not $script:signInInstructionsRegex -or -not $script:selectMethodInstructionsRegex) {
+            throw 'The deployed sign-in instruction resources are unavailable.'
+        }
         $script:waitingRegex = Get-WtaLocalizedTextRegex -Key 'auth.waiting_for_authorization'
         if ($script:waitingRegex) {
             $script:waitingRegex = $script:waitingRegex.Replace([regex]::Escape('%{spinner}'), '[^\r\n]*')

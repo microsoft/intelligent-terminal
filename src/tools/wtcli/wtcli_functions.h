@@ -181,6 +181,7 @@ namespace wtcli
     // fails if they drift.
     inline constexpr const char* kConsumedPayloadKeys[] = {
         "cwd",
+        "new_cwd",
         "title",
         "tool_name",
         "toolName",
@@ -189,6 +190,8 @@ namespace wtcli
         "notification_type",
         "reason",
         "error",
+        "pane_owner",
+        "running",
     };
     inline constexpr const char* kConsumedToolInputKeys[] = {
         "question",
@@ -236,6 +239,11 @@ namespace wtcli
             if (member.isString())
             {
                 reduced[key] = ClampUtf8(member.asString(), kMaxRetainedFieldChars);
+            }
+            else if (member.isBool() &&
+                     (std::string_view{ key } == "pane_owner" || std::string_view{ key } == "running"))
+            {
+                reduced[key] = member;
             }
             else if (member.isObject())
             {

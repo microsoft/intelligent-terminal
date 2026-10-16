@@ -1799,24 +1799,11 @@ impl App {
                     };
                     tracing::info!("AgentError: resolved agent_id={}", agent_id);
                     let profile = crate::agent_registry::lookup_profile(&agent_id);
-                    let reason = SetupReason::AgentError;
-                    let options = if !self.acp_auth_methods.is_empty()
-                        && (matches!(
-                            profile.acp_auth_flow,
-                            crate::agent_registry::AcpAuthFlow::InProtocol
-                        ) || self.current_agent_id.starts_with("custom:"))
-                    {
-                        vec![
-                            SetupOption::SignIn {
-                                agent_id: self.current_agent_id.clone(),
-                                display_name: profile.display_name.to_string(),
-                            },
-                            SetupOption::ChooseAgentSource,
-                        ]
-                    } else {
-                        // AuthRequired comes from an initialized source-bound ACP
-                        // process; probing Windows here would misclassify WSL login.
-                        let agent_status = crate::agent_check::AgentStatus {
+                    // AuthRequired comes from an initialized source-bound ACP
+                    // process; probing Windows here would misclassify WSL login.
+                    self.show_signin_setup_screen_with_status(
+                        &agent_id,
+                        crate::agent_check::AgentStatus {
                             id: profile.id.to_string(),
                             display_name: profile.display_name.to_string(),
                             cli_found: true,
@@ -1824,44 +1811,8 @@ impl App {
                             install_hint: profile.install_hint.to_string(),
                             auth_hint: profile.auth_hint.to_string(),
                             auto_installable: false,
-                        };
-                        build_setup_options(&reason, Some(&agent_status))
-                    };
-                    self.mode = AppMode::Setup;
-                    self.state = ConnectionState::Disconnected;
-                    self.auth = None;
-                    self.setup = Some(SetupState {
-                        reason,
-                        selected_index: 0,
-                        preflight: PreflightResult {
-                            agent_id: profile.id.to_string(),
-                            display_name: profile.display_name.to_string(),
-                            cli_status: CheckStatus::Passed,
-                            cli_path: None,
-                            auth_status: CheckStatus::Failed(
-                                t!("system.authentication_failed").into_owned(),
-                            ),
-                            install_hint: profile.install_hint.to_string(),
-                            install_url: String::new(),
-                            auth_hint: profile.auth_hint.to_string(),
                         },
-                        phase: SetupPhase::Ready,
-                        options,
-                        title: t!("setup.title.sign_in").into_owned(),
-                        subtitle: if !self.acp_auth_methods.is_empty() && profile.id != "copilot" {
-                            t!("setup.subtitle.protocol_auth", agent = profile.display_name)
-                                .into_owned()
-                        } else if profile.id == "copilot" {
-                            t!("setup.subtitle.copilot_auth", agent = profile.display_name)
-                                .into_owned()
-                        } else {
-                            t!("setup.subtitle.agent_auth", agent = profile.display_name)
-                                .into_owned()
-                        },
-                    });
-                    // Clear error messages
-                    let tab = self.current_tab_mut();
-                    tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
+                    );
                 } else {
                     if session_id.is_none()
                         && self

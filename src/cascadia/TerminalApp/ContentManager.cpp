@@ -179,7 +179,15 @@ namespace winrt::TerminalApp::implementation
         const auto ended = name == "agent.session.end" || name == "agent.session.stopped";
         const auto started = name == "agent.session.start" || name == "agent.session.started";
         const auto prompt = name == "agent.prompt.submit";
-        if (!ended && !started && !prompt)
+        const auto unbound = name == "agent.session.unbind";
+        if (!ended && !started && !prompt && !unbound)
+        {
+            return;
+        }
+        const auto& payload = params["payload"];
+        const auto paneOwner = payload.isObject() ? payload.get("pane_owner", Json::Value{}) : Json::Value{};
+        if (params.get("agent", params.get("cli_source", "")).asString() == "opencode" &&
+            paneOwner.isBool() && !paneOwner.asBool())
         {
             return;
         }
@@ -194,7 +202,7 @@ namespace winrt::TerminalApp::implementation
                                           ::Microsoft::Console::Utils::GuidFromPlainString(text.c_str());
         const auto agentSessionId = winrt::to_hstring(params.get("agent_session_id", "").asString());
         const auto agent = winrt::to_hstring(params.get("agent", params.get("cli_source", "")).asString());
-        if (!ended && (agentSessionId.empty() || std::wstring_view{ agentSessionId }.starts_with(L"sidekick-") || agent.empty()))
+        if ((!ended || unbound) && (agentSessionId.empty() || std::wstring_view{ agentSessionId }.starts_with(L"sidekick-") || agent.empty()))
         {
             return;
         }
@@ -217,7 +225,14 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         auto& policy = _agentBindings[contentId];
-        if (ended)
+        if (unbound)
+        {
+            if (agent == L"opencode" && policy.agent == agent && policy.agentSessionId == agentSessionId)
+            {
+                policy = {};
+            }
+        }
+        else if (ended)
         {
             if (agentSessionId.empty() || agentSessionId == policy.agentSessionId)
             {
@@ -228,6 +243,7 @@ namespace winrt::TerminalApp::implementation
         {
             policy.agentSessionId = agentSessionId;
             policy.eventJson = eventJson;
+            policy.agent = agent;
             std::lock_guard lock{ _mutex };
             if (const auto content = _content.find(contentId);
                 content != _content.end() && !content->second.nativeAgentProviderId.empty() &&

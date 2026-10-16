@@ -15,31 +15,13 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
         }
         Command::ListTabs { window_id } => {
             let channel = connect_channel().await?;
-            let wid = match window_id {
-                Some(id) => id,
-                None => get_first_window_id(&channel).await?,
-            };
-            let result = channel
-                .request("list_tabs", json!({ "window_id": wid }))
-                .await?;
+            let result = list_tabs(&channel, window_id.as_deref()).await?;
             print_output(&result, json_mode, format_tabs_human);
             Ok(())
         }
         Command::ListPanes { tab_id, window_id } => {
             let channel = connect_channel().await?;
-            let tid = match tab_id {
-                Some(id) => id,
-                None => {
-                    let wid = match window_id {
-                        Some(id) => id,
-                        None => get_first_window_id(&channel).await?,
-                    };
-                    get_first_tab_id(&channel, &wid).await?
-                }
-            };
-            let result = channel
-                .request("list_panes", json!({ "tab_id": tid }))
-                .await?;
+            let result = list_panes(&channel, tab_id.as_deref(), window_id.as_deref()).await?;
             print_output(&result, json_mode, format_panes_human);
             Ok(())
         }
@@ -305,32 +287,175 @@ async fn resolve_pane_id(channel: &CliChannel, target: &Option<String>) -> Resul
     }
 }
 
-async fn get_first_window_id(channel: &CliChannel) -> Result<String> {
-    let result = channel.request("list_windows", json!({})).await?;
-    result
-        .get("windows")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|w| w.get("window_id"))
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
-        .ok_or_else(|| anyhow::anyhow!("{}", t!("output.no_windows_in_list")))
+async fn list_tabs(channel: &dyn WtChannel, window_id: Option<&str>) -> Result<serde_json::Value> {
+    let mut params = json!({});
+    if let Some(window_id) = window_id {
+        params["window_id"] = json!(window_id);
+    }
+    channel.request("list_tabs", params).await
 }
 
-async fn get_first_tab_id(channel: &CliChannel, window_id: &str) -> Result<String> {
-    let result = channel
-        .request("list_tabs", json!({ "window_id": window_id }))
-        .await?;
-    result
-        .get("tabs")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|tab| match tab.get("tab_id") {
-            Some(serde_json::Value::String(s)) => Some(s.clone()),
-            Some(serde_json::Value::Number(n)) => Some(n.to_string()),
-            _ => None,
-        })
-        .ok_or_else(|| anyhow::anyhow!("{}", t!("output.no_tabs_in_window", window_id = window_id)))
+async fn list_panes(
+    channel: &dyn WtChannel,
+    tab_id: Option<&str>,
+    window_id: Option<&str>,
+) -> Result<serde_json::Value> {
+    // Let wtcli resolve defaults and retain the window-local tab scope.
+    let mut params = json!({});
+    if let Some(tab_id) = tab_id {
+        params["tab_id"] = json!(tab_id);
+    }
+    if let Some(window_id) = window_id {
+        params["window_id"] = json!(window_id);
+    }
+    channel.request("list_panes", params).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    struct QueryChannel {
+        requests: Mutex<Vec<(String, serde_json::Value)>>,
+        fail_method: Option<&'static str>,
+    }
+
+    impl QueryChannel {
+        fn new() -> Self {
+            Self {
+                requests: Mutex::new(Vec::new()),
+                fail_method: None,
+            }
+        }
+
+        fn assert_request(&self, method: &str, params: serde_json::Value) {
+            assert_eq!(
+                *self.requests.lock().unwrap(),
+                [(method.to_owned(), params)]
+            );
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl WtChannel for QueryChannel {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> Result<serde_json::Value> {
+            self.requests
+                .lock()
+                .unwrap()
+                .push((method.to_owned(), params.clone()));
+            if self.fail_method == Some(method) {
+                bail!("native {method} failed");
+            }
+            match method {
+                "list_windows" => Ok(json!({"windows": [
+                    {"window_id": 2, "is_focused": false},
+                    {"window_id": 1, "is_focused": true}
+                ]})),
+                "list_tabs" => Ok(json!({"tabs": [
+                    {"tab_id": 0, "is_active": false},
+                    {"tab_id": 1, "is_active": true}
+                ]})),
+                "list_panes" => {
+                    let tab_id = params["tab_id"].as_str().unwrap_or("0");
+                    let window_id = params["window_id"]
+                        .as_str()
+                        .or_else(|| params.get("tab_id").is_none().then_some("2"));
+                    let panes: Vec<_> = [(2, 0), (1, 0), (2, 1), (1, 1)]
+                        .into_iter()
+                        .filter(|(window, tab)| {
+                            window_id.is_none_or(|id| id == window.to_string())
+                                && tab_id == tab.to_string()
+                        })
+                        .map(|(window, tab)| json!({"window_id": window, "tab_id": tab}))
+                        .collect();
+                    Ok(json!({"panes": panes}))
+                }
+                _ => bail!("unexpected request {method}"),
+            }
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn list_tabs_delegates_default_window_discovery_to_native_cli() {
+        let channel = QueryChannel::new();
+        let result = list_tabs(&channel, None).await.unwrap();
+        assert_eq!(result["tabs"][0]["tab_id"], 0);
+        channel.assert_request("list_tabs", json!({}));
+    }
+
+    #[tokio::test]
+    async fn list_tabs_preserves_explicit_window_ids() {
+        for window_id in ["1", "18446744073709551615"] {
+            let channel = QueryChannel::new();
+            list_tabs(&channel, Some(window_id)).await.unwrap();
+            channel.assert_request("list_tabs", json!({"window_id": window_id}));
+        }
+    }
+
+    #[tokio::test]
+    async fn list_panes_delegates_default_window_and_tab_to_native_cli() {
+        let channel = QueryChannel::new();
+        let result = list_panes(&channel, None, None).await.unwrap();
+        assert_eq!(result["panes"], json!([{"window_id": 2, "tab_id": 0}]));
+        channel.assert_request("list_panes", json!({}));
+    }
+
+    #[tokio::test]
+    async fn list_panes_keeps_explicit_window_scope_with_default_or_explicit_tab() {
+        for tab_id in [None, Some("1")] {
+            let channel = QueryChannel::new();
+            let result = list_panes(&channel, tab_id, Some("1")).await.unwrap();
+            let mut params = json!({"window_id": "1"});
+            let expected_tab = if let Some(tab_id) = tab_id {
+                params["tab_id"] = json!(tab_id);
+                1
+            } else {
+                0
+            };
+            assert_eq!(
+                result["panes"],
+                json!([{"window_id": 1, "tab_id": expected_tab}])
+            );
+            channel.assert_request("list_panes", params);
+        }
+    }
+
+    #[tokio::test]
+    async fn list_panes_keeps_explicit_tab_only_queries_cross_window() {
+        let channel = QueryChannel::new();
+        let result = list_panes(&channel, Some("0"), None).await.unwrap();
+        assert_eq!(
+            result["panes"],
+            json!([{"window_id": 2, "tab_id": 0}, {"window_id": 1, "tab_id": 0}])
+        );
+        channel.assert_request("list_panes", json!({"tab_id": "0"}));
+    }
+
+    #[tokio::test]
+    async fn list_query_errors_propagate_without_fallback() {
+        for method in ["list_tabs", "list_panes"] {
+            let mut channel = QueryChannel::new();
+            channel.fail_method = Some(method);
+            let error = if method == "list_tabs" {
+                list_tabs(&channel, Some("1")).await.unwrap_err()
+            } else {
+                list_panes(&channel, Some("0"), Some("1"))
+                    .await
+                    .unwrap_err()
+            };
+            assert_eq!(error.to_string(), format!("native {method} failed"));
+            assert_eq!(channel.requests.lock().unwrap().len(), 1);
+        }
+    }
 }
 
 fn print_output(val: &serde_json::Value, json_mode: bool, formatter: fn(&serde_json::Value)) {

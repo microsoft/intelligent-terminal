@@ -8,8 +8,11 @@ setup.title.sign_in: "Inloggning krävs"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Din agent \"%{agent}\" är inte installerad. Följ stegen nedan för att installera den. Om du vill byta agent, gå till Intelligent Terminal Settings > Agent."
 setup.subtitle.agent_missing: "Din agent \"%{agent}\" är inte installerad. Installera om den manuellt och försök sedan igen. Om du vill byta agent, gå till Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Din agent \"%{agent}\" kräver autentisering. Följ stegen nedan för att logga in. Om du vill byta agent, gå till Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Din agent \"%{agent}\" kräver autentisering. Logga in via agenten och välj sedan \"Jag har loggat in\" nedan. Om du vill byta agent, gå till Intelligent Terminal Settings > Agent."
+setup.subtitle.authentication_required: "Din agent \"%{agent}\" kräver autentisering."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Följ stegen nedan för att logga in."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Logga in via agenten och välj sedan \"Jag har loggat in\" nedan."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Välj en inloggningsmetod för att fortsätta här."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Om du vill byta agent, gå till Intelligent Terminal Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Det gick inte att starta %{agent}."
 
 # {Locked="Intelligent Terminal"}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise-domän: "
 auth.enterprise_hint_footer: "  Enter för att logga in · Esc för github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Tryck på Enter för att försöka igen, eller Esc för github.com. Vanliga orsaker: en felskriven eller oåtkomlig domän, en utgången kod eller ingen Copilot-åtkomst på den värden."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Tryck på Enter för att försöka igen, eller Esc för att gå tillbaka."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Slutför inloggningen i din webbläsare. Tryck på Esc för att avbryta väntan."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Öppnades inte webbläsaren? Använd den här inloggningslänken. O: öppna · Y: kopiera."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Det gick inte att öppna webbläsaren. Öppna inloggningslänken manuellt."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Det gick inte att kopiera inloggningslänken. Markera och kopiera den manuellt."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Inloggningen slutfördes inte i tid. Försök igen när du är redo."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Tänker..."
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "AI-agentleverantören har inte bekräftat att sess
 system.provider_command_blocked_by_policy: "%{command}: Automatiskt godkännande är inaktiverat av organisationens policy."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Okänd modell %{model} — skriv /model för att se den tillgängliga listan."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Din agent \"%{agent}\" kräver autentisering. Välj en inloggningsmetod för att fortsätta här."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Slutför inloggningen i din webbläsare. Tryck på Esc för att avbryta väntan."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Öppnades inte webbläsaren? Använd den här inloggningslänken. O: öppna · Y: kopiera."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Det gick inte att öppna webbläsaren. Öppna inloggningslänken manuellt."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Det gick inte att kopiera inloggningslänken. Markera och kopiera den manuellt."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Inloggningen slutfördes inte i tid. Försök igen när du är redo."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Vi kunde inte hitta \"%{agent}\" i inloggningsmiljön för %{distro}. Kontrollera den här Linux-användarens installation, PATH och skalprofil och försök sedan igen."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

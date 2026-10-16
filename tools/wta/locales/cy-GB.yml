@@ -8,8 +8,11 @@ setup.title.sign_in: "Mae angen mewngofnodi"
 # Mae %{agent} yn cael ei ddisodli ag enw arddangos yr asiant ar amser rhedeg.
 setup.subtitle.copilot_missing: "Nid yw eich asiant \"%{agent}\" wedi'i osod. Dilynwch y camau isod i'w osod. I newid asiantau, ewch i Terfynell Ddeallus Settings > Agent."
 setup.subtitle.agent_missing: "Nid yw eich asiant \"%{agent}\" wedi'i osod. Ailosodwch ef â llaw, yna ceisiwch eto. I newid asiantau, ewch i Terfynell Ddeallus Settings > Agent."
-setup.subtitle.copilot_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Dilynwch y camau isod i fewngofnodi. I newid asiantau, ewch i Terfynell Ddeallus Settings > Agent."
-setup.subtitle.agent_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Mewngofnodwch drwy'r asiant, yna dewiswch \"Rwyf wedi mewngofnodi\" isod. I newid asiantau, ewch i Terfynell Ddeallus Settings > Agent."
+setup.subtitle.authentication_required: "Mae eich asiant \"%{agent}\" angen dilysu."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Dilynwch y camau isod i fewngofnodi."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Mewngofnodwch drwy'r asiant, yna dewiswch \"Rwyf wedi mewngofnodi\" isod."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Dewiswch ddull mewngofnodi i barhau yma."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "I newid asiantau, ewch i Terfynell Ddeallus Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Nid oedd modd cychwyn %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Parth Enterprise: "
 auth.enterprise_hint_footer: "  Enter = mewngofnodi · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Pwyswch Enter i roi cynnig arall, neu Esc ar gyfer github.com. Achosion cyffredin: parth wedi'i deipio'n anghywir neu na ellir ei gyrraedd, cod sydd wedi dod i ben, neu ddim mynediad Copilot ar y gwesteiwr hwnnw."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Pwyswch Enter i roi cynnig arall, neu Esc i fynd yn ôl."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Cwblhewch y mewngofnodi yn eich porwr. Pwyswch Esc i ganslo'r aros."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Nid yw'r porwr wedi agor? Defnyddiwch y ddolen mewngofnodi hon. O: agor · Y: copïo."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Nid oedd modd agor y porwr. Agorwch y ddolen mewngofnodi â llaw."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Nid oedd modd copïo'r ddolen mewngofnodi. Dewiswch hi a'i chopïo â llaw."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Ni chwblhawyd y mewngofnodi mewn pryd. Rhowch gynnig arall arni pan fyddwch yn barod."  # Sign-in wait timeout; the user can retry later.
 
 # ── Golwg sgwrs (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Yn meddwl…"
@@ -299,10 +307,4 @@ system.yolo_disable_pending: "nid yw'r darparwr wedi cadarnhau cyflwr gofynnol y
 system.provider_command_blocked_by_policy: "%{command}: Mae cymeradwyaeth awtomatig wedi’i hanalluogi gan bolisi eich sefydliad."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Model anhysbys %{model} — teipiwch /model i weld y rhestr sydd ar gael."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Dewiswch ddull mewngofnodi i barhau yma."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Cwblhewch y mewngofnodi yn eich porwr. Pwyswch Esc i ganslo'r aros."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Nid yw'r porwr wedi agor? Defnyddiwch y ddolen mewngofnodi hon. O: agor · Y: copïo."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Nid oedd modd agor y porwr. Agorwch y ddolen mewngofnodi â llaw."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Nid oedd modd copïo'r ddolen mewngofnodi. Dewiswch hi a'i chopïo â llaw."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Ni chwblhawyd y mewngofnodi mewn pryd. Rhowch gynnig arall arni pan fyddwch yn barod."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Ni allem ddod o hyd i \"%{agent}\" yn amgylchedd mewngofnodi %{distro}. Gwiriwch osodiad, PATH a phroffil cragen y defnyddiwr Linux hwn, yna rhowch gynnig arall arni."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

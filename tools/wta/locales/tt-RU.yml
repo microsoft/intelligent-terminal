@@ -8,8 +8,11 @@ setup.title.sign_in: "Керү таләп ителә"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Сезнең \"%{agent}\" агентыгыз урнатылмаган. Урнату өчен түбәндәге адымнарны үтәгез. Агентны алыштыру өчен Акыллы терминал Settings > Agent бүлегенә күчегез."
 setup.subtitle.agent_missing: "Сезнең \"%{agent}\" агентыгыз урнатылмаган. Зинһар, кулдан яңадан урнатыгыз, аннан яңадан тырышыгыз. Агентны алыштыру өчен Акыллы терминал Settings > Agent бүлегенә күчегез."
-setup.subtitle.copilot_auth: "Сезнең \"%{agent}\" агентыгыз аутентификация таләп итә. Керү өчен түбәндәге адымнарны үтәгез. Агентны алыштыру өчен Акыллы терминал Settings > Agent бүлегенә күчегез."
-setup.subtitle.agent_auth: "Сезнең \"%{agent}\" агентыгыз аутентификация таләп итә. Зинһар, агент аша керегез, аннан түбәндә \"Мин кердем\" сайлагыз. Агентны алыштыру өчен Акыллы терминал Settings > Agent бүлегенә күчегез."
+setup.subtitle.authentication_required: "Сезнең \"%{agent}\" агентыгыз аутентификация таләп итә."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Керү өчен түбәндәге адымнарны үтәгез."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Зинһар, агент аша керегез, аннан түбәндә \"Мин кердем\" сайлагыз."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Монда дәвам итү өчен керү ысулын сайлагыз."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Агентны алыштыру өчен Акыллы терминал Settings > Agent бүлегенә күчегез."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "%{agent} эшләтеп җибәреп булмады."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise домены: "
 auth.enterprise_hint_footer: "  Керү өчен Enter · github.com өчен Esc"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Кабатлап карау өчен Enter төймәсенә басыгыз, яки github.com өчен Esc. Еш очрый торган сәбәпләр: ялгыш язылган яки тоташып булмый торган домен, вакыты чыккан код, яки бу хостта Copilot мөмкинлеге юк."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Кабатлап карау өчен Enter төймәсенә басыгыз, яки кире кайту өчен Esc."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Браузерыгызда керүне тәмамлагыз. Көтүне туктату өчен Esc төймәсенә басыгыз."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Браузер ачылмадымы? Бу керү сылтамасын кулланыгыз. O: ачу · Y: күчерү."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Браузерны ачып булмады. Керү сылтамасын кулдан ачыгыз."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Керү сылтамасын күчереп булмады. Аны сайлап, кулдан күчерегез."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Керү вакытында тәмамланмады. Әзер булгач, кабатлап карагыз."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Уйлыйм…"
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "агент провайдеры сеансның �
 system.provider_command_blocked_by_policy: "%{command}: Автоматик раслау оешмагыз сәясәте буенча сүндерелгән."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Билгесез модель %{model} — мөмкин булган исемлекне күрү өчен /model языгыз."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Сезнең \"%{agent}\" агентыгыз аутентификация таләп итә. Монда дәвам итү өчен керү ысулын сайлагыз."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Браузерыгызда керүне тәмамлагыз. Көтүне туктату өчен Esc төймәсенә басыгыз."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Браузер ачылмадымы? Бу керү сылтамасын кулланыгыз. O: ачу · Y: күчерү."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Браузерны ачып булмады. Керү сылтамасын кулдан ачыгыз."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Керү сылтамасын күчереп булмады. Аны сайлап, кулдан күчерегез."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Керү вакытында тәмамланмады. Әзер булгач, кабатлап карагыз."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "%{distro} керү мохитендә \"%{agent}\" табылмады. Бу Linux кулланучысының урнаштыруын, PATH үзгәрешлесен һәм тышча профилен тикшерегез, аннары кабатлап карагыз."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

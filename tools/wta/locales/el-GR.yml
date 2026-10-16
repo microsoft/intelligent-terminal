@@ -8,8 +8,11 @@ setup.title.sign_in: "Απαιτείται σύνδεση"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Ο παράγοντάς σας \"%{agent}\" δεν είναι εγκατεστημένος. Ακολουθήστε τα παρακάτω βήματα για να τον εγκαταστήσετε. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
 setup.subtitle.agent_missing: "Ο παράγοντάς σας \"%{agent}\" δεν είναι εγκατεστημένος. Εγκαταστήστε τον ξανά χειροκίνητα και δοκιμάστε ξανά. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
-setup.subtitle.copilot_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Ακολουθήστε τα παρακάτω βήματα για να συνδεθείτε. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
-setup.subtitle.agent_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Συνδεθείτε μέσω του παράγοντα και επιλέξτε \"Έχω συνδεθεί\" παρακάτω. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
+setup.subtitle.authentication_required: "Ο πράκτοράς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Ακολουθήστε τα παρακάτω βήματα για να συνδεθείτε."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Συνδεθείτε μέσω του πράκτορα και επιλέξτε \"Έχω συνδεθεί\" παρακάτω."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Επιλέξτε μια μέθοδο σύνδεσης για να συνεχίσετε εδώ."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Δεν ήταν δυνατή η εκκίνηση του %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Τομέας Enterprise: "
 auth.enterprise_hint_footer: "  Enter = είσοδος · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Πατήστε Enter για να δοκιμάσετε ξανά ή Esc για github.com. Συνήθεις αιτίες: λανθασμένος ή μη προσβάσιμος τομέας, ληγμένος κωδικός ή απουσία πρόσβασης Copilot σε αυτόν τον κεντρικό υπολογιστή."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Πατήστε Enter για να δοκιμάσετε ξανά ή Esc για επιστροφή."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Ολοκληρώστε τη σύνδεση στο πρόγραμμα περιήγησής σας. Πατήστε Esc για να ακυρώσετε την αναμονή."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Δεν άνοιξε το πρόγραμμα περιήγησης; Χρησιμοποιήστε αυτόν τον σύνδεσμο σύνδεσης. O: άνοιγμα · Y: αντιγραφή."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Δεν ήταν δυνατό το άνοιγμα του προγράμματος περιήγησης. Ανοίξτε τον σύνδεσμο σύνδεσης με μη αυτόματο τρόπο."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Δεν ήταν δυνατή η αντιγραφή του συνδέσμου σύνδεσης. Επιλέξτε και αντιγράψτε τον με μη αυτόματο τρόπο."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Η σύνδεση δεν ολοκληρώθηκε εγκαίρως. Δοκιμάστε ξανά όταν είστε έτοιμοι."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Σκέφτομαι…"
@@ -299,10 +307,4 @@ system.yolo_disable_pending: "ο πάροχος του πράκτορα τεχν
 system.provider_command_blocked_by_policy: "%{command}: Η αυτόματη έγκριση είναι απενεργοποιημένη από την πολιτική του οργανισμού σας."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Άγνωστο μοντέλο %{model} — πληκτρολογήστε /model για να δείτε τη διαθέσιμη λίστα."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Επιλέξτε μια μέθοδο σύνδεσης για να συνεχίσετε εδώ."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Ολοκληρώστε τη σύνδεση στο πρόγραμμα περιήγησής σας. Πατήστε Esc για να ακυρώσετε την αναμονή."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Δεν άνοιξε το πρόγραμμα περιήγησης; Χρησιμοποιήστε αυτόν τον σύνδεσμο σύνδεσης. O: άνοιγμα · Y: αντιγραφή."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Δεν ήταν δυνατό το άνοιγμα του προγράμματος περιήγησης. Ανοίξτε τον σύνδεσμο σύνδεσης με μη αυτόματο τρόπο."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Δεν ήταν δυνατή η αντιγραφή του συνδέσμου σύνδεσης. Επιλέξτε και αντιγράψτε τον με μη αυτόματο τρόπο."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Η σύνδεση δεν ολοκληρώθηκε εγκαίρως. Δοκιμάστε ξανά όταν είστε έτοιμοι."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Δεν μπορέσαμε να βρούμε το \"%{agent}\" στο περιβάλλον σύνδεσης του %{distro}. Ελέγξτε την εγκατάσταση, το PATH και το προφίλ κελύφους αυτού του χρήστη Linux και δοκιμάστε ξανά."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

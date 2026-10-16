@@ -8,8 +8,11 @@ setup.title.sign_in: "Pålogging kreves"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Agenten din \"%{agent}\" er ikke installert. Følg trinnene nedenfor for å installere den. For å bytte agent, gå til Intelligent Terminal Settings > Agent."
 setup.subtitle.agent_missing: "Agenten din \"%{agent}\" er ikke installert. Installer den på nytt manuelt, og prøv deretter igjen. For å bytte agent, gå til Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Agenten din \"%{agent}\" krever autentisering. Følg trinnene nedenfor for å logge inn. For å bytte agent, gå til Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Agenten din \"%{agent}\" krever autentisering. Logg inn via agenten, og velg deretter \"Jeg har logget inn\" nedenfor. For å bytte agent, gå til Intelligent Terminal Settings > Agent."
+setup.subtitle.authentication_required: "Agenten din \"%{agent}\" krever autentisering."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Følg trinnene nedenfor for å logge inn."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Logg inn via agenten, og velg deretter \"Jeg har logget inn\" nedenfor."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Velg en påloggingsmetode for å fortsette her."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "For å bytte agent, gå til Intelligent Terminal Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Vi kunne ikke starte %{agent}."
 
 # {Locked="Intelligent Terminal"}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise-domene: "
 auth.enterprise_hint_footer: "  Enter for å logge på · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Trykk Enter for å prøve på nytt, eller Esc for github.com. Vanlige årsaker: et feilskrevet eller utilgjengelig domene, en utløpt kode eller ingen Copilot-tilgang på den verten."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Trykk Enter for å prøve på nytt, eller Esc for å gå tilbake."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Fullfør påloggingen i nettleseren din. Trykk på Esc for å avbryte ventingen."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Åpnet ikke nettleseren seg? Bruk denne påloggingslenken. O: åpne · Y: kopier."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Kunne ikke åpne nettleseren. Åpne påloggingslenken manuelt."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Kunne ikke kopiere påloggingslenken. Merk og kopier den manuelt."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Påloggingen ble ikke fullført i tide. Prøv igjen når du er klar."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Tenker..."
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "AI-agentleverandøren har ikke bekreftet at økten
 system.provider_command_blocked_by_policy: "%{command}: Automatisk godkjenning er deaktivert av organisasjonens policy."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Ukjent modell %{model} — skriv /model for å se den tilgjengelige listen."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Agenten din \"%{agent}\" krever autentisering. Velg en påloggingsmetode for å fortsette her."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Fullfør påloggingen i nettleseren din. Trykk på Esc for å avbryte ventingen."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Åpnet ikke nettleseren seg? Bruk denne påloggingslenken. O: åpne · Y: kopier."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Kunne ikke åpne nettleseren. Åpne påloggingslenken manuelt."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Kunne ikke kopiere påloggingslenken. Merk og kopier den manuelt."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Påloggingen ble ikke fullført i tide. Prøv igjen når du er klar."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Vi fant ikke \"%{agent}\" i påloggingsmiljøet til %{distro}. Kontroller denne Linux-brukerens installasjon, PATH og skallprofil, og prøv deretter igjen."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

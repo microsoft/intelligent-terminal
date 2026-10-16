@@ -308,7 +308,10 @@ namespace winrt::TerminalApp::implementation
 
     WUX::Controls::IconElement TabStripDisplayItem::CreateIcon(IInspectable const& source) const
     {
-        return ::Microsoft::Terminal::UI::AgentIcons::ElementForIconSource(source.as<MUX::Controls::IconSource>(), _iconPath.value_or(winrt::hstring{}));
+        auto element = ::Microsoft::Terminal::UI::AgentIcons::ElementForIconSource(source.as<MUX::Controls::IconSource>(), _iconPath.value_or(winrt::hstring{}));
+        element.Width(16);
+        element.Height(16);
+        return element;
     }
 
     void TabStripDisplayItem::IconSource(IInspectable const& value)
@@ -395,17 +398,20 @@ namespace winrt::TerminalApp::implementation
     {
         const auto isGroup = IsGroup();
         const auto showPaneRows = verticalPresentation && isGroup && !railCollapsed && IsExpanded();
-        const auto showHeaderProgressRing = !showPaneRows || !HeaderProgressProjectedToPaneRows();
+        const auto status = Presentation().TabStatus();
+        const auto showHeaderProgressRing = status && status.IsProgressRingActive() &&
+                                            (!showPaneRows || !HeaderProgressProjectedToPaneRows());
 
         ShowProgressRing(showHeaderProgressRing);
 
         GroupVisibility(isGroup && !railCollapsed ? Visibility::Visible : Visibility::Collapsed);
         ChildrenVisibility(showPaneRows ? Visibility::Visible : Visibility::Collapsed);
         const auto bitmap = IconSource().try_as<MUX::Controls::BitmapIconSource>();
-        IconVisibility((isGroup && !railCollapsed) || (bitmap && !bitmap.UriSource()) ? Visibility::Collapsed : Visibility::Visible);
+        IconVisibility(showHeaderProgressRing || (isGroup && !railCollapsed) || (bitmap && !bitmap.UriSource()) ? Visibility::Collapsed : Visibility::Visible);
         PinnedIconVisibility(railCollapsed && IsPinned() ? Visibility::Visible : Visibility::Collapsed);
         HeaderMinHeight(railCollapsed ? 32.0 : 40.0);
         LeadingContentMargin(railCollapsed ? WUX::Thickness{} : WUX::Thickness{ 6, 0, 10, 0 });
+        LeadingContentColumnSpan(railCollapsed ? 3 : 1);
         ChevronGlyph(IsExpanded() ? L"\xE70D" : L"\xE76C");
     }
 
@@ -807,7 +813,18 @@ namespace winrt::TerminalApp::implementation
         display.Presentation().Title(title);
         if (useNativeIconSource)
         {
-            const auto source = display.Tab().IconSource();
+            // A real Tab's retained identity can intentionally be null. Never
+            // promote its empty native progress-slot source into Sidebar identity.
+            const auto retainedSource = display.Presentation().IconSource().try_as<MUX::Controls::IconSource>();
+            auto source = retainedSource ? retainedSource : display.Tab().IconSource();
+            if (!retainedSource)
+            {
+                if (const auto placeholder = source.try_as<MUX::Controls::FontIconSource>();
+                    placeholder && placeholder.Glyph().empty())
+                {
+                    source = nullptr;
+                }
+            }
             if (source)
             {
                 winrt::get_self<TabStripDisplayItem>(display)->SyncIcon(iconPath, source);
@@ -886,6 +903,8 @@ namespace winrt::TerminalApp::implementation
                 existing.Title(pane.Title());
                 existing.IsActive(pane.IsActive());
                 existing.MetadataText(pane.MetadataText());
+                existing.MetadataHighlightColor(pane.MetadataHighlightColor());
+                existing.MetadataHighlightRanges(pane.MetadataHighlightRanges());
                 existing.MetadataVisibility(pane.MetadataVisibility());
                 existing.AutomationName(pane.AutomationName());
                 existing.ProgressState(pane.ProgressState());
@@ -1496,10 +1515,11 @@ namespace winrt::TerminalApp::implementation
 
     WUX::Style TabStrip::_historyStatusTextStyle(winrt::hstring const& status)
     {
-        const auto styleKey = status == L"Working"   ? L"HistoryActiveTextStyle" :
-                              status == L"Attention" ? L"HistoryAttentionTextStyle" :
-                              status == L"Error"     ? L"HistoryErrorTextStyle" :
-                                                       L"HistorySubtitleTextStyle";
+        const auto color = TabHeaderControl::AgentStatusHighlightColor(winrt::to_string(status));
+        const auto styleKey = color == TerminalApp::TextHighlightColor::Success  ? L"HistoryActiveTextStyle" :
+                              color == TerminalApp::TextHighlightColor::Caution  ? L"HistoryAttentionTextStyle" :
+                              color == TerminalApp::TextHighlightColor::Critical ? L"HistoryErrorTextStyle" :
+                                                                                   L"HistorySubtitleTextStyle";
         return Resources().Lookup(box_value(styleKey)).as<WUX::Style>();
     }
 

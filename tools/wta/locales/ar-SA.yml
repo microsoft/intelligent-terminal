@@ -8,8 +8,11 @@ setup.title.sign_in: "تسجيل الدخول مطلوب"
 # يتم استبدال %{agent} باسم عرض عامل الذكاء الاصطناعي في وقت التشغيل.
 setup.subtitle.copilot_missing: "عامل الذكاء الاصطناعي \"%{agent}\" غير مثبّت. اتبع الخطوات أدناه لتثبيته. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى الوحدة الطرفية الذكية Settings > Agent."
 setup.subtitle.agent_missing: "عامل الذكاء الاصطناعي \"%{agent}\" غير مثبّت. يُرجى إعادة تثبيته يدويًا، ثم أعد المحاولة. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى الوحدة الطرفية الذكية Settings > Agent."
-setup.subtitle.copilot_auth: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة. اتبع الخطوات أدناه لتسجيل الدخول. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى الوحدة الطرفية الذكية Settings > Agent."
-setup.subtitle.agent_auth: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة. يُرجى تسجيل الدخول عبر عامل الذكاء الاصطناعي، ثم حدد \"لقد سجّلت الدخول\" أدناه. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى الوحدة الطرفية الذكية Settings > Agent."
+setup.subtitle.authentication_required: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "اتبع الخطوات أدناه لتسجيل الدخول."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "يُرجى تسجيل الدخول عبر عامل الذكاء الاصطناعي، ثم حدد \"لقد سجّلت الدخول\" أدناه."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "حدد طريقة لتسجيل الدخول للمتابعة هنا."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "لتبديل عوامل الذكاء الاصطناعي، انتقل إلى الوحدة الطرفية الذكية Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "تعذر بدء تشغيل %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  مجال المؤسسة: "
 auth.enterprise_hint_footer: "  Enter لتسجيل الدخول · Esc لاستخدام github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  اضغط على Enter لإعادة المحاولة، أو Esc لاستخدام github.com. الأسباب الشائعة: مجال مكتوب بشكل خاطئ أو لا يمكن الوصول إليه، أو رمز منتهي الصلاحية، أو عدم وجود وصول إلى Copilot على ذلك المضيف."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  اضغط على Enter لإعادة المحاولة، أو Esc للعودة."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "أكمل تسجيل الدخول في المتصفح. اضغط على Esc لإلغاء الانتظار."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "لم يفتح المتصفح؟ استخدم رابط تسجيل الدخول هذا. O: فتح · Y: نسخ."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "تعذر فتح المتصفح. افتح رابط تسجيل الدخول يدويًا."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "تعذر نسخ رابط تسجيل الدخول. حدده وانسخه يدويًا."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "لم يكتمل تسجيل الدخول في الوقت المحدد. أعد المحاولة عندما تكون مستعدًا."  # Sign-in wait timeout; the user can retry later.
 
 # ── عرض الدردشة (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "جارٍ التفكير…"
@@ -300,10 +308,4 @@ system.yolo_disable_pending: "لم يؤكد موفّر عامل الذكاء ا�
 system.provider_command_blocked_by_policy: "%{command}: تم تعطيل الموافقة التلقائية بواسطة سياسة مؤسستك."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "نموذج غير معروف %{model} — اكتب /model لعرض القائمة المتاحة."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة. حدد طريقة لتسجيل الدخول للمتابعة هنا."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "أكمل تسجيل الدخول في المتصفح. اضغط على Esc لإلغاء الانتظار."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "لم يفتح المتصفح؟ استخدم رابط تسجيل الدخول هذا. O: فتح · Y: نسخ."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "تعذر فتح المتصفح. افتح رابط تسجيل الدخول يدويًا."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "تعذر نسخ رابط تسجيل الدخول. حدده وانسخه يدويًا."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "لم يكتمل تسجيل الدخول في الوقت المحدد. أعد المحاولة عندما تكون مستعدًا."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "تعذر العثور على \"%{agent}\" في بيئة تسجيل الدخول إلى %{distro}. تحقق من التثبيت وPATH وملف تعريف الصدفة لدى مستخدم Linux هذا، ثم أعد المحاولة."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

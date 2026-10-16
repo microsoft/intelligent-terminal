@@ -8,8 +8,11 @@ setup.title.sign_in: "Qallariy yaykuna"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Agentiyki \"%{agent}\" mana churasqachu. Churanaykipaq uraypi llamk'ankunata ruway. Agente t'ikranapaq Yuyaysapa Terminal Settings > Agent nisqaman riy."
 setup.subtitle.agent_missing: "Agentiyki \"%{agent}\" mana churasqachu. Ama hina kaspa makiykiwan churay, chaymanta watiqmanta qallariy. Agente t'ikranapaq Yuyaysapa Terminal Settings > Agent nisqaman riy."
-setup.subtitle.copilot_auth: "Agentiyki \"%{agent}\" yaykunata munan. Yaykunaykipaq uraypi llamk'ankunata ruway. Agente t'ikranapaq Yuyaysapa Terminal Settings > Agent nisqaman riy."
-setup.subtitle.agent_auth: "Agentiyki \"%{agent}\" yaykunata munan. Agentewan yaykuy, chaymanta uraypi \"Yaykurqaniña\" nisqata akllay. Agente t'ikranapaq Yuyaysapa Terminal Settings > Agent nisqaman riy."
+setup.subtitle.authentication_required: "Agentiyki \"%{agent}\" yaykunata munan."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Yaykunaykipaq uraypi llamk'ankunata ruway."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Agentewan yaykuy, chaymanta uraypi \"Yaykurqaniña\" nisqata akllay."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Kaypi hinalla purinaykipaq huk yaykuna ñanta akllay."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Agente t'ikranapaq Yuyaysapa Terminal Settings > Agent nisqaman riy."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "%{agent} nisqata mana qallariyta atirqaykuchu."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise dominio: "
 auth.enterprise_hint_footer: "  Yaykunapaq Enter · github.compaq Esc"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Watiqmanta ruwanapaq Enter ñit'iy, utaq github.compaq Esc. Sapa kuti kaqninkuna: pantasqa qillqasqa utaq mana chayay atina dominio, tukusqa codigo, utaq chay hostpi Copilot yaykuy mana kanchu."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Watiqmanta ruwanapaq Enter ñit'iy, utaq kutimunaykipaq Esc."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Navegador nisqaykipi yaykunata tukuy. Suyayta sayachinaykipaq Esc ñit'iy."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Navegador mana kichasqachu? Kay yaykuna t'inkita llamk'achiy. O: kichay · Y: kikinchay."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Navegadorta kichayta mana atirqanchu. Yaykuna t'inkita makiywan kichay."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Yaykuna t'inkita kikinchayta mana atirqanchu. Akllay, hinaspa makiywan kikinchay."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Yaykunaqa pachanpi mana tukukurqanchu. Wakichisqa kachkaspa, yapamanta ruwachiy."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Yuyachkan..."
@@ -297,10 +305,4 @@ system.yolo_disable_pending: "proveedorqa manam kamachisqa mana privilegioyuq se
 system.provider_command_blocked_by_policy: "%{command}: Organizaciónniykip política rurasqanrayku automática aprobacionqa harkasqa kachkan."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Mana riqsisqa modelo %{model} — akllana lista rikunaykipaq /model qillqay."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Agentiyki \"%{agent}\" yaykunata munan. Kaypi hinalla purinaykipaq huk yaykuna ñanta akllay."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Navegador nisqaykipi yaykunata tukuy. Suyayta sayachinaykipaq Esc ñit'iy."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Navegador mana kichasqachu? Kay yaykuna t'inkita llamk'achiy. O: kichay · Y: kikinchay."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Navegadorta kichayta mana atirqanchu. Yaykuna t'inkita makiywan kichay."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Yaykuna t'inkita kikinchayta mana atirqanchu. Akllay, hinaspa makiywan kikinchay."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Yaykunaqa pachanpi mana tukukurqanchu. Wakichisqa kachkaspa, yapamanta ruwachiy."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "%{distro} yaykuna muyuriqpi \"%{agent}\" nisqata mana tarirqaykuchu. Kay Linux llamk'achiqpa churasqanta, PATH nisqata, shellpa perfilninta ima qhawariy, chaymanta yapamanta ruwachiy."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

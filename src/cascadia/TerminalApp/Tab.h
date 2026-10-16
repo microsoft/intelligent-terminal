@@ -353,6 +353,8 @@ namespace winrt::TerminalApp::implementation
 
         winrt::Microsoft::Terminal::Settings::Model::IconStyle _lastIconStyle;
         winrt::hstring _lastIconPath{};
+        winrt::Microsoft::UI::Xaml::Controls::IconSource _iconSource{ nullptr };
+        winrt::Microsoft::UI::Xaml::Controls::IconSource _progressIconSource{ winrt::Microsoft::UI::Xaml::Controls::FontIconSource{} };
         std::optional<winrt::Windows::UI::Color> _runtimeTabColor{};
         winrt::TerminalApp::TabHeaderControl _headerControl{};
         std::function<winrt::TerminalApp::TabHeaderControl(bool)> _headerResolver;
@@ -432,6 +434,7 @@ namespace winrt::TerminalApp::implementation
         void _RecalculateAndApplyReadOnly();
 
         void _UpdateProgressState();
+        void _UpdateIconVisibility();
 
         void _UpdateConnectionClosedState();
         void _RestartActivePaneConnection();

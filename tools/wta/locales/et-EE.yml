@@ -8,8 +8,11 @@ setup.title.sign_in: "Sisselogimine nõutav"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Teie agent \"%{agent}\" pole installitud. Järgige allolevaid juhiseid selle installimiseks. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
 setup.subtitle.agent_missing: "Teie agent \"%{agent}\" pole installitud. Installige see käsitsi uuesti ja proovige seejärel uuesti. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Teie agent \"%{agent}\" nõuab autentimist. Järgige allolevaid juhiseid sisselogimiseks. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Teie agent \"%{agent}\" nõuab autentimist. Logige sisse agendi kaudu ja valige seejärel allpool \"Olen sisse loginud\". Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
+setup.subtitle.authentication_required: "Teie agent \"%{agent}\" nõuab autentimist."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Järgige allolevaid juhiseid sisselogimiseks."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Logige sisse agendi kaudu ja valige seejärel allpool \"Olen sisse loginud\"."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Siin jätkamiseks valige sisselogimisviis."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Agent %{agent} ei käivitunud."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise'i domeen: "
 auth.enterprise_hint_footer: "  Enter = logi sisse · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Vajutage Enter uuesti proovimiseks või Esc github.com jaoks. Levinud põhjused: valesti sisestatud või kättesaamatu domeen, aegunud kood või puudub Copilot juurdepääs sellel hostil."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Vajutage Enter uuesti proovimiseks või Esc tagasi minemiseks."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Viige sisselogimine brauseris lõpule. Ootamise tühistamiseks vajutage Esc."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Brauser ei avanenud? Kasutage seda sisselogimislinki. O: ava · Y: kopeeri."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Brauserit ei saanud avada. Avage sisselogimislink käsitsi."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Sisselogimislinki ei saanud kopeerida. Valige ja kopeerige see käsitsi."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Sisselogimist ei lõpetatud õigel ajal. Proovige uuesti, kui olete valmis."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Mõtleb..."
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "AI-agendi pakkuja pole kinnitanud, et seanss on n�
 system.provider_command_blocked_by_policy: "%{command}: Automaatne kinnitamine on teie organisatsiooni poliitikaga keelatud."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Tundmatu mudel %{model} — tippige /model saadaolevate mudelite loendi nägemiseks."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Teie agent \"%{agent}\" nõuab autentimist. Siin jätkamiseks valige sisselogimisviis."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Viige sisselogimine brauseris lõpule. Ootamise tühistamiseks vajutage Esc."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Brauser ei avanenud? Kasutage seda sisselogimislinki. O: ava · Y: kopeeri."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Brauserit ei saanud avada. Avage sisselogimislink käsitsi."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Sisselogimislinki ei saanud kopeerida. Valige ja kopeerige see käsitsi."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Sisselogimist ei lõpetatud õigel ajal. Proovige uuesti, kui olete valmis."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Me ei leidnud agenti \"%{agent}\" distributsiooni %{distro} sisselogimiskeskkonnast. Kontrollige selle Linuxi kasutaja installi, PATH-i ja kesta profiili ning proovige uuesti."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

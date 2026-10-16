@@ -8,8 +8,11 @@ setup.title.sign_in: "Потрібен вхід"
 # %{agent} замінюється на відображуване ім'я агента під час виконання.
 setup.subtitle.copilot_missing: "Ваш агент \"%{agent}\" не встановлено. Виконайте наведені нижче кроки, щоб його встановити. Щоб змінити агента, перейдіть до Інтелектуальний Термінал Settings > Agent."
 setup.subtitle.agent_missing: "Ваш агент \"%{agent}\" не встановлено. Перевстановіть його вручну та повторіть спробу. Щоб змінити агента, перейдіть до Інтелектуальний Термінал Settings > Agent."
-setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Виконайте наведені нижче кроки для входу. Щоб змінити агента, перейдіть до Інтелектуальний Термінал Settings > Agent."
-setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Увійдіть через агента та виберіть \"Я увійшов\" нижче. Щоб змінити агента, перейдіть до Інтелектуальний Термінал Settings > Agent."
+setup.subtitle.authentication_required: "Ваш агент \"%{agent}\" потребує автентифікації."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Виконайте наведені нижче кроки для входу."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Увійдіть через агента та виберіть \"Я увійшов\" нижче."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Виберіть спосіб входу, щоб продовжити тут."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Щоб змінити агента, перейдіть до Інтелектуальний Термінал Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Не вдалося запустити %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Домен GitHub Enterprise: "
 auth.enterprise_hint_footer: "  Enter, щоб увійти · Esc для github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Натисніть Enter, щоб спробувати знову, або Esc для github.com. Поширені причини: неправильно введений або недоступний домен, прострочений код або відсутність доступу Copilot на цьому хості."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Натисніть Enter, щоб спробувати знову, або Esc, щоб повернутися."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Завершіть вхід у браузері. Натисніть Esc, щоб скасувати очікування."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Браузер не відкрився? Скористайтеся цим посиланням для входу. O: відкрити · Y: копіювати."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Не вдалося відкрити браузер. Відкрийте посилання для входу вручну."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Не вдалося скопіювати посилання для входу. Виділіть і скопіюйте його вручну."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Вхід не завершився вчасно. Спробуйте ще раз, коли будете готові."  # Sign-in wait timeout; the user can retry later.
 
 # ── Перегляд чату (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Думаю…"
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "постачальник не підтвердив
 system.provider_command_blocked_by_policy: "%{command}: Автоматичне схвалення вимкнено політикою вашої організації."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Невідома модель %{model} — введіть /model, щоб переглянути доступний список."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Виберіть спосіб входу, щоб продовжити тут."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Завершіть вхід у браузері. Натисніть Esc, щоб скасувати очікування."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Браузер не відкрився? Скористайтеся цим посиланням для входу. O: відкрити · Y: копіювати."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Не вдалося відкрити браузер. Відкрийте посилання для входу вручну."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Не вдалося скопіювати посилання для входу. Виділіть і скопіюйте його вручну."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Вхід не завершився вчасно. Спробуйте ще раз, коли будете готові."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Не вдалося знайти \"%{agent}\" у середовищі входу %{distro}. Перевірте встановлення, PATH і профіль оболонки цього користувача Linux, а потім спробуйте ще раз."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

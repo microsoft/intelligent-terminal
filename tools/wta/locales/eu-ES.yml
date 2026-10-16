@@ -8,8 +8,11 @@ setup.title.sign_in: "Saioa hastea beharrezkoa da"
 # %{agent} exekuzio-unean agentearen bistaratze-izenarekin ordezkatzen da.
 setup.subtitle.copilot_missing: "Zure agentea \"%{agent}\" ez dago instalatuta. Jarraitu beheko urratsak instalatzeko. Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."
 setup.subtitle.agent_missing: "Zure agentea \"%{agent}\" ez dago instalatuta. Birinstalatu eskuz, eta saiatu berriro. Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."
-setup.subtitle.copilot_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Jarraitu beheko urratsak saioa hasteko. Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."
-setup.subtitle.agent_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Hasi saioa agentearen bidez, eta hautatu \"Saioa hasi dut\" behean. Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."
+setup.subtitle.authentication_required: "Zure agenteak \"%{agent}\" autentifikazioa behar du."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Jarraitu beheko urratsak saioa hasteko."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Hasi saioa agentearen bidez, eta hautatu \"Saioa hasi dut\" behean."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Hautatu saioa hasteko metodo bat hemen jarraitzeko."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Ezin izan dugu %{agent} abiarazi."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise domeinua: "
 auth.enterprise_hint_footer: "  Enter saioa hasteko · Esc github.com erabiltzeko"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Sakatu Enter berriro saiatzeko, edo Esc github.com erabiltzeko. Ohiko arrazoiak: domeinua gaizki idatzita edo eskuraezin egotea, kodea iraungita egotea, edo host horretan Copilot sarbiderik ez izatea."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Sakatu Enter berriro saiatzeko, edo Esc atzera egiteko."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Osatu saio-hasiera zure arakatzailean. Sakatu Esc itxarotea bertan behera uzteko."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Arakatzailea ez da ireki? Erabili saioa hasteko esteka hau. O: ireki · Y: kopiatu."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Ezin izan da arakatzailea ireki. Ireki eskuz saioa hasteko esteka."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Ezin izan da saioa hasteko esteka kopiatu. Hautatu eta kopiatu eskuz."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Saio-hasiera ez da garaiz osatu. Saiatu berriro prest zaudenean."  # Sign-in wait timeout; the user can retry later.
 
 # ── Txat-ikuspegia (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Pentsatzen…"
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "hornitzaileak ez du berretsi saioa pribilegiorik g
 system.provider_command_blocked_by_policy: "%{command}: Onarpen automatikoa desgaituta dago zure erakundearen politikagatik."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "%{model} modelo ezezaguna — idatzi /model erabilgarri dagoen zerrenda ikusteko."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Hautatu saioa hasteko metodo bat hemen jarraitzeko."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Osatu saio-hasiera zure arakatzailean. Sakatu Esc itxarotea bertan behera uzteko."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Arakatzailea ez da ireki? Erabili saioa hasteko esteka hau. O: ireki · Y: kopiatu."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Ezin izan da arakatzailea ireki. Ireki eskuz saioa hasteko esteka."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Ezin izan da saioa hasteko esteka kopiatu. Hautatu eta kopiatu eskuz."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Saio-hasiera ez da garaiz osatu. Saiatu berriro prest zaudenean."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Ezin izan dugu \"%{agent}\" aurkitu %{distro} saioa hasteko ingurunean. Egiaztatu Linux erabiltzaile honen instalazioa, PATH eta shell-profila, eta saiatu berriro."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

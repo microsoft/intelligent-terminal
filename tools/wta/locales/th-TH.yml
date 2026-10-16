@@ -8,8 +8,11 @@ setup.title.sign_in: "ต้องลงชื่อเข้าใช้"
 # %{agent} จะถูกแทนที่ด้วยชื่อที่แสดงของเอเจนต์ขณะรันไทม์
 setup.subtitle.copilot_missing: "เอเจนต์ \"%{agent}\" ของคุณยังไม่ได้ติดตั้ง ทำตามขั้นตอนด้านล่างเพื่อติดตั้ง หากต้องการสลับเอเจนต์ ให้ไปที่ เทอร์มินัลอัจฉริยะ Settings > Agent"
 setup.subtitle.agent_missing: "เอเจนต์ \"%{agent}\" ของคุณยังไม่ได้ติดตั้ง กรุณาติดตั้งใหม่ด้วยตนเอง แล้วลองอีกครั้ง หากต้องการสลับเอเจนต์ ให้ไปที่ เทอร์มินัลอัจฉริยะ Settings > Agent"
-setup.subtitle.copilot_auth: "เอเจนต์ \"%{agent}\" ของคุณต้องการการยืนยันตัวตน ทำตามขั้นตอนด้านล่างเพื่อลงชื่อเข้าใช้ หากต้องการสลับเอเจนต์ ให้ไปที่ เทอร์มินัลอัจฉริยะ Settings > Agent"
-setup.subtitle.agent_auth: "เอเจนต์ \"%{agent}\" ของคุณต้องการการยืนยันตัวตน กรุณาลงชื่อเข้าใช้ผ่านเอเจนต์ แล้วเลือก \"ลงชื่อเข้าใช้แล้ว\" ด้านล่าง หากต้องการสลับเอเจนต์ ให้ไปที่ เทอร์มินัลอัจฉริยะ Settings > Agent"
+setup.subtitle.authentication_required: "เอเจนต์ \"%{agent}\" ของคุณต้องการการยืนยันตัวตน"  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "ทำตามขั้นตอนด้านล่างเพื่อลงชื่อเข้าใช้"  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "กรุณาลงชื่อเข้าใช้ผ่านเอเจนต์ แล้วเลือก \"ลงชื่อเข้าใช้แล้ว\" ด้านล่าง"  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "เลือกวิธีลงชื่อเข้าใช้เพื่อดำเนินการต่อที่นี่"  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "หากต้องการสลับเอเจนต์ ให้ไปที่ เทอร์มินัลอัจฉริยะ Settings > Agent"  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "เราไม่สามารถเริ่ม %{agent} ได้"
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  โดเมนองค์กร: "
 auth.enterprise_hint_footer: "  Enter เพื่อลงชื่อเข้าใช้ · Esc เพื่อใช้ github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  กด Enter เพื่อลองอีกครั้ง หรือ Esc เพื่อใช้ github.com สาเหตุที่พบบ่อย: พิมพ์โดเมนผิดหรือเข้าถึงโดเมนไม่ได้ รหัสหมดอายุ หรือบัญชีของคุณไม่มีสิทธิ์เข้าถึง Copilot บนโฮสต์นั้น"  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  กด Enter เพื่อลองอีกครั้ง หรือ Esc เพื่อย้อนกลับ"  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "ลงชื่อเข้าใช้ให้เสร็จในเบราว์เซอร์ของคุณ กด Esc เพื่อยกเลิกการรอ"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "เบราว์เซอร์ไม่เปิดใช่ไหม ใช้ลิงก์ลงชื่อเข้าใช้นี้ O: เปิด · Y: คัดลอก"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ไม่สามารถเปิดเบราว์เซอร์ได้ โปรดเปิดลิงก์ลงชื่อเข้าใช้ด้วยตนเอง"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "ไม่สามารถคัดลอกลิงก์ลงชื่อเข้าใช้ได้ โปรดเลือกและคัดลอกด้วยตนเอง"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "การลงชื่อเข้าใช้ไม่เสร็จภายในเวลาที่กำหนด ลองอีกครั้งเมื่อคุณพร้อม"  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "กำลังคิด…"
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "ผู้ให้บริการเอเจ�
 system.provider_command_blocked_by_policy: "%{command}: การอนุมัติอัตโนมัติถูกปิดใช้งานโดยนโยบายขององค์กรคุณ"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "ไม่รู้จักโมเดล %{model} — พิมพ์ /model เพื่อดูรายการที่มีอยู่"  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "เอเจนต์ \"%{agent}\" ของคุณต้องการการยืนยันตัวตน เลือกวิธีลงชื่อเข้าใช้เพื่อดำเนินการต่อที่นี่"  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "ลงชื่อเข้าใช้ให้เสร็จในเบราว์เซอร์ของคุณ กด Esc เพื่อยกเลิกการรอ"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "เบราว์เซอร์ไม่เปิดใช่ไหม ใช้ลิงก์ลงชื่อเข้าใช้นี้ O: เปิด · Y: คัดลอก"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "ไม่สามารถเปิดเบราว์เซอร์ได้ โปรดเปิดลิงก์ลงชื่อเข้าใช้ด้วยตนเอง"  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "ไม่สามารถคัดลอกลิงก์ลงชื่อเข้าใช้ได้ โปรดเลือกและคัดลอกด้วยตนเอง"  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "การลงชื่อเข้าใช้ไม่เสร็จภายในเวลาที่กำหนด ลองอีกครั้งเมื่อคุณพร้อม"  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "เราไม่พบ \"%{agent}\" ในสภาพแวดล้อมการเข้าสู่ระบบของ %{distro} ตรวจสอบการติดตั้ง PATH และโปรไฟล์เชลล์ของผู้ใช้ Linux รายนี้ แล้วลองอีกครั้ง"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

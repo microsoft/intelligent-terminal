@@ -8,8 +8,11 @@ setup.title.sign_in: "Nepieciešama pierakstīšanās"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Izpildiet tālāk norādītās darbības, lai to instalētu. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
 setup.subtitle.agent_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Pārinstalējiet to manuāli un mēģiniet vēlreiz. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
-setup.subtitle.copilot_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Izpildiet tālāk norādītās darbības, lai pierakstītos. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
-setup.subtitle.agent_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Pierakstieties, izmantojot aģentu, un izvēlieties \"Esmu pierakstījies\" zemāk. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
+setup.subtitle.authentication_required: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Izpildiet tālāk norādītās darbības, lai pierakstītos."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Pierakstieties, izmantojot aģentu, un izvēlieties \"Esmu pierakstījies\" zemāk."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Izvēlieties pierakstīšanās metodi, lai turpinātu šeit."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Neizdevās startēt %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise domēns: "
 auth.enterprise_hint_footer: "  Enter = pierakstīties · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Nospiediet Enter, lai mēģinātu vēlreiz, vai Esc, lai izmantotu github.com. Biežākie cēloņi: nepareizi ievadīts vai nesasniedzams domēns, beidzies koda derīguma termiņš vai nav Copilot piekļuves šajā resursdatorā."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Nospiediet Enter, lai mēģinātu vēlreiz, vai Esc, lai atgrieztos."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Pabeidziet pierakstīšanos pārlūkprogrammā. Nospiediet Esc, lai atceltu gaidīšanu."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Pārlūkprogramma neatvērās? Izmantojiet šo pierakstīšanās saiti. O: atvērt · Y: kopēt."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Neizdevās atvērt pārlūkprogrammu. Atveriet pierakstīšanās saiti manuāli."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Neizdevās kopēt pierakstīšanās saiti. Atlasiet un kopējiet to manuāli."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Pierakstīšanās netika pabeigta laikus. Mēģiniet vēlreiz, kad esat gatavs."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Domā..."
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "AI aģenta nodrošinātājs nav apstiprinājis, ka
 system.provider_command_blocked_by_policy: "%{command}: Automātisko apstiprināšanu ir atspējojusi jūsu organizācijas politika."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Nezināms modelis %{model} — ierakstiet /model, lai redzētu pieejamo sarakstu."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Izvēlieties pierakstīšanās metodi, lai turpinātu šeit."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Pabeidziet pierakstīšanos pārlūkprogrammā. Nospiediet Esc, lai atceltu gaidīšanu."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Pārlūkprogramma neatvērās? Izmantojiet šo pierakstīšanās saiti. O: atvērt · Y: kopēt."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Neizdevās atvērt pārlūkprogrammu. Atveriet pierakstīšanās saiti manuāli."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Neizdevās kopēt pierakstīšanās saiti. Atlasiet un kopējiet to manuāli."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Pierakstīšanās netika pabeigta laikus. Mēģiniet vēlreiz, kad esat gatavs."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Neizdevās atrast \"%{agent}\" izplatījuma %{distro} pieteikšanās vidē. Pārbaudiet šī Linux lietotāja instalāciju, PATH un čaulas profilu, pēc tam mēģiniet vēlreiz."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

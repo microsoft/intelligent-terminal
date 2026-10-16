@@ -8,8 +8,11 @@ setup.title.sign_in: "Oturum açma gerekli"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Aracınız \"%{agent}\" yüklü değil. Yüklemek için aşağıdaki adımları izleyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
 setup.subtitle.agent_missing: "Aracınız \"%{agent}\" yüklü değil. Lütfen elle yeniden yükleyin, ardından tekrar deneyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
-setup.subtitle.copilot_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Oturum açmak için aşağıdaki adımları izleyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
-setup.subtitle.agent_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Lütfen aracı üzerinden oturum açın, ardından aşağıda \"Oturum açtım\" seçeneğini belirleyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
+setup.subtitle.authentication_required: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Oturum açmak için aşağıdaki adımları izleyin."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Lütfen aracı üzerinden oturum açın, ardından aşağıda \"Oturum açtım\" seçeneğini belirleyin."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Burada devam etmek için bir oturum açma yöntemi seçin."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "%{agent} başlatılamadı."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise etki alanı: "
 auth.enterprise_hint_footer: "  Enter = oturum aç · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Yeniden denemek için Enter tuşuna veya github.com için Esc tuşuna basın. Yaygın nedenler: yanlış yazılmış ya da ulaşılamayan etki alanı, süresi dolmuş kod veya bu konakta Copilot erişiminin olmaması."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Yeniden denemek için Enter tuşuna veya geri gitmek için Esc tuşuna basın."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Tarayıcınızda oturum açmayı tamamlayın. Beklemeyi iptal etmek için Esc tuşuna basın."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Tarayıcı açılmadı mı? Bu oturum açma bağlantısını kullanın. O: aç · Y: kopyala."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Tarayıcı açılamadı. Oturum açma bağlantısını elle açın."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Oturum açma bağlantısı kopyalanamadı. Bağlantıyı seçip elle kopyalayın."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Oturum açma işlemi zamanında tamamlanmadı. Hazır olduğunuzda yeniden deneyin."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Düşünüyor…"
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "AI aracı sağlayıcısı oturumun gerekli ayrıca
 system.provider_command_blocked_by_policy: "%{command}: Otomatik onay, kuruluşunuzun ilkesi tarafından devre dışı bırakıldı."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Bilinmeyen model %{model} — kullanılabilir listeyi görmek için /model yazın."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Burada devam etmek için bir oturum açma yöntemi seçin."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Tarayıcınızda oturum açmayı tamamlayın. Beklemeyi iptal etmek için Esc tuşuna basın."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Tarayıcı açılmadı mı? Bu oturum açma bağlantısını kullanın. O: aç · Y: kopyala."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Tarayıcı açılamadı. Oturum açma bağlantısını elle açın."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Oturum açma bağlantısı kopyalanamadı. Bağlantıyı seçip elle kopyalayın."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Oturum açma işlemi zamanında tamamlanmadı. Hazır olduğunuzda yeniden deneyin."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "%{distro} oturum açma ortamında \"%{agent}\" bulunamadı. Bu Linux kullanıcısının kurulumunu, PATH değişkenini ve kabuk profilini kontrol edip yeniden deneyin."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

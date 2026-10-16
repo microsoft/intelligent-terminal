@@ -20,6 +20,16 @@
         }]
       }
     ],
+    "CwdChanged": [
+      {
+        "matcher": ".*",
+        "hooks": [{
+          "type": "command",
+          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.cwd.changed; exit 0",
+          "shell": "bash"
+        }]
+      }
+    ],
     "Notification": [
       {
         "matcher": ".*",

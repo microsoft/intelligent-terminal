@@ -18,6 +18,23 @@ namespace Microsoft::Terminal::RichTab::Provider
         constexpr auto ProviderTimeout = std::chrono::seconds{ 5 };
         constexpr auto DetachedSessionRetention = std::chrono::seconds{ 30 };
 
+        bool _IsBuiltInGitStatus(const Registration& provider)
+        {
+            return provider.manifest.id == "com.microsoft.intelligent-terminal.git-status" &&
+                   provider.kind == RegistrationKind::Managed &&
+                   provider.enabled && provider.integrityValid &&
+                   provider.root == BuiltInProviderCatalog::PackageRoot() / L"RichTabProviders" / L"GitStatus";
+        }
+
+        void _ClearGitStatusCwdDependentFields(Snapshot& snapshot)
+        {
+            for (const auto* field : { "workingDirectory", "repository", "branch", "changes" })
+            {
+                snapshot.fields.erase(field);
+            }
+            snapshot.tooltip.reset();
+        }
+
         bool _Handles(const Manifest& manifest, const ActivationEvent event)
         {
             return std::find(
@@ -393,6 +410,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::optional<BrokerUpdate> existing;
         bool contextChanged = false;
         auto initialCallback = callback;
+        std::vector<Callback> previousCallbacks;
         {
             std::lock_guard lock{ _mutex };
             _PruneDetachedSessionsLocked();
@@ -419,13 +437,28 @@ namespace Microsoft::Terminal::RichTab::Provider
                     provider.generation = _nextGeneration++;
                     provider.pending.reset();
                 }
+                _InvalidateGitStatusWorkingDirectoryLocked(session);
                 ++session.updateSequence;
             }
             session.callbacks.emplace(attachment, std::move(callback));
             _attachmentSessions.emplace(attachment, session.context.sessionId);
+            if (_RecomputeAgentWorkingDirectoryLocked(session))
+            {
+                for (const auto& [id, listener] : session.callbacks)
+                {
+                    if (id != attachment)
+                    {
+                        previousCallbacks.emplace_back(listener);
+                    }
+                }
+            }
             existing = _UpdateFor(session.context.sessionId, session);
         }
 
+        for (const auto& listener : previousCallbacks)
+        {
+            listener(*existing);
+        }
         if (contextChanged || existing->presentation)
         {
             initialCallback(*existing);
@@ -436,27 +469,57 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     void ProviderBroker::Detach(const AttachmentId attachment)
     {
-        std::lock_guard lock{ _mutex };
-        const auto attached = _attachmentSessions.find(attachment);
-        if (attached == _attachmentSessions.end())
+        std::string sessionId;
+        std::vector<Callback> callbacks;
+        BrokerUpdate update;
         {
-            return;
-        }
-        if (const auto session = _sessions.find(attached->second); session != _sessions.end())
-        {
-            session->second.callbacks.erase(attachment);
-            if (session->second.callbacks.empty())
+            std::lock_guard lock{ _mutex };
+            const auto attached = _attachmentSessions.find(attachment);
+            if (attached == _attachmentSessions.end())
             {
-                for (auto& [_, provider] : session->second.providers)
-                {
-                    provider.generation = _nextGeneration++;
-                    provider.pending.reset();
-                }
-                session->second.detachedAt = std::chrono::steady_clock::now();
+                return;
             }
+            if (const auto found = _sessions.find(attached->second); found != _sessions.end())
+            {
+                auto& session = found->second;
+                session.callbacks.erase(attachment);
+                session.activeAgentWorkingDirectories.erase(attachment);
+                if (session.callbacks.empty())
+                {
+                    session.activeAgentWorkingDirectories.clear();
+                    session.agentActive = false;
+                    session.agentWorkingDirectory.reset();
+                    for (auto& [_, provider] : session.providers)
+                    {
+                        provider.generation = _nextGeneration++;
+                        provider.pending.reset();
+                    }
+                    _InvalidateGitStatusWorkingDirectoryLocked(session);
+                    ++session.updateSequence;
+                    session.detachedAt = std::chrono::steady_clock::now();
+                }
+                else if (_RecomputeAgentWorkingDirectoryLocked(session))
+                {
+                    sessionId = attached->second;
+                    update = _UpdateFor(sessionId, session);
+                    callbacks.reserve(session.callbacks.size());
+                    for (const auto& [_, callback] : session.callbacks)
+                    {
+                        callbacks.emplace_back(callback);
+                    }
+                }
+            }
+            _attachmentSessions.erase(attached);
+            _PruneDetachedSessionsLocked();
         }
-        _attachmentSessions.erase(attached);
-        _PruneDetachedSessionsLocked();
+        for (const auto& callback : callbacks)
+        {
+            callback(update);
+        }
+        if (!sessionId.empty())
+        {
+            _Refresh(sessionId, ActivationEvent::WorkingDirectoryChanged, false, "com.microsoft.intelligent-terminal.git-status");
+        }
     }
 
     void ProviderBroker::UpdateContext(
@@ -487,6 +550,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             session.context.shellType = std::move(shellType);
             ++session.contextRevision;
             ++session.updateSequence;
+            _InvalidateGitStatusWorkingDirectoryLocked(session);
             sessionId = session.context.sessionId;
             update = _UpdateFor(sessionId, session);
             callbacks.reserve(session.callbacks.size());
@@ -546,6 +610,89 @@ namespace Microsoft::Terminal::RichTab::Provider
         _Refresh(sessionId, ActivationEvent::ManualRefresh, false);
     }
 
+    void ProviderBroker::UpdateAgentWorkingDirectory(
+        const AttachmentId attachment,
+        bool agentActive,
+        std::optional<std::string> workingDirectory)
+    {
+        if (!agentActive || (workingDirectory && workingDirectory->empty()))
+        {
+            workingDirectory.reset();
+        }
+        std::string sessionId;
+        std::vector<Callback> callbacks;
+        BrokerUpdate update;
+        {
+            std::lock_guard lock{ _mutex };
+            const auto attached = _attachmentSessions.find(attachment);
+            if (attached == _attachmentSessions.end())
+            {
+                return;
+            }
+            auto& session = _sessions.at(attached->second);
+            if (agentActive)
+            {
+                session.activeAgentWorkingDirectories.insert_or_assign(attachment, std::move(workingDirectory));
+            }
+            else
+            {
+                session.activeAgentWorkingDirectories.erase(attachment);
+            }
+            if (!_RecomputeAgentWorkingDirectoryLocked(session))
+            {
+                return;
+            }
+            sessionId = attached->second;
+            update = _UpdateFor(sessionId, session);
+            for (const auto& [_, callback] : session.callbacks)
+            {
+                callbacks.emplace_back(callback);
+            }
+        }
+        for (const auto& callback : callbacks)
+        {
+            callback(update);
+        }
+        _Refresh(sessionId, ActivationEvent::WorkingDirectoryChanged, false, "com.microsoft.intelligent-terminal.git-status");
+    }
+
+    void ProviderBroker::_InvalidateGitStatusWorkingDirectoryLocked(SessionState& session)
+    {
+        for (auto& [id, provider] : session.providers)
+        {
+            if (std::any_of(_providers.begin(), _providers.end(), [&](const auto& registration) {
+                    return registration.manifest.id == id && _IsBuiltInGitStatus(registration);
+                }))
+            {
+                provider.generation = _nextGeneration++;
+                provider.pending.reset();
+                if (provider.snapshot)
+                {
+                    _ClearGitStatusCwdDependentFields(*provider.snapshot);
+                }
+            }
+        }
+    }
+
+    bool ProviderBroker::_RecomputeAgentWorkingDirectoryLocked(SessionState& session)
+    {
+        const auto agentActive = !session.activeAgentWorkingDirectories.empty();
+        std::optional<std::string> cwd;
+        if (agentActive && session.callbacks.size() == 1)
+        {
+            cwd = session.activeAgentWorkingDirectories.begin()->second;
+        }
+        if (session.agentActive == agentActive && session.agentWorkingDirectory == cwd)
+        {
+            return false;
+        }
+        session.agentActive = agentActive;
+        session.agentWorkingDirectory = std::move(cwd);
+        ++session.updateSequence;
+        _InvalidateGitStatusWorkingDirectoryLocked(session);
+        return true;
+    }
+
     void ProviderBroker::Activate(const AttachmentId attachment)
     {
         Notify(attachment, ActivationEvent::TabActivated);
@@ -572,7 +719,8 @@ namespace Microsoft::Terminal::RichTab::Provider
     void ProviderBroker::_Refresh(
         const std::string& sessionId,
         const ActivationEvent reason,
-        const bool initial)
+        const bool initial,
+        const std::string_view onlyProvider)
     {
         struct Pending
         {
@@ -591,6 +739,14 @@ namespace Microsoft::Terminal::RichTab::Provider
             auto& session = found->second;
             for (const auto& provider : _providers)
             {
+                if (!onlyProvider.empty() && provider.manifest.id != onlyProvider)
+                {
+                    continue;
+                }
+                if (!onlyProvider.empty() && !_IsBuiltInGitStatus(provider))
+                {
+                    continue;
+                }
                 auto activation = reason;
                 if (!_Handles(provider.manifest, activation))
                 {
@@ -640,10 +796,18 @@ namespace Microsoft::Terminal::RichTab::Provider
                 request.contextRevision = session.contextRevision;
                 request.shellType = session.context.shellType;
                 request.firstPartyFields = session.context.firstPartyFields;
-                if (provider.manifest.id == "com.microsoft.intelligent-terminal.git-status")
+                if (_IsBuiltInGitStatus(provider))
                 {
                     const auto binary = _gitBinary ? _gitBinary->u8string() : std::u8string{};
                     request.firstPartyFields.insert_or_assign("gitBinary", std::string{ binary.begin(), binary.end() });
+                    if (session.agentActive)
+                    {
+                        request.firstPartyFields.insert_or_assign("agentCwdActive", "true");
+                        if (session.agentWorkingDirectory)
+                        {
+                            request.firstPartyFields.insert_or_assign("agentWorkingDirectory", *session.agentWorkingDirectory);
+                        }
+                    }
                 }
                 request.visibleFields = std::move(visibleFieldsForProvider);
                 if (providerState.running)
@@ -700,6 +864,11 @@ namespace Microsoft::Terminal::RichTab::Provider
                 if (parsed)
                 {
                     snapshot = *parsed.value;
+                    if (const auto status = request.firstPartyFields.find("agentStatusId");
+                        status != request.firstPartyFields.end())
+                    {
+                        snapshot->agentStatus = status->second;
+                    }
                 }
                 else
                 {
@@ -832,6 +1001,11 @@ namespace Microsoft::Terminal::RichTab::Provider
                 {
                     const auto valueText = _ValueText(value->second);
                     _Append(result.text, valueText, L"\n");
+                    if (field.id == "agentStatus" && !valueText.empty())
+                    {
+                        result.agentStatusRanges.push_back({ result.text.size() - valueText.size(), valueText.size() });
+                        result.agentStatus = snapshot->second.agentStatus;
+                    }
 
                     auto displayName = field.displayName;
                     if (const auto providerNames = fieldDisplayNames.find(provider.manifest.id);

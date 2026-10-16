@@ -550,11 +550,11 @@
                                     Background="Transparent"
                                     CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                     IsHitTestVisible="False" />
-                            <Grid Margin="{x:Bind LeadingContentMargin, Mode=OneWay}"
+                            <Grid Grid.ColumnSpan="{x:Bind LeadingContentColumnSpan, Mode=OneWay}"
+                                  Width="28"
+                                  Margin="{x:Bind LeadingContentMargin, Mode=OneWay}"
+                                  HorizontalAlignment="Center"
                                   VerticalAlignment="Center">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="28" />
-                                </Grid.ColumnDefinitions>
                                 <Button x:Name="TabGroupToggleButton"
                                         Width="28"
                                         Height="28"
@@ -566,7 +566,8 @@
                                     <FontIcon x:Name="TabGroupChevronIcon"
                                               FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                               FontSize="10"
-                                              Glyph="{x:Bind ChevronGlyph, Mode=OneWay}" />
+                                              Glyph="{x:Bind ChevronGlyph, Mode=OneWay}"
+                                              Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ShowProgressRing), Mode=OneWay}" />
                                 </Button>
                                 <ContentPresenter x:Name="TabIconPresenter"
                                                   Width="16"
@@ -575,6 +576,31 @@
                                                   VerticalAlignment="Center"
                                                   Content="{x:Bind CreateIcon(IconSource), Mode=OneWay}"
                                                   Visibility="{x:Bind IconVisibility, Mode=OneWay}" />
+                                <Grid IsHitTestVisible="False"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      Visibility="{x:Bind ShowProgressRing, Mode=OneWay}">
+                                    <mux:ProgressRing x:Name="TabProgressRing"
+                                                      Width="15"
+                                                      Height="15"
+                                                      MinWidth="0"
+                                                      MinHeight="0"
+                                                      AutomationProperties.Name="{x:Bind Presentation.AutomationName, Mode=OneWay}"
+                                                      IsActive="{x:Bind ShowProgressRing, Mode=OneWay}"
+                                                      IsIndeterminate="False"
+                                                      Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(Presentation.TabStatus.IsProgressRingIndeterminate), Mode=OneWay}"
+                                                      Value="{x:Bind Presentation.TabStatus.ProgressValue, Mode=OneWay}" />
+                                    <local:IndeterminateProgressRing x:Name="TabIndeterminateProgressRing"
+                                                                     Style="{StaticResource DeclarativeSpinner}"
+                                                                     Width="15"
+                                                                     Height="15"
+                                                                     MinWidth="0"
+                                                                     MinHeight="0"
+                                                                     AutomationProperties.Name="{x:Bind Presentation.AutomationName, Mode=OneWay}"
+                                                                     Foreground="{Binding Foreground, ElementName=TabProgressRing, Mode=OneWay}"
+                                                                     IsActive="{x:Bind ShowProgressRing, Mode=OneWay}"
+                                                                     Visibility="{x:Bind Presentation.TabStatus.IsProgressRingIndeterminate, Mode=OneWay}" />
+                                </Grid>
                                 <FontIcon x:Uid="CollapsedPinnedTabIcon"
                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                           FontSize="9"
@@ -592,7 +618,7 @@
                                                     Loaded="OnRowHeaderLoaded"
                                                     Presentation="{x:Bind Presentation, Mode=OneWay}"
                                                     IsMetadataVisible="{x:Bind IsMetadataVisible, Mode=OneWay}"
-                                                    ShowProgressRing="{x:Bind ShowProgressRing, Mode=OneWay}"
+                                                    ShowProgressRing="False"
                                                     Visibility="{x:Bind HeaderVisibility, Mode=OneWay}" />
                             <Button x:Name="TabCloseButton"
                                     Grid.Column="2"
@@ -664,7 +690,6 @@
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="3" />
                                                     <ColumnDefinition Width="28" />
-                                                    <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
                                                 <Border x:Name="PaneActiveIndicator"
@@ -683,16 +708,18 @@
                                                                   Height="16"
                                                                   HorizontalAlignment="Center"
                                                                   VerticalAlignment="Center"
-                                                                  Content="{x:Bind CreateIcon(IconSource), Mode=OneWay}" />
+                                                                  Content="{x:Bind CreateIcon(IconSource), Mode=OneWay}"
+                                                                  Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(IsProgressRingActive), Mode=OneWay}" />
                                                 <Grid Grid.RowSpan="2"
-                                                      Grid.Column="2"
+                                                      Grid.Column="1"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"
                                                       Visibility="{x:Bind IsProgressRingActive, Mode=OneWay}">
                                                     <mux:ProgressRing x:Name="PaneProgressRing"
                                                                       Width="15"
                                                                       Height="15"
                                                                       MinWidth="0"
                                                                       MinHeight="0"
-                                                                      Margin="0,0,6,0"
                                                                       VerticalAlignment="Center"
                                                                       IsActive="{x:Bind IsProgressRingActive, Mode=OneWay}"
                                                                       IsIndeterminate="False"
@@ -704,14 +731,13 @@
                                                                   Height="15"
                                                                   MinWidth="0"
                                                                   MinHeight="0"
-                                                                  Margin="0,0,6,0"
                                                                   VerticalAlignment="Center"
                                                                   AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
                                                                   IsActive="{x:Bind IsProgressRingActive, Mode=OneWay}"
                                                                   Visibility="{x:Bind IsProgressRingIndeterminate, Mode=OneWay}" />
                                                 </Grid>
                                                 <local:HighlightedTextControl x:Name="PaneTitleText"
-                                                                              Grid.Column="3"
+                                                                              Grid.Column="2"
                                                                               Margin="2,3,0,0"
                                                                               VerticalAlignment="Center"
                                                                               SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
@@ -722,10 +748,16 @@
                                                         </Style>
                                                     </local:HighlightedTextControl.TextBlockStyle>
                                                 </local:HighlightedTextControl>
-                                                <local:HighlightedTextControl Grid.Row="1"
-                                                                              Grid.Column="3"
+                                                <local:HighlightedTextControl x:Name="PaneMetadataText"
+                                                                              Grid.Row="1"
+                                                                              Grid.Column="2"
                                                                               Margin="2,1,0,3"
-                                                                              Opacity="0.72"
+                                                                              TextOpacity="0.72"
+                                                                              ColorHighlight="{x:Bind MetadataHighlightColor, Mode=OneWay}"
+                                                                              ColorHighlightRanges="{x:Bind MetadataHighlightRanges, Mode=OneWay}"
+                                                                              SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
+                                                                              CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"
+                                                                              CriticalHighlightBrush="{ThemeResource SystemFillColorCriticalBrush}"
                                                                               SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
                                                                               Text="{x:Bind MetadataText, Mode=OneWay}"
                                                                               Visibility="{x:Bind MetadataVisibility, Mode=OneWay}"
@@ -762,6 +794,7 @@
             <ListView.ItemContainerStyle>
                 <Style BasedOn="{StaticResource DefaultListViewItemStyle}"
                        TargetType="ListViewItem">
+                    <Setter Property="MinWidth" Value="0" />
                     <Setter Property="Padding" Value="0" />
                     <Setter Property="Margin" Value="6,4" />
                     <Setter Property="MinHeight" Value="32" />

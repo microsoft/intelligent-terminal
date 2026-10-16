@@ -133,9 +133,18 @@ try {
 
     $workingDirectory = [string]$request.params.workingDirectory.value
     $authoritative = [bool]$request.params.workingDirectory.authoritative
+    $agentCwdActive = [string]$request.params.firstPartyFields.agentCwdActive -eq 'true'
+    $agentWorkingDirectory = [string]$request.params.firstPartyFields.agentWorkingDirectory
+    $effectiveWorkingDirectory = ''
+    if ($agentCwdActive) {
+        $effectiveWorkingDirectory = $agentWorkingDirectory
+    }
+    elseif ($authoritative) {
+        $effectiveWorkingDirectory = $workingDirectory
+    }
     $baseFields = @{}
-    if ($authoritative -and -not [string]::IsNullOrWhiteSpace($workingDirectory)) {
-        $baseFields.workingDirectory = $workingDirectory
+    if (-not [string]::IsNullOrWhiteSpace($effectiveWorkingDirectory)) {
+        $baseFields.workingDirectory = $effectiveWorkingDirectory
     }
     $localizedLabels = @{}
     $allowedFirstPartyFields = @('agentStatus')
@@ -169,24 +178,23 @@ try {
         }
     }
 
-    $isLocalDrivePath = $workingDirectory -match '^[A-Za-z]:[\\/]'
+    $isLocalDrivePath = $effectiveWorkingDirectory -match '^[A-Za-z]:[\\/]'
     $drive = if ($needsGit -and $isLocalDrivePath) {
-        Get-PSDrive -Name $workingDirectory.Substring(0, 1) -PSProvider FileSystem -ErrorAction SilentlyContinue
+        Get-PSDrive -Name $effectiveWorkingDirectory.Substring(0, 1) -PSProvider FileSystem -ErrorAction SilentlyContinue
     }
     $isRemoteDrive = $drive -and -not [string]::IsNullOrWhiteSpace([string]$drive.DisplayRoot)
 
     if (-not $needsGit -or
-        -not $authoritative -or
-        [string]::IsNullOrWhiteSpace($workingDirectory) -or
+        [string]::IsNullOrWhiteSpace($effectiveWorkingDirectory) -or
         -not $isLocalDrivePath -or
         -not $drive -or
         $isRemoteDrive -or
-        -not (Test-Path -LiteralPath $workingDirectory -PathType Container) -or
-        -not (Test-LocalPathWithoutReparsePoint $workingDirectory)) {
+        -not (Test-Path -LiteralPath $effectiveWorkingDirectory -PathType Container) -or
+        -not (Test-LocalPathWithoutReparsePoint $effectiveWorkingDirectory)) {
         $response = New-EmptyResponse $requestId $baseFields
     }
     else {
-        $repository = Find-LocalGitRepository $workingDirectory
+        $repository = Find-LocalGitRepository $effectiveWorkingDirectory
         if (-not $repository) {
             $response = New-EmptyResponse $requestId $baseFields
         }

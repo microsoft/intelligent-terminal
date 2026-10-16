@@ -8,8 +8,11 @@ setup.title.sign_in: "Me takiuru"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Kaore to agent \"%{agent}\" i tautahia. Whaia nga hipanga i raro nei ki te tauta. Ki te huri agent, haere ki Iho Atamai Settings > Agent."
 setup.subtitle.agent_missing: "Kaore to agent \"%{agent}\" i tautahia. Tautahia ano a ringa, katahi ka ngana ano. Ki te huri agent, haere ki Iho Atamai Settings > Agent."
-setup.subtitle.copilot_auth: "Me whakamanatu to agent \"%{agent}\". Whaia nga hipanga i raro nei ki te takiuru. Ki te huri agent, haere ki Iho Atamai Settings > Agent."
-setup.subtitle.agent_auth: "Me whakamanatu to agent \"%{agent}\". Takiuru mā te agent, kātahi ka kōwhiria \"Kua takiuru au\" i raro. Ki te huri agent, haere ki Iho Atamai Settings > Agent."
+setup.subtitle.authentication_required: "Me whakamotuhēhē tō agent \"%{agent}\"."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Whāia ngā hipanga i raro nei ki te takiuru."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Takiuru mā te agent, kātahi ka kōwhiria \"Kua takiuru au\" i raro."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Kōwhiria he tikanga takiuru hei haere tonu i konei."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Ki te huri agent, haere ki Iho Atamai Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "Kāore i taea te tīmata i a %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Rohe Enterprise: "
 auth.enterprise_hint_footer: "  Enter hei takiuru · Esc mō github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Pēhia Enter hei ngana anō, Esc rānei mō github.com. Ngā take noa: he rohe kua hē te patopato, kāore rānei e taea te toro, he waehere kua mōnehu, kāore rānei he urunga Copilot ki taua kaihautū."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Pēhia Enter hei ngana anō, Esc rānei hei hoki whakamuri."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Whakaotia te takiuru i tō tirotiro. Pēhia te Esc hei whakakore i te tatari."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Kāore te tirotiro i tuwhera? Whakamahia tēnei hononga takiuru. O: whakatuwhera · Y: tārua."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Kāore i taea te whakatuwhera i te tirotiro. Whakatuwheratia te hononga takiuru ā-ringa."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Kāore i taea te tārua i te hononga takiuru. Tīpakohia, ā, tāruatia ā-ringa."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Kāore te takiuru i oti i te wā tika. Whakamātauria anō ina reri koe."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "E whakaaro ana..."
@@ -297,10 +305,4 @@ system.yolo_disable_pending: "kāore anō te kaiwhakarato agent kia whakaū i te
 system.provider_command_blocked_by_policy: "%{command}: Kua monoa te whakaaetanga aunoa e te kaupapa here a tō whakahaere."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Tauira kāore e mōhiotia %{model} — patohia /model kia kite i te rārangi e wātea ana."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Me whakamotuhēhē tō agent \"%{agent}\". Kōwhiria he tikanga takiuru hei haere tonu i konei."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Whakaotia te takiuru i tō tirotiro. Pēhia te Esc hei whakakore i te tatari."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Kāore te tirotiro i tuwhera? Whakamahia tēnei hononga takiuru. O: whakatuwhera · Y: tārua."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Kāore i taea te whakatuwhera i te tirotiro. Whakatuwheratia te hononga takiuru ā-ringa."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Kāore i taea te tārua i te hononga takiuru. Tīpakohia, ā, tāruatia ā-ringa."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Kāore te takiuru i oti i te wā tika. Whakamātauria anō ina reri koe."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Kāore i kitea \"%{agent}\" i te taiao takiuru o %{distro}. Tirohia te tāutanga, PATH me te kōtaha anga o tēnei kaiwhakamahi Linux, kātahi ka whakamātau anō."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

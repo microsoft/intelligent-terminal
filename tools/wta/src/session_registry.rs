@@ -69,6 +69,15 @@ pub struct SessionIdentity {
     pub history_key: Option<HistoryRowKey>,
 }
 
+#[derive(Debug, Default, Clone)]
+struct CwdEvidence {
+    hook: Option<PathBuf>,
+    acp: Option<PathBuf>,
+    acp_agent: Option<uuid::Uuid>,
+    hook_after_acp: bool,
+    revision: u64,
+}
+
 impl SessionIdentity {
     pub fn from_info(info: &SessionInfo) -> Self {
         Self {
@@ -1016,6 +1025,16 @@ pub enum SessionHookParams {
         cwd: PathBuf,
         title: String,
     },
+    SessionRenamed {
+        key: crate::agent_sessions::AgentKey,
+        pane_session_id: String,
+        title: String,
+    },
+    WorkingDirectoryChanged {
+        key: crate::agent_sessions::AgentKey,
+        pane_session_id: String,
+        cwd: PathBuf,
+    },
     ToolStarting {
         key: crate::agent_sessions::AgentKey,
         tool_name: String,
@@ -1029,6 +1048,15 @@ pub enum SessionHookParams {
     },
     SessionStopped {
         key: crate::agent_sessions::AgentKey,
+        reason: String,
+    },
+    SessionUnbound {
+        key: crate::agent_sessions::AgentKey,
+        pane_session_id: String,
+    },
+    SessionStoppedIfOwner {
+        key: crate::agent_sessions::AgentKey,
+        pane_session_id: Option<String>,
         reason: String,
     },
     ConnectionFailed {
@@ -1068,6 +1096,24 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
                 cwd: cwd.clone(),
                 title: title.clone(),
             },
+            SessionEvent::SessionRenamed {
+                key,
+                pane_session_id,
+                title,
+            } => Self::SessionRenamed {
+                key: key.clone(),
+                pane_session_id: pane_session_id.clone(),
+                title: title.clone(),
+            },
+            SessionEvent::WorkingDirectoryChanged {
+                key,
+                pane_session_id,
+                cwd,
+            } => Self::WorkingDirectoryChanged {
+                key: key.clone(),
+                pane_session_id: pane_session_id.clone(),
+                cwd: cwd.clone(),
+            },
             SessionEvent::ToolStarting { key, tool_name } => Self::ToolStarting {
                 key: key.clone(),
                 tool_name: tool_name.clone(),
@@ -1079,6 +1125,22 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
             },
             SessionEvent::SessionStopped { key, reason } => Self::SessionStopped {
                 key: key.clone(),
+                reason: reason.clone(),
+            },
+            SessionEvent::SessionUnbound {
+                key,
+                pane_session_id,
+            } => Self::SessionUnbound {
+                key: key.clone(),
+                pane_session_id: pane_session_id.clone(),
+            },
+            SessionEvent::SessionStoppedIfOwner {
+                key,
+                pane_session_id,
+                reason,
+            } => Self::SessionStoppedIfOwner {
+                key: key.clone(),
+                pane_session_id: pane_session_id.clone(),
                 reason: reason.clone(),
             },
             SessionEvent::ConnectionFailed {
@@ -1123,6 +1185,24 @@ impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
                 cwd,
                 title,
             },
+            SessionHookParams::SessionRenamed {
+                key,
+                pane_session_id,
+                title,
+            } => Self::SessionRenamed {
+                key,
+                pane_session_id,
+                title,
+            },
+            SessionHookParams::WorkingDirectoryChanged {
+                key,
+                pane_session_id,
+                cwd,
+            } => Self::WorkingDirectoryChanged {
+                key,
+                pane_session_id,
+                cwd,
+            },
             SessionHookParams::ToolStarting { key, tool_name } => {
                 Self::ToolStarting { key, tool_name }
             }
@@ -1131,6 +1211,22 @@ impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
             SessionHookParams::SessionStopped { key, reason } => {
                 Self::SessionStopped { key, reason }
             }
+            SessionHookParams::SessionUnbound {
+                key,
+                pane_session_id,
+            } => Self::SessionUnbound {
+                key,
+                pane_session_id,
+            },
+            SessionHookParams::SessionStoppedIfOwner {
+                key,
+                pane_session_id,
+                reason,
+            } => Self::SessionStoppedIfOwner {
+                key,
+                pane_session_id,
+                reason,
+            },
             SessionHookParams::ConnectionFailed {
                 pane_session_id,
                 reason,
@@ -1274,7 +1370,7 @@ pub fn build_session_hook_response(applied: bool) -> acp::schema::v1::ExtRespons
 ///                  field was introduced) so this is `Option`. Serialized
 ///                  into `acp::schema::v1::SessionInfo._meta.wta.pane_session_id` on
 ///                  the wire so we don't pollute the standard ACP schema.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SessionInfo {
     pub session_id: acp::schema::v1::SessionId,
     #[serde(default)]
@@ -1345,9 +1441,42 @@ pub struct SessionInfo {
     /// Master-internal — never serialized, exactly like [`Self::bound_pid`].
     #[serde(skip)]
     pub born_bound_pane: bool,
+    #[serde(skip)]
+    cwd_evidence: CwdEvidence,
 }
 
+// Cwd evidence is internal; preserve equality of the existing session fields.
+impl PartialEq for SessionInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.session_id == other.session_id
+            && self.provider_id == other.provider_id
+            && self.session_universe == other.session_universe
+            && self.cwd == other.cwd
+            && self.title == other.title
+            && self.updated_at == other.updated_at
+            && self.pane_session_id == other.pane_session_id
+            && self.owner_window_id == other.owner_window_id
+            && self.background_tab == other.background_tab
+            && self.status == other.status
+            && self.cli_source == other.cli_source
+            && self.current_tool == other.current_tool
+            && self.attention_reason == other.attention_reason
+            && self.last_activity_at_ms == other.last_activity_at_ms
+            && self.origin == other.origin
+            && self.last_error == other.last_error
+            && self.location == other.location
+            && self.bound_pid == other.bound_pid
+            && self.born_bound_pane == other.born_bound_pane
+    }
+}
+
+impl Eq for SessionInfo {}
+
 impl SessionInfo {
+    pub(crate) fn cwd_revision(&self) -> u64 {
+        self.cwd_evidence.revision
+    }
+
     /// Convenience constructor for tests and call sites that only have the
     /// mandatory fields. Optional fields default to `None`.
     pub fn new(session_id: acp::schema::v1::SessionId, cwd: PathBuf) -> Self {
@@ -1371,6 +1500,7 @@ impl SessionInfo {
             location: SessionLocation::Unknown,
             bound_pid: None,
             born_bound_pane: false,
+            cwd_evidence: CwdEvidence::default(),
         }
     }
 
@@ -1433,6 +1563,7 @@ pub fn agent_session_to_session_info(s: &AgentSession) -> SessionInfo {
         // Master-internal: only master's own `ResumePaneAssigned` reducer
         // marks a pane binding as WTA-owned.
         born_bound_pane: false,
+        cwd_evidence: CwdEvidence::default(),
     }
 }
 
@@ -1586,6 +1717,18 @@ pub trait SessionRegistry: Send + Sync {
 
     async fn adopt_agent_title_identity(&self, identity: &SessionIdentity, candidate: &str)
         -> bool;
+
+    /// Returns true only if the completed ACP listing changed the effective cwd.
+    async fn adopt_acp_cwd_identity(
+        &self,
+        identity: &SessionIdentity,
+        revision: u64,
+        agent_instance: uuid::Uuid,
+        cwd: PathBuf,
+    ) -> bool;
+
+    /// A complete listing lacked this row; a newer trusted hook may now win.
+    async fn clear_acp_cwd_identity(&self, identity: &SessionIdentity, revision: u64) -> bool;
 }
 
 /// Production implementation. Uses `tokio::sync::Mutex` for parity with the
@@ -1596,6 +1739,7 @@ struct RegistryState {
     sessions: HashMap<SessionIdentity, SessionInfo>,
     identities_by_raw: HashMap<acp::schema::v1::SessionId, HashSet<SessionIdentity>>,
     active_by_pane: HashMap<String, SessionIdentity>,
+    next_cwd_revision: u64,
 }
 
 #[derive(Default)]
@@ -1903,6 +2047,80 @@ impl SessionRegistry for InMemoryRegistry {
         entry.title = Some(candidate.to_string());
         true
     }
+
+    async fn adopt_acp_cwd_identity(
+        &self,
+        identity: &SessionIdentity,
+        revision: u64,
+        agent_instance: uuid::Uuid,
+        cwd: PathBuf,
+    ) -> bool {
+        if !cwd.is_absolute() {
+            return false;
+        }
+        let mut guard = self.inner.lock().await;
+        let Some(row) = guard.sessions.get(identity) else {
+            return false;
+        };
+        if row.cwd_evidence.revision != revision
+            || !matches!(
+                row.provider_id.as_deref(),
+                Some("copilot" | "claude" | "opencode")
+            )
+            || row.location != SessionLocation::Host
+            || row.session_universe.is_some()
+            || row
+                .pane_session_id
+                .as_deref()
+                .is_some_and(|pane| guard.active_by_pane.get(&pane_key(pane)) != Some(identity))
+        {
+            return false;
+        }
+        let changed = row.cwd != cwd;
+        if !changed
+            && row.cwd_evidence.acp.as_ref() == Some(&cwd)
+            && row.cwd_evidence.acp_agent == Some(agent_instance)
+            && !row.cwd_evidence.hook_after_acp
+        {
+            return false;
+        }
+        let next_revision = advance_cwd_revision(&mut guard);
+        let row = guard.sessions.get_mut(identity).expect("checked above");
+        row.cwd_evidence.acp = Some(cwd.clone());
+        row.cwd_evidence.acp_agent = Some(agent_instance);
+        row.cwd_evidence.hook_after_acp = false;
+        row.cwd_evidence.revision = next_revision;
+        row.cwd = cwd;
+        changed
+    }
+
+    async fn clear_acp_cwd_identity(&self, identity: &SessionIdentity, revision: u64) -> bool {
+        let mut guard = self.inner.lock().await;
+        let Some(row) = guard.sessions.get(identity) else {
+            return false;
+        };
+        if row.cwd_evidence.revision != revision || row.cwd_evidence.acp.is_none() {
+            return false;
+        }
+        let next_revision = advance_cwd_revision(&mut guard);
+        let row = guard.sessions.get_mut(identity).expect("checked above");
+        row.cwd_evidence.acp = None;
+        row.cwd_evidence.acp_agent = None;
+        row.cwd_evidence.revision = next_revision;
+        let newer_hook = row
+            .cwd_evidence
+            .hook_after_acp
+            .then(|| row.cwd_evidence.hook.clone())
+            .flatten();
+        row.cwd_evidence.hook_after_acp = false;
+        if let Some(hook) = newer_hook {
+            if row.cwd != hook {
+                row.cwd = hook;
+                return true;
+            }
+        }
+        false
+    }
 }
 
 #[allow(dead_code)] // Used through apply_event once Task B forwards hook events.
@@ -1915,6 +2133,11 @@ fn now_ms() -> u64 {
 
 fn pane_key(pane_session_id: &str) -> String {
     crate::agent_sessions::pane_key(pane_session_id)
+}
+
+fn advance_cwd_revision(state: &mut RegistryState) -> u64 {
+    state.next_cwd_revision = state.next_cwd_revision.saturating_add(1);
+    state.next_cwd_revision
 }
 
 fn active_source_pane_session(info: &SessionInfo) -> bool {
@@ -1936,7 +2159,8 @@ fn active_source_pane_session(info: &SessionInfo) -> bool {
     }
 }
 
-fn upsert_locked(state: &mut RegistryState, info: SessionInfo) {
+fn upsert_locked(state: &mut RegistryState, mut info: SessionInfo) {
+    info.cwd_evidence.revision = advance_cwd_revision(state);
     let identity = SessionIdentity::from_info(&info);
     if let Some(old) = state.sessions.get(&identity) {
         if let Some(old_pane) = old.pane_session_id.as_deref() {
@@ -1996,6 +2220,7 @@ fn mark_resume_dispatched_identity_locked(
     state: &mut RegistryState,
     identity: &SessionIdentity,
 ) -> Option<(bool, String)> {
+    let revision = advance_cwd_revision(state);
     let row = state.sessions.get_mut(identity)?;
     let current_label = match &row.status {
         Some(status) => format!("{status:?}"),
@@ -2006,6 +2231,7 @@ fn mark_resume_dispatched_identity_locked(
         Some(AgentStatus::Historical | AgentStatus::Ended)
     ) {
         row.status = Some(AgentStatus::Idle);
+        row.cwd_evidence.revision = revision;
         row.last_activity_at_ms = Some(now_ms());
         Some((true, "Idle".to_string()))
     } else {
@@ -2025,6 +2251,7 @@ fn assign_resume_pane_identity_locked(
             let _ = end_entry(state, &previous, now);
         }
     }
+    let revision = advance_cwd_revision(state);
     let Some(entry) = state.sessions.get_mut(identity) else {
         return false;
     };
@@ -2038,6 +2265,10 @@ fn assign_resume_pane_identity_locked(
         }
     }
     entry.pane_session_id = Some(pane_session_id.clone());
+    entry.cwd_evidence.acp = None;
+    entry.cwd_evidence.acp_agent = None;
+    entry.cwd_evidence.hook_after_acp = false;
+    entry.cwd_evidence.revision = revision;
     entry.last_activity_at_ms = Some(now);
     entry.born_bound_pane = true;
     state
@@ -2062,9 +2293,11 @@ fn unique_matching_identity_for_raw(
 
 #[allow(dead_code)] // Used through apply_event once Task B forwards hook events.
 fn end_entry(state: &mut RegistryState, identity: &SessionIdentity, now: u64) -> bool {
+    let revision = advance_cwd_revision(state);
     let Some(entry) = state.sessions.get_mut(identity) else {
         return false;
     };
+    entry.cwd_evidence.revision = revision;
     entry.status = Some(AgentStatus::Ended);
     if let Some(pane) = entry.pane_session_id.take() {
         let pane = pane_key(&pane);
@@ -2103,6 +2336,40 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                 title,
             }
         }
+        SessionEvent::WorkingDirectoryChanged {
+            key,
+            pane_session_id,
+            cwd,
+        } => SessionEvent::WorkingDirectoryChanged {
+            key,
+            pane_session_id: pane_key(&pane_session_id),
+            cwd,
+        },
+        SessionEvent::SessionRenamed {
+            key,
+            pane_session_id,
+            title,
+        } => SessionEvent::SessionRenamed {
+            key,
+            pane_session_id: pane_key(&pane_session_id),
+            title,
+        },
+        SessionEvent::SessionUnbound {
+            key,
+            pane_session_id,
+        } => SessionEvent::SessionUnbound {
+            key,
+            pane_session_id: pane_key(&pane_session_id),
+        },
+        SessionEvent::SessionStoppedIfOwner {
+            key,
+            pane_session_id,
+            reason,
+        } => SessionEvent::SessionStoppedIfOwner {
+            key,
+            pane_session_id: pane_session_id.map(|pane| pane_key(&pane)),
+            reason,
+        },
         SessionEvent::ConnectionFailed {
             pane_session_id,
             reason,
@@ -2221,7 +2488,23 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                 .and_then(|identity| remove_identity_locked(state, identity))
                 .unwrap_or_else(|| SessionInfo::new(sid.clone(), cwd.clone()));
             // remove_identity_locked already released only this row's pane binding.
-            entry.cwd = cwd;
+            let resumed = matches!(
+                entry.status,
+                Some(AgentStatus::Historical | AgentStatus::Ended)
+            );
+            let new_pane = if pane_known {
+                Some(pane_session_id.as_str())
+            } else {
+                None
+            };
+            if resumed || entry.pane_session_id.as_deref() != new_pane {
+                entry.cwd_evidence.acp = None;
+                entry.cwd_evidence.acp_agent = None;
+                entry.cwd_evidence.hook_after_acp = false;
+            }
+            entry.cwd_evidence.hook = Some(cwd.clone());
+            entry.cwd_evidence.hook_after_acp = entry.cwd_evidence.acp.is_some();
+            entry.cwd = entry.cwd_evidence.acp.clone().unwrap_or(cwd);
             if !title.is_empty() {
                 entry.title = Some(title);
             }
@@ -2264,6 +2547,90 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             // session started in the same pane may take over normally.
             entry.born_bound_pane = false;
             upsert_locked(state, entry);
+            true
+        }
+        SessionEvent::SessionRenamed {
+            key,
+            pane_session_id,
+            title,
+        } => {
+            if pane_session_id.is_empty() || title.trim().is_empty() {
+                return false;
+            }
+            let sid = acp::schema::v1::SessionId::new(key);
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
+            if state.active_by_pane.get(&pane_session_id) != Some(&identity) {
+                return false;
+            }
+            let Some(entry) = state.sessions.get_mut(&identity) else {
+                return false;
+            };
+            if entry.cli_source != Some(crate::agent_sessions::CliSource::OpenCode)
+                || entry.pane_session_id.as_deref() != Some(pane_session_id.as_str())
+                || !matches!(
+                    entry.status,
+                    Some(
+                        AgentStatus::Idle
+                            | AgentStatus::Working
+                            | AgentStatus::Attention
+                            | AgentStatus::Error
+                    )
+                )
+                || entry.title.as_deref() == Some(title.as_str())
+            {
+                return false;
+            }
+            entry.title = Some(title);
+            entry.last_activity_at_ms = Some(now);
+            true
+        }
+        SessionEvent::WorkingDirectoryChanged {
+            key,
+            pane_session_id,
+            cwd,
+        } => {
+            if cwd.as_os_str().is_empty() || pane_session_id.is_empty() {
+                return false;
+            }
+            let sid = acp::schema::v1::SessionId::new(key);
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
+            if state.active_by_pane.get(&pane_session_id) != Some(&identity) {
+                return false;
+            }
+            let Some(entry) = state.sessions.get_mut(&identity) else {
+                return false;
+            };
+            if !matches!(
+                entry.status,
+                Some(
+                    AgentStatus::Idle
+                        | AgentStatus::Working
+                        | AgentStatus::Attention
+                        | AgentStatus::Error
+                )
+            ) {
+                return false;
+            }
+            if entry.cwd_evidence.hook.as_ref() == Some(&cwd)
+                && entry.cwd_evidence.acp.is_none()
+                && entry.cwd == cwd
+            {
+                return false;
+            }
+            let revision = advance_cwd_revision(state);
+            let entry = state.sessions.get_mut(&identity).expect("checked above");
+            entry.cwd_evidence.hook = Some(cwd.clone());
+            entry.cwd_evidence.hook_after_acp = entry.cwd_evidence.acp.is_some();
+            entry.cwd_evidence.revision = revision;
+            if entry.cwd_evidence.acp.is_some() || entry.cwd == cwd {
+                return false;
+            }
+            entry.cwd = cwd;
+            entry.last_activity_at_ms = Some(now);
             true
         }
         SessionEvent::ToolStarting { key, tool_name } => {
@@ -2347,6 +2714,71 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             entry.last_activity_at_ms = Some(now);
             true
         }
+        SessionEvent::SessionUnbound {
+            key,
+            pane_session_id,
+        } => {
+            if pane_session_id.is_empty() {
+                return false;
+            }
+            let sid = acp::schema::v1::SessionId::new(key);
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
+            if state.active_by_pane.get(&pane_session_id) != Some(&identity)
+                || !state.sessions.get(&identity).is_some_and(|row| {
+                    row.cli_source == Some(crate::agent_sessions::CliSource::OpenCode)
+                        && row.pane_session_id.as_deref() == Some(pane_session_id.as_str())
+                        && matches!(
+                            row.status,
+                            Some(
+                                AgentStatus::Idle
+                                    | AgentStatus::Working
+                                    | AgentStatus::Attention
+                                    | AgentStatus::Error
+                            )
+                        )
+                })
+            {
+                return false;
+            }
+            state.active_by_pane.remove(&pane_session_id);
+            let revision = advance_cwd_revision(state);
+            let row = state.sessions.get_mut(&identity).expect("checked above");
+            row.pane_session_id = None;
+            row.born_bound_pane = false;
+            row.cwd_evidence.revision = revision;
+            true
+        }
+        SessionEvent::SessionStoppedIfOwner {
+            key,
+            pane_session_id,
+            reason,
+        } => {
+            let sid = acp::schema::v1::SessionId::new(key.clone());
+            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+                return false;
+            };
+            if !state.sessions.get(&identity).is_some_and(|row| {
+                row.cli_source == Some(crate::agent_sessions::CliSource::OpenCode)
+                    && matches!(
+                        row.status,
+                        Some(
+                            AgentStatus::Idle
+                                | AgentStatus::Working
+                                | AgentStatus::Attention
+                                | AgentStatus::Error
+                        )
+                    )
+                    && row.pane_session_id == pane_session_id
+                    && pane_session_id
+                        .as_deref()
+                        .is_none_or(|pane| state.active_by_pane.get(pane) == Some(&identity))
+            }) {
+                return false;
+            }
+            apply_event_locked(state, SessionEvent::SessionStopped { key, reason })
+        }
         SessionEvent::SessionStopped { key, reason } => {
             let sid = acp::schema::v1::SessionId::new(key);
             let Some(identity) = unique_identity_for_raw(state, &sid) else {
@@ -2364,6 +2796,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                 .get(&identity)
                 .map(|s| s.origin == Some(SessionOrigin::AgentPane))
                 .unwrap_or(false);
+            let revision = advance_cwd_revision(state);
             let Some(entry) = state.sessions.get_mut(&identity) else {
                 return false;
             };
@@ -2371,6 +2804,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                 entry.status = Some(AgentStatus::Idle);
             } else {
                 entry.status = Some(AgentStatus::Ended);
+                entry.cwd_evidence.revision = revision;
                 if let Some(pane) = entry.pane_session_id.take() {
                     let pane = pane_key(&pane);
                     if state.active_by_pane.get(&pane) == Some(&identity) {
@@ -2388,10 +2822,12 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             let Some(sid) = state.active_by_pane.remove(&pane_session_id) else {
                 return false;
             };
+            let revision = advance_cwd_revision(state);
             let Some(entry) = state.sessions.get_mut(&sid) else {
                 return false;
             };
             entry.status = Some(AgentStatus::Ended);
+            entry.cwd_evidence.revision = revision;
             entry.pane_session_id = None;
             entry.born_bound_pane = false;
             entry.current_tool = None;
@@ -3720,6 +4156,7 @@ mod tests {
             location: crate::agent_sessions::SessionLocation::Host,
             bound_pid: None,
             born_bound_pane: false,
+            cwd_evidence: CwdEvidence::default(),
         };
 
         let json = serde_json::to_string(&row).expect("serialize SessionInfo");
@@ -3897,6 +4334,7 @@ mod tests {
             location: crate::agent_sessions::SessionLocation::Host,
             bound_pid: None,
             born_bound_pane: false,
+            cwd_evidence: CwdEvidence::default(),
         };
         let raw = build_sessions_list_response(vec![row.clone()], None, None);
         let parsed = parse_sessions_list_response(&raw).expect("response parses");
@@ -4252,6 +4690,7 @@ mod tests {
             location: crate::agent_sessions::SessionLocation::Host,
             bound_pid: None,
             born_bound_pane: false,
+            cwd_evidence: CwdEvidence::default(),
         })
         .await;
         reg.apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched {
@@ -4367,6 +4806,67 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn opencode_unbind_and_server_end_are_conditional_on_current_owner() {
+        use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        let sid = acp::schema::v1::SessionId::new("opencode-unbind");
+        let start = |pane: &str| SessionEvent::SessionStarted {
+            key: sid.to_string(),
+            cli_source: CliSource::OpenCode,
+            pane_session_id: pane.into(),
+            cwd: PathBuf::from("C:\\repo"),
+            title: "title".into(),
+        };
+        reg.apply_event(start("pane-a")).await;
+        reg.apply_event(start("pane-b")).await;
+        assert!(
+            !reg.apply_event(SessionEvent::SessionUnbound {
+                key: sid.to_string(),
+                pane_session_id: "pane-a".into(),
+            })
+            .await
+        );
+        assert!(
+            !reg.apply_event(SessionEvent::SessionStoppedIfOwner {
+                key: sid.to_string(),
+                pane_session_id: Some("pane-a".into()),
+                reason: "deleted".into(),
+            })
+            .await
+        );
+        assert!(
+            reg.apply_event(SessionEvent::SessionUnbound {
+                key: sid.to_string(),
+                pane_session_id: "pane-b".into(),
+            })
+            .await
+        );
+        let row = reg.lookup(&sid).await.unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Idle));
+        assert_eq!(row.pane_session_id, None);
+        assert!(
+            !reg.apply_event(SessionEvent::SessionStoppedIfOwner {
+                key: sid.to_string(),
+                pane_session_id: Some("pane-b".into()),
+                reason: "deleted".into(),
+            })
+            .await
+        );
+        assert!(
+            reg.apply_event(SessionEvent::SessionStoppedIfOwner {
+                key: sid.to_string(),
+                pane_session_id: None,
+                reason: "deleted".into(),
+            })
+            .await
+        );
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().status,
+            Some(AgentStatus::Ended)
+        );
+    }
+
     /// The guard releases itself: once the CLI's own hook claims the pane for
     /// the resumed id, a genuinely new session in that pane takes over as
     /// before.
@@ -4437,6 +4937,424 @@ mod tests {
     }
 
     // ─── Task C sessions/list + sessions/changed schemas ───────────
+
+    #[tokio::test]
+    async fn cwd_change_updates_only_the_live_owning_session() {
+        use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+
+        let reg = InMemoryRegistry::new();
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "cwd-session".into(),
+            cli_source: CliSource::Claude,
+            pane_session_id: "{DD7141E2-A8D7-4766-B7EE-77C286CAFE83}".into(),
+            cwd: PathBuf::from("C:\\first"),
+            title: String::new(),
+        })
+        .await;
+        let sid = acp::schema::v1::SessionId::new("cwd-session");
+        let update = |pane: &str, cwd: &str| SessionEvent::WorkingDirectoryChanged {
+            key: "cwd-session".into(),
+            pane_session_id: pane.into(),
+            cwd: PathBuf::from(cwd),
+        };
+
+        let pane = "dd7141e2-a8d7-4766-b7ee-77c286cafe83";
+        assert!(!reg.apply_event(update("pane-2", "C:\\wrong")).await);
+        assert!(!reg.apply_event(update(pane, "")).await);
+        assert!(reg.apply_event(update(pane, "C:\\second")).await);
+        let row = reg.lookup(&sid).await.unwrap();
+        assert_eq!(row.cwd, PathBuf::from("C:\\second"));
+        assert_eq!(row.status, Some(AgentStatus::Idle));
+        assert_eq!(row.pane_session_id.as_deref(), Some(pane));
+        assert!(!reg.apply_event(update(pane, "C:\\second")).await);
+
+        reg.apply_event(SessionEvent::SessionStopped {
+            key: "cwd-session".into(),
+            reason: "exit".into(),
+        })
+        .await;
+        assert!(!reg.apply_event(update(pane, "C:\\stale")).await);
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().cwd,
+            PathBuf::from("C:\\second")
+        );
+    }
+
+    #[tokio::test]
+    async fn acp_cwd_wins_over_hook_and_rejects_in_flight_old_listing() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+
+        let reg = InMemoryRegistry::new();
+        let sid = acp::schema::v1::SessionId::new("copilot-cwd");
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: sid.to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "pane-cwd".into(),
+            cwd: PathBuf::from("C:\\initial"),
+            title: String::new(),
+        })
+        .await;
+        let original = reg.lookup(&sid).await.unwrap();
+        let identity = SessionIdentity::from_info(&original);
+        let agent = uuid::Uuid::new_v4();
+        assert!(
+            reg.adopt_acp_cwd_identity(
+                &identity,
+                original.cwd_revision(),
+                agent,
+                PathBuf::from("C:\\acp"),
+            )
+            .await
+        );
+        let acp_row = reg.lookup(&sid).await.unwrap();
+        let activity_at = acp_row.last_activity_at_ms;
+        assert!(
+            !reg.apply_event(SessionEvent::WorkingDirectoryChanged {
+                key: sid.to_string(),
+                pane_session_id: "pane-cwd".into(),
+                cwd: PathBuf::from("C:\\new-hook"),
+            })
+            .await
+        );
+        let after_hook = reg.lookup(&sid).await.unwrap();
+        assert_eq!(after_hook.cwd, PathBuf::from("C:\\acp"));
+        assert_eq!(
+            after_hook.cwd_evidence.hook,
+            Some(PathBuf::from("C:\\new-hook"))
+        );
+        assert!(
+            !reg.adopt_acp_cwd_identity(
+                &identity,
+                acp_row.cwd_revision(),
+                agent,
+                PathBuf::from("C:\\old-list"),
+            )
+            .await
+        );
+        assert!(
+            reg.adopt_acp_cwd_identity(
+                &identity,
+                after_hook.cwd_revision(),
+                agent,
+                PathBuf::from("C:\\new-acp"),
+            )
+            .await
+        );
+        let current = reg.lookup(&sid).await.unwrap();
+        assert_eq!(current.cwd, PathBuf::from("C:\\new-acp"));
+        assert_eq!(current.last_activity_at_ms, activity_at);
+        assert_eq!(reg.snapshot().await[0].cwd, current.cwd);
+    }
+
+    #[tokio::test]
+    async fn acp_cwd_rejects_rebound_or_recreated_session() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+
+        let reg = InMemoryRegistry::new();
+        let sid = acp::schema::v1::SessionId::new("rebound");
+        let start = |pane: &str| SessionEvent::SessionStarted {
+            key: sid.to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: pane.into(),
+            cwd: PathBuf::from("C:\\hook"),
+            title: String::new(),
+        };
+        reg.apply_event(start("pane-one")).await;
+        let old = reg.lookup(&sid).await.unwrap();
+        let identity = SessionIdentity::from_info(&old);
+        reg.adopt_acp_cwd_identity(
+            &identity,
+            old.cwd_revision(),
+            uuid::Uuid::new_v4(),
+            PathBuf::from("C:\\acp"),
+        )
+        .await;
+        reg.apply_event(start("pane-two")).await;
+        assert!(
+            !reg.adopt_acp_cwd_identity(
+                &identity,
+                old.cwd_revision(),
+                uuid::Uuid::new_v4(),
+                PathBuf::from("C:\\stale"),
+            )
+            .await
+        );
+        let rebound = reg.lookup(&sid).await.unwrap();
+        assert_eq!(rebound.cwd, PathBuf::from("C:\\hook"));
+        assert!(rebound.cwd_evidence.acp.is_none());
+        reg.remove_identity(&identity).await;
+        reg.apply_event(start("pane-three")).await;
+        assert!(
+            !reg.adopt_acp_cwd_identity(
+                &identity,
+                rebound.cwd_revision(),
+                uuid::Uuid::new_v4(),
+                PathBuf::from("C:\\stale"),
+            )
+            .await
+        );
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().cwd,
+            PathBuf::from("C:\\hook")
+        );
+    }
+
+    #[tokio::test]
+    async fn acp_cwd_updates_historical_row_without_inventing_pane() {
+        use crate::agent_sessions::{AgentStatus, SessionLocation};
+        let reg = InMemoryRegistry::new();
+        let sid = acp::schema::v1::SessionId::new("saved");
+        let mut row = SessionInfo::new(sid.clone(), PathBuf::from("C:\\old"));
+        row.provider_id = Some("copilot".into());
+        row.location = SessionLocation::Host;
+        row.status = Some(AgentStatus::Historical);
+        reg.upsert(row).await;
+        let old = reg.lookup(&sid).await.unwrap();
+        assert!(
+            reg.adopt_acp_cwd_identity(
+                &SessionIdentity::from_info(&old),
+                old.cwd_revision(),
+                uuid::Uuid::new_v4(),
+                PathBuf::from("C:\\new"),
+            )
+            .await
+        );
+        let current = reg.lookup(&sid).await.unwrap();
+        assert_eq!(current.cwd, PathBuf::from("C:\\new"));
+        assert!(current.pane_session_id.is_none());
+        assert_eq!(current.status, Some(AgentStatus::Historical));
+    }
+
+    #[tokio::test]
+    async fn acp_cwd_requires_exact_supported_host_identity() {
+        use crate::agent_sessions::{AgentStatus, SessionLocation};
+        let reg = InMemoryRegistry::new();
+        let sid = acp::schema::v1::SessionId::new("same-raw-id");
+        let mut host = SessionInfo::new(sid.clone(), PathBuf::from("C:\\host"));
+        host.provider_id = Some("copilot".into());
+        host.location = SessionLocation::Host;
+        host.status = Some(AgentStatus::Historical);
+        let mut wsl = host.clone();
+        wsl.location = SessionLocation::Wsl {
+            distro: "Debian".into(),
+        };
+        wsl.cwd = PathBuf::from("/wsl");
+        reg.upsert(host.clone()).await;
+        reg.upsert(wsl.clone()).await;
+        let host_identity = SessionIdentity::from_info(&host);
+        let wsl_identity = SessionIdentity::from_info(&wsl);
+        let host_revision = reg
+            .lookup_identity(&host_identity)
+            .await
+            .unwrap()
+            .cwd_revision();
+        let wsl_revision = reg
+            .lookup_identity(&wsl_identity)
+            .await
+            .unwrap()
+            .cwd_revision();
+        assert!(
+            !reg.adopt_acp_cwd_identity(
+                &wsl_identity,
+                wsl_revision,
+                uuid::Uuid::new_v4(),
+                PathBuf::from("C:\\wrong"),
+            )
+            .await
+        );
+        assert!(
+            reg.adopt_acp_cwd_identity(
+                &host_identity,
+                host_revision,
+                uuid::Uuid::new_v4(),
+                PathBuf::from("C:\\updated"),
+            )
+            .await
+        );
+        assert!(reg.lookup(&sid).await.is_none(), "raw id remains ambiguous");
+        assert_eq!(
+            reg.lookup_identity(&wsl_identity).await.unwrap().cwd,
+            PathBuf::from("/wsl")
+        );
+        let mut claude = host.clone();
+        claude.provider_id = Some("claude".into());
+        claude.cwd = PathBuf::from("C:\\claude");
+        reg.upsert(claude.clone()).await;
+        let claude_identity = SessionIdentity::from_info(&claude);
+        let claude_revision = reg
+            .lookup_identity(&claude_identity)
+            .await
+            .unwrap()
+            .cwd_revision();
+        assert!(
+            reg.adopt_acp_cwd_identity(
+                &claude_identity,
+                claude_revision,
+                uuid::Uuid::new_v4(),
+                PathBuf::from("C:\\claude-updated"),
+            )
+            .await
+        );
+        assert_eq!(
+            reg.lookup_identity(&host_identity).await.unwrap().cwd,
+            PathBuf::from("C:\\updated"),
+            "Claude's list must not change a colliding Copilot session"
+        );
+        let mut opencode = host.clone();
+        opencode.provider_id = Some("opencode".into());
+        reg.upsert(opencode.clone()).await;
+        let opencode_identity = SessionIdentity::from_info(&opencode);
+        assert!(
+            reg.adopt_acp_cwd_identity(
+                &opencode_identity,
+                reg.lookup_identity(&opencode_identity)
+                    .await
+                    .unwrap()
+                    .cwd_revision(),
+                uuid::Uuid::new_v4(),
+                PathBuf::from("C:\\opencode-updated"),
+            )
+            .await
+        );
+        assert_eq!(
+            reg.lookup_identity(&host_identity).await.unwrap().cwd,
+            PathBuf::from("C:\\updated"),
+            "OpenCode's list must not change a colliding Copilot session"
+        );
+        let mut codex = host.clone();
+        codex.provider_id = Some("codex".into());
+        reg.upsert(codex.clone()).await;
+        let codex_identity = SessionIdentity::from_info(&codex);
+        assert!(
+            !reg.adopt_acp_cwd_identity(
+                &codex_identity,
+                reg.lookup_identity(&codex_identity)
+                    .await
+                    .unwrap()
+                    .cwd_revision(),
+                uuid::Uuid::new_v4(),
+                PathBuf::from("C:\\wrong-provider"),
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn complete_acp_absence_uses_only_hook_observed_after_acp() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        let sid = acp::schema::v1::SessionId::new("absent");
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: sid.to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "pane".into(),
+            cwd: PathBuf::from("C:\\old-hook"),
+            title: String::new(),
+        })
+        .await;
+        let initial = reg.lookup(&sid).await.unwrap();
+        let identity = SessionIdentity::from_info(&initial);
+        let agent = uuid::Uuid::new_v4();
+        reg.adopt_acp_cwd_identity(
+            &identity,
+            initial.cwd_revision(),
+            agent,
+            PathBuf::from("C:\\acp"),
+        )
+        .await;
+        let acp_row = reg.lookup(&sid).await.unwrap();
+        assert!(
+            !reg.clear_acp_cwd_identity(&identity, initial.cwd_revision())
+                .await
+        );
+        assert!(
+            !reg.clear_acp_cwd_identity(&identity, acp_row.cwd_revision())
+                .await
+        );
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().cwd,
+            PathBuf::from("C:\\acp")
+        );
+
+        reg.adopt_acp_cwd_identity(
+            &identity,
+            reg.lookup(&sid).await.unwrap().cwd_revision(),
+            agent,
+            PathBuf::from("C:\\acp"),
+        )
+        .await;
+        reg.apply_event(SessionEvent::WorkingDirectoryChanged {
+            key: sid.to_string(),
+            pane_session_id: "pane".into(),
+            cwd: PathBuf::from("C:\\fresh-hook"),
+        })
+        .await;
+        assert!(
+            reg.clear_acp_cwd_identity(&identity, reg.lookup(&sid).await.unwrap().cwd_revision(),)
+                .await
+        );
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().cwd,
+            PathBuf::from("C:\\fresh-hook")
+        );
+
+        reg.adopt_acp_cwd_identity(
+            &identity,
+            reg.lookup(&sid).await.unwrap().cwd_revision(),
+            agent,
+            PathBuf::from("C:\\acp-again"),
+        )
+        .await;
+        assert!(
+            !reg.apply_event(SessionEvent::WorkingDirectoryChanged {
+                key: sid.to_string(),
+                pane_session_id: "pane".into(),
+                cwd: PathBuf::from("C:\\fresh-hook"),
+            })
+            .await
+        );
+        assert!(
+            reg.clear_acp_cwd_identity(&identity, reg.lookup(&sid).await.unwrap().cwd_revision())
+                .await
+        );
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().cwd,
+            PathBuf::from("C:\\fresh-hook")
+        );
+
+        reg.adopt_acp_cwd_identity(
+            &identity,
+            reg.lookup(&sid).await.unwrap().cwd_revision(),
+            agent,
+            PathBuf::from("C:\\authoritative"),
+        )
+        .await;
+        reg.apply_event(SessionEvent::WorkingDirectoryChanged {
+            key: sid.to_string(),
+            pane_session_id: "pane".into(),
+            cwd: PathBuf::from("C:\\older-hook"),
+        })
+        .await;
+        let before_confirmation = reg.lookup(&sid).await.unwrap();
+        assert!(
+            !reg.adopt_acp_cwd_identity(
+                &identity,
+                before_confirmation.cwd_revision(),
+                agent,
+                PathBuf::from("C:\\authoritative"),
+            )
+            .await
+        );
+        assert!(
+            !reg.clear_acp_cwd_identity(&identity, reg.lookup(&sid).await.unwrap().cwd_revision())
+                .await
+        );
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().cwd,
+            PathBuf::from("C:\\authoritative"),
+            "a hook superseded by a later successful ACP poll must not resurface"
+        );
+    }
 
     #[test]
     fn build_sessions_changed_notification_decodes_to_changed() {

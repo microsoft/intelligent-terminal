@@ -3,6 +3,14 @@
 
 namespace TerminalApp
 {
+    enum TextHighlightColor
+    {
+        None = 0,
+        Success = 1,
+        Caution = 2,
+        Critical = 3
+    };
+
     struct HighlightedRun
     {
         UInt64 Start;
@@ -27,5 +35,23 @@ namespace TerminalApp
 
         Windows.UI.Xaml.Style HighlightedRunStyle;
         Windows.UI.Xaml.DependencyProperty HighlightedRunStyleProperty { get; };
+
+        TextHighlightColor ColorHighlight;
+        static Windows.UI.Xaml.DependencyProperty ColorHighlightProperty { get; };
+
+        IVector<HighlightedRun> ColorHighlightRanges;
+        static Windows.UI.Xaml.DependencyProperty ColorHighlightRangesProperty { get; };
+
+        Windows.UI.Xaml.Media.Brush SuccessHighlightBrush;
+        static Windows.UI.Xaml.DependencyProperty SuccessHighlightBrushProperty { get; };
+
+        Windows.UI.Xaml.Media.Brush CautionHighlightBrush;
+        static Windows.UI.Xaml.DependencyProperty CautionHighlightBrushProperty { get; };
+
+        Windows.UI.Xaml.Media.Brush CriticalHighlightBrush;
+        static Windows.UI.Xaml.DependencyProperty CriticalHighlightBrushProperty { get; };
+
+        Double TextOpacity;
+        static Windows.UI.Xaml.DependencyProperty TextOpacityProperty { get; };
     }
 }

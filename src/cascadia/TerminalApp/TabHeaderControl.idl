@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 import "TerminalTabStatus.idl";
+import "HighlightedTextControl.idl";
 
 namespace TerminalApp
 {
@@ -14,6 +15,9 @@ namespace TerminalApp
         String MetadataText;
         String MetadataAutomationName;
         String AutomationName;
+        TextHighlightColor MetadataHighlightColor;
+        IVector<HighlightedRun> MetadataHighlightRanges;
+        Object IconSource;
     };
 
     delegate void TitleChangeRequestedArgs(String title);
@@ -42,5 +46,7 @@ namespace TerminalApp
         TabHeaderPresentation Presentation { get; set; };
         Boolean ShowProgressRing { get; set; };
         Boolean ShowPinnedIcon { get; set; };
+        TextHighlightColor MetadataHighlightColor { get; set; };
+        IVector<HighlightedRun> MetadataHighlightRanges { get; set; };
     }
 }

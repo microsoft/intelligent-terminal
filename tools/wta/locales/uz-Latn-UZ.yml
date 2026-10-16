@@ -8,8 +8,11 @@ setup.title.sign_in: "Tizimga kirish talab qilinadi"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Agentingiz \"%{agent}\" oʻrnatilmagan. Oʻrnatish uchun quyidagi qadamlarni bajaring. Agentni almashtirish uchun Aqlli terminal Settings > Agent boʻlimiga oʻting."
 setup.subtitle.agent_missing: "Agentingiz \"%{agent}\" oʻrnatilmagan. Iltimos, qoʻlda qayta oʻrnating, keyin qayta urinib koʻring. Agentni almashtirish uchun Aqlli terminal Settings > Agent boʻlimiga oʻting."
-setup.subtitle.copilot_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Tizimga kirish uchun quyidagi qadamlarni bajaring. Agentni almashtirish uchun Aqlli terminal Settings > Agent boʻlimiga oʻting."
-setup.subtitle.agent_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Iltimos, agent orqali tizimga kiring, keyin pastda \"Men tizimga kirdim\" ni tanlang. Agentni almashtirish uchun Aqlli terminal Settings > Agent boʻlimiga oʻting."
+setup.subtitle.authentication_required: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Tizimga kirish uchun quyidagi qadamlarni bajaring."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Iltimos, agent orqali tizimga kiring, keyin pastda \"Men tizimga kirdim\" ni tanlang."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Bu yerda davom etish uchun kirish usulini tanlang."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Agentni almashtirish uchun Aqlli terminal Settings > Agent boʻlimiga oʻting."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "%{agent} ishga tushirilmadi."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise domeni: "
 auth.enterprise_hint_footer: "  Kirish uchun Enter · github.com uchun Esc"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Qayta urinish uchun Enter tugmasini bosing yoki github.com uchun Esc. Keng tarqalgan sabablar: noto‘g‘ri yozilgan yoki ulanib bo‘lmaydigan domen, muddati tugagan kod yoki o‘sha hostda Copilot ruxsati yo‘q."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Qayta urinish uchun Enter tugmasini bosing yoki orqaga qaytish uchun Esc."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Brauzeringizda kirishni yakunlang. Kutishni bekor qilish uchun Esc tugmasini bosing."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Brauzer ochilmadimi? Ushbu kirish havolasidan foydalaning. O: ochish · Y: nusxalash."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Brauzerni ochib bo'lmadi. Kirish havolasini qo'lda oching."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Kirish havolasini nusxalab bo'lmadi. Uni tanlab, qo'lda nusxalang."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "Kirish o'z vaqtida yakunlanmadi. Tayyor bo'lganingizda qayta urinib ko'ring."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Oʻylayapman…"
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "agent provayderi seansning talab etilgan imtiyozsi
 system.provider_command_blocked_by_policy: "%{command}: Avtomatik tasdiqlash tashkilotingiz siyosati tomonidan o‘chirib qo‘yilgan."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Nomaʼlum model %{model} — mavjud roʻyxatni koʻrish uchun /model yozing."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Bu yerda davom etish uchun kirish usulini tanlang."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Brauzeringizda kirishni yakunlang. Kutishni bekor qilish uchun Esc tugmasini bosing."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Brauzer ochilmadimi? Ushbu kirish havolasidan foydalaning. O: ochish · Y: nusxalash."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Brauzerni ochib bo'lmadi. Kirish havolasini qo'lda oching."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Kirish havolasini nusxalab bo'lmadi. Uni tanlab, qo'lda nusxalang."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "Kirish o'z vaqtida yakunlanmadi. Tayyor bo'lganingizda qayta urinib ko'ring."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "%{distro} kirish muhitida \"%{agent}\" topilmadi. Bu Linux foydalanuvchisining o'rnatilishini, PATH va qobiq profilini tekshiring, so'ng qayta urinib ko'ring."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

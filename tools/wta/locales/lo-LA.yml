@@ -8,8 +8,11 @@ setup.title.sign_in: "ຕ້ອງການເຂົ້າສູ່ລະບົ�
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອຕິດຕັ້ງ། ເພື່ອປ່ຽນ agent, ໄປທີ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ Settings > Agent།"
 setup.subtitle.agent_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ກະລຸນາຕິດຕັ້ງໃໝ່ດ້ວຍມື ແລ້ວລອງໃໝ່། ເພື່ອປ່ຽນ agent, ໄປທີ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ Settings > Agent།"
-setup.subtitle.copilot_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອເຂົ້າສູ່ລະບົບ། ເພື່ອປ່ຽນ agent, ໄປທີ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ Settings > Agent།"
-setup.subtitle.agent_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ກະລຸນາເຂົ້າສູ່ລະບົບຜ່ານ agent, ຈາກນັ້ນເລືອກ \"ຂ້ອຍໄດ້ເຂົ້າສູ່ລະບົບແລ້ວ\" ຂ້າງລຸ່ມ། ເພື່ອປ່ຽນ agent, ໄປທີ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ Settings > Agent།"
+setup.subtitle.authentication_required: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອເຂົ້າສູ່ລະບົບ."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "ກະລຸນາເຂົ້າສູ່ລະບົບຜ່ານ agent, ຈາກນັ້ນເລືອກ \"ຂ້ອຍໄດ້ເຂົ້າສູ່ລະບົບແລ້ວ\" ຂ້າງລຸ່ມ."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "ເລືອກວິທີເຂົ້າສູ່ລະບົບເພື່ອສືບຕໍ່ຢູ່ທີ່ນີ້."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "ເພື່ອປ່ຽນ agent, ໄປທີ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ Settings > Agent."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "ພວກເຮົາບໍ່ສາມາດເລີ່ມ %{agent} ໄດ້."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  ໂດເມນອົງກອນ: "
 auth.enterprise_hint_footer: "  Enter ເພື່ອເຂົ້າສູ່ລະບົບ · Esc ເພື່ອໃຊ້ github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  ກົດ Enter ເພື່ອລອງໃໝ່ ຫຼື Esc ເພື່ອໃຊ້ github.com. ສາເຫດທົ່ວໄປ: ພິມໂດເມນຜິດ ຫຼືໂດເມນເຂົ້າບໍ່ໄດ້, ລະຫັດໝົດອາຍຸ, ຫຼືບັນຊີຂອງທ່ານບໍ່ມີສິດເຂົ້າເຖິງ Copilot ໃນໂຮສນັ້ນ."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  ກົດ Enter ເພື່ອລອງໃໝ່ ຫຼື Esc ເພື່ອກັບຄືນ."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "ດຳເນີນການເຂົ້າສູ່ລະບົບໃຫ້ສຳເລັດໃນຕົວທ່ອງເວັບຂອງທ່ານ. ກົດ Esc ເພື່ອຍົກເລີກການລໍຖ້າ."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ຕົວທ່ອງເວັບບໍ່ໄດ້ເປີດບໍ? ໃຊ້ລິ້ງເຂົ້າສູ່ລະບົບນີ້. O: ເປີດ · Y: ຄັດລອກ."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ບໍ່ສາມາດເປີດຕົວທ່ອງເວັບໄດ້. ກະລຸນາເປີດລິ້ງເຂົ້າສູ່ລະບົບດ້ວຍຕົນເອງ."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "ບໍ່ສາມາດຄັດລອກລິ້ງເຂົ້າສູ່ລະບົບໄດ້. ກະລຸນາເລືອກ ແລະ ຄັດລອກດ້ວຍຕົນເອງ."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "ການເຂົ້າສູ່ລະບົບບໍ່ສຳເລັດພາຍໃນເວລາທີ່ກຳນົດ. ລອງອີກຄັ້ງເມື່ອທ່ານພ້ອມ."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "ກຳລັງຄິດ…"
@@ -298,10 +306,4 @@ system.yolo_disable_pending: "ຜູ້ໃຫ້ບໍລິການ AI agent �
 system.provider_command_blocked_by_policy: "%{command}: ການອະນຸມັດອັດຕະໂນມັດຖືກປິດໃຊ້ງານໂດຍນະໂຍບາຍຂອງອົງກອນຂອງທ່ານ."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "ບໍ່ຮູ້ຈັກແບບຈຳລອງ %{model} — ພິມ /model ເພື່ອເບິ່ງລາຍການທີ່ມີ."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ. ເລືອກວິທີເຂົ້າສູ່ລະບົບເພື່ອສືບຕໍ່ຢູ່ທີ່ນີ້."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "ດຳເນີນການເຂົ້າສູ່ລະບົບໃຫ້ສຳເລັດໃນຕົວທ່ອງເວັບຂອງທ່ານ. ກົດ Esc ເພື່ອຍົກເລີກການລໍຖ້າ."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "ຕົວທ່ອງເວັບບໍ່ໄດ້ເປີດບໍ? ໃຊ້ລິ້ງເຂົ້າສູ່ລະບົບນີ້. O: ເປີດ · Y: ຄັດລອກ."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "ບໍ່ສາມາດເປີດຕົວທ່ອງເວັບໄດ້. ກະລຸນາເປີດລິ້ງເຂົ້າສູ່ລະບົບດ້ວຍຕົນເອງ."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "ບໍ່ສາມາດຄັດລອກລິ້ງເຂົ້າສູ່ລະບົບໄດ້. ກະລຸນາເລືອກ ແລະ ຄັດລອກດ້ວຍຕົນເອງ."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "ການເຂົ້າສູ່ລະບົບບໍ່ສຳເລັດພາຍໃນເວລາທີ່ກຳນົດ. ລອງອີກຄັ້ງເມື່ອທ່ານພ້ອມ."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "ພວກເຮົາບໍ່ພົບ \"%{agent}\" ໃນສະພາບແວດລ້ອມການເຂົ້າສູ່ລະບົບຂອງ %{distro}. ກວດສອບການຕິດຕັ້ງ, PATH ແລະ ໂປຣໄຟລ໌ shell ຂອງຜູ້ໃຊ້ Linux ຄົນນີ້, ແລ້ວລອງອີກຄັ້ງ."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

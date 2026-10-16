@@ -8,8 +8,11 @@ setup.title.sign_in: "Bejelentkezés szükséges"
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "A(z) \"%{agent}\" ügynök nincs telepítve. Kövesse az alábbi lépéseket a telepítéshez. Az ügynök váltásához lépjen a Intelligens Terminál Settings > Agent oldalra."
 setup.subtitle.agent_missing: "A(z) \"%{agent}\" ügynök nincs telepítve. Telepítse újra manuálisan, majd próbálja újra. Az ügynök váltásához lépjen a Intelligens Terminál Settings > Agent oldalra."
-setup.subtitle.copilot_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Kövesse az alábbi lépéseket a bejelentkezéshez. Az ügynök váltásához lépjen a Intelligens Terminál Settings > Agent oldalra."
-setup.subtitle.agent_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Jelentkezzen be az ügynökön keresztül, majd válassza a \"Bejelentkeztem\" lehetőséget alul. Az ügynök váltásához lépjen a Intelligens Terminál Settings > Agent oldalra."
+setup.subtitle.authentication_required: "A(z) \"%{agent}\" ügynök hitelesítést igényel."  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "Kövesse az alábbi lépéseket a bejelentkezéshez."  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "Jelentkezzen be az ügynökön keresztül, majd válassza a \"Bejelentkeztem\" lehetőséget alul."  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "Válasszon bejelentkezési módot az itteni folytatáshoz."  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "Az ügynök váltásához lépjen az Intelligens Terminál Settings > Agent oldalra."  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "A(z) %{agent} nem indult el."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise-tartomány: "
 auth.enterprise_hint_footer: "  Enter = bejelentkezés · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  Nyomja meg az Enter billentyűt az újrapróbálkozáshoz, vagy az Esc billentyűt a github.com használatához. Gyakori okok: elírt vagy elérhetetlen tartomány, lejárt kód, vagy nincs Copilot-hozzáférés ezen a gazdagépen."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  Nyomja meg az Enter billentyűt az újrapróbálkozáshoz, vagy az Esc billentyűt a visszalépéshez."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "Fejezze be a bejelentkezést a böngészőben. A várakozás megszakításához nyomja meg az Esc billentyűt."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "Nem nyílt meg a böngésző? Használja ezt a bejelentkezési hivatkozást. O: megnyitás · Y: másolás."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "Nem sikerült megnyitni a böngészőt. Nyissa meg kézzel a bejelentkezési hivatkozást."  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "Nem sikerült másolni a bejelentkezési hivatkozást. Jelölje ki és másolja kézzel."  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "A bejelentkezés nem fejeződött be időben. Próbálja újra, amikor készen áll."  # Sign-in wait timeout; the user can retry later.
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Gondolkodás..."
@@ -297,10 +305,4 @@ system.yolo_disable_pending: "az AI-ügynök szolgáltatója nem erősítette me
 system.provider_command_blocked_by_policy: "%{command}: Az automatikus jóváhagyást a szervezet szabályzata letiltotta."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "Ismeretlen modell: %{model} — írja be a /model parancsot az elérhető lista megtekintéséhez."  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Válasszon bejelentkezési módot az itteni folytatáshoz."  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "Fejezze be a bejelentkezést a böngészőben. A várakozás megszakításához nyomja meg az Esc billentyűt."  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "Nem nyílt meg a böngésző? Használja ezt a bejelentkezési hivatkozást. O: megnyitás · Y: másolás."  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "Nem sikerült megnyitni a böngészőt. Nyissa meg kézzel a bejelentkezési hivatkozást."  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "Nem sikerült másolni a bejelentkezési hivatkozást. Jelölje ki és másolja kézzel."  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "A bejelentkezés nem fejeződött be időben. Próbálja újra, amikor készen áll."  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "Nem találtuk a(z) \"%{agent}\" ügynököt a(z) %{distro} bejelentkezési környezetében. Ellenőrizze ennek a Linux-felhasználónak a telepítését, PATH változóját és rendszerhéjprofilját, majd próbálja újra."  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}

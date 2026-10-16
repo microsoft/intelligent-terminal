@@ -8,8 +8,11 @@ setup.title.sign_in: "साइन इन आवश्यक है"
 # %{agent} रनटाइम पर एजेंट प्रदर्शन नाम से बदला जाता है।
 setup.subtitle.copilot_missing: "आपका एजेंट \"%{agent}\" इंस्टॉल नहीं है। इसे इंस्टॉल करने के लिए नीचे दिए गए चरणों का पालन करें। एजेंट बदलने के लिए इंटेलिजेंट टर्मिनल Settings > Agent पर जाएँ।"
 setup.subtitle.agent_missing: "आपका एजेंट \"%{agent}\" इंस्टॉल नहीं है। कृपया इसे मैन्युअल रूप से पुनः इंस्टॉल करें, फिर पुनः प्रयास करें। एजेंट बदलने के लिए इंटेलिजेंट टर्मिनल Settings > Agent पर जाएँ।"
-setup.subtitle.copilot_auth: "आपके एजेंट \"%{agent}\" को प्रमाणीकरण की आवश्यकता है। साइन इन करने के लिए नीचे दिए गए चरणों का पालन करें। एजेंट बदलने के लिए इंटेलिजेंट टर्मिनल Settings > Agent पर जाएँ।"
-setup.subtitle.agent_auth: "आपके एजेंट \"%{agent}\" को प्रमाणीकरण की आवश्यकता है। कृपया एजेंट से साइन इन करें, फिर नीचे \"मैंने साइन इन कर लिया है\" चुनें। एजेंट बदलने के लिए इंटेलिजेंट टर्मिनल Settings > Agent पर जाएँ।"
+setup.subtitle.authentication_required: "आपके एजेंट \"%{agent}\" को प्रमाणीकरण की आवश्यकता है।"  # Shared AI-agent auth intro; %{agent} is the display name. May stand alone; when available, a space and flow-specific guidance follow.
+setup.auth.sign_in: "साइन इन करने के लिए नीचे दिए गए चरणों का पालन करें।"  # Shared guidance for device login and initial protocol SignIn; follows the auth intro.
+setup.auth.external_sign_in: "कृपया एजेंट से साइन इन करें, फिर नीचे \"मैंने साइन इन कर लिया है\" चुनें।"  # External-agent sign-in, then the setup.option.retry_auth confirmation; follows the auth intro.
+setup.auth.select_method: "यहाँ आगे बढ़ने के लिए साइन इन करने का तरीका चुनें।"  # Shown only inside the actual sign-in method picker; follows the auth intro.
+setup.auth.switch_agent: "एजेंट बदलने के लिए इंटेलिजेंट टर्मिनल Settings > Agent पर जाएँ।"  # Shared auth guidance; "Agent" names the selector on the Settings "Agents" page, not the navigation label. {Locked="Settings","Agent"}
 setup.subtitle.connection_failed: "हम %{agent} को शुरू नहीं कर सके।"
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
@@ -43,6 +46,11 @@ auth.enterprise_domain_label: "  Enterprise डोमेन: "
 auth.enterprise_hint_footer: "  साइन इन करने के लिए Enter · github.com के लिए Esc"  # {Locked="Enter","Esc","github.com"}
 auth.login_failed_help_enterprise: "  फिर से प्रयास करने के लिए Enter दबाएँ, या github.com के लिए Esc. सामान्य कारण: गलत टाइप किया गया या पहुँच से बाहर डोमेन, समाप्त कोड, या उस होस्ट पर Copilot पहुँच न होना."  # {Locked="Enter","Esc","github.com","Copilot"}
 auth.login_failed_help_default: "  फिर से प्रयास करने के लिए Enter दबाएँ, या वापस जाने के लिए Esc."  # {Locked="Enter","Esc"}
+auth.browser_wait_hint: "अपने ब्राउज़र में साइन इन पूरा करें। प्रतीक्षा रद्द करने के लिए Esc दबाएँ।"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
+auth.browser_link_hint: "ब्राउज़र नहीं खुला? साइन इन के इस लिंक का उपयोग करें। O: खोलें · Y: कॉपी करें।"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
+auth.browser_open_failed: "ब्राउज़र नहीं खोला जा सका। साइन इन का लिंक स्वयं खोलें।"  # Keep waiting for authorization after the default browser fails.
+auth.browser_copy_failed: "साइन इन का लिंक कॉपी नहीं किया जा सका। इसे चुनकर स्वयं कॉपी करें।"  # Clipboard failure; the displayed current sign-in URL remains usable.
+auth.failure_wait_timeout: "साइन इन समय पर पूरा नहीं हुआ। तैयार होने पर फिर से कोशिश करें।"  # Sign-in wait timeout; the user can retry later.
 
 # ── चैट दृश्य (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "सोच रहा है…"
@@ -299,10 +307,4 @@ system.yolo_disable_pending: "एजेंट प्रदाता ने अ�
 system.provider_command_blocked_by_policy: "%{command}: आपके संगठन की नीति के अनुसार स्वचालित अनुमोदन अक्षम है।"  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 system.model_unknown: "अज्ञात मॉडल %{model} — उपलब्ध सूची देखने के लिए /model टाइप करें।"  # {Locked="%{model}","/model"}
 
-setup.subtitle.protocol_auth: "आपके एजेंट \"%{agent}\" को प्रमाणीकरण की आवश्यकता है। यहाँ आगे बढ़ने के लिए साइन इन करने का तरीका चुनें।"  # AI-agent sign-in methods; %{agent} is the agent display name.
-auth.browser_wait_hint: "अपने ब्राउज़र में साइन इन पूरा करें। प्रतीक्षा रद्द करने के लिए Esc दबाएँ।"  # Browser sign-in progress; Esc cancels waiting. {Locked="Esc"}
-auth.browser_link_hint: "ब्राउज़र नहीं खुला? साइन इन के इस लिंक का उपयोग करें। O: खोलें · Y: कॉपी करें।"  # Manual fallback for the current sign-in URL; keyboard actions. {Locked="O","Y"}
-auth.browser_open_failed: "ब्राउज़र नहीं खोला जा सका। साइन इन का लिंक स्वयं खोलें।"  # Keep waiting for authorization after the default browser fails.
-auth.browser_copy_failed: "साइन इन का लिंक कॉपी नहीं किया जा सका। इसे चुनकर स्वयं कॉपी करें।"  # Clipboard failure; the displayed current sign-in URL remains usable.
-auth.failure_wait_timeout: "साइन इन समय पर पूरा नहीं हुआ। तैयार होने पर फिर से कोशिश करें।"  # Sign-in wait timeout; the user can retry later.
 setup.subtitle.wsl_agent_missing: "%{distro} के लॉगिन परिवेश में \"%{agent}\" नहीं मिला। इस Linux उपयोगकर्ता का इंस्टॉलेशन, PATH और शेल प्रोफ़ाइल जाँचें, फिर दोबारा कोशिश करें।"  # WSL login-shell detection; %{agent} is the agent display name, %{distro} is the Linux distribution name. {Locked="PATH"}
