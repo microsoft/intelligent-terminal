@@ -126,6 +126,8 @@ Describe 'Localization workflow contracts' -Tag 'Unit' {
         $guide | Should -Match 'never check out or execute fork'
         $guide | Should -Match 'Test-PseudoLocale'
         $guide | Should -Match '(?s)add-comment:.*max: 1'
+        $guide | Should -Match 'Emit exactly one concise `add_comment` tool call'
+        $guide | Should -Not -Match '`add-comment`'
         $guide | Should -Not -Match 'push-to-pull-request-branch:'
     }
 

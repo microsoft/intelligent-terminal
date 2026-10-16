@@ -381,7 +381,7 @@ Do not create an aggregate checker-report file. Write the human-readable
 Markdown summary using the shared template. Passing checks do not suppress
 concrete human-language findings from your read-only review.
 Emit zero safe outputs only when all actual checks are `PASS` and your review
-has no findings. Emit exactly one concise `add-comment` when any actual check
+has no findings. Emit exactly one concise `add_comment` tool call when any actual check
 is `FIXABLE` or your review finds a concrete human-language issue.
 `BLOCKED` or `INVALID_INPUT` is not a successful guide outcome: describe the
 limitation in the summary and use the appropriate native incomplete outcome
