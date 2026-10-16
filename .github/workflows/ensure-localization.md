@@ -372,12 +372,9 @@ max-ai-credits: 1000
 max-daily-ai-credits: 5000
 
 concurrency:
-
   group: 'localization-expert-${{ github.event.inputs.pr_number }}'
-
   job-discriminator: ${{ github.run_id }}
-
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 run-name: 'Ensure Localization ${{ github.event.inputs.dispatch_id }}'
 
