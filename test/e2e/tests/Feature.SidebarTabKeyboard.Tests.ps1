@@ -315,7 +315,6 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
                 [Windows.Automation.AutomationElement]::FocusedElement.Current.ClassName | Should -Be 'TermControl'
             }
 
-            Initialize-LogOffsets -App $script:app | Out-Null
             Send-WtWindowKey -App $script:app -Vk 0x54 -Ctrl -Shift -RequireForeground | Out-Null
             $created = $null
             try {
@@ -324,10 +323,6 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
                 }) | Should -BeTrue -Because "Ctrl+Shift+T from $origin must create exactly one new tab"
                 $created = Get-ActivePane -App $script:app
                 $created.session_id | Should -Not -Be $script:tabB.session_id
-                $trace = Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart
-                $trace | Set-Content -LiteralPath (Join-Path $script:evidenceDir "new-tab-$origin.log") -Encoding utf8
-                $trace | Should -Match "ShortcutTrace pid=$($script:app.Pid) .*stage=win32 ctrl=1 shift=true" `
-                    -Because 'the physical shortcut must reach the selected Dev window'
             }
             finally {
                 if ($created) { Close-WtPane -App $script:app -SessionId $created.session_id }

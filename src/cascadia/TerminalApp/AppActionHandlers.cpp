@@ -541,25 +541,6 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleNewTab(const IInspectable& /*sender*/,
                                      const ActionEventArgs& args)
     {
-        const auto tabsBefore = _tabs.Size();
-        _agentPaneLog(fmt::format(
-            "ShortcutTrace pid={} tid={} stage=new-tab-begin window={} startup={} replayDepth={} tabs={}",
-            GetCurrentProcessId(),
-            GetCurrentThreadId(),
-            _WindowProperties.WindowId(),
-            static_cast<int>(_startupState),
-            _startupActionReplayDepth,
-            tabsBefore));
-        const auto traceResult = wil::scope_exit([&]() {
-            _agentPaneLog(fmt::format(
-                "ShortcutTrace pid={} tid={} stage=new-tab-end window={} tabsBefore={} tabsAfter={} handled={}",
-                GetCurrentProcessId(),
-                GetCurrentThreadId(),
-                _WindowProperties.WindowId(),
-                tabsBefore,
-                _tabs.Size(),
-                args && args.Handled()));
-        });
         if (args == nullptr)
         {
             LOG_IF_FAILED(_OpenNewTab(nullptr));
@@ -582,10 +563,6 @@ namespace winrt::TerminalApp::implementation
             }
 
             const auto result = _OpenNewTab(realArgs.ContentArgs());
-            _agentPaneLog(fmt::format("ShortcutTrace pid={} tid={} stage=new-tab-result hr=0x{:08x}",
-                                      GetCurrentProcessId(),
-                                      GetCurrentThreadId(),
-                                      static_cast<uint32_t>(result)));
             LOG_IF_FAILED(result);
             args.Handled(result == S_OK);
         }

@@ -2,35 +2,6 @@
 
 This file contains notes about debugging various items in the repository.
 
-## Intelligent Terminal startup New Tab shortcut
-
-For a New Tab shortcut that fails immediately after launch, search the
-package-private, per-version `terminal-agent-pane.log` for `ShortcutTrace`.
-Packaged logs are under
-`%LOCALAPPDATA%\Packages\<PFN>\LocalCache\Local\IntelligentTerminal\logs\<package-version>\`.
-The trace observes Ctrl+T keydowns (including Ctrl+Shift+T), without logging
-typed text or changing key handling. PID and thread ID correlate the stages:
-
-- `win32`: the process received the key; modifier flags, native focus, foreground
-  status, and the focused XAML type identify where it was delivered.
-- `xaml-preview`: the key reached the page; focus, startup/replay state, tab count,
-  activation, and first-run/sidebar introduction state identify startup context.
-- `control-binding` or `page-binding`: whether the effective key binding matched
-  and which action it selected; the corresponding `*-dispatch` records handling.
-- `new-tab-begin`, `new-tab-result`, and `new-tab-end`: action execution, HRESULT,
-  and before/after tab counts. These also record New Tab actions from startup,
-  menus, and commands, so not every action has a preceding key trace.
-
-Compare a failing press immediately after launch with a successful press after
-clicking the terminal. A missing later stage narrows down where delivery stopped;
-`matched=false` indicates a binding mismatch instead of a tab-creation failure.
-
-Blank Sidebar list clicks previously moved focus to an island-level
-`ScrollViewer` with no visual parent, outside the page/Sidebar key route. The
-trace then contained only `win32`, unlike tab-row or terminal focus. Blank clicks
-now focus the selected Sidebar row, or the search button if no row is available;
-row and scrollbar pointer handling are left unchanged.
-
 ## Setting breakpoints in Visual Studio for Cascadia (packaged) application
 
 If you want to debug code in the Cascadia package via Visual Studio, your breakpoints will not be hit by default. A tweak is required to the *CascadiaPackage* project in order to enable this.

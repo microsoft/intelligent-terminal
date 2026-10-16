@@ -535,37 +535,6 @@ namespace winrt::TerminalApp::implementation
         // Hookup the key bindings
         _HookupKeyBindings(_settings.ActionMap());
 
-        PreviewKeyDown([weak = get_weak()](const auto&, const WUX::Input::KeyRoutedEventArgs& e) {
-            if (const auto self = weak.get(); self && e.OriginalKey() == VirtualKey::T)
-            {
-                const auto modifiers = self->_GetPressedModifierKeys();
-                if (!modifiers.IsCtrlPressed())
-                {
-                    return;
-                }
-                const auto root = self->XamlRoot();
-                const auto focused = root ? WUX::Input::FocusManager::GetFocusedElement(root) : nullptr;
-                _agentPaneLog(fmt::format(
-                    "ShortcutTrace pid={} tid={} stage=xaml-preview window={} shift={} alt={} win={} handled={} focus={} startup={} replayDepth={} tabs={} activeControl={} activated={} visible={} fre={} sidebarTip={}",
-                    GetCurrentProcessId(),
-                    GetCurrentThreadId(),
-                    self->_WindowProperties.WindowId(),
-                    modifiers.IsShiftPressed(),
-                    modifiers.IsAltPressed(),
-                    modifiers.IsWinPressed(),
-                    e.Handled(),
-                    focused ? winrt::to_string(winrt::get_class_name(focused)) : "<none>",
-                    static_cast<int>(self->_startupState),
-                    self->_startupActionReplayDepth,
-                    self->_tabs.Size(),
-                    static_cast<bool>(self->_GetActiveControl()),
-                    self->_activated,
-                    self->_visible,
-                    self->_IsFreRequired(),
-                    self->_sidebarIntroductionPresented));
-            }
-        });
-
         Command sessionsCommand;
         sessionsCommand.ActionAndArgs(ActionAndArgs{ ShortcutAction::OpenAgentSessions, nullptr });
         const auto sessionsLabel = sessionsCommand.Name();
@@ -11493,14 +11462,6 @@ namespace winrt::TerminalApp::implementation
             scanCode,
         };
         const auto cmd = actionMap.GetActionByKeyChord(chord);
-        const auto traceShortcut = vkey == 'T' && modifiers.IsCtrlPressed();
-        if (traceShortcut)
-        {
-            _agentPaneLog(fmt::format(
-                "ShortcutTrace pid={} tid={} stage=page-binding matched={} action={}",
-                GetCurrentProcessId(), GetCurrentThreadId(), static_cast<bool>(cmd),
-                cmd ? static_cast<int>(cmd.ActionAndArgs().Action()) : -1));
-        }
         if (!cmd)
         {
             return;
@@ -11511,13 +11472,6 @@ namespace winrt::TerminalApp::implementation
                               action.Action() == ShortcutAction::SwitchToTab) ?
                                  _actionDispatch->DoAction(chord, action) :
                                  _actionDispatch->DoAction(action);
-        if (traceShortcut)
-        {
-            _agentPaneLog(fmt::format("ShortcutTrace pid={} tid={} stage=page-dispatch handled={}",
-                                      GetCurrentProcessId(),
-                                      GetCurrentThreadId(),
-                                      handled));
-        }
         if (!handled)
         {
             return;

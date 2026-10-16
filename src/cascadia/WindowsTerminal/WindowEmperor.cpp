@@ -10,8 +10,6 @@
 #include <til/hash.h>
 #include <wil/token_helpers.h>
 #include <winrt/TerminalApp.h>
-#include <winrt/Windows.UI.Xaml.Input.h>
-#include <winrt/Windows.UI.Xaml.Media.h>
 #include <sddl.h>
 #include <propkey.h>
 #include <propvarutil.h>
@@ -24,7 +22,6 @@
 #include "../../types/inc/User32Utils.hpp"
 #include "../../types/inc/utils.hpp"
 #include "../inc/InteractionTelemetry.h"
-#include "../TerminalApp/AgentPaneLog.h"
 
 #include <bcrypt.h>
 #include <fstream>
@@ -776,51 +773,6 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
             }
 
             const bool keyDown = (msg.message & 1) == 0;
-            if (keyDown && msg.wParam == 'T' && (GetKeyState(VK_CONTROL) & 0x8000))
-            {
-                const auto hwnd = GetAncestor(msg.hwnd, GA_ROOT);
-                winrt::hstring focusedType;
-                std::string focusPath;
-                for (const auto& host : _windows)
-                {
-                    if (const auto window = host->GetWindow(); window && window->GetHandle() == hwnd)
-                    {
-                        if (const auto root = host->Logic().GetRoot(); root && root.XamlRoot())
-                        {
-                            if (const auto focused = winrt::Windows::UI::Xaml::Input::FocusManager::GetFocusedElement(root.XamlRoot()))
-                            {
-                                focusedType = winrt::get_class_name(focused);
-                                auto element = focused.try_as<winrt::Windows::UI::Xaml::DependencyObject>();
-                                for (size_t depth = 0; element && depth < 32; ++depth)
-                                {
-                                    if (!focusPath.empty())
-                                    {
-                                        focusPath += " > ";
-                                    }
-                                    focusPath += winrt::to_string(winrt::get_class_name(element));
-                                    if (const auto frameworkElement = element.try_as<winrt::Windows::UI::Xaml::FrameworkElement>())
-                                    {
-                                        focusPath += ":" + winrt::to_string(frameworkElement.Name());
-                                    }
-                                    element = winrt::Windows::UI::Xaml::Media::VisualTreeHelper::GetParent(element);
-                                }
-                            }
-                        }
-                        break;
-                    }
-                }
-                winrt::TerminalApp::implementation::_agentPaneLog(fmt::format(
-                    "ShortcutTrace pid={} tid={} stage=win32 ctrl=1 shift={} alt={} win={} hwnd={} focusHwnd={} foreground={} xamlFocus={} focusPath={}",
-                    GetCurrentProcessId(),
-                    GetCurrentThreadId(),
-                    (GetKeyState(VK_SHIFT) & 0x8000) != 0,
-                    (GetKeyState(VK_MENU) & 0x8000) != 0,
-                    ((GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000) != 0,
-                    reinterpret_cast<uintptr_t>(hwnd),
-                    reinterpret_cast<uintptr_t>(GetFocus()),
-                    GetForegroundWindow() == hwnd,
-                    winrt::to_string(focusedType), focusPath));
-            }
             if (
                 // GH#638: The Xaml input stack doesn't allow an application to suppress the "caret browsing"
                 // dialog experience triggered when you press F7. Official recommendation from the Xaml
