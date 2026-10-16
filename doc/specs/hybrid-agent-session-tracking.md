@@ -431,6 +431,15 @@ query stay visible without the full-list loading spinner while focus/resume runs
 Repeated activation clicks are ignored until completion, and background snapshots
 cannot clear the activation guard. Closing History resets that guard.
 
+External Copilot **In use** evidence is informational, not a resume restriction.
+Selecting such a row resumes it through the CLI in a new tab; activation does not
+probe external ownership or wait for an in-use lock to be released. Failure to
+read ownership evidence likewise does not block resume. The session list still
+shows **In use** when supported by external evidence. A live session with an
+authoritative Terminal pane binding continues to focus that pane instead of
+starting another CLI. The agent CLI remains responsible for accepting the resume
+request and handling any concurrent access to its session store.
+
 History list requests are single-flight per window. Notifications received during
 activation are coalesced and serviced after activation completes, without hiding
 the existing rows. Initial load failures (including non-zero CLI exits) show a

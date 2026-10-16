@@ -264,25 +264,6 @@ async fn run_probe<T: Send + 'static>(
         .map_err(|_| ProbeError::Unavailable)
 }
 
-pub(crate) async fn activation_status(
-    row: &SessionInfo,
-) -> Result<Option<AgentStatus>, ProbeError> {
-    if !eligible(row) {
-        return Ok(None);
-    }
-    let root = session_root().ok_or(ProbeError::Unavailable)?;
-    let row = row.clone();
-    run_probe(PROBE_GATE.clone(), move || {
-        probe_status(
-            &row,
-            &root,
-            &native_process,
-            Instant::now() + Duration::from_secs(2),
-        )
-    })
-    .await?
-}
-
 pub(crate) async fn enrich_snapshot(rows: &mut Vec<SessionInfo>) {
     let Some(root) = session_root() else { return };
     let snapshot = rows.clone();

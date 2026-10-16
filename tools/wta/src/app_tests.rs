@@ -8530,6 +8530,40 @@ fn modified_enter_on_live_row_dispatches_nothing() {
 // effect (or NotResumable hint). One or two representative cases
 // per variant is enough; session_mgmt holds the truth table.
 
+#[test]
+fn external_in_use_row_dispatches_cli_resume_instead_of_focus() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+
+    let mut app = test_app();
+    app.window_id = Some("42".into());
+    app.agent_sessions.apply(SessionEvent::SessionStarted {
+        key: "external-in-use".into(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: "untrusted-pane".into(),
+        cwd: std::env::current_dir().unwrap(),
+        title: "External session".into(),
+    });
+    let mut row = app
+        .agent_sessions
+        .get(&"external-in-use".to_string())
+        .unwrap()
+        .clone();
+    row.status = AgentStatus::InUse;
+
+    app.activate_agent_session_routed(&row);
+
+    let command = app.last_dispatched_command_for_test().unwrap();
+    assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
+    assert!(command
+        .argv
+        .join(" ")
+        .contains("copilot --resume external-in-use"));
+    assert!(!command
+        .argv
+        .iter()
+        .any(|arg| arg.contains("untrusted-pane")));
+}
+
 /// A Class A row selected from a cross-provider history surface routes to
 /// ResumeInAgentPane using the selected row's provider and location.
 #[test]

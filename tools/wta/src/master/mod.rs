@@ -8016,26 +8016,6 @@ async fn execute_session_activation(
     state: &MasterStateInner,
     parsed: &crate::session_registry::SessionActivateParams,
 ) -> crate::session_registry::SessionActivateResponse {
-    execute_session_activation_with_probe(state, parsed, |row| async move {
-        crate::session_watcher::copilot_status::activation_status(&row).await
-    })
-    .await
-}
-
-async fn execute_session_activation_with_probe<F, Fut>(
-    state: &MasterStateInner,
-    parsed: &crate::session_registry::SessionActivateParams,
-    probe: F,
-) -> crate::session_registry::SessionActivateResponse
-where
-    F: FnOnce(crate::session_registry::SessionInfo) -> Fut,
-    Fut: std::future::Future<
-        Output = Result<
-            Option<crate::agent_sessions::AgentStatus>,
-            crate::session_watcher::copilot_status::ProbeError,
-        >,
-    >,
-{
     use crate::agent_sessions::{AgentStatus, SessionOrigin};
     use crate::session_mgmt::{
         decide_enter_action, liveness_from_status, EnterAction, RowSnapshot,
@@ -8082,46 +8062,13 @@ where
         }
     };
 
-    let Some(mut row) = state.registry.lookup_identity(&parsed.identity).await else {
+    let Some(row) = state.registry.lookup_identity(&parsed.identity).await else {
         return respond!(
             "not_found",
             false,
             Some("The selected session is no longer available.".to_string())
         );
     };
-    if crate::session_watcher::copilot_status::eligible(&row) {
-        let evidence = probe(row.clone()).await;
-        // Hook registration during the probe is authoritative; never apply stale
-        // external evidence to a live IT registration or persist it in the registry.
-        let Some(current) = state.registry.lookup_identity(&parsed.identity).await else {
-            return respond!(
-                "not_found",
-                false,
-                Some("The selected session is no longer available.".to_string())
-            );
-        };
-        row = current;
-        if crate::session_watcher::copilot_status::eligible(&row) {
-            match evidence {
-                Ok(Some(AgentStatus::InUse)) => {
-                    return respond!(
-                        "not_resumable",
-                        false,
-                        Some("The selected session is already in use.".to_string())
-                    );
-                }
-                Err(error) => {
-                    tracing::warn!(target: "copilot_status", ?error, "activation in-use verification unavailable");
-                    return respond!(
-                        "not_resumable",
-                        false,
-                        Some("Session ownership could not be verified; try again.".to_string())
-                    );
-                }
-                Ok(_) => {}
-            }
-        }
-    }
     let status = row.status.clone().unwrap_or(AgentStatus::Historical);
     let liveness = liveness_from_status(&status, row.pane_session_id.clone());
     // Focusing an existing live pane does not require a launchable provider.
