@@ -17076,22 +17076,27 @@ namespace TerminalAppLocalTests
             }
             tab->_tabStatus.IsProgressRingActive(true);
             tab->UpdateIcon(L"\xE8A5", IconStyle::Hidden);
-            VERIFY_IS_NULL(tab->TabViewItem().IconSource());
+            VERIFY_IS_TRUE(tab->TabViewItem().IconSource() == tab->_progressIconSource);
+            VERIFY_IS_NULL(tab->_headerControl.Presentation().IconSource());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, display.IconVisibility());
             const auto hiddenSource = display.IconSource();
             strip->SyncTabPresentation(display);
             VERIFY_IS_TRUE(display.IconSource() == hiddenSource);
             tab->UpdateIcon(L"\xE8A5", IconStyle::Default);
             VERIFY_IS_TRUE(tab->_tabStatus.IsProgressRingActive());
-            VERIFY_ARE_EQUAL(Visibility::Visible, display.IconVisibility());
-            VERIFY_IS_TRUE(display.IconSource() == tab->TabViewItem().IconSource());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, display.IconVisibility());
+            VERIFY_IS_TRUE(display.IconSource() == tab->_headerControl.Presentation().IconSource());
+            VERIFY_IS_TRUE(tab->TabViewItem().IconSource() == tab->_progressIconSource);
             const auto defaultSource = display.IconSource();
             tab->UpdateIcon(L"\xE8A5", IconStyle::Monochrome);
             VERIFY_IS_FALSE(display.IconSource() == defaultSource);
-            VERIFY_IS_TRUE(display.IconSource() == tab->TabViewItem().IconSource());
+            VERIFY_IS_TRUE(display.IconSource() == tab->_headerControl.Presentation().IconSource());
+            VERIFY_IS_TRUE(tab->TabViewItem().IconSource() == tab->_progressIconSource);
             tab->_tabStatus.IsProgressRingActive(false);
+            tab->_UpdateIconVisibility();
             strip->SyncTabPresentation(display);
             VERIFY_ARE_EQUAL(Visibility::Visible, display.IconVisibility());
+            VERIFY_IS_TRUE(display.IconSource() == tab->TabViewItem().IconSource());
             VERIFY_ARE_EQUAL(0u, collectionChanges);
         });
     }
