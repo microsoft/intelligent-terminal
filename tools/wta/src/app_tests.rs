@@ -1940,7 +1940,41 @@ fn claude_permission_prompt_notification_still_sets_attention() {
     );
 }
 
-/// The filter is a denylist of one known-inert type, not an allowlist of known
+#[test]
+fn copilot_shell_completed_notification_leaves_activity_unchanged() {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+
+    for type_field in ["notificationType", "notification_type"] {
+        for status in [
+            None,
+            Some(AgentStatus::Idle),
+            Some(AgentStatus::Working),
+            Some(AgentStatus::Attention),
+        ] {
+            let facts = AgentEventFacts {
+                key: "copilot-sid".into(),
+                session_known: status.is_some(),
+                session_status: status,
+                pane_owned_by_other: false,
+            };
+            let mut payload = json!({ "message": "Background shell command completed" });
+            payload[type_field] = json!("shell_completed");
+            let plan = plan_agent_event(
+                "agent.notification",
+                &payload,
+                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                &CliSource::Copilot,
+                &facts,
+            );
+            assert!(
+                plan.events.is_empty(),
+                "shell_completed must not change activity or create a session"
+            );
+        }
+    }
+}
+
+/// The filter is a denylist of known-inert types, not an allowlist of known
 /// types: CLIs that send no `notification_type` at all (Copilot, Gemini,
 /// OpenCode) and any type Claude adds later must keep reaching Attention.
 /// Under-reporting silently loses an approval request; over-reporting only
@@ -1951,6 +1985,10 @@ fn notification_without_a_known_type_still_sets_attention() {
     for payload in [
         json!({ "message": "approve: rm -rf foo" }),
         json!({ "message": "something new", "notification_type": "some_future_prompt" }),
+        json!({ "message": "approve command", "notificationType": "permission_prompt" }),
+        json!({ "message": "answer question", "notificationType": "elicitation_dialog" }),
+        json!({ "message": "agent completed", "notificationType": "agent_completed" }),
+        json!({ "message": "detached shell completed", "notificationType": "shell_detached_completed" }),
     ] {
         let mut reg = AgentSessionRegistry::new();
         reg.apply(SessionEvent::SessionStarted {

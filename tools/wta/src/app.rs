@@ -502,6 +502,7 @@ pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
     "tool_input",
     "message",
     "notification_type",
+    "notificationType",
     "reason",
     "error",
     "pane_owner",
@@ -749,7 +750,14 @@ pub fn plan_agent_event(
                 .get("notification_type")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            if notification_type == "idle_prompt" {
+            let copilot_shell_completed =
+                matches!(cli_source, crate::agent_sessions::CliSource::Copilot)
+                    && payload
+                        .get("notificationType")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(notification_type)
+                        == "shell_completed";
+            if notification_type == "idle_prompt" || copilot_shell_completed {
                 plan.events.clear();
                 return plan;
             }

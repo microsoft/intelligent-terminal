@@ -188,6 +188,7 @@ namespace wtcli
         "tool_input",
         "message",
         "notification_type",
+        "notificationType",
         "reason",
         "error",
         "pane_owner",

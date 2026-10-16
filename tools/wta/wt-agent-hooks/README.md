@@ -187,6 +187,12 @@ error" — earlier wta builds shipped an undocumented `ErrorOccurred` name
 which is no longer used. Gemini's manifest has no native equivalents for
 the failure topics, so those rows are silent on Gemini.
 
+Copilot's `shell_completed` notification reports background command completion,
+not a request for input. WTA recognises both `notificationType` and
+`notification_type` for this notification and leaves the session status unchanged.
+It does not clear an existing approval/question wait or add approval-completion
+tracking; other notification and lifecycle behavior remains unchanged.
+
 Two topics keep a routing arm in `app.rs` that outlives their subscription in
 the Claude and Copilot bundles: `agent.subagent.stop`, which no shipped manifest
 claims at all, and `agent.tool.starting`, which Gemini still sends as
