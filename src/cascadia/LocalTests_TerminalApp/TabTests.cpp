@@ -14454,8 +14454,11 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::IndeterminateProgressRing>(ring);
             const auto previousClock = impl->_animation;
-            impl->_StopAnimation();
-            impl->_UpdateAnimation();
+            // Use the public ABI so the dependency-property callback runs in
+            // the control's module, not this test DLL's separate static DP.
+            ring.IsActive(false);
+            VERIFY_IS_NULL(impl->_animation);
+            ring.IsActive(true);
             VERIFY_IS_FALSE(previousClock == impl->_animation);
         });
         verifyClock(true);
