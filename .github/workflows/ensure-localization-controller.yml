@@ -410,7 +410,7 @@ jobs:
             const file = path.join(process.env.RUNNER_TEMP, 'localization-summary', 'localization-summary.md');
             const stat = fs.lstatSync(file);
             if (!stat.isFile() || stat.isSymbolicLink() || stat.size === 0 || stat.size > 64 * 1024) {
-              throw new Error('The agent-authored localization summary must be a non-empty regular Markdown file under 64 KiB.');
+              throw new Error('The agent-authored localization summary must be a non-empty regular Markdown file at most 64 KiB.');
             }
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, fs.readFileSync(file));
 
