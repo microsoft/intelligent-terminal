@@ -98,7 +98,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         } | ConvertTo-Json | Set-Content (Join-Path $script:evidence 'package.json')
 
         function Get-OwnedElements {
-            param([string]$Property, [string]$Value, $Parent)
+            param([string]$Property, $Value, $Parent)
             $before = [ordered]@{ utc = [DateTimeOffset]::UtcNow.ToString('o'); hwnd = $script:app.Hwnd
                 pid = $script:app.Pid; property = $Property; value = $Value }
             try {
@@ -366,7 +366,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         }
         function Get-LeadingSlot {
             param(
-                [ValidateSet('expanded', 'collapsed', 'horizontal')][string]$Surface,
+                [ValidateSet('expanded', 'collapsed', 'horizontal', 'compact')][string]$Surface,
                 [string]$Title = $script:titleA,
                 [int]$TabIndex = [int]$script:tab.tab_id
             )
@@ -400,17 +400,16 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                     Should -BeLessOrEqual $script:scale -Because 'the realized icon must be centered in its compact row'
             }
             else {
-                $titles = @(Get-OwnedElements Name $Title | Where-Object {
+                $tabs = @(Get-OwnedElements ControlType ([Windows.Automation.ControlType]::TabItem) | Where-Object {
+                    $_.Current.Name.StartsWith($Title)
+                })
+                $tabs | Should -HaveCount 1
+                $row = $tabs[0]
+                $walker = [Windows.Automation.TreeWalker]::RawViewWalker
+                $titles = @(Get-OwnedElements Name $Title -Parent $row | Where-Object {
                     $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text
                 })
-                $titles | Should -HaveCount 1
-                $row = $titles[0]
-                $walker = [Windows.Automation.TreeWalker]::RawViewWalker
-                while ($row -and $row.Current.ControlType -ne [Windows.Automation.ControlType]::TabItem) {
-                    $row = $walker.GetParent($row)
-                }
-                $row | Should -Not -BeNullOrEmpty
-                $titleBounds = $titles[0].Current.BoundingRectangle
+                $titleBounds = if ($titles.Count) { $titles[0].Current.BoundingRectangle } else { $null }
                 $bounds = $row.Current.BoundingRectangle
                 # Raw view includes decorative icon peers excluded from Control view.
                 $queue = [Collections.Generic.Queue[object]]::new()
@@ -422,7 +421,8 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                     $rect = $peer.Current.BoundingRectangle
                     if (-not $peer.Current.IsOffscreen -and $rect.Width -ge 15 * $script:scale -and
                         $rect.Width -le 17 * $script:scale -and $rect.Height -ge 15 * $script:scale -and
-                        $rect.Height -le 17 * $script:scale -and $rect.Right -le $titleBounds.Left + $script:scale -and
+                        $rect.Height -le 17 * $script:scale -and
+                        (-not $titleBounds -or $rect.Right -le $titleBounds.Left + $script:scale) -and
                         $bounds.Contains($rect)) { $candidates += $rect }
                     if ($entry.depth -lt 12) {
                         $child = $walker.GetFirstChild($peer)
@@ -440,7 +440,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             $texts = @(Get-OwnedElements Name $Title -Parent $row | Where-Object {
                 $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text
             })
-            $titleOffset = if ($Surface -eq 'collapsed') { $null } else {
+            $titleOffset = if ($Surface -eq 'collapsed' -or -not $texts.Count) { $null } else {
                 $texts | Should -HaveCount 1
                 $texts[0].Current.BoundingRectangle.X - $bounds.X
             }
@@ -830,6 +830,8 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         @{ Identity = 'provider'; Surface = 'expanded' }
         @{ Identity = 'provider'; Surface = 'collapsed' }
         @{ Identity = 'provider'; Surface = 'horizontal' }
+        @{ Identity = 'profile'; Surface = 'compact' }
+        @{ Identity = 'provider'; Surface = 'compact' }
     ) {
         param($Identity, $Surface)
         # ConPTY OSC -> tab/pane projection -> realized header, not just a bound IsActive value.
@@ -863,7 +865,11 @@ $endHook
                     (Get-ProfileIconDigest "$token-provider-baseline") -ne $script:profileIcon
                 } | Out-Null
             }
-            if ($Surface -eq 'horizontal') { Switch-ContextLayout horizontal }
+            if ($Surface -eq 'compact') {
+                Set-WtSetting -App $script:app -Key tabWidthMode -Value compact | Out-Null
+                Switch-ContextLayout horizontal
+            }
+            elseif ($Surface -eq 'horizontal') { Switch-ContextLayout horizontal }
             elseif ($Surface -eq 'collapsed') {
                 Invoke-UiElement -App $script:app -Selector 'Collapse sidebar' | Out-Null
                 Wait-Until -TimeoutSec 10 -Because 'the collapsed rail has removed pane rows and completed compact row layout' -Condition {
@@ -883,6 +889,18 @@ $endHook
                 Get-LeadingSlot $Surface -Title "$script:tabTitle-guard" -TabIndex 1
             }
             $controlIcon = Get-VisualDigest -Bounds $control.slot -Name "$token-control-baseline" -Icon
+            $compactBaseline = $null
+            if ($Surface -eq 'compact') {
+                Set-WtPaneFocus -App $script:app -SessionId (Get-WtPanes -App $script:app -TabId 1)[0].session_id
+                Wait-Until -TimeoutSec 10 -Because 'compact deselection hides the title, not its identity slot' -Condition {
+                    @(Get-OwnedElements Name $script:titleA -Parent $baseline.row | Where-Object {
+                        $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text
+                    }).Count -eq 0
+                } | Out-Null
+                $compactBaseline = Get-LeadingSlot compact
+                $compactIcon = Get-VisualDigest -Bounds $compactBaseline.slot -Name "$token-compact-baseline" -Icon
+                Set-WtPaneFocus -App $script:app -SessionId $script:a.session_id
+            }
             [IO.File]::WriteAllText($start, 'start')
             Wait-Until -TimeoutSec 10 -Because 'the emitting pane projects exactly one visible spinner in its owning row/header' -Condition {
                 @(Get-RowProgress $baseline.row).Count -eq 1
@@ -912,14 +930,43 @@ $endHook
                 Get-ProfileIconDigest "$token-sibling-progress" $script:titleB | Should -Be $script:siblingIcon
             }
             if ($Identity -eq 'provider') { Assert-NativeStatus $sid Working }
+            if ($Surface -eq 'compact') {
+                Set-WtPaneFocus -App $script:app -SessionId (Get-WtPanes -App $script:app -TabId 1)[0].session_id
+                Wait-Until -TimeoutSec 10 -Because 'the sibling selection enters the native Compact hidden-header state' -Condition {
+                    @(Get-OwnedElements Name $script:titleA -Parent $baseline.row | Where-Object {
+                        $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text
+                    }).Count -eq 0
+                } | Out-Null
+                Save-LeadingSlotTree $compactBaseline "$token-compact-unselected"
+                Save-CompositorFrame "$token-compact-unselected-before-assert"
+                Wait-Until -TimeoutSec 10 -Because 'unselected Compact tab retains exactly one visible replacement spinner' -Condition {
+                    @(Get-RowProgress $baseline.row).Count -eq 1 -and
+                    @(Get-OwnedElements Name $script:titleA -Parent $baseline.row | Where-Object {
+                        $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text
+                    }).Count -eq 0
+                } | Out-Null
+                $unselectedRing = @(Get-RowProgress $baseline.row)[0].Current.BoundingRectangle
+                Assert-ProgressIconSlotGeometry -IconBounds $compactBaseline.slot -ProgressBounds $unselectedRing -Scale $script:scale
+                @(Get-LeadingIdentityPeers $baseline.row $compactBaseline.slot) | Should -HaveCount 0
+                Save-CompositorFrame "$token-compact-unselected-progress"
+            }
             [IO.File]::WriteAllText($clear, 'clear')
             Wait-Until -TimeoutSec 10 -Because 'OSC clear removes the spinner without ending the agent session' -Condition {
                 @(Get-RowProgress $baseline.row).Count -eq 0
             } | Out-Null
             Wait-Until -TimeoutSec 10 -Because 'clear restores the identical profile/provider raster in the same slot' -Condition {
-                (Get-VisualDigest -Bounds $baseline.slot -Name "$token-restored" -Icon) -eq $icon
+                $restoredSlot = if ($compactBaseline) { (Get-LeadingSlot compact).slot } else { $baseline.slot }
+                $expectedIcon = if ($compactBaseline) { $compactIcon } else { $icon }
+                (Get-VisualDigest -Bounds $restoredSlot -Name "$token-restored" -Icon) -eq $expectedIcon
             } | Out-Null
             Save-CompositorFrame "$token-$Surface-restored-window"
+            if ($Surface -eq 'compact') {
+                (Get-ActivePane -App $script:app).session_id | Should -Not -Be $script:a.session_id
+                Set-WtPaneFocus -App $script:app -SessionId $script:a.session_id
+                Wait-Until -TimeoutSec 10 -Because 'reselecting after clear restores selected identity without a second icon' -Condition {
+                    (Get-VisualDigest -Bounds (Get-LeadingSlot compact).slot -Name "$token-reselected" -Icon) -eq $icon
+                } | Out-Null
+            }
             if ($Identity -eq 'provider') { Assert-NativeStatus $sid Working }
             @((Get-WtPanes -App $script:app -TabId $script:tab.tab_id).session_id | Sort-Object) |
                 Should -Be @(@($script:a.session_id, $script:b.session_id) | Sort-Object)
@@ -940,7 +987,11 @@ $endHook
             } | Out-Null
             if ($Identity -eq 'provider') { Assert-NativeStatus $sid Ended }
             if ($Surface -eq 'collapsed') { Invoke-UiElement -App $script:app -Selector 'Expand sidebar' | Out-Null }
-            if ($Surface -eq 'horizontal') { Switch-ContextLayout vertical }
+            if ($Surface -in @('horizontal', 'compact')) {
+                Set-WtPaneFocus -App $script:app -SessionId $script:a.session_id
+                Switch-ContextLayout vertical
+            }
+            if ($Surface -eq 'compact') { Set-WtSetting -App $script:app -Key tabWidthMode -Value equal | Out-Null }
             Wait-UiElement -App $script:app -Selector PaneActivateButton | Out-Null
             Wait-Until -TimeoutSec 10 -Because 'native Ended has propagated to the realized profile icon, not only the session registry' -Condition {
                 (Get-ProfileIconDigest "$token-final-profile") -eq $script:profileIcon

@@ -16,6 +16,14 @@ namespace winrt::TerminalApp::implementation
     {
         Presentation(winrt::make<TabHeaderPresentation>());
         InitializeComponent();
+        _progressRingPresenter = HeaderProgressRingPresenter();
+
+        Loaded([weakThis = get_weak()](auto&&, auto&&) {
+            if (const auto self = weakThis.get())
+            {
+                self->_AttachProgressToNativeIconSlot();
+            }
+        });
 
         const auto keepRunningIcon = HeaderKeepRunningIcon();
         const auto keepRunningName = RS_(L"HeadlessModeOnName");
@@ -67,6 +75,62 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
+    }
+
+    void TabHeaderControl::_AttachProgressToNativeIconSlot()
+    {
+        // WinUI Compact hides the unselected tab's entire header. Move this
+        // header's existing progress presenter into the native leading icon
+        // slot instead; never share a UIElement between two visual parents.
+        using namespace Windows::UI::Xaml;
+        using namespace Windows::UI::Xaml::Controls;
+        Microsoft::UI::Xaml::Controls::TabViewItem tab{ nullptr };
+        for (DependencyObject parent = HeaderLayout(); parent; parent = Media::VisualTreeHelper::GetParent(parent))
+        {
+            if ((tab = parent.try_as<Microsoft::UI::Xaml::Controls::TabViewItem>()))
+            {
+                break;
+            }
+        }
+        if (!tab || Media::VisualTreeHelper::GetChildrenCount(tab) == 0)
+        {
+            return; // Sidebar headers have their own descriptor-owned slot.
+        }
+        const auto root = Media::VisualTreeHelper::GetChild(tab, 0).as<FrameworkElement>();
+        const auto box = root.FindName(L"IconBox").try_as<Viewbox>();
+        const auto icon = root.FindName(L"IconControl").try_as<ContentControl>();
+        if (!box || !icon)
+        {
+            return;
+        }
+        const auto progress = _progressRingPresenter;
+        const auto previousProgressParent = Media::VisualTreeHelper::GetParent(progress);
+        if (previousProgressParent == box.Child() && Media::VisualTreeHelper::GetParent(icon) == box.Child())
+        {
+            return; // Already installed for this template instance.
+        }
+        uint32_t index{};
+        if (const auto previous = previousProgressParent.try_as<Panel>();
+            previous && previous.Children().IndexOf(progress, index))
+        {
+            previous.Children().RemoveAt(index);
+        }
+        // A fresh header may replace a previous header without replacing the
+        // TabViewItem template. Detach the original native icon before replacing
+        // the old slot, which also releases its old header's presenter.
+        if (const auto previous = Media::VisualTreeHelper::GetParent(icon).try_as<Panel>();
+            previous && previous.Children().IndexOf(icon, index))
+        {
+            previous.Children().RemoveAt(index);
+        }
+        box.Child(nullptr);
+        Grid slot;
+        slot.Children().Append(icon);
+        slot.Children().Append(progress);
+        box.Child(slot);
+        icon.Visibility(TabStatus() && TabStatus().IsProgressRingActive() ?
+                            Windows::UI::Xaml::Visibility::Collapsed :
+                            Windows::UI::Xaml::Visibility::Visible);
     }
 
     void TabHeaderControl::Presentation(const TerminalApp::TabHeaderPresentation& value)

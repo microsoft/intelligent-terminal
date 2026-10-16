@@ -529,12 +529,21 @@ namespace winrt::TerminalApp::implementation
 
     void Tab::_UpdateIconVisibility()
     {
-        // Sidebar retains the current identity while its leading slot shows
-        // progress. The native TabView owns a separate icon beside its header,
-        // so suppress that icon while the header presents progress instead.
+        // Retain identity independently of progress. Horizontal progress uses
+        // the native icon slot, which survives Compact's hidden header. An empty
+        // native source keeps that slot enabled without painting an identity;
+        // the Sidebar descriptor never receives this presentation-only source.
         const auto source = _iconHidden ? IconSource{ nullptr } : _iconSource;
         _headerControl.Presentation().IconSource(source);
-        TabViewItem().IconSource(_tabStatus.IsProgressRingActive() ? IconSource{ nullptr } : source);
+        TabViewItem().IconSource(_tabStatus.IsProgressRingActive() ? _progressIconSource : source);
+        if (Media::VisualTreeHelper::GetChildrenCount(TabViewItem()) > 0)
+        {
+            const auto root = Media::VisualTreeHelper::GetChild(TabViewItem(), 0).as<FrameworkElement>();
+            if (const auto icon = root.FindName(L"IconControl").try_as<WUX::Controls::ContentControl>())
+            {
+                icon.Visibility(_tabStatus.IsProgressRingActive() ? Visibility::Collapsed : Visibility::Visible);
+            }
+        }
     }
 
     // Method Description:

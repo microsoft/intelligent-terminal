@@ -38,7 +38,6 @@
                   Visibility="{x:Bind ShowProgressRing, Mode=OneWay}">
                 <Grid Width="{ThemeResource TabViewItemHeaderIconSize}"
                       Height="{ThemeResource TabViewItemHeaderIconSize}"
-                      Margin="{ThemeResource TabViewItemHeaderIconMargin}"
                       Visibility="{x:Bind TabStatus.IsProgressRingActive, Mode=OneWay}">
                     <mux:ProgressRing x:Name="HeaderProgressRing"
                                       Width="15"

@@ -813,10 +813,18 @@ namespace winrt::TerminalApp::implementation
         display.Presentation().Title(title);
         if (useNativeIconSource)
         {
-            // Progress suppresses the native TabView icon, not the retained
-            // profile/provider identity used by the Sidebar's leading slot.
+            // A real Tab's retained identity can intentionally be null. Never
+            // promote its empty native progress-slot source into Sidebar identity.
             const auto retainedSource = display.Presentation().IconSource().try_as<MUX::Controls::IconSource>();
-            const auto source = retainedSource ? retainedSource : display.Tab().IconSource();
+            auto source = retainedSource ? retainedSource : display.Tab().IconSource();
+            if (!retainedSource)
+            {
+                if (const auto placeholder = source.try_as<MUX::Controls::FontIconSource>();
+                    placeholder && placeholder.Glyph().empty())
+                {
+                    source = nullptr;
+                }
+            }
             if (source)
             {
                 winrt::get_self<TabStripDisplayItem>(display)->SyncIcon(iconPath, source);
