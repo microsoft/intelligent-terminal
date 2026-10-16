@@ -1190,6 +1190,46 @@ class ValidationTests(unittest.TestCase):
         MODULE.prepare(self.root, self.head, head, self.workspace / "source-only.json")
         self.assertTrue((self.workspace / "source-only.json").exists())
 
+    def test_spelling_wordlists_do_not_block_preparation(self):
+        for relative in (".github/actions/spelling/allow/allow.txt",
+                         ".github/actions/spelling/expect/expect.txt"):
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("Antigravity\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "Update spelling wordlists"], cwd=self.root, check=True)
+        head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        output = self.workspace / "wordlists.json"
+        MODULE.prepare(self.root, self.head, head, output)
+        prepared = json.loads(output.read_text())
+        self.assertFalse(prepared["relevant"])
+        self.assertEqual([], prepared["changed_files"])
+
+    def test_spelling_wordlists_do_not_hide_changed_ui(self):
+        wordlist = self.root / ".github/actions/spelling/allow/allow.txt"
+        wordlist.parent.mkdir(parents=True)
+        wordlist.write_text("Antigravity\n", encoding="utf-8")
+        source = "src/cascadia/TerminalApp/Test.xaml"
+        (self.root / source).write_text('<Button Content="Changed" />\n', encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "Update UI and spelling"], cwd=self.root, check=True)
+        head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        output = self.workspace / "ui-and-wordlist.json"
+        MODULE.prepare(self.root, self.head, head, output)
+        self.assertEqual([source], json.loads(output.read_text())["changed_files"])
+
+    def test_spelling_workflow_and_instructions_remain_blocked(self):
+        for relative in (".github/actions/spelling/action.yml",
+                         ".github/actions/spelling/allow/AGENTS.md"):
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("PR-controlled operating configuration\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+            subprocess.run(["git", "commit", "-qm", "Change spelling operating code"], cwd=self.root, check=True)
+            head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+            with self.assertRaisesRegex(ValueError, re.escape(relative)):
+                MODULE.prepare(self.root, self.head, head, self.workspace / "blocked-spelling.json")
+
     def test_git_replacement_refs_do_not_change_reviewed_blobs(self):
         path = self.root / "src/cascadia/TerminalApp/Test.xaml"
         path.write_text('<Button Content="Forged" />\n', encoding="utf-8")
@@ -1374,10 +1414,10 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("/tmp/gh-aw/accessibility/final.json", upload)
         self.assertIn("/tmp/gh-aw/accessibility/summary.md", upload)
 
-    def test_skill_is_staged_from_trusted_base_before_head_checkout(self):
+    def test_skill_is_staged_from_workflow_revision_before_head_checkout(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        stage = workflow.index('git show "$BASE_SHA:.github/skills/pr-accessibility/SKILL.md"')
+        stage = workflow.index('git show "$WORKFLOW_SHA:.github/skills/pr-accessibility/SKILL.md"')
         checkout = workflow.index('git checkout -B "$HEAD_REF" "$HEAD_SHA"')
         self.assertLess(stage, checkout)
         self.assertRegex(workflow, r"follow the\s+staged skill")
@@ -1385,6 +1425,16 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("--no-replace-objects", workflow)
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
         self.assertIn('--mount "${RUNNER_TEMP}/gh-aw:${RUNNER_TEMP}/gh-aw:ro"', compiled)
+
+    def test_trusted_source_is_not_the_stale_pr_event_base(self):
+        root = Path(__file__).parents[4]
+        for name in ("ghaw-pr-accessibility.md", "ghaw-pr-accessibility.lock.yml"):
+            workflow = (root / ".github/workflows" / name).read_text(encoding="utf-8")
+            self.assertIn("ref: ${{ github.workflow_sha }}", workflow)
+            self.assertIn("trusted-sha: ${{ github.workflow_sha }}", workflow)
+            self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", workflow)
+            self.assertIn('--base "$WORKFLOW_SHA"', workflow.replace('\\"', '"'))
+            self.assertNotIn("${{ github.event.pull_request.base.sha }}", workflow)
 
     def test_preparation_preserves_named_pr_branch_for_transport(self):
         root = Path(__file__).parents[4]
