@@ -196,6 +196,7 @@ cmw
 CNL
 cnn
 Codeflow
+CODEOWNERS
 codepages
 coinit
 colorizing
@@ -677,6 +678,7 @@ GETWHEELSCROLLCHARS
 GETWHEELSCROLLLINES
 gfx
 GGI
+ghaw
 GHgh
 GHIJK
 GHIJKL
