@@ -13830,8 +13830,10 @@ async fn sidebar_history_startup_retry_recovers_without_respawning_healthy_agent
                 publish_history_sync_status(&state).await;
                 assert_eq!(
                     state.history_status.borrow().status,
-                    HistoryLoadStatus::Error
+                    HistoryLoadStatus::Ready,
+                    "one healthy agent keeps initialization failures out of the sidebar UX"
                 );
+                assert!(!state.history_discovery_errors.lock().await.is_empty());
                 assert_eq!(state.agents.lock().await.len(), 1);
                 let snapshot = handle_sessions_list(&state, None, &Default::default())
                     .await
@@ -16543,10 +16545,11 @@ async fn history_refresh_timeout_kind_distinguishes_mixed_failures_and_recovery(
                 .lock()
                 .await
                 .remove("initialization");
-            assert!(publish_history_sync_status(&state).await);
+            assert!(!publish_history_sync_status(&state).await);
             assert_eq!(
-                state.history_status.borrow().error_kind,
-                Some(HistoryErrorKind::Timeout)
+                *state.history_status.borrow(),
+                HistoryLoadStatus::Ready.into(),
+                "a successful empty listing suppresses the other agent's timeout"
             );
 
             let refresh =
@@ -16566,6 +16569,127 @@ async fn history_refresh_timeout_kind_distinguishes_mixed_failures_and_recovery(
             );
             assert!(state.history_discovery_errors.lock().await.is_empty());
             assert_eq!(state.registry.snapshot().await, [retained]);
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn history_refresh_reports_errors_only_when_all_agents_fail() {
+    use crate::session_registry::HistoryLoadStatus;
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for rows in [
+                Vec::new(),
+                vec![history_row("available", "Available session")],
+            ] {
+                let state = make_state();
+                state
+                    .history_status
+                    .send_replace(HistoryLoadStatus::Ready.into());
+                let (failed, mut failed_requests) =
+                    controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+                let (healthy, mut healthy_requests) = controlled_history_agent(
+                    "claude",
+                    crate::agent_source::AgentSource::Wsl {
+                        distro: "Ubuntu".into(),
+                    },
+                );
+                add_test_agent_to_pool(&state, &failed).await;
+                add_test_agent_to_pool(&state, &healthy).await;
+
+                let refresh =
+                    refresh_agent_history(&state, &failed, HistoryRefreshTrigger::Immediate);
+                let reply = async {
+                    failed_requests
+                        .recv()
+                        .await
+                        .unwrap()
+                        .send(Err(acp::Error::internal_error()))
+                        .unwrap();
+                };
+                assert!(tokio::join!(refresh, reply).0.is_none());
+                assert_eq!(
+                    state.history_status.borrow().status,
+                    HistoryLoadStatus::Error,
+                    "an initialized agent that has never listed sessions is not a success"
+                );
+
+                let (notifications, mut changes) = mpsc::unbounded_channel();
+                state
+                    .helper_ext_subscribers
+                    .lock()
+                    .await
+                    .insert(HelperId(1), notifications);
+                let refresh =
+                    refresh_agent_history(&state, &healthy, HistoryRefreshTrigger::Immediate);
+                let reply = async {
+                    healthy_requests
+                        .recv()
+                        .await
+                        .unwrap()
+                        .send(Ok(rows.clone()))
+                        .unwrap();
+                };
+                assert_eq!(tokio::join!(refresh, reply).0, Some(rows.len()));
+                assert!(changes.try_recv().is_ok());
+                assert_eq!(
+                    *failed.history_refresh.failure.lock().await,
+                    Some(HistoryRefreshFailure::Other),
+                    "partial failures must remain available for retry and diagnostics"
+                );
+                let response = handle_sessions_list(&state, None, &Default::default())
+                    .await
+                    .unwrap();
+                let snapshot =
+                    crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
+                assert_eq!(snapshot.history_status, Some(HistoryLoadStatus::Ready));
+                assert_eq!(snapshot.history_error_kind, None);
+                assert_eq!(snapshot.sessions.len(), rows.len());
+
+                tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+                let refresh =
+                    refresh_agent_history(&state, &healthy, HistoryRefreshTrigger::Immediate);
+                let reply = async {
+                    healthy_requests
+                        .recv()
+                        .await
+                        .unwrap()
+                        .send(Err(acp::Error::internal_error()))
+                        .unwrap();
+                };
+                assert!(tokio::join!(refresh, reply).0.is_none());
+                assert_eq!(
+                    state.history_status.borrow().status,
+                    HistoryLoadStatus::Error,
+                    "cached rows must not hide a failure from every agent's latest listing"
+                );
+                assert_eq!(state.registry.snapshot().await.len(), rows.len());
+
+                tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+                let refresh =
+                    refresh_agent_history(&state, &healthy, HistoryRefreshTrigger::Immediate);
+                let reply = async {
+                    healthy_requests
+                        .recv()
+                        .await
+                        .unwrap()
+                        .send(Ok(Vec::new()))
+                        .unwrap();
+                };
+                assert_eq!(tokio::join!(refresh, reply).0, Some(0));
+                assert_eq!(
+                    state.history_status.borrow().status,
+                    HistoryLoadStatus::Ready,
+                    "a single recovered agent clears the overall error, even with no sessions"
+                );
+                retire_agent_history(&healthy).await;
+                assert!(publish_history_sync_status(&state).await);
+                assert_eq!(
+                    state.history_status.borrow().status,
+                    HistoryLoadStatus::Error,
+                    "a retired agent's earlier success cannot suppress current failures"
+                );
+            }
         })
         .await;
 }

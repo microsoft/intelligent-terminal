@@ -7602,6 +7602,8 @@ async fn update_history_sync_status(state: &MasterStateInner) -> bool {
 }
 
 async fn publish_history_sync_status(state: &MasterStateInner) -> bool {
+    use std::sync::atomic::Ordering;
+
     let _publication = state.history_status_gate.lock().await;
     let mut failures: Vec<_> = state
         .history_discovery_errors
@@ -7617,18 +7619,28 @@ async fn publish_history_sync_status(state: &MasterStateInner) -> bool {
         .values()
         .filter_map(|cell| cell.get().cloned())
         .collect();
+    let mut has_successful_agent = false;
     for agent in agents {
         if let Some(failure) = *agent.history_refresh.failure.lock().await {
             failures.push(failure);
+        } else if !agent.history_refresh.retired.load(Ordering::Acquire)
+            && agent.history_refresh.generation.load(Ordering::Acquire) != 0
+        {
+            // Initialization alone is not a successful listing, but an empty
+            // session/list response is sufficient to keep the sidebar usable.
+            has_successful_agent = true;
         }
     }
-    let status = history_sync_status(&failures);
+    let status = history_sync_status(&failures, has_successful_agent);
     state.history_status.send_replace(status) != status
 }
 
-fn history_sync_status(failures: &[HistoryRefreshFailure]) -> HistorySyncStatus {
+fn history_sync_status(
+    failures: &[HistoryRefreshFailure],
+    has_successful_agent: bool,
+) -> HistorySyncStatus {
     use crate::session_registry::{HistoryErrorKind, HistoryLoadStatus};
-    if failures.is_empty() {
+    if failures.is_empty() || has_successful_agent {
         return HistoryLoadStatus::Ready.into();
     }
     HistorySyncStatus {
