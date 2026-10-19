@@ -39,11 +39,11 @@ jobs:
       patch_sha256: ${{ steps.canonical.outputs.patch_sha256 }}
       detector_attested: ${{ steps.canonical.outputs.detector_attested }}
     steps:
-      - name: Checkout trusted base
+      - name: Checkout trusted workflow revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.repository }}
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -263,11 +263,11 @@ jobs:
       contents: write
       pull-requests: read
     steps:
-      - name: Checkout trusted base only
+      - name: Checkout trusted workflow revision for publication
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ${{ github.repository }}
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: Download canonical handoff from this controller run
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -346,7 +346,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ${{ github.repository }}
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: Download canonical handoff from this controller run
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c

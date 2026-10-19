@@ -29,6 +29,10 @@ better vulnerability detection.
 
 1. The trusted controller binds PR identity, trusted workflow revision,
    comparison merge-base, immutable head, repository relation, and scope hash.
+   Scope resolution, repair publication and reporting load their own code from
+   GitHub's automatic `github.workflow_sha`, never the PR's potentially older
+   base. The recorded PR base/head still govern comparison and live identity;
+   no commit ID is hardcoded.
    Forks receive read-only guidance; only authorized same-repository WTA-source
    scopes may enter repair.
 2. The primary reads every immutable changed hunk, traces relevant base/head
