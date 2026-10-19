@@ -655,7 +655,7 @@
                                           RightTapped="OnPaneRightTapped">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="28" />
+                                            <ColumnDefinition Width="30" />
                                         </Grid.ColumnDefinitions>
                                         <Border x:Name="PaneActiveBackground"
                                                 Grid.ColumnSpan="2"
@@ -686,7 +686,7 @@
                                                 <SolidColorBrush x:Key="ButtonBackgroundPressed"
                                                                  Color="Transparent" />
                                             </Button.Resources>
-                                            <Grid Margin="0,0,28,0">
+                                            <Grid Margin="0,0,30,0">
                                                 <Grid.RowDefinitions>
                                                     <RowDefinition Height="Auto" />
                                                     <RowDefinition Height="Auto" />
