@@ -57,7 +57,9 @@ test('live PR verification binds immutable head, base, repository and branch ide
 
 function fixture(t) {
     const previous = process.cwd();
-    const root = fs.mkdtempSync(path.join(previous, '.performance-commits-'));
+    const generated = path.join(previous, 'Generated Files');
+    fs.mkdirSync(generated, { recursive: true });
+    const root = fs.mkdtempSync(path.join(generated, 'performance-commits-'));
     process.chdir(root);
     t.after(() => { process.chdir(previous); fs.rmSync(root, { recursive: true, force: true }); });
     const git = args => execFileSync('git', args, { encoding: 'utf8', timeout: 15000 }).trim();
@@ -295,7 +297,9 @@ test('proposal rejects unrelated files and uncommitted source changes', t => {
 });
 
 test('summary transport preserves agent Markdown and bounds UTF-8 and escaped size', t => {
-    const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-summary-'));
+    const generated = path.join(process.cwd(), 'Generated Files');
+    fs.mkdirSync(generated, { recursive: true });
+    const root = fs.mkdtempSync(path.join(generated, 'performance-summary-'));
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     const file = path.join(root, '.performance-summary.md');
     const summary = '| Severity | Commit |\n| HIGH | [abc](/commit/abc) |\n\nProposed fixes committed without build/test.\n';

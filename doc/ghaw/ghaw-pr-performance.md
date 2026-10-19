@@ -51,8 +51,10 @@ as verified or tested fixes.
 
 ## Workflow
 
-1. The controller fetches the immutable PR head, resolves the merge base and
-   skips agent execution when no performance-sensitive source changed.
+1. The controller loads its scripts from GitHub's automatic `github.workflow_sha`
+   revision, independently of the PR's age. It fetches the immutable PR head,
+   resolves the merge base from the PR's recorded base and skips agent execution
+   when no performance-sensitive source changed. No commit ID is hardcoded.
 2. The repair worker inspects source and callers, creates a separate local
    commit for each eligible HIGH finding, then writes the shared summary
    template with those commit links. No eligible fix means `noop`.
