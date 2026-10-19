@@ -171,9 +171,9 @@ export function verifyProposalTransport(expected, output, resolveTransportPaths,
     return tip;
 }
 
-export function readReviewSummary(root) {
-    const directory = path.resolve(root);
-    const filename = path.join(directory, '.performance-summary.md');
+export function readReviewSummary(file) {
+    const filename = path.resolve(file);
+    const directory = path.dirname(filename);
     for (const item of [directory, filename]) {
         if (fs.lstatSync(item).isSymbolicLink() ||
             fs.realpathSync(item).toLowerCase() !== item.toLowerCase())

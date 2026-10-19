@@ -234,7 +234,7 @@ jobs:
                   "--dir", directory], {
                     env: process.env, timeout: 30000, stdio: "pipe"
                   });
-                reviewSummary = readReviewSummary(directory);
+                reviewSummary = readReviewSummary(path.join(directory, ".performance-summary.md"));
                 const recordedHead = fs.readFileSync(path.join(directory, "review-head.txt"), "utf8").trim();
                 if (!/^[0-9a-f]{40}$/.test(recordedHead)) throw new Error("Worker report head is malformed.");
                 if (process.env.RUN_OUTCOME === "success") head = recordedHead;

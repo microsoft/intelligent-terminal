@@ -304,15 +304,15 @@ test('summary transport preserves agent Markdown and bounds UTF-8 and escaped si
     const file = path.join(root, '.performance-summary.md');
     const summary = '| Severity | Commit |\n| HIGH | [abc](/commit/abc) |\n\nProposed fixes committed without build/test.\n';
     fs.writeFileSync(file, summary);
-    assert.equal(readReviewSummary(root), summary);
+    assert.equal(readReviewSummary(file), summary);
     fs.writeFileSync(file, '@'.repeat(24 * 1024));
-    assert.equal(readReviewSummary(root).length, 24 * 1024);
+    assert.equal(readReviewSummary(file).length, 24 * 1024);
     fs.writeFileSync(file, '@'.repeat(24 * 1024 + 1));
-    assert.throws(() => readReviewSummary(root), /mention escaping/);
+    assert.throws(() => readReviewSummary(file), /mention escaping/);
     fs.writeFileSync(file, Buffer.from([0xff]));
-    assert.throws(() => readReviewSummary(root), /encoded data/);
+    assert.throws(() => readReviewSummary(file), /encoded data/);
     fs.writeFileSync(file, ' \t\r\n');
-    assert.throws(() => readReviewSummary(root), /non-whitespace/);
+    assert.throws(() => readReviewSummary(file), /non-whitespace/);
 });
 
 test('canceling proposal commits cannot hide an oversized published rewrite', t => {

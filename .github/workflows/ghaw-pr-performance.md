@@ -172,7 +172,7 @@ post-steps:
       import path from 'node:path';
       import { pathToFileURL } from 'node:url';
       const { readReviewSummary } = await import(pathToFileURL(process.env.RUNTIME).href);
-      fs.writeFileSync(path.join(process.env.OUTPUT, '.performance-summary.md'), readReviewSummary(process.cwd()));
+      fs.writeFileSync(path.join(process.env.OUTPUT, '.performance-summary.md'), readReviewSummary('/tmp/gh-aw/agent/performance-summary.md'));
       NODE
   - name: Upload agent-written summary
     if: always()
@@ -216,11 +216,16 @@ Do not combine findings, rebase, merge, amend or add unrelated cleanup. Preserve
 existing inline tests byte-for-byte. The aggregate proposal limit is three files,
 100 added-plus-deleted lines and 16 KiB of zero-context diff.
 
-After all commits, write `.performance-summary.md` using the shared template.
+Always write `/tmp/gh-aw/agent/performance-summary.md` using the shared template,
+even when there are no findings or no eligible commits. This directory is
+pre-created by the framework. Use the existing file-write tool; do not create
+another directory or put the report in the repository root.
 Each fixed finding's Commit cell links its actual local SHA:
 `${{ github.server_url }}/${{ github.repository }}/commit/<sha>`.
 Include the single shared unbuilt/untested reviewer/rollback notice below the
 findings table. Do not claim a verified fix or fabricate build/test results.
+Finish this file before requesting either push or `noop`. A report in
+`noop.message` does not replace the required file.
 
 If commits exist, request exactly one `push_to_pull_request_branch` for this PR
 with branch `performance-proposal-${{ github.event.inputs.pr_number }}`;

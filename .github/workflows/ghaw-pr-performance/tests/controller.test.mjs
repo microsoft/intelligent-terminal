@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-controller.yml', import.meta.url), 'utf8');
@@ -60,6 +61,31 @@ test('controller loads its helper from the workflow revision when the PR base pr
     assert.equal(git(['rev-parse', 'HEAD']), trusted);
     assert.match(workflow, /BASE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
     assert.match(workflow, /HEAD_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/);
+});
+
+test('repair worker collects the agent-written report from its pre-created output directory', t => {
+    const worker = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
+    const block = worker.match(/RUNTIME=.*node --input-type=module <<'NODE'\r?\n([\s\S]*?)\r?\n      NODE/)?.[1];
+    assert.ok(block, 'actual report collection step exists');
+    const root = temporaryDirectory('performance-agent-summary-');
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const agent = path.join(root, 'agent');
+    const output = path.join(root, 'artifacts');
+    fs.mkdirSync(agent);
+    fs.mkdirSync(output);
+    const file = path.join(agent, 'performance-summary.md');
+    const markdown = '## Performance review\n\nNo actionable findings.\n\n| Check | Result |\n| --- | --- |\n| Source review | Completed |\n';
+    fs.writeFileSync(file, markdown);
+    const script = block.replace(/^ {6}/gm, '').replaceAll("'/tmp/gh-aw/agent/performance-summary.md'", JSON.stringify(file));
+    execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+        cwd: root, timeout: 15000,
+        env: { ...process.env, OUTPUT: output,
+            RUNTIME: fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url)) },
+    });
+    assert.equal(fs.readFileSync(path.join(output, '.performance-summary.md'), 'utf8'), markdown);
+    assert.match(worker, /Always write[\s\S]*?even when there are no findings or no eligible commits/);
+    assert.match(worker, /before requesting either[^]*?noop/);
+    assert.match(worker, /noop\.message[^]*?does not replace/);
 });
 
 async function reportRun(markdown, { currentHead = 'a'.repeat(40), recordedHead = 'a'.repeat(40),

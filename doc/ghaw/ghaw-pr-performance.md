@@ -57,7 +57,9 @@ as verified or tested fixes.
    when no performance-sensitive source changed. No commit ID is hardcoded.
 2. The repair worker inspects source and callers, creates a separate local
    commit for each eligible HIGH finding, then writes the shared summary
-   template with those commit links. No eligible fix means `noop`.
+   template with those commit links to the framework's pre-created
+   `/tmp/gh-aw/agent/performance-summary.md`. The file is required even with no
+   findings or no eligible fixes, before requesting `noop` or push.
 3. Trusted post-processing checks the actual captured bundle's commit range
    from the immutable reviewed head, not just the current checkout. Its tip
    must match the recorded proposal. Existing authored C++/Cargo/documentation
@@ -82,6 +84,9 @@ automatic issue creation.
 ## Reporting
 
 The controller updates only its own marked `github-actions[bot]` comment.
+The repair worker copies the agent-written file into its summary artifact;
+`noop.message` is not the report transport. No summary is generated or rewritten
+during collection. The fork worker retains its read-only summary-capture tool.
 Numeric run/attempt markers prevent an older rerun from replacing a newer
 report, including when duplicate marked comments exist: the greatest recorded
 run/attempt determines freshness and the update target. It checks the live head against the worker's recorded head before
