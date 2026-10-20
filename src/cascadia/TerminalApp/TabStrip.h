@@ -306,7 +306,6 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::DependencyObject ContainerFromIndex(int32_t index);
         void SetTabItemVisibility(winrt::Windows::Foundation::IInspectable const& item, bool visible);
         void SetTabItemVisibility(TerminalApp::TabStripDisplayItem const& display, bool visible);
-        void SetFilterStatus(uint32_t visibleTabCount, bool selectedTabVisible);
         void SetTabPresentation(winrt::Windows::Foundation::IInspectable const& item,
                                 winrt::hstring const& title,
                                 winrt::hstring const& iconPath);
@@ -459,8 +458,6 @@ namespace winrt::TerminalApp::implementation
         void OnRichTabMetadataFlyoutClosing(
             winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Windows::UI::Xaml::Controls::Primitives::FlyoutBaseClosingEventArgs const& e);
-        void OnShowAllTabsClick(winrt::Windows::Foundation::IInspectable const& sender,
-                                winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnSearchToggleClick(winrt::Windows::Foundation::IInspectable const& sender,
                                  winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnSearchPointerPressed(winrt::Windows::Foundation::IInspectable const& sender,

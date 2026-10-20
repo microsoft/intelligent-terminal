@@ -331,7 +331,6 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <Grid x:Name="TopChrome"
@@ -878,49 +877,5 @@
                 </ItemsPanelTemplate>
             </ListView.ItemsPanel>
         </ListView>
-
-        <Border x:Name="FilterStatusBar"
-                Grid.Row="5"
-                Height="32"
-                Padding="12,0,4,0"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="0,1,0,0"
-                Visibility="Collapsed">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="FilterStatusText"
-                           VerticalAlignment="Center"
-                           FontSize="11"
-                           Opacity="0.72"
-                           TextTrimming="CharacterEllipsis" />
-                <FontIcon x:Name="HiddenCurrentTabIndicator"
-                          x:Uid="VerticalTabsFilterCurrentHidden"
-                          Grid.Column="1"
-                          Margin="4,0"
-                          VerticalAlignment="Center"
-                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          FontSize="12"
-                          Glyph="&#xE7BA;"
-                          Visibility="Collapsed" />
-                <Button x:Uid="VerticalTabsFilterShowAll"
-                        Grid.Column="2"
-                        Width="28"
-                        Height="28"
-                        Padding="0"
-                        VerticalAlignment="Center"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Click="OnShowAllTabsClick">
-                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                              FontSize="10"
-                              Glyph="&#xE711;" />
-                </Button>
-            </Grid>
-        </Border>
-
     </Grid>
 </UserControl>

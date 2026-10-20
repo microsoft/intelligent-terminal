@@ -189,7 +189,6 @@ namespace TerminalApp
         // Mirrors TabView.ContainerFromIndex — used by tearoff drop-position math.
         Windows.UI.Xaml.DependencyObject ContainerFromIndex(Int32 index);
         void SetTabItemVisibility(Object item, Boolean visible);
-        void SetFilterStatus(UInt32 visibleTabCount, Boolean selectedTabVisible);
 
         Boolean CanReorderTabs;
         Boolean CanDragTabs;

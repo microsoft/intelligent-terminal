@@ -2133,7 +2133,6 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         _OnSelectionChangedCore();
-        _UpdateTabFilterStatus();
     }
 
     void TerminalPage::_ApplyTabListProjection(
@@ -2306,10 +2305,6 @@ namespace winrt::TerminalApp::implementation
             tabStrip->SetRepresentedHistorySessions(std::move(representedSessions));
         }
 
-        if (updateBookkeeping)
-        {
-            _UpdateTabFilterStatus(&list);
-        }
         const auto canDragDrop = CanDragDrop() &&
                                  !positionOperationsBlocked &&
                                  !_IsCollapsedVerticalRail();
@@ -2372,33 +2367,6 @@ namespace winrt::TerminalApp::implementation
         const auto owners = _BuildTabListSnapshot();
         const auto result = ::TerminalApp::TabListViewModel{ owners, criteria }.SwitchTarget(index, useFilterNavigation);
         return result ? std::optional{ result->target } : std::nullopt;
-    }
-
-    void TerminalPage::_UpdateTabFilterStatus(const ::TerminalApp::TabListViewModel* preparedList)
-    {
-        if (!_tabStrip || !_isVerticalLayout)
-        {
-            return;
-        }
-
-        const auto criteria = preparedList ? ::TerminalApp::TabListViewModel::Criteria{} : _ReadTabListCriteria();
-        const auto owners = preparedList ? std::vector<::TerminalApp::TabListViewModel::OwnerEntry>{} : _BuildTabListSnapshot();
-        const ::TerminalApp::TabListViewModel localList{ owners, criteria };
-        const auto& list = preparedList ? *preparedList : localList;
-        uint32_t visibleCount = 0;
-        bool selectedMatches = true;
-        const auto selected = _selectedTabItem();
-        for (const auto& tab : _tabs)
-        {
-            const auto state = list.StateFor(_GetTabImpl(tab).get());
-            const auto matches = state && state->navigationOrdinal.has_value();
-            visibleCount += matches ? 1u : 0u;
-            if (tab.TabViewItem() == selected)
-            {
-                selectedMatches = matches;
-            }
-        }
-        _tabStrip.SetFilterStatus(visibleCount, selectedMatches);
     }
 
     bool TerminalPage::_MatchesTabScope(const winrt::com_ptr<Tab>& tab) const
@@ -2531,7 +2499,6 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         _OnSelectionChangedCore();
-        _UpdateTabFilterStatus();
     }
 
     void TerminalPage::_OnSelectionChangedCore()

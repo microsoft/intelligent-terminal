@@ -536,6 +536,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabAgentStatusIgnoresAssistantFocus);
         TEST_METHOD(VerticalTabSearchUiState);
         TEST_METHOD(LiteralSearchHighlighting);
+        TEST_METHOD(VerticalTabAgentsOnlyHasNoStatusFooter);
         TEST_METHOD(VerticalTabStaticHeaderAndIndependentFilterMenu);
         TEST_METHOD(VerticalTabHistoryCloseStopsRefresh);
         TEST_METHOD(SessionHistoryFallbackFollowsLayout);
@@ -5912,7 +5913,6 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(tabStrip->SearchTabsButton().IsEnabled());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, tabStrip->FilterTabsButton().Visibility());
             VERIFY_IS_FALSE(tabStrip->FilterTabsButton().IsHitTestVisible());
-            VERIFY_IS_FALSE(tabStrip->FilterStatusBar().IsHitTestVisible());
             VERIFY_IS_FALSE(tabStrip->ItemsList().AllowDrop());
             VERIFY_IS_FALSE(tabStrip->ItemsList().CanDragItems());
             VERIFY_IS_FALSE(tabStrip->ItemsList().CanReorderItems());
@@ -5932,7 +5932,6 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(tabStrip->SearchTabsButton().IsHitTestVisible());
             VERIFY_ARE_EQUAL(Visibility::Visible, tabStrip->FilterTabsButton().Visibility());
             VERIFY_IS_TRUE(tabStrip->FilterTabsButton().IsHitTestVisible());
-            VERIFY_IS_TRUE(tabStrip->FilterStatusBar().IsHitTestVisible());
             VERIFY_IS_TRUE(tabStrip->ItemsList().AllowDrop());
             VERIFY_ARE_EQUAL(page->CanDragDrop(), tabStrip->ItemsList().CanDragItems());
             VERIFY_ARE_EQUAL(page->CanDragDrop(), tabStrip->ItemsList().CanReorderItems());
@@ -6703,7 +6702,6 @@ namespace TerminalAppLocalTests
             strip.Background(acrylic);
             VERIFY_IS_TRUE(strip.Background() == acrylic);
             VERIFY_IS_TRUE(strip.Content().as<Grid>().Background() == acrylic);
-            VERIFY_IS_NULL(stripImpl->FilterStatusBar().Background());
             VERIFY_IS_NULL(stripImpl->HistorySection());
 
             winrt::MUX::Controls::TabViewItem tab;
@@ -7543,6 +7541,38 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalTabAgentsOnlyHasNoStatusFooter()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto filters = strip.SidebarFilters();
+
+            strip.FilterMode(winrt::TerminalApp::TabStripFilterMode::AgentsOnly);
+            VERIFY_IS_TRUE(filters.ShowAgentsOnly());
+            VERIFY_IS_TRUE(filters.AgentsOnlyEffective());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->AgentsOnlyIndicator().Visibility());
+            VERIFY_IS_NULL(strip.FindName(L"FilterStatusBar"));
+            VERIFY_IS_NULL(strip.FindName(L"FilterStatusText"));
+            VERIFY_IS_NULL(strip.FindName(L"HiddenCurrentTabIndicator"));
+
+            strip.SearchActive(true);
+            strip.SearchQuery(L"agent query");
+            VERIFY_IS_TRUE(filters.ShowAgentsOnly());
+            VERIFY_IS_FALSE(filters.AgentsOnlyEffective());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->AgentsOnlyIndicator().Visibility());
+            VERIFY_IS_NULL(strip.FindName(L"FilterStatusBar"));
+
+            strip.SearchActive(false);
+            VERIFY_IS_TRUE(filters.AgentsOnlyEffective());
+            VERIFY_IS_NULL(strip.FindName(L"FilterStatusBar"));
+
+            strip.FilterMode(winrt::TerminalApp::TabStripFilterMode::AllTabs);
+            VERIFY_IS_FALSE(filters.ShowAgentsOnly());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->AgentsOnlyIndicator().Visibility());
+        });
+    }
+
     void TabTests::VerticalTabStaticHeaderAndIndependentFilterMenu()
     {
         HistoryTestView view;
@@ -7693,9 +7723,6 @@ namespace TerminalAppLocalTests
             strip.TabsVisible(true);
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistorySection().Visibility());
-            stripImpl->SetFilterStatus(1, true);
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->FilterStatusBar().Visibility());
-
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->TabsToolbar().Visibility());
         });
         view.Search(L"agent query");
