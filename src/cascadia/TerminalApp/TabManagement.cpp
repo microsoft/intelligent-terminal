@@ -2263,6 +2263,36 @@ namespace winrt::TerminalApp::implementation
                 if (const auto impl = _GetTabImpl(tab); impl && impl->GetRootPane())
                 {
                     impl->GetRootPane()->WalkTree([&](const auto& pane) {
+                        if (const auto control = pane->GetTerminalControl())
+                        {
+                            const auto canonical = _RichTabAgentInfoForControl(control);
+                            const auto connection = control.Connection();
+                            if (canonical && connection && !canonical->sessionId.empty() && !canonical->providerId.empty() &&
+                                canonical->paneSessionId == connection.SessionId() &&
+                                canonical->paneSessionId == pane->GetSessionId())
+                            {
+                                representedSessions.push_back({ winrt::to_hstring(canonical->sessionId),
+                                                                winrt::to_hstring(canonical->providerId),
+                                                                winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(connection.SessionId()) } });
+                                return;
+                            }
+                            if (canonical && connection && canonical->sessionId.empty() &&
+                                canonical->paneSessionId == connection.SessionId() &&
+                                canonical->paneSessionId == pane->GetSessionId() &&
+                                canonical->inferredHistoryKey.isObject())
+                            {
+                                const auto& key = canonical->inferredHistoryKey;
+                                const auto& location = key["location"];
+                                const auto host = location.isString() && location.asString() == "Host";
+                                representedSessions.push_back({ winrt::to_hstring(key["session_id"].asString()),
+                                                                winrt::to_hstring(key["provider_id"].asString()),
+                                                                winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(connection.SessionId()) },
+                                                                host ? L"host" : L"wsl",
+                                                                host ? winrt::hstring{} : winrt::to_hstring(location["Wsl"]["distro"].asString()),
+                                                                winrt::to_hstring(key.get("session_universe", "").asString()) });
+                                return;
+                            }
+                        }
                         if (const auto binding = _paneAgentSessions.find(pane->GetSessionId());
                             binding != _paneAgentSessions.end() && !binding->second.sessionId.empty())
                         {

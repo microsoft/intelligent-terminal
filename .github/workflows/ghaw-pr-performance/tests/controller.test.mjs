@@ -158,21 +158,56 @@ test('worker/controller source contains no build/test, proposal renderer or nati
     assert.match(workflow, /readReviewSummary/);
 });
 
-test('fork summary capture preserves Markdown and provides only the fixed reviewed head', async t => {
-    const worker = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-fork-guidance.md', import.meta.url), 'utf8');
-    const block = worker.match(/    script: \|\r?\n((?: {6}.*(?:\r?\n|$))+)/)?.[1];
-    assert.ok(block);
-    const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-fork-capture-'));
-    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-    const script = block.replace(/^ {6}/gm, '').replaceAll("'/tmp/gh-aw/.performance-summary.md'", JSON.stringify(path.join(root, '.performance-summary.md')))
-        .replaceAll("'/tmp/gh-aw/review-head.txt'", JSON.stringify(path.join(root, 'review-head.txt')));
-    const capture = new AsyncFunction('summaryMarkdown', 'process', script);
-    const markdown = '| HIGH | Manual handoff | None |\n';
-    await capture(markdown, { env: { HEAD_SHA: 'a'.repeat(40) } });
-    assert.equal(fs.readFileSync(path.join(root, '.performance-summary.md'), 'utf8'), markdown);
-    assert.equal(fs.readFileSync(path.join(root, 'review-head.txt'), 'utf8'), 'a'.repeat(40));
-    await assert.rejects(capture('@'.repeat(24 * 1024 + 1), { env: { HEAD_SHA: 'a'.repeat(40) } }), /artifact limits/);
-    assert.match(worker, /bash: false/);
-    assert.match(worker, /edit: false/);
-    assert.doesNotMatch(worker, /renderedCard|report_json|push-to-pull-request-branch:/);
+test('controller dispatches only the repair worker with immutable pull-request context and correlates its run', async () => {
+    const dispatch = new AsyncFunction('github', 'context', 'core', 'process', 'setTimeout',
+        extract('Dispatch and wait for isolated worker'));
+    const head = 'a'.repeat(40);
+    const base = 'b'.repeat(40);
+    const mergeBase = 'c'.repeat(40);
+    const dispatchId = `ghaw-pr-performance-42-${head}-100-2`;
+    const calls = [];
+    const outputs = {};
+    const run = { id: 101, display_title: `Performance repair ${dispatchId}`,
+        created_at: new Date().toISOString(), status: 'completed', conclusion: 'success',
+        html_url: 'https://github.com/owner/repo/actions/runs/101' };
+    const github = { rest: { actions: {
+        async createWorkflowDispatch(value) { calls.push(['dispatch', value]); },
+        async listWorkflowRuns(value) {
+            calls.push(['list', value]);
+            return { data: { workflow_runs: [
+                { ...run, id: 102, display_title: 'Unrelated repair' }, run,
+            ] } };
+        },
+        async getWorkflowRun(value) { assert.equal(value.run_id, 101); return { data: run }; },
+        listJobsForWorkflowRun: 'jobs',
+    } }, async paginate(method, value) {
+        assert.equal(method, 'jobs');
+        assert.equal(value.run_id, 101);
+        return [{ name: 'agent', conclusion: 'success',
+            steps: [{ name: 'Execute GitHub Copilot CLI', conclusion: 'success' }] }];
+    } };
+    await dispatch(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100,
+        payload: { pull_request: { number: 42 } } },
+    { setOutput(name, value) { outputs[name] = value; } },
+    { env: { GITHUB_RUN_ATTEMPT: '2', EXPECTED_HEAD_SHA: head, EXPECTED_BASE_SHA: base,
+        COMPARISON_BASE_SHA: mergeBase, HEAD_REF: 'feature', BASE_REF: 'main', HEAD_REPO: 'owner/repo' } },
+    callback => callback());
+    assert.deepEqual(calls.map(([method]) => method), ['dispatch', 'list']);
+    const inputs = calls[0][1].inputs;
+    for (const [, value] of calls) assert.equal(value.workflow_id, 'ghaw-pr-performance.lock.yml');
+    assert.equal(calls[0][1].ref, 'main');
+    assert.equal(calls[1][1].branch, 'main');
+    assert.equal(inputs.dispatch_id, dispatchId);
+    assert.equal(inputs.same_repo, 'true');
+    assert.equal(inputs.head_repo, 'owner/repo');
+    assert.equal(inputs.expected_head_sha, head);
+    assert.equal(inputs.expected_base_sha, base);
+    assert.equal(inputs.comparison_base_sha, mergeBase);
+    assert.deepEqual(JSON.parse(inputs.aw_context), {
+        run_id: '100', workflow_id: 'ghaw-pr-performance-controller',
+        item_type: 'pull_request', item_number: 42, repo: 'owner/repo',
+        event_type: 'pull_request', head_sha: head, base_sha: base, comparison_base_sha: mergeBase,
+    });
+    assert.equal(outputs.run_id, '101');
+    assert.equal(outputs.conclusion, 'success');
 });

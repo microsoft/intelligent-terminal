@@ -54,7 +54,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             nullptr,
             nullptr));
 
-        auto cmdline{ wil::ExpandEnvironmentStringsW<std::wstring>(_commandline.c_str()) }; // mutable copy -- required for CreateProcessW
+        std::wstring cmdline{ _commandline }; // mutable copy -- required for CreateProcessW
         auto environment = _initialEnv;
 
         {
@@ -308,6 +308,9 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             // It'll just return null
 
             _commandline = unbox_prop_or<winrt::hstring>(settings, L"commandline", _commandline);
+            // Capture the launch command once, just like the resolved launch cwd.
+            // Later settings or environment changes must not change its identity.
+            _commandline = winrt::hstring{ wil::ExpandEnvironmentStringsW<std::wstring>(_commandline.c_str()) };
             _startingDirectory = unbox_prop_or<winrt::hstring>(settings, L"startingDirectory", _startingDirectory);
             _startingTitle = unbox_prop_or<winrt::hstring>(settings, L"startingTitle", _startingTitle);
             _rows = unbox_prop_or<uint32_t>(settings, L"initialRows", _rows);
@@ -442,6 +445,11 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
     winrt::hstring ConptyConnection::Commandline() const
     {
         return _commandline;
+    }
+
+    winrt::hstring ConptyConnection::StartingDirectory() const
+    {
+        return _startingDirectory;
     }
 
     winrt::hstring ConptyConnection::StartingTitle() const

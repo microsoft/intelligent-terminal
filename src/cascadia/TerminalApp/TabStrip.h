@@ -365,6 +365,9 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring sessionId;
             winrt::hstring agentId;
             winrt::hstring paneSessionId;
+            winrt::hstring inferredAgentSource;
+            winrt::hstring inferredWslDistro;
+            winrt::hstring inferredSessionUniverse;
             bool operator==(const RepresentedHistorySession&) const = default;
         };
         void SetRepresentedHistorySessions(std::vector<RepresentedHistorySession> sessions);

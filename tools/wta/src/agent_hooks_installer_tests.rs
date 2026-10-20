@@ -1486,11 +1486,8 @@ const OPENCODE_RPC_JS_CONTENT: &str =
     include_str!("../wt-agent-hooks/opencode/wt-agent-hooks/rpc.js");
 const OPENCODE_PLUGIN_JSON: &str = include_str!("../wt-agent-hooks/opencode/plugin.json");
 
-/// Every manifest-driven CLI invokes the native wtcli bridge directly; no
-/// PowerShell script and no batch launcher sits in between anymore. Copilot
-/// additionally *names* a shell — its `powershell` / `bash` command fields —
-/// but that is a routing declaration, not a second process: the field value
-/// still runs `wtcli.exe` inside the shell the CLI already started.
+/// Every manifest-driven CLI invokes the native wtcli bridge without an
+/// intermediate script or batch launcher. Copilot also skips the hook shell.
 #[test]
 fn bundle_files_are_well_formed() {
     for hooks in [
@@ -1499,7 +1496,10 @@ fn bundle_files_are_well_formed() {
         GEMINI_HOOKS_JSON,
         CODEX_HOOKS_JSON,
     ] {
-        assert!(hooks.contains("wtcli.exe agent-hook"));
+        let doc: Value = serde_json::from_str(hooks).expect("valid hook JSON");
+        assert!(doc["hooks"].is_object());
+        assert!(hooks.contains("wtcli.exe"));
+        assert!(hooks.contains("agent-hook"));
         for banned in [
             "send-event.ps1",
             ".ps1",
@@ -1519,7 +1519,6 @@ fn bundle_files_are_well_formed() {
 #[test]
 fn bundle_hooks_thread_cli_source() {
     assert!(CLAUDE_HOOKS_JSON.contains("--cli-source claude"));
-    assert!(COPILOT_HOOKS_JSON.contains("--cli-source copilot"));
     assert!(GEMINI_HOOKS_JSON.contains("--cli-source gemini"));
     assert!(CODEX_HOOKS_JSON.contains("--cli-source codex"));
 
@@ -1548,7 +1547,7 @@ fn bundle_hooks_thread_cli_source() {
 /// might dispatch it through, and which shell that is has repeatedly turned out
 /// to be something we guessed wrong:
 ///
-/// * **Copilot** — PowerShell 7+, per GitHub's hooks documentation.
+/// * **Copilot** — no shell; its `exec` / `args` contract is checked separately.
 /// * **Codex** — hooks use the session's selected shell, which can be
 ///   PowerShell or cmd.exe on Windows. `commandWindows` does not select one.
 /// * **Gemini** — PowerShell; `hookRunner.ts` resolves ComSpec-powershell →
@@ -1562,10 +1561,7 @@ fn bundle_hooks_thread_cli_source() {
 /// bash's MSYS path conversion, which turns `/c` into a Windows path so
 /// `cmd.exe` starts interactively and never runs the bridge.
 ///
-/// This covers the `command` field, which is the spelling every CLI falls back
-/// to. Copilot layers documented `powershell` / `bash` fields on top of it —
-/// those are checked by `copilot_shell_variants_match_their_own_shell`, since
-/// each is dispatched only by the shell it names.
+/// This covers shell-based `command` fields, not Copilot's direct executable.
 /// Bundles whose `command` is deliberately written for one shell only, with the
 /// shell it targets. Claude declares this with a `shell` field; Codex uses
 /// `commandWindows` for both Windows shells and a POSIX `command` elsewhere. Gemini has no
@@ -1674,34 +1670,38 @@ fn hook_commands_are_shell_agnostic() {
     }
 }
 
-/// Copilot's `preToolUse` is fail-closed: a hook that exits non-zero denies
-/// every tool call for the rest of the session. A portable `command` cannot be
-/// guarded — no single spelling both runs everywhere and survives a missing
-/// bridge — so shipping one would leave an unguarded path that only has to be
-/// taken once to brick a session.
-///
-/// Measured on Copilot CLI 1.0.81-0: each of `powershell`, `bash` and `command`
-/// delivers events when it is the only field present, and a handler with none
-/// of them is a silent no-op that does NOT deny. So dropping `command` costs
-/// nothing today and degrades fail-open if the per-shell fields ever stop being
-/// honoured.
 #[test]
-fn copilot_ships_no_unguarded_fallback_command() {
+fn copilot_hooks_use_direct_exec_with_matching_event_args() {
     let doc: Value = serde_json::from_str(COPILOT_HOOKS_JSON).unwrap();
-    for matchers in doc["hooks"].as_object().unwrap().values() {
-        for matcher in matchers.as_array().unwrap() {
-            for hook in matcher["hooks"].as_array().unwrap() {
-                assert!(
-                    hook.get("command").is_none(),
-                    "copilot must not ship a bare `command`: {hook}"
+    let events = [
+        ("SessionStart", "agent.session.start"),
+        ("SessionEnd", "agent.session.end"),
+        ("Notification", "agent.notification"),
+        ("UserPromptSubmit", "agent.prompt.submit"),
+        ("PostToolUse", "agent.tool.finished"),
+        ("StopFailure", "agent.error"),
+        ("Stop", "agent.stop"),
+    ];
+    assert_eq!(doc["hooks"].as_object().unwrap().len(), events.len());
+    for (event, topic) in events {
+        let matchers = doc["hooks"][event].as_array().expect("lifecycle event");
+        assert!(!matchers.is_empty(), "{event} needs a hook matcher");
+        for matcher in matchers {
+            let hooks = matcher["hooks"].as_array().unwrap();
+            assert!(!hooks.is_empty(), "{event} needs a hook handler");
+            for hook in hooks {
+                assert_eq!(hook["type"], "command");
+                assert_eq!(hook["exec"], "wtcli.exe");
+                assert_eq!(
+                    hook["args"],
+                    serde_json::json!(["agent-hook", "--cli-source", "copilot", "--event", topic]),
+                    "{event} must preserve the native hook routing"
                 );
-                for field in ["powershell", "bash"] {
-                    let guarded = hook.get(field).and_then(Value::as_str).unwrap_or_else(|| {
-                        panic!("copilot handler is missing its `{field}` command: {hook}")
-                    });
+                assert_eq!(hook["timeoutSec"], 5);
+                for field in ["command", "powershell", "bash", "shell"] {
                     assert!(
-                        guarded.ends_with("exit 0"),
-                        "copilot `{field}` command must force a zero exit: {guarded}"
+                        hook.get(field).is_none(),
+                        "Copilot exec hooks must not also select a shell via {field}: {hook}"
                     );
                 }
             }
@@ -1722,7 +1722,7 @@ fn is_shell_agnostic(command: &str) -> bool {
 }
 
 /// A shell an agent CLI might dispatch its `hooks.json` `command` string
-/// through. Claude uses bash; Copilot and Gemini use PowerShell; Codex uses
+/// through. Claude uses bash; Gemini uses PowerShell; Codex uses
 /// the session's shell on Windows.
 #[derive(Clone, Copy, Debug)]
 enum HookShell {
@@ -2040,16 +2040,14 @@ fn bundled_hook_commands_run_in_every_shell() {
 /// that exit 1 denies every tool call ("Denied by preToolUse hook … (hook
 /// errored)") until the user finds and removes the stale plugin themselves.
 ///
-/// Copilot's schema fixes that without going back to guessing which shell runs
-/// the command: explicit `powershell` / `bash` fields take precedence over
-/// `command` on their own platform, so each variant can absorb a missing bridge
-/// in that shell's own syntax and still exit 0. Substituting a name that cannot
-/// resolve keeps the check deterministic on machines where Terminal *is*
-/// installed.
+/// Copilot no longer subscribes to per-tool hooks and invokes the bridge
+/// without a shell. For the remaining shell-based providers, substituting a
+/// name that cannot resolve keeps the check deterministic on machines where
+/// Terminal *is* installed.
 /// Claude has no `powershell` / `bash` field pair, but it does document a
-/// `shell` field — so it pins bash and guards inside `command` instead. Same
-/// contract as Copilot's variants: an uninstalled Terminal must not turn every
-/// hook into a failure the user has to diagnose.
+/// `shell` field — so it pins bash and guards inside `command` instead.
+/// An uninstalled Terminal must not turn every hook into a failure the user
+/// has to diagnose.
 ///
 /// Pinning matters. Claude defaults to bash but falls back to PowerShell when
 /// Git Bash is absent, and a guard written for the wrong shell is noisy even on
@@ -2196,35 +2194,40 @@ fn claude_hooks_exit_zero_when_the_bridge_is_missing() {
 }
 
 #[test]
-fn copilot_hook_variants_exit_zero_when_the_bridge_is_missing() {
-    let variants = hook_shell_variants(COPILOT_HOOKS_JSON);
-    assert!(
-        !variants.is_empty(),
-        "copilot must ship per-shell hook commands so a missing bridge cannot deny tool calls"
-    );
-    for (shell, command) in variants {
-        let uninstalled = command.replace("wtcli.exe", MISSING_BRIDGE);
-        let Some(out) = run_hook_command(shell, &uninstalled) else {
-            continue;
-        };
-        assert!(
-            out.status.success(),
-            "copilot {shell:?} hook must exit 0 with no bridge installed: {uninstalled}\nstderr: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        assert!(
-            out.stdout.is_empty() && out.stderr.is_empty(),
-            "copilot {shell:?} hook must stay silent with no bridge installed: {uninstalled}\nstdout: {}\nstderr: {}",
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr)
-        );
+fn copilot_native_hooks_exit_zero_without_terminal_identity() {
+    if !hook_bridge_on_path() {
+        return;
+    }
+    let doc: Value = serde_json::from_str(COPILOT_HOOKS_JSON).unwrap();
+    for matchers in doc["hooks"].as_object().unwrap().values() {
+        for matcher in matchers.as_array().unwrap() {
+            for hook in matcher["hooks"].as_array().unwrap() {
+                let args: Vec<_> = hook["args"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|arg| arg.as_str().unwrap())
+                    .collect();
+                let out = std::process::Command::new(hook["exec"].as_str().unwrap())
+                    .args(args)
+                    .env_remove("WT_COM_CLSID")
+                    .env_remove("WT_SESSION")
+                    .output()
+                    .expect("native hook bridge should start without a shell");
+                assert!(
+                    out.status.success() && out.stdout.is_empty() && out.stderr.is_empty(),
+                    "native hook must silently skip a session without Terminal identity: {hook}\n\
+                     stdout: {}\nstderr: {}",
+                    String::from_utf8_lossy(&out.stdout),
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+        }
     }
 }
 
-/// Negative control for the test above, and the reason Copilot ships no bare
-/// `command` at all: the unguarded spelling is exactly what fails once the
-/// bridge is gone. Pinning that documented failure proves the guards are what
-/// prevents the denial, not some property the bare spelling already had.
+/// Negative control for the shell guards: an unguarded command fails once
+/// the bridge is gone.
 ///
 /// The string is built here rather than read from the bundle. Reading it back
 /// would tie this control to a field Copilot no longer ships, and a control
@@ -2239,41 +2242,6 @@ fn bare_hook_command_still_fails_when_the_bridge_is_missing() {
         !out.status.success(),
         "the bare command spelling is expected to fail without a bridge: {command}"
     );
-}
-
-/// Each per-shell variant must be written in the syntax of the shell it is
-/// dispatched through, still reach the same bridge invocation as `command`, and
-/// end by forcing a successful exit — that final `exit 0` is what stops a
-/// fail-closed `preToolUse` hook from denying tool calls.
-#[test]
-fn copilot_shell_variants_match_their_own_shell() {
-    for (shell, command) in hook_shell_variants(COPILOT_HOOKS_JSON) {
-        assert!(
-            command.contains("wtcli.exe agent-hook --cli-source copilot --event "),
-            "{shell:?} variant must invoke the same bridge as `command`: {command}"
-        );
-        assert!(
-            command.ends_with("; exit 0"),
-            "{shell:?} variant must end by forcing exit 0: {command}"
-        );
-        match shell {
-            HookShell::PowerShell => {
-                assert!(
-                    command.starts_with("try { wtcli.exe "),
-                    "the PowerShell variant must swallow CommandNotFoundException: {command}"
-                );
-                assert!(
-                    powershell_parses(&command),
-                    "the PowerShell variant must parse under PowerShell: {command}"
-                );
-            }
-            HookShell::Bash => assert!(
-                command.starts_with("command -v wtcli.exe >/dev/null 2>&1 && "),
-                "the bash variant must probe for the bridge before running it: {command}"
-            ),
-            HookShell::Cmd => panic!("no hook field is dispatched through cmd.exe"),
-        }
-    }
 }
 
 /// `pwsh` where available, else Windows PowerShell — both parse the constructs
@@ -2444,12 +2412,16 @@ fn claude_and_copilot_carry_full_event_catalog() {
             let handlers = doc["hooks"]["PostToolUse"][0]["hooks"].as_array().unwrap();
             assert!(!handlers.is_empty());
             for handler in handlers {
-                for field in ["powershell", "bash"] {
-                    assert!(handler[field]
-                        .as_str()
-                        .unwrap()
-                        .contains("--event agent.tool.finished"));
-                }
+                assert_eq!(
+                    handler["args"],
+                    serde_json::json!([
+                        "agent-hook",
+                        "--cli-source",
+                        "copilot",
+                        "--event",
+                        "agent.tool.finished"
+                    ])
+                );
             }
         } else {
             assert!(doc["hooks"].get("PostToolUse").is_none());
@@ -2457,10 +2429,10 @@ fn claude_and_copilot_carry_full_event_catalog() {
     }
 }
 
-/// Drops the fields that carry each CLI's own uninstall-resilience layer, so
+/// Drops the fields that carry each CLI's own execution mechanism, so
 /// the parity check below compares the shared event structure rather than
-/// failing on plumbing that is necessarily per-CLI: Copilot expresses it with
-/// `powershell` / `bash` / `timeoutSec` and ships no portable `command` at all,
+/// failing on plumbing that is necessarily per-CLI: Copilot uses
+/// `exec` / `args` / `timeoutSec` without a shell,
 /// Claude by pinning `shell` and guarding inside `command`.
 fn strip_per_cli_hook_fields(value: &mut Value) {
     match value {
@@ -2470,7 +2442,15 @@ fn strip_per_cli_hook_fields(value: &mut Value) {
             }
         }
         Value::Object(values) => {
-            for field in ["command", "powershell", "bash", "timeoutSec", "shell"] {
+            for field in [
+                "command",
+                "powershell",
+                "bash",
+                "timeoutSec",
+                "shell",
+                "exec",
+                "args",
+            ] {
                 values.remove(field);
             }
             for value in values.values_mut() {
@@ -2552,7 +2532,7 @@ fn copilot_uses_native_plugin_layout() {
 fn native_hook_bundle_versions_match_their_marketplaces() {
     let manifests = [
         ("claude", CLAUDE_PLUGIN_JSON, "0.1.9"),
-        ("copilot", COPILOT_PLUGIN_JSON, "0.1.8"),
+        ("copilot", COPILOT_PLUGIN_JSON, "0.1.9"),
         ("gemini", GEMINI_EXTENSION_JSON, "0.1.7"),
         ("codex", CODEX_PLUGIN_JSON, "0.1.9"),
         ("opencode", OPENCODE_PLUGIN_JSON, "0.1.16"),
@@ -5148,14 +5128,11 @@ fn decide_skip_disabled_takes_precedence_over_live() {
 /// pre-1.0.81-8 CLI still has.
 #[test]
 fn decide_upgrades_copied_copilot_install() {
-    let info = installed("0.1.0", true);
+    let manifest: Value = serde_json::from_str(COPILOT_PLUGIN_JSON).unwrap();
+    let bundled_version = manifest["version"].as_str().unwrap().parse().unwrap();
+    let info = installed("0.1.8", true);
     assert!(!info.loads_live);
-    let a = decide_upgrade(
-        CliKind::Copilot,
-        Some("0.1.6".parse().unwrap()),
-        Some(&info),
-        None,
-    );
+    let a = decide_upgrade(CliKind::Copilot, Some(bundled_version), Some(&info), None);
     assert_eq!(a, UpgradeAction::UpdatePlugin);
 }
 

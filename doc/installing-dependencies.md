@@ -327,10 +327,11 @@ Gemini speaks ACP natively, so no wrapper is required.
 Antigravity's ACP server is distributed separately from the interactive `agy` CLI.
 With `agy` installed, Intelligent Terminal automatically downloads and prepares
 a supported, pinned ACP archive when the server is needed. This includes agent
-pane connections, Settings model discovery and eligible host background startup.
-Read-only availability checks do not download software. Settings displays
-installation progress and a retry action when preparation fails; the terminal
-remains usable.
+pane connections and Settings model discovery. Background sidebar discovery does
+not automatically prepare or start Antigravity, even if a CLI shim or cached ACP
+installation is detected. Read-only availability checks do not download software.
+Settings displays installation progress and a retry action when preparation
+fails; the terminal remains usable.
 
 The managed installation validates the archive checksum, expected companion
 files and Windows publisher signatures. It does not replace a complete existing

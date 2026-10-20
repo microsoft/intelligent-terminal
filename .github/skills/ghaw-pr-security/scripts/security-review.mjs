@@ -919,8 +919,9 @@ export function publicationDecision(report) {
 }
 
 export function validatePublicationRun(run, jobs, identity) {
-  const worker = identity.sameRepo ? 'ghaw-pr-security.lock.yml' : 'ghaw-pr-security-guide-fork.lock.yml';
-  const title = `${identity.sameRepo ? 'Security Repair' : 'Security Guide'} ${identity.dispatchId}`;
+  if (identity.sameRepo !== true) fail('publication worker identity requires a same-repository PR');
+  const worker = 'ghaw-pr-security.lock.yml';
+  const title = `Security Repair ${identity.dispatchId}`;
   if (String(run.id) !== identity.runId || run.repository?.full_name !== identity.repository ||
       run.head_sha !== identity.baseSha || run.path !== `.github/workflows/${worker}` ||
       run.event !== 'workflow_dispatch' || run.display_title !== title ||
@@ -928,7 +929,7 @@ export function validatePublicationRun(run, jobs, identity) {
       !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) {
     fail('publication worker identity or conclusion is invalid');
   }
-  const required = ['agent', 'detection', 'safe_outputs', 'publication_gate', ...(identity.sameRepo ? ['finalize'] : [])];
+  const required = ['agent', 'detection', 'safe_outputs', 'publication_gate', 'finalize'];
   for (const name of required) {
     const matches = jobs.filter(job => job.name === name);
     if (matches.length !== 1 || matches[0].run_id !== run.id ||

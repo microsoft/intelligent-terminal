@@ -110,6 +110,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 | `Feature.SidebarUpgrade.Tests.ps1` | Deterministically seeded Sidebar rollout group: persisted once-only Horizontal migration and later explicit Horizontal restart, independently pending introduction, absent flags/fresh FRE gate, real palette collapse deferral, exact-shell owned second-window suppression, actual rendered tip/restart suppression; real state.json sharing fault, visible warning, Horizontal memory/disk rollback and released-lock retry. Both-group migration, stable identity and approximate 80/20 allocation are covered by ApplicationState native tests. No ACL/registry changes, provider quota or callback fault proxies; exact Dev hashes and automatic Dev preflight required | 6 (authored, not live accepted) |
 | `Feature.SidebarProviderAppearance.Tests.ps1` | PR #1070: horizontal-first provider creation, native identity/layout preservation, and scoped Light/Dark header evidence; rendered foreground requires independent visual review | 2 |
 | `Feature.McpDelegatedAgentIdentity.Tests.ps1` | PR #1070: canonical provider bootstrap and identity-only hot updates across session MCP, helper, and native creation; controlled agent fixtures and ordinary-shell negative control | 1 |
+| `Feature.AgentStatusSessionsOff.Tests.ps1` | C450-C454: native stdout crosses ConPTY/COM into WTA and Sidebar metadata; independent same-provider panes, ordinary-shell negatives, ON suppression and newer OFF epochs. The same snapshot exposes normalized pane statuses without requiring conversation IDs and qualified conversation rows for Recent; exact resume agrees across both projections. Real isolated Copilot/Host ACP history supplies exact resume IDs; a native-only emitter verifies routing, title-collision safety, Recent dedup and classic rendering. Actual launch-only and prompt delegates retain creation metadata while existing paginated controlled ACP discovery supplies separately marked inferred IDs, never canonical control ownership; qualified Recent duplicates disappear while those panes exist and return on removal, with unrelated history retained. Full-trust Settings controls remain usable during status updates. Requires `ITE2E_COPILOT_SEED_RECEIPT`, exact private PFN/source/payload receipts and an inactive package. Controlled signals do not substitute for genuine provider input acceptance. Finite deadlines and exact-owned cleanup preserve automation conversations and original settings. Policy/removal proof remains separate | 5 |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 14 |
 | `Feature.AgentHotkeys.Tests.ps1` | Physical WT-window accelerators for agent pane/delegation; History navigation preserves search-off state and exact shell/Agent input focus, while explicit shared-search entry retains search-focus baselines and existing on-state/query. Sidebar hotkeys preserve drafts and tab-search focus, including keyboard focus on the titlebar rail toggle. The public palette action retains visibility toggling; mixed pointer sessions, horizontal suppression, and effective Expand/Collapse hints remain covered | 14 |
 | `Feature.AgentProtocolExperience.Tests.ps1` | PRs #599/#601/#606/#610/#611/#612/#616/#634/#683: intent-based terminal actions (including empty workspaces and configured delegation), ACP tool/transcript rendering, clarification input, session configuration, model title, and replacement cleanup across the deployed helper/master boundary | 8 |
@@ -692,6 +693,41 @@ Three planes, all built on self-verifying primitives:
 …plus verification oracles: `Assert-Setting`, `Assert-Ui`/`Assert-Xaml`,
 `Assert-Script`, `Assert-Pane`, `Assert-WtEvent`, `Assert-Log`, and the AI oracle
 `Assert-AI` (LLM judge wrapping an agent CLI's print mode, e.g. `copilot -p`).
+
+### Sessions-off real Copilot history prerequisite
+
+`Feature.AgentStatusSessionsOff` requires `ITE2E_COPILOT_SEED_RECEIPT` pointing
+to an actual `seeded-acp-history-receipt.json` from headless Copilot validation,
+not synthetic history or the user's normal home. In a fresh automation working
+directory and dedicated `COPILOT_HOME`/`HOME`/`USERPROFILE`, run exactly two named
+CLI seeds (distinct `auto:smoke:status-off:<run-id>:1` and `:2` names, distinct
+working directories), with a 120-second process deadline each:
+
+```powershell
+& $absoluteCopilotExe --name $structuredName --no-custom-instructions --silent `
+    --prompt 'Reply with OK. Do not use tools or read files.'
+```
+
+Use existing authentication only; never copy credentials or perform account
+login/switching. Confirm both actual IDs, names and directories using ACP
+`initialize` and `session/list` under the same home. The receipt contains
+`Verdict = TWO_REAL_SEEDED_IDS_VERIFIED_IN_ACP_HISTORY`, `AgentInfo.name = Copilot`,
+`ExecutionSource` beginning `Host`, the actual `Executable` and `SHA256`,
+`COPILOT_HOME`, `USERPROFILE`, `UnexpectedHistoryCount = 0`, and the two unchanged
+ACP rows in `ExpectedRows` (`sessionId`, `title`, `cwd`, `updatedAt`). Preserve
+the seeding/process/history receipts. Session creation alone is insufficient:
+unprompted sessions were absent from history in the capability probe.
+
+The suite reuses that home directly, verifies the installed executable hash,
+then independently queries the product's canonical Copilot/Host identities.
+It sends no additional real-agent prompt. `XDG_CONFIG_HOME` and
+`OPENCODE_CONFIG_DIR` are fresh per-run directories: prior ON reconciliation
+must not make a later run inherit an installed OpenCode hook from the reusable
+Copilot seed home. Other built-ins can initialize
+automatically: their configured automation homes isolate state, while rejection
+shims cover shell lookup/hook reconciliation only. Do not claim they prevent
+ACP startup through WTA's registry-first child PATH. Preserve all automation
+conversations and evidence; deletion requires the separate reviewed cleanup.
 
 ## Prerequisites
 

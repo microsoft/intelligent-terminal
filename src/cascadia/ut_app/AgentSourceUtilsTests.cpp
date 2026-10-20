@@ -19,7 +19,123 @@ namespace TerminalAppUnitTests
         TEST_METHOD(PaneCwdUsesReportedDirectoryOrHostStartup);
         TEST_METHOD(PaneCwdUsesWslLaunchDirectoryBeforeShellIntegration);
         TEST_METHOD(PaneCwdDoesNotInferUnknownWslDirectories);
+        TEST_METHOD(SplitCwdValidatesHostDirectories);
+        TEST_METHOD(SplitCwdKeepsWslNamespacesSeparate);
+        TEST_METHOD(SplitCwdRejectsUnsafeWslArguments);
+        TEST_METHOD(SplitCwdQuotesWindowsRootsForWsl);
     };
+
+    void AgentSourceUtilsTests::SplitCwdValidatesHostDirectories()
+    {
+        using Microsoft::Terminal::AgentSource::ResolveSplitCwd;
+        const auto valid = [](std::wstring_view path) { return path == L"C:\\work with spaces"; };
+        for (const auto source : { L"pwsh.exe", L"copilot.exe", L"cmd.exe /c claude.cmd" })
+        {
+            for (const auto target : { L"pwsh.exe", L"claude.exe", L"wsl.exe -d Ubuntu" })
+            {
+                VERIFY_ARE_EQUAL(std::wstring{ L"C:\\work with spaces" },
+                                 ResolveSplitCwd(L"C:\\work with spaces", source, target, valid));
+                VERIFY_ARE_EQUAL(std::wstring{}, ResolveSplitCwd(L"C:\\missing", source, target, valid));
+                VERIFY_ARE_EQUAL(std::wstring{}, ResolveSplitCwd({}, source, target, valid));
+            }
+        }
+        for (const auto relative : { L".", L"project", L"C:project", L"\\project" })
+        {
+            VERIFY_ARE_EQUAL(std::wstring{},
+                             ResolveSplitCwd(relative, L"copilot.exe", L"pwsh.exe", [](std::wstring_view) { return true; }));
+        }
+    }
+
+    void AgentSourceUtilsTests::SplitCwdKeepsWslNamespacesSeparate()
+    {
+        using Microsoft::Terminal::AgentSource::ResolveSplitCwd;
+        const auto noWindowsDirectory = [](std::wstring_view) { return false; };
+        VERIFY_ARE_EQUAL(std::wstring{ L"/work with spaces" },
+                         ResolveSplitCwd(L"/work with spaces", L"wsl.exe -d Ubuntu --exec bash", L"wsl.exe --distribution Ubuntu --exec claude", noWindowsDirectory));
+        VERIFY_ARE_EQUAL(std::wstring{},
+                         ResolveSplitCwd(L"/work", L"wsl.exe", L"wsl.exe --exec bash", noWindowsDirectory));
+        for (const auto target : { L"wsl.exe", L"wsl.exe -d Ubuntu", L"wsl.exe -d Debian" })
+        {
+            VERIFY_ARE_EQUAL(std::wstring{},
+                             ResolveSplitCwd(L"/work", L"wsl.exe --exec bash", target, noWindowsDirectory));
+        }
+        VERIFY_ARE_EQUAL(std::wstring{ L"/work" },
+                         ResolveSplitCwd(L"/work", L"wsl.exe --distribution-id {1234}", L"wsl.exe --distribution-id {1234} -e bash", noWindowsDirectory));
+        for (const auto target : { L"pwsh.exe", L"copilot.exe", L"wsl.exe", L"wsl.exe -d Debian", L"wsl.exe --distribution-id {1234}", L"wsl.exe -d Ubuntu --cd /explicit", L"wsl.exe -d Ubuntu ~", L"wsl.exe --unknown -d Ubuntu", L"wsl.exe -d", L"wsl.exe -d Ubuntu -d Debian", L"cmd.exe /c wsl.exe -d Ubuntu" })
+        {
+            VERIFY_ARE_EQUAL(std::wstring{},
+                             ResolveSplitCwd(L"/work", L"wsl.exe -d Ubuntu", target, noWindowsDirectory));
+        }
+        VERIFY_ARE_EQUAL(std::wstring{},
+                         ResolveSplitCwd(L"/work", L"claude.exe", L"wsl.exe -d Ubuntu", noWindowsDirectory));
+        VERIFY_ARE_EQUAL(std::wstring{ L"/work" },
+                         ResolveSplitCwd(L"/work", L"wsl.exe ~ -d Debian", L"wsl.exe -d Debian", noWindowsDirectory));
+        VERIFY_ARE_EQUAL(std::wstring{ L"/work" },
+                         ResolveSplitCwd(L"/work", L"wsl.exe ~ --distribution-id {1234}", L"wsl.exe --distribution-id {1234}", noWindowsDirectory));
+        for (const auto target : { L"wsl.exe", L"wsl.exe -d Ubuntu", L"wsl.exe ~ -d Debian" })
+        {
+            VERIFY_ARE_EQUAL(std::wstring{},
+                             ResolveSplitCwd(L"/work", L"wsl.exe ~ -d Debian", target, noWindowsDirectory));
+        }
+    }
+
+    void AgentSourceUtilsTests::SplitCwdRejectsUnsafeWslArguments()
+    {
+        using Microsoft::Terminal::AgentSource::ResolveSplitCwd;
+        const auto noWindowsDirectory = [](std::wstring_view) { return false; };
+        for (const auto directory : {
+                 L"/tmp/\" --exec printf injected \"",
+                 L"/tmp/back\\slash",
+                 L"/tmp/trailing\\",
+                 L"/tmp/%TEMP%",
+                 L"/tmp/new\n"
+                 L"line",
+                 L"/tmp/new\r"
+                 L"line" })
+        {
+            VERIFY_ARE_EQUAL(std::wstring{},
+                             ResolveSplitCwd(directory, L"wsl.exe -d Ubuntu", L"wsl.exe -d Ubuntu", noWindowsDirectory));
+        }
+        const std::wstring embeddedNul{ L"/tmp/valid\0suffix", 17 };
+        VERIFY_ARE_EQUAL(std::wstring{},
+                         ResolveSplitCwd(embeddedNul, L"wsl.exe -d Ubuntu", L"wsl.exe -d Ubuntu", noWindowsDirectory));
+        const std::wstring hostNul{ L"C:\\work\0suffix", 14 };
+        VERIFY_ARE_EQUAL(std::wstring{},
+                         ResolveSplitCwd(hostNul, L"pwsh.exe", L"pwsh.exe", [](std::wstring_view) { return true; }));
+
+        const std::wstring directory{ L"/work with spaces/\u6d4b\u8bd5" };
+        VERIFY_ARE_EQUAL(directory, ResolveSplitCwd(directory, L"wsl.exe -d Ubuntu", L"wsl.exe -d Ubuntu --exec bash", noWindowsDirectory));
+        const auto [command, hostDirectory] = Microsoft::Console::Utils::MangleStartingDirectoryForWSL(L"wsl.exe --exec bash", directory);
+        int argc{};
+        const wil::unique_hlocal_ptr<PWSTR[]> argv{ CommandLineToArgvW(command.c_str(), &argc) };
+        VERIFY_IS_NOT_NULL(argv.get());
+        VERIFY_ARE_EQUAL(5, argc);
+        VERIFY_ARE_EQUAL(std::wstring{ L"--cd" }, std::wstring{ argv.get()[1] });
+        VERIFY_ARE_EQUAL(directory, std::wstring{ argv.get()[2] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"--exec" }, std::wstring{ argv.get()[3] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"bash" }, std::wstring{ argv.get()[4] });
+        VERIFY_IS_TRUE(hostDirectory.empty());
+    }
+
+    void AgentSourceUtilsTests::SplitCwdQuotesWindowsRootsForWsl()
+    {
+        using Microsoft::Terminal::AgentSource::ResolveSplitCwd;
+        for (const auto directory : { LR"(C:\)", LR"(C:\work with spaces\)", LR"(\\wsl$\Ubuntu\)" })
+        {
+            const auto inherited = ResolveSplitCwd(directory, L"pwsh.exe", L"wsl.exe -d Ubuntu", [](std::wstring_view) { return true; });
+            VERIFY_ARE_EQUAL(std::wstring{ directory }, inherited);
+            const auto [command, hostDirectory] = Microsoft::Console::Utils::MangleStartingDirectoryForWSL(L"wsl.exe -d Ubuntu", inherited);
+            int argc{};
+            const wil::unique_hlocal_ptr<PWSTR[]> argv{ CommandLineToArgvW(command.c_str(), &argc) };
+            VERIFY_IS_NOT_NULL(argv.get());
+            VERIFY_ARE_EQUAL(5, argc);
+            VERIFY_ARE_EQUAL(std::wstring{ L"--cd" }, std::wstring{ argv.get()[1] });
+            VERIFY_ARE_EQUAL(inherited, std::wstring{ argv.get()[2] });
+            VERIFY_ARE_EQUAL(std::wstring{ L"-d" }, std::wstring{ argv.get()[3] });
+            VERIFY_ARE_EQUAL(std::wstring{ L"Ubuntu" }, std::wstring{ argv.get()[4] });
+            VERIFY_IS_TRUE(hostDirectory.empty());
+        }
+    }
 
     void AgentSourceUtilsTests::ReadEnvironmentVariableSupportsLongValues()
     {

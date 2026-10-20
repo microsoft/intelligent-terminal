@@ -157,6 +157,9 @@ namespace winrt::TerminalApp::implementation
         // environment; nullopt means the requested block could not be built.
         std::optional<std::wstring> BuildEnvironmentBlock(
             std::span<const std::pair<std::wstring, std::wstring>> overrides) noexcept;
+        std::optional<std::wstring> BuildMasterEnvironmentBlock(
+            std::span<const std::pair<std::wstring, std::wstring>> overrides,
+            uint64_t generation) noexcept;
 
         struct SuspendedProcessOperations
         {
@@ -189,7 +192,9 @@ namespace winrt::TerminalApp::implementation
         public:
             using Generation = uintptr_t;
 
+            Generation Reserve() noexcept;
             Generation Register(DWORD pid) noexcept;
+            Generation Register(DWORD pid, Generation generation) noexcept;
             void Retire() noexcept;
             std::optional<DWORD> Claim(Generation generation) noexcept;
             Generation Current() const noexcept;
@@ -359,6 +364,7 @@ namespace winrt::TerminalApp::implementation
         /// JSON-RPC to the master. Empty before the first
         /// `AcquirePane`. Format: `\\.\pipe\wta-master-<GUID>`.
         std::wstring_view MasterPipeName() const noexcept;
+        uint64_t MasterGeneration() const noexcept;
 
     private:
         friend class SharedWtaLease;
@@ -397,6 +403,7 @@ namespace winrt::TerminalApp::implementation
         details::ProcessWaitGenerationTracker _waitGeneration;
         details::UnexpectedExitRecoveryPolicy _unexpectedExitRecovery;
         DWORD _pid{ 0 };
+        uint64_t _masterGeneration{ 0 };
         // Total includes cleanup-only leases retained during session close;
         // only active leases justify unexpected-exit recovery.
         size_t _refCount{ 0 };

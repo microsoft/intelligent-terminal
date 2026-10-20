@@ -132,9 +132,24 @@ current profile. An action specifying a profile, profile index, command, or
 another content type keeps its explicit target. Existing user-defined actions
 are not rewritten.
 
-When splitting into a configured target, an explicitly supplied directory wins.
-Otherwise a valid Windows directory reported by the current terminal is used;
-if none is available, the target profile's starting directory applies. A hidden,
+All new-terminal splits, including Alt-click profile selections and protocol
+splits, inherit the source pane's working directory unless the operation supplies
+an explicit directory. Shell-to-shell, shell-to-agent, agent-to-shell and
+agent-to-agent splits follow the same rule. Native agents use their current
+pane-bound session directory when available; otherwise their resolved launch
+directory (including relative `-d` arguments), not subsequently edited settings.
+Splitting while the built-in assistant is focused splits its source terminal,
+leaving the assistant panel and conversation intact.
+Unavailable or invalid directories fall back to the target profile's starting
+directory. POSIX directories are inherited only between matching WSL launch
+namespaces; no Windows/WSL or cross-distro path conversion is guessed.
+Source identity comes from the running connection, not reloaded profile settings.
+Commands are expanded before WSL validation; unknown source identities do not
+inherit POSIX paths. WSL launches without an explicit distribution selector use
+the target's normal startup directory instead, because the default distribution
+may have changed since the source started.
+Saved-layout, existing-content and session-resume arguments remain unchanged.
+New-tab startup behavior is unchanged. A hidden,
 missing, or invalid split target produces a warning and falls back to the global
 default profile. The target is resolved once, not recursively through another
 profile's split preference.

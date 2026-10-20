@@ -5,6 +5,7 @@
 #include "ContentManager.h"
 #include "ContentManager.g.cpp"
 #include "TerminalPage.h"
+#include "../inc/AgentRegistry.h"
 
 #include <wil/token_helpers.h>
 #include <json/json.h>
@@ -34,14 +35,18 @@ namespace winrt::TerminalApp::implementation
     ControlInteractivity ContentManager::CreateAgentCliCore(const Microsoft::Terminal::Control::IControlSettings& settings,
                                                             const IControlAppearance& unfocusedAppearance,
                                                             const TerminalConnection::ITerminalConnection& connection,
-                                                            const winrt::hstring& providerId)
+                                                            const winrt::hstring& providerId,
+                                                            const std::string& nativeAgentLaunchLocation)
     {
+        const auto createdAtMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                          std::chrono::system_clock::now().time_since_epoch())
+                                                          .count());
         ControlInteractivity content{ settings, unfocusedAppearance, connection };
         content.Closed({ get_weak(), &ContentManager::_closedHandler });
 
         {
             std::lock_guard lock{ _mutex };
-            _content.emplace(content.Id(), TerminalContent{ content, providerId });
+            _content.emplace(content.Id(), TerminalContent{ content, providerId, createdAtMs, ++_nativeAgentPaneCreationSequence, nativeAgentLaunchLocation });
         }
 
         return content;
@@ -58,7 +63,9 @@ namespace winrt::TerminalApp::implementation
     {
         std::lock_guard lock{ _mutex };
         const auto it = _content.find(contentId);
-        return it == _content.end() ? winrt::hstring{} : it->second.nativeAgentProviderId;
+        return it == _content.end() ? winrt::hstring{} :
+               !it->second.explicitNativeAgentProviderId.empty() ?
+                   it->second.explicitNativeAgentProviderId : it->second.nativeAgentProviderId;
     }
 
     winrt::hstring ContentManager::NativeAgentProviderIdForPane(const winrt::guid& paneId) const
@@ -69,10 +76,175 @@ namespace winrt::TerminalApp::implementation
             const auto connection = content.core.Core().Connection();
             if (connection && connection.SessionId() == paneId)
             {
-                return content.nativeAgentProviderId;
+                return !content.explicitNativeAgentProviderId.empty() ?
+                           content.explicitNativeAgentProviderId : content.nativeAgentProviderId;
             }
         }
         return {};
+    }
+
+    std::optional<ContentManager::NativeAgentObservationIdentity> ContentManager::NativeAgentObservationForContent(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _content.find(contentId);
+        if (it == _content.end() || it->second.agentHelper || it->second.observation.modeEpoch == 0)
+        {
+            return std::nullopt;
+        }
+        return it->second.observation;
+    }
+
+    void ContentManager::SetExplicitNativeAgentProvider(const uint64_t contentId, const winrt::hstring& providerId)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId); it != _content.end())
+        {
+            it->second.explicitNativeAgentProviderId = providerId;
+        }
+    }
+
+    bool ContentManager::RefineNativeAgentLaunchLocation(
+        const uint64_t contentId, const winrt::hstring& providerId, const std::string& location)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId);
+            it != _content.end() && !location.empty() && !it->second.agentHelper &&
+            !it->second.nativeAgentProviderId.empty() &&
+            ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(it->second.nativeAgentProviderId, providerId) &&
+            it->second.nativeAgentLaunchLocation.empty() && it->second.observation.agentSessionId.empty() &&
+            it->second.observation.qualifiedSessionId.empty() &&
+            (it->second.observation.location.empty() || it->second.observation.location == location))
+        {
+            it->second.nativeAgentLaunchLocation = location;
+            if (it->second.observation.modeEpoch != 0)
+            {
+                it->second.observation.location = location;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    ContentManager::NativeAgentObservationIdentity ContentManager::AdmitNativeAgentObservation(
+        const uint64_t contentId, const uint64_t windowId, const std::string& tabId, const std::string& agentSessionId, const std::string& location, const bool reset, const uint64_t receiverGeneration)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId); it != _content.end() && !it->second.agentHelper)
+        {
+            const auto provider = it->second.explicitNativeAgentProviderId.empty() || agentSessionId.empty() ?
+                                      it->second.nativeAgentProviderId : it->second.explicitNativeAgentProviderId;
+            if (provider.empty())
+            {
+                return {};
+            }
+            auto& identity = it->second.observation;
+            const auto& observationLocation = location.empty() ? it->second.nativeAgentLaunchLocation : location;
+            if (reset || identity.modeEpoch == 0 || identity.providerId != provider ||
+                identity.windowId != windowId || identity.tabId != tabId ||
+                identity.agentSessionId != agentSessionId || identity.location != observationLocation ||
+                identity.receiverGeneration != receiverGeneration)
+            {
+                const auto retainQualified = identity.providerId == provider &&
+                    (agentSessionId.empty() ? identity.agentSessionId.empty() : identity.qualifiedSessionId == agentSessionId) &&
+                    (observationLocation.empty() || identity.qualifiedLocation == observationLocation);
+                auto qualifiedSessionId = retainQualified ? identity.qualifiedSessionId : std::string{};
+                auto qualifiedLocation = retainQualified ? identity.qualifiedLocation : std::string{};
+                identity = { provider, ++_nativeAgentObservationGeneration, windowId, tabId, agentSessionId, observationLocation, !it->second.observationAdmitted, receiverGeneration, std::move(qualifiedSessionId), std::move(qualifiedLocation), it->second.paneCreatedAtMs, it->second.paneCreationSequence };
+                it->second.observationAdmitted = true;
+            }
+            return identity;
+        }
+        return {};
+    }
+
+    void ContentManager::RetainQualifiedNativeAgentIdentity(
+        const uint64_t contentId, const uint64_t modeEpoch, const std::string& sessionId, const std::string& location)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId);
+            it != _content.end() && !it->second.agentHelper && modeEpoch != 0 &&
+            it->second.observation.modeEpoch == modeEpoch)
+        {
+            it->second.observation.qualifiedSessionId = sessionId;
+            it->second.observation.qualifiedLocation = location;
+        }
+    }
+
+    void ContentManager::RemoveNativeAgentObservation(const uint64_t contentId)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId); it != _content.end())
+        {
+            it->second.observation = {};
+        }
+    }
+
+    void ContentManager::RestartNativeAgentConnectionTracking(const uint64_t contentId)
+    {
+        _CheckThread();
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId); it != _content.end() && !it->second.agentHelper)
+        {
+            it->second.paneCreatedAtMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                                   std::chrono::system_clock::now().time_since_epoch())
+                                                                   .count());
+            it->second.paneCreationSequence = ++_nativeAgentPaneCreationSequence;
+            it->second.observation = {};
+            it->second.observationAdmitted = false;
+            if (!_nativeAgentSessionEventsEnabled)
+            {
+                it->second.explicitNativeAgentProviderId = winrt::hstring{};
+                _agentBindings.erase(contentId);
+            }
+        }
+    }
+
+    void ContentManager::SetNativeAgentSessionEventsEnabled(const bool enabled)
+    {
+        _CheckThread();
+        std::lock_guard lock{ _mutex };
+        if (_nativeAgentSessionEventsEnabled != enabled)
+        {
+            for (auto& [id, content] : _content)
+            {
+                content.observation = {};
+            }
+        }
+        _nativeAgentSessionEventsEnabled = enabled;
+        if (!enabled)
+        {
+            std::erase_if(_agentBindings, [&](const auto& entry) {
+                const auto content = _content.find(entry.first);
+                return content == _content.end() || !content->second.agentHelper;
+            });
+        }
+    }
+
+    void ContentManager::MarkAgentHelper(const uint64_t contentId)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto content = _content.find(contentId); content != _content.end())
+        {
+            content->second.agentHelper = true;
+        }
+    }
+
+    bool ContentManager::AcceptsAgentSessionEvents(const winrt::guid& paneId) const
+    {
+        std::lock_guard lock{ _mutex };
+        if (_nativeAgentSessionEventsEnabled)
+        {
+            return true;
+        }
+        for (const auto& [id, content] : _content)
+        {
+            const auto connection = content.core.Core().Connection();
+            if (connection && connection.SessionId() == paneId)
+            {
+                return content.agentHelper;
+            }
+        }
+        return false;
     }
 
     void ContentManager::UpdateKeepRunningTab(const winrt::TerminalApp::Tab& tab)
@@ -138,9 +310,49 @@ namespace winrt::TerminalApp::implementation
         if (const auto& content{ sender.try_as<winrt::Microsoft::Terminal::Control::ControlInteractivity>() })
         {
             const auto& contentId{ content.Id() };
+            std::optional<NativeAgentObservationIdentity> retired;
             {
                 std::lock_guard lock{ _mutex };
+                if (const auto found = _content.find(contentId);
+                    found != _content.end() && !_nativeAgentSessionEventsEnabled &&
+                    !found->second.agentHelper && found->second.observation.modeEpoch != 0)
+                {
+                    retired = found->second.observation;
+                }
                 _content.erase(contentId);
+            }
+            if (retired)
+            {
+                Json::Value event;
+                event["type"] = "event";
+                event["method"] = "native_agent_observation";
+                auto& params = event["params"];
+                params["kind"] = "removed";
+                params["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(content.Core().Connection().SessionId()));
+                params["provider_id"] = winrt::to_string(retired->providerId);
+                params["window_id"] = Json::UInt64{ retired->windowId };
+                params["tab_id"] = retired->tabId;
+                params["mode_epoch"] = Json::UInt64{ retired->modeEpoch };
+                if (retired->receiverGeneration != 0)
+                {
+                    params["receiver_generation"] = Json::UInt64{ retired->receiverGeneration };
+                }
+                if (!retired->agentSessionId.empty())
+                {
+                    params["agent_session_id"] = retired->agentSessionId;
+                    const auto& source = retired->location;
+                    if (source == "Host")
+                    {
+                        params["location"] = "Host";
+                    }
+                    else if (source.starts_with("wsl:") && source.size() > 4)
+                    {
+                        params["location"]["Wsl"]["distro"] = source.substr(4);
+                    }
+                }
+                Json::StreamWriterBuilder writer;
+                writer["indentation"] = "";
+                DetachedSessionEvent.raise(*this, winrt::to_hstring(Json::writeString(writer, event)));
             }
             LOG_HR_IF(E_ABORT, !_dispatcher.TryEnqueue([weak = get_weak(), contentId]() {
                 if (const auto self = weak.get())
@@ -200,6 +412,10 @@ namespace winrt::TerminalApp::implementation
         const winrt::guid sessionId = paneId.starts_with('{') ?
                                           ::Microsoft::Console::Utils::GuidFromString(text.c_str()) :
                                           ::Microsoft::Console::Utils::GuidFromPlainString(text.c_str());
+        if (!AcceptsAgentSessionEvents(sessionId))
+        {
+            return;
+        }
         const auto agentSessionId = winrt::to_hstring(params.get("agent_session_id", "").asString());
         const auto agent = winrt::to_hstring(params.get("agent", params.get("cli_source", "")).asString());
         if ((!ended || unbound) && (agentSessionId.empty() || std::wstring_view{ agentSessionId }.starts_with(L"sidekick-") || agent.empty()))

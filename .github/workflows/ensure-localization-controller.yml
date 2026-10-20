@@ -5,7 +5,7 @@ name: Localization Review
 run-name: Localization Review for PR #${{ github.event.pull_request.number }}
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
     paths:
       - 'src/cascadia/**/Resources/*.resw'
@@ -25,6 +25,8 @@ concurrency:
 jobs:
   localization-review:
     name: Localization review
+    # The workflow definition comes from the PR merge; checkout below stays on the base.
+    if: github.event.pull_request.head.repo.id == github.repository_id
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -43,7 +45,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
           REPOSITORY: ${{ github.repository }}
         run: |
           $ErrorActionPreference = 'Stop'
@@ -147,7 +148,7 @@ jobs:
           }
           Write-OutputValue -Name 'comparison_base_sha' -Value $comparisonBase
 
-          if ($env:SAME_REPO -eq 'true' -and (git log -1 --pretty=%s $env:HEAD_SHA) -match '\[localization-expert\]$') {
+          if ((git log -1 --pretty=%s $env:HEAD_SHA) -match '\[localization-expert\]$') {
             $commit = Get-WorkflowCommitMetadata -Repository $env:REPOSITORY -Revision $env:HEAD_SHA
             if ($commit.authorLogin -eq 'github-actions[bot]' -and $commit.committerLogin -eq 'web-flow' -and $commit.parentCount -eq 1 -and $commit.verified -eq $true) {
               Write-OutputValue -Name 'should_run' -Value 'false'
@@ -304,32 +305,19 @@ jobs:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
         with:
           script: |
             const pr = context.payload.pull_request;
-            const sameRepo = process.env.SAME_REPO === "true";
-            const worker = sameRepo
-              ? "ensure-localization.lock.yml"
-              : "ensure-localizationguide-forkedrepo.lock.yml";
+            const worker = "ensure-localization.lock.yml";
             const dispatchId =
               `ensure-localization-${pr.number}-${process.env.EXPECTED_HEAD_SHA}-${context.runId}-${context.runAttempt}`;
             const baseRef = process.env.BASE_REF;
             const startedAt = Date.now() - 5000;
-            const awContext = sameRepo ? JSON.stringify({
+            const awContext = JSON.stringify({
               item_type: "pull_request",
               item_number: pr.number,
               repo: `${context.repo.owner}/${context.repo.repo}`,
               event_type: "pull_request",
-              head_sha: process.env.EXPECTED_HEAD_SHA,
-              base_sha: process.env.EXPECTED_BASE_SHA,
-              comparison_base_sha: process.env.COMPARISON_BASE_SHA,
-              root_repo: `${context.repo.owner}/${context.repo.repo}`,
-              root_run_id: String(context.runId),
-              root_workflow_id: "ensure-localization-controller"
-            }) : JSON.stringify({
-              event_type: "workflow_dispatch",
-              source_pr_number: pr.number,
               head_sha: process.env.EXPECTED_HEAD_SHA,
               base_sha: process.env.EXPECTED_BASE_SHA,
               comparison_base_sha: process.env.COMPARISON_BASE_SHA,
@@ -348,7 +336,6 @@ jobs:
               head_ref: process.env.HEAD_REF,
               base_ref: process.env.BASE_REF,
               head_repo: process.env.HEAD_REPO,
-              same_repo: String(sameRepo),
               aw_context: awContext
             };
 
@@ -436,7 +423,6 @@ jobs:
           RUN_URL: ${{ steps.worker.outputs.run_url }}
           WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
           INFERENCE_SKIPPED: ${{ steps.worker.outputs.inference_skipped }}
-          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
         run: |
           set -euo pipefail
           if [ "${INFERENCE_SKIPPED:-false}" = "true" ]; then
@@ -518,24 +504,13 @@ jobs:
           {
             echo "## Localization review"
             echo
-            if [ "$SAME_REPO" = "true" ]; then
-              echo "- Result: **${WORKER_CONCLUSION}**"
-            else
-              echo "- Fork localization worker: **${WORKER_CONCLUSION}**"
-              echo "- This fork path runs trusted-base deterministic localization checks without editing fork code."
-              echo "- A PR comment is posted only when actionable localization findings are detected."
-              echo "- Independent language-quality review is not performed automatically in this fork path."
-            fi
+            echo "- Result: **${WORKER_CONCLUSION}**"
             echo "- Internal GHAW run: [${RUN_ID}](${RUN_URL})"
             echo "- Total AI Credits: **${total_aic}**"
             echo "- Main agent: ${agent_aic} AIC; model \`${agent_model}\`; ${agent_input} input, ${agent_output} output, ${agent_cache_read} cache-read tokens"
             echo "- Threat detection: ${detection_aic} AIC; model \`${detection_model}\`; ${detection_input} input, ${detection_output} output, ${detection_cache_read} cache-read tokens"
             echo
-            if [ "$SAME_REPO" = "true" ]; then
-              echo "The internal run retains all activation, agent, threat-detection, safe-output, conclusion, logs, and artifacts."
-            else
-              echo "The internal run retained the fork guidance preparation, safe-output comment delivery, logs, and artifacts."
-            fi
+            echo "The internal run retains all activation, agent, threat-detection, safe-output, conclusion, logs, and artifacts."
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$WORKER_CONCLUSION" = "success" ] && [ "$total_aic" = "unavailable" ]; then
@@ -571,7 +546,6 @@ jobs:
         env:
           EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           SHOULD_RUN: ${{ steps.gate.outputs.should_run }}
-          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
         with:
           script: |
             const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -580,9 +554,8 @@ jobs:
             const repo = context.repo.repo;
             const expectedHeadSha = process.env.EXPECTED_HEAD_SHA;
             const shouldRun = process.env.SHOULD_RUN === "true";
-            const sameRepo = process.env.SAME_REPO === "true";
 
-            if (!sameRepo || !shouldRun) {
+            if (!shouldRun) {
               core.setOutput("final_head_sha", expectedHeadSha);
               core.setOutput("create_completion_check", "false");
               core.setOutput("verified_completion", "false");
