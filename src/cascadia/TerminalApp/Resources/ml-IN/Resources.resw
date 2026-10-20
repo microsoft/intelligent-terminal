@@ -530,24 +530,6 @@
     <value>Git മാറ്റങ്ങൾ</value>
     <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
-    <value>1 ഏജന്റ് സെഷൻ കാണിക്കുന്നു</value>
-  </data>
-  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
-    <value>{0} ഏജന്റ് സെഷനുകൾ കാണിക്കുന്നു</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>നിലവിലെ ടാബ് ഈ ഫിൽട്ടർ മറച്ചിരിക്കുന്നു</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>നിലവിലെ ടാബ് ഈ ഫിൽട്ടർ മറച്ചിരിക്കുന്നു</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>എല്ലാ ടാബുകളും കാണിക്കുക</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>എല്ലാ ടാബുകളും കാണിക്കുക</value>
-  </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>ഏജന്റുകൾ</value>
     <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>

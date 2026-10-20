@@ -530,24 +530,6 @@
     <value>Git ಬದಲಾವಣೆಗಳು</value>
     <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
-    <value>1 ಏಜೆಂಟ್ ಸೆಷನ್ ಅನ್ನು ತೋರಿಸಲಾಗುತ್ತಿದೆ</value>
-  </data>
-  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
-    <value>{0} ಏಜೆಂಟ್ ಸೆಷನ್‌ಗಳನ್ನು ತೋರಿಸಲಾಗುತ್ತಿದೆ</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ಪ್ರಸ್ತುತ ಟ್ಯಾಬ್ ಅನ್ನು ಈ ಫಿಲ್ಟರ್ ಮರೆಮಾಡಿದೆ</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ಪ್ರಸ್ತುತ ಟ್ಯಾಬ್ ಅನ್ನು ಈ ಫಿಲ್ಟರ್ ಮರೆಮಾಡಿದೆ</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ಎಲ್ಲಾ ಟ್ಯಾಬ್‌ಗಳನ್ನು ತೋರಿಸಿ</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ಎಲ್ಲಾ ಟ್ಯಾಬ್‌ಗಳನ್ನು ತೋರಿಸಿ</value>
-  </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>ಏಜೆಂಟ್‌ಗಳು</value>
     <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>

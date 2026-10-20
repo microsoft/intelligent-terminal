@@ -821,17 +821,6 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TabStrip::SetFilterStatus(uint32_t visibleTabCount, bool selectedTabVisible)
-    {
-        FilterStatusText().Text(visibleTabCount == 1 ?
-                                    RS_(L"VerticalTabsFilterStatusSingle") :
-                                    winrt::hstring{ RS_fmt(L"VerticalTabsFilterStatusPlural", visibleTabCount) });
-        HiddenCurrentTabIndicator().Visibility(selectedTabVisible ? Visibility::Collapsed : Visibility::Visible);
-        FilterStatusBar().Visibility(_sidebarFilters.AgentsOnlyEffective() ?
-                                         Visibility::Visible :
-                                         Visibility::Collapsed);
-    }
-
     void TabStrip::SetTabPresentation(IInspectable const& item,
                                       hstring const& title,
                                       hstring const& iconPath)
@@ -2198,11 +2187,6 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TabStrip::OnShowAllTabsClick(IInspectable const&, WUX::RoutedEventArgs const&)
-    {
-        FilterMode(TerminalApp::TabStripFilterMode::AllTabs);
-    }
-
     void TabStrip::OnSearchToggleClick(IInspectable const&, WUX::RoutedEventArgs const&)
     {
         if (_isRailCollapsed)
@@ -2426,7 +2410,6 @@ namespace winrt::TerminalApp::implementation
         FilterTabsButton().Visibility(_richTabMetadataControlsVisible ? expandedVisibility : Visibility::Collapsed);
         FilterTabsButton().IsHitTestVisible(!_isRailCollapsed);
         FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
-        FilterStatusBar().IsHitTestVisible(!_isRailCollapsed);
         ItemsList().AllowDrop(ItemsList().CanDragItems() && !_isRailCollapsed);
         TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 12, 0, 8, 0 });
         WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
@@ -2952,9 +2935,6 @@ namespace winrt::TerminalApp::implementation
         WUX::Automation::AutomationProperties::SetName(FilterTabsButton(), detailsLabel);
         WUX::Automation::AutomationProperties::SetHelpText(FilterTabsButton(), detailsLabel);
         ItemsList().Visibility(visible || _tabsVisible ? Visibility::Visible : Visibility::Collapsed);
-        FilterStatusBar().Visibility(_sidebarFilters.AgentsOnlyEffective() ?
-                                         Visibility::Visible :
-                                         Visibility::Collapsed);
         ItemsList().IsItemClickEnabled(visible && !_historyActivating && !_historyLoading);
         if (section)
         {
