@@ -334,15 +334,21 @@ Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Ski
             (Get-UiElement -App $script:app -Selector 'SessionManagementToggle').toggleState | Should -Be 'off'
             Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'setup-failed.png') | Out-Null
 
-            Remove-Item -LiteralPath $marker
+            # Keep the fault active so retry cannot launch real Copilot bootstrap.
+            # Successful completion is covered separately with the custom ACP fixture.
+            Invoke-UiElement -App $script:app -Selector 'SessionManagementToggle' | Out-Null
             Invoke-UiElement -App $script:app -Selector 'SaveButton' | Out-Null
-            Wait-Until -TimeoutSec 30 -Because 'retry to finish without changing display preferences' -Condition {
-                Get-FreCompleted -App $script:app
+            Wait-Until -TimeoutSec 30 -Because 'retry to reach the same deterministic setup-failure boundary' -Condition {
+                $log = Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart
+                [regex]::Matches($log, '\[FRE\] E2E: forcing hooks install failure').Count -eq 2
             } | Out-Null
+            Wait-UiElement -App $script:app -Selector 'ErrorText' -TimeoutSec 10 | Out-Null
+            Get-FreCompleted -App $script:app | Should -BeFalse
             Get-WtSetting -App $script:app -Key 'tabLayout' | Should -Be 'horizontal'
             Get-WtSetting -App $script:app -Key 'renderAgentMarkdown' | Should -BeFalse
             Get-WtSetting -App $script:app -Key 'showTokenUsageAndCost' | Should -BeFalse
-            (Get-ActivePane -App $script:app).session_id | Should -Not -BeNullOrEmpty
+            (Get-UiElement -App $script:app -Selector 'SessionManagementToggle').toggleState | Should -Be 'off'
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'setup-retry-failed.png') | Out-Null
         }
         finally {
             if (Test-Path -LiteralPath $marker) { Remove-Item -LiteralPath $marker }
