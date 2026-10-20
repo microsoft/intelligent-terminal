@@ -276,6 +276,16 @@ Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Ski
         [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
             Should -Be 'SessionManagementToggle'
         Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        $approval = $window.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'AutomaticApprovalToggle'))
+        if ($approval -and $approval.Current.IsEnabled -and -not $approval.Current.IsOffscreen) {
+            [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
+                Should -Be 'AutomaticApprovalToggle'
+            $approval.Current.Name | Should -Not -BeNullOrEmpty
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        }
         [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
             Should -Be 'SaveButton' -Because 'Tab skips the removed display toggles'
         (Get-FileHash -LiteralPath $script:app.SettingsPath -Algorithm SHA256).Hash | Should -Be $settingsHash

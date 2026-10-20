@@ -6075,7 +6075,9 @@ namespace TerminalAppLocalTests
                 {
                     const auto control = fre.FindName(name).as<FrameworkElement>();
                     VERIFY_IS_NOT_NULL(control);
-                    VERIFY_IS_FALSE(Automation::AutomationProperties::GetName(control).empty());
+                    const auto peer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(control);
+                    VERIFY_IS_NOT_NULL(peer);
+                    VERIFY_IS_FALSE(peer.GetName().empty());
                 }
 
                 VERIFY_ARE_EQUAL(configured.has_value(), globals.HasTabLayout());
