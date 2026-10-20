@@ -17,8 +17,17 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         # A custom agent so the model control is expected to render on the AI Agents page.
+        $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT }
+        else { Join-Path $PSScriptRoot '..\artifacts' }
+        $evidence = Join-Path $artifactRoot "settings-ui\$([guid]::NewGuid().ToString('N'))"
+        New-Item -ItemType Directory -Path $evidence -Force | Out-Null
+        $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpChatAgent.ps1')).Path
+        $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$((Join-Path $evidence 'fixture.log').Replace("'", "''"))'"
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
-            acpAgent = 'custom:qwen'; acpCustomCommand = 'copilot --acp --stdio'
+            acpAgent = 'custom:settings-ui-fixture'
+            acpCustomCommand = "pwsh -NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation)))"
+            autoErrorDetectionEnabled = $false
+            agentSessionManagementEnabled = $false
         }
 
         # Try to open Settings once; if the window can't take foreground, mark the suite skippable.
