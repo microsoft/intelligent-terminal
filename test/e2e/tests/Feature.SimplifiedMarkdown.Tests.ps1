@@ -203,17 +203,7 @@ Describe 'Feature: simplified agent Markdown' -Tag 'Feature', 'SimplifiedMarkdow
             $script:app.OwnedProcess.HasExited | Should -BeFalse
             $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]$script:app.Hwnd)
             $root.Current.ProcessId | Should -Be $script:app.Pid
-            $button = $root.FindFirst(
-                [Windows.Automation.TreeScope]::Descendants,
-                [Windows.Automation.PropertyCondition]::new(
-                    [Windows.Automation.AutomationElement]::AutomationIdProperty, 'NewTabButton'))
-            $button | Should -Not -BeNullOrEmpty
-            $button.Current.ProcessId | Should -Be $script:app.Pid
-            $button.Current.IsOffscreen | Should -BeFalse
-            $pattern = $button.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
-            $pattern.Expand()
-            Invoke-UiElement -App $script:app -Selector Settings | Out-Null
-            Wait-UiElement -App $script:app -Selector SettingsNav | Should -Not -BeNullOrEmpty
+            Open-WtSettings -App $script:app | Out-Null
         }
 
         function Start-MarkdownReply {
