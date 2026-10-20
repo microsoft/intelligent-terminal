@@ -331,6 +331,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         {
             const auto lock = _terminal->LockForWriting();
             _terminal->ResetShellIntegrationState();
+            if (_terminal->GetTaskbarState() != 0)
+            {
+                _terminal->SetTaskbarProgress(::Microsoft::Console::VirtualTerminal::DispatchTypes::TaskbarState::Clear, 0);
+            }
         }
 
         _connection = newConnection;
@@ -1726,7 +1730,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
     void ControlCore::_terminalTaskbarProgressChanged()
     {
-        TaskbarProgressChanged.raise(*this, nullptr);
+        // The callback owns the terminal lock; retain this parsed value before dispatch.
+        TaskbarProgressChanged.raise(*this, winrt::box_value(static_cast<uint64_t>(_terminal->GetTaskbarState())));
     }
 
     void ControlCore::_terminalShowWindowChanged(bool showOrHide)

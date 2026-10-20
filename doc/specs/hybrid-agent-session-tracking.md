@@ -1,5 +1,210 @@
 # Hooks-Fallback Agent Session Watcher (Hybrid Tracking)
 
+## Shared read model: pane metadata and Recent conversations
+
+Pane identity and conversation identity have different lifetimes. A live agent
+pane is identified by its existing Terminal connection GUID and can display
+activity before an agent session ID is known. A conversation is identified by
+its qualified provider, execution/history store and real agent session ID; it
+can remain in Recent after its pane disappears. Neither identity is a
+placeholder for the other.
+
+WTA owns conversation discovery, confirmed associations and effective agent
+activity. Terminal owns actual pane existence and the immutable launch facts
+it publishes. The existing snapshot carries two read projections:
+
+| Projection | Required key | Optional relationship |
+| --- | --- | --- |
+| `pane_statuses` | Terminal pane GUID | Confirmed agent conversation ID |
+| `sessions` | Qualified real conversation identity | Associated live pane GUID |
+
+Tab and pane metadata consume only the pane projection. Recent consumes the
+conversation projection, retaining its existing shell-origin, visibility and
+represented-session filters. A shared snapshot does not make the conversation
+ID mandatory for every record. List-inferred associations remain advisory
+metadata, never the confirmed relationship used for control or resume.
+The pane projection carries their qualified history key separately. Recent
+uses that key only to suppress the duplicate conversation while its native
+pane is represented in the current window. It does not assign a live pane to
+the conversation or borrow its status. Removing the pane or clearing OFF
+ownership removes the advisory suppression, so the conversation returns to Recent.
+The full conversation snapshot is retained. Suppression belongs to the existing
+represented-session visibility filter, not parsing, so pane removal restores
+the cached row immediately without waiting for discovery or its retry backoff.
+
+```text
+Existing hooks / parsed OSC/BEL / pane lifecycle
+                       |
+             Existing COM and WTA model
+                       |
+            One shared UI snapshot request
+                       |
+              +--------+---------+
+              |                  |
+        pane_statuses          sessions
+        key: pane GUID         key: conversation
+              |                  |
+        Tab/pane metadata     Recent + filters
+```
+
+This is a read-side diagram; it does not replace the existing signal,
+creation or exact-resume flows. Shared refreshes reuse the existing bounded
+request and retry machinery, without a new polling loop. A hidden or cancelled
+Recent projection must not cancel a request still serving pane metadata.
+
+UI presentation owns labels, icons, filtering and command availability, not
+conversation matching or agent activity transitions. Status getters are
+lookups: registration occurs at pane creation/attachment, setting changes,
+ownership changes and receiver readiness/recovery. Retained launch facts and
+versioned transport/replay receipts are legitimate host state, not another
+activity authority. Existing SDK routing and conversation IDs remain unchanged;
+no new MVVM framework, generic store or conversation-ID migration is required.
+
+## Sessions OFF: native observations in the shared registry
+
+Terminal uses `EffectiveAgentSessionManagementEnabled()` (the user setting
+combined with hooks policy), not listener availability, to enable native
+OSC/BEL observation publishing. WTA remains the authoritative status source.
+With Sessions ON, the existing hook/registry path is unchanged.
+With Sessions OFF, only a native agent provider recorded at pane creation or an
+explicit resume identifies a CLI pane. ACP helper panes keep their direct status;
+ordinary shells do not gain agent status from titles, bells or progress.
+Installed hooks may still emit in-band events while Sessions is OFF. Native
+hook binding ingestion and retained hook replay are therefore gated in both
+the page and shared content manager; they cannot overwrite explicit resume
+bindings or launch-owned providers. ACP helper content is explicitly marked
+and remains eligible for its direct session events.
+
+Terminal publishes raw observations through the existing COM event channel;
+no new COM interface or polling loop is introduced. WTA applies them in its
+existing registry. Tab metadata reads the registry snapshot, and known
+conversation rows use the same canonical activity in Recent sessions and the
+classic agent-pane session picker. C++ retains only transport identity and
+epoch fences, not a separate native activity store.
+Rich-status and Sidebar snapshot readers pin the process-owned SharedWta master
+pipe when available; an empty pipe, including during startup, retains implicit discovery.
+Managed masters receive a process-owned receiver generation. Terminal waits for
+a matching snapshot that confirms the master's event subscription is ready
+before reannouncing each window's retained native panes with fresh epochs and
+their current parsed progress. Proven creator or previously qualified pane
+identity is born-bound before admission; unknown panes remain conversation-less.
+This recovery retains identity, not prior activity or BEL attention.
+Within the same master generation, a ready snapshot also acknowledges each
+pane's admitted epoch. Missing admissions are retried with the same epoch;
+acknowledged panes are left alone. This retry does not replay old progress or
+BEL, so activity missed during a subscription gap waits for a fresh signal.
+
+An unbound native pane has a registry observation keyed by its actual pane
+GUID, not an invented ACP session ID or a resumable history row. A known
+explicit resume can bind a real row using its exact provider, conversation ID
+and execution source. Existing authoritative born-bound assignment may arrive
+before or after observation admission. When the transport source is unknown,
+Terminal accepts the source of a qualified canonical pane observation without
+inferring a transport source; known sources must still match. History discovery
+alone cannot promote an inferred association into a confirmed pane binding.
+An explicit resume of a different conversation in the same retained pane is
+not recovery replay. Its ordered birth supplies the expected previous session
+and admission epoch; WTA validates that predecessor and a newer epoch atomically
+before replacing foreground ownership. The previous conversation becomes
+unbound Historical, not Ended: replacement does not prove that its process exited.
+An explicit different-owner OFF reset cannot bypass this handoff if birth was lost.
+
+The existing parsed OSC 9;4 progress reports map to the existing agent statuses:
+Idle (0/4), Working (1/3, displayed as Active), and Error (2). Paused progress
+does not claim active work or add a sidebar status; its existing progress-ring
+presentation is unchanged. BEL maps to the existing Attention status, displayed
+as Waiting for input, and retains the existing tab bell handling. Here Waiting
+for input includes both needing a response and finishing work ready for the
+next human request; BEL does not prove a mandatory response or approval.
+Leftover unqualified COM hook activity cannot overwrite an active OFF native
+owner. Precisely qualified watcher evidence for an exact bound identity remains
+supported; ON and helper activity retain their existing paths.
+Native status observes the unthrottled parsed bell source; the existing
+one-second throttle still applies to visual bell feedback.
+Each progress event also retains its parsed state before UI dispatch. A queued
+Error-to-Idle burst therefore reaches the registry as two ordered observations,
+even when the final rendered progress state is already Idle.
+The next progress event clears native-only BEL attention and maps to Working,
+Error, or Idle. Generic progress does not dismiss a canonical input request
+with an existing attention reason or input-tool context; its matching completion
+or a new prompt supplies the transition. Focusing the tab only dismisses its
+bell indicator, not its registry activity. OSC 9;4;0 alone clears progress to Idle and does not
+prove that the process has ended. With Sessions OFF, only disappearance of the pane ID ends native
+ownership. OSC 133;D and a retained pane's Closed/Failed connection do not prove
+the agent has ended, and do not expire status, provider identity, or explicit
+resume bindings. This pane-presence status is deliberately not a process-liveness
+claim. Changing Sessions clears OFF observation ownership and invalidates queued
+BEL/progress callbacks through admission epochs. WTA retains activity across a
+same-owner OFF transfer or reconnect while updating routing context; older
+epochs cannot update the new owner. Splitting, reparenting or transferring
+content must not attribute one pane's signal to another.
+Actual content retirement publishes removal before its identity is discarded,
+including automatic `closeOnExit` retirement of a tab or split leaf. Detaching
+or transferring retained content is not retirement.
+Public Restart Connection replaces the connection GUID even when the control
+and content ID are retained. The old GUID is retired, and the replacement gets
+fresh creation metadata, admission epoch and Idle activity before it starts.
+Queued signals retain their emission-time GUID and cannot update the replacement.
+An explicit resume binding is retained only when a declared native agent is
+relaunched with the identical ConPTY command line; discovered or inferred
+identities are never carried across the replacement.
+While Sessions is ON, matching resume completion or supersession clears the
+temporary explicit provider along with its binding. That provider is never
+promoted into independent launch ownership, so switching OFF cannot turn the
+completed resume's ordinary shell into a native agent. Independent launch
+ownership remains intact.
+
+The shared content factory records each connection lifetime's immutable UTC
+creation time and producer-owned monotonic creation sequence before observation admission.
+The connection SessionId supplies pane identity; OSC does not discover it.
+Delayed WTA readiness, OSC/BEL updates, mode resets and retained-content moves
+do not retime creation; replacing the connection GUID begins a new lifetime.
+Managed native shortcut profiles supply their known
+Host source; delegate creation supplies its explicitly selected execution source.
+An unknown source is not assumed to be Host.
+
+New native launches initially have an Idle pane record with provider, creation
+metadata and no confirmed conversation ID. Existing ACP list results may enrich
+that record with a separately marked inferred session identity. Matching uses
+newly discovered unmapped IDs from the same provider and execution source,
+timestamp evidence within a five-minute launch window and the order of pending
+pane creations. Only complete discovery requests begun after pane creation
+qualify; stale, tied, extra, source-unknown or universe-qualified results leave
+the identity unknown. OSC partial updates retain creation
+and identity metadata; historical list status cannot overwrite live pane status.
+
+Historical ACP list rows contain an update timestamp, not necessarily a genuine
+creation timestamp or launch ownership token. Even a singleton result cannot
+exclude an independently created external session. An inferred association is
+therefore metadata, never proof of ownership: it cannot set canonical live pane
+bindings, route control actions or be replayed as a confirmed identity. Explicit
+identity wins over inference. No additional query, polling loop or cadence is
+introduced.
+
+When an eligible native pane is waiting for correlation, the existing retained
+history request follows its `session/list` cursors to a complete inventory.
+Pages share the original request's soft/hard deadlines and survive soft
+timeouts; there is no per-pane query or new worker/cadence. Ordinary discovery
+without a pending native pane retains its existing first-page behavior.
+An incomplete inventory cannot establish uniqueness. First-list evidence is
+retained even if pane admission or source delivery is delayed; known IDs and
+evidence first observed before pane creation still cannot become new launches.
+The five-minute launch window bounds query start and provider activity, not
+delivery of a retained slow inventory. A response that finishes later remains
+eligible when its underlying query and activity evidence qualify.
+
+Explicit recent-session resume uses the same pane creation metadata and retains
+its known binding under the actual connection
+SessionId even without a saved pane ID. Explicit binding ownership transfers with
+the pane between windows and remains until the pane is removed or a later
+authoritative explicit resume replaces that conversation, including after
+command marks or retained Closed/Failed connection states. The existing Sessions
+ON hook/completion policy is unchanged. A reused saved pane GUID cannot
+inherit the closed pane's explicit ownership marker.
+
+The watcher design below describes registry tracking, not an authority to
+infer native pane identity when Sessions is OFF.
+
 ## Abstract
 
 Intelligent Terminal (IT) surfaces a live list of agent-CLI sessions
@@ -387,6 +592,10 @@ while the Agents view is loaded and expanded. Age text is recalculated when the
 elapsed-minute bucket changes, and only changed text raises a property notification.
 This does not request a session snapshot or replace unchanged list rows; selection,
 focus, and scroll position are preserved. Search terms follow the updated age text.
+Successive registry snapshots also preserve surviving Recent session rows by
+their full provider/session/backend identity. Status, subtitle age and pane-binding changes
+update the retained row in place; genuine membership or ordering changes insert,
+remove, or move only the affected rows instead of replacing unchanged neighbors.
 Collapsing or unloading the sidebar, or leaving Agents, stops the local timer;
 showing it again immediately corrects cached ages. Session data refreshes and
 retry backoff remain independent, so retained ages continue advancing during a
