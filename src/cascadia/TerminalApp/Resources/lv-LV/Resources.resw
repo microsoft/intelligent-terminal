@@ -786,10 +786,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Viedāks veids, kā pārvaldīt cilnes</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Jūsu cilnes un aģentu sesijas tagad ir sānjoslā. Izmantojiet Sānjoslas attēlošanas opcijas, lai izvēlētos ciļņu informāciju. Ar peles labo pogu noklikšķiniet uz cilnes, lai atgrieztos pie horizontālām cilnēm.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Iepazīstiet jauno sānjoslu ar plašākām iespējām cilnēm un aģentiem. Pārslēdzieties starp ciļņu un aģentu skatiem. Ar peles labo pogu noklikšķiniet uz cilnes, lai atgrieztos pie horizontālām cilnēm.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Jauns</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

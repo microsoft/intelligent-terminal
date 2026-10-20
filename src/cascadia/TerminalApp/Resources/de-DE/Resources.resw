@@ -1689,10 +1689,14 @@ Für alle verfügbaren Optionen führen Sie 'wt new-tab --help' aus.</value>
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Registerkarten intelligenter verwalten</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Ihre Registerkarten und Agentsitzungen befinden sich jetzt in der Seitenleiste. Wählen Sie über Anzeigeoptionen der Seitenleiste die Details der Registerkarten aus. Klicken Sie mit der rechten Maustaste auf eine Registerkarte, um zu horizontalen Registerkarten zurückzukehren.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Entdecken Sie die neue Seitenleiste mit erweiterten Funktionen für Registerkarten und Agents. Wechseln Sie zwischen der Registerkarten- und der Agentansicht. Klicken Sie mit der rechten Maustaste auf eine Registerkarte, um zu horizontalen Registerkarten zurückzukehren.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Neu</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

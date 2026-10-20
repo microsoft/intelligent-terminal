@@ -672,10 +672,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Ներդիրները կառավարելու ավելի խելացի եղանակ</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Ձեր ներդիրներն ու ագենտների նստաշրջաններն այժմ կողային վահանակում են։ Ներդիրների մանրամասներն ընտրելու համար օգտագործեք Կողային վահանակի ցուցադրման ընտրանքներ կոճակը։ Հորիզոնական ներդիրներին վերադառնալու համար աջ սեղմեք ներդիրի վրա։</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Ծանոթացեք նոր կողային վահանակին՝ ներդիրների և ագենտների համար ավելի շատ հնարավորություններով։ Անցեք ներդիրների և ագենտների տեսքերի միջև։ Հորիզոնական ներդիրներին վերադառնալու համար աջ սեղմեք ներդիրի վրա։</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Նոր</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

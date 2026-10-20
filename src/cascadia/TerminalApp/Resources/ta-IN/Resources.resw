@@ -766,11 +766,15 @@
     <comment>Tooltip for collapsing the Recent agent sessions section in the sidebar. This hides rows without closing agents or deleting sessions.</comment>
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
-    <value>தாவல்களை நிர்வகிக்க சிறந்த வழி</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <value>தாவல்களை நிர்வகிக்க இன்னும் புத்திசாலித்தனமான வழி</value>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>உங்கள் தாவல்களும் எஜென்ட் அமர்வுகளும் இப்போது பக்கப்பட்டியில் உள்ளன. தாவல் விவரங்களைத் தேர்ந்தெடுக்க பக்கப்பட்டி காட்சி விருப்பங்கள் என்பதைப் பயன்படுத்தவும். கிடைமட்டத் தாவல்களுக்குத் திரும்ப, ஒரு தாவலில் வலது கிளிக் செய்யவும்.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>தாவல்கள் மற்றும் முகவர்களுக்கான கூடுதல் வசதிகளுடன் புதிய பக்கப்பட்டியை அறிமுகப்படுத்துகிறோம். தாவல் மற்றும் முகவர் காட்சிகளுக்கு இடையே மாறவும். கிடைமட்டத் தாவல்களுக்குத் திரும்ப, ஒரு தாவலில் வலது கிளிக் செய்யவும்.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>புதியது</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

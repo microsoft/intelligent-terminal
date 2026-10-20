@@ -784,10 +784,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Älykkäämpi tapa hallita välilehtiä</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Välilehdet ja agentti-istunnot ovat nyt sivupalkissa. Valitse välilehtien tiedot kohdasta Sivupalkin näyttöasetukset. Palaa vaakasuuntaisiin välilehtiin napsauttamalla välilehteä hiiren kakkospainikkeella.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Tutustu uuteen sivupalkkiin, jossa on enemmän ominaisuuksia välilehdille ja agenteille. Vaihda välilehti- ja agenttinäkymien välillä. Palaa vaakasuuntaisiin välilehtiin napsauttamalla välilehteä hiiren kakkospainikkeella.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Uusi</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

@@ -1658,10 +1658,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Розумніший спосіб керування вкладками</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Ваші вкладки та сеанси агентів тепер на бічній панелі. Використовуйте кнопку Параметри відображення бічної панелі, щоб вибрати відомості про вкладки. Клацніть вкладку правою кнопкою миші, щоб повернутися до горизонтальних вкладок.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Ознайомтеся з новою бічною панеллю з додатковими можливостями для вкладок і агентів. Перемикайтеся між поданнями вкладок і агентів. Клацніть вкладку правою кнопкою миші, щоб повернутися до горизонтальних вкладок.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Нове</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

@@ -764,10 +764,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Кыстыргычлар белән идарә итүнең акыллырак ысулы</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Кыстыргычларыгыз һәм агент сессияләрегез хәзер ян панельдә. Кыстыргыч мәгълүматларын сайлау өчен Ян панель күрсәтү параметрлары төймәсен кулланыгыз. Горизонталь кыстыргычларга кайту өчен кыстыргычка тычканның уң төймәсе белән басыгыз.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Кыстыргычлар һәм агентлар өчен күбрәк мөмкинлекләре булган яңа ян панель белән танышыгыз. Кыстыргычлар һәм агентлар күренешләре арасында күчегез. Горизонталь кыстыргычларга кайту өчен кыстыргычка тычканның уң төймәсе белән басыгыз.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Яңа</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

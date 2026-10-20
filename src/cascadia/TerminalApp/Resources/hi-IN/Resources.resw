@@ -788,10 +788,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>टैब प्रबंधित करने का अधिक समझदार तरीका</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>आपके टैब और एजेंट सत्र अब साइडबार में हैं। टैब के विवरण चुनने के लिए साइडबार प्रदर्शन विकल्प का उपयोग करें। क्षैतिज टैब पर वापस जाने के लिए किसी टैब पर राइट-क्लिक करें।</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>टैब और एजेंट के लिए अधिक सुविधाओं वाले नए साइडबार से परिचित हों। टैब और एजेंट दृश्यों के बीच स्विच करें। क्षैतिज टैब पर वापस जाने के लिए किसी टैब पर राइट-क्लिक करें।</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>नया</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

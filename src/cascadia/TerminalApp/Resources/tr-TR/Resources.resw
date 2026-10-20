@@ -765,10 +765,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Sekmeleri yönetmenin daha akıllı bir yolu</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Sekmeleriniz ve aracı oturumlarınız artık kenar çubuğunda. Sekme ayrıntılarını seçmek için Kenar çubuğu görüntüleme seçenekleri düğmesini kullanın. Yatay sekmelere dönmek için bir sekmeye sağ tıklayın.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Sekmeler ve aracılar için daha fazla özellik sunan yeni kenar çubuğuyla tanışın. Sekme ve aracı görünümleri arasında geçiş yapın. Yatay sekmelere dönmek için bir sekmeye sağ tıklayın.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Yeni</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

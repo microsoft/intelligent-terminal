@@ -877,5 +877,14 @@
                 </ItemsPanelTemplate>
             </ListView.ItemsPanel>
         </ListView>
+        <!-- The TeachingTip's top aligns with this target, 71 DIPs below the rail's top. -->
+        <Border x:Name="SidebarIntroductionTarget"
+                Grid.RowSpan="5"
+                Width="1"
+                Height="1"
+                Margin="0,70,0,0"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                IsHitTestVisible="False" />
     </Grid>
 </UserControl>

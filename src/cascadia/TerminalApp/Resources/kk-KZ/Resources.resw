@@ -785,10 +785,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Қойындыларды басқарудың ақылдырақ жолы</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Қойындыларыңыз бен агент сеанстарыңыз енді бүйірлік тақтада. Қойынды мәліметтерін таңдау үшін Бүйірлік тақтаның көрсету параметрлері түймешігін пайдаланыңыз. Көлденең қойындыларға оралу үшін қойындыны тінтуірдің оң жақ түймешігімен басыңыз.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Қойындылар мен агенттерге арналған мүмкіндіктері кеңейтілген жаңа бүйірлік тақтамен танысыңыз. Қойындылар мен агенттер көріністері арасында ауысыңыз. Көлденең қойындыларға оралу үшін қойындыны тінтуірдің оң жақ түймешігімен басыңыз.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Жаңа</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

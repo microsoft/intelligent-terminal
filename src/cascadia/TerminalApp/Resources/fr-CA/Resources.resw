@@ -785,10 +785,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Une façon plus intelligente de gérer les onglets</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Vos onglets et sessions d’agents se trouvent maintenant dans la barre latérale. Utilisez Options d’affichage de la barre latérale pour choisir les détails des onglets. Cliquez avec le bouton droit sur un onglet pour revenir aux onglets horizontaux.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Découvrez la nouvelle barre latérale, qui offre plus de possibilités pour les onglets et les agents. Passez de la vue des onglets à celle des agents et inversement. Cliquez avec le bouton droit sur un onglet pour revenir aux onglets horizontaux.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Nouveau</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

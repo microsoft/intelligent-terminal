@@ -672,10 +672,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Eng méi intelligent Manéier fir Tabs ze geréieren</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Är Tabs an Agent-Sessioune sinn elo an der Säiteleeschte. Benotzt Uweisungsoptioune vun der Säiteleeschte fir d'Tabdetailer ze wielen. Klickt mat der rietser Maustast op en Tab fir op horizontal Tabs zeréckzekommen.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Entdeckt déi nei Säiteleeschte mat méi Méiglechkeete fir Tabs an Agenten. Wiesselt tëschent der Tab- an der Agent-Uesiicht. Klickt mat der rietser Maustast op en Tab fir op horizontal Tabs zeréckzekommen.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Nei</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

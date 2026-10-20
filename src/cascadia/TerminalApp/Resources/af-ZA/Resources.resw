@@ -671,10 +671,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>’n Slimmer manier om oortjies te bestuur</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Jou oortjies en agentsessies is nou in die sybalk. Gebruik Sybalkvertoonopsies om oortjiebesonderhede te kies. Regsklik op ’n oortjie om na horisontale oortjies terug te keer.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Ontdek die nuwe sybalk met meer funksies vir oortjies en agente. Wissel tussen oortjie- en agentaansigte. Regsklik op ’n oortjie om na horisontale oortjies terug te keer.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Nuut</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

@@ -393,8 +393,34 @@
                          AutomationProperties.AutomationId="SidebarIntroductionTip"
                          x:Load="False"
                          Closed="_OnSidebarIntroductionClosed"
-                         IsLightDismissEnabled="True"
-                         PreferredPlacement="Right" />
+                         IsLightDismissEnabled="False"
+                         PreferredPlacement="Right">
+            <mux:TeachingTip.Content>
+                <StackPanel Width="290"
+                            Margin="0,-6,0,0">
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="8">
+                        <TextBlock x:Name="SidebarIntroductionTitleText"
+                                   FontSize="14"
+                                   FontWeight="SemiBold" />
+                        <Border x:Name="SidebarIntroductionNewBadgeContainer"
+                                Height="18"
+                                Padding="6,0"
+                                Background="#60CDFF"
+                                CornerRadius="9"
+                                VerticalAlignment="Center">
+                            <TextBlock x:Name="SidebarIntroductionNewBadge"
+                                       FontSize="12"
+                                       Foreground="#000000"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                    </StackPanel>
+                    <TextBlock x:Name="SidebarIntroductionDescriptionText"
+                               FontSize="14"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </mux:TeachingTip.Content>
+        </mux:TeachingTip>
 
         <mux:TeachingTip x:Name="WindowRenamer"
                          x:Uid="WindowRenamer"

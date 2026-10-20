@@ -1719,10 +1719,14 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>탭을 더 스마트하게 관리하는 방법</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>이제 탭과 에이전트 세션이 사이드바에 표시됩니다. 사이드바 표시 옵션을 사용하여 탭 세부 정보를 선택하세요. 가로 탭으로 돌아가려면 탭을 마우스 오른쪽 단추로 클릭하세요.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>탭과 에이전트를 더욱 풍부하게 활용할 수 있는 새로운 사이드바를 만나보세요. 탭 보기와 에이전트 보기 간에 전환하세요. 가로 탭으로 돌아가려면 탭을 마우스 오른쪽 단추로 클릭하세요.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>새 기능</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>
