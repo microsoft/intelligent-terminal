@@ -167,7 +167,11 @@ test('all controller stages load workflow code when the PR base predates the rev
   writeFileSync(helper, readFileSync(new URL('./security-review.mjs', import.meta.url)));
   mkdirSync(join(root, '.github', 'workflows'));
   writeFileSync(join(root, '.github', 'workflows', 'ghaw-pr-security-controller.yml'), controller);
-  const trusted = commit('Install trusted controller and helper');
+  commit('Install trusted controller and helper');
+  git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+    'merge', '--quiet', '--no-ff', '-m', 'Workflow merge revision', 'topic']);
+  const trusted = git(['rev-parse', 'HEAD']);
+  assert.equal(git(['merge-base', trusted, head]), head);
   const context = { 'github.workflow_sha': trusted, 'github.event.pull_request.base.sha': base };
   const refs = [...controller.matchAll(/ref: \$\{\{\s*([^}]+?)\s*\}\}/g)];
   assert.equal(refs.length, 3, 'exercise scope resolution, repair publication and report publication');
