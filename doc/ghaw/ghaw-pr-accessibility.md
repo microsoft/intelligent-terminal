@@ -13,6 +13,9 @@ The source review also classifies TestHost XAML, C++, headers and project files.
 TestHost and project files can require review but are not eligible repair paths.
 The original daily AI-credit cap is 100,000.
 
+PR automation runs only for branches in the receiving repository. External-fork
+PRs are skipped.
+
 ## Responsibilities
 
 | Owner | Responsibility |
@@ -32,8 +35,8 @@ push for confirmed remote publication.
 
 ## Repair and summary policy
 
-- Only same-repository, high-confidence HIGH findings are eligible. Fork PRs
-  remain read-only. MEDIUM/LOW findings are not automatic repairs.
+- Only same-repository, high-confidence HIGH findings are eligible.
+  MEDIUM/LOW findings are not automatic repairs.
 - Current repair eligibility stays limited to the trusted
   `AXSTATIC001-remove-raw-view` recipe: remove only the prepared control's raw
   UIA-view property, with an existing content/resource name source.
@@ -52,9 +55,10 @@ Uncertain or unsupported repairs stay `remaining` or `blocked`.
 
 ## Trust and publication
 
-The workflow must first be installed on the trusted base:
-`pull_request_target` does not activate an unmerged workflow from its own PR.
-Preparation reads immutable Git blobs, records `trusted_base_sha` separately
+The `pull_request` trigger uses the workflow definition from the PR merge
+commit, so contributors with access to create same-repository branches are
+trusted to change that definition. Preparation still reads immutable base Git
+blobs and records `trusted_base_sha` separately
 from feature `comparison_base_sha`, and stages the base's skill/analyzer in
 gh-aw's read-only runtime mount. PR instructions and artifacts are review data,
 never operating instructions.
@@ -70,6 +74,12 @@ The post-step checks the live PR head, report, allowed files, severity/confidenc
 exact repair recipe and captured commit series. Repaired files retain regular
 file type, mode, encoding and line endings. Untracked, extra and stale changes
 are rejected. These are permission/patch checks, not product tests.
+
+Before the agent starts, the workflow records configuration changes made by
+framework restoration in the read-only runtime mount. Before candidate
+validation, it reverses that exact setup patch. Modified setup hunks or
+committed configuration fail closed; new out-of-scope files and actual repairs
+still pass through the unchanged validator.
 
 A repair run requests one branch push for the complete series. A report-only
 run requests `noop`. There is no second PR-comment/review output: comments and

@@ -24,7 +24,7 @@ wt-agent-hooks/
 │   ├── .github/plugin/marketplace.json      # Copilot-native marketplace
 │   └── wt-agent-hooks/
 │       ├── plugin.json                      # Copilot-native root manifest
-│       └── hooks/hooks.json                 # --cli-source copilot, per-shell fields
+│       └── hooks/hooks.json                 # --cli-source copilot, direct exec + args
 ├── gemini-extension/                       # passed to `gemini extensions install`
 │   ├── gemini-extension.json
 │   └── hooks/hooks.json                    # 7 native hook commands
@@ -134,7 +134,7 @@ Antigravity's Windows hook executor splits the command into argv without strippi
 quote characters. Keep the script after PowerShell's `-Command` **unquoted**:
 PowerShell joins those arguments into a script. Quoting the entire script instead
 makes PowerShell evaluate a string literal and print the script rather than execute
-it. This uses the same readable `try`/`catch` guard as the Copilot, Codex, and Gemini
+it. This uses the same readable `try`/`catch` guard as the Codex and Gemini
 hooks, with no Base64 or additional launcher:
 
 ```text
@@ -212,9 +212,9 @@ user installed earlier, is routed rather than mis-handled.
 
 **Other providers keep their existing tool-completion behavior.** `app.rs`
 discards their `agent.tool.finished` / `agent.tool.failed` events because tool
-completion does not end a turn. Copilot deliberately pays the per-tool shell
-spawn and COM round-trip cost to recover activity without reading permission
-records from files; it does not map tool completion to Idle.
+completion does not end a turn. Copilot deliberately pays the per-tool native
+process and COM round-trip cost to recover activity without reading permission
+records from files; no hook shell is started, and tool completion does not map to Idle.
 
 **Copilot's `PreToolUse` remains unsubscribed**: `agent.tool.starting` is still
 subscribed by Gemini (`BeforeTool`) and OpenCode (`tool.execute.before`), and
@@ -332,7 +332,7 @@ an expression, no `cmd.exe` metacharacters, and nothing bash rewrites.
 
 | CLI | Hook shell | How we know |
 | --- | --- | --- |
-| Copilot | PowerShell 7+ | GitHub hooks documentation |
+| Copilot | None (`exec` + `args`) | [GitHub hooks documentation](https://docs.github.com/en/copilot/reference/hooks-reference#command-hooks) |
 | Codex | Session-selected shell | `commandWindows` selects the text, not the shell; Windows sessions may run hooks through PowerShell or cmd.exe |
 | Gemini | PowerShell | `hookRunner.ts` → `getShellConfiguration()` resolves ComSpec-powershell → `pwsh.exe` → `powershell.exe`, with no `cmd.exe` branch |
 | Claude | **bash** (`/usr/bin/bash`) | its own debug log reports `/usr/bin/bash: line 1: …` |
@@ -355,65 +355,47 @@ worked.
 
 `wtcli.exe` reaches `PATH` through the MSIX app-execution alias, which uninstall
 deletes — but the hook config stays registered with each CLI. From that moment
-the *shell*, not the bridge, decides the hook's exit code, and a missing command
-makes it 1. Copilot's `preToolUse` hook is fail-closed, so every tool call in
-every later session is denied:
+the hook runner, not the bridge, decides how to report a missing command.
+Copilot's `preToolUse` hook is fail-closed, so subscribing an unguarded bridge
+to that event could deny tool calls in every later session:
 
 ```
 ✗ Echo a probe marker string (shell)
   └ Denied by preToolUse hook from "…" (hook errored)
 ```
 
-The fix does not require guessing a shell after all. Copilot's command hooks
-take **`powershell` and `bash` fields**, and measurement shows the field name
-*selects* the interpreter rather than merely matching a fixed one: with only
-`bash` present the events still arrive on Windows, which could not happen if
-Copilot always used PowerShell — `command -v` short-circuits there and the
-bridge would never run. Each spelling therefore only has to be valid in the one
-shell that names it:
+### Copilot runs without a hook shell
 
-| Field | Command |
-| --- | --- |
-| `powershell` | `try { wtcli.exe agent-hook --cli-source copilot --event <topic> } catch { }; exit 0` |
-| `bash` | `command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event <topic>; exit 0` |
-| `command` | **not shipped** — see below |
+Copilot subscribes only to `SessionStart`, `SessionEnd`, `Notification`,
+`UserPromptSubmit`, `PostToolUse`, `StopFailure`, and `Stop`, never `PreToolUse`
+or other tool-permission events. All seven handlers use the documented
+direct-executable form:
 
-`try`/`catch` is what makes the PowerShell form work: a missing native command
-raises a catchable `CommandNotFoundException`, and the trailing `exit 0`
-overrides a non-zero exit from the bridge itself. Both keep passing the hook
-JSON on stdin, since PowerShell hands its own stdin to the native child.
+```json
+{
+  "type": "command",
+  "exec": "wtcli.exe",
+  "args": ["agent-hook", "--cli-source", "copilot", "--event", "agent.session.start"],
+  "timeoutSec": 5
+}
+```
 
-### Why Copilot ships no `command` at all
+This removes the PowerShell or bash startup from every callback. Copilot passes
+the hook JSON directly to the native process on stdin; arguments do not pass
+through shell parsing. `exec` must not be combined with `command`, `powershell`,
+or `bash`. Use a Copilot CLI version that supports `exec` and `args`; the local
+validation version is 1.0.98. No shell fallback is shipped.
 
-A portable `command` cannot be guarded: no single spelling both runs in every
-shell and survives a missing bridge (the `cmd /c "… & exit 0"` form is
-self-guarding but is destroyed by bash's MSYS path conversion, which rewrites
-`/c` into a Windows path so `cmd.exe` starts interactively and never runs the
-bridge — and that happens whether or not the bridge exists). Shipping an
-unguarded fallback next to a **fail-closed** `preToolUse` hook leaves a path
-that only has to be taken once to deny every tool call for the rest of a
-session.
+An isolated Copilot CLI 1.0.98 prompt delivered native session-start, prompt,
+stop, and session-end callbacks with the expected argument vector and JSON
+stdin. The same prompt still completed when every hook executable was missing.
 
-Measured on Copilot CLI 1.0.81-0, one field at a time, with delivery as the
-oracle:
-
-| Fields present | Events delivered | Tool calls denied |
-| --- | --- | --- |
-| `powershell` only | 5 | no |
-| `bash` only | 5 | no |
-| `command` only | 5 | no |
-| none | **0** | **no** |
-
-The last row is the one that decides it: a handler with nothing runnable is a
-silent no-op, not an error. So dropping `command` costs nothing today — the
-per-shell fields deliver exactly as before — and if a future Copilot ever stops
-honouring those fields, the hook degrades fail-**open** (no events) instead of
-fail-closed (no tools).
-
-Verified against Copilot CLI 1.0.81-0: the bare spelling denies tool calls once
-the bridge is missing, and the per-shell fields do not. `timeoutSec: 5` bounds
-the other fail-closed edge — a hung COM call — and a hook *timeout* was measured
-to be fail-open, so shortening it only reduces the stall.
+The native bridge already stays silent and exits successfully when Terminal
+identity is absent or event forwarding fails. If `wtcli.exe` itself is missing,
+it cannot start and Copilot can report a hook error; the removed shell guards
+no longer hide that error. Keep these handlers off fail-closed tool-permission
+events. The existing five-second timeout still bounds a hung bridge, and the
+CLI's plugin manager can remove a stale hook registration.
 
 Claude has no `powershell` / `bash` field pair, but it does document a `shell`
 field accepting `"bash"` or `"powershell"`, so it pins the shell and guards
@@ -478,7 +460,7 @@ Current state with the bridge missing:
 
 | CLI | Mechanism | Result |
 | --- | --- | --- |
-| Copilot | `powershell` / `bash` fields, no bare `command` | exit 0, silent |
+| Copilot | Direct `exec` + `args` | CLI logs the launch failure; session continues (fail-open) |
 | Claude | `shell: "bash"` + `command -v` guard | exit 0, silent |
 | Gemini | PowerShell guard in `command` | exit 0, silent |
 | Codex | POSIX guard in `command`, cmd.exe wrapper in `commandWindows` | exit 0, silent in both Windows shells |

@@ -43,6 +43,11 @@ below requires a version newer than this worktree's installed version, not an
 uninstall. This is separate from [same-layout recipe redeployment](building.md#loose-debug-and-dev-deployment),
 which can retain the same version.
 
+Keep the template's `StartTerminalOnLoginTask` declaration disabled by default.
+Settings queries that package-local task when it opens; removing or renaming it
+causes `StartupTask.GetAsync` to fail. The task ID is scoped to each package, so
+preserving it does not share startup state with normal Dev or Store.
+
 Make these additional **Dev-only** edits:
 
 | File | Local substitution |

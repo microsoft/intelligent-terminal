@@ -855,7 +855,8 @@ namespace winrt::TerminalApp::implementation
                 tabImpl->FocusPane(id.value());
             }
 
-            auto newPane = _MakePane(args, nullptr);
+            const auto contentArgs = _PrepareSplitDirectory(tabImpl, args, false);
+            auto newPane = _MakePane(contentArgs, nullptr);
             if (!newPane)
                 co_return result;
 

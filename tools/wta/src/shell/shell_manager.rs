@@ -484,6 +484,13 @@ impl ShellManager {
             .ok_or_else(|| anyhow::anyhow!("No Windows Terminal channel available"))
     }
 
+    pub async fn wt_publish_event(
+        &self,
+        event: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.wt()?.request("publish", event).await
+    }
+
     /// List all WT windows.
     pub async fn wt_list_windows(&self) -> anyhow::Result<serde_json::Value> {
         self.wt()?

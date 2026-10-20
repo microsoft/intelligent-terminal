@@ -294,8 +294,8 @@ test('public agent diagnostic directories and stdio reject irregular ancestors a
   });
 });
 
-test('compiled collector inventory pins every uploaded namespace and all four diagnostic readers in both lanes', () => {
-  for (const name of ['ghaw-pr-security', 'ghaw-pr-security-guide-fork']) {
+test('compiled collector inventory pins every uploaded namespace and all four diagnostic readers in the repair lane', () => {
+  for (const name of ['ghaw-pr-security']) {
     const lock = readFileSync(new URL(`../../../workflows/${name}.lock.yml`, import.meta.url), 'utf8');
     const upload = lock.slice(lock.indexOf('- name: Upload agent artifacts'), lock.indexOf('\n  conclusion:'));
     const paths = [...upload.matchAll(/^\s{12}\/tmp\/gh-aw\/([^\r\n]+)$/gm)].map(match => match[1]);
@@ -651,7 +651,7 @@ test('nested private or collected symlink sinks reject before either runtime ass
 });
 
 test('compiled workers prepare private sinks before native startup and use literal gateway transport', () => {
-        for (const name of ['ghaw-pr-security', 'ghaw-pr-security-guide-fork']) {
+        for (const name of ['ghaw-pr-security']) {
           const lock = readFileSync(new URL(`../../../workflows/${name}.lock.yml`, import.meta.url), 'utf8');
           const prepare = lock.indexOf('name: Prepare private security review log sinks before native services');
           assert(prepare > 0);

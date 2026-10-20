@@ -41,7 +41,7 @@ state that no separate reviewer was required; historical snapshot evidence
 must not be described as current-tree validation>
 
 ### Changes and limitations
-<Localized repairs committed, no changes needed, or fork guidance only;
+<Localized repairs committed or no changes needed;
 anything blocked, unverified, or excluded from scope>
 
 [Workflow run and usage artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})

@@ -10,8 +10,7 @@ before deciding whether to edit it.
 | --- | --- |
 | `performance-review` agent and shared skill | Source investigation, severity, minimal corrections and the Markdown summary template. |
 | Repair worker | One separate proposal commit per eligible HIGH finding; native gh-aw branch push. |
-| Fork worker | Read-only guidance; no execution, editing or branch push. |
-| Controller | Immutable PR routing and delivery of the agent-written Markdown. |
+| Controller | Same-repository, non-draft PR gating, immutable scope and delivery of the agent-written Markdown. |
 | Original reviewer | Build/test, acceptance and optional rollback of a proposed fix commit. |
 
 The agent writes the findings table, including each proposal's actual commit
@@ -51,7 +50,10 @@ as verified or tested fixes.
 
 ## Workflow
 
-1. The controller fetches the immutable PR head, resolves the merge base and
+1. The controller runs on ordinary `pull_request` events only for non-draft PRs
+   whose head repository ID matches this repository. Fork PRs are skipped and
+   do not dispatch a guidance worker or publish a performance report.
+   For eligible PRs it fetches the immutable head, resolves the merge base and
    skips agent execution when no performance-sensitive source changed.
 2. The repair worker inspects source and callers, creates a separate local
    commit for each eligible HIGH finding, then writes the shared summary
@@ -72,10 +74,11 @@ restricts files to WTA source and blocks protected files. The reviewed head is
 checked before handoff; an incompatible branch advance fails the push rather
 than being automatically rebased.
 
-Fork source is fetched only for immutable comparison and read through permitted
-tools. The fork worker can capture Markdown and request `noop`; its output job
-is read-only/staged, and the framework conclusion job is disabled to avoid
-automatic issue creation.
+The controller dispatches only `ghaw-pr-performance.lock.yml`, passing ordinary
+pull-request context. The worker independently verifies the live PR identity,
+immutable revisions and same-repository status before preparing a proposal.
+The shared performance-review agent and skill retain their read-only review
+capabilities for use outside this automated same-repository flow.
 
 ## Reporting
 
@@ -98,8 +101,8 @@ freshness checks reduce races but do not constitute atomicity.
 
 ```powershell
 node --test .github\workflows\ghaw-pr-performance\tests\*.test.mjs
-gh aw compile ghaw-pr-performance ghaw-pr-performance-fork-guidance --validate --no-check-update
-actionlint -shellcheck= -pyflakes= -ignore 'unknown permission scope "copilot-requests"' -ignore 'unexpected key "queue" for "concurrency" section' .github\workflows\ghaw-pr-performance-controller.yml .github\workflows\ghaw-pr-performance.lock.yml .github\workflows\ghaw-pr-performance-fork-guidance.lock.yml
+gh aw compile ghaw-pr-performance --validate --no-check-update
+actionlint -shellcheck= -pyflakes= -ignore 'unknown permission scope "copilot-requests"' -ignore 'unexpected key "queue" for "concurrency" section' .github\workflows\ghaw-pr-performance-controller.yml .github\workflows\ghaw-pr-performance.lock.yml
 ```
 
 These are development checks of the automation, not builds/tests performed on

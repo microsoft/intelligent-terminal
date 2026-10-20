@@ -84,16 +84,6 @@ on:
 
         type: string
 
-      same_repo:
-
-        description: 'Whether the head repository is the workflow repository'
-
-        required: true
-
-        type: string
-
-
-
 permissions:
 
   contents: read
