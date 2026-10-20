@@ -402,9 +402,12 @@
                                 Spacing="8">
                         <TextBlock x:Name="SidebarIntroductionTitleText"
                                    FontSize="14"
-                                   FontWeight="SemiBold" />
+                                   FontWeight="SemiBold"
+                                   MaxWidth="185"
+                                   TextWrapping="Wrap" />
                         <Border x:Name="SidebarIntroductionNewBadgeContainer"
-                                Height="18"
+                                MinHeight="18"
+                                MaxWidth="56"
                                 Padding="6,0"
                                 Background="#60CDFF"
                                 CornerRadius="9"
@@ -412,6 +415,7 @@
                             <TextBlock x:Name="SidebarIntroductionNewBadge"
                                        FontSize="12"
                                        Foreground="#000000"
+                                       TextWrapping="Wrap"
                                        VerticalAlignment="Center" />
                         </Border>
                     </StackPanel>
