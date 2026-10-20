@@ -126,6 +126,56 @@ class StaticAnalysisTests(unittest.TestCase):
 
 
 class PrepareIntegrationTests(unittest.TestCase):
+    def test_workflow_merge_revision_does_not_hide_feature_changes(self):
+        workflow = (Path(__file__).parents[4] / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        base_variable = re.search(r'--base "\$(\w+)"', workflow).group(1)
+        for instruction_change in (False, True):
+            with self.subTest(instruction_change=instruction_change), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                def git(*args):
+                    return subprocess.run(["git", *args], cwd=root, check=True, capture_output=True,
+                                          text=True, timeout=15).stdout.strip()
+                git("init", "-q", "--initial-branch=main")
+                git("config", "user.email", "test@example.invalid")
+                git("config", "user.name", "Test")
+                path = root / "src/cascadia/TerminalApp/Test.xaml"
+                path.parent.mkdir(parents=True)
+                path.write_text('<Button Content="Open" />\n', encoding="utf-8")
+                git("add", ".")
+                git("commit", "-qm", "PR base")
+                base = git("rev-parse", "HEAD")
+                git("checkout", "-qb", "feature")
+                path.write_text('<Button Content="Open" AutomationProperties.AccessibilityView="Raw" />\n', encoding="utf-8")
+                if instruction_change:
+                    (root / "AGENTS.md").write_text("Changed operating instructions\n", encoding="utf-8")
+                git("add", ".")
+                git("commit", "-qm", "Feature change")
+                head = git("rev-parse", "HEAD")
+                git("checkout", "-q", "main")
+                (root / "reviewer.txt").write_text("Installed reviewer\n", encoding="utf-8")
+                git("add", ".")
+                git("commit", "-qm", "Main advances")
+                git("merge", "--no-ff", "-m", "Workflow merge revision", "feature")
+                workflow_sha = git("rev-parse", "HEAD")
+                self.assertEqual(head, git("merge-base", workflow_sha, head))
+                output = root / ".git" / "prepared.json"
+                values = {"BASE_SHA": base, "WORKFLOW_SHA": workflow_sha}
+                command = [sys.executable, str(SCRIPT), "prepare", "--root", str(root),
+                           "--base", values[base_variable], "--head", head, "--output", str(output)]
+                if '--trusted-sha "$WORKFLOW_SHA"' in workflow:
+                    command += ["--trusted-sha", workflow_sha]
+                result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+                if instruction_change:
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn("operating instructions", result.stderr)
+                else:
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    prepared = json.loads(output.read_text())
+                    self.assertTrue(prepared["relevant"])
+                    self.assertEqual(base, prepared["comparison_base_sha"])
+                    self.assertEqual(workflow_sha, prepared["trusted_base_sha"])
+                    self.assertEqual(1, len(prepared["static_findings"]))
+
     def test_test_host_only_changes_require_review(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1524,8 +1574,9 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn("ref: ${{ github.workflow_sha }}", workflow)
             self.assertIn("trusted-sha: ${{ github.workflow_sha }}", workflow)
             self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", workflow)
-            self.assertIn('--base "$WORKFLOW_SHA"', workflow.replace('\\"', '"'))
-            self.assertNotIn("${{ github.event.pull_request.base.sha }}", workflow)
+            self.assertIn('--base "$BASE_SHA"', workflow.replace('\\"', '"'))
+            self.assertIn('--trusted-sha "$WORKFLOW_SHA"', workflow.replace('\\"', '"'))
+            self.assertIn("BASE_SHA: ${{ github.event.pull_request.base.sha }}", workflow)
 
     def test_preparation_preserves_named_pr_branch_for_transport(self):
         root = Path(__file__).parents[4]

@@ -322,11 +322,14 @@ def _verify_instruction_boundary(root: Path, base: str, head: str) -> None:
 
 
 def prepare(root: Path, base: str, head: str, output: Path,
-            publication: dict[str, Any] | None = None) -> None:
+            publication: dict[str, Any] | None = None, trusted_sha: str | None = None) -> None:
     if not re.fullmatch(r"[0-9a-fA-F]{40}", head):
         raise ValueError("head SHA must be an exact 40-character hexadecimal value")
     if not re.fullmatch(r"[0-9a-fA-F]{40}", base):
         raise ValueError("base SHA must be an exact 40-character hexadecimal value")
+    trusted_sha = trusted_sha if trusted_sha is not None else base
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", trusted_sha):
+        raise ValueError("trusted SHA must be an exact 40-character hexadecimal value")
     comparison_base = _git(root, "merge-base", base, head).strip()
     _verify_instruction_boundary(root, comparison_base, head)
     paths = _changed_paths(root, comparison_base, head)
@@ -363,7 +366,7 @@ def prepare(root: Path, base: str, head: str, output: Path,
         "version": 1,
         "source_sha": head.lower(),
         "comparison_base_sha": comparison_base.lower(),
-        "trusted_base_sha": base.lower(),
+        "trusted_base_sha": trusted_sha.lower(),
         "relevant": bool(paths),
         "changed_files": paths,
         "source_evidence": source_evidence,
@@ -896,6 +899,7 @@ def main() -> int:
     prepare_parser = subparsers.add_parser("prepare")
     prepare_parser.add_argument("--root", type=Path, required=True)
     prepare_parser.add_argument("--base", required=True)
+    prepare_parser.add_argument("--trusted-sha")
     prepare_parser.add_argument("--head", required=True)
     prepare_parser.add_argument("--output", type=Path, required=True)
     prepare_parser.add_argument("--publication-branch")
@@ -918,7 +922,7 @@ def main() -> int:
             if any(value is not None for value in (args.publication_branch, args.publication_repository, args.publication_pr_number)):
                 publication = {"head_ref": args.publication_branch, "repository": args.publication_repository,
                                "pr_number": args.publication_pr_number}
-            prepare(args.root, args.base, args.head, args.output, publication)
+            prepare(args.root, args.base, args.head, args.output, publication, args.trusted_sha)
         else:
             validate(
                 args.root,

@@ -96,6 +96,7 @@ steps:
     shell: bash
     env:
       WORKFLOW_SHA: ${{ github.workflow_sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       HEAD_REF: ${{ github.event.pull_request.head.ref }}
       REPOSITORY: ${{ github.repository }}
@@ -113,7 +114,8 @@ steps:
       git cat-file -e "$HEAD_SHA^{commit}"
       python3 "$TRUSTED_ACCESSIBILITY/accessibility_review.py" prepare \
         --root "$GITHUB_WORKSPACE" \
-        --base "$WORKFLOW_SHA" \
+        --base "$BASE_SHA" \
+        --trusted-sha "$WORKFLOW_SHA" \
         --head "$HEAD_SHA" \
         --publication-branch "$HEAD_REF" \
         --publication-repository "$REPOSITORY" \

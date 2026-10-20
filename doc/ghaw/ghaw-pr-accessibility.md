@@ -63,6 +63,9 @@ code revision as `trusted_base_sha` separately from feature `comparison_base_sha
 and stages its skill/analyzer in gh-aw's read-only runtime mount. The Windows
 harness uses the same workflow revision. A PR event's older base commit can
 predate installation of this workflow and must not select its trusted code.
+Preparation receives the PR base separately for feature comparison, because the
+workflow merge revision already contains the reviewed head. Using that merge
+revision as the comparison input would hide all feature changes.
 PR instructions and artifacts are review data, never operating instructions.
 
 After preparation, the agent inspects the verified PR head branch. Operating
