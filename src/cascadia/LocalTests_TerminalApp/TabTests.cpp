@@ -5382,8 +5382,10 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             page->_historyRefreshInFlight = true;
             const auto filters = page->_tabStrip.SidebarFilters();
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             VERIFY_IS_TRUE(filters.ShowAgentsOnly());
             VERIFY_IS_TRUE(filters.ShowRecentAgentSessions());
+            VERIFY_ARE_EQUAL(Visibility::Visible, strip->AgentsOnlyIndicator().Visibility());
             VERIFY_ARE_EQUAL(TabStripFilterMode::AgentsOnly, page->_tabFilterMode);
             VERIFY_ARE_EQUAL(before, til::io::read_file_as_utf8_string_if_exists(settingsPath));
             page->_tabStrip.SearchActive(true);
@@ -5399,6 +5401,8 @@ namespace TerminalAppLocalTests
                     page->SetSettings(reloaded, false);
                     VERIFY_ARE_EQUAL(agentsOnly, filters.ShowAgentsOnly());
                     VERIFY_ARE_EQUAL(recentSessions, filters.ShowRecentAgentSessions());
+                    VERIFY_ARE_EQUAL(agentsOnly ? Visibility::Visible : Visibility::Collapsed,
+                                     strip->AgentsOnlyIndicator().Visibility());
                     VERIFY_ARE_EQUAL(agentsOnly ? TabStripFilterMode::AgentsOnly : TabStripFilterMode::AllTabs, page->_tabFilterMode);
                     VERIFY_ARE_EQUAL(winrt::hstring{ L"temporary global query" }, filters.SearchQuery());
                     VERIFY_IS_FALSE(filters.AgentsOnlyEffective());

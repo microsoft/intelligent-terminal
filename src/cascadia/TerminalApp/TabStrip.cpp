@@ -732,6 +732,10 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        if (args.PropertyName() == L"ShowAgentsOnly")
+        {
+            AgentsOnlyIndicator().Visibility(_sidebarFilters.ShowAgentsOnly() ? Visibility::Visible : Visibility::Collapsed);
+        }
         if (recentSessionsChanged)
         {
             _agentFilterTelemetryPending = _sidebarFilters.ShowRecentAgentSessions();
