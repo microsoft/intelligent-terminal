@@ -237,6 +237,7 @@ sids
 SIGKILLs
 signtool
 slnt
+snwprintf
 spams
 splitn
 splitw

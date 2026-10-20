@@ -122,6 +122,7 @@ namespace TerminalAppUnitTests
             record.hostRequestId = 8;
             record.providerVersion = ParseProviderDiagnosticVersion("repository-value-canary");
             logger->TryLog(record);
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, logger->DroppedRecords());
         }
 
         std::vector<std::filesystem::path> logs;
@@ -982,6 +983,7 @@ namespace TerminalAppUnitTests
             VERIFY_ARE_EQUAL(size_t{ 2 }, updates.size());
         }
 
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, successfulLogger->DroppedRecords());
         successfulLogger.reset();
         std::vector<std::filesystem::path> logFiles;
         for (const auto& entry : std::filesystem::directory_iterator{ successfulLogDirectory })

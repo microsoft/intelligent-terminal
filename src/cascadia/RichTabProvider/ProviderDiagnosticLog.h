@@ -117,7 +117,10 @@ namespace Microsoft::Terminal::RichTab::Provider
         static constexpr size_t QueueCapacity{ 256 };
         static constexpr uint64_t MaximumFileSize{ 1024 * 1024 };
 
-        ProviderDiagnosticLog(uint64_t processEpoch, std::filesystem::path directory) noexcept;
+        ProviderDiagnosticLog(
+            uint64_t processEpoch,
+            std::filesystem::path directory,
+            bool dropOnContention) noexcept;
 
         bool _Start() noexcept;
         static DWORD WINAPI _ThreadEntry(void* context) noexcept;
@@ -129,6 +132,7 @@ namespace Microsoft::Terminal::RichTab::Provider
 
         const uint64_t _processEpoch;
         const std::filesystem::path _directory;
+        const bool _dropOnContention;
         SRWLOCK _queueLock = SRWLOCK_INIT;
         CONDITION_VARIABLE _queueCondition = CONDITION_VARIABLE_INIT;
         std::array<ProviderDiagnosticRecord, QueueCapacity> _queue{};

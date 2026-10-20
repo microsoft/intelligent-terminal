@@ -260,7 +260,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         try
         {
             auto logger = std::unique_ptr<ProviderDiagnosticLog>{
-                new (std::nothrow) ProviderDiagnosticLog{ processEpoch, ::IntelligentTerminal::LogDirVersioned() }
+                new (std::nothrow) ProviderDiagnosticLog{ processEpoch, ::IntelligentTerminal::LogDirVersioned(), true }
             };
             if (!logger)
             {
@@ -299,7 +299,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         try
         {
             auto logger = std::unique_ptr<ProviderDiagnosticLog>{
-                new (std::nothrow) ProviderDiagnosticLog{ processEpoch, std::move(directory) }
+                new (std::nothrow) ProviderDiagnosticLog{ processEpoch, std::move(directory), false }
             };
             if (!logger || !logger->_Start())
             {
@@ -315,9 +315,11 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     ProviderDiagnosticLog::ProviderDiagnosticLog(
         const uint64_t processEpoch,
-        std::filesystem::path directory) noexcept :
+        std::filesystem::path directory,
+        const bool dropOnContention) noexcept :
         _processEpoch{ processEpoch },
-        _directory{ std::move(directory) }
+        _directory{ std::move(directory) },
+        _dropOnContention{ dropOnContention }
     {
     }
 
@@ -360,10 +362,17 @@ namespace Microsoft::Terminal::RichTab::Provider
         {
             return;
         }
-        if (!TryAcquireSRWLockExclusive(&_queueLock))
+        if (_dropOnContention)
         {
-            _droppedRecords.fetch_add(1, std::memory_order_relaxed);
-            return;
+            if (!TryAcquireSRWLockExclusive(&_queueLock))
+            {
+                _droppedRecords.fetch_add(1, std::memory_order_relaxed);
+                return;
+            }
+        }
+        else
+        {
+            AcquireSRWLockExclusive(&_queueLock);
         }
 
         if (_stopping || _queueSize == QueueCapacity)
