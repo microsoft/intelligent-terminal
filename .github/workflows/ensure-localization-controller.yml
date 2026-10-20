@@ -5,7 +5,7 @@ name: Localization Review
 run-name: Localization Review for PR #${{ github.event.pull_request.number }}
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
     paths:
       - 'src/cascadia/**/Resources/*.resw'
@@ -25,6 +25,8 @@ concurrency:
 jobs:
   localization-review:
     name: Localization review
+    # The workflow definition comes from the PR merge; checkout below stays on the base.
+    if: github.event.pull_request.head.repo.id == github.repository_id
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
