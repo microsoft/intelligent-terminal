@@ -1170,6 +1170,16 @@ This boundary concerns the telemetry schemas above, not every local
 diagnostic log or internal IPC message. For example, helper state exchange
 is not itself an ETW payload.
 
+The local `rich-tab-provider-*.jsonl` stream is operational diagnostics, not
+telemetry. It records bounded host-observed outcomes for the catalog-origin
+Git metadata provider, including process launch status, timing, parsing, and
+whether the provider broker accepted the result. It does not record request or
+response bodies, stdout or stderr, paths, session IDs, repository or branch
+names, metadata values, exception text, or parser messages. Records are
+best-effort and may be dropped on contention, I/O failure, file-size limits, or
+process exit. The logger never delays provider execution or application
+shutdown to preserve records.
+
 Privacy tags and keywords are build metadata. Local ETW emission and
 decoding do not prove that a telemetry backend ingested events. Conversely,
 zero OSS metadata values or an event without an explicit telemetry keyword

@@ -21,9 +21,74 @@ namespace Microsoft::Terminal::RichTab::Provider
         bool _IsBuiltInGitStatus(const Registration& provider)
         {
             return provider.manifest.id == "com.microsoft.intelligent-terminal.git-status" &&
+                   provider.origin == RegistrationOrigin::BuiltInCatalog &&
                    provider.kind == RegistrationKind::Managed &&
                    provider.enabled && provider.integrityValid &&
                    provider.root == BuiltInProviderCatalog::PackageRoot() / L"RichTabProviders" / L"GitStatus";
+        }
+
+        bool _IsDiagnosticEligible(const Registration& provider) noexcept
+        {
+            return provider.origin == RegistrationOrigin::BuiltInCatalog &&
+                   provider.manifest.id == "com.microsoft.intelligent-terminal.git-status";
+        }
+
+        uint8_t _FieldMask(const std::vector<std::string>& fields) noexcept
+        {
+            uint8_t result = ProviderFieldNone;
+            for (const auto& field : fields)
+            {
+                if (field == "agentStatus")
+                {
+                    result |= ProviderFieldAgentStatus;
+                }
+                else if (field == "workingDirectory")
+                {
+                    result |= ProviderFieldWorkingDirectory;
+                }
+                else if (field == "repository")
+                {
+                    result |= ProviderFieldRepository;
+                }
+                else if (field == "branch")
+                {
+                    result |= ProviderFieldBranch;
+                }
+                else if (field == "changes")
+                {
+                    result |= ProviderFieldChanges;
+                }
+            }
+            return result;
+        }
+
+        uint8_t _FieldMask(const Snapshot& snapshot) noexcept
+        {
+            uint8_t result = ProviderFieldNone;
+            for (const auto& [field, _] : snapshot.fields)
+            {
+                if (field == "agentStatus")
+                {
+                    result |= ProviderFieldAgentStatus;
+                }
+                else if (field == "workingDirectory")
+                {
+                    result |= ProviderFieldWorkingDirectory;
+                }
+                else if (field == "repository")
+                {
+                    result |= ProviderFieldRepository;
+                }
+                else if (field == "branch")
+                {
+                    result |= ProviderFieldBranch;
+                }
+                else if (field == "changes")
+                {
+                    result |= ProviderFieldChanges;
+                }
+            }
+            return result;
         }
 
         void _ClearGitStatusCwdDependentFields(Snapshot& snapshot)
@@ -116,11 +181,18 @@ namespace Microsoft::Terminal::RichTab::Provider
     }
 
     ProviderBroker::ProviderBroker() :
-        ProviderBroker{ CommandRunner::ResolveGit() }
+        ProviderBroker{ CommandRunner::ResolveGit(), true }
     {
     }
 
     ProviderBroker::ProviderBroker(std::optional<std::filesystem::path> gitBinary) :
+        ProviderBroker{ std::move(gitBinary), false }
+    {
+    }
+
+    ProviderBroker::ProviderBroker(
+        std::optional<std::filesystem::path> gitBinary,
+        const bool enableDiagnosticLogging) :
         _gitBinary{ std::move(gitBinary) }
     {
         if (BCryptGenRandom(
@@ -131,6 +203,10 @@ namespace Microsoft::Terminal::RichTab::Provider
             _processEpoch == 0)
         {
             _processEpoch = (GetTickCount64() << 16) ^ GetCurrentProcessId();
+        }
+        if (enableDiagnosticLogging)
+        {
+            _diagnosticLog = ProviderDiagnosticLog::Create(_processEpoch);
         }
         constexpr size_t WorkerCount{ 4 };
         _executorWorkers.reserve(WorkerCount);
@@ -202,6 +278,22 @@ namespace Microsoft::Terminal::RichTab::Provider
     void ProviderBroker::ReloadProviders()
     {
         auto builtIns = BuiltInProviderCatalog::Load(BuiltInProviderCatalog::PackageRoot());
+        if (_diagnosticLog && !_catalogOutcomeLogged.exchange(true, std::memory_order_acq_rel))
+        {
+            ProviderDiagnosticRecord record;
+            record.event = ProviderDiagnosticEvent::Catalog;
+            record.timestamp = ProviderDiagnosticTimestamp();
+            record.processId = GetCurrentProcessId();
+            record.processEpoch = _processEpoch;
+            record.catalogOutcome = builtIns.outcome;
+            if (builtIns.value && !builtIns.value->empty())
+            {
+                const auto& provider = builtIns.value->front();
+                record.catalogOrigin = provider.origin == RegistrationOrigin::BuiltInCatalog;
+                record.providerVersion = ParseProviderDiagnosticVersion(provider.manifest.version);
+            }
+            _diagnosticLog->TryLog(record);
+        }
         std::vector<Registration> providers;
         if (builtIns.value)
         {
@@ -785,8 +877,9 @@ namespace Microsoft::Terminal::RichTab::Provider
                 const auto generation = _nextGeneration++;
                 providerState.generation = generation;
                 Request request;
+                request.hostRequestId = _nextRequest++;
                 request.requestId =
-                    std::to_string(_processEpoch) + "-" + std::to_string(_nextRequest++);
+                    std::to_string(_processEpoch) + "-" + std::to_string(request.hostRequestId);
                 request.providerId = provider.manifest.id;
                 request.processEpoch = _processEpoch;
                 request.sessionId = session.context.sessionId;
@@ -838,6 +931,24 @@ namespace Microsoft::Terminal::RichTab::Provider
         Request request,
         const uint64_t generation)
     {
+        const auto diagnosticsEnabled =
+            _diagnosticLog && _diagnosticLog->Enabled() && _IsDiagnosticEligible(provider);
+        ProviderDiagnosticRecord diagnosticRecord;
+        if (diagnosticsEnabled)
+        {
+            diagnosticRecord.event = ProviderDiagnosticEvent::Invocation;
+            diagnosticRecord.timestamp = ProviderDiagnosticTimestamp();
+            diagnosticRecord.processId = GetCurrentProcessId();
+            diagnosticRecord.processEpoch = _processEpoch;
+            diagnosticRecord.hostRequestId = request.hostRequestId;
+            diagnosticRecord.generation = generation;
+            diagnosticRecord.contextRevision = request.contextRevision;
+            diagnosticRecord.providerVersion = ParseProviderDiagnosticVersion(provider.manifest.version);
+            diagnosticRecord.activationReason = request.reason;
+            diagnosticRecord.selectedFields = _FieldMask(request.visibleFields);
+            diagnosticRecord.catalogOrigin = provider.origin == RegistrationOrigin::BuiltInCatalog;
+        }
+
         std::vector<std::string> diagnostics;
         const auto serialized = SerializeRequest(request, provider.manifest);
         std::optional<Snapshot> snapshot;
@@ -847,7 +958,24 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
         else
         {
+            const auto started = std::chrono::steady_clock::now();
             const auto command = _runner.Run(provider.manifest, *serialized.value, ProviderTimeout);
+            const auto finished = std::chrono::steady_clock::now();
+            if (diagnosticsEnabled)
+            {
+                diagnosticRecord.runnerAttempted = true;
+                diagnosticRecord.durationMicroseconds = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(finished - started).count());
+                diagnosticRecord.runnerStatus = command.status;
+                diagnosticRecord.processStarted = command.processStarted;
+                diagnosticRecord.exitCode = command.exitCode;
+                diagnosticRecord.exitCodeValid = command.exitCodeValid;
+                diagnosticRecord.win32Error = command.win32Error;
+                diagnosticRecord.win32ErrorValid = command.win32ErrorValid;
+                diagnosticRecord.outputLimitObserved = command.outputLimitObserved;
+                diagnosticRecord.standardOutputExceeded = command.standardOutputExceeded;
+                diagnosticRecord.standardErrorExceeded = command.standardErrorExceeded;
+            }
             if (command.status != CommandResult::Status::Completed || command.exitCode != 0)
             {
                 diagnostics.emplace_back(
@@ -864,6 +992,11 @@ namespace Microsoft::Terminal::RichTab::Provider
                 if (parsed)
                 {
                     snapshot = *parsed.value;
+                    if (diagnosticsEnabled)
+                    {
+                        diagnosticRecord.parseOutcome = ProviderParseOutcome::Valid;
+                        diagnosticRecord.returnedFields = _FieldMask(*snapshot);
+                    }
                     if (const auto status = request.firstPartyFields.find("agentStatusId");
                         status != request.firstPartyFields.end())
                     {
@@ -872,6 +1005,10 @@ namespace Microsoft::Terminal::RichTab::Provider
                 }
                 else
                 {
+                    if (diagnosticsEnabled)
+                    {
+                        diagnosticRecord.parseOutcome = ProviderParseOutcome::Invalid;
+                    }
                     diagnostics.insert(diagnostics.end(), parsed.errors.begin(), parsed.errors.end());
                 }
             }
@@ -884,44 +1021,66 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<Callback> callbacks;
         BrokerUpdate update;
         std::optional<PendingRequest> next;
+        auto disposition = ProviderBrokerDisposition::NotApplicable;
         {
             std::lock_guard lock{ _mutex };
             const auto session = _sessions.find(request.sessionId);
             if (session == _sessions.end())
             {
-                return;
+                disposition = ProviderBrokerDisposition::SessionMissing;
             }
-            const auto state = session->second.providers.find(provider.manifest.id);
-            if (state == session->second.providers.end() ||
-                !state->second.running ||
-                state->second.runningGeneration != generation)
+            else
             {
-                return;
-            }
-            state->second.running = false;
-
-            if (state->second.generation == generation &&
-                session->second.contextRevision == request.contextRevision)
-            {
-                state->second.snapshot = std::move(snapshot);
-                ++session->second.updateSequence;
-                update = _UpdateFor(request.sessionId, session->second, std::move(diagnostics));
-                callbacks.reserve(session->second.callbacks.size());
-                for (const auto& [_, callback] : session->second.callbacks)
+                const auto state = session->second.providers.find(provider.manifest.id);
+                if (state == session->second.providers.end())
                 {
-                    callbacks.emplace_back(callback);
+                    disposition = ProviderBrokerDisposition::ProviderStateMissing;
                 }
-            }
+                else if (!state->second.running ||
+                         state->second.runningGeneration != generation)
+                {
+                    disposition = ProviderBrokerDisposition::RunningGenerationMismatch;
+                }
+                else
+                {
+                    state->second.running = false;
+                    if (state->second.generation != generation)
+                    {
+                        disposition = ProviderBrokerDisposition::GenerationMismatch;
+                    }
+                    else if (session->second.contextRevision != request.contextRevision)
+                    {
+                        disposition = ProviderBrokerDisposition::ContextRevisionMismatch;
+                    }
+                    else
+                    {
+                        disposition = ProviderBrokerDisposition::Accepted;
+                        state->second.snapshot = std::move(snapshot);
+                        ++session->second.updateSequence;
+                        update = _UpdateFor(request.sessionId, session->second, std::move(diagnostics));
+                        callbacks.reserve(session->second.callbacks.size());
+                        for (const auto& [_, callback] : session->second.callbacks)
+                        {
+                            callbacks.emplace_back(callback);
+                        }
+                    }
 
-            if (state->second.pending)
-            {
-                next = std::move(state->second.pending);
-                state->second.pending.reset();
-                state->second.running = true;
-                state->second.runningGeneration = next->generation;
+                    if (state->second.pending)
+                    {
+                        next = std::move(state->second.pending);
+                        state->second.pending.reset();
+                        state->second.running = true;
+                        state->second.runningGeneration = next->generation;
+                    }
+                }
             }
         }
 
+        if (diagnosticsEnabled)
+        {
+            diagnosticRecord.brokerDisposition = disposition;
+            _diagnosticLog->TryLog(diagnosticRecord);
+        }
         for (const auto& callback : callbacks)
         {
             callback(update);

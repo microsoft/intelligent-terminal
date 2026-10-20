@@ -75,13 +75,14 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
     }
 
-    RegistryResult<std::vector<Registration>> BuiltInProviderCatalog::Load(
+    BuiltInProviderCatalogResult BuiltInProviderCatalog::Load(
         const std::filesystem::path& packageRoot)
     {
-        RegistryResult<std::vector<Registration>> result;
+        BuiltInProviderCatalogResult result;
         result.value.emplace();
         if (packageRoot.empty() || !packageRoot.is_absolute())
         {
+            result.outcome = ProviderCatalogOutcome::InvalidPackageRoot;
             result.errors.emplace_back("Built-in provider package root must be absolute");
             return result;
         }
@@ -92,12 +93,18 @@ namespace Microsoft::Terminal::RichTab::Provider
         {
             if (existsError)
             {
+                result.outcome = ProviderCatalogOutcome::CatalogUnreadable;
                 result.errors.emplace_back("Could not inspect the built-in provider catalog");
+            }
+            else
+            {
+                result.outcome = ProviderCatalogOutcome::CatalogAbsent;
             }
             return result;
         }
         if (!std::filesystem::is_directory(catalogRoot, existsError) || existsError)
         {
+            result.outcome = ProviderCatalogOutcome::CatalogUnreadable;
             result.errors.emplace_back("Built-in provider catalog is not a directory");
             return result;
         }
@@ -109,6 +116,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             const auto contents = _ReadManifest(root / L"provider.json", readError);
             if (!contents)
             {
+                result.outcome = ProviderCatalogOutcome::ManifestUnreadable;
                 result.errors.emplace_back(std::move(readError));
                 continue;
             }
@@ -116,11 +124,13 @@ namespace Microsoft::Terminal::RichTab::Provider
             auto manifest = ParseManifest(*contents, root);
             if (!manifest)
             {
+                result.outcome = ProviderCatalogOutcome::ManifestInvalid;
                 result.errors.insert(result.errors.end(), manifest.errors.begin(), manifest.errors.end());
                 continue;
             }
             if (manifest.value->id != builtIn.expectedId)
             {
+                result.outcome = ProviderCatalogOutcome::ProviderIdMismatch;
                 result.errors.emplace_back("Built-in provider manifest id does not match the product catalog");
                 continue;
             }
@@ -128,10 +138,12 @@ namespace Microsoft::Terminal::RichTab::Provider
             Registration registration;
             registration.manifest = std::move(*manifest.value);
             registration.kind = RegistrationKind::Managed;
+            registration.origin = RegistrationOrigin::BuiltInCatalog;
             registration.root = root;
             registration.enabled = true;
             registration.integrityValid = true;
             result.value->emplace_back(std::move(registration));
+            result.outcome = ProviderCatalogOutcome::ProviderRegistered;
         }
         return result;
     }

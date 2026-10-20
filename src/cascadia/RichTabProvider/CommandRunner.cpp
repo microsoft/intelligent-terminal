@@ -320,12 +320,14 @@ namespace Microsoft::Terminal::RichTab::Provider
             timeout > std::chrono::minutes{ 5 })
         {
             result.win32Error = ERROR_INVALID_PARAMETER;
+            result.win32ErrorValid = true;
             return result;
         }
 
         std::filesystem::path entrypoint;
         if (!ResolveEntrypoint(manifest, entrypoint, result.win32Error))
         {
+            result.win32ErrorValid = true;
             return result;
         }
 
@@ -337,6 +339,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             if (!powerShell)
             {
                 result.win32Error = ERROR_FILE_NOT_FOUND;
+                result.win32ErrorValid = true;
                 return result;
             }
             executable = *powerShell;
@@ -368,6 +371,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         if (!_CreatePipe(input, true) || !_CreatePipe(output, false) || !_CreatePipe(error, false))
         {
             result.win32Error = GetLastError();
+            result.win32ErrorValid = true;
             return result;
         }
 
@@ -375,6 +379,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         if (!job)
         {
             result.win32Error = GetLastError();
+            result.win32ErrorValid = true;
             return result;
         }
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
@@ -382,6 +387,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         if (!SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
         {
             result.win32Error = GetLastError();
+            result.win32ErrorValid = true;
             return result;
         }
 
@@ -399,6 +405,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         if (!InitializeProcThreadAttributeList(startup.lpAttributeList, 1, 0, &attributeSize))
         {
             result.win32Error = GetLastError();
+            result.win32ErrorValid = true;
             return result;
         }
         const auto deleteAttributes = wil::scope_exit([&]() {
@@ -419,6 +426,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                 nullptr))
         {
             result.win32Error = GetLastError();
+            result.win32ErrorValid = true;
             return result;
         }
 
@@ -437,14 +445,17 @@ namespace Microsoft::Terminal::RichTab::Provider
                 &processInfo))
         {
             result.win32Error = GetLastError();
+            result.win32ErrorValid = true;
             return result;
         }
+        result.processStarted = true;
         wil::unique_process_handle process{ processInfo.hProcess };
         wil::unique_handle thread{ processInfo.hThread };
 
         if (!AssignProcessToJobObject(job.get(), process.get()))
         {
             result.win32Error = GetLastError();
+            result.win32ErrorValid = true;
             TerminateProcess(process.get(), result.win32Error);
             return result;
         }
@@ -469,6 +480,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         if (ResumeThread(thread.get()) == static_cast<DWORD>(-1))
         {
             result.win32Error = GetLastError();
+            result.win32ErrorValid = true;
             TerminateJobObject(job.get(), result.win32Error);
             input.write.reset();
             return result;
@@ -518,6 +530,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         if (wait != WAIT_OBJECT_0)
         {
             result.win32Error = GetLastError();
+            result.win32ErrorValid = true;
             TerminateJobObject(job.get(), result.win32Error);
             stdinWriter.join();
             return result;
@@ -532,17 +545,28 @@ namespace Microsoft::Terminal::RichTab::Provider
             inputError != ERROR_SUCCESS && inputError != ERROR_BROKEN_PIPE && inputError != ERROR_NO_DATA)
         {
             result.win32Error = inputError;
+            result.win32ErrorValid = true;
             TerminateJobObject(job.get(), inputError);
             return result;
         }
 
         DWORD exitCode = 0;
-        GetExitCodeProcess(process.get(), &exitCode);
-        result.exitCode = exitCode;
+        if (GetExitCodeProcess(process.get(), &exitCode))
+        {
+            result.exitCode = exitCode;
+            result.exitCodeValid = true;
+        }
+        else
+        {
+            result.win32Error = GetLastError();
+            result.win32ErrorValid = true;
+        }
         stdoutReader.join();
         stderrReader.join();
-        if (stdoutExceeded.load(std::memory_order_acquire) ||
-            stderrExceeded.load(std::memory_order_acquire))
+        result.outputLimitObserved = true;
+        result.standardOutputExceeded = stdoutExceeded.load(std::memory_order_acquire);
+        result.standardErrorExceeded = stderrExceeded.load(std::memory_order_acquire);
+        if (result.standardOutputExceeded || result.standardErrorExceeded)
         {
             result.status = CommandResult::Status::OutputLimitExceeded;
         }

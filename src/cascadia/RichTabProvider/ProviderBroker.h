@@ -4,6 +4,7 @@
 #pragma once
 
 #include "CommandRunner.h"
+#include "ProviderDiagnosticLog.h"
 #include "ProviderRegistry.h"
 
 #include <chrono>
@@ -138,6 +139,7 @@ namespace Microsoft::Terminal::RichTab::Provider
 
         ProviderBroker();
         explicit ProviderBroker(std::optional<std::filesystem::path> gitBinary);
+        ProviderBroker(std::optional<std::filesystem::path> gitBinary, bool enableDiagnosticLogging);
         ~ProviderBroker();
 
         void _Refresh(
@@ -166,6 +168,9 @@ namespace Microsoft::Terminal::RichTab::Provider
         bool _executorStopping{ false };
         CommandRunner _runner;
         const std::optional<std::filesystem::path> _gitBinary;
+        // Process-lifetime by design. Production shutdown must never wait for diagnostics.
+        ProviderDiagnosticLog* _diagnosticLog{ nullptr };
+        std::atomic<bool> _catalogOutcomeLogged{ false };
         std::vector<Registration> _providers;
         VisibleFieldMap _visibleFields;
         FieldDisplayNameMap _fieldDisplayNames;
