@@ -28,6 +28,16 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
             acpCustomCommand = "pwsh -NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation)))"
             autoErrorDetectionEnabled = $false
             agentSessionManagementEnabled = $false
+            defaultProfile = '{0caa0dad-35be-5f56-a8ff-afceeeaa6101}'
+            disabledProfileSources = @(
+                'Windows.Terminal.PowershellCore', 'Windows.Terminal.Wsl',
+                'Windows.Terminal.Azure', 'Windows.Terminal.VisualStudio',
+                'Windows.Terminal.SSH', 'Microsoft.WSL'
+            )
+            profiles = @{ list = @(
+                @{ guid = '{0caa0dad-35be-5f56-a8ff-afceeeaa6101}'; commandline = 'cmd.exe' }
+                @{ guid = '{61c54bbd-c2c6-5271-96e7-009a87ff44bf}'; commandline = 'cmd.exe'; hidden = $true }
+            ) }
         }
 
         # Try to open Settings once; if the window can't take foreground, mark the suite skippable.
