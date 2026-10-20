@@ -318,6 +318,12 @@ Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Ski
             $script:freSettings.acpAgent = 'copilot'
             $script:app = Start-Terminal -Package $script:package -ShowFre -Backup $false -CleanSettings $false -Settings $script:freSettings
             Invoke-UiElement -App $script:app -Selector 'NextButton' | Out-Null
+            $window = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr][int64]$script:app.Hwnd)
+            $agentCondition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'AgentComboBox')
+            $agentControl = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $agentCondition)
+            $agentControl | Should -Not -BeNullOrEmpty
+            $agentRuntimeId = $agentControl.GetRuntimeId() -join ','
             if (-not (Test-UiElementEnabled -App $script:app -Selector 'SessionManagementToggle')) {
                 Set-ItResult -Skipped -Because 'session-management policy prevents the setup-failure preservation control'
                 return
@@ -334,21 +340,27 @@ Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Ski
             (Get-UiElement -App $script:app -Selector 'SessionManagementToggle').toggleState | Should -Be 'off'
             Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'setup-failed.png') | Out-Null
 
-            # Keep the fault active so retry cannot launch real Copilot bootstrap.
-            # Successful completion is covered separately with the custom ACP fixture.
-            Invoke-UiElement -App $script:app -Selector 'SessionManagementToggle' | Out-Null
-            Invoke-UiElement -App $script:app -Selector 'SaveButton' | Out-Null
-            Wait-Until -TimeoutSec 30 -Because 'retry to reach the same deterministic setup-failure boundary' -Condition {
+            # Reload only the agent identity before retry so completion cannot bootstrap real Copilot.
+            Set-WtAgent -App $script:app -Agent 'custom:fre-tab-mode-fixture' | Out-Null
+            Wait-Until -TimeoutSec 20 -Because 'native settings reload to reach the existing FRE overlay' -Condition {
                 $log = Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart
-                [regex]::Matches($log, '\[FRE\] E2E: forcing hooks install failure').Count -eq 2
+                $log -match '_ReconcileAgentSettings: entered\. current\.acp=custom:fre-tab-mode-fixture '
             } | Out-Null
-            Wait-UiElement -App $script:app -Selector 'ErrorText' -TimeoutSec 10 | Out-Null
+            $reloadedAgent = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $agentCondition)
+            $reloadedAgent | Should -Not -BeNullOrEmpty
+            ($reloadedAgent.GetRuntimeId() -join ',') | Should -Be $agentRuntimeId -Because 'retry must reuse the same FRE instance'
             Get-FreCompleted -App $script:app | Should -BeFalse
+            Remove-Item -LiteralPath $marker
+            Invoke-UiElement -App $script:app -Selector 'SaveButton' | Out-Null
+            Wait-Until -TimeoutSec 30 -Because 'retry to finish without changing display preferences' -Condition {
+                Get-FreCompleted -App $script:app
+            } | Out-Null
+            Get-WtSetting -App $script:app -Key 'acpAgent' | Should -Be 'custom:fre-tab-mode-fixture'
             Get-WtSetting -App $script:app -Key 'tabLayout' | Should -Be 'horizontal'
             Get-WtSetting -App $script:app -Key 'renderAgentMarkdown' | Should -BeFalse
             Get-WtSetting -App $script:app -Key 'showTokenUsageAndCost' | Should -BeFalse
-            (Get-UiElement -App $script:app -Selector 'SessionManagementToggle').toggleState | Should -Be 'off'
-            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'setup-retry-failed.png') | Out-Null
+            (Get-ActivePane -App $script:app).session_id | Should -Not -BeNullOrEmpty
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'setup-retry-completed.png') | Out-Null
         }
         finally {
             if (Test-Path -LiteralPath $marker) { Remove-Item -LiteralPath $marker }
