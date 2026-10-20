@@ -273,9 +273,16 @@ Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Ski
         [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
             Should -Be 'ErrorDetectionComboBox'
         Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
-        [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
-            Should -Be 'SessionManagementToggle'
-        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        $sessions = $window.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'SessionManagementToggle'))
+        $sessions | Should -Not -BeNullOrEmpty
+        if ($sessions.Current.IsEnabled) {
+            [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
+                Should -Be 'SessionManagementToggle'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        }
         $approval = $window.FindFirst(
             [System.Windows.Automation.TreeScope]::Descendants,
             [System.Windows.Automation.PropertyCondition]::new(

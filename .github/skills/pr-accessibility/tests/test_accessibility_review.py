@@ -1452,7 +1452,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("$dependency.MinVersion", harness)
         self.assertIn("[version]$_.Version -ge [version]$dependency.MinVersion", harness)
         self.assertIn("Wait-VisibleElement", scan)
-        self.assertIn("'TabModeComboBox'", scan)
+        self.assertIn("'AgentComboBox'", scan)
         self.assertIn("'uia-tree.json'", scan)
 
 
