@@ -57,6 +57,9 @@ as verified or tested fixes.
    independently of the PR's age. For eligible PRs it fetches the immutable head,
    resolves the merge base from the PR's recorded base and skips agent execution
    when no performance-sensitive source changed. No commit ID is hardcoded.
+   With `pull_request`, the workflow revision can be the PR merge commit:
+   same-repository branch authors are trusted to change the workflow itself,
+   as required by the repository's same-repository-only automation policy.
 2. The repair worker inspects source and callers, creates a separate local
    commit for each eligible HIGH finding, then writes the shared summary
    template with those commit links to the framework's pre-created

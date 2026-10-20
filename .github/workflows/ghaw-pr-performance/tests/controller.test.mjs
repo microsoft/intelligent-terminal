@@ -42,7 +42,11 @@ test('controller loads its helper from the workflow revision when the PR base pr
     const helper = path.join(root, '.github', 'workflows', 'ghaw-pr-performance', 'scripts', 'performance-review.mjs');
     fs.mkdirSync(path.dirname(helper), { recursive: true });
     fs.copyFileSync(new URL('../scripts/performance-review.mjs', import.meta.url), helper);
-    const trusted = commit('Install the reviewer after the PR base');
+    commit('Install the reviewer after the PR base');
+    git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+        'merge', '--quiet', '--no-ff', '-m', 'Workflow merge revision', 'topic']);
+    const trusted = git(['rev-parse', 'HEAD']);
+    assert.equal(git(['merge-base', trusted, head]), head);
     const context = {
         'github.workflow_sha': trusted,
         'github.event.pull_request.base.sha': base,
