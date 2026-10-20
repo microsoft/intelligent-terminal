@@ -982,7 +982,6 @@ namespace winrt::TerminalApp::implementation
             const TerminalApp::Tab& changedTab = nullptr,
             bool refreshPaneItems = true,
             bool updateBookkeeping = true);
-        void _UpdateTabFilterStatus(const ::TerminalApp::TabListViewModel* list = nullptr);
         ::TerminalApp::TabListViewModel::Criteria _ReadTabListCriteria() const;
         ::TerminalApp::TabListViewModel::OwnerEntry _ReadTabListOwner(const Tab& tab, uint32_t index, const TerminalApp::TabStripDisplayItem& display = nullptr) const;
         ::TerminalApp::TabListViewModel::OwnerState _TabListStateFor(const Tab* tab, const TerminalApp::TabStripDisplayItem& display = nullptr) const;
