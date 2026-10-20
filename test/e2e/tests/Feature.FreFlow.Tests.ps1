@@ -164,6 +164,9 @@ Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Ski
             sidebarLayoutMigrationCompleted = $true
             sidebarIntroductionShown = $true
         }
+        foreach ($key in $script:freState.Keys) {
+            Set-WtState -App $script:targetApp -Key $key -Value $script:freState[$key] | Out-Null
+        }
         $script:freSettings = @{
             language = 'en-US'
             defaultProfile = '{0caa0dad-35be-5f56-a8ff-afceeeaa6101}'
@@ -230,7 +233,7 @@ Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Ski
     ) {
         param($Language)
         $script:freSettings.language = $Language
-        $script:app = Start-Terminal -Package $script:package -ShowFre -Backup $false -CleanSettings $false -Settings $script:freSettings -State $script:freState
+        $script:app = Start-Terminal -Package $script:package -ShowFre -Backup $false -CleanSettings $false -Settings $script:freSettings
         Invoke-UiElement -App $script:app -Selector 'NextButton' | Out-Null
         Wait-UiElement -App $script:app -Selector 'AgentComboBox' | Out-Null
         $window = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr][int64]$script:app.Hwnd)
@@ -296,7 +299,7 @@ Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Ski
             $script:freSettings.showTokenUsageAndCost = $false
             # The hook-failure boundary applies to a supported built-in, not a custom ACP fixture.
             $script:freSettings.acpAgent = 'copilot'
-            $script:app = Start-Terminal -Package $script:package -ShowFre -Backup $false -CleanSettings $false -Settings $script:freSettings -State $script:freState
+            $script:app = Start-Terminal -Package $script:package -ShowFre -Backup $false -CleanSettings $false -Settings $script:freSettings
             Invoke-UiElement -App $script:app -Selector 'NextButton' | Out-Null
             if (-not (Test-UiElementEnabled -App $script:app -Selector 'SessionManagementToggle')) {
                 Set-ItResult -Skipped -Because 'session-management policy prevents the setup-failure preservation control'
@@ -340,7 +343,7 @@ Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Ski
             $script:freSettings.renderAgentMarkdown = $Enabled
             $script:freSettings.showTokenUsageAndCost = $Enabled
         }
-        $script:app = Start-Terminal -Package $script:package -ShowFre -Backup $false -CleanSettings $false -Settings $script:freSettings -State $script:freState
+        $script:app = Start-Terminal -Package $script:package -ShowFre -Backup $false -CleanSettings $false -Settings $script:freSettings
         Invoke-UiElement -App $script:app -Selector 'NextButton' | Out-Null
         Wait-UiElement -App $script:app -Selector 'AgentComboBox' | Out-Null
         Invoke-UiElement -App $script:app -Selector 'SaveButton' | Out-Null
