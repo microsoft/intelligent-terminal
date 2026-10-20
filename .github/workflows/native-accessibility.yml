@@ -186,7 +186,7 @@ jobs:
           if ($env:FRE_OUTCOME -ne 'success' -or $env:AGENTS_OUTCOME -ne 'success' -or $env:FRE_SETTINGS_OUTCOME -ne 'success') {
             throw "Native accessibility scan failed or was blocked: FRE=$env:FRE_OUTCOME Agents=$env:AGENTS_OUTCOME FRE-settings=$env:FRE_SETTINGS_OUTCOME"
           }
-          $markers = @{ fre = 'NextButton'; 'fre-settings' = 'TabModeComboBox'; agents = 'AcpAgentComboBox' }
+          $markers = @{ fre = 'NextButton'; 'fre-settings' = 'AgentComboBox'; agents = 'AcpAgentComboBox' }
           foreach ($surface in @('fre', 'fre-settings', 'agents')) {
             $directory = Join-Path "$env:RUNNER_TEMP\accessibility-results" $surface
             $result = Get-Content -LiteralPath (Join-Path $directory 'result.json') -Raw | ConvertFrom-Json
