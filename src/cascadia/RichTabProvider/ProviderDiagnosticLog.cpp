@@ -199,7 +199,7 @@ namespace Microsoft::Terminal::RichTab::Provider
     ProviderDiagnosticVersion ParseProviderDiagnosticVersion(const std::string_view value) noexcept
     {
         ProviderDiagnosticVersion result;
-        if (value.empty())
+        if (value.empty() || value.back() == '.')
         {
             return result;
         }
@@ -294,12 +294,13 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     std::unique_ptr<ProviderDiagnosticLog> ProviderDiagnosticLog::CreateForTests(
         const uint64_t processEpoch,
-        std::filesystem::path directory) noexcept
+        std::filesystem::path directory,
+        const bool dropOnContention) noexcept
     {
         try
         {
             auto logger = std::unique_ptr<ProviderDiagnosticLog>{
-                new (std::nothrow) ProviderDiagnosticLog{ processEpoch, std::move(directory), false }
+                new (std::nothrow) ProviderDiagnosticLog{ processEpoch, std::move(directory), dropOnContention }
             };
             if (!logger || !logger->_Start())
             {

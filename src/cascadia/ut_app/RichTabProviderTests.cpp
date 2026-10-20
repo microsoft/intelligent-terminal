@@ -49,6 +49,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ProviderDiagnosticVersionRejectsUntrustedText);
         TEST_METHOD(ProviderDiagnosticLogWritesContentMinimizedRecord);
         TEST_METHOD(ProviderDiagnosticLogCleanupSkipsUnrelatedFiles);
+        TEST_METHOD(ProviderDiagnosticLogDropsOnContention);
         TEST_METHOD(CommandRunnerMarksLaunchFailureObservations);
         TEST_METHOD(BrokerClearsSuccessfulSnapshotAfterProviderFailure);
         TEST_METHOD(BrokerKeepsAgentStatusPairedWithSnapshotDuringRefresh);
@@ -78,6 +79,7 @@ namespace TerminalAppUnitTests
         VERIFY_IS_FALSE(ParseProviderDiagnosticVersion("").valid);
         VERIFY_IS_FALSE(ParseProviderDiagnosticVersion("1.2.3-canary").valid);
         VERIFY_IS_FALSE(ParseProviderDiagnosticVersion("1..3").valid);
+        VERIFY_IS_FALSE(ParseProviderDiagnosticVersion("1.2.3.").valid);
         VERIFY_IS_FALSE(ParseProviderDiagnosticVersion("1.2.3.4.5").valid);
         VERIFY_IS_FALSE(ParseProviderDiagnosticVersion("70000").valid);
     }
@@ -186,6 +188,46 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(std::filesystem::exists(currentLog));
         VERIFY_IS_TRUE(std::filesystem::exists(logRoot / L"unrelated-0.log"));
         VERIFY_IS_TRUE(std::filesystem::exists(logRoot / L"unrelated-127.log"));
+    }
+
+    void RichTabProviderTests::ProviderDiagnosticLogDropsOnContention()
+    {
+        const auto logRoot = std::filesystem::temp_directory_path() /
+                             (L"RichTabProviderContention-" + std::to_wstring(GetCurrentProcessId()) +
+                              L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(logRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(logRoot, error);
+        });
+        auto logger = ProviderDiagnosticLog::CreateForTests(46, logRoot, true);
+        VERIFY_IS_NOT_NULL(logger.get());
+
+        wil::unique_handle started{ CreateEventW(nullptr, TRUE, FALSE, nullptr) };
+        wil::unique_handle completed{ CreateEventW(nullptr, TRUE, FALSE, nullptr) };
+        VERIFY_IS_NOT_NULL(started.get());
+        VERIFY_IS_NOT_NULL(completed.get());
+
+        AcquireSRWLockExclusive(&logger->_queueLock);
+        auto releaseQueueLock = wil::scope_exit([&]() noexcept {
+            ReleaseSRWLockExclusive(&logger->_queueLock);
+        });
+        std::thread producer{ [&]() {
+            SetEvent(started.get());
+            logger->TryLog({});
+            SetEvent(completed.get());
+        } };
+        const auto startedResult = WaitForSingleObject(started.get(), 1000);
+        const auto completedResult = startedResult == WAIT_OBJECT_0 ?
+                                         WaitForSingleObject(completed.get(), 1000) :
+                                         WAIT_TIMEOUT;
+        ReleaseSRWLockExclusive(&logger->_queueLock);
+        releaseQueueLock.release();
+        producer.join();
+
+        VERIFY_ARE_EQUAL(DWORD{ WAIT_OBJECT_0 }, startedResult);
+        VERIFY_ARE_EQUAL(DWORD{ WAIT_OBJECT_0 }, completedResult);
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, logger->DroppedRecords());
     }
 
     void RichTabProviderTests::CommandRunnerMarksLaunchFailureObservations()

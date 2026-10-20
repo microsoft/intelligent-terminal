@@ -16,6 +16,11 @@
 #include <string_view>
 #include <type_traits>
 
+namespace TerminalAppUnitTests
+{
+    class RichTabProviderTests;
+}
+
 namespace Microsoft::Terminal::RichTab::Provider
 {
     enum class ProviderParseOutcome : uint8_t
@@ -102,7 +107,8 @@ namespace Microsoft::Terminal::RichTab::Provider
         static ProviderDiagnosticLog* Create(uint64_t processEpoch) noexcept;
         static std::unique_ptr<ProviderDiagnosticLog> CreateForTests(
             uint64_t processEpoch,
-            std::filesystem::path directory) noexcept;
+            std::filesystem::path directory,
+            bool dropOnContention = false) noexcept;
 
         ~ProviderDiagnosticLog();
 
@@ -114,6 +120,8 @@ namespace Microsoft::Terminal::RichTab::Provider
         uint64_t DroppedRecords() const noexcept;
 
     private:
+        friend class ::TerminalAppUnitTests::RichTabProviderTests;
+
         static constexpr size_t QueueCapacity{ 256 };
         static constexpr uint64_t MaximumFileSize{ 1024 * 1024 };
 
