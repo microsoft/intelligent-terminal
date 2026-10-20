@@ -260,24 +260,6 @@
     <value>Git 更改</value>
     <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
-    <value>正在显示 1 个智能体会话</value>
-  </data>
-  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
-    <value>正在显示 {0} 个智能体会话</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>当前标签页已被此筛选器隐藏</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>当前标签页已被此筛选器隐藏</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>显示所有标签页</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>显示所有标签页</value>
-  </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>智能体</value>
     <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>

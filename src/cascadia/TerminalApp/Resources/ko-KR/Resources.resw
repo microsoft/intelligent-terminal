@@ -257,24 +257,6 @@
     <value>Git 변경 사항</value>
     <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
-    <value>에이전트 세션 1개 표시 중</value>
-  </data>
-  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
-    <value>에이전트 세션 {0}개 표시 중</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>현재 탭이 이 필터에 의해 숨겨져 있습니다</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>현재 탭이 이 필터에 의해 숨겨져 있습니다</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>모든 탭 표시</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>모든 탭 표시</value>
-  </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>에이전트</value>
     <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>

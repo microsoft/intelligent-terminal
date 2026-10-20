@@ -438,24 +438,6 @@
     <value>Thay đổi của Git</value>
     <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
-    <value>Đang hiển thị 1 phiên tác tử</value>
-  </data>
-  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
-    <value>Đang hiển thị {0} phiên tác tử</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Tab hiện tại bị ẩn bởi bộ lọc này</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Tab hiện tại bị ẩn bởi bộ lọc này</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Hiển thị tất cả tab</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Hiển thị tất cả tab</value>
-  </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Các tác tử</value>
     <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>

@@ -346,24 +346,6 @@
     <value>ການປ່ຽນແປງ Git</value>
     <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
-    <value>ກຳລັງສະແດງ 1 ເຊດຊັນເອເຈນ</value>
-  </data>
-  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
-    <value>ກຳລັງສະແດງ {0} ເຊດຊັນເອເຈນ</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ແທັບປັດຈຸບັນຖືກເຊື່ອງໂດຍຕົວກອງນີ້</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ແທັບປັດຈຸບັນຖືກເຊື່ອງໂດຍຕົວກອງນີ້</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>ສະແດງແທັບທັງໝົດ</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>ສະແດງແທັບທັງໝົດ</value>
-  </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>ເອເຈນ</value>
     <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>

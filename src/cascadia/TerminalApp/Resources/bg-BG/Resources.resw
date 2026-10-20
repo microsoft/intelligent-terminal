@@ -527,24 +527,6 @@
     <value>Промени в Git</value>
     <comment>Option that shows the Git working tree change summary in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsFilterStatusSingle" xml:space="preserve">
-    <value>Показва се 1 сесия на агент</value>
-  </data>
-  <data name="VerticalTabsFilterStatusPlural" xml:space="preserve">
-    <value>Показват се {0} сесии на агенти</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Текущият раздел е скрит от този филтър</value>
-  </data>
-  <data name="VerticalTabsFilterCurrentHidden.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Текущият раздел е скрит от този филтър</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Показване на всички раздели</value>
-  </data>
-  <data name="VerticalTabsFilterShowAll.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Показване на всички раздели</value>
-  </data>
   <data name="VerticalTabsHistoryButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Агенти</value>
     <comment>Accessible name of the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
