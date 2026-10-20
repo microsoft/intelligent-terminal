@@ -163,7 +163,7 @@ Describe 'Simplified Markdown release-report mapping' -Tag 'Unit' {
             C439 = 'Raw Markdown preference bypasses formatting from helper startup'
             C440 = 'Selected raw replies survive completion without blocking queued requests'
             C433 = 'Saved agent replies use Markdown without changing raw history'
-            C434 = 'FRE and Settings share a live Markdown preference without restarting the session'
+            C434 = 'FRE preserves Markdown and Settings changes it without restarting the session'
             C435 = 'Failed agent replies format their received text'
             C436 = 'Disconnected agent replies format their received text'
         }

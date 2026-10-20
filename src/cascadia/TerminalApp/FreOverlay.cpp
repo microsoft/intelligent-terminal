@@ -24,7 +24,6 @@ using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml::Documents;
-using winrt::Microsoft::Terminal::Settings::Model::TabLayout;
 namespace Automation = winrt::Windows::UI::Xaml::Automation;
 
 namespace winrt::TerminalApp::implementation
@@ -495,10 +494,6 @@ namespace winrt::TerminalApp::implementation
                 settingsResources.GetLocalizedString(L"AIAgents_YoloMode/Header"));
             AutomaticApprovalDescription().Text(
                 settingsResources.GetLocalizedString(L"AIAgents_YoloMode/HelpText"));
-            RenderAgentMarkdownTitle().Text(
-                settingsResources.GetLocalizedString(L"AIAgents_RenderAgentMarkdown/Header"));
-            RenderAgentMarkdownDescription().Text(
-                settingsResources.GetLocalizedString(L"AIAgents_RenderAgentMarkdown/HelpText"));
         }
         // Split the description on "ACP" (locked token) so it can be rendered as an inline Hyperlink.
         {
@@ -520,14 +515,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         AutomaticApprovalToggle().IsOn(globals.EffectiveAgentPaneYoloMode());
-
-        auto tabModeItems = TabModeComboBox().Items();
-        tabModeItems.Clear();
-        tabModeItems.Append(winrt::box_value(RS_(L"FreOverlay_TabModeSidebar")));
-        tabModeItems.Append(winrt::box_value(RS_(L"FreOverlay_TabModeHorizontal")));
-        // Sidebar is an FRE-only default; do not mutate the model before Save.
-        TabModeComboBox().SelectedIndex(
-            globals.HasTabLayout() && globals.TabLayout() == TabLayout::Horizontal ? 1 : 0);
 
         // Populate the agent ComboBox from the policy-filtered availability
         // snapshot. Native Claude/Codex installations remain visible when only
@@ -569,8 +556,6 @@ namespace winrt::TerminalApp::implementation
             ? ErrorDetectionMode::DetectAndFix
             : ErrorDetectionMode::Detect;
         _SetErrorDetectionMode(detectionMode);
-        ShowTokenUsageAndCostToggle().IsOn(globals.ShowTokenUsageAndCost());
-        RenderAgentMarkdownToggle().IsOn(globals.RenderAgentMarkdown());
         SessionManagementToggle().IsOn(globals.EffectiveAgentSessionManagementEnabled());
 
         const bool autoFixLocked = globals.IsAutoFixPolicyLocked();
@@ -606,17 +591,7 @@ namespace winrt::TerminalApp::implementation
         Automation::AutomationProperties::SetName(
             SettingsPage(), RS_(L"FreOverlay_SettingsTitle/Text"));
         Automation::AutomationProperties::SetName(
-            TabModeComboBox(), RS_(L"FreOverlay_TabModeLabel/Text"));
-        Automation::AutomationProperties::SetHelpText(
-            TabModeComboBox(), TabModeDescriptionText().Text());
-        Automation::AutomationProperties::SetName(
             ErrorDetectionComboBox(), RS_(L"FreOverlay_ErrorDetectionLabel/Text"));
-        Automation::AutomationProperties::SetName(
-            ShowTokenUsageAndCostToggle(), RS_(L"FreOverlay_ShowTokenUsageAndCostLabel/Text"));
-        Automation::AutomationProperties::SetName(
-            RenderAgentMarkdownToggle(), RenderAgentMarkdownTitle().Text());
-        Automation::AutomationProperties::SetHelpText(
-            RenderAgentMarkdownToggle(), RenderAgentMarkdownDescription().Text());
         Automation::AutomationProperties::SetName(
             AutomaticApprovalToggle(), AutomaticApprovalTitle().Text());
         Automation::AutomationProperties::SetName(
@@ -698,15 +673,11 @@ namespace winrt::TerminalApp::implementation
                 longestDescriptionWidth,
                 static_cast<double>(description.DesiredSize().Width));
         };
-        measureDescription(TabModeDescriptionText());
         measureDescription(AgentDescriptionText());
         measureDescription(PanePositionDescriptionText());
         measureDescription(ErrorDetectionDescriptionText());
         measureDescription(SessionDescriptionText());
-        measureDescription(TokenUsageDescriptionText());
-
-        double longestControlWidth = TabModeComboBox().MinWidth();
-        longestControlWidth = std::max(longestControlWidth, AgentComboBox().MinWidth());
+        double longestControlWidth = AgentComboBox().MinWidth();
         longestControlWidth = std::max(longestControlWidth, PanePositionComboBox().MinWidth());
         longestControlWidth = std::max(longestControlWidth, errorDetectionComboBox.Width());
 
@@ -1670,7 +1641,6 @@ namespace winrt::TerminalApp::implementation
         const auto errorDetectionMode = _CurrentErrorDetectionMode();
         const bool errorDetectionEnabled = errorDetectionMode != ErrorDetectionMode::Off;
         const bool autoFixEnabled = errorDetectionMode == ErrorDetectionMode::DetectAndFix;
-        const auto tabLayout = TabModeComboBox().SelectedIndex() == 0 ? TabLayout::Vertical : TabLayout::Horizontal;
 
         if (_settings)
         {
@@ -1695,8 +1665,6 @@ namespace winrt::TerminalApp::implementation
             {
                 globals.AgentSessionManagementEnabled(SessionManagementToggle().IsOn());
             }
-            globals.ShowTokenUsageAndCost(ShowTokenUsageAndCostToggle().IsOn());
-            globals.RenderAgentMarkdown(RenderAgentMarkdownToggle().IsOn());
 
             const auto posIdx = PanePositionComboBox().SelectedIndex();
             switch (posIdx)
@@ -1735,7 +1703,6 @@ namespace winrt::TerminalApp::implementation
             + " detect=" + (errorDetectionEnabled ? "on" : "off")
             + " autoFix=" + (autoFixEnabled ? "on" : "off")
             + " automaticApproval=" + (AutomaticApprovalToggle().IsOn() ? "on" : "off")
-            + " tokenUsageAndCost=" + (ShowTokenUsageAndCostToggle().IsOn() ? "on" : "off")
             + " hooks=" + (SessionManagementToggle().IsOn() ? "on" : "off"));
 
         // If any bootstrap step needs winget, make sure winget itself is
@@ -2067,8 +2034,6 @@ namespace winrt::TerminalApp::implementation
             auto self = weak.get();
             if (!self) co_return;
 
-            const auto& globals = _settings.GlobalSettings();
-            globals.TabLayout(tabLayout);
             _agentPaneLog("[FRE] Completed — raising Completed event");
             _autoInstallCopilotAfterCompletion = agentId == L"copilot";
             // Restore the editable state before raising Completed so that

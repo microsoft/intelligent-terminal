@@ -6059,19 +6059,31 @@ namespace TerminalAppLocalTests
                 if (configured)
                 {
                     globals.TabLayout(*configured);
+                    globals.RenderAgentMarkdown(*configured == TabLayout::Vertical);
+                    globals.ShowTokenUsageAndCost(*configured == TabLayout::Vertical);
                 }
 
                 fre.Initialize(settings);
-                const auto picker = fre.FindName(L"TabModeComboBox").try_as<ComboBox>();
-                VERIFY_IS_NOT_NULL(picker);
-                VERIFY_ARE_EQUAL(2u, picker.Items().Size());
-                VERIFY_ARE_EQUAL(configured == TabLayout::Horizontal ? 1 : 0, picker.SelectedIndex());
-                VERIFY_IS_FALSE(Automation::AutomationProperties::GetName(picker).empty());
-                VERIFY_IS_FALSE(Automation::AutomationProperties::GetHelpText(picker).empty());
+                for (const auto name : {
+                         L"TabModeComboBox", L"TabModeDescriptionText",
+                         L"RenderAgentMarkdownToggle", L"RenderAgentMarkdownTitle", L"RenderAgentMarkdownDescription",
+                         L"ShowTokenUsageAndCostToggle", L"TokenUsageDescriptionText" })
+                {
+                    VERIFY_IS_NULL(fre.FindName(name), name);
+                }
+                for (const auto name : { L"AgentComboBox", L"PanePositionComboBox", L"ErrorDetectionComboBox", L"SessionManagementToggle", L"SaveButton" })
+                {
+                    const auto control = fre.FindName(name).as<FrameworkElement>();
+                    VERIFY_IS_NOT_NULL(control);
+                    VERIFY_IS_FALSE(Automation::AutomationProperties::GetName(control).empty());
+                }
 
-                picker.SelectedIndex(1 - picker.SelectedIndex());
                 VERIFY_ARE_EQUAL(configured.has_value(), globals.HasTabLayout());
-                VERIFY_ARE_EQUAL(configured.value_or(TabLayout::Horizontal), globals.TabLayout());
+                VERIFY_ARE_EQUAL(configured.value_or(TabLayout::Vertical), globals.TabLayout());
+                VERIFY_ARE_EQUAL(configured.has_value(), globals.HasRenderAgentMarkdown());
+                VERIFY_ARE_EQUAL(configured != TabLayout::Horizontal, globals.RenderAgentMarkdown());
+                VERIFY_ARE_EQUAL(configured.has_value(), globals.HasShowTokenUsageAndCost());
+                VERIFY_ARE_EQUAL(configured != TabLayout::Horizontal, globals.ShowTokenUsageAndCost());
             }
         });
     }
