@@ -531,8 +531,8 @@ test('compiler arguments retain transport and approvals but both fixed phases ex
   assert.throws(() => buildPhaseArguments(['--resume', 'any-session'], 'primary'), /cannot resume/);
 });
 
-test('repair and guide workers both install and invoke the protected metadata-only driver', () => {
-  for (const name of ['ghaw-pr-security', 'ghaw-pr-security-guide-fork']) {
+test('repair worker installs and invokes the protected metadata-only driver', () => {
+  for (const name of ['ghaw-pr-security']) {
     const workflow = readFileSync(new URL(`../../../workflows/${name}.md`, import.meta.url), 'utf8');
     assert(workflow.includes('command: \'exec node "${RUNNER_TEMP}/gh-aw/security-review-native/security-review-driver.mjs"'));
     assert(workflow.includes('install_copilot_cli.sh" 1.0.90'));

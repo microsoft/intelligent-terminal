@@ -32,7 +32,18 @@ function Test-HistoryHeld {
 function Complete-HistoryRequest {
     param([Parameter(Mandatory)]$Request)
     $history = Get-Content -LiteralPath $HistoryPath -Raw | ConvertFrom-Json -AsHashtable
-    Send-AcpMessage @{ jsonrpc = '2.0'; id = $Request.id; result = @{ sessions = @($history.sessions) } }
+    $result = @{ sessions = @($history.sessions) }
+    if ($history.pageSize) {
+        $offset = if ($Request.params.cursor) { [int]$Request.params.cursor } else { 0 }
+        $pageSize = [int]$history.pageSize
+        if ($pageSize -le 0 -or $offset -lt 0) { throw 'invalid controlled history page' }
+        $result.sessions = @($history.sessions | Select-Object -Skip $offset -First $pageSize)
+        if ($offset + $result.sessions.Count -lt @($history.sessions).Count) {
+            $result.nextCursor = [string]($offset + $result.sessions.Count)
+        }
+        Write-FixtureLog -Message "list-page|$([DateTimeOffset]::UtcNow.ToString('o'))|$offset|$($result.sessions.Count)"
+    }
+    Send-AcpMessage @{ jsonrpc = '2.0'; id = $Request.id; result = $result }
     Write-FixtureLog -Message "list-complete|$([DateTimeOffset]::UtcNow.ToString('o'))|$($Request.id)"
 }
 

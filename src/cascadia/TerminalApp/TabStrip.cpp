@@ -12,6 +12,10 @@
 #include "TabHeaderControl.h"
 #include "Utils.h"
 
+#include <array>
+#include <set>
+#include <unordered_set>
+
 #include "TabStrip.g.cpp"
 #include "SidebarFiltersViewModel.g.cpp"
 #include "TabStripSelectionChangedEventArgs.g.cpp"
@@ -731,6 +735,10 @@ namespace winrt::TerminalApp::implementation
         if (!queryChanged && !filterChanged)
         {
             return;
+        }
+        if (args.PropertyName() == L"ShowAgentsOnly")
+        {
+            AgentsOnlyIndicator().Visibility(_sidebarFilters.ShowAgentsOnly() ? Visibility::Visible : Visibility::Collapsed);
         }
         if (recentSessionsChanged)
         {
@@ -2698,7 +2706,8 @@ namespace winrt::TerminalApp::implementation
     }
 
     static bool _sameHistoryItem(TerminalApp::TabStripHistoryItem const& left,
-                                 TerminalApp::TabStripHistoryItem const& right)
+                                 TerminalApp::TabStripHistoryItem const& right,
+                                 const bool includeStatus = true)
     {
         return left == right ||
                (left.SessionId() == right.SessionId() &&
@@ -2708,19 +2717,20 @@ namespace winrt::TerminalApp::implementation
                 left.SessionUniverse() == right.SessionUniverse() &&
                 left.Title() == right.Title() &&
                 left.Subtitle() == right.Subtitle() &&
-                left.Status() == right.Status() &&
-                left.StatusText() == right.StatusText() &&
                 left.SearchQuery() == right.SearchQuery() &&
                 left.ProviderDisplayName() == right.ProviderDisplayName() &&
                 left.Cwd() == right.Cwd() &&
-                left.PaneSessionId() == right.PaneSessionId() &&
-                left.IsLive() == right.IsLive() &&
                 left.IsAgentPane() == right.IsAgentPane() &&
-                left.IsHistorical() == right.IsHistorical() &&
-                winrt::get_self<TabStripHistoryItem>(left)->BackgroundTab() == winrt::get_self<TabStripHistoryItem>(right)->BackgroundTab() &&
-                winrt::get_self<TabStripHistoryItem>(left)->OtherWindow() == winrt::get_self<TabStripHistoryItem>(right)->OtherWindow() &&
-                left.StatusTextStyle() == right.StatusTextStyle() &&
-                left.IconTemplate() == right.IconTemplate());
+                left.IconTemplate() == right.IconTemplate() &&
+                (!includeStatus ||
+                 (left.Status() == right.Status() &&
+                  left.StatusText() == right.StatusText() &&
+                  left.PaneSessionId() == right.PaneSessionId() &&
+                  left.IsLive() == right.IsLive() &&
+                  left.IsHistorical() == right.IsHistorical() &&
+                  winrt::get_self<TabStripHistoryItem>(left)->BackgroundTab() == winrt::get_self<TabStripHistoryItem>(right)->BackgroundTab() &&
+                  winrt::get_self<TabStripHistoryItem>(left)->OtherWindow() == winrt::get_self<TabStripHistoryItem>(right)->OtherWindow() &&
+                  left.StatusTextStyle() == right.StatusTextStyle())));
     }
 
     void TabStrip::_applyHistoryProjection(const bool preserveScroll)
@@ -2737,6 +2747,21 @@ namespace winrt::TerminalApp::implementation
         {
             for (const auto& session : _representedHistorySessions)
             {
+                if (!session.inferredAgentSource.empty())
+                {
+                    for (const auto& item : _historySnapshot)
+                    {
+                        if (item.SessionId() == session.sessionId && item.AgentId() == session.agentId &&
+                            item.AgentSource() == session.inferredAgentSource &&
+                            item.WslDistro() == session.inferredWslDistro &&
+                            item.SessionUniverse() == session.inferredSessionUniverse &&
+                            item.PaneSessionId().empty())
+                        {
+                            representedKeys.emplace_back(item);
+                        }
+                    }
+                    continue;
+                }
                 TerminalApp::TabStripHistoryItem candidate{ nullptr };
                 TerminalApp::TabStripHistoryItem paneCandidate{ nullptr };
                 bool ambiguous = false;
@@ -2804,21 +2829,98 @@ namespace winrt::TerminalApp::implementation
         }
         if (preserveScroll)
         {
-            // A collection reset discards ListView's viewport. Update slots instead;
-            // KeepScrollOffset preserves the user's position without a deferred scroll.
+            const auto historyKey = [](const auto& item) {
+                return std::array{
+                    item.SessionId(),
+                    item.AgentId(),
+                    item.AgentSource(),
+                    item.WslDistro(),
+                    item.SessionUniverse()
+                };
+            };
+            std::set<std::array<winrt::hstring, 5>> visibleKeys;
+            for (const auto& item : visibleItems)
+            {
+                visibleKeys.emplace(historyKey(item));
+            }
+            // Preserve surviving rows when membership changes, and update status in place.
+            std::set<std::array<winrt::hstring, 5>> retainedKeys;
+            for (uint32_t index = _historyItems.Size(); index > 0; --index)
+            {
+                const auto key = historyKey(_historyItems.GetAt(index - 1));
+                if (!visibleKeys.contains(key))
+                {
+                    _historyItems.RemoveAt(index - 1);
+                }
+                else
+                {
+                    retainedKeys.emplace(key);
+                }
+            }
             for (uint32_t index = 0; index < visibleItems.size(); ++index)
             {
+                if (index < _historyItems.Size() && !sameHistoryKey(_historyItems.GetAt(index), visibleItems[index]))
+                {
+                    auto existing = _historyItems.Size();
+                    if (retainedKeys.contains(historyKey(visibleItems[index])))
+                    {
+                        existing = index + 1;
+                        while (existing < _historyItems.Size() && !sameHistoryKey(_historyItems.GetAt(existing), visibleItems[index]))
+                        {
+                            ++existing;
+                        }
+                    }
+                    if (existing < _historyItems.Size())
+                    {
+                        const auto moved = _historyItems.GetAt(existing);
+                        _historyItems.RemoveAt(existing);
+                        _historyItems.InsertAt(index, moved);
+                    }
+                    else
+                    {
+                        _historyItems.InsertAt(index, visibleItems[index]);
+                    }
+                }
                 if (index >= _historyItems.Size())
                 {
                     _historyItems.Append(visibleItems[index]);
                 }
-                else if (!_sameHistoryItem(_historyItems.GetAt(index), visibleItems[index]))
-                {
-                    _historyItems.SetAt(index, visibleItems[index]);
-                }
                 else
                 {
-                    winrt::get_self<TabStripHistoryItem>(_historyItems.GetAt(index))->LastActivityAtMs(winrt::get_self<TabStripHistoryItem>(visibleItems[index])->LastActivityAtMs());
+                    const auto current = _historyItems.GetAt(index);
+                    const auto incoming = visibleItems[index];
+                    current.Subtitle(incoming.Subtitle());
+                    if (_sameHistoryItem(current, incoming, false))
+                    {
+                        const auto nativeCurrent = winrt::get_self<TabStripHistoryItem>(current);
+                        const auto nativeIncoming = winrt::get_self<TabStripHistoryItem>(incoming);
+                        if (!_sameHistoryItem(current, incoming))
+                        {
+                            const auto paneChanged = current.PaneSessionId() != incoming.PaneSessionId();
+                            current.PaneSessionId(incoming.PaneSessionId());
+                            current.Status(incoming.Status());
+                            current.IsLive(incoming.IsLive());
+                            current.IsHistorical(incoming.IsHistorical());
+                            nativeCurrent->BackgroundTab(nativeIncoming->BackgroundTab());
+                            nativeCurrent->OtherWindow(nativeIncoming->OtherWindow());
+                            if (paneChanged)
+                            {
+                                nativeCurrent->UpdateHeadlessState(false);
+                            }
+                            nativeCurrent->UpdateStatusText(incoming.StatusLabelText());
+                            current.StatusTextStyle(incoming.StatusTextStyle());
+                            if (const auto container = ItemsList().ContainerFromItem(current).try_as<ListViewItem>())
+                            {
+                                _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), current);
+                                _applyHistoryRowAutomation(container, current);
+                            }
+                        }
+                        nativeCurrent->LastActivityAtMs(nativeIncoming->LastActivityAtMs());
+                    }
+                    else
+                    {
+                        _historyItems.SetAt(index, incoming);
+                    }
                 }
             }
             while (_historyItems.Size() > visibleItems.size())
@@ -2957,6 +3059,28 @@ namespace winrt::TerminalApp::implementation
                 }
             }
             const auto historyCount = (_historyExpanded || _sidebarFilters.HasSearchQuery()) ? _historyItems.Size() : 0;
+            // Query canonical IUnknown identity, not the projected interface pointer.
+            std::unordered_set<::IUnknown*> retainedHistoryItems;
+            retainedHistoryItems.reserve(historyCount);
+            for (uint32_t index = 0; index < historyCount; ++index)
+            {
+                retainedHistoryItems.emplace(_historyItems.GetAt(index).as<::IUnknown>().get());
+            }
+            std::unordered_set<::IUnknown*> viewportHistoryItems;
+            viewportHistoryItems.reserve(historyCount);
+            for (uint32_t index = _viewportItems.Size(); index > headerIndex + 1; --index)
+            {
+                const auto item = _viewportItems.GetAt(index - 1).try_as<TerminalApp::TabStripHistoryItem>();
+                const auto identity = item ? item.as<::IUnknown>().get() : nullptr;
+                if (!historyCount || !item || !retainedHistoryItems.contains(identity))
+                {
+                    _viewportItems.RemoveAt(index - 1);
+                }
+                else
+                {
+                    viewportHistoryItems.emplace(identity);
+                }
+            }
             for (uint32_t index = 0; index < historyCount; ++index)
             {
                 const auto slot = headerIndex + 1 + index;
@@ -2967,8 +3091,14 @@ namespace winrt::TerminalApp::implementation
                 }
                 else if (_viewportItems.GetAt(slot) != item)
                 {
-                    _viewportItems.SetAt(slot, item);
+                    uint32_t existing{};
+                    if (viewportHistoryItems.contains(item.as<::IUnknown>().get()) && _viewportItems.IndexOf(item, existing))
+                    {
+                        _viewportItems.RemoveAt(existing);
+                    }
+                    _viewportItems.InsertAt(slot, item);
                 }
+                viewportHistoryItems.emplace(item.as<::IUnknown>().get());
             }
             while (_viewportItems.Size() > headerIndex + 1 + historyCount)
             {

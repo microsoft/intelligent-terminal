@@ -3,7 +3,7 @@ name: Native WinUI Accessibility Review
 description: 'Reviews native UI accessibility with Windows Axe smoke checks and proposes narrowly scoped HIGH fixes without requiring post-fix builds or tests.'
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
     paths:
       - 'src/cascadia/TerminalApp/**'
@@ -34,6 +34,8 @@ on:
       - '**/.copilot/**'
       - '**/.agents/**'
       - '**/.gemini/**'
+
+if: github.event.pull_request.head.repo.id == github.repository_id
 
 permissions:
   contents: read
@@ -79,7 +81,7 @@ jobs:
   native-runtime:
     name: Native Axe.Windows smoke
     needs: [agent]
-    if: ${{ !cancelled() && needs.agent.result != 'skipped' }}
+    if: ${{ !cancelled() && needs.agent.result != 'skipped' && github.event.pull_request.head.repo.id == github.repository_id }}
     uses: ./.github/workflows/native-accessibility.yml
     permissions:
       contents: read
@@ -121,6 +123,24 @@ steps:
       git check-ref-format --branch "$HEAD_REF"
       git checkout -B "$HEAD_REF" "$HEAD_SHA"
 
+pre-agent-steps:
+  - name: Record framework configuration changes
+    shell: bash
+    env:
+      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    run: |
+      set -euo pipefail
+      if [ "$(git rev-parse HEAD)" != "$EXPECTED_HEAD_SHA" ]; then
+        echo "::error::Candidate checkout no longer matches the reviewed PR head."
+        exit 1
+      fi
+      TRUSTED_ACCESSIBILITY="$RUNNER_TEMP/gh-aw/accessibility-trusted"
+      setup_paths=(.agents .github AGENTS.md .mcp.json)
+      git ls-files --others --exclude-standard -z -- "${setup_paths[@]}" |
+        xargs -0 -r git add --intent-to-add --
+      git diff --binary --no-ext-diff --no-textconv "$EXPECTED_HEAD_SHA" -- "${setup_paths[@]}" \
+        > "$TRUSTED_ACCESSIBILITY/framework-configuration.patch"
+
 safe-outputs:
   github-token: ${{ secrets.GITHUB_TOKEN }}
   threat-detection:
@@ -153,6 +173,28 @@ safe-outputs:
     fallback-as-pull-request: false
 
 post-steps:
+  - name: Remove verified framework configuration changes
+    shell: bash
+    env:
+      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    run: |
+      set -euo pipefail
+      TRUSTED_ACCESSIBILITY="$RUNNER_TEMP/gh-aw/accessibility-trusted"
+      setup_paths=(.agents .github AGENTS.md .mcp.json)
+      if [ ! -f "$TRUSTED_ACCESSIBILITY/framework-configuration.patch" ]; then
+        echo "::error::Framework configuration evidence is missing."
+        exit 1
+      fi
+      if ! git diff --quiet "$EXPECTED_HEAD_SHA" HEAD -- "${setup_paths[@]}"; then
+        echo "::error::Agent commits must not include framework configuration."
+        exit 1
+      fi
+      if [ -s "$TRUSTED_ACCESSIBILITY/framework-configuration.patch" ]; then
+        git apply --reverse --check "$TRUSTED_ACCESSIBILITY/framework-configuration.patch"
+        git apply --reverse "$TRUSTED_ACCESSIBILITY/framework-configuration.patch"
+        git reset --quiet "$EXPECTED_HEAD_SHA" -- "${setup_paths[@]}"
+      fi
+
   - name: Check findings and repair publication policy
     shell: bash
     env:
@@ -225,13 +267,17 @@ source review and patch checks do not prove runtime accessibility.
 
 ## Repairs
 
+Framework-restored configuration is setup, not a repair. Do not stage or commit
+it or include it in `patch_files`. The post-step removes only the recorded
+setup patch; changed setup content or committed configuration fails validation.
+
 Only same-repository, high-confidence HIGH findings are eligible. Keep the
 existing trusted `AXSTATIC001-remove-raw-view` recipe: remove exactly the
 matching prepared interactive control's raw-view property, with an existing
 content/resource name source. Preserve encoding, BOM and line endings. Do not
 change resources, add literal customer-facing names, fix MEDIUM/LOW findings,
-or include unrelated files/hunks. Other repairs remain `remaining` or `blocked`;
-fork PRs are read-only.
+or include unrelated files/hunks. Other repairs remain `remaining` or `blocked`.
+This workflow does not process external-fork PRs.
 
 **Do not build or test before committing or pushing an eligible fix.** Do not
 launch post-fix native jobs or provision a fix-validation environment. The original PR

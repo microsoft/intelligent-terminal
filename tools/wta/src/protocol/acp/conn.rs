@@ -239,10 +239,18 @@ impl ClientLink {
     pub async fn start_list_sessions(
         &self,
     ) -> acp::Result<tokio::sync::oneshot::Receiver<acp::Result<ListSessionsResponse>>> {
+        self.start_list_sessions_page(ListSessionsRequest::new())
+            .await
+    }
+
+    pub async fn start_list_sessions_page(
+        &self,
+        req: ListSessionsRequest,
+    ) -> acp::Result<tokio::sync::oneshot::Receiver<acp::Result<ListSessionsResponse>>> {
         let (response, receiver) = tokio::sync::oneshot::channel();
         self.cx()
             .await?
-            .send_request(ListSessionsRequest::new())
+            .send_request(req)
             .on_receiving_result(move |result| async move {
                 // A retired history instance deliberately drops its receiver.
                 let _ = response.send(result);

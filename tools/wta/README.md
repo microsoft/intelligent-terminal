@@ -243,8 +243,12 @@ The WSL Session MCP relay also requires native Python 3 in that user's login
 environment. It is separate from Antigravity's bundled ACP runtime; preparing
 the ACP dependency does not install Python.
 
-Sidebar Agent sessions runs
-`wta sessions list --origin shell --json --include-status`.
+Tab/pane agent metadata and Sidebar Recent share a bounded
+`wta sessions list --json --include-status` snapshot request. Recent applies
+the existing shell-origin filter to the conversation projection; pane metadata
+reads the normalized `pane_statuses` projection without requiring an agent
+session ID. A Recent request can join an in-flight metadata request, and hiding
+Recent cancels only that projection, not the shared request.
 This only reads the current registry snapshot; it never starts an agent or waits
 for an ACP history query. Each initialized, listing-capable agent command/source
 has a separate, reusable history-only ACP process, including already-connected
@@ -936,6 +940,149 @@ agent-reported model, when available, without switching it to the current
 default model. Settings still supplies the requested model for new sessions
 and later model changes; an existing confirmed selection stays visible until
 the agent confirms the switch.
+
+### Native status observations when session tracking is off
+
+Managed Terminal masters receive `WTA_MASTER_GENERATION`, a positive decimal
+u64 reserved for that successfully launched receiver. Full sessions-list replies
+carry optional `native_observation_receiver_generation` (u64) and
+`native_observation_listener_ready` (bool). Ready starts false and becomes true
+only after the master's token-verified WT listener subscription marker; a
+successful snapshot alone is not readiness. The marker triggers the existing
+registry-changed invalidation. Ready is a subscription-established marker for
+this receiver lifetime, not a health poll.
+
+Managed `native_agent_observation` and restored `session_born_bound` events
+must include matching `receiver_generation` and wait for ready. Missing/stale
+generations are rejected for every observation kind, including BEL and removal.
+Masters without this environment variable retain legacy admission and omit the
+receiver metadata. Invalid supplied generations fail startup rather than
+downgrading to unmanaged behavior.
+
+Restored births use the existing `session_born_bound` COM topic and existing
+`pane_id`, exact `agent_session_id`, `agent`, `cwd`, tab/window identity and
+optional `wsl_distro` fields. Master handles birth before the following native
+reset on its ordered event reader, reusing the existing qualified resume/binding helpers;
+late duplicate helper RPCs do not overwrite live activity. Only Terminal-created
+or previously qualified actual identities may be replayed. Unknown panes get
+no synthetic confirmed conversation ID; inferred list metadata cannot be
+replayed as ownership, and no activity is copied.
+Interactive known-session resumes use the same generation-qualified ordered
+birth path before OFF reset. The master confirms the exact active qualified
+pane binding without changing its current activity; a subsequent reset may omit
+location only when that authoritative binding already supplies it. Registration
+uses the exact provider/backend identity even when another backend has the same
+raw session ID; generic hook and helper-RPC reducers remain unchanged.
+For an explicit different-session replacement in the same pane, birth may also
+carry `expected_previous_binding` with `agent_session_id` and `mode_epoch`.
+Together with the birth's newer `mode_epoch`, this authorizes an atomic handoff
+only from that exact native owner. A stale or missing predecessor cannot steal
+the binding. The old conversation becomes unbound Historical, not process-exited.
+Same-owner replay remains idempotent; ON retirement and provider-only unknown
+admissions retain their existing behavior.
+
+Terminal publishes `method: "native_agent_observation"` through the existing
+COM event subscription. Its `params` object contains:
+
+```json
+{
+  "pane_id": "00112233-4455-6677-8899-aabbccddeeff",
+  "provider_id": "copilot",
+  "window_id": 7,
+  "tab_id": "stable-tab-id",
+  "mode_epoch": 1,
+  "pane_created_at_ms": 1792108800000,
+  "pane_creation_sequence": 42,
+  "kind": "reset",
+  "tracking_enabled": false
+}
+```
+
+`pane_id` is the actual connection GUID. The Terminal producer admits only
+Terminal-known agent panes, not agents inferred from shell output.
+`pane_created_at_ms` is captured before a connection lifetime starts, not at first
+OSC, discovery or receiver readiness. `pane_creation_sequence` is the producer's
+monotonic connection-creation order, including restarts that retain the content ID.
+Both survive partial updates, admission resets and retained-content moves.
+Restart Connection retires the old GUID and admits the replacement with fresh
+creation metadata and Idle activity. Emission-time GUID/epoch checks reject queued
+old signals; only a declared native agent's identical explicit-resume command
+preserves a confirmed conversation binding. Older producers
+without creation metadata remain supported but cannot participate in timed
+list inference. Known execution `location` may be supplied without a session ID;
+absence never implies Host.
+
+After delegate creation, the existing `agent_event` broadcast envelope carries
+`params.event: "agent.pane.launch.source"` with the returned
+`pane_id`, canonical `agent` and selected `location` through the existing COM
+broadcast. Terminal accepts it only for the matching declared native pane and
+refines an unknown launch source once without changing its admission epoch.
+WTA merges the same source metadata into an already admitted pending pane,
+without changing activity or creating a pane from this metadata alone.
+The retained content metadata supplies the same source on later readiness,
+mode and transfer replays; it does not create a second activity store or turn
+an ordinary shell into an agent.
+
+Existing history discovery can attach a separately marked inferred identity
+to a pending pane record. This is not a canonical binding, action route or
+process-liveness claim. Explicit resume identity remains authoritative.
+Historical status does not overwrite observed pane activity, and discovery
+does not add a query or polling worker.
+While such a pane is pending, the existing retained history request follows
+pagination to a complete inventory under its original deadlines. Partial
+pages cannot prove uniqueness. The pane projection carries the inferred
+qualified key only for Recent duplicate suppression in its owning window;
+closing the pane or returning to ON restores that historical row without
+inventing a canonical live binding.
+
+Send `reset`
+with a strictly increasing per-pane `mode_epoch` on initial admission and mode
+changes. `tracking_enabled: false` establishes a fresh OFF baseline of Idle; `true`
+clears OFF ownership. Other events must match the admitted epoch and identity:
+`progress` carries `progress_state` (1/3 Working, 2 Error, 0/4 Idle), `bell`
+means Attention (including completion ready for the next request), and `removed`
+means actual pane removal. Connection Closed/Failed and shell prompt markers
+are not removal while OFF. An old or unadmitted observation is ignored.
+After same-master subscription recovery, Terminal retries only admissions
+missing from the ready snapshot, reusing their epochs without replaying progress
+or bells. Duplicate admitted resets remain no-ops.
+
+An optional `agent_session_id` must be the exact explicitly selected real
+session ID, never a pane-derived ID. To bind an unowned history row on OFF
+`reset`, also supply its exact `location`: `"Host"` or
+`{"Wsl":{"distro":"Ubuntu"}}`. Provider, session ID and backend must identify
+one unowned row; an existing pane binding cannot be stolen. Keep these optional
+identity fields consistent throughout the epoch.
+The existing explicit resume/born-bound pane assignment may arrive before or
+after OFF reset. A later assignment links the admitted pane to that exact
+canonical row immediately; it does not require another OSC/BEL observation.
+History upserts alone do not promote an unknown pane.
+Re-admitting the same active OFF owner after transfer or reconnect preserves
+its canonical activity and activity timestamp while updating window/tab context
+and epoch. A changed provider, exact session identity, or backend is a new owner;
+OFF after ON also starts a fresh Idle baseline. Earlier epochs remain fenced.
+
+The existing `_intellterm.wta/sessions/list` response exposes `pane_statuses`
+for tab/pane metadata and retains `sessions` for conversation history. Each
+pane status requires `pane_id`, `provider_id` and `status`; its
+`agent_session_id` is optional. WTA resolves canonical and native representations
+into one pane projection, so the UI does not merge those model collections.
+Conversation rows still require real, qualified session identity. The shared
+UI capture feeds both projections, and status getters do not register panes or
+change observation mode. Registration remains on explicit pane lifecycle,
+setting and receiver-recovery paths.
+
+For diagnostics and existing consumers, the response also retains
+`native_pane_observations`, omitted when empty. Each entry has `pane_id`,
+`provider_id`, `window_id`, `tab_id`, `mode_epoch`, `status`,
+`last_activity_at_ms`, optional `location`, and `agent_session_id` only when
+bound to a real registry row. Unknown panes have useful pane status but create
+no session/history/resume row. Known rows update the same registry snapshot
+used by the sidebar and classic session picker; exact-bound watcher activity
+still updates that row. All accepted observations invalidate existing readers
+through the normal sessions-changed notification, without additional polling.
+Window identity is preserved verbatim, including numeric zero. Returning to ON
+does not overwrite the canonical session's activity or tool/attention metadata.
 
 ### Diagnosing a missing current-shell pane
 

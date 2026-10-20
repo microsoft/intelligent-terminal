@@ -513,6 +513,97 @@ class ValidationTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def run_framework_setup_step(self, name):
+        workflow = (SCRIPT.parents[3] / "workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        step = workflow.split(f"  - name: {name}\n", 1)
+        self.assertEqual(2, len(step), f"Missing executable workflow step: {name}")
+        match = re.search(r"(?m)^    run: \|\n((?:      .*\n|\n)+)", step[1])
+        self.assertIsNotNone(match)
+        script = "\n".join(line[6:] for line in match[1].splitlines())
+        bash = shutil.which("bash")
+        if os.name == "nt":
+            bash = str(Path(shutil.which("git")).parents[1] / "bin/bash.exe")
+        if not bash or not Path(bash).is_file():
+            self.skipTest("Bash required for actual workflow setup steps")
+        runtime = self.workspace / "runtime"
+        (runtime / "gh-aw/accessibility-trusted").mkdir(parents=True, exist_ok=True)
+        return subprocess.run(
+            [bash, "--noprofile", "--norc"], cwd=self.root, input=script.encode("utf-8"),
+            capture_output=True, timeout=30,
+            env={**os.environ, "RUNNER_TEMP": runtime.as_posix(), "EXPECTED_HEAD_SHA": self.head},
+        )
+
+    def restored_configuration(self):
+        path = self.root / ".github/workflows/base-only.yml"
+        path.parent.mkdir(parents=True)
+        path.write_text("name: Unrelated base workflow\n", encoding="utf-8")
+        return path
+
+    def test_framework_setup_changes_do_not_become_candidate_repairs(self):
+        self.restored_configuration()
+        with self.assertRaisesRegex(ValueError, "untracked files"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, self.report())
+        captured = self.run_framework_setup_step("Record framework configuration changes")
+        self.assertEqual(0, captured.returncode, captured.stderr.decode())
+        cleaned = self.run_framework_setup_step("Remove verified framework configuration changes")
+        self.assertEqual(0, cleaned.returncode, cleaned.stderr.decode())
+        self.assertEqual("", MODULE._git(self.root, "status", "--porcelain").strip())
+        MODULE.validate(self.root, self.head, self.head, True, self.prepared, self.report())
+
+    def test_framework_cleanup_rejects_agent_changes_to_restored_configuration(self):
+        path = self.restored_configuration()
+        captured = self.run_framework_setup_step("Record framework configuration changes")
+        self.assertEqual(0, captured.returncode, captured.stderr.decode())
+        path.write_text("name: Agent mutation\n", encoding="utf-8")
+        cleaned = self.run_framework_setup_step("Remove verified framework configuration changes")
+        self.assertNotEqual(0, cleaned.returncode)
+        self.assertEqual("name: Agent mutation\n", path.read_text(encoding="utf-8"))
+
+    def test_framework_cleanup_rejects_committed_configuration(self):
+        self.restored_configuration()
+        captured = self.run_framework_setup_step("Record framework configuration changes")
+        self.assertEqual(0, captured.returncode, captured.stderr.decode())
+        MODULE._git(self.root, "add", ".github")
+        MODULE._git(self.root, "commit", "-qm", "Accidentally commit setup configuration")
+        cleaned = self.run_framework_setup_step("Remove verified framework configuration changes")
+        self.assertNotEqual(0, cleaned.returncode)
+        self.assertIn("::error::", cleaned.stdout.decode())
+
+    def test_framework_cleanup_preserves_repairs_and_rejects_new_out_of_scope_files(self):
+        self.restored_configuration()
+        captured = self.run_framework_setup_step("Record framework configuration changes")
+        self.assertEqual(0, captured.returncode, captured.stderr.decode())
+        relative = "src/cascadia/TerminalApp/Test.xaml"
+        source = self.root / relative
+        source.write_bytes(MODULE._remove_raw_view_at_line(source.read_bytes().decode("utf-8"), 1).encode("utf-8"))
+        extra = self.root / ".github/agent-added.txt"
+        extra.write_text("Not framework setup\n", encoding="utf-8")
+        cleaned = self.run_framework_setup_step("Remove verified framework configuration changes")
+        self.assertEqual(0, cleaned.returncode, cleaned.stderr.decode())
+        report = self.report([self.finding()], [relative])
+        with self.assertRaisesRegex(ValueError, "untracked files"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+        extra.unlink()
+        MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+
+    def test_framework_cleanup_preserves_repair_transport_captured_before_cleanup(self):
+        MODULE._git(self.root, "checkout", "-qb", "fixture/head")
+        self.restored_configuration()
+        captured = self.run_framework_setup_step("Record framework configuration changes")
+        self.assertEqual(0, captured.returncode, captured.stderr.decode())
+        relative = "src/cascadia/TerminalApp/Test.xaml"
+        source = self.root / relative
+        source.write_bytes(MODULE._remove_raw_view_at_line(source.read_bytes().decode("utf-8"), 1).encode("utf-8"))
+        MODULE._git(self.root, "add", relative)
+        MODULE._git(self.root, "commit", "-qm", "Repair without committing framework setup")
+        queue, transport = self.capture_series()
+        cleaned = self.run_framework_setup_step("Remove verified framework configuration changes")
+        self.assertEqual(0, cleaned.returncode, cleaned.stderr.decode())
+        report = self.report([self.finding()], [relative])
+        MODULE.validate(self.root, self.head, self.head, True, self.prepared, report, queue, transport)
+        self.assertEqual(MODULE._git(self.root, "rev-parse", "HEAD").strip(),
+                         json.loads(report.read_text())["findings"][0]["commit_sha"])
+
     def report(self, findings=None, patch_files=None, dismissed_signals=None):
         if dismissed_signals is None:
             dismissed_signals = [] if findings else [{
