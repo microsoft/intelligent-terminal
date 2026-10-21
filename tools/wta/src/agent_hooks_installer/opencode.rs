@@ -914,7 +914,7 @@ mod tests {
                      \"%SystemRoot%\\System32\\ping.exe\" -n 2 127.0.0.1 >nul\r\n\
                      if errorlevel 1 exit /b 1\r\n\
                  )\r\n",
-                pid_file.display(),
+                pid_file.display().to_string().replace('\'', "''"),
                 diagnostics.display(),
                 release.display()
             ),
