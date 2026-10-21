@@ -37,6 +37,19 @@ Describe 'Harness: process-owned WTA master selection' -Tag 'Harness' {
             $Filter -eq "ParentProcessId=100 AND Name='wta.exe'"
         }
     }
+    It 'ignores session and delegate CLI children that also carry the owning master argument' {
+        $script:masters += @(
+            '"C:\fixture\wta.exe" sessions list --master "\\.\pipe\wta-master-normal" --json',
+            '"C:\fixture\wta.exe" delegate --master "\\.\pipe\wta-master-normal" "fix this build"'
+        ) | ForEach-Object {
+            [pscustomobject]@{
+                ExecutablePath = $script:app.WtaPath
+                CreationDate = [datetime]'2026-10-20T01:00:02Z'
+                CommandLine = $_
+            }
+        }
+        Get-WtaMasterPipe -App $script:app | Should -Be '\\.\pipe\wta-master-normal'
+    }
     It 'rejects missing or ambiguous owners instead of choosing another master' {
         $script:masters = @()
         { Get-WtaMasterPipe -App $script:app } | Should -Throw

@@ -9,15 +9,16 @@ function Get-WtaMasterPipe {
     if (-not $root -or $root.ExecutablePath -ine $App.WindowsTerminal -or -not $root.CreationDate) {
         throw "Cannot verify the selected Terminal process pid=$($App.Pid)."
     }
+    $masterCommand = '^\s*(?:"[^"]+"|\S+)\s+--master\s+(?:"([^"]+)"|(\S+))'
     $pipe = Wait-Until -TimeoutSec $TimeoutSec -Because "the WTA master owned by Terminal pid=$($App.Pid)" -Condition {
         $masters = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($App.Pid) AND Name='wta.exe'" -ErrorAction Stop |
             Where-Object {
                 $_.ExecutablePath -ieq $App.WtaPath -and $_.CreationDate -ge $root.CreationDate -and
-                $_.CommandLine -match '(?:^|\s)--master\s+(?:"[^"]+"|\S+)'
+                $_.CommandLine -match $masterCommand
             })
         if ($masters.Count -eq 0) { return $null }
         if ($masters.Count -ne 1) { throw 'The selected Terminal process has multiple WTA masters.' }
-        $match = [regex]::Match($masters[0].CommandLine, '(?:^|\s)--master\s+(?:"([^"]+)"|(\S+))')
+        $match = [regex]::Match($masters[0].CommandLine, $masterCommand)
         $endpoint = if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
         if (-not $endpoint.StartsWith('\\.\pipe\wta-master-', [StringComparison]::OrdinalIgnoreCase)) {
             throw 'The owned WTA master has an unexpected endpoint.'
