@@ -683,7 +683,7 @@ class ValidationTests(unittest.TestCase):
                     "findings": findings or [],
                     "dismissed_signals": dismissed_signals,
                     "patch_files": patch_files or [],
-                    "review_checks": checks,
+                    **({"review_checks": checks} if findings else {}),
                     "runtime_checks": [
                         {"id": "axe-windows-uia", "status": "SKIPPED", "reason": "interactive Windows required"}
                     ],
@@ -1022,7 +1022,93 @@ class ValidationTests(unittest.TestCase):
         return item
 
     def test_no_findings_is_valid_and_native_runtime_remains_skipped(self):
-        MODULE.validate(self.root, self.head, self.head, True, self.prepared, self.report())
+        for same_repo in (True, False):
+            for include_empty_checks in (True, False):
+                with self.subTest(same_repo=same_repo, include_empty_checks=include_empty_checks):
+                    report = self.report()
+                    data = json.loads(report.read_text())
+                    self.assertNotIn("review_checks", data)
+                    if include_empty_checks:
+                        data["review_checks"] = []
+                        report.write_text(json.dumps(data))
+                    before = report.read_bytes()
+                    output = io.StringIO()
+                    with contextlib.redirect_stdout(output):
+                        MODULE.validate(self.root, self.head, self.head, same_repo, self.prepared, report)
+                    self.assertEqual(before, report.read_bytes())
+                    self.assertNotIn("PASS", output.getvalue())
+                    self.assertEqual("SKIPPED", json.loads(report.read_text())["runtime_checks"][0]["status"])
+
+    def test_no_findings_can_still_include_legacy_detailed_review_checks(self):
+        report = self.report()
+        data = json.loads(report.read_text())
+        data["review_checks"] = review_check_fixture(
+            ["src/cascadia/TerminalApp/Test.xaml"],
+            '<Button AutomationProperties.AccessibilityView="Raw" Content="Open" />')
+        report.write_text(json.dumps(data))
+        MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+
+    def test_benign_comment_and_documentation_link_delta_needs_no_domain_forms(self):
+        # Minimal source fixture using the actual #1189 comment/link wording.
+        # Full immutable-blob replay is recorded separately in delivery evidence.
+        relative = "src/cascadia/TerminalApp/Test.xaml"
+        path = self.root / relative
+        original = ('<Grid>\n<!--  Remove the native horizontal tab border within this vertical-only scope.  -->\n'
+                    '<HyperlinkButton x:Uid="FreOverlay_WelcomeSubtitleLink" />\n'
+                    '</Grid>\n')
+        resource = self.root / "src/cascadia/TerminalApp/Resources/en-GB/Resources.resw"
+        resource.parent.mkdir(parents=True)
+        resource.write_text('<root><data name="FreOverlay_WelcomeSubtitleLink">'
+                            '<value>Learn more about Intelligent Terminal</value></data></root>\n', encoding="utf-8")
+        subprocess.run(["git", "add", str(resource.relative_to(self.root))], cwd=self.root, check=True)
+        self.commit_text(path, original, "Named documentation link")
+        base = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        resource.write_text(resource.read_text(encoding="utf-8").replace(
+            "Learn more", "Find out more"), encoding="utf-8")
+        subprocess.run(["git", "add", str(resource.relative_to(self.root))], cwd=self.root, check=True)
+        self.head = self.commit_text(
+            path, original.replace("Remove the native", "Hide the native"),
+            "Only update comment and link")
+        MODULE.prepare(self.root, base, self.head, self.prepared)
+        prepared = json.loads(self.prepared.read_text())
+        self.assertEqual(sorted([relative, resource.relative_to(self.root).as_posix()]), prepared["changed_files"])
+        self.assertEqual([], prepared["static_findings"])
+        self.assertEqual(list(MODULE.REVIEW_CHECK_IDS), prepared["required_review_checks"])
+        report = self.report(dismissed_signals=[])
+        data = json.loads(report.read_text())
+        self.assertNotIn("review_checks", data)
+        data["runtime_checks"] = prepared["runtime_checks"]
+        report.write_text(json.dumps(data))
+        MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+        self.assertEqual([], json.loads(report.read_text())["findings"])
+
+    def test_malformed_optional_no_finding_checks_are_not_silently_ignored(self):
+        for checks in (None, {}, "", False, [{"id": MODULE.REVIEW_CHECK_IDS[0]}]):
+            with self.subTest(checks=checks):
+                report = self.report()
+                data = json.loads(report.read_text())
+                data["review_checks"] = checks
+                report.write_text(json.dumps(data))
+                with self.assertRaisesRegex(ValueError, "review_checks"):
+                    MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+
+    def test_invalid_cli_report_is_incomplete_not_a_product_verdict(self):
+        report = self.report([self.finding(disposition="remaining")])
+        data = json.loads(report.read_text())
+        del data["review_checks"]
+        report.write_text(json.dumps(data))
+        before = report.read_bytes()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "validate", "--root", str(self.root),
+             "--expected-head", self.head, "--current-head", self.head, "--same-repo", "true",
+             "--prepared", str(self.prepared), "--report", str(report)],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn("incomplete", result.stderr)
+        self.assertIn("review_checks must be an array", result.stderr)
+        self.assertEqual("", result.stdout)
+        self.assertEqual(before, report.read_bytes())
 
     def test_omitted_high_signal_with_noop_is_rejected(self):
         report = self.report(dismissed_signals=[])
@@ -1299,6 +1385,21 @@ class ValidationTests(unittest.TestCase):
         self.assertIn(".idl", MODULE.UI_SUFFIXES)
         self.assertNotIn(".idl", MODULE.PATCH_SUFFIXES)
 
+    def test_generated_handoffs_are_ignored_but_never_eligible_for_repair_commits(self):
+        artifact = "Generated Files/accessibility-1-1/triage.md"
+        output = self.root / artifact
+        output.parent.mkdir(parents=True)
+        output.write_text("# Related\n\nSource evidence only.\n", encoding="utf-8")
+        (self.root / ".git/info/exclude").write_text("Generated Files/\n", encoding="utf-8")
+        relative = "src/cascadia/TerminalApp/Test.xaml"
+        (self.root / relative).write_text('<Button Content="Open" />\n', encoding="utf-8")
+        MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                        self.report([self.finding()], [relative]))
+        subprocess.run(["git", "add", "--force", artifact], cwd=self.root, check=True)
+        with self.assertRaisesRegex(ValueError, "outside the native UI/test allowlist"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                            self.report([self.finding()], [relative, artifact]))
+
     def test_test_host_review_does_not_expand_publication_paths(self):
         relative = f"{MODULE.TEST_HOST_ROOT}Test.xaml"
         path = self.root / relative
@@ -1439,18 +1540,38 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "prepared evidence does not match"):
             MODULE.validate(self.root, self.head, self.head, True, self.prepared, self.report())
 
-    def test_signal_only_report_without_domain_review_is_rejected(self):
-        report = self.report()
-        data = json.loads(report.read_text())
-        del data["review_checks"]
-        report.write_text(json.dumps(data))
-        with self.assertRaisesRegex(ValueError, "review_checks must be an array"):
-            MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+    def test_actual_findings_without_domain_review_are_rejected(self):
+        for severity, disposition in (("HIGH", "remaining"), ("MEDIUM", "advice"), ("LOW", "skipped")):
+            for checks in (None, []):
+                with self.subTest(severity=severity, checks=checks):
+                    finding = self.finding(stable_id="AX-ACTUAL-1", severity=severity, disposition=disposition)
+                    dismissal = json.loads(self.report().read_text())["dismissed_signals"][0]
+                    report = self.report([finding], dismissed_signals=[dismissal])
+                    data = json.loads(report.read_text())
+                    if checks is None:
+                        del data["review_checks"]
+                    else:
+                        data["review_checks"] = checks
+                    report.write_text(json.dumps(data))
+                    with self.assertRaisesRegex(ValueError, "review_checks"):
+                        MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+
+    def test_actual_findings_still_require_their_own_evidence(self):
+        for severity, disposition in (("HIGH", "remaining"), ("MEDIUM", "advice"), ("LOW", "skipped")):
+            with self.subTest(severity=severity):
+                finding = self.finding(stable_id="AX-ACTUAL-1", severity=severity,
+                                       disposition=disposition, evidence="")
+                dismissal = json.loads(self.report().read_text())["dismissed_signals"][0]
+                with self.assertRaisesRegex(ValueError, "finding evidence must be a non-empty string"):
+                    MODULE.validate(
+                        self.root, self.head, self.head, True, self.prepared,
+                        self.report([finding], dismissed_signals=[dismissal]),
+                    )
 
     def test_review_dimensions_cannot_be_omitted_repeated_or_invented(self):
         for change in ("omit", "repeat", "invent"):
             with self.subTest(change=change):
-                report = self.report()
+                report = self.report([self.finding(disposition="remaining")])
                 data = json.loads(report.read_text())
                 if change == "omit":
                     data["review_checks"].pop()
@@ -1463,7 +1584,7 @@ class ValidationTests(unittest.TestCase):
                     MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
 
     def test_domain_evidence_must_match_immutable_source_not_worktree(self):
-        report = self.report()
+        report = self.report([self.finding(disposition="remaining")])
         data = json.loads(report.read_text())
         data["review_checks"][0]["evidence"][0]["text"] = "Fabricated accessible implementation"
         report.write_text(json.dumps(data))
@@ -1471,7 +1592,7 @@ class ValidationTests(unittest.TestCase):
             MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
 
     def test_model_cannot_mark_a_review_dimension_as_runtime_pass(self):
-        report = self.report()
+        report = self.report([self.finding(disposition="remaining")])
         data = json.loads(report.read_text())
         data["review_checks"][0]["status"] = "PASS"
         report.write_text(json.dumps(data))
@@ -1484,14 +1605,15 @@ class WorkflowContractTests(unittest.TestCase):
     def test_agent_summary_is_written_from_template_and_displayed_unchanged(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        self.assertIn("--summary /tmp/gh-aw/accessibility/summary.md", workflow)
-        self.assertIn("        /tmp/gh-aw/accessibility/summary.md", workflow)
+        self.assertIn('--summary "Generated Files/$ACCESSIBILITY_RUN/deep-summary.md"', workflow)
+        summary = (root / ".github/workflows/ghaw-accessibility-summary.md").read_text(encoding="utf-8")
+        self.assertIn('summary="Generated Files/$ACCESSIBILITY_RUN/summary.md"', summary)
         self.assertIn("## Human action and limits", workflow)
         self.assertIn("| Proposed fix commit |", workflow)
         self.assertIn("[commit SHA](COMMIT_URL)", workflow)
         self.assertIn("`${{ github.server_url }}`", workflow)
         self.assertIn("prepared `publication.repository`", workflow)
-        self.assertIn('cat /tmp/gh-aw/accessibility/summary.md >> "$GITHUB_STEP_SUMMARY"', workflow)
+        self.assertIn('cat "$summary" >> "$GITHUB_STEP_SUMMARY"', summary)
         self.assertIn("original PR", workflow)
         self.assertIn("may revert any fix commit", workflow)
         self.assertIn("only once below the table", workflow)
@@ -1510,7 +1632,8 @@ class WorkflowContractTests(unittest.TestCase):
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
         self.assertNotIn("\n  accessibility-report:", compiled)
         self.assertIn("\n  native-runtime:", compiled)
-        self.assertIn('cat /tmp/gh-aw/accessibility/summary.md', compiled)
+        summary = (root / ".github/workflows/ghaw-accessibility-summary.lock.yml").read_text(encoding="utf-8")
+        self.assertIn('cat "$summary" >> "$GITHUB_STEP_SUMMARY"', summary)
 
     def test_support_paths_trigger_trusted_base_validation(self):
         root = Path(__file__).parents[4]
@@ -1546,14 +1669,16 @@ class WorkflowContractTests(unittest.TestCase):
         condition = publication.split("\n    if:", 1)[1].split("\n    runs-on:", 1)[0]
         self.assertIn("needs.agent.result == 'success'", condition)
 
-    def test_validated_report_is_uploaded_after_validation(self):
+    def test_review_evidence_is_uploaded_after_validation_even_when_incomplete(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertLess(workflow.index("name: Check findings and repair publication policy"),
-                        workflow.index("name: Upload source review and agent-written summary"))
-        upload = workflow.split("name: Upload source review and agent-written summary", 1)[1].split("\n---", 1)[0]
-        self.assertIn("/tmp/gh-aw/accessibility/final.json", upload)
-        self.assertIn("/tmp/gh-aw/accessibility/summary.md", upload)
+                        workflow.index("name: Upload deep review evidence even when incomplete"))
+        upload = workflow.split("name: Upload deep review evidence even when incomplete", 1)[1].split("\n---", 1)[0]
+        self.assertIn("if: always()", upload)
+        self.assertIn("path: Generated Files/accessibility-", upload)
+        self.assertIn('Generated Files/$ACCESSIBILITY_RUN/final.json', workflow)
+        self.assertIn('Generated Files/$ACCESSIBILITY_RUN/deep-summary.md', workflow)
 
     def test_skill_is_staged_from_workflow_revision_before_head_checkout(self):
         root = Path(__file__).parents[4]
@@ -1590,7 +1715,10 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parents[4]
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
         agent = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  agent:\n", 1)[1], maxsplit=1)[0]
-        self.assertRegex(agent, r"(?m)^    needs: activation$")
+        dependencies = agent.split("    needs:\n", 1)[1].split("\n    if:", 1)[0]
+        self.assertIn("- activation", dependencies)
+        self.assertIn("- triage-route", dependencies)
+        self.assertNotIn("native", dependencies)
         self.assertIn("\n  native-runtime:\n", compiled)
         self.assertIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
         publisher = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  safe_outputs:\n", 1)[1], maxsplit=1)[0]

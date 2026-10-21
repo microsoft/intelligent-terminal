@@ -112,8 +112,12 @@ skill.
 
 ## Required review record
 
-For a PR review, account for every `required_review_checks` ID from the prepared
-evidence in `review_checks`, including dimensions with no static signal.
+For a deep PR review, consider every `required_review_checks` domain dimension
+from the prepared evidence, including dimensions with no static signal.
+The checklist guides judgment, not eight mandatory evidence packages for a
+benign diff. No-finding reports may omit `review_checks` or set it to `[]`.
+Actual findings still require the evidence and immutable citations below.
+When supplying detailed `review_checks`, account for every prepared ID.
 Each record names the classified changed files it covers, explains the actual
 repository mechanism in `assessment`, and cites immutable source as
 `{file, revision: "head"|"base", line, text}`. Use companion styles, handlers,
@@ -128,11 +132,11 @@ confirmation; specify the exact scenario and expected observation.
 These statuses are not native PASS attestations. Do not turn a missing test
 into `not-applicable` or claim an Axe scan proves focus, announcements or layout.
 
-Report review checks even when there are no findings. A static-signal-only
-report, generic "followed the skill" statement, or empty findings array does
-not satisfy this procedure. The trusted gate checks coverage and source
-citations, not the semantic truth of the model's assessment. Domain judgment
-must still be supported by the actual source and any available runtime evidence.
+Do not manufacture citations for unaffected dimensions just to fill a form.
+Explain the changed behavior and any uncertainty briefly in the Markdown
+handoff. A malformed report is incomplete review, not a product defect or a
+fabricated pass. The trusted gate validates supplied records and finding
+evidence, not the semantic truth of the model's assessment.
 
 ## Axe.Windows and runtime checks
 
@@ -218,7 +222,8 @@ comments.
 ## Validation
 
 ```powershell
-python .github\skills\pr-accessibility\tests\test_accessibility_review.py
-gh aw compile ghaw-pr-accessibility --no-check-update
-gh aw validate ghaw-pr-accessibility --no-check-update
+python -m pip install -r .github\skills\pr-accessibility\tests\requirements.txt
+python -m unittest discover -s .github/skills/pr-accessibility/tests
+gh aw compile ghaw-accessibility-triage ghaw-accessibility-summary ghaw-pr-accessibility --no-check-update
+gh aw validate ghaw-accessibility-triage ghaw-accessibility-summary ghaw-pr-accessibility --no-check-update
 ```

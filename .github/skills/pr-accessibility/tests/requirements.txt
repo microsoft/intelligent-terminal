@@ -1,0 +1,2 @@
+# YAML parsing for cross-file compiled dependency/permission contract tests.
+PyYAML==6.0.3

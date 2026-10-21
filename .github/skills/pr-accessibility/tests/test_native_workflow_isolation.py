@@ -149,7 +149,7 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         publication = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  safe_outputs:\n", 1)[1], maxsplit=1)[0]
         self.assertNotIn("native-runtime", publication)
         discovery = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  native-runtime:\n", 1)[1], maxsplit=1)[0]
-        self.assertRegex(discovery, r"(?m)^    needs: agent$")
+        self.assertRegex(discovery, r"(?m)^    needs:\n      - agent\n      - native-selection$")
         self.assertIn("head-sha: ${{ github.event.pull_request.head.sha }}", discovery)
         self.assertNotIn("published", discovery)
         self.assertNotIn("safe_outputs", discovery)

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Prepare and validate the native WinUI accessibility review contract."""
+"""Prepare and validate the native WinUI accessibility review contract.
+
+Prepared review dimensions remain the domain checklist. No-finding reports may
+omit review_checks or use []; actual findings and any supplied detailed checks
+retain the full evidence contract. Invalid reports mean incomplete review, not
+a product defect or a native accessibility pass.
+"""
 
 from __future__ import annotations
 
@@ -427,6 +433,8 @@ def _validate_finding(item: Any) -> list[str]:
 
 
 def _validate_review_checks(root: Path, prepared: dict[str, Any], report: dict[str, Any]) -> list[str]:
+    if report.get("findings") == [] and ("review_checks" not in report or report["review_checks"] == []):
+        return []
     checks = report.get("review_checks")
     if not isinstance(checks, list):
         return ["report review_checks must be an array"]
@@ -936,7 +944,7 @@ def main() -> int:
                 args.summary,
             )
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
-        print(f"accessibility review contract failed: {error}", file=sys.stderr)
+        print(f"accessibility review incomplete (contract failed): {error}", file=sys.stderr)
         return 2
     return 0
 
