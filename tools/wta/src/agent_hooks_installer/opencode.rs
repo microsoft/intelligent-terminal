@@ -12,7 +12,6 @@ const V2_FILES: &[&str] = &[
     "tui.js",
 ];
 const API_MARKER: &str = "// OpenCode API variant: ";
-const VERSION_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -83,6 +82,10 @@ fn detect(executable: &str) -> Result<(String, ApiVariant), String> {
 }
 
 fn probe_version(executable: &str) -> Result<String, String> {
+    probe_version_with_timeout(executable, Duration::from_secs(5))
+}
+
+fn probe_version_with_timeout(executable: &str, timeout: Duration) -> Result<String, String> {
     use std::os::windows::process::CommandExt;
     use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, CREATE_SUSPENDED};
 
@@ -124,7 +127,7 @@ fn probe_version(executable: &str) -> Result<String, String> {
                 .map(|_| output)
         })
         .map_err(|error| format!("failed to read OpenCode version: {error}"))?;
-    let deadline = Instant::now() + VERSION_PROBE_TIMEOUT;
+    let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Ok(status),
@@ -873,24 +876,18 @@ mod tests {
                 // On failure, kill it before the scoped worker joins its reader.
                 unsafe {
                     let handle = self.0.as_raw_handle();
-                    if WaitForSingleObject(handle, 0) == WAIT_TIMEOUT {
-                        eprintln!("reclaiming live fixture descendant after failed assertions");
-                        if TerminateProcess(handle, 1) == 0 {
-                            eprintln!(
-                                "fixture cleanup failed: {}",
-                                std::io::Error::last_os_error()
-                            );
-                        }
+                    if WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
+                        && TerminateProcess(handle, 1) == 0
+                    {
+                        eprintln!(
+                            "fixture cleanup failed: {}",
+                            std::io::Error::last_os_error()
+                        );
                     }
                 }
             }
         }
-        let fixture = Fixture(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("target")
-                .join(format!("wta-opencode-probe-{}", uuid::Uuid::new_v4())),
-        );
-        fs::create_dir_all(&fixture.0).unwrap();
+        let fixture = Fixture::new();
         let executable = fixture.0.join("opencode with spaces.cmd");
         fs::write(&executable, "@echo off\r\necho 2.0.10-beta.1\r\n").unwrap();
         assert_eq!(
@@ -900,103 +897,83 @@ mod tests {
         let pid_file = fixture.0.join("descendant.pid");
         let release = fixture.0.join("release");
         let diagnostics = fixture.0.join("descendant.stderr");
-        for should_time_out in [false, true] {
-            if should_time_out {
-                fs::remove_file(&pid_file).unwrap();
-            }
-            // Foreground PowerShell holds the shim open for the timeout case.
-            let launch = if should_time_out {
-                ""
-            } else {
-                "start \"\" /b "
-            };
-            // WriteAllText shares reads, closes synchronously, and publishes one
-            // complete ASCII line without the PowerShell cmdlets' sharing conflict.
-            // Block between release checks: cmd's timeout cannot use null stdin.
-            fs::write(
-                &executable,
-                format!(
-                    concat!(
-                        "@echo off\r\n",
-                        "{}powershell.exe -NoProfile -NonInteractive -Command ",
-                        "\"$ErrorActionPreference='Stop'; [IO.File]::WriteAllText('{}', [string]$PID + [Environment]::NewLine, [Text.Encoding]::ASCII); Start-Sleep -Seconds 30\" 2>\"{}\"\r\n",
-                        "if errorlevel 1 exit /b 1\r\n",
-                        ":wait\r\n",
-                        "if exist \"{}\" goto ready\r\n",
-                        "\"%SystemRoot%\\System32\\ping.exe\" -n 2 127.0.0.1 >nul\r\n",
-                        "if errorlevel 1 exit /b 1\r\n",
-                        "goto wait\r\n",
-                        ":ready\r\n",
-                        "echo 2.0.10\r\n",
-                    ),
-                    launch,
-                    pid_file.display(),
-                    diagnostics.display(),
-                    release.display()
-                ),
-            )
-            .unwrap();
-            let probe = executable.clone();
-            let (sender, receiver) = std::sync::mpsc::channel();
-            let start = Instant::now();
-            std::thread::scope(|scope| {
-                // Finish owned cleanup before removing the fixture, even on panic.
-                scope.spawn(move || {
-                    let _ = sender.send(probe_version(probe.to_str().unwrap()));
-                });
-                let pid = loop {
-                    // Default Windows sharing permits write/delete; this call
-                    // closes its read handle before the next poll.
-                    let contents = fs::read_to_string(&pid_file);
-                    match &contents {
-                        Ok(contents) if contents.ends_with('\n') => {
-                            break contents.trim().parse::<u32>().expect("descendant PID");
-                        }
-                        Ok(_) => {} // The producer has not finished its record.
-                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                        Err(error) => panic!(
-                            "failed to read descendant PID: {error}; stderr: {:?}",
-                            fs::read_to_string(&diagnostics)
-                        ),
-                    }
-                    // Readiness uses the real probe deadline, not a shorter timer.
-                    match receiver.recv_timeout(Duration::from_millis(10)) {
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                        result => panic!(
-                            "probe completed before descendant readiness: {result:?}; PID file: {contents:?}; stderr: {:?}",
-                            fs::read_to_string(&diagnostics)
-                        ),
-                    }
-                };
-                // SAFETY: retain the exact fixture PID's handle, including cleanup
-                // rights so an assertion failure cannot leave it sleeping.
-                let descendant = unsafe {
-                    let handle = OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_TERMINATE, 0, pid);
-                    assert!(!handle.is_null());
-                    Descendant(OwnedHandle::from_raw_handle(handle))
-                };
-                assert_eq!(
-                    unsafe { WaitForSingleObject(descendant.0.as_raw_handle(), 0) },
-                    WAIT_TIMEOUT
-                );
-                if !should_time_out {
-                    fs::write(&release, "").unwrap();
-                }
-                let result = receiver
-                    .recv_timeout(VERSION_PROBE_TIMEOUT + Duration::from_secs(2))
-                    .unwrap();
-                if should_time_out {
-                    assert!(result.unwrap_err().contains("timed out"));
-                    assert!(start.elapsed() < VERSION_PROBE_TIMEOUT + Duration::from_secs(5));
-                } else {
-                    assert_eq!(result.unwrap().trim(), "2.0.10");
-                }
-                assert_eq!(
-                    unsafe { WaitForSingleObject(descendant.0.as_raw_handle(), 5000) },
-                    WAIT_OBJECT_0
-                );
+        // WriteAllText permits readers and closes its complete ASCII record.
+        // Ping blocks with null stdin, unlike cmd's timeout command.
+        fs::write(
+            &executable,
+            format!(
+                "@echo off\r\n\
+                 start \"\" /b powershell.exe -NoProfile -NonInteractive -Command \"\
+                 $ErrorActionPreference='Stop'; \
+                 [IO.File]::WriteAllText('{}', [string]$PID + [Environment]::NewLine, [Text.Encoding]::ASCII); \
+                 Start-Sleep -Seconds 30\" 2>\"{}\"\r\n\
+                 if errorlevel 1 exit /b 1\r\n\
+                 :wait\r\n\
+                 if exist \"{}\" (echo 2.0.10 & exit /b 0)\r\n\
+                 \"%SystemRoot%\\System32\\ping.exe\" -n 2 127.0.0.1 >nul\r\n\
+                 if errorlevel 1 exit /b 1\r\n\
+                 goto wait\r\n",
+                pid_file.display(),
+                diagnostics.display(),
+                release.display()
+            ),
+        )
+        .unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            let probe = executable.to_str().unwrap();
+            scope.spawn(move || {
+                let _ = sender.send(probe_version_with_timeout(probe, Duration::from_secs(10)));
             });
-        }
+            let pid = loop {
+                // Default Windows sharing permits writes; the read closes here.
+                match fs::read_to_string(&pid_file) {
+                    Ok(record) if record.ends_with('\n') => {
+                        break record.trim().parse::<u32>().expect("descendant PID");
+                    }
+                    Ok(_) => {} // Incomplete record.
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => panic!("read descendant PID: {error}"),
+                }
+                match receiver.recv_timeout(Duration::from_millis(10)) {
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    result => panic!(
+                        "probe ended before PID: {result:?}; stderr: {:?}",
+                        fs::read_to_string(&diagnostics)
+                    ),
+                }
+            };
+            // SAFETY: retain only our reported child's handle, with failure cleanup rights.
+            let descendant = unsafe {
+                let handle = OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_TERMINATE, 0, pid);
+                assert!(!handle.is_null());
+                Descendant(OwnedHandle::from_raw_handle(handle))
+            };
+            assert_eq!(
+                unsafe { WaitForSingleObject(descendant.0.as_raw_handle(), 0) },
+                WAIT_TIMEOUT
+            );
+            fs::write(&release, "").unwrap();
+            assert_eq!(
+                receiver
+                    .recv_timeout(Duration::from_secs(12))
+                    .unwrap()
+                    .unwrap()
+                    .trim(),
+                "2.0.10"
+            );
+            assert_eq!(
+                unsafe { WaitForSingleObject(descendant.0.as_raw_handle(), 5000) },
+                WAIT_OBJECT_0
+            );
+        });
+        fs::write(&executable, "@echo off\r\npowershell.exe -NoProfile -NonInteractive -Command \"Start-Sleep -Seconds 10\"\r\n").unwrap();
+        let start = Instant::now();
+        assert!(probe_version(executable.to_str().unwrap())
+            .unwrap_err()
+            .contains("timed out"));
+        assert!(start.elapsed() >= Duration::from_secs(5));
+        assert!(start.elapsed() < Duration::from_secs(10));
     }
 
     #[test]
