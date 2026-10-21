@@ -908,11 +908,12 @@ mod tests {
                  [IO.File]::WriteAllText('{}', [string]$PID + [Environment]::NewLine, [Text.Encoding]::ASCII); \
                  Start-Sleep -Seconds 30\" 2>\"{}\"\r\n\
                  if errorlevel 1 exit /b 1\r\n\
-                 :wait\r\n\
-                 if exist \"{}\" (echo 2.0.10 & exit /b 0)\r\n\
-                 \"%SystemRoot%\\System32\\ping.exe\" -n 2 127.0.0.1 >nul\r\n\
-                 if errorlevel 1 exit /b 1\r\n\
-                 goto wait\r\n",
+                 for /L %%i in (0,1,10) do (\r\n\
+                     if exist \"{}\" (echo 2.0.10 & exit /b 0)\r\n\
+                     if %%i==10 exit /b 1\r\n\
+                     \"%SystemRoot%\\System32\\ping.exe\" -n 2 127.0.0.1 >nul\r\n\
+                     if errorlevel 1 exit /b 1\r\n\
+                 )\r\n",
                 pid_file.display(),
                 diagnostics.display(),
                 release.display()
@@ -920,6 +921,8 @@ mod tests {
         )
         .unwrap();
         let (sender, receiver) = std::sync::mpsc::channel();
+        // Readiness includes launch; the probe's own timer starts after spawn.
+        let start = Instant::now();
         std::thread::scope(|scope| {
             let probe = executable.to_str().unwrap();
             scope.spawn(move || {
@@ -927,7 +930,14 @@ mod tests {
             });
             let pid = loop {
                 // Default Windows sharing permits writes; the read closes here.
-                match fs::read_to_string(&pid_file) {
+                let record = fs::read_to_string(&pid_file);
+                assert!(
+                    start.elapsed() < Duration::from_secs(10),
+                    "descendant readiness exceeded ten seconds ({:?}); stderr: {:?}",
+                    start.elapsed(),
+                    fs::read_to_string(&diagnostics)
+                );
+                match record {
                     Ok(record) if record.ends_with('\n') => {
                         break record.trim().parse::<u32>().expect("descendant PID");
                     }
@@ -935,7 +945,8 @@ mod tests {
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                     Err(error) => panic!("read descendant PID: {error}"),
                 }
-                match receiver.recv_timeout(Duration::from_millis(10)) {
+                let remaining = Duration::from_secs(10).saturating_sub(start.elapsed());
+                match receiver.recv_timeout(remaining.min(Duration::from_millis(10))) {
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                     result => panic!(
                         "probe ended before PID: {result:?}; stderr: {:?}",
@@ -954,9 +965,10 @@ mod tests {
                 WAIT_TIMEOUT
             );
             fs::write(&release, "").unwrap();
+            // Completion has two seconds' grace, not another full probe budget.
             assert_eq!(
                 receiver
-                    .recv_timeout(Duration::from_secs(12))
+                    .recv_timeout(Duration::from_secs(12).saturating_sub(start.elapsed()))
                     .unwrap()
                     .unwrap()
                     .trim(),
