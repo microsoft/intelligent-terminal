@@ -82,10 +82,6 @@ fn detect(executable: &str) -> Result<(String, ApiVariant), String> {
 }
 
 fn probe_version(executable: &str) -> Result<String, String> {
-    probe_version_with_timeout(executable, Duration::from_secs(5))
-}
-
-fn probe_version_with_timeout(executable: &str, timeout: Duration) -> Result<String, String> {
     use std::os::windows::process::CommandExt;
     use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, CREATE_SUSPENDED};
 
@@ -127,7 +123,7 @@ fn probe_version_with_timeout(executable: &str, timeout: Duration) -> Result<Str
                 .map(|_| output)
         })
         .map_err(|error| format!("failed to read OpenCode version: {error}"))?;
-    let deadline = Instant::now() + timeout;
+    let deadline = Instant::now() + Duration::from_secs(5);
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Ok(status),
@@ -862,6 +858,17 @@ mod tests {
     }
 
     #[test]
+    fn version_probe_descendant_fixture() {
+        let Some(pid_file) = std::env::var_os("WTA_OPENCODE_PROBE_PID") else {
+            return;
+        };
+        let written = fs::write(pid_file, format!("{}\n", std::process::id()));
+        println!("PID file write: {written:?}");
+        written.unwrap();
+        std::thread::sleep(Duration::from_secs(30));
+    }
+
+    #[test]
     fn version_probe_runs_the_resolved_shim_and_bounds_its_descendants() {
         use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
         use windows_sys::Win32::Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT};
@@ -882,43 +889,58 @@ mod tests {
         );
         let pid_file = fixture.0.join("descendant.pid");
         let release = fixture.0.join("release");
-        let diagnostics = fixture.0.join("descendant.stderr");
-        fs::write(&executable, format!(
-            "@echo off\r\nstart \"\" /b powershell.exe -NoProfile -NonInteractive -Command \"$PID | Set-Content -LiteralPath '{}'; Start-Sleep -Seconds 30\" 2>\"{}\"\r\nif errorlevel 1 exit /b 1\r\n:wait\r\nif not exist \"{}\" goto wait\r\necho 2.0.10\r\n",
-            pid_file.display(), diagnostics.display(), release.display()
-        )).unwrap();
+        let diagnostics = fixture.0.join("descendant.log");
+        // Yield instead of busy-spinning while the child starts. cmd's timeout
+        // cannot wait with the probe's null stdin; loopback ping needs no input.
+        // Keep stderr on the probe's stdout pipe before redirecting the test
+        // harness's stdout, so cleanup must still precede the reader join.
+        fs::write(
+            &executable,
+            format!(
+                concat!(
+                    "@echo off\r\n",
+                    "set \"WTA_OPENCODE_PROBE_PID={}\"\r\n",
+                    "start \"\" /b \"{}\" --exact agent_hooks_installer::opencode::tests::version_probe_descendant_fixture --nocapture 2>&1 >\"{}\"\r\n",
+                    "if errorlevel 1 exit /b 1\r\n",
+                    ":wait\r\n",
+                    "if exist \"{}\" goto ready\r\n",
+                    "\"%SystemRoot%\\System32\\ping.exe\" -n 2 127.0.0.1 >nul\r\n",
+                    "if errorlevel 1 exit /b 1\r\n",
+                    "goto wait\r\n",
+                    ":ready\r\n",
+                    "echo 2.0.10\r\n",
+                ),
+                pid_file.display(),
+                std::env::current_exe().unwrap().display(),
+                diagnostics.display(),
+                release.display()
+            ),
+        )
+        .unwrap();
         let probe = executable.clone();
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::scope(|scope| {
-            // PowerShell startup is fixture setup, not the behavior under test.
-            // Allow it CI scheduling headroom; the default five-second deadline
-            // is exercised separately below. A scoped worker keeps the fixture
-            // alive until the probe job has reclaimed its children, even on panic.
+            // Finish the probe's owned cleanup before removing its fixture,
+            // including when readiness or a later assertion fails.
             scope.spawn(move || {
-                let result =
-                    probe_version_with_timeout(probe.to_str().unwrap(), Duration::from_secs(20));
-                let _ = sender.send(result);
+                let _ = sender.send(probe_version(probe.to_str().unwrap()));
             });
-            let start = Instant::now();
             let pid = loop {
-                if let Some(pid) = fs::read_to_string(&pid_file)
-                    .ok()
-                    .and_then(|value| value.trim().parse::<u32>().ok())
-                {
-                    break pid;
+                let contents = fs::read_to_string(&pid_file);
+                if let Ok(contents) = &contents {
+                    if contents.ends_with('\n') {
+                        break contents.trim().parse::<u32>().expect("descendant PID");
+                    }
                 }
+                // The real probe deadline bounds readiness too; do not start a
+                // shorter, unrelated timer before the worker has even run.
                 match receiver.recv_timeout(Duration::from_millis(10)) {
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                     result => panic!(
-                        "probe completed before descendant readiness: {result:?}; stderr: {:?}",
+                        "probe completed before descendant readiness: {result:?}; PID file: {contents:?}; child log: {:?}",
                         fs::read_to_string(&diagnostics)
                     ),
                 }
-                assert!(
-                    start.elapsed() < Duration::from_secs(30),
-                    "probe did not finish or report a descendant; stderr: {:?}",
-                    fs::read_to_string(&diagnostics)
-                );
             };
             // SAFETY: open only the fixture child's reported PID, retain its exact
             // process handle across cleanup, and request no mutation rights.
