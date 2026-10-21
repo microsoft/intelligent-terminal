@@ -785,10 +785,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Uma forma mais inteligente de gerir separadores</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Os seus separadores e sessões de agentes estão agora na barra lateral. Utilize Opções de apresentação da barra lateral para escolher os detalhes dos separadores. Clique com o botão direito num separador para voltar aos separadores horizontais.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Conheça a nova barra lateral, com mais funcionalidades para separadores e agentes. Alterne entre as vistas de separadores e agentes. Clique com o botão direito num separador para voltar aos separadores horizontais.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Novo</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

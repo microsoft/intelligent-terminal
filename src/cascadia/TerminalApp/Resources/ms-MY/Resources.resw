@@ -717,10 +717,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Cara lebih pintar untuk mengurus tab</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Tab dan sesi ejen anda kini berada di bar sisi. Gunakan Pilihan paparan bar sisi untuk memilih butiran tab. Klik kanan tab untuk kembali ke tab mendatar.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Kenali bar sisi baharu dengan lebih banyak ciri untuk tab dan ejen. Beralih antara paparan tab dan ejen. Klik kanan tab untuk kembali ke tab mendatar.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Baharu</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

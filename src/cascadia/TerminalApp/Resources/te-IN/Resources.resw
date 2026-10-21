@@ -767,10 +767,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>ట్యాబ్‌లను నిర్వహించడానికి మరింత తెలివైన మార్గం</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>మీ ట్యాబ్‌లు మరియు ఏజెంట్ సెషన్‌లు ఇప్పుడు సైడ్‌బార్‌లో ఉన్నాయి. ట్యాబ్ వివరాలను ఎంచుకోవడానికి సైడ్‌బార్ ప్రదర్శన ఎంపికలు ఉపయోగించండి. అడ్డంగా ఉండే ట్యాబ్‌లకు తిరిగి వెళ్లడానికి ట్యాబ్‌పై కుడి-క్లిక్ చేయండి.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>ట్యాబ్‌లు, ఏజెంట్ల కోసం మరిన్ని సౌకర్యాలు అందించే కొత్త సైడ్‌బార్‌ను పరిచయం చేసుకోండి. ట్యాబ్ మరియు ఏజెంట్ వీక్షణల మధ్య మారండి. అడ్డంగా ఉండే ట్యాబ్‌లకు తిరిగి వెళ్లడానికి ట్యాబ్‌పై కుడి-క్లిక్ చేయండి.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>కొత్త</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

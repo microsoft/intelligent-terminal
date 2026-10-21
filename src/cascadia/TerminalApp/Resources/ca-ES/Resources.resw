@@ -603,10 +603,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Una manera més intel·ligent de gestionar les pestanyes</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Les pestanyes i les sessions dels agents ara són a la barra lateral. Utilitza Opcions de visualització de la barra lateral per triar els detalls de les pestanyes. Fes clic amb el botó dret en una pestanya per tornar a les pestanyes horitzontals.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Descobreix la nova barra lateral, amb més funcions per a les pestanyes i els agents. Alterna entre les vistes de pestanyes i d’agents. Fes clic amb el botó dret en una pestanya per tornar a les pestanyes horitzontals.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Nou</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

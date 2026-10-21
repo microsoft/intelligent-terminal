@@ -786,10 +786,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>A lapok kezelésének intelligensebb módja</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>A lapok és az ügynökmunkamenetek mostantól az oldalsávon vannak. A lapok részleteinek kiválasztásához használja ezt: Az oldalsáv megjelenítési beállításai. A vízszintes lapokhoz való visszatéréshez kattintson a jobb gombbal egy lapra.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Ismerje meg az új oldalsávot, amely több lehetőséget kínál a lapokhoz és az ügynökökhöz. Váltson a lapok és az ügynökök nézete között. A vízszintes lapokhoz való visszatéréshez kattintson a jobb gombbal egy lapra.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Új</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

@@ -1676,10 +1676,14 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>[!!_Ｓｍａｒｔｅｒ ｗａｙ ｔｏ ｍａｎａｇｅ ｔａｂｓ_!!]</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>[!!_Ｙｏｕｒ ｔａｂｓ ａｎｄ ａｇｅｎｔ ｓｅｓｓｉｏｎｓ ａｒｅ ｎｏｗ ｉｎ ｔｈｅ ｓｉｄｅｂａｒ. Ｕｓｅ Ｓｉｄｅｂａｒ ｄｉｓｐｌａｙ ｏｐｔｉｏｎｓ ｔｏ ｃｈｏｏｓｅ ｔａｂ ｄｅｔａｉｌｓ. Ｒｉｇｈｔ-ｃｌｉｃｋ ａ ｔａｂ ｔｏ ｒｅｔｕｒｎ ｔｏ ｈｏｒｉｚｏｎｔａｌ ｔａｂｓ._!!]</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>[!!_Ｍｅｅｔ　ｔｈｅ　ｎｅｗ　ｓｉｄｅｂａｒ　ｆｏｒ　ｒｉｃｈｅｒ　ｔａｂｓ　ａｎｄ　ａｇｅｎｔｓ．　Ｓｗｉｔｃｈ　ｂｅｔｗｅｅｎ　ｔａｂ　ａｎｄ　ａｇｅｎｔ　ｖｉｅｗｓ，　ｏｒ　ｒｉｇｈｔ－ｃｌｉｃｋ　ａ　ｔａｂ　ｔｏ　ｒｅｔｕｒｎ　ｔｏ　ｈｏｒｉｚｏｎｔａｌ　ｔａｂｓ．_!!]</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>[!!_Ｎｅｗ_!!]</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

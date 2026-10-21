@@ -604,10 +604,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Unha forma máis intelixente de xestionar pestanas</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>As túas pestanas e sesións de axentes están agora na barra lateral. Usa Opcións de visualización da barra lateral para escoller os detalles das pestanas. Preme co botón dereito nunha pestana para volver ás pestanas horizontais.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Descubre a nova barra lateral, con máis funcións para as pestanas e os axentes. Alterna entre as vistas de pestanas e axentes. Preme co botón dereito nunha pestana para volver ás pestanas horizontais.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Novo</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

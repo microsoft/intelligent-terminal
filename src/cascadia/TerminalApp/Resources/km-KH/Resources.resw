@@ -604,10 +604,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>វិធីកាន់តែឆ្លាតវៃក្នុងការគ្រប់គ្រងផ្ទាំង</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>ផ្ទាំង និងវគ្គភ្នាក់ងាររបស់អ្នកឥឡូវនេះស្ថិតនៅក្នុងរបារចំហៀង។ ប្រើ ជម្រើសបង្ហាញរបារចំហៀង ដើម្បីជ្រើសរើសព័ត៌មានលម្អិតនៃផ្ទាំង។ ចុចកណ្ដុរខាងស្ដាំលើផ្ទាំង ដើម្បីត្រឡប់ទៅផ្ទាំងផ្ដេក។</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>ស្វែងយល់ពីរបារចំហៀងថ្មីដែលមានមុខងារច្រើនទៀតសម្រាប់ផ្ទាំង និងភ្នាក់ងារ។ ប្ដូររវាងទិដ្ឋភាពផ្ទាំង និងភ្នាក់ងារ។ ចុចកណ្ដុរខាងស្ដាំលើផ្ទាំង ដើម្បីត្រឡប់ទៅផ្ទាំងផ្ដេក។</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>ថ្មី</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

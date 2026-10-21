@@ -1669,10 +1669,14 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>更聰明地管理索引標籤</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>您的索引標籤與智能體工作階段現已移至側邊欄。使用側邊欄顯示選項選擇索引標籤詳細資訊。以滑鼠右鍵按一下索引標籤，即可返回水平索引標籤配置。</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>認識全新側邊欄，讓索引標籤與智能體功能更豐富。在索引標籤檢視與智能體檢視之間切換。以滑鼠右鍵按一下索引標籤，即可返回水平索引標籤配置。</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>新</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

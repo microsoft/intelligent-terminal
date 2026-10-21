@@ -789,10 +789,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>टॅबांचे वेवस्थापन करपाची चड हुशार पद्दत</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>तुमचे टॅब आनी एजंट सत्रां आतां बाजूच्या पट्टींत आसात. टॅबांचे तपशील निवडपाक बाजूच्या पट्टीचे प्रदर्शन पर्याय वापरात. आडव्या टॅबांक परत वचपाक टॅबाचेर उजवो क्लिक करात.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>टॅब आनी एजंटां खातीर चड सुविधा आशिल्लो नवो बाजूचो पट्टो पळयात. टॅब आनी एजंट दृश्यां मदीं बदल करात. आडव्या टॅबांक परत वचपाक टॅबाचेर उजवो क्लिक करात.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>नवें</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

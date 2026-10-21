@@ -788,10 +788,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>টেবসমূহ পৰিচালনা কৰাৰ অধিক বুদ্ধিমান উপায়</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>আপোনাৰ টেব আৰু এজেণ্ট অধিৱেশনসমূহ এতিয়া চাইডবাৰত আছে। টেবৰ বিৱৰণ বাছিবলৈ চাইডবাৰৰ প্ৰদৰ্শন বিকল্পসমূহ ব্যৱহাৰ কৰক। অনুভূমিক টেবলৈ উভতিবলৈ এটা টেবত ৰাইট-ক্লিক কৰক।</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>টেব আৰু এজেণ্টৰ বাবে অধিক সুবিধাসম্পন্ন নতুন চাইডবাৰৰ সৈতে পৰিচিত হওক। টেব আৰু এজেণ্টৰ দৃশ্যৰ মাজত সলনি কৰক। অনুভূমিক টেবলৈ উভতিবলৈ এটা টেবত ৰাইট-ক্লিক কৰক।</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>নতুন</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

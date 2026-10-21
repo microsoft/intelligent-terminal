@@ -764,10 +764,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>Un mod mai inteligent de a gestiona filele</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Filele și sesiunile agenților sunt acum în bara laterală. Folosește Opțiuni de afișare a barei laterale pentru a alege detaliile filelor. Fă clic dreapta pe o filă pentru a reveni la filele orizontale.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Descoperă noua bară laterală, cu mai multe funcții pentru file și agenți. Comută între vizualizările filelor și agenților. Fă clic dreapta pe o filă pentru a reveni la filele orizontale.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Nou</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>

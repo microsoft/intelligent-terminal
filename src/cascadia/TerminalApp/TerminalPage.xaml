@@ -393,8 +393,38 @@
                          AutomationProperties.AutomationId="SidebarIntroductionTip"
                          x:Load="False"
                          Closed="_OnSidebarIntroductionClosed"
-                         IsLightDismissEnabled="True"
-                         PreferredPlacement="Right" />
+                         IsLightDismissEnabled="False"
+                         PreferredPlacement="Right">
+            <mux:TeachingTip.Content>
+                <StackPanel Width="290"
+                            Margin="0,-6,0,0">
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="8">
+                        <TextBlock x:Name="SidebarIntroductionTitleText"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   MaxWidth="185"
+                                   TextWrapping="Wrap" />
+                        <Border x:Name="SidebarIntroductionNewBadgeContainer"
+                                MinHeight="18"
+                                MaxWidth="56"
+                                Padding="6,0"
+                                Background="#60CDFF"
+                                CornerRadius="9"
+                                VerticalAlignment="Center">
+                            <TextBlock x:Name="SidebarIntroductionNewBadge"
+                                       FontSize="12"
+                                       Foreground="#000000"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                    </StackPanel>
+                    <TextBlock x:Name="SidebarIntroductionDescriptionText"
+                               FontSize="14"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </mux:TeachingTip.Content>
+        </mux:TeachingTip>
 
         <mux:TeachingTip x:Name="WindowRenamer"
                          x:Uid="WindowRenamer"

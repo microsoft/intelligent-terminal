@@ -535,6 +535,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabSearchTracksActivePaneMetadata);
         TEST_METHOD(VerticalTabAgentStatusIgnoresAssistantFocus);
         TEST_METHOD(VerticalTabSearchUiState);
+        TEST_METHOD(SidebarIntroductionAnchorMatchesDesign);
+        TEST_METHOD(SidebarIntroductionContentMatchesDesign);
+        TEST_METHOD(SidebarIntroductionPopupMatchesDesign);
         TEST_METHOD(LiteralSearchHighlighting);
         TEST_METHOD(VerticalTabAgentsOnlyHasNoStatusFooter);
         TEST_METHOD(VerticalTabStaticHeaderAndIndependentFilterMenu);
@@ -7544,6 +7547,155 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(pinnedDisplay.IsPinned());
             VERIFY_IS_TRUE(pinnedDisplay.Presentation() == presentation);
             VERIFY_IS_TRUE(last->GetRootPane() == originalRoot);
+        });
+    }
+
+    void TabTests::SidebarIntroductionAnchorMatchesDesign()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            const auto target = strip.FindName(L"SidebarIntroductionTarget").try_as<FrameworkElement>();
+            VERIFY_IS_NOT_NULL(target);
+
+            for (const auto width : { 272.0f, 340.0f })
+            {
+                strip.Measure({ width, 690.0f });
+                strip.Arrange({ 0, 0, width, 690.0f });
+                strip.UpdateLayout();
+                const auto bounds = target.TransformToVisual(strip).TransformBounds(
+                    { 0, 0, static_cast<float>(target.ActualWidth()), static_cast<float>(target.ActualHeight()) });
+                VERIFY_IS_TRUE(std::abs(bounds.X + bounds.Width - width) <= 0.5);
+            }
+        });
+    }
+
+    void TabTests::SidebarIntroductionContentMatchesDesign()
+    {
+        const auto english = GetLibraryResourceLoader().WithQualifier(L"language", L"en-US");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Smarter way to manage tabs" }, english.GetLocalizedString(L"SidebarIntroductionTitle"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Meet the new sidebar for richer tabs and agents. Switch between tab and agent views, or right-click a tab to return to horizontal tabs." },
+                         english.GetLocalizedString(L"SidebarIntroductionDescription"));
+        VERIFY_IS_TRUE(english.HasResourceWithName(L"SidebarIntroductionNewBadge"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"New" }, english.GetLocalizedString(L"SidebarIntroductionNewBadge"));
+    }
+
+    void TabTests::SidebarIntroductionPopupMatchesDesign()
+    {
+        const CascadiaSettings settings{ LR"({
+            "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+            "showTabsInTitlebar": false,
+            "tabLayout": "vertical",
+            "tabLayoutVerticalWidth": 272,
+            "profiles": [{
+                "name": "profile0",
+                "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                "closeOnExit": "never"
+            }]
+        })",
+                                         {} };
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+        Grid host{ nullptr };
+        TestOnUIThread([&]() {
+            host = Grid{};
+            host.Width(1300);
+            host.Height(690);
+        });
+        _initializeTerminalPage(page, settings, *connection, host);
+
+        winrt::MUX::Controls::TeachingTip tip{ nullptr };
+        TextBlock title{ nullptr };
+        TextBlock description{ nullptr };
+        TextBlock badge{ nullptr };
+        Border badgeContainer{ nullptr };
+        TestOnUIThread([&]() {
+            if (page->_sidebarIntroductionTimer)
+            {
+                page->_sidebarIntroductionTimer.Stop();
+            }
+            host.UpdateLayout();
+            tip = page->FindName(L"SidebarIntroductionTip").as<winrt::MUX::Controls::TeachingTip>();
+            VERIFY_IS_FALSE(tip.IsLightDismissEnabled());
+            VERIFY_IS_TRUE(tip.Title().empty());
+            VERIFY_IS_TRUE(tip.Subtitle().empty());
+            const auto content = tip.Content().try_as<FrameworkElement>();
+            VERIFY_IS_NOT_NULL(content);
+            title = content.FindName(L"SidebarIntroductionTitleText").try_as<TextBlock>();
+            description = content.FindName(L"SidebarIntroductionDescriptionText").try_as<TextBlock>();
+            badge = content.FindName(L"SidebarIntroductionNewBadge").try_as<TextBlock>();
+            badgeContainer = content.FindName(L"SidebarIntroductionNewBadgeContainer").try_as<Border>();
+            VERIFY_IS_NOT_NULL(title);
+            VERIFY_IS_NOT_NULL(description);
+            VERIFY_IS_NOT_NULL(badge);
+            VERIFY_IS_NOT_NULL(badgeContainer);
+            title.Text(RS_(L"SidebarIntroductionTitle"));
+            description.Text(RS_(L"SidebarIntroductionDescription"));
+            badge.Text(GetLibraryResourceString(L"SidebarIntroductionNewBadge"));
+            tip.Target(page->_tabStrip.FindName(L"SidebarIntroductionTarget").as<FrameworkElement>());
+            tip.IsOpen(true);
+        });
+
+        _waitForContentTransferReviewUI([&]() {
+            host.UpdateLayout();
+            return title.ActualWidth() > 0 && description.ActualWidth() > 0 && badge.ActualWidth() > 0 &&
+                   Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(page->XamlRoot()).Size() > 0;
+        });
+        TestOnUIThread([&]() {
+            FrameworkElement popupContent{ nullptr };
+            for (const auto& popup : Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(page->XamlRoot()))
+            {
+                if (const auto content = popup.Child().try_as<FrameworkElement>();
+                    content && content.ActualWidth() > 0 && content.ActualHeight() > 0)
+                {
+                    popupContent = content;
+                    break;
+                }
+            }
+            VERIFY_IS_NOT_NULL(popupContent);
+            const auto popupBounds = popupContent.TransformToVisual(page->Root()).TransformBounds(
+                { 0, 0, static_cast<float>(popupContent.ActualWidth()), static_cast<float>(popupContent.ActualHeight()) });
+            const auto titleBounds = title.TransformToVisual(page->Root()).TransformBounds(
+                { 0, 0, static_cast<float>(title.ActualWidth()), static_cast<float>(title.ActualHeight()) });
+            const auto badgeBounds = badge.TransformToVisual(page->Root()).TransformBounds(
+                { 0, 0, static_cast<float>(badge.ActualWidth()), static_cast<float>(badge.ActualHeight()) });
+            VERIFY_IS_TRUE(std::abs(popupBounds.Y - 71.0) <= 2.0);
+            VERIFY_IS_TRUE(std::abs(popupBounds.Width - 328.41) <= 6.0);
+            VERIFY_IS_TRUE(std::abs(titleBounds.Y - popupBounds.Y - 16.0) <= 4.0);
+            VERIFY_IS_TRUE(std::abs(badgeBounds.Y - titleBounds.Y) <= 4.0);
+            VERIFY_IS_TRUE(badgeBounds.X > titleBounds.X + titleBounds.Width);
+            const auto badgeColor = badgeContainer.Background().as<Media::SolidColorBrush>().Color();
+            VERIFY_IS_TRUE(badgeColor.B > badgeColor.R && badgeColor.G > badgeColor.R);
+
+            Button closeButton{ nullptr };
+            std::vector<DependencyObject> pending{ popupContent };
+            for (size_t visited = 0; !pending.empty() && visited < 512; ++visited)
+            {
+                const auto element = pending.back();
+                pending.pop_back();
+                if (const auto button = element.try_as<Button>();
+                    button && button.Visibility() == Visibility::Visible && button.ActualWidth() > 0 &&
+                    button.ActualHeight() > 0 && button.IsEnabled())
+                {
+                    VERIFY_IS_NULL(closeButton);
+                    closeButton = button;
+                }
+                for (int32_t child = 0; child < Media::VisualTreeHelper::GetChildrenCount(element); ++child)
+                {
+                    pending.emplace_back(Media::VisualTreeHelper::GetChild(element, child));
+                }
+            }
+            VERIFY_IS_NOT_NULL(closeButton);
+            const auto closeBounds = closeButton.TransformToVisual(page->Root()).TransformBounds(
+                { 0, 0, static_cast<float>(closeButton.ActualWidth()), static_cast<float>(closeButton.ActualHeight()) });
+            VERIFY_IS_TRUE(closeBounds.X > badgeBounds.X + badgeBounds.Width);
+            VERIFY_IS_TRUE(closeBounds.Y < titleBounds.Y + titleBounds.Height);
+            VERIFY_IS_TRUE(tip.IsOpen());
+            const auto peer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(closeButton);
+            VERIFY_IS_NOT_NULL(peer);
+            peer.GetPattern(Automation::Peers::PatternInterface::Invoke).as<Automation::Provider::IInvokeProvider>().Invoke();
+            VERIFY_IS_FALSE(tip.IsOpen());
         });
     }
 

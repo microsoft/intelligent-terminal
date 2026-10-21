@@ -8303,11 +8303,18 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        const auto target = winrt::get_self<implementation::TabStrip>(_tabStrip)->SidebarIntroductionTarget();
+        if (target.ActualWidth() <= 0 || target.ActualHeight() <= 0)
+        {
+            return;
+        }
         // Resource integration is owned separately. Never display blank or
         // untranslated placeholder copy while those resources are absent.
         if (!HasLibraryResourceWithName(L"SidebarIntroductionTitle") ||
             !HasLibraryResourceWithName(L"SidebarIntroductionDescription") ||
-            RS_(L"SidebarIntroductionTitle").empty() || RS_(L"SidebarIntroductionDescription").empty())
+            !HasLibraryResourceWithName(L"SidebarIntroductionNewBadge") ||
+            RS_(L"SidebarIntroductionTitle").empty() || RS_(L"SidebarIntroductionDescription").empty() ||
+            RS_(L"SidebarIntroductionNewBadge").empty())
         {
             return;
         }
@@ -8328,9 +8335,11 @@ namespace winrt::TerminalApp::implementation
         }
         _sidebarIntroductionWarningShown = false;
         _sidebarIntroductionPresentationAttempts = 0;
-        tip.Title(RS_(L"SidebarIntroductionTitle"));
-        tip.Subtitle(RS_(L"SidebarIntroductionDescription"));
-        tip.Target(_tabStrip);
+        const auto content = tip.Content().as<FrameworkElement>();
+        content.FindName(L"SidebarIntroductionTitleText").as<TextBlock>().Text(RS_(L"SidebarIntroductionTitle"));
+        content.FindName(L"SidebarIntroductionDescriptionText").as<TextBlock>().Text(RS_(L"SidebarIntroductionDescription"));
+        content.FindName(L"SidebarIntroductionNewBadge").as<TextBlock>().Text(RS_(L"SidebarIntroductionNewBadge"));
+        tip.Target(target);
         _UpdateTeachingTipTheme(tip);
         tip.IsOpen(true);
         for (const auto& popup : Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(root))
@@ -8361,6 +8370,9 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        const auto content = SidebarIntroductionTip().Content().as<FrameworkElement>();
+        const auto title = content.FindName(L"SidebarIntroductionTitleText").as<TextBlock>().Text();
+        const auto subtitle = content.FindName(L"SidebarIntroductionDescriptionText").as<TextBlock>().Text();
         // WinUI 2 TeachingTip has no Opened event. Observe its popup's layout,
         // and verify the rendered title/subtitle without private template names.
         const auto popups = Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(XamlRoot());
@@ -8381,8 +8393,8 @@ namespace winrt::TerminalApp::implementation
                 if (const auto text = element.try_as<TextBlock>();
                     text && text.Visibility() == Visibility::Visible && text.ActualWidth() > 0 && text.ActualHeight() > 0)
                 {
-                    titleVisible |= text.Text() == SidebarIntroductionTip().Title();
-                    subtitleVisible |= text.Text() == SidebarIntroductionTip().Subtitle();
+                    titleVisible |= text.Text() == title;
+                    subtitleVisible |= text.Text() == subtitle;
                 }
                 const auto children = Media::VisualTreeHelper::GetChildrenCount(element);
                 for (auto child = 0; child < children; ++child)

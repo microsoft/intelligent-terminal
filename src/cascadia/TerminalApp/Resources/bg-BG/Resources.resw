@@ -785,10 +785,14 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>По-интелигентен начин за управление на разделите</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>Вашите раздели и сесии на агенти вече са в страничната лента. Използвайте Опции за показване на страничната лента, за да изберете подробности за разделите. Щракнете с десния бутон върху раздел, за да се върнете към хоризонтални раздели.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>Запознайте се с новата странична лента с повече възможности за разделите и агентите. Превключвайте между изгледите за раздели и агенти. Щракнете с десния бутон върху раздел, за да се върнете към хоризонтални раздели.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>Ново</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
 </root>
