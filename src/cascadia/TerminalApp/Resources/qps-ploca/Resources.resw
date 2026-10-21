@@ -1686,4 +1686,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>[!!_Ｎｅｗ_!!]</value>
     <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
+  <data name="HorizontalTabsIntroductionTitle" xml:space="preserve">
+    <value>[!!_Ｔｒｙ　ｓｍａｒｔｅｒ　ｗａｙｓ　ｔｏ　ｍａｎａｇｅ　ｔａｂｓ_!!]</value>
+    <comment>Title of the introduction tooltip shown in the horizontal tab layout. Invites the user to try the vertical tab layout for managing terminal tabs.</comment>
+  </data>
+  <data name="HorizontalTabsIntroductionDescription" xml:space="preserve">
+    <value>[!!_Ｓｗｉｔｃｈ　ｔｏ　ｖｅｒｔｉｃａｌ　ｔａｂｓ　ｔｏ　ｓｅｅ　ｙｏｕｒ　ａｇｅｎｔ　ａｃｔｉｖｉｔｙ　ａｔ　ａ　ｇｌａｎｃｅ．　Ｒｉｇｈｔ－ｃｌｉｃｋ　ａ　ｔａｂ　ａｎｄ　ｃｈｏｏｓｅ　{0}．_!!]</value>
+    <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
+  </data>
 </root>

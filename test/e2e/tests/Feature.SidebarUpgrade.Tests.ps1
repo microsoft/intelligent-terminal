@@ -29,20 +29,29 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
             })
         }
         function Start-UpgradeFixture {
-            param([bool]$Migration, [bool]$Shown, [string]$Layout = 'horizontal')
+            param(
+                [bool]$Migration,
+                [bool]$Shown,
+                [string]$Layout = 'horizontal',
+                [ValidateSet('Sidebar', 'Horizontal')][string]$Cohort = 'Sidebar',
+                [bool]$TabsInTitlebar = $true,
+                [switch]$HideTabs
+            )
             Assert-UpgradeInactive
             Backup-WtConfig -App $script:target
             $script:ownsConfig = $true
             Clear-WtConfig -App $script:target
             Invoke-FrePass -App $script:target | Out-Null
             Set-WtState -App $script:target -Key sidebarLayoutMigrationCompleted -Value $Migration | Out-Null
-            Set-WtState -App $script:target -Key featureRolloutId -Value '{00000000-0000-0000-0000-000000000001}' | Out-Null
+            $rolloutId = if ($Cohort -eq 'Sidebar') { '{00000000-0000-0000-0000-000000000001}' } else { '{00000000-0000-0000-0000-000000000002}' }
+            Set-WtState -App $script:target -Key featureRolloutId -Value $rolloutId | Out-Null
             Set-WtState -App $script:target -Key sidebarRolloutVersion -Value $(if ($Migration) { 1 } else { 0 }) | Out-Null
-            Set-WtState -App $script:target -Key sidebarRolloutAssignment -Value $(if ($Migration) { 'Sidebar' } else { '' }) | Out-Null
+            Set-WtState -App $script:target -Key sidebarRolloutAssignment -Value $(if ($Migration) { $Cohort } else { '' }) | Out-Null
             Set-WtState -App $script:target -Key sidebarIntroductionShown -Value $Shown | Out-Null
             Set-WtSettings -App $script:target -Settings @{
                 language = 'en-US'; tabLayout = $Layout; startupActions = ''
                 firstWindowPreference = 'defaultProfile'; windowingBehavior = 'useNew'
+                showTabsInTitlebar = $TabsInTitlebar; alwaysShowTabs = -not $HideTabs
                 autoErrorDetectionEnabled = $false; 'warning.confirmOnClose' = 'never'
                 acpAgent = 'custom:sidebar-upgrade'; acpCustomCommand = 'cmd.exe /c exit'
             } | Out-Null
@@ -52,6 +61,21 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
             Stop-Terminal -App $script:app -RestoreSettings $false
             Assert-UpgradeInactive
             $script:app = Start-Terminal -Package Dev -Backup $false -CleanSettings $false -PassFre $false
+        }
+        function Close-UpgradeIntroduction {
+            $tips = @(Get-UpgradeVisiblePeer SidebarIntroductionTip)
+            $tips | Should -HaveCount 1
+            $buttons = @($tips[0].FindAll([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.Condition]::TrueCondition) | Where-Object {
+                    $_.Current.ControlType -eq [Windows.Automation.ControlType]::Button -and
+                        $_.Current.ProcessId -eq $script:app.Pid -and -not $_.Current.IsOffscreen -and
+                        $_.Current.IsEnabled
+                })
+            $buttons | Should -HaveCount 1
+            $buttons[0].GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+            Wait-Until -TimeoutSec 5 -Condition {
+                @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 0
+            } | Out-Null
         }
         function Invoke-UpgradePaletteAction {
             param([string]$Action)
@@ -100,11 +124,7 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
         @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
     }
     It 'Sidebar introduction is independent of completed migration' {
-        Start-UpgradeFixture -Migration $true -Shown $false
-        (Get-WtSetting -App $script:app -Key tabLayout) | Should -Be horizontal
-        (Get-WtStateObject -App $script:app).sidebarIntroductionShown | Should -BeFalse
-        @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
-        Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+        Start-UpgradeFixture -Migration $true -Shown $false -Layout vertical
         Wait-Until -TimeoutSec 10 -Because 'only actual visible Sidebar presentation consumes the pending tip' -Condition {
             @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 -and
                 (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $true
@@ -113,6 +133,42 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
         (Get-WtSetting -App $script:app -Key tabLayout) | Should -Be vertical
         (Get-WtStateObject -App $script:app).sidebarIntroductionShown | Should -BeTrue
         @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+        Set-WtSetting -App $script:app -Key tabLayout -Value horizontal | Out-Null
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer TabView).Count -eq 1 } | Out-Null
+        foreach ($i in 1..4) {
+            Start-Sleep -Milliseconds 500
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+        }
+    }
+    It 'Horizontal rollout introduces vertical tabs only once (<Scenario>)' -ForEach @(
+        @{ Scenario = 'new rollout with titlebar tabs'; Migration = $false; TabsInTitlebar = $true }
+        @{ Scenario = 'completed rollout with separate tab row'; Migration = $true; TabsInTitlebar = $false }
+    ) {
+        Start-UpgradeFixture -Migration $Migration -Shown $false -Cohort Horizontal -TabsInTitlebar $TabsInTitlebar
+        Wait-Until -TimeoutSec 10 -Because 'the Horizontal cohort presents and durably consumes its layout-specific introduction' -Condition {
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 -and
+                (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $true
+        } | Out-Null
+        (Get-WtSetting -App $script:app -Key tabLayout) | Should -Be horizontal
+        (Get-WtStateObject -App $script:app).sidebarRolloutAssignment | Should -Be Horizontal
+        $tip = @(Get-UpgradeVisiblePeer SidebarIntroductionTip)[0]
+        $names = @($tip.FindAll([Windows.Automation.TreeScope]::Descendants,
+            [Windows.Automation.Condition]::TrueCondition) | ForEach-Object { $_.Current.Name })
+        $names | Should -Contain 'Try smarter ways to manage tabs'
+        $names | Should -Contain 'Switch to vertical tabs to see your agent activity at a glance. Right-click a tab and choose Switch to sidebar.'
+        Close-UpgradeIntroduction
+        Restart-UpgradeFixture
+        foreach ($i in 1..4) {
+            Start-Sleep -Milliseconds 500
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+            (Get-WtStateObject -App $script:app).sidebarIntroductionShown | Should -BeTrue
+        }
+        Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer VerticalTabsHeader).Count -eq 1 } | Out-Null
+        foreach ($i in 1..4) {
+            Start-Sleep -Milliseconds 500
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+        }
     }
     It 'Sidebar migration persistence failure warns and retries without false completion' {
         Backup-WtConfig -App $script:target
@@ -223,7 +279,7 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
     }
 
     It 'Collapsed Sidebar defers its pending introduction until visible' {
-        Start-UpgradeFixture -Migration $true -Shown $false
+        Start-UpgradeFixture -Migration $true -Shown $false -TabsInTitlebar $false -HideTabs
         Set-WtWindowForeground -App $script:app | Should -BeTrue
         Send-WtWindowKey -App $script:app -Vk 0x50 -Ctrl -Shift -RequireForeground | Out-Null
         Wait-Until -TimeoutSec 5 -Condition { Test-CommandPaletteOpen -App $script:app } | Out-Null
@@ -254,6 +310,11 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
 
     It 'Owned windows share the durable Sidebar introduction without duplicates' {
         Start-UpgradeFixture -Migration $true -Shown $false
+        Wait-Until -TimeoutSec 10 -Condition {
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 -and
+                (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $true
+        } | Out-Null
+        Close-UpgradeIntroduction
         $first = $script:app
         $before = @(Get-WtWindows -App $first).window_id
         $beforeHwnds = @(Get-WtWindowHwnds -App $first | Where-Object pid -eq $first.Pid).hwnd
@@ -276,10 +337,12 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
         $script:app = $second
         Set-WtWindowForeground -App $second | Should -BeTrue
         Set-WtSetting -App $second -Key tabLayout -Value vertical | Out-Null
-        Wait-Until -TimeoutSec 10 -Condition {
-            @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 -and
-                (Get-WtStateObject -App $second).sidebarIntroductionShown -eq $true
-        } | Out-Null
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer VerticalTabsHeader).Count -eq 1 } | Out-Null
+        foreach ($i in 1..4) {
+            Start-Sleep -Milliseconds 500
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+            (Get-WtStateObject -App $second).sidebarIntroductionShown | Should -BeTrue
+        }
         $script:app = $first
         Set-WtWindowForeground -App $first | Should -BeTrue
         Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer VerticalTabsHeader).Count -eq 1 } | Out-Null

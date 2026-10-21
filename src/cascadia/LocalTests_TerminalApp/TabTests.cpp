@@ -538,6 +538,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SidebarIntroductionAnchorMatchesDesign);
         TEST_METHOD(SidebarIntroductionContentMatchesDesign);
         TEST_METHOD(SidebarIntroductionPopupMatchesDesign);
+        TEST_METHOD(HorizontalTabsIntroductionPopupMatchesDesign);
         TEST_METHOD(LiteralSearchHighlighting);
         TEST_METHOD(VerticalTabAgentsOnlyHasNoStatusFooter);
         TEST_METHOD(VerticalTabStaticHeaderAndIndependentFilterMenu);
@@ -841,6 +842,7 @@ namespace TerminalAppLocalTests
         void _verifyContentTransferReviewScroll(bool transfer, bool reject = true);
         void _verifyContentTransferReviewSuppression(bool singlePane, bool destinationSuppressed = false);
         void _waitForContentTransferReviewUI(const std::function<bool()>& predicate);
+        void _verifyTabIntroductionPopup(const bool vertical);
         TransferTabSnapshot _snapshotTransferTab(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
                                                const winrt::com_ptr<winrt::TerminalApp::implementation::Tab>& tab);
         void _verifyTransferTabUnchanged(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
@@ -7581,6 +7583,16 @@ namespace TerminalAppLocalTests
 
     void TabTests::SidebarIntroductionPopupMatchesDesign()
     {
+        _verifyTabIntroductionPopup(true);
+    }
+
+    void TabTests::HorizontalTabsIntroductionPopupMatchesDesign()
+    {
+        _verifyTabIntroductionPopup(false);
+    }
+
+    void TabTests::_verifyTabIntroductionPopup(const bool vertical)
+    {
         const CascadiaSettings settings{ LR"({
             "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
             "showTabsInTitlebar": false,
@@ -7593,6 +7605,7 @@ namespace TerminalAppLocalTests
             }]
         })",
                                          {} };
+        settings.GlobalSettings().TabLayout(vertical ? TabLayout::Vertical : TabLayout::Horizontal);
         const auto connection = winrt::make_self<TestConnection>(
             winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185c}" },
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
@@ -7616,7 +7629,13 @@ namespace TerminalAppLocalTests
                 page->_sidebarIntroductionTimer.Stop();
             }
             host.UpdateLayout();
-            tip = page->FindName(L"SidebarIntroductionTip").as<winrt::MUX::Controls::TeachingTip>();
+            const auto tabBar = vertical ? page->_tabStrip.as<FrameworkElement>() : page->_tabRow.as<FrameworkElement>();
+            tabBar.Visibility(Visibility::Collapsed);
+            VERIFY_IS_NULL(page->_PrepareSidebarIntroduction());
+            tabBar.Visibility(Visibility::Visible);
+            host.UpdateLayout();
+            tip = page->_PrepareSidebarIntroduction();
+            VERIFY_IS_NOT_NULL(tip);
             VERIFY_IS_FALSE(tip.IsLightDismissEnabled());
             VERIFY_IS_TRUE(tip.Title().empty());
             VERIFY_IS_TRUE(tip.Subtitle().empty());
@@ -7630,10 +7649,22 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(description);
             VERIFY_IS_NOT_NULL(badge);
             VERIFY_IS_NOT_NULL(badgeContainer);
-            title.Text(RS_(L"SidebarIntroductionTitle"));
-            description.Text(RS_(L"SidebarIntroductionDescription"));
-            badge.Text(GetLibraryResourceString(L"SidebarIntroductionNewBadge"));
-            tip.Target(page->_tabStrip.FindName(L"SidebarIntroductionTarget").as<FrameworkElement>());
+            VERIFY_ARE_EQUAL(vertical ? RS_(L"SidebarIntroductionTitle") : RS_(L"HorizontalTabsIntroductionTitle"), title.Text());
+            if (vertical)
+            {
+                VERIFY_ARE_EQUAL(RS_(L"SidebarIntroductionDescription"), description.Text());
+            }
+            else
+            {
+                const auto switchLabel = page->_GetFocusedTabImpl()->_switchTabLayoutMenuItem.Text();
+                VERIFY_IS_FALSE(switchLabel.empty());
+                VERIFY_ARE_EQUAL(winrt::hstring{ RS_fmt(L"HorizontalTabsIntroductionDescription", switchLabel) }, description.Text());
+                VERIFY_IS_TRUE(std::wstring_view{ description.Text() }.find(std::wstring_view{ switchLabel }) != std::wstring_view::npos);
+            }
+            VERIFY_ARE_EQUAL(RS_(L"SidebarIntroductionNewBadge"), badge.Text());
+            const auto target = vertical ? page->_tabStrip.FindName(L"SidebarIntroductionTarget").as<FrameworkElement>() :
+                                           page->_tabView.SelectedItem().as<FrameworkElement>();
+            VERIFY_IS_TRUE(tip.Target() == target);
             tip.IsOpen(true);
         });
 
@@ -7654,14 +7685,20 @@ namespace TerminalAppLocalTests
                 }
             }
             VERIFY_IS_NOT_NULL(popupContent);
-            const auto popupBounds = popupContent.TransformToVisual(page->Root()).TransformBounds(
-                { 0, 0, static_cast<float>(popupContent.ActualWidth()), static_cast<float>(popupContent.ActualHeight()) });
-            const auto titleBounds = title.TransformToVisual(page->Root()).TransformBounds(
-                { 0, 0, static_cast<float>(title.ActualWidth()), static_cast<float>(title.ActualHeight()) });
-            const auto badgeBounds = badge.TransformToVisual(page->Root()).TransformBounds(
-                { 0, 0, static_cast<float>(badge.ActualWidth()), static_cast<float>(badge.ActualHeight()) });
-            VERIFY_IS_TRUE(std::abs(popupBounds.Y - 71.0) <= 2.0);
-            VERIFY_IS_TRUE(std::abs(popupBounds.Width - 328.41) <= 6.0);
+            const auto popupBounds = popupContent.TransformToVisual(page->Root()).TransformBounds({ 0, 0, static_cast<float>(popupContent.ActualWidth()), static_cast<float>(popupContent.ActualHeight()) });
+            const auto titleBounds = title.TransformToVisual(page->Root()).TransformBounds({ 0, 0, static_cast<float>(title.ActualWidth()), static_cast<float>(title.ActualHeight()) });
+            const auto badgeBounds = badge.TransformToVisual(page->Root()).TransformBounds({ 0, 0, static_cast<float>(badge.ActualWidth()), static_cast<float>(badge.ActualHeight()) });
+            if (vertical)
+            {
+                VERIFY_IS_TRUE(std::abs(popupBounds.Y - 71.0) <= 2.0);
+            }
+            else
+            {
+                const auto target = tip.Target();
+                const auto targetBounds = target.TransformToVisual(page->Root()).TransformBounds({ 0, 0, static_cast<float>(target.ActualWidth()), static_cast<float>(target.ActualHeight()) });
+                VERIFY_IS_TRUE(popupBounds.Y >= targetBounds.Y + targetBounds.Height);
+            }
+            VERIFY_IS_TRUE(std::abs(popupBounds.Width - (vertical ? 328.41 : 338.41)) <= 6.0);
             VERIFY_IS_TRUE(std::abs(titleBounds.Y - popupBounds.Y - 16.0) <= 4.0);
             VERIFY_IS_TRUE(std::abs(badgeBounds.Y - titleBounds.Y) <= 4.0);
             VERIFY_IS_TRUE(badgeBounds.X > titleBounds.X + titleBounds.Width);
@@ -7687,8 +7724,7 @@ namespace TerminalAppLocalTests
                 }
             }
             VERIFY_IS_NOT_NULL(closeButton);
-            const auto closeBounds = closeButton.TransformToVisual(page->Root()).TransformBounds(
-                { 0, 0, static_cast<float>(closeButton.ActualWidth()), static_cast<float>(closeButton.ActualHeight()) });
+            const auto closeBounds = closeButton.TransformToVisual(page->Root()).TransformBounds({ 0, 0, static_cast<float>(closeButton.ActualWidth()), static_cast<float>(closeButton.ActualHeight()) });
             VERIFY_IS_TRUE(closeBounds.X > badgeBounds.X + badgeBounds.Width);
             VERIFY_IS_TRUE(closeBounds.Y < titleBounds.Y + titleBounds.Height);
             VERIFY_IS_TRUE(tip.IsOpen());
@@ -7696,7 +7732,11 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(peer);
             peer.GetPattern(Automation::Peers::PatternInterface::Invoke).as<Automation::Provider::IInvokeProvider>().Invoke();
             VERIFY_IS_FALSE(tip.IsOpen());
+            tip.IsOpen(true);
+            VERIFY_IS_TRUE(page->_ApplyTabLayout(vertical ? TabLayout::Horizontal : TabLayout::Vertical));
+            VERIFY_IS_FALSE(tip.IsOpen());
         });
+        _waitForContentTransferReviewUI([&]() { return !page->_changingTabLayout; });
     }
 
     void TabTests::VerticalTabSearchUiState()

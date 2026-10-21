@@ -447,6 +447,7 @@ namespace winrt::TerminalApp::implementation
         uint32_t _sidebarIntroductionPresentationAttempts{ 0 };
         Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _sidebarIntroductionLayoutRevoker;
         void _TryShowSidebarIntroduction();
+        Microsoft::UI::Xaml::Controls::TeachingTip _PrepareSidebarIntroduction();
         void _OnSidebarIntroductionPresented();
         void _OnSidebarIntroductionClosed(const Microsoft::UI::Xaml::Controls::TeachingTip& sender, const Windows::Foundation::IInspectable& args);
         bool _ReleaseSidebarIntroduction(bool shown);

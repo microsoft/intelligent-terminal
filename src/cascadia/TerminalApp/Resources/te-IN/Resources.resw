@@ -777,4 +777,12 @@
     <value>కొత్త</value>
     <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
+  <data name="HorizontalTabsIntroductionTitle" xml:space="preserve">
+    <value>ట్యాబ్‌లను నిర్వహించడానికి మరింత తెలివైన మార్గాలను ప్రయత్నించండి</value>
+    <comment>Title of the introduction tooltip shown in the horizontal tab layout. Invites the user to try the vertical tab layout for managing terminal tabs.</comment>
+  </data>
+  <data name="HorizontalTabsIntroductionDescription" xml:space="preserve">
+    <value>మీ ఏజెంట్ల కార్యకలాపాన్ని ఒక్క చూపులో చూడటానికి నిలువు ట్యాబ్‌లకు మారండి. ట్యాబ్‌పై కుడి-క్లిక్ చేసి, {0} ఎంచుకోండి.</value>
+    <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
+  </data>
 </root>

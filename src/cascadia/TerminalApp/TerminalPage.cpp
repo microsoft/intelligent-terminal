@@ -6142,6 +6142,12 @@ namespace winrt::TerminalApp::implementation
 
         try
         {
+            if (const auto tip = SidebarIntroductionTip(); tip && tip.IsOpen())
+            {
+                _OnSidebarIntroductionPresented();
+                _ReleaseSidebarIntroduction(false);
+                tip.IsOpen(false);
+            }
             if (_newTabButton && _newTabButton.Flyout())
             {
                 _newTabButton.Flyout().Hide();
@@ -8275,9 +8281,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         if (!_visible || !_activated || _startupState != StartupState::Initialized ||
-            !_isVerticalLayout || _changingTabLayout || _tabs.Size() == 0 ||
-            _IsFreRequired() || !_tabStrip || _tabStrip.Visibility() != Visibility::Visible ||
-            _tabStrip.ActualWidth() <= 0 || _tabStrip.ActualHeight() <= 0)
+            _changingTabLayout || _tabs.Size() == 0 || _IsFreRequired())
         {
             return;
         }
@@ -8296,29 +8300,11 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        const auto bounds = _tabStrip.TransformToVisual(Root()).TransformBounds(
-            Windows::Foundation::Rect{ 0, 0, static_cast<float>(_tabStrip.ActualWidth()), static_cast<float>(_tabStrip.ActualHeight()) });
-        if (bounds.X < 0 || bounds.Y < 0 || bounds.X + bounds.Width > Root().ActualWidth() ||
-            bounds.Y + bounds.Height > Root().ActualHeight())
+        const auto tip = _PrepareSidebarIntroduction();
+        if (!tip)
         {
             return;
         }
-        const auto target = winrt::get_self<implementation::TabStrip>(_tabStrip)->SidebarIntroductionTarget();
-        if (target.ActualWidth() <= 0 || target.ActualHeight() <= 0)
-        {
-            return;
-        }
-        // Resource integration is owned separately. Never display blank or
-        // untranslated placeholder copy while those resources are absent.
-        if (!HasLibraryResourceWithName(L"SidebarIntroductionTitle") ||
-            !HasLibraryResourceWithName(L"SidebarIntroductionDescription") ||
-            !HasLibraryResourceWithName(L"SidebarIntroductionNewBadge") ||
-            RS_(L"SidebarIntroductionTitle").empty() || RS_(L"SidebarIntroductionDescription").empty() ||
-            RS_(L"SidebarIntroductionNewBadge").empty())
-        {
-            return;
-        }
-        const auto tip = FindName(L"SidebarIntroductionTip").as<MUX::Controls::TeachingTip>();
         try
         {
             _sidebarIntroductionClaim = ApplicationState::SharedInstance().TryBeginSidebarIntroduction();
@@ -8335,11 +8321,6 @@ namespace winrt::TerminalApp::implementation
         }
         _sidebarIntroductionWarningShown = false;
         _sidebarIntroductionPresentationAttempts = 0;
-        const auto content = tip.Content().as<FrameworkElement>();
-        content.FindName(L"SidebarIntroductionTitleText").as<TextBlock>().Text(RS_(L"SidebarIntroductionTitle"));
-        content.FindName(L"SidebarIntroductionDescriptionText").as<TextBlock>().Text(RS_(L"SidebarIntroductionDescription"));
-        content.FindName(L"SidebarIntroductionNewBadge").as<TextBlock>().Text(RS_(L"SidebarIntroductionNewBadge"));
-        tip.Target(target);
         _UpdateTeachingTipTheme(tip);
         tip.IsOpen(true);
         for (const auto& popup : Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(root))
@@ -8361,6 +8342,66 @@ namespace winrt::TerminalApp::implementation
     {
         LOG_CAUGHT_EXCEPTION();
         _ReleaseSidebarIntroduction(false);
+    }
+
+    MUX::Controls::TeachingTip TerminalPage::_PrepareSidebarIntroduction()
+    {
+        if ((_isVerticalLayout && !_tabStrip) ||
+            (!_isVerticalLayout && (!_tabView || !_tabRow || _tabRow.Visibility() != Visibility::Visible)))
+        {
+            return nullptr;
+        }
+        const FrameworkElement tabBar = _isVerticalLayout ? _tabStrip.as<FrameworkElement>() : _tabView.as<FrameworkElement>();
+        if (!tabBar || tabBar.Visibility() != Visibility::Visible ||
+            tabBar.ActualWidth() <= 0 || tabBar.ActualHeight() <= 0)
+        {
+            return nullptr;
+        }
+        // Horizontal tabs can be hosted in the titlebar outside the page Root.
+        const auto root = XamlRoot().Content().as<FrameworkElement>();
+        const auto bounds = tabBar.TransformToVisual(root).TransformBounds(
+            Windows::Foundation::Rect{ 0, 0, static_cast<float>(tabBar.ActualWidth()), static_cast<float>(tabBar.ActualHeight()) });
+        if (bounds.X < 0 || bounds.Y < 0 || bounds.X + bounds.Width > root.ActualWidth() ||
+            bounds.Y + bounds.Height > root.ActualHeight())
+        {
+            return nullptr;
+        }
+        const auto target = _isVerticalLayout ?
+                                winrt::get_self<implementation::TabStrip>(_tabStrip)->SidebarIntroductionTarget() :
+                                _tabView.SelectedItem().try_as<FrameworkElement>();
+        if (!target || target.Visibility() != Visibility::Visible ||
+            target.ActualWidth() <= 0 || target.ActualHeight() <= 0)
+        {
+            return nullptr;
+        }
+        const auto titleKey = _isVerticalLayout ? L"SidebarIntroductionTitle" : L"HorizontalTabsIntroductionTitle";
+        const auto descriptionKey = _isVerticalLayout ? L"SidebarIntroductionDescription" : L"HorizontalTabsIntroductionDescription";
+        if (!HasLibraryResourceWithName(titleKey) || !HasLibraryResourceWithName(descriptionKey) ||
+            !HasLibraryResourceWithName(L"SidebarIntroductionNewBadge") ||
+            (!_isVerticalLayout && !HasLibraryResourceWithName(L"SwitchToVerticalTabsText")))
+        {
+            return nullptr;
+        }
+        const auto titleText = _isVerticalLayout ? RS_(L"SidebarIntroductionTitle") : RS_(L"HorizontalTabsIntroductionTitle");
+        const auto description = _isVerticalLayout ?
+                                     RS_(L"SidebarIntroductionDescription") :
+                                     winrt::hstring{ RS_fmt(L"HorizontalTabsIntroductionDescription", RS_(L"SwitchToVerticalTabsText")) };
+        const auto badge = RS_(L"SidebarIntroductionNewBadge");
+        if (titleText.empty() || description.empty() || badge.empty())
+        {
+            return nullptr;
+        }
+        const auto tip = FindName(L"SidebarIntroductionTip").as<MUX::Controls::TeachingTip>();
+        const auto content = tip.Content().as<FrameworkElement>();
+        content.Width(_isVerticalLayout ? 290 : 300);
+        const auto title = content.FindName(L"SidebarIntroductionTitleText").as<TextBlock>();
+        title.MaxWidth(_isVerticalLayout ? 185 : 230);
+        title.Text(titleText);
+        content.FindName(L"SidebarIntroductionDescriptionText").as<TextBlock>().Text(description);
+        content.FindName(L"SidebarIntroductionNewBadge").as<TextBlock>().Text(badge);
+        tip.Target(target);
+        tip.PreferredPlacement(_isVerticalLayout ? MUX::Controls::TeachingTipPlacementMode::Right : MUX::Controls::TeachingTipPlacementMode::BottomRight);
+        return tip;
     }
 
     void TerminalPage::_OnSidebarIntroductionPresented()

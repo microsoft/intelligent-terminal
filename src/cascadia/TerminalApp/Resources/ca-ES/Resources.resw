@@ -613,4 +613,12 @@
     <value>Nou</value>
     <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
+  <data name="HorizontalTabsIntroductionTitle" xml:space="preserve">
+    <value>Prova maneres més intel·ligents de gestionar les pestanyes</value>
+    <comment>Title of the introduction tooltip shown in the horizontal tab layout. Invites the user to try the vertical tab layout for managing terminal tabs.</comment>
+  </data>
+  <data name="HorizontalTabsIntroductionDescription" xml:space="preserve">
+    <value>Canvia a les pestanyes verticals per veure l’activitat dels agents d’un cop d’ull. Fes clic amb el botó dret en una pestanya i tria {0}.</value>
+    <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
+  </data>
 </root>

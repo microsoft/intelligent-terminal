@@ -9,6 +9,7 @@ BeforeAll {
         'Recent Sessions collapses without hiding live agents',
         'Sidebar upgrade migrates Horizontal only once',
         'Sidebar introduction is independent of completed migration',
+        'Horizontal rollout introduces vertical tabs only once',
         'Sidebar migration persistence failure warns and retries without false completion',
         'Absent Sidebar upgrade flags migrate once without bypassing fresh FRE',
         'Collapsed Sidebar defers its pending introduction until visible',
