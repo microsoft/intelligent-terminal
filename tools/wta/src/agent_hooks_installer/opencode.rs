@@ -82,6 +82,10 @@ fn detect(executable: &str) -> Result<(String, ApiVariant), String> {
 }
 
 fn probe_version(executable: &str) -> Result<String, String> {
+    probe_version_with_timeout(executable, Duration::from_secs(5))
+}
+
+fn probe_version_with_timeout(executable: &str, timeout: Duration) -> Result<String, String> {
     use std::os::windows::process::CommandExt;
     use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, CREATE_SUSPENDED};
 
@@ -123,7 +127,7 @@ fn probe_version(executable: &str) -> Result<String, String> {
                 .map(|_| output)
         })
         .map_err(|error| format!("failed to read OpenCode version: {error}"))?;
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Ok(status),
@@ -878,54 +882,69 @@ mod tests {
         );
         let pid_file = fixture.0.join("descendant.pid");
         let release = fixture.0.join("release");
+        let diagnostics = fixture.0.join("descendant.stderr");
         fs::write(&executable, format!(
-            "@echo off\r\nstart \"\" /b powershell.exe -NoProfile -NonInteractive -Command \"$PID | Set-Content -LiteralPath '{}'; Start-Sleep -Seconds 30\"\r\n:wait\r\nif not exist \"{}\" goto wait\r\necho 2.0.10\r\n",
-            pid_file.display(), release.display()
+            "@echo off\r\nstart \"\" /b powershell.exe -NoProfile -NonInteractive -Command \"$PID | Set-Content -LiteralPath '{}'; Start-Sleep -Seconds 30\" 2>\"{}\"\r\nif errorlevel 1 exit /b 1\r\n:wait\r\nif not exist \"{}\" goto wait\r\necho 2.0.10\r\n",
+            pid_file.display(), diagnostics.display(), release.display()
         )).unwrap();
         let probe = executable.clone();
         let (sender, receiver) = std::sync::mpsc::channel();
-        let worker = std::thread::spawn(move || {
-            sender.send(probe_version(probe.to_str().unwrap())).unwrap()
-        });
-        let start = Instant::now();
-        let pid = loop {
-            if let Some(pid) = fs::read_to_string(&pid_file)
-                .ok()
-                .and_then(|value| value.trim().parse::<u32>().ok())
-            {
-                break pid;
-            }
-            assert!(
-                start.elapsed() < Duration::from_secs(4),
-                "descendant did not start"
+        std::thread::scope(|scope| {
+            // PowerShell startup is fixture setup, not the behavior under test.
+            // Allow it CI scheduling headroom; the default five-second deadline
+            // is exercised separately below. A scoped worker keeps the fixture
+            // alive until the probe job has reclaimed its children, even on panic.
+            scope.spawn(move || {
+                let result =
+                    probe_version_with_timeout(probe.to_str().unwrap(), Duration::from_secs(20));
+                let _ = sender.send(result);
+            });
+            let start = Instant::now();
+            let pid = loop {
+                if let Some(pid) = fs::read_to_string(&pid_file)
+                    .ok()
+                    .and_then(|value| value.trim().parse::<u32>().ok())
+                {
+                    break pid;
+                }
+                match receiver.recv_timeout(Duration::from_millis(10)) {
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    result => panic!(
+                        "probe completed before descendant readiness: {result:?}; stderr: {:?}",
+                        fs::read_to_string(&diagnostics)
+                    ),
+                }
+                assert!(
+                    start.elapsed() < Duration::from_secs(30),
+                    "probe did not finish or report a descendant; stderr: {:?}",
+                    fs::read_to_string(&diagnostics)
+                );
+            };
+            // SAFETY: open only the fixture child's reported PID, retain its exact
+            // process handle across cleanup, and request no mutation rights.
+            let descendant = unsafe {
+                let handle = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
+                assert!(!handle.is_null());
+                OwnedHandle::from_raw_handle(handle)
+            };
+            assert_eq!(
+                unsafe { WaitForSingleObject(descendant.as_raw_handle(), 0) },
+                WAIT_TIMEOUT
             );
-            std::thread::sleep(Duration::from_millis(10));
-        };
-        // SAFETY: open only the fixture child's reported PID, retain its exact
-        // process handle across cleanup, and request no mutation rights.
-        let descendant = unsafe {
-            let handle = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
-            assert!(!handle.is_null());
-            OwnedHandle::from_raw_handle(handle)
-        };
-        assert_eq!(
-            unsafe { WaitForSingleObject(descendant.as_raw_handle(), 0) },
-            WAIT_TIMEOUT
-        );
-        fs::write(&release, "").unwrap();
-        assert_eq!(
-            receiver
-                .recv_timeout(Duration::from_secs(8))
-                .unwrap()
-                .unwrap()
-                .trim(),
-            "2.0.10"
-        );
-        worker.join().unwrap();
-        assert_eq!(
-            unsafe { WaitForSingleObject(descendant.as_raw_handle(), 5000) },
-            WAIT_OBJECT_0
-        );
+            fs::write(&release, "").unwrap();
+            assert_eq!(
+                receiver
+                    .recv_timeout(Duration::from_secs(8))
+                    .unwrap()
+                    .unwrap()
+                    .trim(),
+                "2.0.10"
+            );
+            assert_eq!(
+                unsafe { WaitForSingleObject(descendant.as_raw_handle(), 5000) },
+                WAIT_OBJECT_0
+            );
+        });
         fs::write(&executable, "@echo off\r\npowershell.exe -NoProfile -NonInteractive -Command \"Start-Sleep -Seconds 30\"\r\n").unwrap();
         let start = Instant::now();
         assert!(probe_version(executable.to_str().unwrap())
