@@ -799,4 +799,12 @@
     <value>नवें</value>
     <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
+  <data name="HorizontalTabsIntroductionTitle" xml:space="preserve">
+    <value>टॅबांचे वेवस्थापन करपाच्यो चड हुशार पद्दती वापरून पळयात</value>
+    <comment>Title of the introduction tooltip shown in the horizontal tab layout. Invites the user to try the vertical tab layout for managing terminal tabs.</comment>
+  </data>
+  <data name="HorizontalTabsIntroductionDescription" xml:space="preserve">
+    <value>तुमच्या एजंटांची हालचाल एकाच नदरेन पळोवपाक उब्या टॅबांक बदलात. टॅबाचेर उजवो क्लिक करात आनी {0} वेंचात.</value>
+    <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
+  </data>
 </root>

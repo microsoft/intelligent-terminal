@@ -142,7 +142,7 @@ INewContentArgs Pane::GetTerminalArgsForPane(BuildStartupKind kind) const
 // - The state from building the startup actions, includes a vector of commands,
 //   the original root pane, the id of the focused pane, and the number of panes
 //   created.
-Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t nextId, BuildStartupKind kind)
+Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t nextId, BuildStartupKind kind, const bool persistAgentPanes)
 {
     // Normally, if we're a leaf, return an empt set of actions, because the
     // parent pane will build the SplitPane action for us. If we're building
@@ -207,9 +207,13 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
             const auto& agentChild = firstIsAgentLeaf ? _firstChild : _secondChild;
             const auto& siblingChild = firstIsAgentLeaf ? _secondChild : _firstChild;
 
-            auto state = siblingChild->BuildStartupActions(currentId, nextId, kind);
-            state.args.emplace_back(buildAgentSplitPane(agentChild, firstIsAgentLeaf));
-            state.panesCreated += 1;
+            auto state = siblingChild->BuildStartupActions(currentId, nextId, kind, persistAgentPanes);
+            // Elevated layouts retain only the ordinary shell subtree.
+            if (persistAgentPanes)
+            {
+                state.args.emplace_back(buildAgentSplitPane(agentChild, firstIsAgentLeaf));
+                state.panesCreated += 1;
+            }
             return state;
         }
     }
@@ -275,10 +279,10 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
     // We now need to execute the commands for each side of the tree
     // We've done one split, so the first-most child will have currentId, and the
     // one after it will be incremented.
-    auto firstState = _firstChild->BuildStartupActions(currentId, nextId + 1, kind);
+    auto firstState = _firstChild->BuildStartupActions(currentId, nextId + 1, kind, persistAgentPanes);
     // the next id for the second branch depends on how many splits were in the
     // first child.
-    auto secondState = _secondChild->BuildStartupActions(nextId, nextId + firstState.panesCreated + 1, kind);
+    auto secondState = _secondChild->BuildStartupActions(nextId, nextId + firstState.panesCreated + 1, kind, persistAgentPanes);
 
     std::vector<ActionAndArgs> actions{};
     actions.reserve(firstState.args.size() + secondState.args.size() + 3);

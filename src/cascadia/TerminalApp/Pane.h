@@ -108,7 +108,7 @@ public:
         std::optional<uint32_t> focusedPaneId;
         uint32_t panesCreated;
     };
-    BuildStartupState BuildStartupActions(uint32_t currentId, uint32_t nextId, winrt::TerminalApp::BuildStartupKind kind);
+    BuildStartupState BuildStartupActions(uint32_t currentId, uint32_t nextId, winrt::TerminalApp::BuildStartupKind kind, bool persistAgentPanes = true);
     winrt::Microsoft::Terminal::Settings::Model::INewContentArgs GetTerminalArgsForPane(winrt::TerminalApp::BuildStartupKind kind) const;
 
     void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);

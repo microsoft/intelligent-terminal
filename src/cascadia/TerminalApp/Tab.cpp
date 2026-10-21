@@ -705,13 +705,18 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     // Return Value:
     // - A vector of commands
-    std::vector<ActionAndArgs> Tab::BuildStartupActions(BuildStartupKind kind) const
+    std::vector<ActionAndArgs> Tab::BuildStartupActions(BuildStartupKind kind, const bool persistAgentPanes) const
     {
         ASSERT_UI_THREAD();
 
+        if (kind == BuildStartupKind::Persist && !persistAgentPanes && _rootPane->IsAgentPane())
+        {
+            return {};
+        }
+
         // Give initial ids (0 for the child created with this tab,
         // 1 for the child after the first split.
-        auto state = _rootPane->BuildStartupActions(0, 1, kind);
+        auto state = _rootPane->BuildStartupActions(0, 1, kind, persistAgentPanes);
 
         {
             ActionAndArgs newTabAction{};

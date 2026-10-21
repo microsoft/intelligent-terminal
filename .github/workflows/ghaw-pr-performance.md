@@ -98,6 +98,7 @@ jobs:
           "change_summary=$summary" >> $env:GITHUB_OUTPUT
   agent:
     needs: [prepare]
+    timeout-minutes: 75
   safe_outputs:
     if: needs.agent.result == 'success' && needs.detection.result == 'success'
 
@@ -186,7 +187,7 @@ post-steps:
       if-no-files-found: warn
       retention-days: 7
 
-timeout-minutes: 15
+timeout-minutes: 60
 max-ai-credits: 500
 max-daily-ai-credits: 100000
 concurrency:

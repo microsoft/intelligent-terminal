@@ -187,7 +187,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring ApplicationDisplayName();
         winrt::hstring ApplicationVersion();
 
-        CommandPalette LoadCommandPalette();
+        winrt::TerminalApp::CommandPalette LoadCommandPalette();
         SuggestionsControl LoadSuggestionsUI();
 
         safe_void_coroutine RequestQuit();
@@ -447,6 +447,7 @@ namespace winrt::TerminalApp::implementation
         uint32_t _sidebarIntroductionPresentationAttempts{ 0 };
         Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _sidebarIntroductionLayoutRevoker;
         void _TryShowSidebarIntroduction();
+        Microsoft::UI::Xaml::Controls::TeachingTip _PrepareSidebarIntroduction();
         void _OnSidebarIntroductionPresented();
         void _OnSidebarIntroductionClosed(const Microsoft::UI::Xaml::Controls::TeachingTip& sender, const Windows::Foundation::IInspectable& args);
         bool _ReleaseSidebarIntroduction(bool shown);
@@ -909,7 +910,7 @@ namespace winrt::TerminalApp::implementation
 
         safe_void_coroutine _NewTerminalByDrop(const Windows::Foundation::IInspectable&, winrt::Windows::UI::Xaml::DragEventArgs e);
 
-        __declspec(noinline) CommandPalette _loadCommandPaletteSlowPath();
+        __declspec(noinline) winrt::TerminalApp::CommandPalette _loadCommandPaletteSlowPath();
         bool _commandPaletteIs(winrt::Windows::UI::Xaml::Visibility visibility);
         __declspec(noinline) SuggestionsControl _loadSuggestionsElementSlowPath();
         bool _suggestionsControlIs(winrt::Windows::UI::Xaml::Visibility visibility);
@@ -1195,7 +1196,7 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
         void _RefreshAgentRestoreIdentity(Tab* tab);
         void _StampAgentResumeCommandlines(std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
-        std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs> _BuildPersistedTabActions(Tab* tab);
+        std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs> _BuildPersistedTabActions(Tab* tab, bool elevated);
         winrt::Microsoft::Terminal::Settings::Model::WindowLayout _AppendKeptTabsToStartupLayout(const winrt::Microsoft::Terminal::Settings::Model::WindowLayout& visibleLayout);
         // Pane ids whose terminal end event (`closed` / `failed`) already went
         // out on ProtocolVtSequenceReceived for the current TermControl
@@ -1234,13 +1235,14 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring agent;
             winrt::hstring cwd;
             winrt::hstring backend;
+            uint64_t publishedReceiverGeneration{ 0 };
+            bool helperReplayed{ false };
         };
-        // Layout replay precedes WTA startup. Keep births until the owning
-        // helper acknowledges its COM subscription, not merely ACP readiness.
+        // Track master registration and subscribed-helper replay independently.
         std::unordered_map<winrt::guid, _PendingRestoredSessionBinding> _pendingRestoredSessionBindings;
         std::unordered_set<winrt::hstring> _tabsAwaitingRestoredBindings;
         void _NotifyRestoredSessionBindings(const winrt::com_ptr<Tab>& tab);
-        void _ReplayRestoredSessionBindings(const winrt::com_ptr<Tab>& tab);
+        void _ReplayRestoredSessionBindings(const winrt::com_ptr<Tab>& tab, bool helperSubscribed = true);
         void _TryPublishInteractiveResumeBinding(
             const Microsoft::Terminal::Control::TermControl& control,
             std::string_view paneId,

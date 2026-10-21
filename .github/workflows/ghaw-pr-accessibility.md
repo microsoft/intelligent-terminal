@@ -262,6 +262,13 @@ content, resources, bindings, labels or peers; static signals alone are not
 defects. For shared-style replacements, compare removed properties with actual
 setters and framework defaults, including Stretch beside wrapped content.
 
+Before requesting completion or publication, check every `changed_files` path
+against the report: it must appear in a review check's `files` and have at least
+one exact immutable source citation in `evidence`. Check all changed locales,
+not just representative translations. Companion citations do not replace
+citations to the changed files. Correct omissions with actual source evidence;
+do not invent references.
+
 Preserve each prepared signal as a finding or explain its false-positive
 dismissal with repository evidence. Preserve its stable ID. Do not silently
 omit or downgrade a prepared HIGH. Record unavailable native scenarios honestly;

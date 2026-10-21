@@ -988,10 +988,25 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleTabSearch(const IInspectable& /*sender*/,
                                         const ActionEventArgs& args)
     {
-        const auto p = LoadCommandPalette();
-        p.SetTabs(_tabs, _mruTabs);
-        p.EnableTabSearchMode();
-        p.Visibility(Visibility::Visible);
+        if (_isVerticalLayout && _isVerticalRailVisible)
+        {
+            _sidebarHotkeyReturnControl = {};
+            if (_isVerticalRailCollapsed)
+            {
+                _OnVerticalRailCollapseRequested(nullptr, nullptr);
+            }
+            if (!winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusTabSearch())
+            {
+                LOG_HR(E_FAIL);
+            }
+        }
+        else
+        {
+            const auto p = LoadCommandPalette();
+            p.SetTabs(_tabs, _mruTabs);
+            p.EnableTabSearchMode();
+            p.Visibility(Visibility::Visible);
+        }
 
         args.Handled(true);
     }

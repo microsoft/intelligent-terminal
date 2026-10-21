@@ -487,8 +487,10 @@ def _validate_review_checks(root: Path, prepared: dict[str, Any], report: dict[s
                 cited_files.add(path)
     if covered_files != changed_files:
         errors.append("review_checks must cover every classified changed file")
+        errors.append("uncovered classified files: " + ", ".join(sorted(changed_files - covered_files)))
     if not changed_files.issubset(cited_files):
         errors.append("review_checks must cite every classified changed file")
+        errors.append("uncited classified files: " + ", ".join(sorted(changed_files - cited_files)))
     return errors
 
 

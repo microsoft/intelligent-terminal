@@ -28,8 +28,11 @@ of agent-bearing pane persist through layout fields Terminal already has:
 | Serialized tab layout | `persistedWindowLayouts` in `state.json` |
 | Per-pane scrollback | `buffer_{guid}.txt` next to `state.json` |
 
-Elevated windows already write to `elevated-state.json` and `elevated_{guid}.txt`,
-so an elevated session and an unelevated one never see each other's agents.
+Elevated windows retain upstream Terminal persistence in `elevated-state.json`
+and `elevated_{guid}.txt`: shell command lines are saved unchanged, without
+rewriting them into agent resume commands, and assistant panes are excluded from
+the saved layout, including stashed panes. Automatic agent-session restoration
+described below applies only to unelevated windows.
 
 Concretely, `state.json` gains no agent key and `wt` gains no agent option:
 

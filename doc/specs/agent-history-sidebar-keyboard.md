@@ -9,6 +9,13 @@ introduction remain unchanged.
 This is not an acceptance report: build-specific results and remaining validation
 belong in the release checklist and validation evidence.
 
+The October 20, 2026 decisions in
+[Sidebar and Tab Search Shortcuts](sidebar-hotkey.md) separate sidebar entry from
+search: Ctrl+Shift+S focuses the sidebar toggle
+without activating search, and Ctrl+F is the separate application search
+shortcut. That decision record also defines preserved query, overlay, and window
+mode behavior; it does not claim acceptance.
+
 The scenarios below cover the left sidebar in the **vertical** tab layout. The
 sidebar and the independent **Agent Pane** are different surfaces. The sidebar
 is always **Tabs**. Its **Agents only** and **Recent agent sessions** options are
@@ -92,7 +99,8 @@ instead of letting unordered snapshot rows repeatedly change the icon.
 | `Ctrl+Shift+G` | Toggle **Agents only** without changing **Recent agent sessions** or the search query. |
 | `Ctrl+Shift+R` | Toggle **Recent agent sessions** without changing **Agents only** or the search query. |
 | `Ctrl+Shift+/` | Retained alias for the recent-session preference in vertical layout; horizontal Agent Pane sessions behavior is unchanged. |
-| `Ctrl+Shift+S` | Enter the sidebar through global search, or collapse it and return to the previous input when focus is already inside. |
+| `Ctrl+Shift+S` | Enter the sidebar by focusing its upper-left toggle without opening search, or collapse it and return to the previous input when focus is already inside. |
+| `Ctrl+F` | Open/focus shared sidebar search; in horizontal layout, open the existing tab-search palette. |
 | `Ctrl+Shift+.` | Show/hide the independent Agent Pane; its behavior is unchanged. |
 
 In horizontal layout, `Ctrl+Shift+S` remains a consumed no-op: no layout/chrome
@@ -103,9 +111,11 @@ unbind the defaults.
 
 | State before the action | Action | Resulting surface/state | Focus policy |
 |---|---|---|---|
-| Sidebar collapsed | `Ctrl+Shift+S` | Expand the sidebar and open global search. | Remember the current terminal or Agent input, then focus the shared search box. |
-| Sidebar expanded, focus outside the sidebar | `Ctrl+Shift+S` | Keep the sidebar expanded and open global search. | Remember the current input, then focus the shared search box. |
+| Sidebar collapsed | `Ctrl+Shift+S` | Expand the sidebar without opening search. | Remember the current terminal or Agent input, then focus the upper-left toggle. |
+| Sidebar expanded, focus outside the sidebar | `Ctrl+Shift+S` | Keep the sidebar expanded; preserve any existing search/query. | Remember the current input, then focus the upper-left toggle. |
 | Sidebar expanded, focus inside the sidebar | `Ctrl+Shift+S` | Collapse the sidebar and close search; keep both filter preferences. | Best-effort return to the input used before entering the sidebar. |
+| Sidebar collapsed or expanded | `Ctrl+F` | Expand if necessary and open/focus shared search. | Focus the search box without selecting all or resetting an existing query/selection. |
+| Horizontal layout | `Ctrl+F` | Open/focus the tab-search palette without changing layout. | Preserve an already-open search query/selection. |
 | Query empty | Both filters off | All open shell/agent tabs; no recent section. | Keep standard menu/input focus. |
 | Query empty | Agents only on, recent off | Open agent tabs; no recent section. | Keep standard menu/input focus. |
 | Query empty | Agents only off, recent on | All open shell/agent tabs plus recent sessions. | Keep standard menu/input focus. |
@@ -249,19 +259,19 @@ preference, or start a session. New-tab and resume actions retain the chosen
 display preferences. Standard flyout keyboard navigation and checked-state
 automation remain available; the removed heading action is not a tab stop.
 
-## Sidebar hotkey: enter search and return to input
+## Sidebar hotkey: focus the toggle and return to input
 
-`Ctrl+Shift+S` navigates between the current input and the sidebar's global search.
+`Ctrl+Shift+S` navigates between the current input and the sidebar's upper-left toggle.
 
-- When the sidebar is collapsed, expand it, open **Search tabs and recent agent sessions**, and
-  focus its search box. When expanded with focus outside, open/focus the same
-  box without collapsing the sidebar.
+- When the sidebar is collapsed, expand it and focus its toggle without opening
+  search. When expanded with focus outside, focus the same toggle without
+  collapsing the sidebar or changing an existing search/query.
 - Remember the terminal or Agent chat input used just before this hotkey entry.
   A later entry from another input replaces that best-effort return target.
-  Closing search with Escape or its button expires the target; opening
-  search without the hotkey (including its pointer or keyboard button)
+  Closing search with Escape or its button expires the target; explicitly opening
+  search (including Ctrl+F or its pointer/keyboard button)
   starts without a saved hotkey source. A new hotkey entry captures its input
-  only after search has opened successfully.
+  only after the toggle has received focus successfully.
 - When focus is inside the expanded sidebar, collapse it. If the remembered
   input remains visible and focusable, return there without changing its
   unsent draft. Otherwise, try the currently active visible terminal or Agent
@@ -271,7 +281,10 @@ automation remain available; the removed heading action is not a tab stop.
   display an error, block, or retry indefinitely.
 
 The titlebar's Expand/Collapse button retains its existing visibility behavior;
-it does not itself open search. The search hotkey preserves both filter
+it does not itself open search. Ctrl+F opens **Search tabs and recent agent sessions**
+and focuses its search box, expanding the sidebar first when needed. Repeating
+Ctrl+F preserves the query, cursor and selection without selecting all.
+The search shortcut preserves both filter
 preferences, including when recent-session results are visible; there is no
 separate History source-restoration path.
 The public `toggleSidebar` command remains a visibility toggle when invoked

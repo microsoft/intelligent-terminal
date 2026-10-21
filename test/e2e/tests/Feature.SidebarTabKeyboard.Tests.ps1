@@ -18,6 +18,8 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         } -Settings @{
             language = 'en-US'
             tabLayout = 'vertical'
+            actions = @()
+            keybindings = @()
             startupActions = ''
             firstWindowPreference = 'defaultProfile'
             windowingBehavior = 'useNew'
@@ -242,6 +244,10 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
             return
         }
+        $existingSearch = Get-SidebarElement -AutomationId 'SearchTextBox'
+        if ($existingSearch -and -not $existingSearch.Current.IsOffscreen) {
+            Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+        }
         Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
         $sourceFocus = Wait-Until -TimeoutSec 5 -Condition {
             $focused = [Windows.Automation.AutomationElement]::FocusedElement
@@ -259,13 +265,21 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         foreach ($fromCollapsed in @($false, $true)) {
             Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
             (Test-Until -TimeoutSec 6 -Condition {
-                $search = Get-SidebarElement -AutomationId 'SearchTextBox'
-                $search -and -not $search.Current.IsOffscreen -and $search.Current.HasKeyboardFocus
-            }) | Should -BeTrue -Because 'Ctrl+Shift+S must enter the Sidebar search box'
+                $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                $focused -and $focused.Current.ProcessId -eq $script:app.Pid -and
+                    $focused.Current.Name -eq 'Collapse sidebar' -and $focused.Current.HasKeyboardFocus
+            }) | Should -BeTrue -Because 'Ctrl+Shift+S must focus the upper-left sidebar toggle'
+            $search = Get-SidebarElement -AutomationId 'SearchTextBox'
+            [bool]($search -and -not $search.Current.IsOffscreen) |
+                Should -BeFalse -Because 'sidebar entry must not open search'
 
+            Send-WtWindowKey -App $script:app -Vk 0x46 -Ctrl -RequireForeground | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition {
+                (Get-SidebarElement -AutomationId 'SearchTextBox').Current.HasKeyboardFocus
+            }) | Should -BeTrue -Because 'Ctrl+F from the sidebar toggle must explicitly enter search'
             Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
             (Test-Until -TimeoutSec 5 -Condition { (Get-FocusedTabRowIndex) -ge 0 }) |
-                Should -BeTrue -Because 'Tab from hotkey-opened search must enter a Sidebar tab row'
+                Should -BeTrue -Because 'Tab from explicitly opened search retains its existing list navigation'
             $row = Get-FocusedTabRowIndex
             Assert-FocusedTabRow -Index $row -SelectedTabId $tabId -Because 'Tab must not activate a terminal after hotkey entry'
             Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir "hotkey-tab-row-$fromCollapsed.png") | Out-Null
@@ -278,6 +292,65 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             }) | Should -BeTrue -Because 'the hotkey must return from a Sidebar tab row to the original shell'
             (Get-WtCapture -App $script:app -SessionId $script:tabB.session_id -MaxLines 30).TrimEnd() |
                 Should -Match ([regex]::Escape($draft) + '$') -Because 'the unsent shell draft must survive both hotkey transitions'
+        }
+    }
+
+    It 'Global search shortcut opens sidebar search without replacing the query' -Tag 'SidebarSearchHotkey' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        foreach ($fromCollapsed in @($false, $true)) {
+            $expand = Get-UiElement -App $script:app -Selector 'Expand sidebar'
+            if ($expand -and -not $expand.isOffscreen) {
+                Invoke-UiElement -App $script:app -Selector 'Expand sidebar' | Out-Null
+            }
+            $search = Get-SidebarElement -AutomationId 'SearchTextBox'
+            if ($search -and -not $search.Current.IsOffscreen) {
+                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            }
+            if ($fromCollapsed) {
+                Invoke-UiElement -App $script:app -Selector 'Collapse sidebar' | Out-Null
+                Wait-UiElement -App $script:app -Selector CompactNewTabButton | Out-Null
+            }
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+            $tabId = [string](Get-ActivePane -App $script:app).tab_id
+            Send-WtWindowKey -App $script:app -Vk 0x46 -Ctrl -RequireForeground | Out-Null
+            $opened = Test-Until -TimeoutSec 6 -Condition {
+                $search = Get-SidebarElement -AutomationId 'SearchTextBox'
+                $search -and -not $search.Current.IsOffscreen -and $search.Current.HasKeyboardFocus
+            }
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir "after-search-shortcut-$fromCollapsed.png") | Out-Null
+            $opened | Should -BeTrue -Because 'Ctrl+F from terminal input must open and focus sidebar search'
+
+            $query = "focus-$script:marker"
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value $query | Out-Null
+            Send-WtWindowKey -App $script:app -Vk 0x24 -RequireForeground | Out-Null
+            Send-WtWindowKey -App $script:app -Vk 0x27 -RequireForeground | Out-Null
+            Send-WtWindowKey -App $script:app -Vk 0x27 -Shift -RequireForeground | Out-Null
+            Send-WtWindowKey -App $script:app -Vk 0x46 -Ctrl -RequireForeground | Out-Null
+            (Get-UiValue -App $script:app -Selector SearchTextBox) | Should -BeExactly $query
+            Send-WtWindowKey -App $script:app -Vk 0x08 -RequireForeground | Out-Null
+            $editedQuery = $query.Remove(1, 1)
+            (Get-UiValue -App $script:app -Selector SearchTextBox) |
+                Should -BeExactly $editedQuery -Because 'Ctrl+F must preserve the existing one-character selection, not select all'
+
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+            Send-WtWindowKey -App $script:app -Vk 0x46 -Ctrl -RequireForeground | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition {
+                (Get-SidebarElement -AutomationId 'SearchTextBox').Current.HasKeyboardFocus
+            }) | Should -BeTrue
+            (Get-UiValue -App $script:app -Selector SearchTextBox) | Should -BeExactly $editedQuery
+            [string](Get-ActivePane -App $script:app).tab_id | Should -Be $tabId
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir "global-search-$fromCollapsed.png") | Out-Null
+
+            Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+            Wait-UiElement -App $script:app -Selector CompactNewTabButton | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition {
+                $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                $focused -and $focused.Current.ProcessId -eq $script:app.Pid -and $focused.Current.ClassName -eq 'TermControl'
+            }) | Should -BeTrue -Because 'Ctrl+Shift+S retains collapse and return-to-input behavior after explicit search entry'
         }
     }
 

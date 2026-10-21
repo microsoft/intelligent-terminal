@@ -777,4 +777,12 @@
     <value>புதியது</value>
     <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
   </data>
+  <data name="HorizontalTabsIntroductionTitle" xml:space="preserve">
+    <value>தாவல்களை நிர்வகிக்க இன்னும் புத்திசாலித்தனமான வழிகளை முயற்சிக்கவும்</value>
+    <comment>Title of the introduction tooltip shown in the horizontal tab layout. Invites the user to try the vertical tab layout for managing terminal tabs.</comment>
+  </data>
+  <data name="HorizontalTabsIntroductionDescription" xml:space="preserve">
+    <value>உங்கள் முகவர்களின் செயல்பாட்டை ஒரே பார்வையில் காண செங்குத்துத் தாவல்களுக்கு மாறவும். ஒரு தாவலில் வலது கிளிக் செய்து, {0} என்பதைத் தேர்ந்தெடுக்கவும்.</value>
+    <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
+  </data>
 </root>

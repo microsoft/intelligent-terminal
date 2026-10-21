@@ -920,6 +920,8 @@ namespace SettingsModelUnitTests
         verifyBinding(L"alt+shift+b", L"Terminal.OpenBackgroundAgent");
         verifyBinding(L"alt+shift+/", L"Terminal.OpenAgentDelegation");
         verifyBinding(L"ctrl+shift+s", L"Terminal.ToggleSidebar");
+        verifyBinding(L"ctrl+f", L"Terminal.TabSearch");
+        verifyBinding(L"ctrl+shift+f", L"Terminal.FindText");
         verifyBinding(L"ctrl+shift+g", L"Terminal.ToggleSidebarAgentsOnly");
         verifyBinding(L"ctrl+shift+r", L"Terminal.ToggleSidebarRecentAgentSessions");
     }

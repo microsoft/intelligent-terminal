@@ -97,7 +97,7 @@ namespace winrt::TerminalApp::implementation
         void ShowPane();
         bool HasHiddenPane();
 
-        std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> BuildStartupActions(BuildStartupKind kind) const;
+        std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> BuildStartupActions(BuildStartupKind kind, bool persistAgentPanes = true) const;
 
         int GetLeafPaneCount() const noexcept;
 
