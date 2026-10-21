@@ -7,6 +7,7 @@
 use super::*;
 use crate::coordinator::mock_native_delegate_executables;
 use acp::schema::v1::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
+use std::path::PathBuf;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 #[tokio::test(flavor = "current_thread")]

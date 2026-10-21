@@ -7656,6 +7656,13 @@ impl App {
         };
         let mut cmd = std::process::Command::new(exe);
         cmd.arg("delegate").arg(prompt);
+        if let Some(pipe) = self
+            .deferred_acp
+            .as_ref()
+            .and_then(|params| params.master_pipe_name.as_deref())
+        {
+            cmd.arg("--master").arg(pipe);
+        }
         // The delegate child inherits WT_COM_CLSID from our env; no explicit pass needed.
 
         // Fire-and-forget: spawn hidden, don't wait.

@@ -1152,7 +1152,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             }
             $tab
         })
-        $script:pipe = (Get-Content -LiteralPath (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
+        $script:pipe = Get-WtaMasterPipe -App $script:app
         Wait-Until -TimeoutSec 90 -Because 'the real master imports deterministic ACP history' -Condition {
             $snapshot = Invoke-Wta -App $script:app -TimeoutSec 10 -Arguments @(
                 'sessions', 'list', '--master', $script:pipe, '--json', '--include-status')

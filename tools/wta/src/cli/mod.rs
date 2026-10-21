@@ -86,6 +86,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             payload_json,
         } => agent_tools::run_action_proposal(channel, payload_json).await,
         Command::Delegate {
+            master,
             prompt,
             agent,
             delegate_agent,
@@ -114,6 +115,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 &split_direction,
                 split_size,
                 delegate_agent_id.as_deref(),
+                master.as_deref(),
             )
             .await
         }
@@ -137,6 +139,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 .await
             }
             SessionsAction::Activate {
+                master,
                 session_id,
                 provider,
                 location,
@@ -147,6 +150,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 status_only,
             } => {
                 sessions::run_activate(
+                    master,
                     &session_id,
                     &provider,
                     &location,

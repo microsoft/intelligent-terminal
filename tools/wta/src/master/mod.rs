@@ -38,7 +38,6 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::future::Future;
-use std::path::PathBuf;
 use std::sync::{Arc, OnceLock, Weak};
 
 /// Per-helper notification channel capacity. Sized for bursty chunk
@@ -52,7 +51,6 @@ const AGENT_INITIALIZE_TIMEOUT_SECS: u64 = 60;
 const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
 const SESSION_LOAD_TIMEOUT_SECS: u64 = 55;
 const SESSION_ROLLBACK_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
-const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 const HISTORY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
 use agent_client_protocol as acp;
@@ -4770,81 +4768,6 @@ pub async fn run_master_mode(config: MasterConfig, pipe_name: String) -> Result<
     result
 }
 
-struct MasterPipeDiscoveryGuard {
-    path: Option<PathBuf>,
-    pipe_name: String,
-}
-
-impl MasterPipeDiscoveryGuard {
-    fn write(pipe_name: &str) -> Self {
-        let path = crate::runtime_paths::master_pipe_file_path();
-        if let Some(path) = &path {
-            if let Some(parent) = path.parent() {
-                if let Err(err) = std::fs::create_dir_all(parent) {
-                    tracing::warn!(
-                        target: "master",
-                        discovery_file = MASTER_PIPE_DISCOVERY_FILE,
-                        pipe_name = %pipe_name,
-                        error = %err,
-                        "failed to create master pipe discovery directory"
-                    );
-                    return Self {
-                        path: None,
-                        pipe_name: pipe_name.to_string(),
-                    };
-                }
-            }
-            match std::fs::write(path, pipe_name) {
-                Ok(()) => tracing::info!(
-                    target: "master",
-                    discovery_file = MASTER_PIPE_DISCOVERY_FILE,
-                    pipe_name = %pipe_name,
-                    "master pipe discovery file written"
-                ),
-                Err(err) => {
-                    tracing::warn!(
-                        target: "master",
-                        discovery_file = MASTER_PIPE_DISCOVERY_FILE,
-                        pipe_name = %pipe_name,
-                        error = %err,
-                        "failed to write master pipe discovery file"
-                    );
-                    return Self {
-                        path: None,
-                        pipe_name: pipe_name.to_string(),
-                    };
-                }
-            }
-        }
-        Self {
-            path,
-            pipe_name: pipe_name.to_string(),
-        }
-    }
-}
-
-impl Drop for MasterPipeDiscoveryGuard {
-    fn drop(&mut self) {
-        let Some(path) = &self.path else {
-            return;
-        };
-        let should_remove = std::fs::read_to_string(path)
-            .map(|current| current.trim() == self.pipe_name)
-            .unwrap_or(false);
-        if should_remove {
-            if let Err(err) = std::fs::remove_file(path) {
-                tracing::warn!(
-                    target: "master",
-                    discovery_file = MASTER_PIPE_DISCOVERY_FILE,
-                    pipe_name = %self.pipe_name,
-                    error = %err,
-                    "failed to remove master pipe discovery file"
-                );
-            }
-        }
-    }
-}
-
 /// Owns a self-relative security descriptor (built from an SDDL string)
 /// and the `SECURITY_ATTRIBUTES` that points at it, so the named pipe can
 /// be created with a tightened ACL. Frees the descriptor on drop.
@@ -5249,7 +5172,6 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         secured = pipe_security.is_some(),
         "named pipe listening; awaiting helper connections"
     );
-    let _pipe_discovery_guard = MasterPipeDiscoveryGuard::write(&pipe_name);
     tracing::info!(target: "master_history", "starting host agent discovery at master startup");
     request_host_history_refresh(&inner);
     start_history_refresh_loop(&inner);

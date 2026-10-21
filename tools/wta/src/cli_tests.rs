@@ -117,7 +117,7 @@ fn cli_parses_owner_tab_and_window_identity() {
 }
 
 #[test]
-fn sessions_list_cli_parses_json_and_master_override() {
+fn sessions_list_cli_parses_json_and_owning_master() {
     let cli = Cli::try_parse_from([
         "wta",
         "sessions",
@@ -138,7 +138,7 @@ fn sessions_list_cli_parses_json_and_master_override() {
                     include_status,
                 },
         }) => {
-            assert_eq!(master.as_deref(), Some(r"\\.\pipe\wta-master-test"));
+            assert_eq!(master, r"\\.\pipe\wta-master-test");
             // Default keeps the historical debug behavior — show
             // every origin. MVP sessions picker has its own default in
             // `app::resolve_sessions_origin_filter`; this CLI default is
@@ -157,6 +157,8 @@ fn sessions_list_cli_preserves_status_snapshot_without_discovery() {
         "wta",
         "sessions",
         "list",
+        "--master",
+        r"\\.\pipe\wta-master-test",
         "--origin",
         "shell",
         "--json",
@@ -182,26 +184,45 @@ fn sessions_list_cli_preserves_status_snapshot_without_discovery() {
 
 #[test]
 fn sessions_refresh_is_explicit_and_removed_discovery_flag_is_rejected() {
-    assert!(Cli::try_parse_from(["wta", "sessions", "list", "--all-agents"]).is_err());
-    let cli = Cli::try_parse_from(["wta", "sessions", "refresh", "--json"]).unwrap();
+    assert!(Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "list",
+        "--master",
+        "pipe",
+        "--all-agents"
+    ])
+    .is_err());
+    let cli =
+        Cli::try_parse_from(["wta", "sessions", "refresh", "--master", "pipe", "--json"]).unwrap();
     assert!(cli.json);
     assert!(matches!(
         cli.command,
         Some(Command::Sessions {
-            action: SessionsAction::Refresh { master: None }
-        })
+            action: SessionsAction::Refresh { master }
+        }) if master == "pipe"
     ));
 }
 
 #[test]
 fn sessions_list_status_requires_json() {
-    assert!(Cli::try_parse_from(["wta", "sessions", "list", "--include-status"]).is_err());
+    assert!(Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "list",
+        "--master",
+        "pipe",
+        "--include-status"
+    ])
+    .is_err());
 }
 
 #[test]
 fn sessions_list_cli_parses_origin_shell() {
-    let cli = Cli::try_parse_from(["wta", "sessions", "list", "--origin", "shell"])
-        .expect("sessions list --origin shell parses");
+    let cli = Cli::try_parse_from([
+        "wta", "sessions", "list", "--master", "pipe", "--origin", "shell",
+    ])
+    .expect("sessions list --origin shell parses");
     match cli.command {
         Some(Command::Sessions {
             action: SessionsAction::List { origin, .. },
@@ -215,8 +236,16 @@ fn sessions_list_cli_parses_origin_shell() {
 
 #[test]
 fn sessions_list_cli_parses_origin_agent_pane() {
-    let cli = Cli::try_parse_from(["wta", "sessions", "list", "--origin", "agent-pane"])
-        .expect("sessions list --origin agent-pane parses");
+    let cli = Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "list",
+        "--master",
+        "pipe",
+        "--origin",
+        "agent-pane",
+    ])
+    .expect("sessions list --origin agent-pane parses");
     match cli.command {
         Some(Command::Sessions {
             action: SessionsAction::List { origin, .. },
@@ -238,6 +267,8 @@ fn sessions_activate_cli_parses_qualified_identity_and_target_window() {
         "wta",
         "sessions",
         "activate",
+        "--master",
+        r"\\.\pipe\wta-master-normal",
         "--session-id",
         "same-raw-id",
         "--provider",
@@ -261,6 +292,7 @@ fn sessions_activate_cli_parses_qualified_identity_and_target_window() {
         Some(Command::Sessions {
             action:
                 SessionsAction::Activate {
+                    master,
                     session_id,
                     provider,
                     location,
@@ -271,6 +303,7 @@ fn sessions_activate_cli_parses_qualified_identity_and_target_window() {
                     status_only,
                 },
         }) => {
+            assert_eq!(master, r"\\.\pipe\wta-master-normal");
             assert_eq!(session_id, "same-raw-id");
             assert_eq!(provider, "copilot");
             assert_eq!(location, "wsl");
@@ -290,6 +323,8 @@ fn sessions_activate_status_only_never_selects_a_new_operation() {
         "wta",
         "sessions",
         "activate",
+        "--master",
+        r"\\.\pipe\wta-master-normal",
         "--session-id",
         "session",
         "--provider",
@@ -307,9 +342,37 @@ fn sessions_activate_status_only_never_selects_a_new_operation() {
     assert!(matches!(
         cli.command,
         Some(Command::Sessions {
-            action: SessionsAction::Activate { status_only: true, activation_id, .. }
-        }) if activation_id == "original-activation"
+            action: SessionsAction::Activate { master, status_only: true, activation_id, .. }
+        }) if activation_id == "original-activation" && master == r"\\.\pipe\wta-master-normal"
     ));
+}
+
+#[test]
+fn sessions_activate_requires_an_owner_even_for_status_only() {
+    for action in ["list", "refresh"] {
+        assert!(Cli::try_parse_from(["wta", "sessions", action, "--json"]).is_err());
+    }
+    for status_only in [false, true] {
+        let mut args = vec![
+            "wta",
+            "sessions",
+            "activate",
+            "--session-id",
+            "session",
+            "--provider",
+            "copilot",
+            "--location",
+            "host",
+            "--window-id",
+            "42",
+            "--activation-id",
+            "original-activation",
+        ];
+        if status_only {
+            args.push("--status-only");
+        }
+        assert!(Cli::try_parse_from(args).is_err());
+    }
 }
 
 // ── normalize_locale: OS-locale → bundled-locale affinity matching ──────────
@@ -417,7 +480,7 @@ fn process_label_subcommands() {
     assert_eq!(process_label(&probe_host), "probe");
 
     // Any other subcommand is a short-lived wtcli-style client.
-    let sessions = Cli::try_parse_from(["wta", "sessions", "list"]).unwrap();
+    let sessions = Cli::try_parse_from(["wta", "sessions", "list", "--master", "pipe"]).unwrap();
     assert_eq!(process_label(&sessions), "cli");
 }
 
@@ -428,6 +491,8 @@ fn delegate_command_parses_explicit_source_and_distro() {
     let cli = Cli::try_parse_from([
         "wta",
         "delegate",
+        "--master",
+        r"\\.\pipe\wta-master-normal",
         "--delegate-agent",
         "codex",
         "--delegate-source",
@@ -439,10 +504,12 @@ fn delegate_command_parses_explicit_source_and_distro() {
     .expect("flags must parse");
     match cli.command {
         Some(Command::Delegate {
+            master,
             delegate_source,
             delegate_wsl_distro,
             ..
         }) => {
+            assert_eq!(master.as_deref(), Some(r"\\.\pipe\wta-master-normal"));
             assert_eq!(delegate_source.as_deref(), Some("wsl"));
             assert_eq!(delegate_wsl_distro.as_deref(), Some("Ubuntu"));
         }

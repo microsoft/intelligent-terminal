@@ -493,7 +493,7 @@ catch {
         }
         function Get-StatusRegistrySnapshot {
             Assert-StatusDeadline
-            $pipe = (Get-Content (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
+            $pipe = Get-WtaMasterPipe -App $script:app
             $pipe | Should -Not -BeNullOrEmpty
             # --include-status returns SessionsListResponse, not default JSON-lines.
             $result = Invoke-Wta -App $script:app -TimeoutSec 10 -Raw -Arguments @(
@@ -1025,7 +1025,7 @@ class CopilotFixture {
             if ($rows.Count -eq 2 -and @($rows | Where-Object { $_.provider_id -ne 'copilot' -or $_.location -ne 'Host' }).Count -eq 0) { $rows }
         }
         $otherBefore = @($knownRows | Where-Object session_id -eq $otherSid)[0]
-        $pipe = (Get-Content (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
+        $pipe = Get-WtaMasterPipe -App $script:app
         $masters = @(Get-CimInstance Win32_Process -Filter "Name='wta.exe'" | Where-Object {
             $_.ExecutablePath -eq $script:target.WtaPath -and
             $_.CommandLine -match '\s--master\s' -and $_.CommandLine.Contains($pipe)

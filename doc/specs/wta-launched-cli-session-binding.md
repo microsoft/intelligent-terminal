@@ -135,7 +135,7 @@ unknown/custom). The launch path only does born-bound registration when this is
 ### Transport
 
 - **(a)** runs in the short-lived `wta delegate` process. It opens its own
-  connection to the master pipe (`master-pipe.txt` rendezvous), registers, and
+  connection to the owning master pipe passed by Terminal as `--master`, registers, and
   exits — the same transport `wta sessions list` already uses. Master not
   running → no-op (no registry to populate; harmless).
 - **(c)** runs in the helper, which already creates the resume tab and binds its

@@ -244,7 +244,7 @@ environment. It is separate from Antigravity's bundled ACP runtime; preparing
 the ACP dependency does not install Python.
 
 Tab/pane agent metadata and Sidebar Recent share a bounded
-`wta sessions list --json --include-status` snapshot request. Recent applies
+`wta sessions list --master <pipe> --json --include-status` snapshot request. Recent applies
 the existing shell-origin filter to the conversation projection; pane metadata
 reads the normalized `pane_statuses` projection without requiring an agent
 session ID. A Recent request can join an in-flight metadata request, and hiding
@@ -293,15 +293,25 @@ The opt-in JSON object contains `sessions` and `history_status` (`loading`, `rea
 or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
 ordinary `--json` output remains one session per line.
 
-Session commands without an explicit `--master` rediscover `master-pipe.txt`
-before each connection attempt, so a stale address from a previous Terminal
-process does not pin a startup request to the old pipe. An explicit `--master`
-stays pinned. Missing discovery files, missing pipes, and busy pipes share the
-existing seven-attempt retry budget (1.87 seconds of backoff); permission and
-other failures are not retried. Listing, activation, and born-bound registration
-use the same connection path.
+Terminal-owned session snapshots, activation, activation-status queries, and
+delegate registration use the owning process's explicit `--master` pipe.
+An unavailable or empty owned endpoint never falls back to shared discovery.
+The pipe remains stable across master restarts, and activation retries retain
+both the owning pipe and operation ID.
 
-If the master remains temporarily unavailable, `sessions list --json --include-status`
+All `sessions` commands require `--master`, including activation-status queries.
+Master addresses are passed in memory or as process arguments; WTA does not
+publish or read a shared discovery file. Concurrent normal and elevated Terminal
+processes therefore cannot overwrite each other's session-command target.
+An old discovery file left by a previous version is ignored.
+Missing and busy pipes share the existing seven-attempt retry budget
+(1.87 seconds of backoff); permission and other failures are not retried.
+
+`delegate --master <pipe>` pins split validation and best-effort live registration
+to that master. Without it, an ordinary delegate still launches, but logs that
+live registration was skipped; exact session splits require an owning master.
+
+If the master remains temporarily unavailable, `sessions list --master <pipe> --json --include-status`
 exits nonzero and writes `{"error":{"kind":"master_unavailable"}}` instead of a
 successful empty snapshot. Other listing failures retain their ordinary error
 behavior. The sidebar keeps loading (or retains existing rows) and retries every
@@ -414,7 +424,7 @@ periodic installation scan. Failed host-agent startup discoveries are retried th
 same discovery worker, with delays of 5, 10, 20, 40, then at most 60 seconds after
 each failure (checked on the existing five-second history timer). Retries recheck
 installation and policy and do not restart healthy resident providers.
-`wta sessions refresh --json` schedules discovery while respecting failure backoff and returns the
+`wta sessions refresh --master <pipe> --json` schedules discovery while respecting failure backoff and returns the
 current snapshot with `history_status`; it does not wait for discovery to finish.
 The removed `--all-agents` flag is no longer accepted. F5 in a helper's session view
 explicitly refreshes that helper's bound connection without discovering other agents.

@@ -19,6 +19,7 @@ pub(crate) async fn run(
     split_direction: &str,
     split_size: f64,
     delegate_agent_id: Option<&str>,
+    master: Option<&str>,
 ) -> Result<()> {
     // Log the prompt length, not the text — the prompt is user content.
     // Log only the executable (first token) of agent_cmd, not the full
@@ -51,8 +52,14 @@ pub(crate) async fn run(
             "unsupported split provider"
         );
         let local = tokio::task::LocalSet::new();
+        let master = master
+            .filter(|pipe| !pipe.trim().is_empty())
+            .ok_or_else(|| anyhow::anyhow!("--master is required for an exact session split"))?;
         let snapshot = local
-            .run_until(super::sessions::fetch_from_master(None, false))
+            .run_until(super::sessions::fetch_from_master(
+                master.to_string(),
+                false,
+            ))
             .await?;
         let row = resolve_split_session(
             &snapshot.sessions,
@@ -101,6 +108,7 @@ pub(crate) async fn run(
         split_direction,
         split_size,
         delegate_agent_id,
+        master,
     )
     .await
     {
@@ -318,6 +326,7 @@ async fn delegate_with_context(
     split_direction: &str,
     split_size: f64,
     delegate_agent_id: Option<&str>,
+    master: Option<&str>,
 ) -> Result<()> {
     let runtime = crate::coordinator::resolve_delegate_runtime_with_provider(
         delegate_agent_cmd,
@@ -518,7 +527,15 @@ async fn delegate_with_context(
         // above) is reused here rather than falling back to the raw
         // Windows `cwd`, which would be misleading for a WSL session.
         if let (Some(sid), Some(pane)) = (pinned_session_id.as_deref(), pane_guid.as_deref()) {
-            super::sessions::register_launched(sid, pane, &runtime.id, wsl_cwd, Some(distro)).await;
+            super::sessions::register_launched(
+                master,
+                sid,
+                pane,
+                &runtime.id,
+                wsl_cwd,
+                Some(distro),
+            )
+            .await;
         }
         return Ok(());
     }
@@ -564,7 +581,7 @@ async fn delegate_with_context(
     );
 
     if let (Some(sid), Some(pane)) = (pinned_session_id.as_deref(), pane_guid.as_deref()) {
-        super::sessions::register_launched(sid, pane, &runtime.id, cwd, None).await;
+        super::sessions::register_launched(master, sid, pane, &runtime.id, cwd, None).await;
     }
 
     Ok(())
@@ -847,7 +864,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delegate_split_rejects_custom_prompt_and_invalid_size_before_connecting() {
+    async fn delegate_split_rejects_invalid_or_unowned_requests_before_connecting() {
         for (provider, prompt, size, expected) in [
             ("custom:test", None, 0.5, "unsupported split provider"),
             (
@@ -857,6 +874,7 @@ mod tests {
                 "cannot carry a startup prompt",
             ),
             ("copilot", None, 1.0, "invalid split size"),
+            ("copilot", None, 0.5, "--master is required"),
         ] {
             let error = super::run(
                 prompt,
@@ -871,6 +889,7 @@ mod tests {
                 Some("sid"),
                 "auto",
                 size,
+                None,
                 None,
             )
             .await

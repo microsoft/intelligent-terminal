@@ -34,6 +34,7 @@ async fn await_history_startup(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     type PageReply =
         tokio::sync::oneshot::Sender<acp::Result<acp::schema::v1::ListSessionsResponse>>;
