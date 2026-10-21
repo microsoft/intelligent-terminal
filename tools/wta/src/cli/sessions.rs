@@ -527,6 +527,23 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn born_bound_registration_is_best_effort_for_an_unavailable_owner() {
+        let missing = format!(
+            r"\\.\pipe\wta-registration-missing-{}",
+            uuid::Uuid::new_v4()
+        );
+        for (master, elapsed) in [
+            (None, Duration::ZERO),
+            (Some(""), Duration::ZERO),
+            (Some(missing.as_str()), Duration::from_millis(1870)),
+        ] {
+            let started = tokio::time::Instant::now();
+            register_launched(master, "session", "pane", "copilot", None, None).await;
+            assert_eq!(started.elapsed(), elapsed);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn master_connection_unavailable_is_typed_and_bounded() {
         for code in [2, 231] {
             let attempts = Cell::new(0);

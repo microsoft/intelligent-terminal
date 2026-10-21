@@ -68,11 +68,32 @@ async fn run_isolated_cli(scratch: &Scratch, args: &[&str]) -> std::process::Out
         .current_dir(&scratch.0)
         .env("LOCALAPPDATA", &scratch.0)
         .env("APPDATA", &scratch.0)
+        .env("WTA_LOG", "cli_pipe=debug")
         .kill_on_drop(true);
     tokio::time::timeout(Duration::from_secs(15), command.output())
         .await
         .expect("session CLI exceeded its deadline")
         .expect("run built session CLI")
+}
+
+async fn wait_for_missing_pipe_retry(scratch: &Scratch) {
+    let logs = scratch.0.join("IntelligentTerminal").join("logs");
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Ok(mut files) = tokio::fs::read_dir(&logs).await {
+                while let Some(file) = files.next_entry().await.unwrap() {
+                    if let Ok(contents) = tokio::fs::read_to_string(file.path()).await {
+                        if contents.contains("named pipe temporarily unavailable; retrying") {
+                            return;
+                        }
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("built CLI did not report its missing-pipe attempt");
 }
 
 async fn serve_mock_master(
@@ -83,7 +104,10 @@ async fn serve_mock_master(
 ) -> Vec<String> {
     let mut methods = Vec::new();
     for connection in 0..connections {
-        server.connect().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(10), server.connect())
+            .await
+            .expect("mock master did not receive its bounded CLI connection")
+            .unwrap();
         let mut reader = BufReader::new(&mut server);
         loop {
             let mut line = String::new();
@@ -141,6 +165,104 @@ async fn serve_mock_master(
         }
     }
     methods
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn empty_owner_fails_but_a_later_owned_snapshot_can_succeed() {
+    let id = uuid::Uuid::new_v4();
+    let scratch = Scratch(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("sessions-later-owner-{id}")),
+    );
+    std::fs::create_dir_all(&scratch.0).unwrap();
+    let unavailable = run_isolated_cli(
+        &scratch,
+        &[
+            "sessions",
+            "list",
+            "--master",
+            "",
+            "--json",
+            "--include-status",
+        ],
+    )
+    .await;
+    assert!(!unavailable.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&unavailable.stdout).unwrap()["error"]["kind"],
+        "master_unavailable"
+    );
+
+    let pipe = format!(r"\\.\pipe\wta-master-later-{id}");
+    let server = ServerOptions::new()
+        .first_pipe_instance(true)
+        .create(&pipe)
+        .unwrap();
+    let args = [
+        "sessions",
+        "list",
+        "--master",
+        &pipe,
+        "--json",
+        "--include-status",
+    ];
+    let (available, methods) = tokio::join!(
+        run_isolated_cli(&scratch, &args),
+        serve_mock_master(server, pipe.clone(), "later-owner", 1),
+    );
+    assert!(available.status.success(), "{available:?}");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&available.stdout).unwrap()["sessions"][0]["session_id"],
+        "later-owner"
+    );
+    assert_eq!(methods.len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn owned_snapshot_waits_for_creation_and_same_endpoint_restart() {
+    let id = uuid::Uuid::new_v4();
+    let pipe = format!(r"\\.\pipe\wta-master-readiness-{id}");
+    for owner in ["first-generation", "replacement-generation"] {
+        let scratch = Scratch(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target")
+                .join(format!("sessions-readiness-{id}-{owner}")),
+        );
+        std::fs::create_dir_all(&scratch.0).unwrap();
+        // Neither the first listener nor its replacement exists when this request starts.
+        assert_eq!(
+            tokio::net::windows::named_pipe::ClientOptions::new()
+                .open(&pipe)
+                .unwrap_err()
+                .raw_os_error(),
+            Some(2)
+        );
+        let args = [
+            "sessions",
+            "list",
+            "--master",
+            &pipe,
+            "--json",
+            "--include-status",
+        ];
+        let (snapshot, methods) = tokio::join!(run_isolated_cli(&scratch, &args), async {
+            // Observe an actual failed open in the built CLI before creating the listener.
+            wait_for_missing_pipe_retry(&scratch).await;
+            let server = ServerOptions::new()
+                .first_pipe_instance(true)
+                .create(&pipe)
+                .unwrap();
+            serve_mock_master(server, pipe.clone(), owner, 1).await
+        },);
+        assert!(snapshot.status.success(), "{snapshot:?}");
+        assert_eq!(
+            serde_json::from_slice::<Value>(&snapshot.stdout).unwrap()["sessions"][0]["session_id"],
+            owner
+        );
+        assert_eq!(methods.len(), 1);
+        // serve_mock_master has dropped its listener before the next generation starts.
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
