@@ -8773,6 +8773,34 @@ async fn execute_session_activation(
                         .registry
                         .assign_resume_pane_identity(&parsed.identity, pane_session_id.clone())
                         .await;
+                    if let Some(current) = state
+                        .registry
+                        .lookup_identity(&parsed.identity)
+                        .await
+                        .filter(|current| {
+                            current.status == Some(AgentStatus::Historical)
+                                && current.pane_session_id.is_none()
+                        })
+                    {
+                        state.hook_owned.lock().await.remove(&row.session_id);
+                        state.born_bound.lock().await.remove(&row.session_id);
+                        drop(lifecycle_guard);
+                        tracing::warn!(
+                            target: "master",
+                            session_id = %row.session_id,
+                            pane_session_id,
+                            "resume pane failed before the session started"
+                        );
+                        broadcast_session_status_change(state, None).await;
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some(format!(
+                                "The session could not be resumed: {}",
+                                current.last_error.as_deref().unwrap_or("connection failed")
+                            ))
+                        );
+                    }
                     // No change can mean a real hook already established the exact binding.
                     if !binding_changed
                         && !state
@@ -11545,6 +11573,10 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         return;
     }
     let pane_state = params.get("state").and_then(|v| v.as_str()).unwrap_or("");
+    if pane_state == "connected" {
+        state.registry.record_pane_connected(&pane_id).await;
+        return;
+    }
     let event = match pane_state {
         "closed" => crate::agent_sessions::SessionEvent::PaneClosed {
             pane_session_id: pane_id.clone(),
@@ -11555,6 +11587,10 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
                 .and_then(|v| v.as_str())
                 .unwrap_or("connection failed")
                 .to_string();
+            state
+                .registry
+                .record_pane_connection_failure(&pane_id, &reason)
+                .await;
             crate::agent_sessions::SessionEvent::ConnectionFailed {
                 pane_session_id: pane_id.clone(),
                 reason,

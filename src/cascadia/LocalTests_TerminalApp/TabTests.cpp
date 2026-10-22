@@ -11402,12 +11402,28 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"history query" }, stripImpl->SearchTextBox().Text());
 
+            const auto failedResume = page->_ParseSidebarHistoryActivation(
+                R"({"activation_id":"resume-1","state":"complete","action":"resume_cli","accepted":false,"detail":"The session could not be resumed"})",
+                L"resume-1");
+            page->_tabStrip.HistoryActivating(true);
+            page->_tabStrip.HistoryError(L"Previous error");
+            VERIFY_IS_FALSE(failedResume.accepted);
+            VERIFY_IS_TRUE(page->_CompleteSidebarHistoryActivation(9, failedResume.accepted, failedResume.detail));
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"history query" }, stripImpl->SearchTextBox().Text());
+
             page->_historyActivationSerial = 10;
             page->_tabStrip.HistoryActivating(true);
             VERIFY_IS_TRUE(page->_CompleteSidebarHistoryActivation(10, false, L"Cannot focus session"));
             VERIFY_IS_TRUE(page->_tabStrip.HistoryActive());
             VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Cannot focus session" }, page->_tabStrip.HistoryError());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
+            page->_tabStrip.HistoryActivating(true);
+            VERIFY_IS_TRUE(page->_CompleteSidebarHistoryActivation(10, false, L""));
+            VERIFY_IS_FALSE(page->_tabStrip.HistoryActivating());
+            VERIFY_IS_TRUE(page->_tabStrip.HistoryError().empty());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"history query" }, stripImpl->SearchTextBox().Text());
             page->_CloseSidebarHistory(false);
             VERIFY_IS_FALSE(page->_tabStrip.HistoryActive());
@@ -14996,13 +15012,15 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(strip.HistoryActivating());
             VERIFY_ARE_EQUAL(Visibility::Visible, impl->ItemsList().Visibility());
             VERIFY_IS_TRUE(impl->ItemsList().IsItemClickEnabled());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Cannot focus session" }, impl->HistoryMessage().Text());
-            VERIFY_ARE_EQUAL(Visibility::Visible, impl->HistoryMessage().Visibility());
+            VERIFY_IS_TRUE(strip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, impl->HistoryMessage().Visibility());
             page->_CompleteSidebarHistoryRefresh(page->_historyRequestGeneration, {});
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"Cannot focus session" }, impl->HistoryMessage().Text());
+            const auto refreshError = impl->HistoryMessage().Text();
+            VERIFY_IS_FALSE(refreshError.empty());
             VERIFY_IS_TRUE(strip.HistoryActive());
             VERIFY_IS_TRUE(page->_CompleteSidebarHistoryActivation(page->_historyActivationSerial, true, L""));
             VERIFY_IS_FALSE(strip.HistoryError().empty());
+            VERIFY_ARE_EQUAL(refreshError, impl->HistoryMessage().Text());
             VERIFY_ARE_EQUAL(Visibility::Visible, impl->HistoryMessage().Visibility());
             page->_CompleteSidebarHistoryRefresh(page->_historyRequestGeneration, { State::Ready, { item } });
             VERIFY_ARE_EQUAL(Visibility::Collapsed, impl->HistoryMessage().Visibility());

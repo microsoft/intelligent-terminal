@@ -12937,6 +12937,160 @@ async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn sidebar_cli_resume_startup_failure_before_create_returns_stays_historical() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+
+    struct FailedStart {
+        state: OnceLock<std::sync::Weak<MasterStateInner>>,
+        calls: std::sync::Mutex<Vec<String>>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for FailedStart {
+        async fn request(
+            &self,
+            method: &str,
+            _params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.calls.lock().unwrap().push(method.to_string());
+            if method == "create_tab" {
+                handle_master_wt_event(
+                    &self.state.get().unwrap().upgrade().unwrap(),
+                    serde_json::json!({
+                        "method": "connection_state",
+                        "params": {
+                            "pane_id": "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}",
+                            "state": "failed",
+                            "reason": "The system cannot find the path specified."
+                        }
+                    }),
+                )
+                .await;
+            }
+            Ok(serde_json::json!({
+                "session_id": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+            }))
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    let _resolver = mock_native_delegate_executables();
+    let mock = Arc::new(FailedStart {
+        state: OnceLock::new(),
+        calls: std::sync::Mutex::new(Vec::new()),
+    });
+    let state = make_state_with_wt(mock.clone());
+    mock.state.set(Arc::downgrade(&state)).unwrap();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    let mut row = SessionInfo::new(
+        SessionId::new("failed-resume"),
+        "C:\\deleted-worktree".into(),
+    );
+    row.provider_id = Some("copilot".into());
+    row.cli_source = Some(CliSource::Copilot);
+    row.location = SessionLocation::Host;
+    row.origin = Some(SessionOrigin::Unknown);
+    row.status = Some(AgentStatus::Historical);
+    row.title = Some("Test Session".into());
+    row.pane_session_id = Some("previous-pane".into());
+    let identity = SessionIdentity::from_info(&row);
+    state.registry.upsert(row).await;
+
+    let response = execute_session_activation(
+        &state,
+        &SessionActivateParams {
+            identity: identity.clone(),
+            window_id: 42,
+            activation_id: "failed-resume".into(),
+        },
+    )
+    .await;
+    assert!(!response.accepted);
+    assert_eq!(
+        response.state,
+        crate::session_registry::SessionActivationState::Complete
+    );
+    assert!(response.detail.unwrap().contains("cannot find the path"));
+    assert_eq!(*mock.calls.lock().unwrap(), ["create_tab"]);
+    let restored = state.registry.lookup_identity(&identity).await.unwrap();
+    assert_eq!(restored.status, Some(AgentStatus::Historical));
+    assert!(restored.pane_session_id.is_none());
+    assert!(state.born_bound.lock().await.is_empty());
+    assert!(state.hook_owned.lock().await.is_empty());
+    let events = crate::wt_protocol_events::take_test_published_events();
+    assert_eq!(events.len(), 1);
+    let event: serde_json::Value = serde_json::from_str(&events[0]).unwrap();
+    assert_eq!(event["method"], "session_registry_changed");
+    assert_eq!(event["params"], serde_json::json!({}));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sidebar_cli_resume_failure_after_binding_distinguishes_started_connections() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+
+    for connected in [false, true] {
+        let state = make_state();
+        let mut row = SessionInfo::new(SessionId::new("resumed"), "C:\\repo".into());
+        row.provider_id = Some("copilot".into());
+        row.cli_source = Some(CliSource::Copilot);
+        row.status = Some(AgentStatus::Historical);
+        let identity = SessionIdentity::from_info(&row);
+        state.registry.upsert(row).await;
+        state
+            .registry
+            .mark_resume_dispatched_identity(&identity)
+            .await;
+        state
+            .registry
+            .assign_resume_pane_identity(&identity, "resume-pane".into())
+            .await;
+        state
+            .registry
+            .apply_event(SessionEvent::ConnectionFailed {
+                pane_session_id: "resume-pane".into(),
+                reason: "connection failed".into(),
+            })
+            .await;
+        if connected {
+            handle_master_wt_event(
+                &state,
+                serde_json::json!({
+                    "method": "connection_state",
+                    "params": {"pane_id": "RESUME-PANE", "state": "connected"}
+                }),
+            )
+            .await;
+        }
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method": "connection_state",
+                "params": {"pane_id": "resume-pane", "state": "failed"}
+            }),
+        )
+        .await;
+        let row = state.registry.lookup_identity(&identity).await.unwrap();
+        assert_eq!(
+            row.status,
+            Some(if connected {
+                AgentStatus::Error
+            } else {
+                AgentStatus::Historical
+            })
+        );
+        assert_eq!(
+            row.pane_session_id.as_deref(),
+            connected.then_some("resume-pane")
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn sidebar_cli_resume_enables_watcher_activity_for_new_generation() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};

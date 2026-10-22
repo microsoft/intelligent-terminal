@@ -7679,19 +7679,17 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_CompleteSidebarHistoryActivation(const uint64_t activationSerial, const bool accepted, const winrt::hstring& detail)
     {
+        if (!accepted)
+        {
+            _agentPaneLog("sidebar activation not accepted serial=" + std::to_string(activationSerial) +
+                          " detail=" + (detail.empty() ? std::string{ "unavailable" } : winrt::to_string(detail)));
+        }
         if (_historyActivationSerial != activationSerial || !_AreRecentAgentSessionsVisible())
         {
             return false;
         }
         _tabStrip.HistoryActivating(false);
-        if (accepted)
-        {
-            _tabStrip.HistoryError(L"");
-        }
-        else
-        {
-            _tabStrip.HistoryError(detail.empty() ? RS_(L"VerticalTabsHistoryActivationError") : detail);
-        }
+        _tabStrip.HistoryError(L"");
         return true;
     }
 
