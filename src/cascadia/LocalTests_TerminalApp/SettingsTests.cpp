@@ -3,6 +3,8 @@
 
 #include "pch.h"
 
+#include <winrt/Microsoft.Terminal.Settings.Editor.h>
+
 #include "../inc/AgentYoloPolicy.h"
 #include "../TerminalApp/TerminalPage.h"
 #include "../inc/AgentAvailability.h"
@@ -72,6 +74,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestMixedNestedAndIterableCommand);
 
         TEST_METHOD(TestIterableColorSchemeCommands);
+        TEST_METHOD(TestNewTabMenuExcludesInternalAgentPaneProfile);
 
         TEST_METHOD(TestElevateArg);
         TEST_METHOD(TestAgentSettingsChangeClassification);
@@ -137,6 +140,61 @@ namespace TerminalAppLocalTests
             }
         }
     };
+
+    void SettingsTests::TestNewTabMenuExcludesInternalAgentPaneProfile()
+    {
+        static constexpr std::wstring_view settingsJson{ LR"({
+            "defaultProfile": "{6239a42c-0000-49a3-80bd-e8fdd045185c}",
+            "profiles": [
+                {
+                    "guid": "{fd19208a-412b-4857-8a2d-9ca592b4b16e}",
+                    "name": "Renamed internal helper",
+                    "hidden": true
+                },
+                {
+                    "guid": "{6239a42c-0000-49a3-80bd-e8fdd045185c}",
+                    "name": "Agent Pane",
+                    "commandline": "cmd.exe"
+                },
+                {
+                    "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                    "name": "Hidden user profile",
+                    "commandline": "pwsh.exe",
+                    "hidden": true
+                }
+            ],
+            "newTabMenu": []
+        })" };
+        CascadiaSettings settings{ settingsJson, inboxSettings };
+        const Editor::NewTabMenuViewModel viewModel{ settings };
+        const auto allProfiles = settings.AllProfiles();
+
+        VERIFY_ARE_EQUAL(3u, allProfiles.Size());
+        VERIFY_ARE_EQUAL(2u, viewModel.AvailableProfiles().Size());
+        VERIFY_ARE_EQUAL(allProfiles.GetAt(1), viewModel.AvailableProfiles().GetAt(0));
+        VERIFY_ARE_EQUAL(allProfiles.GetAt(2), viewModel.AvailableProfiles().GetAt(1));
+        VERIFY_ARE_EQUAL(allProfiles.GetAt(1), viewModel.SelectedProfile());
+        VERIFY_IS_NOT_NULL(viewModel.RequestAddSelectedProfileEntry());
+        VERIFY_ARE_EQUAL(allProfiles.GetAt(1), viewModel.CurrentView().GetAt(0).as<Editor::ProfileEntryViewModel>().ProfileEntry().Profile());
+
+        bool profilesChanged = false;
+        const auto token = viewModel.PropertyChanged([&](auto&&, const auto& args) {
+            if (args.PropertyName() == L"AvailableProfiles")
+            {
+                profilesChanged = true;
+            }
+        });
+        allProfiles.RemoveAtEnd();
+        VERIFY_IS_TRUE(profilesChanged);
+        VERIFY_ARE_EQUAL(1u, viewModel.AvailableProfiles().Size());
+        viewModel.PropertyChanged(token);
+        allProfiles.RemoveAtEnd();
+        viewModel.UpdateSettings(settings);
+        VERIFY_ARE_EQUAL(1u, allProfiles.Size());
+        VERIFY_ARE_EQUAL(0u, viewModel.AvailableProfiles().Size());
+        VERIFY_IS_NULL(viewModel.SelectedProfile());
+        VERIFY_IS_NULL(viewModel.RequestAddSelectedProfileEntry());
+    }
 
     void SettingsTests::TestIterateCommands()
     {

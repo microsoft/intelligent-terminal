@@ -318,12 +318,31 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         return single_threaded_vector<Editor::FolderEntryViewModel>(std::move(entries));
     }
 
+    IObservableVector<Model::Profile> NewTabMenuViewModel::AvailableProfiles() const
+    {
+        // The built-in helper profile is not a user-launchable new-tab entry.
+        static constexpr winrt::guid agentPaneProfileGuid{ L"{fd19208a-412b-4857-8a2d-9ca592b4b16e}" };
+        std::vector<Model::Profile> profiles;
+        for (const auto& profile : _Settings.AllProfiles())
+        {
+            if (profile.Guid() != agentPaneProfileGuid)
+            {
+                profiles.push_back(profile);
+            }
+        }
+        return single_threaded_observable_vector<Model::Profile>(std::move(profiles));
+    }
+
     void NewTabMenuViewModel::UpdateSettings(const Model::CascadiaSettings& settings)
     {
         _Settings = settings;
+        _profilesChangedRevoker = _Settings.AllProfiles().VectorChanged(winrt::auto_revoke, [this](auto&&, auto&&) {
+            _NotifyChanges(L"AvailableProfiles");
+        });
         _NotifyChanges(L"AvailableProfiles");
 
-        SelectedProfile(AvailableProfiles().GetAt(0));
+        const auto profiles = AvailableProfiles();
+        SelectedProfile(profiles.Size() ? profiles.GetAt(0) : nullptr);
 
         _rootEntries = _ConvertToViewModelEntries(_Settings.GlobalSettings().NewTabMenu(), _Settings);
         _rootEntriesChangedRevoker = _rootEntries.VectorChanged(winrt::auto_revoke, [this](auto&&, const IVectorChangedEventArgs& args) {
