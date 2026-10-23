@@ -3,23 +3,27 @@
 Static plugin/extension bundle that forwards CLI agent lifecycle events from
 **Claude Code**, **Copilot CLI**, **Codex CLI**, **Gemini CLI**, **OpenCode**, and **Antigravity**
 to Windows Terminal (WTA)
-via `wtcli`. This lets the WTA agent pane display real-time tool
+via in-band VT sequences, with `wtcli` retained only as a compatibility fallback.
+This lets Terminal show tab activity even without a WTA listener, and lets the WTA agent pane display real-time tool
 use, prompts, and session events from any agent CLI session running in another
 pane.
 
 ## Layout
 
 This directory is the **single source of truth** for everything WTA installs
-into the supported CLIs. Each CLI gets its own self-contained subtree that is
-passed verbatim to that CLI's marketplace / extensions command:
+into the supported CLIs. Each CLI gets its own plugin/manifest subtree passed
+to its marketplace or extension command; shared transport writers remain in
+Terminal's package:
 
 ```
 wt-agent-hooks/
+├── emit-hook.ps1                           # shared Windows console writer
+├── emit-hook.sh                            # shared POSIX controlling-tty writer
 ├── claude/                                 # passed to `claude plugin marketplace add`
 │   ├── .claude-plugin/marketplace.json
 │   └── wt-agent-hooks/                     # the plugin folder Claude copies into ~/.claude/
 │       ├── .claude-plugin/plugin.json
-│       └── hooks/hooks.json                # native wtcli agent-hook commands
+│       └── hooks/hooks.json                # VT writer with native fallback
 ├── copilot/                                # passed to `copilot plugin marketplace add`
 │   ├── .github/plugin/marketplace.json      # Copilot-native marketplace
 │   └── wt-agent-hooks/
@@ -44,8 +48,11 @@ wt-agent-hooks/
     └── state-logger.ps1
 ```
 
-Every integration dispatches through the native `wtcli agent-hook` command,
-invoked directly from `hooks.json` with no script or batch launcher in between.
+Terminal injects `WT_AGENT_HOOK_DIR` pointing to these packaged shared writers.
+Windows command hooks use the PowerShell writer; POSIX hooks use the controlling
+tty, and OpenCode writes from its existing process. Only an unavailable VT
+channel falls back to `wtcli agent-hook`. Older Terminal versions without the
+writer marker continue using the compatibility command.
 Claude and Copilot share non-version plugin metadata and common lifecycle hooks;
 Copilot additionally subscribes a successful tool-return hook.
 
@@ -352,23 +359,78 @@ References:
 ## Hook bridge
 
 ```
-Agent CLI ─── hook fires ──▶ wtcli agent-hook ──▶ WTA
-                             (stdin JSON + COM)
+Agent CLI ─── hook fires ──▶ owning console / tty ──▶ Terminal ──▶ WTA
+                             (OSC 9001)             indicator    session registry
+                          └─ no console ──▶ wtcli agent-hook (compatibility)
 ```
 
-The native bridge reads the hook JSON from stdin and wraps it as
-`{cli_source: <claude|codex|copilot|gemini|opencode>, agent_session_id: <sid>, payload: <hook_data>}`,
-then publish an `agent_event` through Terminal's COM protocol. The `cli_source`
+The shared writer reads hook JSON from stdin and wraps it as
+`{cli_source: <claude|codex|copilot|gemini|opencode|antigravity|custom:name>, agent_session_id: <sid>, payload: <hook_data>}`,
+then emits `OSC 9001;AgentEvent64;<base64-UTF8-JSON> BEL`. Terminal normalizes and
+redacts the payload using the same code as the native bridge before publishing
+`agent_event`. The `cli_source`
 field is hard-coded per CLI in `hooks.json`; env-var heuristics are unreliable
 because Copilot CLI inherits Claude's plugin shape and sets
 `CLAUDE_PLUGIN_ROOT`, making it indistinguishable from a real Claude run.
 
-`wtcli agent-hook` requires `WT_COM_CLSID` and `WT_SESSION`, writes nothing, and
-always exits successfully. The shared ACP process has no `WT_SESSION`, so its
+The writer requires an owning `WT_SESSION`, writes no hook response, and fails
+open. It opens `CONOUT$` on Windows or `/dev/tty` on POSIX instead of writing
+to captured stdout. The compatibility bridge additionally requires
+`WT_COM_CLSID` and connects only to an already-running Terminal.
+The shared ACP process has no `WT_SESSION`, so its
 redundant hooks are dropped and cannot be incorrectly attributed to the active
 shell pane.
 
+### Custom hooks without a Terminal-specific executable
+
+For tab indicators alone, send the existing `OSC 9;4` progress protocol:
+
+| State | Sequence | Meaning |
+| --- | --- | --- |
+| Working | `ESC ] 9;4;3 BEL` | Indeterminate progress ring |
+| Waiting | `ESC ] 9;4;4 BEL` | Paused / attention |
+| Error | `ESC ] 9;4;2 BEL` | Error |
+| Idle / stopped | `ESC ] 9;4;0 BEL` | Clear the indicator |
+
+For example, a Bash hook can use
+`printf '\033]9;4;3\007' > /dev/tty` on prompt submission and
+`printf '\033]9;4;0\007' > /dev/tty` on stop. Write to the controlling terminal,
+not the hook's stdout: many providers capture stdout or parse it as a permission
+response. On Windows the corresponding destination is `CONOUT$`; the output
+console must have VT processing enabled. No `wtcli`, COM identity, built-in agent
+registration, or WTA listener is required for this progress protocol.
+
+For session metadata as well as indicators, emit:
+
+```text
+ESC ] 9001;AgentEvent;{"event":"agent.prompt.submit","cli_source":"custom:my-agent","agent_session_id":"my-session","payload":{"cwd":"C:\\repo"}} BEL
+```
+
+`AgentEvent64` accepts the same JSON encoded as UTF-8 then standard Base64.
+Use it when building a hook from arbitrary input so control bytes cannot
+terminate the OSC. JSON string values must still be correctly escaped.
+Terminal supplies pane, tab, and window identity from the emitting connection;
+the producer must not supply another pane's identity. Session IDs use the same
+bounded safe-token contract as the built-in hooks.
+
+Use `agent.session.start`, `agent.prompt.submit`, `agent.tool.starting`,
+`agent.notification`, `agent.stop`, `agent.error`, and `agent.session.end`.
+`payload.tool_name` identifies a tool, and `payload.message` describes a wait.
+Terminal projects these events into tab progress locally, ignores informational
+notifications, and does not restart progress for a late Copilot tool return
+after Stop. A returned shell prompt clears hook-owned progress. Explicit native
+`OSC 9;4` progress takes precedence, including when it arrives before the first
+hook, and remains authoritative until its explicit clear. This preserves an
+agent's own percentages.
+Custom CLI installation, history discovery, and resume command support are
+separate capabilities; emitting VT does not register a custom executable for them.
+
 ### Known limitation: Codex managed daemon pane identity
+
+VT cannot manufacture a per-client controlling terminal for a shared daemon.
+If the daemon still owns another tab's console, or has no console and falls
+back to its inherited environment, its hooks still cannot identify a new client
+pane reliably.
 
 Codex's shared managed app-server can execute hooks for a new CLI session using
 the environment inherited when the daemon first started. If that was another
@@ -445,38 +507,30 @@ to that event could deny tool calls in every later session:
   └ Denied by preToolUse hook from "…" (hook errored)
 ```
 
-### Copilot runs without a hook shell
+### Provider hook runners and compatibility guards
 
 Copilot subscribes only to `SessionStart`, `SessionEnd`, `Notification`,
 `UserPromptSubmit`, `PostToolUse`, `StopFailure`, and `Stop`, never `PreToolUse`
 or other tool-permission events. All seven handlers use the documented
-direct-executable form:
+direct-executable form to launch the shared Windows writer:
 
 ```json
 {
   "type": "command",
-  "exec": "wtcli.exe",
-  "args": ["agent-hook", "--cli-source", "copilot", "--event", "agent.session.start"],
+  "exec": "powershell.exe",
+  "args": ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "try { if ($env:WT_AGENT_HOOK_DIR) { & (Join-Path $env:WT_AGENT_HOOK_DIR 'emit-hook.ps1') -CliSource copilot -Event agent.session.start } else { wtcli.exe agent-hook --cli-source copilot --event agent.session.start } } catch { }; exit 0"],
   "timeoutSec": 5
 }
 ```
 
-This removes the PowerShell or bash startup from every callback. Copilot passes
-the hook JSON directly to the native process on stdin; arguments do not pass
-through shell parsing. `exec` must not be combined with `command`, `powershell`,
-or `bash`. Use a Copilot CLI version that supports `exec` and `args`; the local
-validation version is 1.0.98. No shell fallback is shipped.
+Copilot passes hook JSON directly on stdin. `exec` must not be combined with
+`command`, `powershell`, or `bash`. The Windows writer uses a small native console
+interop shim; this is not a claim of lower process-startup cost than the native
+compatibility command. The existing five-second hook timeout is unchanged.
 
-An isolated Copilot CLI 1.0.98 prompt delivered native session-start, prompt,
-stop, and session-end callbacks with the expected argument vector and JSON
-stdin. The same prompt still completed when every hook executable was missing.
-
-The native bridge already stays silent and exits successfully when Terminal
-identity is absent or event forwarding fails. If `wtcli.exe` itself is missing,
-it cannot start and Copilot can report a hook error; the removed shell guards
-no longer hide that error. Keep these handlers off fail-closed tool-permission
-events. The existing five-second timeout still bounds a hung bridge, and the
-CLI's plugin manager can remove a stale hook registration.
+The following snippets show only the legacy compatibility branches. Current
+manifests select the shared VT writer first and keep these guards for older
+Terminal versions or an unavailable console.
 
 Claude has no `powershell` / `bash` field pair, but it does document a `shell`
 field accepting `"bash"` or `"powershell"`, so it pins the shell and guards
@@ -509,15 +563,11 @@ to write the PowerShell guard straight into `command`:
 }
 ```
 
-Codex has neither field pair nor a `shell` field either, and needs the same
-PowerShell guard as Gemini:
-
-```json
-{
-  "type": "command",
-  "command": "try { wtcli.exe agent-hook --cli-source codex --event <topic> } catch { }; exit 0"
-}
-```
+Codex uses a POSIX command for Bash and `commandWindows` for Windows. The latter
+starts PowerShell with one quoted body and uses `[Environment]` lookups instead
+of expandable `$env:` expressions. This preserves spaced writer paths and
+prevents the outer shell from expanding the body before it reaches PowerShell,
+whether the provider selected PowerShell or cmd.exe.
 
 Codex shipped the bare spelling until 0.1.5, on the theory that its marketplace
 entry points at the package directory, so an uninstall would take the plugin
@@ -532,24 +582,19 @@ and Codex reports every one of them in the conversation:
   error: hook exited with code 1
 ```
 
-That exit code is also what settles the shell. An unresolvable command exits 1
-under PowerShell, 9009 under `cmd.exe`, and 127 under bash, which confirms the
-`pwsh.exe -NoProfile -Command` dispatch already recorded in the shell table
-above — so the guard is written for PowerShell rather than guessed.
-
 Current state with the bridge missing:
 
 | CLI | Mechanism | Result |
 | --- | --- | --- |
-| Copilot | Direct `exec` + `args` | CLI logs the launch failure; session continues (fail-open) |
+| Copilot | Direct `exec` + `args`, guarded writer/fallback | exit 0, silent |
 | Claude | `shell: "bash"` + `command -v` guard | exit 0, silent |
 | Gemini | PowerShell guard in `command` | exit 0, silent |
-| Codex | POSIX guard in `command`, cmd.exe wrapper in `commandWindows` | exit 0, silent in both Windows shells |
+| Codex | POSIX guard in `command`, quoted PowerShell host in `commandWindows` | exit 0, silent in both Windows shells |
 | OpenCode | JS `try`/`catch`, output ignored | exit 0, silent |
 
-OpenCode needs none of this: its plugin spawns `wtcli.exe` through an argv array
-rather than a shell string, already gates on `WT_COM_CLSID` / `WT_SESSION`,
-ignores both output streams, and wraps the spawn in `try`/`catch`.
+OpenCode writes VT from its existing process and only spawns the compatibility
+bridge when the console cannot be opened. Its existing ACP and owning-TUI
+identity guards remain in place.
 
 ## Manual install (for testing without `wta` startup)
 

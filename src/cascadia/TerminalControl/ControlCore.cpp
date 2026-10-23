@@ -330,6 +330,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         {
             const auto lock = _terminal->LockForWriting();
+            _agentHookProgress = {};
             _terminal->ResetShellIntegrationState();
             if (_terminal->GetTaskbarState() != 0)
             {
@@ -2347,9 +2348,61 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             }
 
             // Now outside the lock — safe to raise events that may block on pipe I/O.
+            namespace AgentEvents = ::Microsoft::Terminal::Protocol::Parsing;
+            std::optional<AgentEvents::AgentProgressState> hookProgress;
             for (const auto& seq : vtSequences)
             {
+                const std::wstring_view sequence{ seq };
+                if (sequence == L"osc:9;4" || sequence == L"osc:9;4;")
+                {
+                    _agentHookProgress.ObserveNativeProgress(false);
+                    hookProgress.reset();
+                }
+                else if (sequence.starts_with(L"osc:9;4;"))
+                {
+                    const auto parts = Utils::SplitString(sequence.substr(8), L';');
+                    unsigned int state{};
+                    unsigned int value{};
+                    if (!parts.empty() && (parts[0].empty() || Utils::StringToUint(parts[0], state)) && state <= 4 &&
+                        (parts.size() < 2 || parts[1].empty() || Utils::StringToUint(parts[1], value)))
+                    {
+                        _agentHookProgress.ObserveNativeProgress(state != 0);
+                        hookProgress.reset();
+                    }
+                }
+                else if (AgentEvents::IsAgentEventSequence(sequence))
+                {
+                    Json::Value params;
+                    const auto paneId = _connection ? winrt::to_string(winrt::to_hstring(_connection.SessionId())) : std::string{};
+                    if (AgentEvents::ParseAgentEventSequence(sequence, paneId, params))
+                    {
+                        if (const auto progress = _agentHookProgress.Apply(params))
+                        {
+                            hookProgress = progress;
+                        }
+                        Json::StreamWriterBuilder writer;
+                        writer["indentation"] = "";
+                        VtSequenceReceived.raise(*this, winrt::hstring{ L"AgentEvent;" + til::u8u16(Json::writeString(writer, params)) });
+                    }
+                    else
+                    {
+                        LOG_HR_MSG(E_INVALIDARG, "Invalid in-band agent hook event");
+                    }
+                    continue;
+                }
+                else if (sequence == L"osc:133;A")
+                {
+                    if (const auto progress = _agentHookProgress.ShellPrompt())
+                    {
+                        hookProgress = progress;
+                    }
+                }
                 VtSequenceReceived.raise(*this, seq);
+            }
+            if (hookProgress)
+            {
+                const auto lock = _terminal->LockForWriting();
+                _terminal->SetTaskbarProgress(static_cast<DispatchTypes::TaskbarState>(*hookProgress), 0);
             }
 
             if (!_pendingResponses.empty())

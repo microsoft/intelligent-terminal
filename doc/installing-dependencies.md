@@ -480,6 +480,13 @@ only the selected agent's hooks. After FRE, Intelligent Terminal automatically
 reconciles hooks at `wta-master` startup, when Session management changes from
 off to on, and when you select a different built-in agent.
 
+Hooks report activity through the owning terminal's VT stream, so tab activity
+indicators do not depend on the session-management listener. The native bridge
+remains a fallback for hooks without a usable controlling terminal. Custom hook
+authors can emit `OSC 9;4` directly for indicators, or the structured agent-event
+protocol for session metadata; see the
+[hook protocol guide](../tools/wta/wt-agent-hooks/README.md#custom-hooks-without-a-terminal-specific-executable).
+
 You only need to follow this section if:
 
 - The FRE reported that hooks installation failed (for example because

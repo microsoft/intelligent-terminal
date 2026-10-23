@@ -49,6 +49,7 @@
     <ProjectReference Include="$(OpenConsoleDir)\src\cascadia\TerminalApp\TerminalAppLib.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)\src\cascadia\TerminalSettingsModel\Microsoft.Terminal.Settings.ModelLib.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)\src\types\lib\types.vcxproj" />
+    <ProjectReference Include="$(OpenConsoleDir)src\terminal\parser\lib\parser.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)src\propslib\propslib.vcxproj" />
     <ProjectReference Include="ProtocolMarshalingProbe\ProtocolMarshalingProbe.vcxproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
