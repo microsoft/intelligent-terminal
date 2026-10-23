@@ -3,6 +3,44 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Microsoft's Windows Terminal Settings Profile Schema",
   "$defs": {
+    "CustomAgentInvocation": {
+      "type": "object",
+      "required": ["command"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" }, "default": [] }
+      },
+      "additionalProperties": false
+    },
+    "CustomAgent": {
+      "type": "object",
+      "required": ["id"],
+      "anyOf": [{ "required": ["acp"] }, { "required": ["cli"] }],
+      "dependentRequired": { "resume": ["cli"] },
+      "properties": {
+        "id": { "type": "string", "pattern": "^custom:[A-Za-z0-9_.-]+$" },
+        "name": { "type": "string" },
+        "acp": { "$ref": "#/$defs/CustomAgentInvocation" },
+        "cli": { "$ref": "#/$defs/CustomAgentInvocation" },
+        "resume": {
+          "type": "object",
+          "required": ["command", "args"],
+          "properties": {
+            "command": { "type": "string", "minLength": 1 },
+            "args": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^(\\{sessionId\\}|[^{}]*)$" },
+              "contains": { "const": "{sessionId}" },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            "canResumeAcpSessions": { "type": "boolean", "default": false }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "KeyChordSegment": {
       "pattern": "^(?:(?:ctrl|alt|shift|win)\\+)*(?:app|backspace|browser_(?:back|forward|refresh|stop|search|favorites|home)|comma|delete|down|end|enter|esc|escape|home|insert|left|menu|minus|pagedown|pageup|period|pgdn|pgup|plus|right|space|tab|up|f(?:1\\d?|2[0-4]?|[3-9])|numpad\\d|numpad_(?:\\d|add|decimal|divide|minus|multiply|period|plus|subtract)|(?:vk|sc)\\((?:[1-9]|1?\\d{2}|2[0-4]\\d|25[0-5])\\)|[^\\s+])(?:\\+(?:ctrl|alt|shift|win))*$",
       "type": "string",
@@ -2386,6 +2424,12 @@
       "description": "Properties that affect the entire window, regardless of the profile settings.",
       "type": "object",
       "properties": {
+        "customAgents": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CustomAgent" },
+          "description": "Custom agents with stable IDs and independent Windows-host ACP, interactive CLI, and resume invocations. Defining cli generates a native profile. Resume args require exactly one complete {sessionId} argument.",
+          "default": []
+        },
         "alwaysOnTop": {
           "default": false,
           "description": "When set to true, the window is created on top of all other windows. If multiple windows are all \"always on top\", the most recently focused one will be the topmost",
@@ -3232,9 +3276,12 @@
           ]
         },
         "agentProfile.id": {
-          "description": "Built-in native interactive agent launched by this profile. Empty disables managed agent launching.",
+          "description": "Built-in or configured custom native interactive agent launched by this profile. Empty disables managed agent launching.",
           "type": ["string", "null"],
-          "enum": ["", "copilot", "claude", "codex", "gemini", "opencode", "antigravity", null]
+          "anyOf": [
+            { "enum": ["", "copilot", "claude", "codex", "gemini", "opencode", "antigravity", null] },
+            { "type": "string", "pattern": "^custom:[A-Za-z0-9_.-]+$" }
+          ]
         },
         "agentProfile.model": {
           "description": "Native CLI model identifier. Empty leaves the agent's own configuration unchanged. Applies only when commandline has no explicit override.",

@@ -18,6 +18,7 @@ mod clipboard_image;
 mod command_recall;
 mod commands;
 mod coordinator;
+mod custom_agents;
 mod custom_model_provider;
 mod cwd_util;
 mod event;

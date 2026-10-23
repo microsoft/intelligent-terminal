@@ -1,0 +1,16 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+namespace Microsoft.Terminal.Settings.Model
+{
+    runtimeclass CustomAgent
+    {
+        CustomAgent(String id, String name);
+        String Id;
+        String Name;
+        String AcpCommand;
+        String CliCommand;
+        String ResumeCommand;
+        Boolean CanResumeAcpSessions;
+    }
+}

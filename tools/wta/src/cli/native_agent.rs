@@ -1,6 +1,6 @@
 //! Native interactive profiles deliberately bypass ACP, helper UI and session synthesis.
 
-mod policy;
+pub(crate) mod policy;
 #[cfg(test)]
 mod tests;
 

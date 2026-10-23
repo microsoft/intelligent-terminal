@@ -84,7 +84,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     struct SettingsLoader
     {
         static SettingsLoader Default(const std::string_view& userJSON, const std::string_view& inboxJSON);
-        static std::vector<Model::ExtensionPackage> LoadExtensionPackages();
+        static std::vector<Model::ExtensionPackage> LoadExtensionPackages(const Windows::Foundation::Collections::IVector<Model::CustomAgent>& customAgents);
         SettingsLoader(const std::string_view& userJSON, const std::string_view& inboxJSON);
 
         void GenerateProfiles();

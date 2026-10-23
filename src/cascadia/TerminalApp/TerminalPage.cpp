@@ -1704,9 +1704,7 @@ namespace winrt::TerminalApp::implementation
         // Custom agents: use the stored custom command directly.
         if (_IsCustomAgentId(acpAgent))
         {
-            const auto customCmd = globals.AcpCustomCommand();
-            if (!customCmd.empty())
-                return customCmd;
+            return winrt::hstring{ ::Microsoft::Terminal::CustomAgents::AcpCommand(globals, acpAgent) };
         }
 
         const auto model = _IsAgentByokConfigured(acpAgent, globals) ?
@@ -1962,12 +1960,16 @@ namespace winrt::TerminalApp::implementation
     {
         if (tab->HasAgentOverride())
         {
+            if (const auto agent = ::Microsoft::Terminal::CustomAgents::Find(_settings.GlobalSettings(), tab->AgentIdOverride()))
+            {
+                return agent.AcpCommand();
+            }
             return tab->AgentCustomCommandOverride();
         }
 
         const auto& globals = _settings.GlobalSettings();
         return _IsCustomAgentId(globals.EffectiveAcpAgent()) ?
-                   globals.AcpCustomCommand() :
+                   winrt::hstring{ ::Microsoft::Terminal::CustomAgents::AcpCommand(globals, globals.EffectiveAcpAgent()) } :
                    winrt::hstring{};
     }
 
@@ -2398,7 +2400,9 @@ namespace winrt::TerminalApp::implementation
         const auto& globals = _settings.GlobalSettings();
         AgentSettingsSnapshot snapshot{
             std::wstring{ globals.AcpAgent() },
-            std::wstring{ globals.AcpCustomCommand() },
+            _IsCustomAgentId(globals.AcpAgent()) ?
+                ::Microsoft::Terminal::CustomAgents::AcpCommand(globals, globals.AcpAgent()) :
+                std::wstring{ globals.AcpCustomCommand() },
             _IsAgentByokConfigured(globals.EffectiveAcpAgent(), globals) ?
                 std::wstring{} :
                 std::wstring{ globals.AcpModel() },
@@ -4109,7 +4113,7 @@ namespace winrt::TerminalApp::implementation
             {
                 effectiveModel = globals.AcpModel();
             }
-            agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, tab->AgentCustomCommandOverride(), effectiveAgentSource == L"wsl");
+            agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, _GetAgentPaneCustomCommand(tab.get()), effectiveAgentSource == L"wsl");
         }
         else if (sourceProfile)
         {
@@ -7243,7 +7247,8 @@ namespace winrt::TerminalApp::implementation
             const auto& cliSource = row["cli_source"];
             const auto& location = row["location"];
             const auto validCliSource = cliSource.isNull() || cliSource.isString() ||
-                                        (cliSource.isObject() && cliSource.size() == 1 && cliSource["Unknown"].isString());
+                                        (cliSource.isObject() && cliSource.size() == 1 &&
+                                         (cliSource["Unknown"].isString() || cliSource["Custom"].isString()));
             const auto validLocation = location.isNull() ||
                                        (location.isString() && (location.asString() == "Host" || location.asString() == "Unknown")) ||
                                        (location.isObject() && location.size() == 1 &&
@@ -9250,7 +9255,17 @@ namespace winrt::TerminalApp::implementation
                 ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
                 ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(
                     profile.AgentProfileId(), *::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
-                settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(profile, true) });
+                if (::Microsoft::Terminal::CustomAgents::IsId(std::wstring_view{ profile.AgentProfileId() }))
+                {
+                    const auto agent = ::Microsoft::Terminal::CustomAgents::Find(_settings.GlobalSettings(), profile.AgentProfileId());
+                    THROW_HR_IF_MSG(HRESULT_FROM_WIN32(ERROR_NOT_FOUND), !agent || agent.CliCommand().empty(), "The custom agent's interactive CLI command is no longer configured");
+                    settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::CustomAgents::LaunchCommand(
+                        ::Microsoft::Terminal::CustomAgents::Parse(agent.CliCommand())) });
+                }
+                else
+                {
+                    settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(profile, true) });
+                }
             }
 
             // Update the path to be relative to whatever our CWD is.
@@ -10946,12 +10961,18 @@ namespace winrt::TerminalApp::implementation
         const auto agent = std::find_if(allowed.begin(), allowed.end(), [&](const auto& candidate) {
             return Model::AgentRegistry::AgentIdEquals(candidate.id, backend->agentId);
         });
-        if (agent == allowed.end())
+        if (agent == allowed.end() && (!::Microsoft::Terminal::CustomAgents::IsId(backend->agentId) ||
+                                       backend->source != Model::AgentPaneBackendSource::Host ||
+                                       !Model::AgentPolicy::IsCustomAgentAllowed() ||
+                                       ::Microsoft::Terminal::CustomAgents::AcpCommand(_settings.GlobalSettings(), backend->agentId).empty()))
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: unknown or policy-blocked agent");
             return;
         }
-        backend->agentId = agent->id;
+        if (agent != allowed.end())
+        {
+            backend->agentId = agent->id;
+        }
 
         // Step 1: create a new tab.
         Settings::Model::NewTerminalArgs newTerminalArgs{};
@@ -11148,8 +11169,16 @@ namespace winrt::TerminalApp::implementation
         const std::wstring_view sessionId)
     {
         const auto paneSessionId = _TryParsePaneSessionId(paneId);
-        const auto resumeCommandline = ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(agent, sessionId);
-        if (!paneSessionId || resumeCommandline.empty())
+        const auto custom = ::Microsoft::Terminal::CustomAgents::IsId(agent);
+        if (custom &&
+            (!::Microsoft::Terminal::AgentPaneRestore::IsValidSessionId(sessionId) || sessionId.starts_with(L"-")))
+        {
+            return;
+        }
+        const auto resumeCommandline = custom ?
+                                           std::wstring{} :
+                                           ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(agent, sessionId);
+        if (!paneSessionId || (!custom && resumeCommandline.empty()))
         {
             return;
         }
@@ -11158,10 +11187,39 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring{ sessionId },
             winrt::hstring{ agent },
             winrt::hstring{ resumeCommandline } };
+        binding.structuredCustomResume = custom;
+        if (custom)
+        {
+            namespace Backend = ::Microsoft::Terminal::Settings::Model;
+            binding.backend = winrt::hstring{ Backend::AgentPaneBackend::Host(agent) };
+            if (const auto previous = _paneAgentSessions.find(*paneSessionId);
+                previous != _paneAgentSessions.end() &&
+                Backend::AgentRegistry::AgentIdEquals(previous->second.agent, binding.agent) &&
+                previous->second.sessionId == binding.sessionId &&
+                !previous->second.backend.empty())
+            {
+                if (const auto backend = Backend::AgentPaneBackend::Parse(std::wstring_view{ previous->second.backend });
+                    backend && Backend::AgentRegistry::AgentIdEquals(backend->agentId, agent))
+                {
+                    binding.backend = winrt::hstring{ backend->source == Backend::AgentPaneBackendSource::Wsl ?
+                                                         Backend::AgentPaneBackend::Wsl(backend->wslDistro, agent) :
+                                                         Backend::AgentPaneBackend::Host(agent) };
+                }
+            }
+            // An explicit owning-shell source wins; a default host shell must not
+            // erase the qualified provenance of an already bound conversation.
+            const auto shellName = control.ShellName();
+            const std::wstring_view shell{ shellName };
+            if (shell.starts_with(L"wsl:"))
+            {
+                binding.backend = winrt::hstring{ Backend::AgentPaneBackend::Wsl(shell.substr(4), agent) };
+            }
+        }
         if (const auto existing = _interactiveResumeSessions.find(*paneSessionId);
             existing != _interactiveResumeSessions.end() &&
             existing->second.sessionId == binding.sessionId &&
-            existing->second.agent == binding.agent)
+            ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(existing->second.agent, binding.agent) &&
+            existing->second.backend == binding.backend)
         {
             return;
         }
@@ -11183,6 +11241,16 @@ namespace winrt::TerminalApp::implementation
         params["agent_session_id"] = winrt::to_string(binding.sessionId);
         params["agent"] = winrt::to_string(binding.agent);
         params["cwd"] = winrt::to_string(control.WorkingDirectory());
+        if (custom)
+        {
+            params["agent_backend"] = winrt::to_string(binding.backend);
+            if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
+                    std::wstring_view{ binding.backend });
+                backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl)
+            {
+                params["wsl_distro"] = winrt::to_string(winrt::hstring{ backend->wslDistro });
+            }
+        }
         if (!tabId.empty())
         {
             params["tab_id"] = std::string{ tabId };
@@ -11583,6 +11651,13 @@ namespace winrt::TerminalApp::implementation
                             const auto ownerPane = rootPane->FindPaneBySessionId(*paneSessionId);
                             const auto control = ownerPane ? ownerPane->GetTerminalControl() : nullptr;
                             winrt::hstring bindingBackend;
+                            if (const auto previous = _paneAgentSessions.find(*paneSessionId);
+                                previous != _paneAgentSessions.end() &&
+                                Backend::AgentRegistry::AgentIdEquals(previous->second.agent, winrt::to_hstring(agent)) &&
+                                previous->second.sessionId == winrt::to_hstring(agentSessionId))
+                            {
+                                bindingBackend = previous->second.backend;
+                            }
                             if (params.isMember("wsl_distro"))
                             {
                                 if (!params["wsl_distro"].isString() || params["wsl_distro"].asString().empty())
@@ -11617,6 +11692,14 @@ namespace winrt::TerminalApp::implementation
                                 bindingBackend = winrt::hstring{ Backend::AgentPaneBackend::Wsl(
                                     shell.substr(4), std::wstring_view{ winrt::to_hstring(agent) }) };
                             }
+                            // Persist the backend with the same provider spelling as its owner.
+                            if (const auto backend = Backend::AgentPaneBackend::Parse(std::wstring_view{ bindingBackend });
+                                backend && Backend::AgentRegistry::AgentIdEquals(backend->agentId, winrt::to_hstring(agent)))
+                            {
+                                bindingBackend = winrt::hstring{ backend->source == Backend::AgentPaneBackendSource::Wsl ?
+                                                                    Backend::AgentPaneBackend::Wsl(backend->wslDistro, winrt::to_hstring(agent)) :
+                                                                    Backend::AgentPaneBackend::Host(winrt::to_hstring(agent)) };
+                            }
                             const auto& payload = params["payload"];
                             const auto cwd = params.isMember("cwd") ? params["cwd"] :
                                              payload.isObject()     ? payload.get("cwd", Json::Value{}) :
@@ -11635,10 +11718,18 @@ namespace winrt::TerminalApp::implementation
                             if (const auto previous = _paneAgentSessions.find(*paneSessionId);
                                 previous == _paneAgentSessions.end() ||
                                 previous->second.sessionId != winrt::to_hstring(agentSessionId) ||
-                                previous->second.agent != winrt::to_hstring(agent))
+                                !Backend::AgentRegistry::AgentIdEquals(previous->second.agent, winrt::to_hstring(agent)))
                             {
                                 clearExplicitResume();
                             }
+                            const auto previous = _paneAgentSessions.find(*paneSessionId);
+                            const auto custom = ::Microsoft::Terminal::CustomAgents::Find(_settings.GlobalSettings(), winrt::to_hstring(agent));
+                            const auto structuredCustomResume =
+                                (custom && !custom.ResumeCommand().empty()) ||
+                                (previous != _paneAgentSessions.end() &&
+                                 Backend::AgentRegistry::AgentIdEquals(previous->second.agent, winrt::to_hstring(agent)) &&
+                                 previous->second.sessionId == winrt::to_hstring(agentSessionId) &&
+                                 previous->second.structuredCustomResume);
                             _paneAgentSessions.insert_or_assign(
                                 *paneSessionId,
                                 _PaneAgentSession{
@@ -11646,7 +11737,8 @@ namespace winrt::TerminalApp::implementation
                                     winrt::to_hstring(agent),
                                     winrt::to_hstring(resumeCommandline),
                                     bindingBackend,
-                                    bindingCwd });
+                                    bindingCwd,
+                                    structuredCustomResume });
                             _agentPaneLog("OnPaneAgentSessionChanged: bound pane " + paneId + " to session " + agentSessionId);
                         }
                         else
@@ -16666,9 +16758,32 @@ namespace winrt::TerminalApp::implementation
             controlSettings = Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, newTerminalArgs);
         }
 
-        const auto restoredAgent = newTerminalArgs ?
-                                       ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(newTerminalArgs.Commandline()) :
-                                       ::Microsoft::Terminal::AgentPaneRestore::ResumeTarget{};
+        auto restoredAgent = newTerminalArgs ?
+                                 ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(newTerminalArgs.Commandline()) :
+                                 ::Microsoft::Terminal::AgentPaneRestore::ResumeTarget{};
+        if (newTerminalArgs && !newTerminalArgs.CustomAgentSessionId().empty())
+        {
+            namespace Custom = ::Microsoft::Terminal::CustomAgents;
+            const auto id = newTerminalArgs.NativeAgentProviderId();
+            THROW_HR_IF(E_INVALIDARG, !Custom::IsId(id));
+            // Custom definitions are Windows-only. Never reinterpret a saved
+            // non-host conversation using a same-ID Windows definition.
+            const auto backend = newTerminalArgs.CustomAgentBackend();
+            THROW_HR_IF(E_INVALIDARG, !backend.empty() && backend != winrt::hstring{ L"host:" + std::wstring{ id } });
+            namespace Policy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
+            Policy::Reload();
+            ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(id, *Policy::GetSnapshot());
+            const auto command = Custom::ResumeCommand(_settings.GlobalSettings(), id, newTerminalArgs.CustomAgentSessionId());
+            // Expanding the command must not reselect a command-matching profile
+            // (or ProfileDefaults) instead of the profile already resolved above.
+            newTerminalArgs.Profile(Utils::GuidToString(profile.Guid()));
+            newTerminalArgs.Commandline(winrt::hstring{ command });
+            controlSettings = Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, newTerminalArgs);
+            restoredAgent.agent = id;
+            restoredAgent.sessionId = newTerminalArgs.CustomAgentSessionId();
+            restoredAgent.backend = L"host:" + std::wstring{ id };
+            restoredAgent.cwd = newTerminalArgs.StartingDirectory();
+        }
         if (newTerminalArgs && newTerminalArgs.NativeAgentProviderId().empty() && !restoredAgent.agent.empty())
         {
             newTerminalArgs.NativeAgentProviderId(winrt::hstring{ restoredAgent.agent });
@@ -16711,9 +16826,11 @@ namespace winrt::TerminalApp::implementation
         const auto profileAgentId = profile.AgentProfileId();
         const auto profileProvider = ::Microsoft::Terminal::Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(
             std::wstring_view{ profileAgentId });
-        const auto nativeAgentProvider = !profileProvider.empty() ?
-                                             winrt::hstring{ profileProvider } :
-                                             newTerminalArgs ? newTerminalArgs.NativeAgentProviderId() : winrt::hstring{};
+        // _maybeElevate validates and canonicalizes explicit provider metadata,
+        // including history activation's expanded command without a session flag.
+        const auto nativeAgentProvider = newTerminalArgs && !newTerminalArgs.NativeAgentProviderId().empty() ?
+                                             newTerminalArgs.NativeAgentProviderId() :
+                                             winrt::hstring{ profileProvider };
         const auto control = _CreateNewControlAndContent(controlSettings, connection, nativeAgentProvider);
 
         // Two kinds of pane replay their own history and must not also be
@@ -16722,6 +16839,7 @@ namespace winrt::TerminalApp::implementation
         const auto replaysItsOwnHistory =
             newTerminalArgs &&
             (::Microsoft::Terminal::AgentPaneRestore::IsPaneType(newTerminalArgs.Type()) ||
+             !newTerminalArgs.CustomAgentSessionId().empty() ||
              ::Microsoft::Terminal::AgentPaneRestore::IsResumeCommandline(newTerminalArgs.Commandline()));
 
         if (hasSessionId && !replaysItsOwnHistory)
@@ -16760,7 +16878,9 @@ namespace winrt::TerminalApp::implementation
 
         // The master may not be listening yet. Retain the binding for independent
         // master registration and the owning helper's later subscription replay.
-        if (newTerminalArgs && (hasSessionId || !_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled()))
+        if (newTerminalArgs && (hasSessionId ||
+                                !newTerminalArgs.CustomAgentSessionId().empty() ||
+                                !_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled()))
         {
             const auto& target = restoredAgent;
             if (!target.agent.empty())
@@ -16773,7 +16893,8 @@ namespace winrt::TerminalApp::implementation
                         winrt::hstring{ target.agent },
                         newTerminalArgs.Commandline(),
                         winrt::hstring{ target.backend },
-                        winrt::hstring{ target.cwd } });
+                        winrt::hstring{ target.cwd },
+                        !newTerminalArgs.CustomAgentSessionId().empty() });
                 _pendingRestoredSessionBindings.insert_or_assign(
                     connection.SessionId(),
                     _PendingRestoredSessionBinding{

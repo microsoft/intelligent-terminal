@@ -3118,4 +3118,9 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Your organization blocks managed native agent launches. The agent must be allowed, and policy must permit automatic approval because native agents control their own approval settings.</value>
     <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
   </data>
+  <data name="AIAgents_CustomName.Header" xml:space="preserve"><value>Name</value><comment>Display name of a custom AI agent.</comment></data>
+  <data name="AIAgents_CustomAcp.Header" xml:space="preserve"><value>ACP startup command (optional)</value><comment>{Locked="ACP"} Command used by the assistant pane, not the interactive terminal profile.</comment></data>
+  <data name="AIAgents_CustomCli.Header" xml:space="preserve"><value>Interactive CLI command (optional)</value><comment>{Locked="CLI"} Providing this command generates an interactive terminal profile for this custom agent.</comment></data>
+  <data name="AIAgents_CustomResume.Header" xml:space="preserve"><value>Resume command (optional; use {sessionId})</value><comment>{Locked="{sessionId}"} Requires an interactive CLI command. The placeholder must be exactly one complete argument.</comment></data>
+  <data name="AIAgents_CustomInvalid" xml:space="preserve"><value>Check the command quoting. Specify an ACP or CLI command. Resume requires a CLI command and exactly one {sessionId} argument.</value><comment>{Locked="ACP"} {Locked="CLI"} {Locked="{sessionId}"} Validation error for custom agent startup and resume commands.</comment></data>
 </root>

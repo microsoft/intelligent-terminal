@@ -138,5 +138,11 @@ namespace Microsoft.Terminal.Settings.Editor
         String AcpPreparationErrorText { get; };
         String AcpPreparationErrorDetails { get; };
         Boolean HasAcpPreparationErrorDetails { get; };
+        String CustomAgentName;
+        String CustomAgentCliCommand;
+        String CustomAgentResumeCommand;
+        Boolean CustomAgentSharedSessions;
+        String CustomAgentError { get; };
+        String CustomAgentId { get; };
     }
 }

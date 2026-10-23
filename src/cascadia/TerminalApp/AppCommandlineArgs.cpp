@@ -623,6 +623,8 @@ void AppCommandlineArgs::_addNewTerminalArgs(AppCommandlineArgs::NewTerminalSubc
                                                                    RS_A(L"CmdSessionIdArgDesc"));
     subcommand.nativeAgentProviderOption = subcommand.subcommand->add_option("--native-agent-provider", _nativeAgentProviderId);
     subcommand.nativeAgentProviderOption->group("");
+    subcommand.customAgentSessionOption = subcommand.subcommand->add_option("--custom-agent-session", _customAgentSessionId);
+    subcommand.customAgentSessionOption->group("");
     subcommand.startingDirectoryOption = subcommand.subcommand->add_option("-d,--startingDirectory",
                                                                            _startingDirectory,
                                                                            RS_A(L"CmdStartingDirArgDesc"));
@@ -711,6 +713,10 @@ NewTerminalArgs AppCommandlineArgs::_getNewTerminalArgs(AppCommandlineArgs::NewT
     if (*subcommand.nativeAgentProviderOption)
     {
         args.NativeAgentProviderId(winrt::to_hstring(_nativeAgentProviderId));
+    }
+    if (*subcommand.customAgentSessionOption)
+    {
+        args.CustomAgentSessionId(winrt::to_hstring(_customAgentSessionId));
     }
 
     if (*subcommand.startingDirectoryOption)
@@ -811,6 +817,7 @@ void AppCommandlineArgs::_resetStateToDefault()
     _profileName.clear();
     _sessionId.clear();
     _nativeAgentProviderId.clear();
+    _customAgentSessionId.clear();
     _startingDirectory.clear();
     _startingTitle.clear();
     _startingTabColor.clear();

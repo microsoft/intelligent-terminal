@@ -219,6 +219,32 @@ Gemini and Antigravity are excluded before availability checks and ACP startup,
 even when installed and policy-allowed. Explicit chat selections remain supported,
 and sessions already registered by other paths are not filtered out of the sidebar.
 
+Configured custom ACP agents participate in the same background history discovery,
+independently of the selected agent-pane provider. Master reads their commands from
+trusted Terminal settings and checks `AllowCustomAgents` before reading or starting
+them. Structured `customAgents` entries and legacy custom ACP entries are supported;
+CLI-only entries are not started for discovery. Matching provider identities and
+commands reuse the agent pool, including when the same executable implements
+several custom providers. Listing still requires the provider to advertise and
+successfully answer ACP `session/list`.
+
+Windows-host ACP `.cmd` and `.bat` launches require an adjacent same-named
+`.ps1` companion, for both normal connections and history discovery. WTA invokes
+that exact companion without `cmd` parsing or environment-variable expansion.
+Missing companions and arguments Windows PowerShell cannot preserve (empty
+strings, embedded double quotes, or whitespace-containing arguments ending in a
+backslash) fail before spawning. Native executable arguments retain their
+original shapes.
+The PowerShell child receives `-ExecutionPolicy Bypass`, without changing
+persistent policy settings or overriding higher-priority MachinePolicy/UserPolicy.
+
+Successful discovery retires custom history workers whose definitions were
+removed or whose ACP commands changed, without interrupting agent panes using
+an existing ACP connection. Obsolete ACP instances are removed from the pool
+when no helper uses them, including after their last helper disconnects.
+A failed settings lookup preserves current workers and history until the lookup
+can be retried.
+
 Discovery never automatically installs a native agent CLI. The pinned Claude and
 Codex ACP adapters are separate: their cache presence is not checked, and the
 existing `npx -y` launch behavior may download and bootstrap an uncached adapter
@@ -399,9 +425,19 @@ If the activation CLI times out, the sidebar checks the receipt using
 never start another focus or restore. Master continues an accepted activation
 after the requesting CLI disconnects. Retrying an unresolved row checks the
 same receipt, including after closing and reopening History; it does not generate
-a fresh activation ID. See
-[session tracking](../../doc/specs/hybrid-agent-session-tracking.md) for receipt
-retention and refresh cancellation/backoff behavior.
+a fresh activation ID. Concurrent requests for the same qualified conversation
+share the pending operation even when their activation IDs or target windows
+differ. Unknown outcomes retain the reservation; definitive failures allow retry.
+Agent-pane activation requests also reconcile pending alias receipts with
+status-only queries instead of treating `accepted: false` as a rejection.
+Unresolved identities survive request cancellation and transport disconnection;
+only completed unsuccessful receipts report rejection to the originating tab.
+A failed initial enqueue or an initial activation discarded before transport
+dequeue releases its local receipt so reconnect can retry. Failed or discarded
+status checks retain receipts for operations that may already have run, as do
+activations already dequeued by the transport.
+See [session tracking](../../doc/specs/hybrid-agent-session-tracking.md) for
+receipt retention and refresh cancellation/backoff behavior.
 
 The warm native-provider chat processes remain in the master pool after History
 closes; the dedicated history processes are also reused while their owning pool
@@ -414,9 +450,9 @@ providers do not clear other providers' rows or overwrite live activity and pane
 bindings. Failures are logged under `master_history`; listing never installs a native
 agent CLI or starts an interactive login flow.
 
-This discovery covers built-in agents on the Windows host. It does not start WSL
-distributions or discover arbitrary custom commands; sessions already in the registry
-remain visible according to the requested origin filter.
+This discovery covers built-in and configured custom ACP agents on the Windows host.
+It does not start WSL distributions or infer commands for unconfigured providers;
+sessions already in the registry remain visible according to the requested origin filter.
 
 Initial host discovery runs at master startup, after a confirmed host-agent
 installation, or on an explicit `wta sessions refresh` request. There is no unconditional
@@ -425,6 +461,8 @@ and 10 seconds and stop after three total attempts. The master, dedicated histor
 workers and model probes use the common startup admission layer; separate probe
 processes cannot reset the same target's failure budget. Retries recheck
 installation and policy and do not restart healthy resident providers.
+Custom settings lookup failures retry separately, with delays capped at 60 seconds,
+without clearing existing history or preventing other providers from being queried.
 `wta sessions refresh --master <pipe> --json` schedules discovery while respecting failure backoff and returns the
 current snapshot with `history_status`; it does not wait for discovery to finish.
 The removed `--all-agents` flag is no longer accepted. F5 in a helper's session view
@@ -1194,11 +1232,19 @@ managed read requests and explicit interactive creation remain unchanged.
 Delegation and native session resumes pass the resolved provider ID through
 `wtcli --agent-provider`. Terminal stores that identity with the terminal content
 before displaying the tab or split, so the Agents view and provider icon do not
-wait for CLI startup hooks. This does not create a conversation ID, activity
-state, or history row. Older protocol servers reject this capability explicitly.
+wait for CLI startup hooks. Provider identity alone does not create a conversation
+ID, activity state, or history row. Older protocol servers reject this capability
+explicitly.
 Host-configured delegation carries the provider separately from its executable
 through `wta delegate --delegate-agent-id`. Custom commands require that explicit
 identity; their executable basename is not treated as a configured provider.
+
+Custom history resumes also pass the trusted conversation ID through
+`wtcli --custom-agent-session`, requiring the `resume_custom_agent_cli_tab`
+capability. Terminal validates the provider's current resume definition and
+policy before launch, preserving the resolved profile's settings and binding
+the new pane to that provider and conversation instead of an inherited identity.
+
 Tabs, panes, Recent Sessions, and the agent picker share the six committed
 transparent PNG assets in `CascadiaPackage\AgentIcons\Masks` and the existing
 monochrome bitmap tint pipeline. `AgentIconResources.xaml` supplies fresh control

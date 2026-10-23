@@ -8,7 +8,8 @@ or panes, and selected with `wt -p`, just like a shell profile.
 
 The supported providers are GitHub Copilot, Claude, Codex, Gemini, OpenCode,
 and Google Antigravity.
-WSL installations and arbitrary custom agents are not automatically generated.
+WSL installations are not automatically discovered. Configured custom agents
+with an explicit interactive command also generate profiles, as described below.
 Native profile discovery uses this dedicated provider list, not the broader
 ACP or delegation provider registry.
 Discovery does not install software, sign in, or start an ACP server. Native CLI
@@ -114,6 +115,123 @@ metadata. An explicit command supplied in a new-tab
 action also overrides the managed launch, following ordinary Terminal action
 precedence. An edited command is not a managed launcher or an operating-system
 security boundary.
+
+## Custom agents
+
+In **Settings > AI agents**, add or edit a custom agent and provide its
+interactive CLI command to enable a generated terminal profile. ACP startup
+remains a separate, optional command: Terminal never removes `--acp` or other
+arguments to guess an interactive invocation. A CLI-only definition creates a
+profile without selecting an unusable ACP backend. Editing an existing legacy
+custom ACP entry promotes that entry without changing its provider ID.
+Legacy entries whose executable-derived IDs contain spaces or non-ASCII
+characters remain editable as ACP-only commands; add a new custom definition
+to configure their interactive startup and resume commands. The editor generates
+the stable ID internally and does not display it.
+Existing custom delegation commands remain independent.
+
+The corresponding global setting is:
+
+```json
+{
+    "customAgents": [
+        {
+            "id": "custom:work-agent",
+            "name": "Work Agent",
+            "acp": { "command": "adapter.exe", "args": ["--stdio"] },
+            "cli": { "command": "work.exe", "args": ["--config", "C:\\work\\agent.json"] },
+            "resume": { "command": "work.exe", "args": ["resume", "{sessionId}"] }
+        }
+    ]
+}
+```
+
+Specify at least `acp` or `cli`. The `id` must start with `custom:` followed by
+ASCII letters, digits, `.`, `_`, or `-`; IDs are unique without regard to case.
+Keep it unchanged when editing a name or command, since generated profile GUIDs
+and session ownership use it. New entries in Settings receive a persistent ID.
+Different definitions can use the same executable without sharing identity.
+Configuration changes are not delayed by the built-in discovery cache.
+
+Custom agents with an ACP command participate in automatic session-history
+discovery at WTA startup and on explicit history refresh, even when another agent
+is selected in the agent pane. `AllowCustomAgents` policy applies before discovery.
+The provider must support ACP `session/list` and expose the desired CLI history
+through it; configuring a resume command does not itself discover sessions.
+CLI-only definitions are not started for history discovery. No interactive login,
+chat session, or prompt is started by discovery.
+
+Launching the generated profile identifies the pane as that custom agent.
+When the profile runs the CLI directly and the pane closes on exit, ordinary
+pane removal also removes it from the active Agent list. This tracks the CLI
+process, not individual conversation sessions. Retained exited panes and
+persistent shell wrappers do not provide the same lifecycle guarantee.
+Typing a custom CLI into an existing shell does not automatically identify it;
+custom title rules and session hooks are not part of this support.
+
+ACP history remains provider-defined. Some providers, including Qwen Code,
+return only the ACP process's current-workspace history when `session/list`
+omits `cwd`. Automatic discovery does not enumerate other workspaces or scan
+custom providers' history files, so an empty result does not establish that
+the provider has no sessions elsewhere.
+
+Commands are an executable plus literal argument arrays, not shell scripts.
+Use an explicit launcher such as `pwsh.exe -File` for a script.
+Use the actual Windows launcher filename (for example, `qwen.cmd`, not the
+shell-resolved `qwen`); profile launches do not resolve PowerShell aliases.
+Custom `.cmd`/`.bat` ACP, interactive startup, and resume require an adjacent same-named `.ps1`
+companion and invoke that exact companion through PowerShell, without inserting
+arguments into `cmd` text. Missing executables or companions fail at launch,
+not during profile generation. `%` environment expansion is not supported in
+managed custom CLI commands. Do not put secrets in arguments.
+Batch companions reject empty arguments, embedded double quotes, and arguments
+containing whitespace that end in a backslash because Windows PowerShell cannot
+preserve them when forwarding to a native process. Use a native executable
+invocation when these values are needed.
+Companion launches set execution policy only for their PowerShell child process
+so the default Restricted policy does not block installed shims. Persistent policy
+settings are unchanged; higher-priority MachinePolicy and UserPolicy still apply.
+
+`resume` requires `cli` and exactly one complete `{sessionId}` argument.
+The resume invocation is independent of the startup invocation; repeat any
+configuration arguments it needs. IDs must satisfy the CLI-resume safe-token
+contract; leading option tokens, whitespace, and shell syntax are rejected.
+Custom profile controls do not invent built-in model, permission, or additional
+argument flags. Configure those directly in the custom invocations.
+
+Live sessions focus their existing pane. Historical agent-pane sessions use
+that provider's ACP `session/load`; native CLI sessions use its configured
+resume invocation. Listing sessions does not prove ACP load support, and a
+failed ACP load never silently falls back to a different agent or CLI.
+`resume.canResumeAcpSessions` defaults to `false`; it declares shared storage
+but does not change Windows-host agent-pane routing. This initial custom
+invocation support is Windows-host-only, including resume; WSL custom resume
+is rejected explicitly.
+
+For an explicit native resume, use:
+
+```powershell
+wt new-tab --native-agent-provider custom:work-agent --custom-agent-session SESSION_ID -d C:\work
+```
+
+This conversation ID is separate from Terminal's `--sessionId` buffer identity.
+Saved native layouts retain the provider, known conversation ID, and execution
+source, then resolve the current command and policy on restore. A saved non-host
+custom source is rejected before resolving a Windows invocation; it is never
+reinterpreted as a host conversation with the same ID. Older host layouts without
+explicit source metadata remain compatible. Without a known conversation
+ID, reopening a custom profile only starts its CLI. Custom hooks and arbitrary
+history-file scanners are not added. Removing a definition leaves existing
+history intact but prevents new resumes through that missing definition.
+Master resolves invocations by ID from the current user `settings.json` through
+the host's existing settings service; helpers and history rows never supply
+trusted launch commands. Store structured custom definitions in user settings,
+not settings fragments.
+
+`AllowCustomAgents` governs custom profiles instead of the built-in
+`AllowedAgents` list. Managed custom launches and CLI resumes also honor
+`AllowAutomaticApproval`. Explicit profile command overrides retain ordinary
+Terminal behavior, as with built-in profiles.
 
 ## Splitting panes
 

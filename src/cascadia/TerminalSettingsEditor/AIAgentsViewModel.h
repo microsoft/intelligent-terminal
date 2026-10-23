@@ -118,6 +118,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool IsCustomAcpAgentSelected();
         winrt::hstring CustomAcpCommandPreview();
         void EditCustomAcpAgent();
+        void EditCustomAcpAgent(const winrt::hstring& settingsId);
         bool IsCustomDelegateAgentSelected();
         winrt::hstring CustomDelegateCommandPreview();
         void EditCustomDelegateAgent();
@@ -130,6 +131,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void CustomAcpCommand(const winrt::hstring& value);
         winrt::hstring CustomDelegateCommand() const { return _customDelegateCommand; }
         void CustomDelegateCommand(const winrt::hstring& value);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, CustomAgentName, _propertyChangedHandlers);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, CustomAgentCliCommand, _propertyChangedHandlers);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, CustomAgentResumeCommand, _propertyChangedHandlers);
+        WINRT_OBSERVABLE_PROPERTY(bool, CustomAgentSharedSessions, _propertyChangedHandlers, false);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, CustomAgentError, _propertyChangedHandlers);
+
+    public:
+        winrt::hstring CustomAgentId() const { return _editingCustomAcpAgentId; }
 
         void SaveCustomAcpAgent();
         void SaveCustomDelegateAgent();
@@ -268,10 +277,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         static winrt::Windows::Foundation::Collections::IVector<winrt::hstring> _RemoveCustomCommand(
             const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
             const winrt::hstring& settingsId);
-        static winrt::hstring _FindCustomCommand(
+        winrt::hstring _FindCustomCommand(
             const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
-            const winrt::hstring& settingsId);
+            const winrt::hstring& settingsId,
+            bool isAcpAgent = true);
         void _DeleteCustomAcpAgent(const winrt::hstring& settingsId);
+        void _LoadCustomAgentEditor(const winrt::hstring& settingsId);
         void _DeleteCustomDelegateAgent(const winrt::hstring& settingsId);
         bool _IsSelectedAcpAgentAvailable() const;
         ::Microsoft::Terminal::Settings::Model::AgentRegistry::YoloSettingsNotice _YoloSettingsNotice() const;

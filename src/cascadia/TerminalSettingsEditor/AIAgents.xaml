@@ -237,11 +237,24 @@
                                 Visibility="{x:Bind ViewModel.IsAddingCustomAcpAgent, Mode=OneWay}"
                                 Margin="0,8,0,0"
                                 Spacing="8">
+                        <TextBox x:Uid="AIAgents_CustomName"
+                                 Text="{x:Bind ViewModel.CustomAgentName, Mode=TwoWay}"
+                                 Style="{StaticResource TextBoxSettingStyle}" />
                         <TextBox x:Name="CustomAcpCommandBox"
+                                 x:Uid="AIAgents_CustomAcp"
                                  Text="{x:Bind ViewModel.CustomAcpCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
                                  PlaceholderText="my-agent --acp --stdio"
                                  Style="{StaticResource TextBoxSettingStyle}" />
+                        <TextBox x:Uid="AIAgents_CustomCli"
+                                 Text="{x:Bind ViewModel.CustomAgentCliCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource TextBoxSettingStyle}" />
+                        <TextBox x:Uid="AIAgents_CustomResume"
+                                 Text="{x:Bind ViewModel.CustomAgentResumeCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource TextBoxSettingStyle}" />
+                        <TextBlock Text="{x:Bind ViewModel.CustomAgentError, Mode=OneWay}"
+                                   TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite" />
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Right"
                                     Spacing="8">

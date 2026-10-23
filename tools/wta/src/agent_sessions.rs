@@ -72,6 +72,7 @@ pub enum CliSource {
     Gemini,
     OpenCode,
     Antigravity,
+    Custom(String),
     Unknown(String),
 }
 
@@ -85,6 +86,7 @@ impl CliSource {
             "opencode" => Self::OpenCode,
             "antigravity" => Self::Antigravity,
             "" => Self::Unknown(String::new()),
+            other if crate::custom_agents::is_custom_id(other) => Self::Custom(other.to_string()),
             other => Self::Unknown(other.to_string()),
         }
     }
@@ -102,6 +104,9 @@ impl CliSource {
             "gemini" => Some(Self::Gemini),
             "opencode" => Some(Self::OpenCode),
             "antigravity" => Some(Self::Antigravity),
+            other if crate::custom_agents::is_custom_id(other) => {
+                Some(Self::Custom(other.to_string()))
+            }
             _ => None,
         }
     }
@@ -114,7 +119,7 @@ impl CliSource {
             Self::Gemini => "gemini",
             Self::OpenCode => "opencode",
             Self::Antigravity => "antigravity",
-            Self::Unknown(id) => id.trim(),
+            Self::Custom(id) | Self::Unknown(id) => id.trim(),
         };
         (!id.is_empty()).then(|| id.to_ascii_lowercase())
     }

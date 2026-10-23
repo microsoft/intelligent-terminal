@@ -665,6 +665,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ProtocolProfilesReflectRuntimeSettings);
         TEST_METHOD(AgentSessionRestoreRequiresPersistedBufferPath);
         TEST_METHOD(InteractiveResumeCommandPublishesSessionLifecycle);
+        TEST_METHOD(CustomInteractiveResumeRejectsInvalidSessionIds);
         TEST_METHOD(InteractiveResumeOscPersistsSessionWithoutHooks);
         TEST_METHOD(AgentPaneRestoreRecordRoundTrips);
         TEST_METHOD(AgentPaneRestorePreservesSettingsBinding);
@@ -718,6 +719,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ContentIdAttachedPaneEmitsEndStateForItsConnection);
         TEST_METHOD(GetWindowLayoutIncludesAgentRestoreMetadata);
         TEST_METHOD(ElevatedPersistedTabKeepsShellCommands);
+        TEST_METHOD(CustomResumeRetainsIdentityAfterDefinitionChanges);
+        TEST_METHOD(CustomHistoryActivationOverridesInheritedProvider);
+        TEST_METHOD(CustomResumeWithoutProfilePreservesDefaultSettings);
+        TEST_METHOD(CustomResumeRejectsPersistedNonHostBackend);
         TEST_METHOD(ElevatedPersistedTabExcludesAgentPanes);
         TEST_METHOD(ResumedPaneIdentityPersistsWithoutHooksOrBannerParsing);
         TEST_METHOD(RestoredSessionBindingsWaitForTheirHelperSubscription);
@@ -1340,6 +1345,92 @@ namespace TerminalAppLocalTests
             page->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
             page->_SyncNativeAgentStatusMode();
             VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, manager->NativeAgentProviderId(launchedControl.ContentId()));
+        });
+    }
+
+    void TabTests::CustomInteractiveResumeRejectsInvalidSessionIds()
+    {
+        const winrt::guid paneId{ L"{5d9cc4ac-1a11-4bb0-99ca-82a71e94fa80}" };
+        const auto connection = winrt::make_self<TestConnection>(
+            paneId,
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        const auto page = _commonSetup(*connection);
+
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+            page->_SyncNativeAgentStatusMode();
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto control = tab->GetActiveTerminalControl();
+            const auto paneIdText = _formatPaneId(paneId);
+            const auto tabId = winrt::to_string(tab->StableId());
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            const auto originalProvider = manager->NativeAgentProviderId(control.ContentId());
+            size_t births = 0;
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                Json::Value event;
+                Json::CharReaderBuilder reader;
+                std::istringstream stream{ winrt::to_string(payload) };
+                std::string errors;
+                if (Json::parseFromStream(reader, stream, &event, &errors) &&
+                    event["method"] == "session_born_bound")
+                {
+                    ++births;
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() {
+                page->ProtocolVtSequenceReceived(token);
+            });
+            const std::vector<std::wstring> invalidIds{
+                L"", L"-option", L"two tokens", L"session;command", L"sidekick-session", std::wstring(257, L'a')
+            };
+            for (const auto& sessionId : invalidIds)
+            {
+                page->_TryPublishInteractiveResumeBinding(control, paneIdText, tabId, L"custom:binding-test", sessionId);
+                VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
+                VERIFY_IS_FALSE(page->_interactiveResumeSessions.contains(paneId));
+                VERIFY_IS_FALSE(page->_explicitNativeAgentSessions.contains(paneId));
+                VERIFY_ARE_EQUAL(originalProvider, manager->NativeAgentProviderId(control.ContentId()));
+            }
+            VERIFY_ARE_EQUAL(size_t{ 0 }, births);
+
+            NewTerminalArgs rejected;
+            rejected.SessionId(paneId);
+            rejected.Commandline(L"original-command.exe");
+            NewTabArgs rejectedTabArgs{ rejected };
+            ActionAndArgs rejectedAction{ ShortcutAction::NewTab, rejectedTabArgs };
+            std::vector<ActionAndArgs> rejectedActions{ rejectedAction };
+            page->_StampAgentResumeCommandlines(rejectedActions);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"original-command.exe" }, rejected.Commandline());
+            VERIFY_IS_TRUE(rejected.CustomAgentSessionId().empty());
+
+            // A live session remains resumable metadata even after its definition is removed.
+            page->_settings.GlobalSettings().CustomAgents(winrt::single_threaded_vector<CustomAgent>());
+            const std::wstring validId(256, L'a');
+            page->_TryPublishInteractiveResumeBinding(control, paneIdText, tabId, L"custom:binding-test", validId);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, births);
+            VERIFY_IS_TRUE(page->_paneAgentSessions.at(paneId).structuredCustomResume);
+            VERIFY_IS_TRUE(page->_explicitNativeAgentSessions.contains(paneId));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:binding-test" }, manager->NativeAgentProviderId(control.ContentId()));
+            for (const auto& sessionId : invalidIds)
+            {
+                page->_TryPublishInteractiveResumeBinding(control, paneIdText, tabId, L"custom:replacement", sessionId);
+                VERIFY_ARE_EQUAL(winrt::hstring{ validId }, page->_paneAgentSessions.at(paneId).sessionId);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:binding-test" }, page->_paneAgentSessions.at(paneId).agent);
+                VERIFY_ARE_EQUAL(winrt::hstring{ validId }, page->_interactiveResumeSessions.at(paneId).sessionId);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:binding-test" }, manager->NativeAgentProviderId(control.ContentId()));
+            }
+            VERIFY_ARE_EQUAL(size_t{ 1 }, births);
+
+            NewTerminalArgs persisted;
+            persisted.SessionId(paneId);
+            persisted.Commandline(L"original-command.exe");
+            NewTabArgs tabArgs{ persisted };
+            ActionAndArgs action{ ShortcutAction::NewTab, tabArgs };
+            std::vector<ActionAndArgs> actions{ action };
+            page->_StampAgentResumeCommandlines(actions);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:binding-test" }, persisted.NativeAgentProviderId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ validId }, persisted.CustomAgentSessionId());
+            VERIFY_IS_TRUE(persisted.Commandline().empty());
         });
     }
 
@@ -4060,6 +4151,293 @@ namespace TerminalAppLocalTests
                 _getTerminalArgs(normal.at(0)).Commandline());
             VERIFY_IS_TRUE(_getTerminalArgs(normal.at(1)).Commandline() == L"test-agent --resume fallback-session");
             VERIFY_ARE_EQUAL(original, serialize(page->_BuildPersistedTabActions(tab.get(), true)));
+        });
+    }
+
+    void TabTests::CustomHistoryActivationOverridesInheritedProvider()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        for (const auto withSessionMetadata : { false, true })
+        {
+            winrt::Windows::Foundation::IAsyncOperation<winrt::Microsoft::Terminal::Protocol::TabCreationResult> operation{ nullptr };
+            TestOnUIThread([&]() {
+                auto globals = page->_settings.GlobalSettings();
+                globals.AgentSessionManagementEnabled(true);
+                CustomAgent first{ L"custom:history-a", L"History A" };
+                first.CliCommand(L"cmd.exe");
+                CustomAgent second{ L"custom:history-b", L"History B" };
+                second.CliCommand(L"cmd.exe");
+                second.ResumeCommand(L"cmd.exe /k echo {sessionId}");
+                globals.CustomAgents(winrt::single_threaded_vector<CustomAgent>({ first, second }));
+                const auto profile = page->_settings.ActiveProfiles().GetAt(1);
+                profile.AgentProfileId(first.Id());
+                page->_GetFocusedTabImpl()->GetFocusedProfile().AgentProfileId(first.Id());
+                globals.DefaultProfile(profile.Guid());
+                NewTerminalArgs args;
+                args.NativeAgentProviderId(second.Id());
+                args.Commandline(L"cmd.exe /k echo history-session");
+                if (withSessionMetadata)
+                {
+                    args.CustomAgentSessionId(L"history-session");
+                }
+                operation = page->CreateProtocolTab(args, false);
+            });
+            const auto created = operation.get();
+            TestOnUIThread([&]() {
+                const auto tab = page->_GetFocusedTabImpl();
+                const auto control = tab->GetActiveTerminalControl();
+                VERIFY_ARE_EQUAL(created.SessionId, control.Connection().SessionId());
+                const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:history-b" }, manager->NativeAgentProviderId(control.ContentId()));
+                if (withSessionMetadata)
+                {
+                    const auto& tracked = page->_paneAgentSessions.at(created.SessionId);
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:history-b" }, tracked.agent);
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"history-session" }, tracked.sessionId);
+                    VERIFY_IS_TRUE(tracked.structuredCustomResume);
+                    VERIFY_IS_TRUE(page->_pendingRestoredSessionBindings.contains(created.SessionId));
+                }
+                page->OnPaneAgentSessionChanged(_keepRunningHook(
+                    created.SessionId, "agent.prompt.submit", "history-session", "custom:history-b"));
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:history-b" }, manager->NativeAgentProviderId(control.ContentId()));
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:history-b" }, page->_paneAgentSessions.at(created.SessionId).agent);
+            });
+        }
+    }
+
+    void TabTests::CustomResumeWithoutProfilePreservesDefaultSettings()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            CustomAgent agent{ L"custom:default-profile-fixture", L"Default profile fixture" };
+            agent.CliCommand(L"test-agent.exe");
+            agent.ResumeCommand(L"test-agent.exe --resume {sessionId}");
+            auto globals = page->_settings.GlobalSettings();
+            globals.CustomAgents(winrt::single_threaded_vector<CustomAgent>({ agent }));
+            const auto defaultProfile = page->_settings.ActiveProfiles().GetAt(1);
+            defaultProfile.Commandline(L"cmd.exe");
+            defaultProfile.FontInfo().FontFace(L"Consolas");
+            defaultProfile.FontInfo().FontSize(23.0f);
+            const auto directory = wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%\\System32");
+            defaultProfile.StartingDirectory(winrt::hstring{ directory });
+            globals.DefaultProfile(defaultProfile.Guid());
+            const auto matchingProfile = page->_settings.ActiveProfiles().GetAt(0);
+            matchingProfile.Commandline(L"test-agent.exe");
+            matchingProfile.FontInfo().FontSize(11.0f);
+            matchingProfile.StartingDirectory(L"C:\\");
+            NewTerminalArgs args;
+            args.NativeAgentProviderId(agent.Id());
+            args.CustomAgentSessionId(L"profile-session");
+            VERIFY_IS_TRUE(args.Profile().empty());
+            VERIFY_IS_TRUE(args.Commandline().empty());
+            const auto connection = winrt::make_self<TestConnection>(
+                ::Microsoft::Console::Utils::CreateGuid(), State::Connected);
+            const auto pane = page->_MakePane(args, nullptr, *connection);
+            VERIFY_IS_NOT_NULL(pane);
+            const auto control = pane->GetTerminalControl();
+            VERIFY_ARE_EQUAL(Utils::GuidToString(defaultProfile.Guid()), args.Profile());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Consolas" }, control.Settings().FontFace());
+            VERIFY_ARE_EQUAL(23.0f, control.Settings().FontSize());
+            VERIFY_ARE_EQUAL(winrt::hstring{ directory }, control.Settings().StartingDirectory());
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            VERIFY_ARE_EQUAL(agent.Id(), manager->NativeAgentProviderId(control.ContentId()));
+        });
+    }
+
+    void TabTests::CustomResumeRejectsPersistedNonHostBackend()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto paneId = ::Microsoft::Console::Utils::CreateGuid();
+        const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+        Grid host{ nullptr };
+        TestOnUIThread([&]() { host = Grid{}; });
+        const auto page = _commonSetup(*connection, host);
+        ::details::Event bound;
+        Json::Value birth;
+        winrt::event_token token{};
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                page->ProtocolVtSequenceReceived(token);
+                page->ShutdownPanes();
+            });
+        });
+        TestOnUIThread([&]() {
+            auto globals = page->_settings.GlobalSettings();
+            globals.AgentSessionManagementEnabled(true);
+            CustomAgent agent{ L"custom:backend-fixture", L"Backend fixture" };
+            agent.CliCommand(L"test-agent.exe");
+            agent.ResumeCommand(L"test-agent.exe --resume {sessionId}");
+            globals.CustomAgents(winrt::single_threaded_vector<CustomAgent>({ agent }));
+            page->_SyncNativeAgentStatusMode();
+
+            Json::Value event;
+            Json::CharReaderBuilder reader;
+            std::istringstream stream{ winrt::to_string(_keepRunningHook(
+                paneId, "agent.session.start", "same-session", "custom:backend-fixture")) };
+            std::string errors;
+            VERIFY_IS_TRUE(Json::parseFromStream(reader, stream, &event, &errors));
+            event["params"]["wsl_distro"] = "Ubuntu";
+            event["params"]["agent_backend"] = "wsl:Ubuntu:custom:BACKEND-fixture";
+            page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+            const auto& binding = page->_paneAgentSessions.at(paneId);
+            VERIFY_IS_TRUE(binding.structuredCustomResume);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu:custom:backend-fixture" }, binding.backend);
+            page->OnPaneAgentSessionChanged(_keepRunningHook(
+                paneId, "agent.prompt.submit", "same-session", "custom:BACKEND-fixture"));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu:custom:BACKEND-fixture" }, page->_paneAgentSessions.at(paneId).backend);
+            token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                Json::Value event;
+                Json::CharReaderBuilder reader;
+                std::istringstream stream{ winrt::to_string(payload) };
+                std::string errors;
+                if (Json::parseFromStream(reader, stream, &event, &errors) &&
+                    event["method"] == "session_born_bound")
+                {
+                    birth = std::move(event);
+                    bound.Set();
+                }
+            });
+        });
+
+        // First preserve hook-qualified WSL provenance while the control defaults
+        // to host; then derive it from the owning control without any hook binding.
+        for (const auto owningShell : { false, true })
+        {
+            TestOnUIThread([&]() {
+                if (owningShell)
+                {
+                    page->_paneAgentSessions.clear();
+                    page->_interactiveResumeSessions.clear();
+                }
+            });
+            const std::u16string_view resume = owningShell ?
+                                                   u"\x1b]9001;ShellType;wsl:Ubuntu;1\x07\x1b]9001;Resume;custom:backend-fixture;same-session\x07" :
+                                                   u"\x1b]9001;Resume;custom:backend-fixture;same-session\x07";
+            connection->WriteInput({ resume.data(), resume.data() + resume.size() });
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(bound.m_handle, 10000));
+            TestOnUIThread([&]() {
+                VERIFY_ARE_EQUAL(std::string{ "wsl:Ubuntu:custom:backend-fixture" }, birth["params"]["agent_backend"].asString());
+                VERIFY_ARE_EQUAL(std::string{ "Ubuntu" }, birth["params"]["wsl_distro"].asString());
+                const auto& binding = page->_paneAgentSessions.at(paneId);
+                VERIFY_IS_TRUE(binding.structuredCustomResume);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu:custom:backend-fixture" }, binding.backend);
+                NewTerminalArgs saved;
+                saved.SessionId(paneId);
+                NewTabArgs tabArgs{ saved };
+                std::vector<ActionAndArgs> actions{ ActionAndArgs{ ShortcutAction::NewTab, tabArgs } };
+                page->_StampAgentResumeCommandlines(actions);
+                WindowLayout layout;
+                layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+                const auto restored = _getTerminalArgs(WindowLayout::FromJson(WindowLayout::ToJson(layout)).TabLayout().GetAt(0));
+                VERIFY_ARE_EQUAL(binding.backend, restored.CustomAgentBackend());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:backend-fixture" }, restored.NativeAgentProviderId());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"same-session" }, restored.CustomAgentSessionId());
+                const auto copied = restored.Copy().as<NewTerminalArgs>();
+                VERIFY_ARE_EQUAL(restored.CustomAgentBackend(), copied.CustomAgentBackend());
+                VERIFY_IS_TRUE(restored.Equals(copied));
+                copied.CustomAgentBackend(L"host:custom:backend-fixture");
+                VERIFY_IS_FALSE(restored.Equals(copied));
+
+                // A Windows definition with the identical ID must not resume the WSL conversation,
+                // even if an elevated launch would otherwise flatten the arguments.
+                for (const auto elevate : { false, true })
+                {
+                    restored.Elevate(winrt::box_value(elevate).as<winrt::Windows::Foundation::IReference<bool>>());
+                    VERIFY_THROWS(page->_MakePane(restored, nullptr, *connection), winrt::hresult_error);
+                    VERIFY_THROWS(restored.ToCommandline(), winrt::hresult_error);
+                    VERIFY_IS_TRUE(restored.Commandline().empty());
+                }
+                copied.Elevate(winrt::box_value(false).as<winrt::Windows::Foundation::IReference<bool>>());
+                VERIFY_IS_NOT_NULL(page->_MakePane(copied, nullptr, *connection));
+            });
+        }
+    }
+
+    void TabTests::CustomResumeRetainsIdentityAfterDefinitionChanges()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+            CustomAgent agent{ L"custom:persistence-test", L"Persistence test" };
+            agent.CliCommand(L"test-agent.exe");
+            agent.ResumeCommand(L"test-agent.exe --resume {sessionId}");
+            page->_settings.GlobalSettings().CustomAgents(winrt::single_threaded_vector<CustomAgent>({ agent }));
+            const auto defaultProfile = page->_settings.ActiveProfiles().GetAt(1);
+            defaultProfile.AgentProfileId(L"copilot");
+            page->_settings.GlobalSettings().DefaultProfile(defaultProfile.Guid());
+
+            const auto actualId = ::Microsoft::Console::Utils::CreateGuid();
+            const auto connection = winrt::make_self<TestConnection>(actualId, State::Connected);
+            NewTerminalArgs args;
+            args.NativeAgentProviderId(agent.Id());
+            args.CustomAgentSessionId(L"known-conversation");
+            VERIFY_ARE_EQUAL(winrt::guid{}, args.SessionId());
+            const auto pane = page->_MakePane(args, nullptr, *connection);
+            VERIFY_IS_NOT_NULL(pane);
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            VERIFY_ARE_EQUAL(agent.Id(), manager->NativeAgentProviderId(pane->GetTerminalControl().ContentId()));
+            NewTerminalArgs ordinaryArgs;
+            const auto ordinaryConnection = winrt::make_self<TestConnection>(
+                ::Microsoft::Console::Utils::CreateGuid(), State::Connected);
+            const auto ordinaryPane = page->_MakePane(ordinaryArgs, nullptr, *ordinaryConnection);
+            VERIFY_IS_NOT_NULL(ordinaryPane);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, manager->NativeAgentProviderId(ordinaryPane->GetTerminalControl().ContentId()));
+            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"known-conversation" }, page->_paneAgentSessions.at(actualId).sessionId);
+            VERIFY_IS_TRUE(page->_paneAgentSessions.at(actualId).structuredCustomResume);
+            VERIFY_IS_TRUE(page->_pendingRestoredSessionBindings.contains(actualId));
+            VERIFY_IS_FALSE(page->_paneAgentSessions.contains(winrt::guid{}));
+
+            page->OnPaneAgentSessionChanged(_keepRunningHook(
+                actualId, "agent.prompt.submit", "known-conversation", "custom:PERSISTENCE-test"));
+            NewTerminalArgs caseVariant;
+            caseVariant.SessionId(actualId);
+            NewTabArgs caseVariantTab{ caseVariant };
+            std::vector<ActionAndArgs> caseVariantActions{ ActionAndArgs{ ShortcutAction::NewTab, caseVariantTab } };
+            page->_StampAgentResumeCommandlines(caseVariantActions);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:PERSISTENCE-test" }, caseVariant.NativeAgentProviderId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"host:custom:PERSISTENCE-test" }, caseVariant.CustomAgentBackend());
+            VERIFY_IS_NOT_NULL(page->_MakePane(caseVariant, nullptr, *connection));
+
+            agent.ResumeCommand(L"updated-agent.exe --continue {sessionId}");
+            const auto updatedConnection = winrt::make_self<TestConnection>(
+                ::Microsoft::Console::Utils::CreateGuid(), State::Connected);
+            VERIFY_IS_NOT_NULL(page->_MakePane(args, nullptr, *updatedConnection));
+            VERIFY_IS_TRUE(std::wstring_view{ args.Commandline() }.find(L"updated-agent.exe") != std::wstring_view::npos);
+
+            for (const auto removeDefinition : { false, true })
+            {
+                agent.ResumeCommand(L"");
+                if (removeDefinition)
+                {
+                    page->_settings.GlobalSettings().CustomAgents(winrt::single_threaded_vector<CustomAgent>());
+                }
+                page->OnPaneAgentSessionChanged(_keepRunningHook(
+                    actualId, "agent.prompt.submit", "known-conversation",
+                    removeDefinition ? "custom:PERSISTENCE-test" : "custom:persistence-test"));
+                VERIFY_IS_TRUE(page->_paneAgentSessions.at(actualId).structuredCustomResume);
+                const auto& binding = page->_paneAgentSessions.at(actualId);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"host:" + std::wstring{ binding.agent } }, binding.backend);
+                NewTerminalArgs persisted;
+                persisted.SessionId(actualId);
+                persisted.Commandline(L"stale-agent.exe --resume known-conversation");
+                NewTabArgs tabArgs{ persisted };
+                ActionAndArgs action{ ShortcutAction::NewTab, tabArgs };
+                std::vector<ActionAndArgs> actions{ action };
+                page->_StampAgentResumeCommandlines(actions);
+                VERIFY_ARE_EQUAL(binding.agent, persisted.NativeAgentProviderId());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"known-conversation" }, persisted.CustomAgentSessionId());
+                VERIFY_IS_TRUE(persisted.Commandline().empty());
+                WindowLayout layout;
+                layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+                const auto restored = _getTerminalArgs(WindowLayout::FromJson(WindowLayout::ToJson(layout)).TabLayout().GetAt(0));
+                VERIFY_ARE_EQUAL(binding.agent, restored.NativeAgentProviderId());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"known-conversation" }, restored.CustomAgentSessionId());
+                VERIFY_IS_TRUE(restored.Commandline().empty());
+                VERIFY_THROWS(page->_MakePane(restored, nullptr, *connection), winrt::hresult_error);
+            }
         });
     }
 

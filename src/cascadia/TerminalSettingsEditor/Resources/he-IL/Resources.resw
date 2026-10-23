@@ -3113,4 +3113,9 @@ Alt+Shift+/ הזן הנחיה; Alt+Shift+B הפעל ללא הנחיה התחלת
     <value>נסה שוב</value>
     <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
   </data>
+  <data name="AIAgents_CustomName.Header" xml:space="preserve"><value>שם</value><comment>Display name of a custom AI agent.</comment></data>
+  <data name="AIAgents_CustomAcp.Header" xml:space="preserve"><value>פקודת הפעלה של ACP (אופציונלי)</value><comment>{Locked="ACP"} Command used by the assistant pane, not the interactive terminal profile.</comment></data>
+  <data name="AIAgents_CustomCli.Header" xml:space="preserve"><value>פקודת CLI אינטראקטיבית (אופציונלי)</value><comment>{Locked="CLI"} Providing this command generates an interactive terminal profile for this custom agent.</comment></data>
+  <data name="AIAgents_CustomResume.Header" xml:space="preserve"><value>פקודת חידוש (אופציונלי; יש להשתמש ב-{sessionId})</value><comment>{Locked="{sessionId}"} Requires an interactive CLI command. The placeholder must be exactly one complete argument.</comment></data>
+  <data name="AIAgents_CustomInvalid" xml:space="preserve"><value>יש לבדוק את המרכאות ולציין פקודת ACP או CLI. חידוש דורש פקודת CLI וארגומנט שלם אחד בדיוק מסוג {sessionId}.</value><comment>{Locked="ACP"} {Locked="CLI"} {Locked="{sessionId}"} Validation error for custom agent startup and resume commands.</comment></data>
 </root>

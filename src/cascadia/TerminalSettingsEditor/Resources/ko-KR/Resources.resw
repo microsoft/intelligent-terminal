@@ -3106,4 +3106,9 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
     <value>다시 시도</value>
     <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
   </data>
+  <data name="AIAgents_CustomName.Header" xml:space="preserve"><value>이름</value><comment>Display name of a custom AI agent.</comment></data>
+  <data name="AIAgents_CustomAcp.Header" xml:space="preserve"><value>ACP 시작 명령(선택 사항)</value><comment>{Locked="ACP"} Command used by the assistant pane, not the interactive terminal profile.</comment></data>
+  <data name="AIAgents_CustomCli.Header" xml:space="preserve"><value>대화형 CLI 명령(선택 사항)</value><comment>{Locked="CLI"} Providing this command generates an interactive terminal profile for this custom agent.</comment></data>
+  <data name="AIAgents_CustomResume.Header" xml:space="preserve"><value>다시 시작 명령(선택 사항, {sessionId} 사용)</value><comment>{Locked="{sessionId}"} Requires an interactive CLI command. The placeholder must be exactly one complete argument.</comment></data>
+  <data name="AIAgents_CustomInvalid" xml:space="preserve"><value>명령의 따옴표를 확인하고 ACP 또는 CLI 명령을 지정하세요. 다시 시작하려면 CLI 명령과 완전한 단일 인수인 {sessionId}가 정확히 하나 필요합니다.</value><comment>{Locked="ACP"} {Locked="CLI"} {Locked="{sessionId}"} Validation error for custom agent startup and resume commands.</comment></data>
 </root>

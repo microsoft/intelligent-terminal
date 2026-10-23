@@ -154,6 +154,12 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 
     winrt::hstring NewTerminalArgs::ToCommandline() const
     {
+        // Flattening intentionally carries only host custom resumes. Reject
+        // unsupported provenance before an elevation handoff could erase it.
+        THROW_HR_IF(E_INVALIDARG,
+                    !CustomAgentSessionId().empty() &&
+                        !CustomAgentBackend().empty() &&
+                        CustomAgentBackend() != winrt::hstring{ L"host:" + std::wstring{ NativeAgentProviderId() } });
         std::wstring str;
 
         if (!Profile().empty())
@@ -164,6 +170,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         if (!NativeAgentProviderId().empty())
         {
             fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--native-agent-provider {} "), QuoteAndEscapeCommandlineArg(NativeAgentProviderId()));
+        }
+        if (!CustomAgentSessionId().empty())
+        {
+            fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--custom-agent-session {} "), QuoteAndEscapeCommandlineArg(CustomAgentSessionId()));
         }
 
         if (const auto id = SessionId(); id != winrt::guid{})

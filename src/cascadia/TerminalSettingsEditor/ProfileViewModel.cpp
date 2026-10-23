@@ -58,6 +58,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     hstring ProfileViewModel::LaunchCommandline() const
     {
+        if (::Microsoft::Terminal::AgentProfiles::IsManaged(_profile) &&
+            ::Microsoft::Terminal::CustomAgents::IsId(std::wstring_view{ _profile.AgentProfileId() }))
+        {
+            if (const auto agent = ::Microsoft::Terminal::CustomAgents::Find(_appSettings.GlobalSettings(), _profile.AgentProfileId());
+                agent && !agent.CliCommand().empty())
+            {
+                return hstring{ ::Microsoft::Terminal::CustomAgents::Format(
+                    ::Microsoft::Terminal::CustomAgents::Parse(agent.CliCommand())) };
+            }
+        }
         return IsManagedAgentProfile() ?
                    hstring{ ::Microsoft::Terminal::AgentProfiles::Command(_profile) } :
                    Commandline();
@@ -65,14 +75,20 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     bool ProfileViewModel::IsManagedAgentProfile() const
     {
-        return ::Microsoft::Terminal::AgentProfiles::IsManaged(_profile);
+        return ::Microsoft::Terminal::AgentProfiles::IsManaged(_profile) &&
+               ::Microsoft::Terminal::Settings::Model::AgentRegistry::SupportsNativeProfile(
+                   std::wstring_view{ _profile.AgentProfileId() });
     }
 
     bool ProfileViewModel::IsAgentProfilePolicyBlocked() const
     {
         namespace Policy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
-        return IsManagedAgentProfile() &&
-               (!Policy::IsAgentAllowed(_profile.AgentProfileId()) || !Policy::IsYoloModeAllowed());
+        const auto id = _profile.AgentProfileId();
+        const auto allowed = ::Microsoft::Terminal::CustomAgents::IsId(id) ?
+                                 Policy::IsCustomAgentAllowed() :
+                                 Policy::IsAgentAllowed(id);
+        return ::Microsoft::Terminal::AgentProfiles::IsManaged(_profile) &&
+               (!allowed || !Policy::IsYoloModeAllowed());
     }
 
     void ProfileViewModel::LaunchCommandline(const hstring& value)

@@ -373,6 +373,14 @@ pub enum MasterExtRequest {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
     },
+    SessionActivate {
+        request_id: u64,
+        identity: crate::session_registry::SessionIdentity,
+        window_id: u64,
+        activation_id: String,
+        tab_id: String,
+        status_only: bool,
+    },
     /// Hot-swap the ACP model on this helper's live session(s) via
     /// `set_session_model`, without restarting anything. Two callers:
     /// * settings hot-reload (`acpModel` changed) and the per-pane `/model`
@@ -3036,7 +3044,7 @@ pub async fn run_acp_client_over_pipe(
     mut rename_session_rx: mpsc::UnboundedReceiver<RenameSessionRequest>,
     mut restart_rx: mpsc::UnboundedReceiver<AgentLifecycleRequest>,
     mut session_hook_rx: mpsc::UnboundedReceiver<crate::app::QueuedSessionHook>,
-    mut master_ext_rx: mpsc::UnboundedReceiver<MasterExtRequest>,
+    master_ext_rx: mpsc::UnboundedReceiver<MasterExtRequest>,
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     post_login_reconnect: bool,
@@ -3046,6 +3054,10 @@ pub async fn run_acp_client_over_pipe(
     >,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) -> Result<AcpClientExit> {
+    let mut master_ext_rx = PendingMasterRequests {
+        receiver: master_ext_rx,
+        event_tx: event_tx.clone(),
+    };
     let startup_probe = StartupProbe::new();
     let usage_family_id = agent_id.as_deref().and_then(|agent_id| {
         let family_id = agent_id.trim().to_ascii_lowercase();
@@ -3958,7 +3970,7 @@ pub async fn run_acp_client_over_pipe(
                     }
                 }));
             }
-            Some(req) = master_ext_rx.recv() => {
+            Some(req) = master_ext_rx.receiver.recv() => {
                 lifecycle_tasks.retain(|task| !task.is_finished());
                 lifecycle_tasks.push(dispatch_master_ext_request(
                     req,
@@ -4302,6 +4314,70 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                     }
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
+            }
+            MasterExtRequest::SessionActivate {
+                request_id,
+                identity,
+                window_id,
+                activation_id,
+                tab_id,
+                status_only,
+            } => {
+                use crate::session_registry::SessionActivationState;
+                let mut status_only = status_only;
+                loop {
+                    let request = crate::session_registry::build_session_activate_request(
+                        identity.clone(),
+                        window_id,
+                        activation_id.clone(),
+                        status_only,
+                    );
+                    let response = match tokio::time::timeout(
+                        std::time::Duration::from_secs(8),
+                        conn.ext_method(request),
+                    )
+                    .await
+                    {
+                        Ok(Ok(raw)) => crate::session_registry::parse_session_activate_response(&raw.0),
+                        error => {
+                            tracing::warn!(target: "agents_view", request_id, ?error, "session activation outcome ambiguous; retaining receipt");
+                            break;
+                        }
+                    };
+                    let response = match response {
+                        Ok(response) if response.activation_id == activation_id => response,
+                        _ => {
+                            tracing::warn!(target: "agents_view", request_id, "invalid session activation receipt; retaining identity");
+                            break;
+                        }
+                    };
+                    match response.state {
+                        SessionActivationState::Pending => {
+                            // Coalesced aliases are pending with accepted=false.
+                            // Never execute again, even if this task is aborted.
+                            if status_only {
+                                break;
+                            }
+                            status_only = true;
+                        }
+                        SessionActivationState::Unknown => break,
+                        SessionActivationState::Complete => {
+                            if !response.accepted {
+                                let _ = event_tx.send(AppEvent::TabSystemMessage {
+                                    tab_id,
+                                    message: response.detail.unwrap_or_else(|| {
+                                        "Session activation was rejected".into()
+                                    }),
+                                });
+                            }
+                            let _ = event_tx.send(AppEvent::SessionActivationCompleted {
+                                activation_id,
+                            });
+                            let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
+                            break;
+                        }
+                    }
+                }
             }
             MasterExtRequest::SetSessionModel {
                 request_id,
@@ -5397,6 +5473,45 @@ fn retire_queued_prompt_submissions(prompt_rx: &mut mpsc::UnboundedReceiver<Prom
     }
 }
 
+// Own the queue across startup errors, normal teardown, and task cancellation.
+// Only requests still in this queue are definitely never dispatched.
+pub(crate) struct PendingMasterRequests {
+    pub(crate) receiver: mpsc::UnboundedReceiver<MasterExtRequest>,
+    pub(crate) event_tx: mpsc::UnboundedSender<AppEvent>,
+}
+
+impl PendingMasterRequests {
+    fn close(&mut self) {
+        self.receiver.close();
+        while let Ok(request) = self.receiver.try_recv() {
+            if let MasterExtRequest::SessionActivate {
+                identity,
+                window_id,
+                activation_id,
+                tab_id,
+                status_only: false,
+                ..
+            } = request
+            {
+                let _ = self
+                    .event_tx
+                    .send(AppEvent::SessionActivationNotDispatched {
+                        identity,
+                        window_id,
+                        activation_id,
+                        tab_id,
+                    });
+            }
+        }
+    }
+}
+
+impl Drop for PendingMasterRequests {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn close_client_receivers(
     prompt_rx: &mut mpsc::UnboundedReceiver<PromptSubmission>,
@@ -5406,7 +5521,7 @@ fn close_client_receivers(
     rename_session_rx: &mut mpsc::UnboundedReceiver<RenameSessionRequest>,
     restart_rx: &mut mpsc::UnboundedReceiver<AgentLifecycleRequest>,
     session_hook_rx: &mut mpsc::UnboundedReceiver<crate::agent_sessions::SessionEvent>,
-    master_ext_rx: &mut mpsc::UnboundedReceiver<MasterExtRequest>,
+    master_ext_rx: &mut PendingMasterRequests,
 ) {
     retire_queued_prompt_submissions(prompt_rx);
     new_session_rx.close();

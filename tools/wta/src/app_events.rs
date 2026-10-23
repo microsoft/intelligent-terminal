@@ -1045,6 +1045,7 @@ impl App {
                 session_capabilities_ready,
                 telemetry_byok_binding,
             } => {
+                self.reconcile_session_activations();
                 self.cancel_acp_authentication();
                 self.telemetry_byok_binding = telemetry_byok_binding;
                 self.initial_startup_presentation_eligible = false;
@@ -2769,6 +2770,7 @@ impl App {
                 self.schedule_agents_refetch_for_open_views();
             }
             AppEvent::SessionsFallbackTick => {
+                self.reconcile_session_activations();
                 if !self.sessions_in_sidebar {
                     self.schedule_agents_refetch_for_open_views();
                 }
@@ -2806,6 +2808,7 @@ impl App {
                 request_id,
                 sessions,
             } => {
+                self.reconcile_session_activations();
                 self.handle_agents_snapshot_loaded(request_id, sessions);
             }
             AppEvent::AgentsSnapshotFailed { request_id } => {
@@ -2817,6 +2820,30 @@ impl App {
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
+            }
+            AppEvent::SessionActivationCompleted { activation_id } => {
+                self.pending_session_activations.remove(&activation_id);
+            }
+            AppEvent::SessionActivationNotDispatched {
+                identity,
+                window_id,
+                activation_id,
+                tab_id,
+            } => {
+                if self
+                    .pending_session_activations
+                    .get(&activation_id)
+                    .is_some_and(|request| {
+                        matches!(request,
+                        crate::protocol::acp::client::MasterExtRequest::SessionActivate {
+                            identity: pending_identity, window_id: pending_window,
+                            activation_id: pending_id, tab_id: pending_tab, ..
+                        } if pending_identity == &identity && *pending_window == window_id
+                            && pending_id == &activation_id && pending_tab == &tab_id)
+                    })
+                {
+                    self.pending_session_activations.remove(&activation_id);
+                }
             }
             AppEvent::WtEvent {
                 method,

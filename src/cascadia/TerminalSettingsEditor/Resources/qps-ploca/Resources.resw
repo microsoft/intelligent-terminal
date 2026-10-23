@@ -3063,4 +3063,9 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <value>[!!_Ｔｒｙ ａｇａｉｎ_!!]</value>
     <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
   </data>
+  <data name="AIAgents_CustomName.Header" xml:space="preserve"><value>[!!_Ņàmě_!!]</value><comment>Display name of a custom AI agent.</comment></data>
+  <data name="AIAgents_CustomAcp.Header" xml:space="preserve"><value>[!!_ACP šţåŕţûþ çömmåñð (öþţîöñåļ)_!!]</value><comment>{Locked="ACP"} Command used by the assistant pane, not the interactive terminal profile.</comment></data>
+  <data name="AIAgents_CustomCli.Header" xml:space="preserve"><value>[!!_Îñţéŕåçţîvé CLI çömmåñð (öþţîöñåļ)_!!]</value><comment>{Locked="CLI"} Providing this command generates an interactive terminal profile for this custom agent.</comment></data>
+  <data name="AIAgents_CustomResume.Header" xml:space="preserve"><value>[!!_Ŕéšûmé çömmåñð (öþţîöñåļ; ûšé {sessionId})_!!]</value><comment>{Locked="{sessionId}"} Requires an interactive CLI command. The placeholder must be exactly one complete argument.</comment></data>
+  <data name="AIAgents_CustomInvalid" xml:space="preserve"><value>[!!_Çĥéçķ ţĥé çömmåñð qûöţîñĝ. Šþéçîƒý åñ ACP öŕ CLI çömmåñð. Ŕéšûmé ŕéqûîŕéš å CLI çömmåñð åñð éxåçţļý öñé {sessionId} åŕĝûméñţ._!!]</value><comment>{Locked="ACP"} {Locked="CLI"} {Locked="{sessionId}"} Validation error for custom agent startup and resume commands.</comment></data>
 </root>

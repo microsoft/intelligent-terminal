@@ -32,6 +32,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 "delegateCustomCommands",
                 "customModelSelection",
                 "customModelProviders",
+                "customAgents",
                 "autoErrorDetectionEnabled",
                 "autoFixEnabled",
                 "agentSessionManagementEnabled",
@@ -55,7 +56,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             }
 
             // Also protect nested provider fields if change logging expands them later.
-            return setting.starts_with("customModelProviders.") || setting.starts_with("customModelProviders[");
+            return setting.starts_with("customModelProviders.") || setting.starts_with("customModelProviders[") ||
+                   setting.starts_with("customAgents.") || setting.starts_with("customAgents[");
         }
 
         const auto separator = change.find('.');

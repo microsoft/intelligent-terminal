@@ -8,6 +8,7 @@ import "ColorScheme.idl";
 import "ActionMap.idl";
 import "NewTabMenuEntry.idl";
 import "CustomModelProvider.idl";
+import "CustomAgent.idl";
 
 namespace Microsoft.Terminal.Settings.Model
 {
@@ -206,5 +207,6 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(Boolean, SidebarShowRecentAgentSessions);
 
         INHERITABLE_SETTING(Boolean, RenderAgentMarkdown);
+        INHERITABLE_SETTING(IVector<CustomAgent>, CustomAgents);
     }
 }

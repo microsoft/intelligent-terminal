@@ -1116,6 +1116,7 @@ impl From<&crate::agent_sessions::CliSource> for SessionHookCliSource {
             crate::agent_sessions::CliSource::Gemini => Self::Known("Gemini".to_string()),
             crate::agent_sessions::CliSource::OpenCode => Self::Known("OpenCode".to_string()),
             crate::agent_sessions::CliSource::Antigravity => Self::Known("Antigravity".to_string()),
+            crate::agent_sessions::CliSource::Custom(id) => Self::Known(id.clone()),
             crate::agent_sessions::CliSource::Unknown(value) => Self::Unknown {
                 value: value.clone(),
             },
@@ -1133,8 +1134,16 @@ impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
                 "Gemini" | "gemini" => Self::Gemini,
                 "OpenCode" | "opencode" => Self::OpenCode,
                 "Antigravity" | "antigravity" => Self::Antigravity,
+                other if crate::custom_agents::is_custom_id(other) => {
+                    Self::Custom(other.to_ascii_lowercase())
+                }
                 other => Self::Unknown(other.to_string()),
             },
+            SessionHookCliSource::Unknown { value }
+                if crate::custom_agents::is_custom_id(&value) =>
+            {
+                Self::Custom(value.to_ascii_lowercase())
+            }
             SessionHookCliSource::Unknown { value } => Self::Unknown(value),
         }
     }
@@ -10085,6 +10094,35 @@ mod tests {
         ] {
             let wire: SessionHookParams = serde_json::from_value(params).unwrap();
             assert_eq!(SessionEvent::from(wire), expected);
+        }
+    }
+
+    #[test]
+    fn session_hook_custom_sources_normalize_before_session_filtering() {
+        use crate::agent_sessions::{AgentSessionRegistry, CliSource, SessionEvent};
+
+        for source in [
+            serde_json::json!("custom:My-Agent"),
+            serde_json::json!({"Unknown": "custom:My-Agent"}),
+        ] {
+            let wire: SessionHookParams = serde_json::from_value(serde_json::json!({
+                "kind": "SessionStarted",
+                "key": "mixed-case",
+                "cli_source": source,
+                "pane_session_id": "pane",
+                "cwd": "C:\\repo",
+                "title": "custom"
+            }))
+            .unwrap();
+            let event = SessionEvent::from(wire);
+            let mut registry = AgentSessionRegistry::new();
+            registry.apply(event);
+            for filter in [
+                CliSource::parse(Some("custom:My-Agent")),
+                CliSource::from_agent_id("custom:My-Agent").unwrap(),
+            ] {
+                assert_eq!(registry.iter_sorted_filtered(Some(&filter)).len(), 1);
+            }
         }
     }
 

@@ -233,7 +233,7 @@ IVectorView<Model::ExtensionPackage> CascadiaSettings::Extensions()
     if (!_extensionPackages)
     {
         // Lazy load the ExtensionPackage objects
-        _extensionPackages = winrt::single_threaded_vector<Model::ExtensionPackage>(std::move(SettingsLoader::LoadExtensionPackages()));
+        _extensionPackages = winrt::single_threaded_vector<Model::ExtensionPackage>(std::move(SettingsLoader::LoadExtensionPackages(_globals->CustomAgents())));
     }
     return _extensionPackages.GetView();
 }

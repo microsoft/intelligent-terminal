@@ -5,6 +5,7 @@
 
 #include "AgentPaneRestore.h"
 #include "AgentRegistry.h"
+#include "CustomAgentUtils.h"
 #include <filesystem>
 #include <map>
 #include <shellapi.h>
@@ -231,16 +232,15 @@ namespace Microsoft::Terminal::AgentProfiles
 
     inline void CheckLaunchPolicy(const std::wstring_view id, const Settings::Model::AgentPolicy::PolicySnapshot& policy)
     {
-        THROW_HR_IF_MSG(E_ACCESSDENIED, !Settings::Model::AgentRegistry::SupportsNativeProfile(id) ||
-                                        !Settings::Model::AgentRegistry::IsNativeAgentProviderAllowed(id, policy) ||
-                                        policy.yoloMode == Settings::Model::AgentPolicy::PolicyState::Blocked,
-                     "Managed native agent launch blocked by policy");
+        THROW_HR_IF_MSG(E_ACCESSDENIED, (!Settings::Model::AgentRegistry::SupportsNativeProfile(id) && !CustomAgents::IsId(id)) || !Settings::Model::AgentRegistry::IsNativeAgentProviderAllowed(id, policy) || policy.yoloMode == Settings::Model::AgentPolicy::PolicyState::Blocked, "Managed native agent launch blocked by policy");
     }
 
     template<typename Profile>
     bool IsManaged(Profile&& profile)
     {
-        if (!Settings::Model::AgentRegistry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() }) || profile.HasCommandline())
+        if ((!Settings::Model::AgentRegistry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() }) &&
+             !CustomAgents::IsId(std::wstring_view{ profile.AgentProfileId() })) ||
+            profile.HasCommandline())
         {
             return false;
         }
@@ -251,6 +251,10 @@ namespace Microsoft::Terminal::AgentProfiles
     template<typename Profile>
     std::wstring Command(const Profile& profile, const bool requireExecutable = false, const std::wstring_view path = NativePath())
     {
+        if (CustomAgents::IsId(std::wstring_view{ profile.AgentProfileId() }))
+        {
+            return std::wstring{ profile.Commandline() };
+        }
         THROW_HR_IF(E_INVALIDARG, !Settings::Model::AgentRegistry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() }));
         std::filesystem::path executable;
         try

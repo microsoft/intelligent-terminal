@@ -7,6 +7,7 @@
 #include <winrt/Windows.UI.Xaml.Documents.h>
 
 #include "AIAgents.h"
+#include "AIAgentsViewModel.h"
 #include "AIAgents.g.cpp"
 
 using namespace winrt::Windows::UI::Xaml;
@@ -249,7 +250,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (owner == AcpAgentComboBox())
         {
             viewModel.CurrentAcpAgent(entry);
-            viewModel.EditCustomAcpAgent();
+            winrt::get_self<AIAgentsViewModel>(viewModel)->EditCustomAcpAgent(entry.Id());
             CustomAcpCommandBox().Focus(FocusState::Programmatic);
         }
         else

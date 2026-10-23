@@ -797,7 +797,7 @@ namespace winrt::TerminalApp::implementation
         // or index must keep it — so those are left untouched. If the resolved
         // GUID somehow can't be matched, GetProfileForArgs falls back to the
         // same "Defaults" profile as before (no regression).
-        if (args && !args.Commandline().empty() && args.Profile().empty() && !args.ProfileIndex())
+        if (args && (!args.Commandline().empty() || !args.CustomAgentSessionId().empty()) && args.Profile().empty() && !args.ProfileIndex())
         {
             auto profileGuid = _settings.GlobalSettings().DefaultProfile();
             if (const auto sourceProfile = _SourceTerminalProfileForTab(_GetFocusedTabImpl()))
