@@ -1,0 +1,24 @@
+---
+source: tui-markdown/src/renderer/footnote.rs
+expression: |-
+  from_str(indoc!("
+                      Text[^one]
+  
+                      [^one]: First paragraph.
+  
+                          Second paragraph.
+                  "))
+---
+Text::from_iter([
+    Line::from_iter([
+        Span::from("Text"),
+        Span::from("[one]").dim().italic(),
+    ]),
+    Line::default(),
+    Line::from_iter([
+        Span::from("[one]: ").dim(),
+        Span::from("First paragraph."),
+    ]).dim(),
+    Line::default().dim(),
+    Line::from("Second paragraph.").dim(),
+])

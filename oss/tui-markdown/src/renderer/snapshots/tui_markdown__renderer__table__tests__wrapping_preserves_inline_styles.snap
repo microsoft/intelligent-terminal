@@ -1,0 +1,30 @@
+---
+source: tui-markdown/src/renderer/table.rs
+expression: text
+---
+Text::from_iter([
+    Line::from(Span::from("┌────┐").dark_gray()),
+    Line::from_iter([
+        Span::from("│").dark_gray(),
+        Span::from(" ").cyan().bold(),
+        Span::from("H").cyan().bold(),
+        Span::from("  ").cyan().bold(),
+        Span::from("│").dark_gray(),
+    ]),
+    Line::from(Span::from("├────┤").dark_gray()),
+    Line::from_iter([
+        Span::from("│").dark_gray(),
+        Span::from(" "),
+        Span::from("ab").bold(),
+        Span::from(" "),
+        Span::from("│").dark_gray(),
+    ]),
+    Line::from_iter([
+        Span::from("│").dark_gray(),
+        Span::from(" "),
+        Span::from("cd").italic(),
+        Span::from(" "),
+        Span::from("│").dark_gray(),
+    ]),
+    Line::from(Span::from("└────┘").dark_gray()),
+])

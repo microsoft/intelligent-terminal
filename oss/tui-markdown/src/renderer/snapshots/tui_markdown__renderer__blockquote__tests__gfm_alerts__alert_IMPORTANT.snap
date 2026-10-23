@@ -1,0 +1,21 @@
+---
+source: tui-markdown/src/renderer/blockquote.rs
+expression: |-
+  from_str(&formatdoc!
+  {"
+                      > [!{marker}]
+                      > Body
+                  "})
+---
+Text::from_iter([
+    Line::from_iter([
+        Span::from(">"),
+        Span::from(" "),
+        Span::from("❗ Important").magenta().bold(),
+    ]).magenta(),
+    Line::from_iter([
+        Span::from(">"),
+        Span::from(" "),
+        Span::from("Body"),
+    ]).magenta(),
+])

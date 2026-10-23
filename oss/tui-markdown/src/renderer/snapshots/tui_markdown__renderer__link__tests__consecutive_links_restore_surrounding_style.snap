@@ -1,0 +1,5 @@
+---
+source: tui-markdown/src/renderer/link.rs
+expression: "from_str(\"[One](one) and [Two](two) after\")"
+---
+Text::from(Line::from_iter([Span::from("One").blue().underlined(), Span::from(" ("), Span::from("one").blue().underlined(), Span::from(")"), Span::from(" and "), Span::from("Two").blue().underlined(), Span::from(" ("), Span::from("two").blue().underlined(), Span::from(")"), Span::from(" after")]))
