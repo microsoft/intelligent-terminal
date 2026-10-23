@@ -501,6 +501,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentScopeMoveTabDispatchPreservesOwner);
         TEST_METHOD(PresentedTabNumbersUseRealBindings);
         TEST_METHOD(SidebarNavigationHotkeysCycleDisplayedTabs);
+        TEST_METHOD(SidebarNavigationHotkeysRevealSelectedTab);
         TEST_METHOD(AgentScopeMoveTabSearchAndPinBoundaries);
         TEST_METHOD(MoveTabDispatchPreservesOrdinaryLayouts);
         TEST_METHOD(VerticalTabSelectionPreservesPresentation);
@@ -19066,42 +19067,69 @@ namespace TerminalAppLocalTests
     void TabTests::SidebarNavigationHotkeysCycleDisplayedTabs()
     {
         using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using Tab = winrt::TerminalApp::implementation::Tab;
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
         const auto connection = winrt::make_self<TestConnection>(
             winrt::guid{ L"{6239a42c-a001-49a3-80bd-e8fdd045185c}" }, State::Connected);
-        const auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        Grid host{ nullptr };
+        UIElement previousContent{ nullptr };
+        TestOnUIThread([&]() {
+            previousContent = Window::Current().Content();
+            host = Grid{};
+            host.Width(1200);
+            host.Height(600);
+        });
+        const auto restoreContent = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                Window::Current().Content(previousContent);
+                host.Children().Clear();
+            });
+        });
+        const auto page = _commonSetup(*connection, host, std::nullopt, true);
+        winrt::com_ptr<Tab> first, middle, last;
+        winrt::com_ptr<TestConnection> lastConnection;
+        winrt::com_ptr<winrt::TerminalApp::implementation::AppKeyBindings> keys;
+        winrt::Microsoft::Terminal::Control::KeyChord up{ nullptr }, down{ nullptr }, alias{ nullptr };
+        std::shared_ptr<Pane> root, active;
+        std::vector<Tab::VisiblePaneSnapshot> panes;
         TestOnUIThread([&]() {
             page->_historyRefreshInFlight = true;
-            const auto first = page->_GetFocusedTabImpl();
+            first = page->_GetFocusedTabImpl();
             first->SuppressAgentPrewarm();
             first->SetTabText(L"displayed-first");
             const auto middleConnection = winrt::make_self<TestConnection>(
                 winrt::guid{ L"{6239a42c-a002-49a3-80bd-e8fdd045185c}" }, State::Connected);
-            const auto lastConnection = winrt::make_self<TestConnection>(
+            lastConnection = winrt::make_self<TestConnection>(
                 winrt::guid{ L"{6239a42c-a003-49a3-80bd-e8fdd045185c}" }, State::Connected);
-            const auto middle = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, *middleConnection)));
-            const auto last = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, *lastConnection)));
+            middle = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, *middleConnection)));
+            last = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, *lastConnection)));
             middle->SuppressAgentPrewarm();
             last->SuppressAgentPrewarm();
             middle->SetTabText(L"other-middle");
             last->SetTabText(L"displayed-last");
+            page->UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return last->GetActivePane()->GetTerminalControl().ActualWidth() > 400;
+        });
+        TestOnUIThread([&]() {
             const auto splitConnection = winrt::make_self<TestConnection>(
                 winrt::guid{ L"{6239a42c-a004-49a3-80bd-e8fdd045185c}" }, State::Connected);
             VERIFY_IS_TRUE(page->_SplitPane(last, SplitDirection::Right, 0.5f, page->_MakePane(nullptr, nullptr, *splitConnection), false));
-            const auto root = last->GetRootPane();
-            const auto active = last->GetActivePane();
-            const auto panes = last->GetVisiblePaneSnapshot();
+            root = last->GetRootPane();
+            active = last->GetActivePane();
+            panes = last->GetVisiblePaneSnapshot();
             page->_SetTabPinned(first, true);
             page->_tabStrip.SidebarFilters().ShowAgentsOnly(false);
             page->_ApplyTabListProjection();
             page->_SelectTab(0);
 
             const auto map = CascadiaSettings::LoadDefaults().ActionMap();
-            const auto keys = winrt::make_self<winrt::TerminalApp::implementation::AppKeyBindings>();
+            keys = winrt::make_self<winrt::TerminalApp::implementation::AppKeyBindings>();
             keys->SetActionMap(map);
             keys->SetDispatch(*page->_actionDispatch);
-            const auto up = KeyChordSerialization::FromString(L"ctrl+alt+up");
-            const auto down = KeyChordSerialization::FromString(L"ctrl+alt+down");
+            up = KeyChordSerialization::FromString(L"ctrl+alt+up");
+            down = KeyChordSerialization::FromString(L"ctrl+alt+down");
             const auto navigate = [&](const auto& chord, const auto& expected) {
                 const auto handled = keys->TryKeyChord(chord);
                 VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == expected, L"The keyboard entry must select the adjacent displayed live tab.");
@@ -19161,7 +19189,7 @@ namespace TerminalAppLocalTests
                 *guard = false;
             }
             const auto defaultDown = map.GetActionByKeyChord(down).ActionAndArgs();
-            const auto alias = KeyChordSerialization::FromString(L"ctrl+shift+y");
+            alias = KeyChordSerialization::FromString(L"ctrl+shift+y");
             map.RegisterKeyBinding(alias, defaultDown);
             navigate(alias, first);
             map.DeleteKeyBinding(down);
@@ -19173,7 +19201,12 @@ namespace TerminalAppLocalTests
             navigate(down, last);
 
             VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
-            page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return !page->_changingTabLayout && !page->_isVerticalLayout &&
+                   page->_GetFocusedTabImpl() == last;
+        });
+        TestOnUIThread([&]() {
             for (const auto& chord : { up, down, alias })
             {
                 VERIFY_IS_FALSE(keys->TryKeyChord(chord), L"Sidebar navigation must leave horizontal input unhandled.");
@@ -19194,6 +19227,161 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(panes[index].ContentId, after[index].ContentId);
                 VERIFY_ARE_EQUAL(panes[index].IsActive, after[index].IsActive);
             }
+        });
+    }
+
+    void TabTests::SidebarNavigationHotkeysRevealSelectedTab()
+    {
+        using Tab = winrt::TerminalApp::implementation::Tab;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{6239a42c-b001-49a3-80bd-e8fdd045185c}" }, State::Connected);
+        Grid host{ nullptr };
+        UIElement previousContent{ nullptr };
+        TestOnUIThread([&]() {
+            previousContent = Window::Current().Content();
+            host = Grid{};
+            host.Width(1200);
+            host.Height(600);
+        });
+        const auto restoreContent = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                Window::Current().Content(previousContent);
+                host.Children().Clear();
+            });
+        });
+        const auto page = _commonSetup(*connection, host, std::nullopt, true);
+        std::vector<winrt::com_ptr<Tab>> tabs;
+        ScrollViewer scroll{ nullptr };
+        winrt::com_ptr<winrt::TerminalApp::implementation::AppKeyBindings> keys;
+        TestOnUIThread([&]() {
+            page->_historyRefreshInFlight = true;
+            page->_tabStrip.Height(300);
+            tabs.emplace_back(page->_GetFocusedTabImpl());
+            tabs.front()->SuppressAgentPrewarm();
+            for (uint32_t index = 1; index < 16; ++index)
+            {
+                auto id = winrt::guid{ L"{6239a42c-b002-49a3-80bd-e8fdd045185c}" };
+                id.Data1 += index;
+                const auto nextConnection = winrt::make_self<TestConnection>(id, State::Connected);
+                const auto tab = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, *nextConnection)));
+                tab->SuppressAgentPrewarm();
+                tab->SetTabText(winrt::hstring{ L"viewport-tab-" } + winrt::to_hstring(index));
+                tabs.emplace_back(tab);
+            }
+            page->_tabStrip.SidebarFilters().ShowAgentsOnly(false);
+            page->_ApplyTabListProjection();
+            page->_SelectTab(0);
+            page->UpdateLayout();
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto findScroll = [](auto&& self, const DependencyObject& parent) -> ScrollViewer {
+                if (const auto viewer = parent.try_as<ScrollViewer>())
+                {
+                    return viewer;
+                }
+                for (int32_t index = 0; index < Media::VisualTreeHelper::GetChildrenCount(parent); ++index)
+                {
+                    if (const auto viewer = self(self, Media::VisualTreeHelper::GetChild(parent, index)))
+                    {
+                        return viewer;
+                    }
+                }
+                return nullptr;
+            };
+            scroll = findScroll(findScroll, strip->ItemsList());
+            VERIFY_IS_NOT_NULL(scroll);
+            VERIFY_IS_TRUE(scroll.ScrollableHeight() > 0);
+            scroll.ChangeView(nullptr, 0.0, nullptr, true);
+            keys = winrt::make_self<winrt::TerminalApp::implementation::AppKeyBindings>();
+            keys->SetActionMap(CascadiaSettings::LoadDefaults().ActionMap());
+            keys->SetDispatch(*page->_actionDispatch);
+        });
+        const auto headerVisible = [&](const auto& tab) {
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto header = strip->HeaderForTab(tab->TabViewItem()).try_as<FrameworkElement>();
+            if (!header || !header.IsLoaded() || header.ActualHeight() <= 0)
+            {
+                return false;
+            }
+            const auto list = strip->ItemsList();
+            const auto bounds = header.TransformToVisual(list).TransformBounds(
+                { 0, 0, static_cast<float>(header.ActualWidth()), static_cast<float>(header.ActualHeight()) });
+            return bounds.Y >= -1.0f && bounds.Y + bounds.Height <= list.ActualHeight() + 1.0;
+        };
+        _waitForContentTransferReviewUI([&]() {
+            return scroll.VerticalOffset() <= 1.0 && headerVisible(tabs.front()) && !headerVisible(tabs.back());
+        });
+        const auto navigate = [&](const wchar_t* chord, const auto& expected) {
+            TestOnUIThread([&]() {
+                VERIFY_IS_TRUE(keys->TryKeyChord(KeyChordSerialization::FromString(chord)));
+                VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == expected, L"Tab activation must already be correct independently of scrolling.");
+            });
+            _waitForContentTransferReviewUI([&]() {
+                return headerVisible(expected);
+            });
+            TestOnUIThread([&]() {
+                VERIFY_IS_TRUE(page->_GetActiveControl() == expected->GetActivePane()->GetTerminalControl());
+                VERIFY_IS_TRUE(page->_GetActiveControl().FocusState() != FocusState::Unfocused);
+            });
+        };
+        navigate(L"ctrl+alt+up", tabs.back());
+        navigate(L"ctrl+alt+down", tabs.front());
+
+        TestOnUIThread([&]() {
+            page->_tabStrip.SearchActive(true);
+            page->_tabStrip.SearchQuery(L"viewport-tab-");
+            page->_SelectTab(1);
+            scroll.ChangeView(nullptr, 0.0, nullptr, true);
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return scroll.VerticalOffset() <= 1.0 && headerVisible(tabs.at(1));
+        });
+        navigate(L"ctrl+alt+up", tabs.back());
+        navigate(L"ctrl+alt+down", tabs.at(1));
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"viewport-tab-" }, page->_tabStrip.SearchQuery());
+            VERIFY_IS_TRUE(keys->TryKeyChord(KeyChordSerialization::FromString(L"ctrl+alt+up")));
+            page->_SelectTab(1);
+            scroll.ChangeView(nullptr, 0.0, nullptr, true);
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return scroll.VerticalOffset() <= 1.0 && headerVisible(tabs.at(1)) && !headerVisible(tabs.back());
+        });
+        TestOnUIThread([&]() {
+            page->_tabStrip.SearchActive(false);
+            page->_SelectTab(0);
+            page->UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return page->_GetFocusedTabImpl() == tabs.front() && headerVisible(tabs.front());
+        });
+
+        double manualOffset = 0;
+        TestOnUIThread([&]() {
+            // Keep the manual-scroll oracle independent of virtualized extent changes.
+            manualOffset = scroll.ScrollableHeight() / 2;
+            VERIFY_IS_TRUE(manualOffset > 0);
+            VERIFY_IS_TRUE(scroll.ChangeView(nullptr, manualOffset, nullptr, true));
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return std::abs(scroll.VerticalOffset() - manualOffset) <= 1.0 &&
+                   !headerVisible(tabs.front()) && !headerVisible(tabs.at(1));
+        });
+        TestOnUIThread([&]() {
+            page->_ApplyTabListProjection();
+            page->UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return std::abs(scroll.VerticalOffset() - manualOffset) <= 1.0;
+        });
+        navigate(L"ctrl+alt+down", tabs.at(1));
+        TestOnUIThread([&]() {
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_TRUE(keys->TryKeyChord(KeyChordSerialization::FromString(L"ctrl+alt+down")));
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == tabs.at(2));
+            VERIFY_IS_TRUE(page->_isVerticalRailCollapsed, L"Revealing a selection must not expand a collapsed sidebar.");
+            VERIFY_ARE_EQUAL(tabs.size(), static_cast<size_t>(page->_tabs.Size()));
         });
     }
 

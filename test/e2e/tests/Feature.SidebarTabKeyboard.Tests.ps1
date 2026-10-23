@@ -13,10 +13,9 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
 
-        $script:app = $null
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{
-            featureRolloutId = '{00000000-0000-0000-0000-000000000001}'; sidebarRolloutVersion = 1; sidebarRolloutAssignment = 'Sidebar'; sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
-        } -Settings @{
+        $package = Get-ItTestPackage
+        $target = Resolve-ItApp -Package $package
+        $startupSettings = @{
             language = 'en-US'
             tabLayout = 'vertical'
             sidebarShowRecentAgentSessions = $false
@@ -27,6 +26,24 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             windowingBehavior = 'useNew'
             'warning.confirmOnClose' = 'never'
         }
+        if ($target.PSObject.Properties['PrivateProtocolClsid']) {
+            $profile = '{' + [guid]::NewGuid() + '}'
+            $startupSettings.defaultProfile = $profile
+            $startupSettings.profiles = @{
+                defaults = @{ environment = @{
+                    PATH = "$($target.InstallLocation);$env:PATH"
+                    WTCLI_PATH = $target.WtcliPath
+                    WT_WTCLI_PATH = $target.WtcliPath
+                } }
+                list = @(@{ guid = $profile; name = 'Sidebar keyboard shell'
+                    commandline = 'pwsh.exe -NoLogo -NoProfile' })
+            }
+        }
+        $script:app = $null
+        $script:app = Start-Terminal -Package $package -PassFre $true -State @{
+            featureRolloutId = '{00000000-0000-0000-0000-000000000001}'; sidebarRolloutVersion = 1; sidebarRolloutAssignment = 'Sidebar'; sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+        } -Settings $startupSettings
+        $script:app | Add-Member RequireOwnedForeground $true -Force
 
         function Get-SidebarElement {
             param([string]$AutomationId)
@@ -181,6 +198,245 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
 
     AfterAll {
         if ($script:app) { Stop-Terminal -App $script:app }
+    }
+
+    It 'Sidebar navigation keeps selected tabs in view' -Tag 'SidebarNavigationScroll' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        $before = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId))
+        $selectedBefore = Get-ActivePane -App $script:app
+        $firstTitle = [string]$before[0].title
+        # UIA clips row rectangles to the viewport, so retain an unclipped row's height.
+        $rowHeight = @(Get-VisibleTabRows)[0].Current.BoundingRectangle.Height
+        $rowHeight | Should -BeGreaterThan 0
+        $created = [Collections.Generic.List[object]]::new()
+        $query = "viewport-$script:marker"
+        $searchOpened = $false
+        $groupSplit = $null
+        $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
+        $window.Current.ProcessId | Should -Be $script:app.Pid
+        $windowPattern = $window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
+        $priorWindowState = $windowPattern.Current.WindowVisualState
+        $windowPattern.SetWindowVisualState([Windows.Automation.WindowVisualState]::Normal)
+        $bounds = [ItE2E.ItWtWin32Input+RECT]::new()
+        $dpi = [ItE2E.ItWtWin32Input]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
+        if ($dpi -eq [IntPtr]::Zero) { throw 'Physical window sizing context is unavailable.' }
+        try {
+            if (-not [ItE2E.ItWtWin32Input]::GetWindowRect([IntPtr][long]$script:app.Hwnd, [ref]$bounds)) {
+                throw 'Cannot capture the owned window bounds.'
+            }
+            if (-not [ItE2E.ItWtWin32Input]::SetWindowPos([IntPtr][long]$script:app.Hwnd,
+                [IntPtr]::Zero, $bounds.Left, $bounds.Top, $bounds.Right - $bounds.Left, 480, 0x14)) {
+                throw 'Cannot size the owned window for an overflowing sidebar.'
+            }
+        }
+        finally { [void][ItE2E.ItWtWin32Input]::SetThreadDpiAwarenessContext($dpi) }
+
+        function Get-NavigationViewportState {
+            param([string]$Title)
+            $list = Get-SidebarElement ItemsList
+            $viewport = $list.Current.BoundingRectangle
+            $visibleRows = @(Get-VisibleTabRows)
+            $rows = @($visibleRows | Where-Object { Test-TabRowTitle -Row $_ -Title $Title })
+            $row = if ($rows.Count -eq 1) { $rows[0] } else { $null }
+            $rectangle = if ($row) { $row.Current.BoundingRectangle } else { $null }
+            [pscustomobject]@{
+                Title = $Title
+                RowCount = $rows.Count
+                Selected = [bool]($row -and $row.GetCurrentPattern(
+                    [Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected)
+                RowTop = if ($rectangle) { $rectangle.Top } else { $null }
+                RowBottom = if ($rectangle) { $rectangle.Bottom } else { $null }
+                ExpectedRowHeight = $rowHeight
+                ViewportTop = $viewport.Top
+                ViewportBottom = $viewport.Bottom
+                ScrollPercent = $list.GetCurrentPattern(
+                    [Windows.Automation.ScrollPattern]::Pattern).Current.VerticalScrollPercent
+                VisibleRows = @($visibleRows | ForEach-Object {
+                    [pscustomobject]@{ Name = $_.Current.Name
+                        Selected = $_.GetCurrentPattern(
+                            [Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected }
+                })
+                FullyVisible = [bool]($rectangle -and $rectangle.Height -ge $rowHeight - 1 -and
+                    $rectangle.Top -ge $viewport.Top - 1 -and $rectangle.Bottom -le $viewport.Bottom + 1)
+            }
+        }
+        function Assert-NavigationViewport {
+            param($Tab, [string]$Title, [string]$Label, [string]$Draft)
+            Assert-NavigationTab -Tab $Tab -Draft $Draft
+            $stable = [pscustomobject]@{ Since = $null; Top = 0.0; Bottom = 0.0; Scroll = 0.0 }
+            $visible = Test-Until -TimeoutSec 6 -IntervalSec 0.1 -Condition {
+                $state = Get-NavigationViewportState $Title
+                if (-not $state.Selected -or -not $state.FullyVisible) {
+                    $stable.Since = $null
+                    return $false
+                }
+                if (-not $stable.Since -or [Math]::Abs($state.RowTop - $stable.Top) -gt 1 -or
+                    [Math]::Abs($state.RowBottom - $stable.Bottom) -gt 1 -or
+                    [Math]::Abs($state.ScrollPercent - $stable.Scroll) -gt 0.1) {
+                    $stable.Since = [datetime]::UtcNow
+                }
+                $stable.Top = $state.RowTop
+                $stable.Bottom = $state.RowBottom
+                $stable.Scroll = $state.ScrollPercent
+                ([datetime]::UtcNow - $stable.Since).TotalMilliseconds -ge 500
+            }
+            Get-NavigationViewportState $Title | ConvertTo-Json -Compress |
+                Add-Content -LiteralPath (Join-Path $script:evidenceDir 'viewport-observations.jsonl') -Encoding utf8
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir "$Label.png") | Out-Null
+            $visible | Should -BeTrue -Because 'the correctly activated tab must also have its selected row fully inside the sidebar viewport'
+            $settled = Get-NavigationViewportState $Title
+            ($settled.Selected -and $settled.FullyVisible) |
+                Should -BeTrue -Because 'the selected row must remain visible after layout and screenshot capture'
+            Assert-NavigationTab -Tab $Tab -Draft $Draft
+        }
+        try {
+            foreach ($index in 0..9) {
+                $title = "$index-$query"
+                $tab = New-WtTab -App $script:app -Title $title -Command 'pwsh.exe -NoLogo -NoProfile -NoExit'
+                $tab | Add-Member TestTitle $title
+                $created.Add($tab)
+            }
+            $last = $created[$created.Count - 1]
+            $draft = "VIEWPORT_DRAFT_$script:marker"
+            Send-WtInput -App $script:app -SessionId $last.session_id -Text $draft | Out-Null
+            $scroll = (Get-SidebarElement ItemsList).GetCurrentPattern([Windows.Automation.ScrollPattern]::Pattern)
+            $scroll.Current.VerticallyScrollable | Should -BeTrue -Because 'the regression requires an actually overflowing viewport'
+            Set-WtPaneFocus -App $script:app -SessionId $script:initialPane.session_id
+            $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 0)
+            Wait-Until -TimeoutSec 5 -Because 'the sidebar is at its beginning before navigating offscreen' -Condition {
+                $scroll.Current.VerticalScrollPercent -le 0.1
+            } | Out-Null
+            (Get-NavigationViewportState $last.TestTitle).FullyVisible | Should -BeFalse
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'viewport-before-wrap.png') | Out-Null
+            Send-WtWindowKey -App $script:app -Vk 0x26 -Ctrl -Alt -RequireForeground | Out-Null
+            Assert-NavigationViewport -Tab $last -Title $last.TestTitle -Draft $draft -Label 'viewport-after-up'
+            Send-WtWindowKey -App $script:app -Vk 0x28 -Ctrl -Alt -RequireForeground | Out-Null
+            Assert-NavigationViewport -Tab $script:initialPane -Title $firstTitle -Label 'viewport-after-down'
+            $visibleOffset = $scroll.Current.VerticalScrollPercent
+            Send-WtWindowKey -App $script:app -Vk 0x28 -Ctrl -Alt -RequireForeground | Out-Null
+            Assert-NavigationViewport -Tab $script:tabA -Title $script:titleA -Label 'viewport-visible-target'
+            [Math]::Abs($scroll.Current.VerticalScrollPercent - $visibleOffset) | Should -BeLessOrEqual 0.1
+            Send-WtWindowKey -App $script:app -Vk 0x26 -Ctrl -Alt -RequireForeground | Out-Null
+            Assert-NavigationViewport -Tab $script:initialPane -Title $firstTitle -Label 'viewport-visible-return'
+
+            $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 100)
+            Wait-Until -TimeoutSec 5 -Because 'manual sidebar scrolling reaches its end' -Condition {
+                $scroll.Current.VerticalScrollPercent -ge 99.9
+            } | Out-Null
+            $manualOffset = $scroll.Current.VerticalScrollPercent
+            Set-WtPaneFocus -App $script:app -SessionId $script:initialPane.session_id
+            for ($sample = 0; $sample -lt 4; ++$sample) {
+                Start-Sleep -Milliseconds 150
+                [Math]::Abs($scroll.Current.VerticalScrollPercent - $manualOffset) | Should -BeLessOrEqual 0.1
+            }
+            Send-WtWindowKey -App $script:app -Vk 0x28 -Ctrl -Alt -RequireForeground | Out-Null
+            Assert-NavigationViewport -Tab $script:tabA -Title $script:titleA -Label 'viewport-after-nonwrapping-down'
+
+            Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            $searchOpened = $true
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value $query | Out-Null
+            Set-WtPaneFocus -App $script:app -SessionId $created[0].session_id
+            $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 0)
+            Wait-Until -TimeoutSec 5 -Because 'the filtered viewport is at its beginning' -Condition {
+                $scroll.Current.VerticalScrollPercent -le 0.1
+            } | Out-Null
+            (Get-NavigationViewportState $last.TestTitle).FullyVisible | Should -BeFalse
+            Send-WtWindowKey -App $script:app -Vk 0x26 -Ctrl -Alt -RequireForeground | Out-Null
+            Assert-NavigationViewport -Tab $last -Title $last.TestTitle -Draft $draft -Label 'viewport-filtered-up'
+            Send-WtWindowKey -App $script:app -Vk 0x28 -Ctrl -Alt -RequireForeground | Out-Null
+            Assert-NavigationViewport -Tab $created[0] -Title $created[0].TestTitle -Label 'viewport-filtered-down'
+            (Get-UiValue -App $script:app -Selector SearchTextBox) | Should -BeExactly $query
+
+            Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            $searchOpened = $false
+            $group = $created[5]
+            $groupSplit = Split-WtPane -App $script:app -SessionId $group.session_id -Direction right `
+                -Command 'pwsh.exe -NoLogo -NoProfile -NoExit'
+            Set-WtPaneFocus -App $script:app -SessionId $group.session_id
+            $groupTitle = [string](@(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)) |
+                Where-Object tab_id -eq $group.tab_id).title
+            function Get-GroupRow {
+                $condition = [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
+                $rows = (Get-SidebarElement ItemsList).FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
+                @($rows | Where-Object { Test-TabRowTitle -Row $_ -Title $groupTitle }) |
+                    Select-Object -First 1
+            }
+            $groupRow = Get-GroupRow
+            $groupRow | Should -Not -BeNullOrEmpty
+            $groupRow.GetCurrentPattern([Windows.Automation.ScrollItemPattern]::Pattern).ScrollIntoView()
+            $paneCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'PaneActivateButton')
+            Wait-Until -TimeoutSec 6 -Because 'the split tab must have two expanded pane rows' -Condition {
+                (Get-GroupRow).FindAll([Windows.Automation.TreeScope]::Descendants, $paneCondition).Count -eq 2
+            } | Out-Null
+            $viewport = (Get-SidebarElement ItemsList).Current.BoundingRectangle
+            $range = $viewport.Height * (100.0 / $scroll.Current.VerticalViewSize - 1.0)
+            $targetTop = $viewport.Bottom - $rowHeight - 4.0
+            $offset = $range * $scroll.Current.VerticalScrollPercent / 100.0 +
+                (Get-GroupRow).Current.BoundingRectangle.Top - $targetTop
+            $offset | Should -BeGreaterThan 0
+            $offset | Should -BeLessThan $range
+            $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 100.0 * $offset / $range)
+            Set-WtPaneFocus -App $script:app -SessionId $created[4].session_id
+            Wait-Until -TimeoutSec 6 -Because 'the split header must be visible while its children are clipped' -Condition {
+                $row = Get-GroupRow
+                $top = $row.Current.BoundingRectangle.Top
+                $children = $row.FindAll([Windows.Automation.TreeScope]::Descendants, $paneCondition)
+                $top -ge $viewport.Top - 1 -and $top + $rowHeight -le $viewport.Bottom + 1 -and
+                    @($children | Where-Object { $_.Current.IsOffscreen }).Count -gt 0
+            } | Out-Null
+            $groupOffset = $scroll.Current.VerticalScrollPercent
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'viewport-split-before.png') | Out-Null
+            Send-WtWindowKey -App $script:app -Vk 0x28 -Ctrl -Alt -RequireForeground | Out-Null
+            Assert-NavigationTab -Tab $group
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'viewport-split-after.png') | Out-Null
+            for ($sample = 0; $sample -lt 4; ++$sample) {
+                Start-Sleep -Milliseconds 150
+                [Math]::Abs($scroll.Current.VerticalScrollPercent - $groupOffset) |
+                    Should -BeLessOrEqual 0.1 -Because 'clipped pane children must not scroll an already-visible tab header'
+            }
+            Set-WtPaneFocus -App $script:app -SessionId $created[4].session_id
+            $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 0)
+            Wait-Until -TimeoutSec 5 -Because 'the split header is offscreen before navigating back to it' -Condition {
+                $row = Get-GroupRow
+                $scroll.Current.VerticalScrollPercent -le 0.1 -and $row.Current.IsOffscreen
+            } | Out-Null
+            Send-WtWindowKey -App $script:app -Vk 0x28 -Ctrl -Alt -RequireForeground | Out-Null
+            Assert-NavigationTab -Tab $group
+            Wait-Until -TimeoutSec 6 -Because 'an offscreen split header must still be revealed' -Condition {
+                $row = Get-GroupRow
+                $top = $row.Current.BoundingRectangle.Top
+                -not $row.Current.IsOffscreen -and $top -ge $viewport.Top - 1 -and
+                    $top + $rowHeight -le $viewport.Bottom + 1
+            } | Out-Null
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'viewport-split-revealed.png') | Out-Null
+        }
+        finally {
+            if ($searchOpened) { Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null }
+            if ($groupSplit) { Close-WtPane -App $script:app -SessionId $groupSplit.session_id }
+            for ($index = $created.Count - 1; $index -ge 0; --$index) {
+                Close-WtPane -App $script:app -SessionId $created[$index].session_id
+            }
+            Set-WtPaneFocus -App $script:app -SessionId $selectedBefore.session_id
+            $dpi = [ItE2E.ItWtWin32Input]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
+            if ($dpi -eq [IntPtr]::Zero) { throw 'Physical window restoration context is unavailable.' }
+            try {
+                if ([ItE2E.ItWtWin32Input]::GetWindowProcessId([IntPtr][long]$script:app.Hwnd) -ne $script:app.Pid -or
+                    -not [ItE2E.ItWtWin32Input]::SetWindowPos([IntPtr][long]$script:app.Hwnd, [IntPtr]::Zero,
+                        $bounds.Left, $bounds.Top, $bounds.Right - $bounds.Left, $bounds.Bottom - $bounds.Top, 0x14)) {
+                    throw 'Cannot restore the owned window bounds.'
+                }
+            }
+            finally { [void][ItE2E.ItWtWin32Input]::SetThreadDpiAwarenessContext($dpi) }
+            $windowPattern.SetWindowVisualState($priorWindowState)
+        }
+        (@(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).tab_id -join ',') |
+            Should -BeExactly ($before.tab_id -join ',')
     }
 
     It 'Sidebar navigation hotkeys cycle through displayed tabs' -Tag 'SidebarNavigationHotkeys' {
@@ -612,13 +868,25 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
             return
         }
-        if ((Get-SidebarElement -AutomationId 'ItemsList').Current.IsOffscreen) {
-            Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'new-tab-before-setup.png') | Out-Null
+        $expand = Get-UiElement -App $script:app -Selector 'Expand sidebar'
+        if ($expand -and -not $expand.isOffscreen) {
+            Invoke-UiElement -App $script:app -Selector 'Expand sidebar' | Out-Null
         }
-        $search = Get-SidebarElement -AutomationId 'SearchTextBox'
-        if ($search -and -not $search.Current.IsOffscreen) {
+        Wait-Until -TimeoutSec 5 -Because 'the sidebar must finish expanding before resetting search' -Condition {
+            $header = Get-SidebarElement -AutomationId 'VerticalTabsHeader'
+            $header -and -not $header.Current.IsOffscreen
+        } | Out-Null
+        $searchToggle = (Get-SidebarElement -AutomationId 'SearchTabsButton').GetCurrentPattern(
+            [Windows.Automation.TogglePattern]::Pattern)
+        if ($searchToggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::On) {
             Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
         }
+        Wait-Until -TimeoutSec 5 -Because 'search must be closed independently of the previous case' -Condition {
+            $search = Get-SidebarElement -AutomationId 'SearchTextBox'
+            -not $search -or $search.Current.IsOffscreen
+        } | Out-Null
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'new-tab-ready.png') | Out-Null
 
         $baseline = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count
         foreach ($origin in @('blank-first', 'blank-repeat', 'row', 'terminal')) {
@@ -656,12 +924,23 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         }
 
         Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
-        Wait-UiElement -App $script:app -Selector SearchTextBox | Out-Null
+        Wait-Until -TimeoutSec 5 -Because 'search must be visible before keyboard editing' -Condition {
+            $search = Get-SidebarElement -AutomationId 'SearchTextBox'
+            $search -and -not $search.Current.IsOffscreen
+        } | Out-Null
         Set-UiValue -App $script:app -Selector SearchTextBox -Value "focus-$script:marker" | Out-Null
         $search = Get-SidebarElement -AutomationId 'SearchTextBox'
-        $search.SetFocus()
+        Invoke-UiClick -App $script:app -Selector SearchTextBox | Out-Null
+        Wait-Until -TimeoutSec 5 -Because 'the owned search field must have keyboard focus' -Condition {
+            $focused = [Windows.Automation.AutomationElement]::FocusedElement
+            $focused -and $focused.Current.ProcessId -eq $script:app.Pid -and
+                [Windows.Automation.Automation]::Compare($focused, $search)
+        } | Out-Null
         Send-WtWindowKey -App $script:app -Vk 0x41 -Ctrl -RequireForeground | Out-Null
         Send-WtWindowKey -App $script:app -Vk 0x2E -RequireForeground | Out-Null
+        Wait-Until -TimeoutSec 5 -Because 'the search field must process Ctrl+A/Delete' -Condition {
+            $search.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -eq ''
+        } | Out-Null
         $search.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value |
             Should -BeNullOrEmpty -Because 'handled Ctrl+A/Delete must still edit search text, not the terminal'
         @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count | Should -Be $baseline

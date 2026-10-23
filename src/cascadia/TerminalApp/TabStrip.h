@@ -342,6 +342,7 @@ namespace winrt::TerminalApp::implementation
                           bool isGroup,
                           bool headerProgressProjectedToPaneRows);
         winrt::Windows::Foundation::IInspectable HeaderForTab(winrt::Windows::Foundation::IInspectable const& item, bool realize = false);
+        void BringTabHeaderIntoView(winrt::Windows::Foundation::IInspectable const& item);
         TerminalApp::TabStripDisplayItem DisplayItemForTab(winrt::Windows::Foundation::IInspectable const& item) const;
         TerminalApp::TabStripDisplayItem DisplayItemAt(uint32_t index) const;
         void SyncTabPresentation(TerminalApp::TabStripDisplayItem const& display);
