@@ -204,7 +204,7 @@ Describe 'Feature: restored session startup' -Tag 'Feature', 'RestoredSessionSta
                 $agentEnvironment.userprofile | Should -Be $sandboxHome
                 $agentEnvironment.home | Should -Be $sandboxHome
                 $agentEnvironment.copilot_home | Should -Be (Join-Path $sandboxHome '.copilot')
-                $script:pipe = (Get-Content -LiteralPath (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
+                $script:pipe = Get-WtaMasterPipe -App $script:app
                 $masters = @(Get-CimInstance Win32_Process -Filter "Name='wta.exe'" | Where-Object {
                     $_.ExecutablePath -eq $script:app.WtaPath -and $_.CommandLine.Contains('--master') -and $_.CommandLine.Contains($script:pipe)
                 })

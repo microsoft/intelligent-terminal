@@ -116,12 +116,68 @@ function Close-WtPane {
     }
 }
 
+function Test-WtAgentPaneKeyboardFocus {
+    param([Parameter(Mandatory)]$App)
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    $focused = [Windows.Automation.AutomationElement]::FocusedElement
+    if (-not $focused -or $focused.Current.ProcessId -ne $App.Pid -or
+        -not $focused.Current.HasKeyboardFocus -or $focused.Current.ClassName -ne 'TermControl' -or
+        $focused.Current.Name -ne 'Agent Pane') { return $false }
+    $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$App.Hwnd)
+    if ($root.Current.ProcessId -ne $App.Pid) { return $false }
+    for ($ancestor = $focused; $ancestor; $ancestor = [Windows.Automation.TreeWalker]::RawViewWalker.GetParent($ancestor)) {
+        if ([Windows.Automation.Automation]::Compare($ancestor, $root)) { return $true }
+    }
+    return $false
+}
+
 function Set-WtPaneFocus {
     [CmdletBinding()]
-    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$SessionId)
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [Parameter(Mandatory)][string]$SessionId,
+        [string]$OwnerPaneSessionId,
+        [string]$OwnerTabId
+    )
     process {
+        $agentPane = Get-AgentPaneSession -App $App -PaneSessionId $SessionId
+        if ($agentPane) {
+            if (-not $OwnerPaneSessionId -or -not $OwnerTabId -or -not $App.WindowId) {
+                throw 'Assistant focus requires an independent owner source pane, stable tab GUID and window.'
+            }
+            $ownerHelper = Get-AgentPaneSession -App $App -TabId $OwnerTabId
+            if (-not $ownerHelper -or $ownerHelper.PaneSessionId -ne $SessionId -or
+                $ownerHelper.HelperProcessId -ne $agentPane.HelperProcessId -or
+                $ownerHelper.AcpSessionId -ne $agentPane.AcpSessionId) {
+                throw 'Assistant focus owner mapping does not match the pinned helper.'
+            }
+            $source = (Invoke-WtCli -App $App -Arguments @('get-pane-context', '--target', $OwnerPaneSessionId)).pane
+            if (-not $source -or $source.session_id -ne $OwnerPaneSessionId -or
+                $null -eq $source.tab_id -or [string]$source.window_id -ne [string]$App.WindowId) {
+                throw 'Assistant focus source mapping is missing or stale.'
+            }
+            $ownerSession = [string]$source.session_id
+            $ownerIndex = [string]$source.tab_id
+            $ownerWindow = [string]$source.window_id
+        }
         Invoke-WtCli -App $App -Arguments @('focus-pane', '-t', $SessionId) | Out-Null
         Wait-Until -TimeoutSec 8 -Because "pane $SessionId to become active" -Condition {
+            if ($agentPane) {
+                # active-pane intentionally reports the source shell when an assistant is focused.
+                $currentHelper = Get-AgentPaneSession -App $App -TabId $OwnerTabId
+                if (-not $currentHelper -or $currentHelper.PaneSessionId -ne $SessionId -or
+                    $currentHelper.HelperProcessId -ne $agentPane.HelperProcessId -or
+                    $currentHelper.AcpSessionId -ne $agentPane.AcpSessionId) { return $false }
+                $currentSource = (Invoke-WtCli -App $App -Arguments @('get-pane-context', '--target', $OwnerPaneSessionId)).pane
+                $active = Get-ActivePane -App $App
+                foreach ($pane in @($currentSource, $active)) {
+                    if (-not $pane -or [string]$pane.session_id -ne $ownerSession -or
+                        [string]$pane.tab_id -ne $ownerIndex -or
+                        [string]$pane.window_id -ne $ownerWindow) { return $false }
+                }
+                Test-WtAgentPaneKeyboardFocus -App $App
+                return
+            }
             (Get-ActivePane -App $App).session_id -eq $SessionId
         } | Out-Null
     }

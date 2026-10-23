@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "AppCommandlineArgs.h"
+#include "../inc/AgentPaneRestore.h"
 #include "../types/inc/utils.hpp"
 #include "TerminalSettingsModel/ModelSerializationHelpers.h"
 
@@ -694,7 +695,17 @@ NewTerminalArgs AppCommandlineArgs::_getNewTerminalArgs(AppCommandlineArgs::NewT
             }
         }
 
-        args.Commandline(winrt::to_hstring(cmdlineBuffer.str()));
+        if (_commandline.size() == 1 &&
+            ::Microsoft::Terminal::AgentPaneRestore::IsPersistedResumeCommandline(winrt::to_hstring(_commandline.front())))
+        {
+            // Elevation forwards the restore envelope as one opaque argument,
+            // not an executable token to quote again.
+            args.Commandline(winrt::to_hstring(_commandline.front()));
+        }
+        else
+        {
+            args.Commandline(winrt::to_hstring(cmdlineBuffer.str()));
+        }
     }
 
     if (*subcommand.profileNameOption)

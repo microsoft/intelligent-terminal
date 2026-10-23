@@ -28,8 +28,10 @@ including physical top-row Ctrl+Alt+1/2/9 from shell, helper and ItemsList focus
 before/after movement in All/Agents-only with search closed/open. These targets
 retain selected-filter navigation ordinals independently of the query; global
 search display does not renumber them. It omits only
-the unrelated eight helper seeds and 30-second startup survival
-observation. Default discovery remains 34 cases (C427 plus 33 existing cases); the existing
+the unrelated eight helper seeds, provider-labelled native shell fixture, and
+30-second startup survival observation. In the default fixture mode, numeric
+navigation counts that native shell as a qualified owner without treating it as
+an ACP helper session. Default discovery remains 34 cases (C427 plus 33 existing cases); the existing
 `ITE2E_HISTORY_INDICATORS_ONLY` behavior is unchanged. A broad filter cannot run
 seed-dependent cases in the focused container.
 
@@ -46,6 +48,94 @@ Invoke-Pester -Configuration $cfg
 
 This focused run does not validate the other 33 cases or grant their checklist
 coverage. Use `Run.SkipRun = $true` for non-live discovery only.
+
+History metadata checks wait up to five seconds for the exact named
+`HistoryProviderIcon` Raw peer in the same row/runtime generation as the Content
+view. Duplicate peers, wrong provider/process identity, offscreen/zero geometry,
+or failed row/viewport containment remain failures. Failure observations are
+saved in `history-provider-readiness-failure.json`; there is no generic Image
+fallback. The numeric-navigation matrix restores its original tail viewport
+before the movement assertions; the exact visible owning-group oracle remains
+unchanged. Validate movement in both default fixture mode (leave
+`ITE2E_HISTORY_INDICATORS_ONLY` unset) and `-OwningTabMoveOnly` mode.
+
+Debug builds log `HistoryCollapseFocus` phases to the package/version-scoped
+`terminal-agent-pane.log`: handler entry, attempted heading focus and result,
+actual XAML focus immediately after layout, and a later read-only dispatcher
+observation. This is diagnostic instrumentation, not an additional focus retry
+or proof that the focused-collapse regression is fixed.
+
+### Native resume wire bridge
+
+The deterministic Rust test
+`sidebar_resume_launch_envelope_precedes_bootstrap_and_completion` captures the
+actual master `create_tab` requests for a resolved executable and supported
+PowerShell shim. Run it with `--nocapture`; each
+`MASTER_RESUME_REQUEST_exe=` / `MASTER_RESUME_REQUEST_cmd=` line contains JSON.
+Decode that JSON and supply its exact `commandline` string as the optional TAEF
+`/p:MasterResumeCommandline=<commandline>` argument when selecting
+`/name:*TabTests::PaneFreshResumePrebindsBeforeBootstrapAndCallback*`.
+Pass the complete parameter as one native-process argument, without manually
+re-escaping the decoded command.
+
+The native regression retains its default Host/WSL cases and adds the supplied
+wire in both bootstrap/completion orders, asserting trusted command, selected
+scope and persisted resume retention. Malformed or non-envelope supplied data
+fails; it does not fall back. The log explicitly reports whether the external
+wire case ran. Run separately for each captured command. The test injects
+`TestConnection` and never executes those fixture commands, whose directories
+are already cleaned up by Rust. A default native pass without that parameter,
+or a Rust mock pass alone, is not cross-boundary native proof. UAP startup must
+also succeed before any native assertion can be credited.
+
+### Held-hook native resume fixture
+
+The `Native history resume publishes Idle before hooks` case requires an empty,
+session-owned resolver directory in `ITE2E_CANONICAL_SHIM_DIRECTORY`. Prepend it
+to the **current harness process** PATH before `Start-Terminal`; the verified Dev
+creation path uses `Process.Start` without shell execution, and WTA's master
+inherits that PATH and resolves the fixture executable at activation time.
+`RefreshProcessPath` appends registry entries without replacing inherited
+session-only entries. No user/machine PATH or PowerShell profile edit is needed.
+The owning shell must also see the resolver: in the parent's existing
+byte-for-byte settings backup/restore scope, add an isolated test profile, make
+it the temporary default, and give its JSON `"environment"` map an explicit
+`"PATH": "<resolver>;<original harness PATH>"` value. Keep the absolute existing
+PowerShell executable as that profile's commandline with `-NoLogo -NoProfile
+-NoExit`. Do not overwrite another profile or change profile scripts. Explicit
+profile environment overrides work even with the default
+`"compatibility.reloadEnvironmentVariables": true`; process PATH alone is
+insufficient for shells that regenerate their environment from the registry.
+
+```powershell
+$resolver = Join-Path $PWD ("Generated Files\resume-resolver-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $resolver -ErrorAction Stop | Out-Null
+$oldPath = $env:PATH
+$oldResolver = $env:ITE2E_CANONICAL_SHIM_DIRECTORY
+try {
+    $env:PATH = "$resolver;$oldPath"
+    $env:ITE2E_CANONICAL_SHIM_DIRECTORY = $resolver
+    # Prepare the outer-backed-up isolated test profile described above here.
+    $cfg = New-PesterConfiguration
+    $cfg.Run.Path = 'test\e2e\tests\Feature.CombinedAgentsSidebar.Tests.ps1'
+    $cfg.Filter.FullName = 'Feature: combined Agents sidebar.Native history resume publishes Idle before hooks'
+    Invoke-Pester -Configuration $cfg
+} finally {
+    $env:PATH = $oldPath
+    $env:ITE2E_CANONICAL_SHIM_DIRECTORY = $oldResolver
+    if (-not @(Get-ChildItem -LiteralPath $resolver -Force).Count) {
+        Remove-Item -LiteralPath $resolver
+    } else {
+        Write-Warning "Retained nonempty resolver directory for failed fixture cleanup: $resolver"
+    }
+}
+```
+
+Retain the suite's existing exact-package/hash/source prerequisites. Do not put
+the fixture into a real CLI directory or overwrite any executable. This setup
+does not satisfy the separate `History Enter resumes an unbound native session`
+cases' existing machine/user PATH-membership gate, nor does it prove the helper
+picker path. Those are distinct validation scenarios.
 
 ## Release-checklist coverage
 
@@ -230,8 +320,30 @@ native-action regression suite. Nonlive discovery and synthetic report checks
 are not package acceptance.
 
 SearchTextBox assertions use `Get-UiValue -ValuePattern` to read the real UIA
-value, including empty text. The default display-text helper retains winapp's
+value, including empty text, from exactly one visible owned Raw-view peer.
+The default display-text helper retains winapp's
 Name fallback and is not an exact-empty query oracle.
+`Set-WtPaneFocus` requires independently established `-OwnerPaneSessionId` (source
+shell) and `-OwnerTabId` (stable tab GUID) for assistants. It pins that helper's
+pane/PID/ACP identity and source numeric tab/window before requesting focus,
+then checks the exact source context and `active-pane` identity together with
+the owned window's actual UIA TermControl focus. `active-pane` intentionally
+reports the source shell; a generic Agent Pane peer alone is not proof.
+Missing or stale mappings fail closed before subsequent caller input.
+`selftests\WtFocus.Unit.Tests.ps1` covers these gates without desktop input.
+Owner-tab probes subscribe before emitting a successful OSC 133 mark, so
+`-NoProfile` shells do not need a prompt hook just to resolve the stable tab ID.
+Combined Sidebar tests retain ordinary shell/assistant fixtures and add a
+provider-labelled, non-agent-running native terminal for live-row coverage.
+Manual collapse and keyboard navigation use an empty query; nonempty search
+is separately checked to force expansion and disable manual collapse.
+History preservation targets a named fixture session, not its rank among
+legitimate external sessions, and realizes its owned row in the shared viewport.
+History action smoke requires the exact visible row's public InvokePattern and
+uses the existing root-scoped UIA invoke driver, without a physical pointer
+fallback. The known-provider restore fixture uses a session-specific cwd so
+global search does not also match every seeded history row's shared directory;
+its exact-target, shell PID, helper and session restoration assertions remain.
 After the build owner proves the deployed
 feature-head App/WTA hashes, run with explicit Dev and prerequisite validation:
 
@@ -406,6 +518,12 @@ coverage and must not be credited from this case.
 The suite table describes available cases, not a blanket pass result for every package or
 environment. Use `Invoke-ItE2EReport.ps1` and its full or incremental release report for the
 selected revision's actual passed, failed, skipped and remaining checklist items.
+Combined Sidebar history activation uses the exact row's public UIA Invoke
+action, including cross-window activation and whole-background-tab restoration;
+these are not physical-pointer coverage. Physical Enter independently verifies
+cross-window keyboard activation. Header-tooltip hover retains the strict
+deep-hit guard and cannot be credited when the host exposes only an opaque
+Window from point queries.
 `Feature.AgentHotkeys` keeps physical Ctrl+Shift+/ input and observes the native
 `VerticalTabsHeader`/`HistoryList` projection. `Feature.SessionRefresh` opens the
 current Tabs/Agents header, not the retired History toolbar or search box, and

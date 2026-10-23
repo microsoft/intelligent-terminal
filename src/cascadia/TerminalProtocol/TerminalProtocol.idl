@@ -44,6 +44,7 @@ namespace Microsoft.Terminal.Protocol
         String Shell;
         String ShellVersion;
         String NativeAgentProviderId;
+        Boolean IsBackgroundTab;
     };
 
     struct PaneOutput

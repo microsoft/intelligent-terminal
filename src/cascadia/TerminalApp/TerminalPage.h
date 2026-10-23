@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #pragma once
+#include "ContentManager.h"
 
 #include <ThrottledFunc.h>
 #include <atomic>
@@ -1041,7 +1042,6 @@ namespace winrt::TerminalApp::implementation
         std::optional<bool> _lastEffectiveAgentSessionManagementEnabled;
         uint64_t _nativeAgentStatusSnapshotReceiverGeneration{ 0 };
         uint64_t _lastReadyNativeAgentReceiverGeneration{ 0 };
-        std::unordered_set<winrt::guid> _explicitNativeAgentSessions;
         std::pair<bool, std::optional<std::string>> _RichTabAgentCwdForControl(const Microsoft::Terminal::Control::TermControl& control);
         bool _RichTabCwdDependentFieldsVisible() const;
         winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& profileIcon);
@@ -1121,6 +1121,7 @@ namespace winrt::TerminalApp::implementation
             };
             State state{ State::Error };
             std::vector<TerminalApp::TabStripHistoryItem> items;
+            bool ownershipPending{};
         };
         static _SidebarHistorySnapshot _ParseSidebarHistorySnapshot(const std::string& output, uint64_t currentWindowId = 0);
         static _SidebarHistorySnapshot _ParseSidebarHistoryFailure(const std::string& output);
@@ -1213,37 +1214,17 @@ namespace winrt::TerminalApp::implementation
         // starts using that SessionId. Only terminal end states belong in this
         // set; non-terminal updates stay untracked.
         std::unordered_set<std::string> _panesWithEmittedTerminalEndState;
-        struct _PaneAgentSession
-        {
-            winrt::hstring sessionId;
-            winrt::hstring agent;
-            winrt::hstring resumeCommandline;
-            winrt::hstring backend;
-            winrt::hstring cwd;
-        };
-        // Most recent resumable agent session observed in each shell pane.
-        // Retained after the CLI exits so a persisted-layout restore can
-        // relaunch it; removed only when the pane itself closes or a new
-        // binding replaces it.
-        std::unordered_map<winrt::guid, _PaneAgentSession> _paneAgentSessions;
-        // Shell panes with a currently active agent CLI. Unlike the resumable
-        // binding above, this does not require an ACP session id: Copilot may
-        // publish its startup lifecycle event before that id is available.
-        // Keep the lifecycle session id when available so a delayed end from
-        // an older CLI cannot remove a newer session from Agent view.
-        struct _ActiveCliAgentPane
-        {
-            winrt::hstring sessionId;
-            std::vector<winrt::hstring> supersededSessionIds;
-        };
-        std::unordered_map<winrt::guid, _ActiveCliAgentPane> _activeCliAgentPanes;
-        std::unordered_map<winrt::guid, _PaneAgentSession> _interactiveResumeSessions;
+        using _PaneAgentSession = ContentManager::PaneAgentSession;
+        winrt::event_token _paneMetadataChangedToken{};
+        std::optional<ContentManager::PaneMetadata> _MetadataForPane(const winrt::guid& paneId) const;
+        void _OnPaneMetadataChanged(const winrt::guid& paneId);
         struct _PendingRestoredSessionBinding
         {
             winrt::hstring sessionId;
             winrt::hstring agent;
             winrt::hstring cwd;
             winrt::hstring backend;
+            winrt::hstring universe;
             uint64_t publishedReceiverGeneration{ 0 };
             bool helperReplayed{ false };
         };
@@ -1527,6 +1508,7 @@ namespace winrt::TerminalApp::implementation
                            const winrt::Microsoft::Terminal::Settings::TerminalSettingsCreateResult& controlSettings,
                            const winrt::Microsoft::Terminal::Settings::Model::Profile& profile);
         void _OpenElevatedWT(winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs newTerminalArgs);
+        std::function<void(std::wstring_view)> _elevatedLaunchTestHook;
 
         safe_void_coroutine _ConnectionStateChangedHandler(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::Foundation::IInspectable& args);
         void _CloseOnExitInfoDismissHandler(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::Foundation::IInspectable& args) const;

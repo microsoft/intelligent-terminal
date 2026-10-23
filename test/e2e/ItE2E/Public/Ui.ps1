@@ -758,49 +758,54 @@ function Get-ItOwnedPointerPeer {
     param($App, [int]$X, [int]$Y, $ExpectedPeer, [int]$AllowedHeldButton = 0, $ExpectedCursor)
     Initialize-WtWin32Input
     Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
-    $root = [IntPtr][long]$App.Hwnd
-    $current = Get-Process -Id $App.Pid -ErrorAction Stop
-    $records = @(Get-Content -LiteralPath $App.InputReceiptPath -ErrorAction Stop | ForEach-Object { $_ | ConvertFrom-Json })
-    $point = [ItE2E.ItWtWin32Input+POINT]::new(); $point.X = $X; $point.Y = $Y
-    $native = [ItE2E.ItWtWin32Input]::WindowFromPoint($point)
-    $cursor = [ItE2E.ItWtWin32Input]::GetCursorPosition()
-    $peer = [Windows.Automation.AutomationElement]::FromPoint([Windows.Point]::new($X, $Y))
-    $window = [Windows.Automation.AutomationElement]::FromHandle($root)
-    $deep = -not [Windows.Automation.Automation]::Compare($peer, $window)
-    $stable = -not $ExpectedPeer
-    $overlay = $false
-    $ancestor = $peer
-    while ($ancestor) {
-        if ($ExpectedPeer -and [Windows.Automation.Automation]::Compare($ancestor, $ExpectedPeer)) { $stable = $true }
-        if ($ancestor.Current.ClassName -match 'Popup|Flyout|ContentDialog|FreOverlay' -or
-            $ancestor.Current.ControlType -in @([Windows.Automation.ControlType]::ToolTip, [Windows.Automation.ControlType]::Menu)) { $overlay = $true }
-        if ([Windows.Automation.Automation]::Compare($ancestor, $window)) { break }
-        $ancestor = [Windows.Automation.TreeWalker]::RawViewWalker.GetParent($ancestor)
+    $dpi = [ItE2E.ItWtWin32Input]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
+    if ($dpi -eq [IntPtr]::Zero) { throw 'Owned pointer physical-coordinate context unavailable.' }
+    try {
+        $root = [IntPtr][long]$App.Hwnd
+        $current = Get-Process -Id $App.Pid -ErrorAction Stop
+        $records = @(Get-Content -LiteralPath $App.InputReceiptPath -ErrorAction Stop | ForEach-Object { $_ | ConvertFrom-Json })
+        $point = [ItE2E.ItWtWin32Input+POINT]::new(); $point.X = $X; $point.Y = $Y
+        $native = [ItE2E.ItWtWin32Input]::WindowFromPoint($point)
+        $cursor = [ItE2E.ItWtWin32Input]::GetCursorPosition()
+        $peer = [Windows.Automation.AutomationElement]::FromPoint([Windows.Point]::new($X, $Y))
+        $window = [Windows.Automation.AutomationElement]::FromHandle($root)
+        $deep = -not [Windows.Automation.Automation]::Compare($peer, $window)
+        $stable = -not $ExpectedPeer
+        $overlay = $false
+        $ancestor = $peer
+        while ($ancestor) {
+            if ($ExpectedPeer -and [Windows.Automation.Automation]::Compare($ancestor, $ExpectedPeer)) { $stable = $true }
+            if ($ancestor.Current.ClassName -match 'Popup|Flyout|ContentDialog|FreOverlay' -or
+                $ancestor.Current.ControlType -in @([Windows.Automation.ControlType]::ToolTip, [Windows.Automation.ControlType]::Menu)) { $overlay = $true }
+            if ([Windows.Automation.Automation]::Compare($ancestor, $window)) { break }
+            $ancestor = [Windows.Automation.TreeWalker]::RawViewWalker.GetParent($ancestor)
+        }
+        $deep = $deep -and $ancestor -and [Windows.Automation.Automation]::Compare($ancestor, $window)
+        $held = @(1, 2, 4, 5, 6, 16, 17, 18, 91, 92) | Where-Object {
+            $_ -ne $AllowedHeldButton -and [ItE2E.ItWtWin32Input]::IsKeyDown($_)
+        }
+        Assert-ItPointerFacts @{
+            Lease = ($App.Launched -and $App.OwnedProcess -and -not $App.OwnedProcess.HasExited -and
+                $App.OwnedProcess.Id -eq $current.Id -and $current.StartTime -eq $App.OwnedProcess.StartTime -and
+                $current.Path -eq (Join-Path $App.InstallLocation 'WindowsTerminal.exe'))
+            RunReceipt = (@($records | Where-Object { $_.pid -eq $App.Pid -and $_.path -eq $current.Path -and
+                $_.run_token -ceq $App.InputRunToken -and ([datetimeoffset]$_.start_utc).UtcDateTime.Ticks -eq
+                    $current.StartTime.ToUniversalTime().Ticks }).Count -eq 1)
+            NativeRoot = ([ItE2E.ItWtWin32Input]::IsWindow($root) -and
+                [ItE2E.ItWtWin32Input]::GetAncestor($root, 2) -eq $root -and
+                [ItE2E.ItWtWin32Input]::GetWindowProcessId($root) -eq $App.Pid)
+            Foreground = ([ItE2E.ItWtWin32Input]::GetForegroundWindow() -eq $root)
+            NativeHit = ([ItE2E.ItWtWin32Input]::GetAncestor($native, 2) -eq $root -and
+                [ItE2E.ItWtWin32Input]::GetWindowProcessId($native) -eq $App.Pid)
+            DeepHit = $deep; StablePeer = $stable
+            VisiblePeer = ($peer.Current.ProcessId -eq $App.Pid -and -not $peer.Current.IsOffscreen -and
+                $peer.Current.BoundingRectangle.Contains([Windows.Point]::new($X, $Y)))
+            Cursor = (-not $ExpectedCursor -or ($cursor[0] -eq $ExpectedCursor[0] -and $cursor[1] -eq $ExpectedCursor[1]))
+            NoHeldInput = (-not @($held).Count); NoOverlay = (-not $overlay)
+        }
+        $peer
     }
-    $deep = $deep -and $ancestor -and [Windows.Automation.Automation]::Compare($ancestor, $window)
-    $held = @(1, 2, 4, 5, 6, 16, 17, 18, 91, 92) | Where-Object {
-        $_ -ne $AllowedHeldButton -and [ItE2E.ItWtWin32Input]::IsKeyDown($_)
-    }
-    Assert-ItPointerFacts @{
-        Lease = ($App.Launched -and $App.OwnedProcess -and -not $App.OwnedProcess.HasExited -and
-            $App.OwnedProcess.Id -eq $current.Id -and $current.StartTime -eq $App.OwnedProcess.StartTime -and
-            $current.Path -eq (Join-Path $App.InstallLocation 'WindowsTerminal.exe'))
-        RunReceipt = (@($records | Where-Object { $_.pid -eq $App.Pid -and $_.path -eq $current.Path -and
-            $_.run_token -ceq $App.InputRunToken -and ([datetimeoffset]$_.start_utc).UtcDateTime.Ticks -eq
-                $current.StartTime.ToUniversalTime().Ticks }).Count -eq 1)
-        NativeRoot = ([ItE2E.ItWtWin32Input]::IsWindow($root) -and
-            [ItE2E.ItWtWin32Input]::GetAncestor($root, 2) -eq $root -and
-            [ItE2E.ItWtWin32Input]::GetWindowProcessId($root) -eq $App.Pid)
-        Foreground = ([ItE2E.ItWtWin32Input]::GetForegroundWindow() -eq $root)
-        NativeHit = ([ItE2E.ItWtWin32Input]::GetAncestor($native, 2) -eq $root -and
-            [ItE2E.ItWtWin32Input]::GetWindowProcessId($native) -eq $App.Pid)
-        DeepHit = $deep; StablePeer = $stable
-        VisiblePeer = ($peer.Current.ProcessId -eq $App.Pid -and -not $peer.Current.IsOffscreen -and
-            $peer.Current.BoundingRectangle.Contains([Windows.Point]::new($X, $Y)))
-        Cursor = (-not $ExpectedCursor -or ($cursor[0] -eq $ExpectedCursor[0] -and $cursor[1] -eq $ExpectedCursor[1]))
-        NoHeldInput = (-not @($held).Count); NoOverlay = (-not $overlay)
-    }
-    $peer
+    finally { [void][ItE2E.ItWtWin32Input]::SetThreadDpiAwarenessContext($dpi) }
 }
 
 function Send-ItPointerButton {
@@ -933,10 +938,23 @@ function Get-ItUiValuePatternPeer {
     Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
     $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$App.Hwnd)
     if ($root.Current.ProcessId -ne $App.Pid) { throw 'ValuePattern window ownership changed.' }
-    $peers = @($root.FindAll([Windows.Automation.TreeScope]::Descendants,
-        [Windows.Automation.PropertyCondition]::new(
-            [Windows.Automation.AutomationElement]::AutomationIdProperty, $Selector)) |
-        Where-Object { -not $_.Current.IsOffscreen -and $_.Current.ProcessId -eq $App.Pid })
+    $cache = [Windows.Automation.CacheRequest]::new()
+    $cache.TreeScope = [Windows.Automation.TreeScope]::Subtree
+    $cache.TreeFilter = [Windows.Automation.Automation]::RawViewCondition
+    foreach ($property in @(
+        [Windows.Automation.AutomationElement]::AutomationIdProperty,
+        [Windows.Automation.AutomationElement]::IsOffscreenProperty,
+        [Windows.Automation.AutomationElement]::ProcessIdProperty)) {
+        $cache.Add($property)
+    }
+    $pending = [Collections.Generic.Stack[object]]::new()
+    $pending.Push($root.GetUpdatedCache($cache))
+    $peers = @(while ($pending.Count) {
+        $peer = $pending.Pop()
+        if ($peer.Cached.AutomationId -eq $Selector -and -not $peer.Cached.IsOffscreen -and
+            $peer.Cached.ProcessId -eq $App.Pid) { $peer }
+        foreach ($child in $peer.CachedChildren) { $pending.Push($child) }
+    })
     if ($peers.Count -ne 1) { throw "ValuePattern requires exactly one visible '$Selector' peer; found $($peers.Count)." }
     $peers[0]
 }

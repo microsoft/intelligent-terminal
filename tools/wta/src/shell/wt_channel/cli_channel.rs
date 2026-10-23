@@ -449,6 +449,45 @@ pub fn spawn_wtcli_split_then_focus(args: &[String]) {
     spawn_wtcli_split_then_focus_with_callback(args, None);
 }
 
+#[cfg(test)]
+type TestPaneCallback = Box<dyn FnOnce(String) + Send + 'static>;
+
+#[cfg(test)]
+thread_local! {
+    static TEST_PANE_CALLBACKS: std::cell::RefCell<Option<Vec<TestPaneCallback>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) struct TestPaneCallbackCapture;
+
+#[cfg(test)]
+impl Drop for TestPaneCallbackCapture {
+    fn drop(&mut self) {
+        TEST_PANE_CALLBACKS.with(|capture| *capture.borrow_mut() = None);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn capture_test_pane_callbacks() -> TestPaneCallbackCapture {
+    TEST_PANE_CALLBACKS.with(|capture| {
+        assert!(capture.borrow_mut().replace(Vec::new()).is_none());
+    });
+    TestPaneCallbackCapture
+}
+
+#[cfg(test)]
+pub(crate) fn take_test_pane_callbacks() -> Vec<TestPaneCallback> {
+    TEST_PANE_CALLBACKS.with(|capture| {
+        std::mem::take(
+            capture
+                .borrow_mut()
+                .as_mut()
+                .expect("capture must be active"),
+        )
+    })
+}
+
 /// Variant of [`spawn_wtcli_split_then_focus`] that also delivers the new
 /// pane's GUID to a caller-supplied callback after parsing it from stdout
 /// (and before issuing the follow-up `focus-pane`). Used by `dispatch_resume`
@@ -465,6 +504,24 @@ pub fn spawn_wtcli_split_then_focus_with_callback(
     args: &[String],
     on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>>,
 ) {
+    #[cfg(test)]
+    let on_pane_id = {
+        let mut callback = on_pane_id;
+        let captured = TEST_PANE_CALLBACKS.with(|capture| {
+            if let Some(callbacks) = capture.borrow_mut().as_mut() {
+                if let Some(callback) = callback.take() {
+                    callbacks.push(callback);
+                }
+                true
+            } else {
+                false
+            }
+        });
+        if captured {
+            return;
+        }
+        callback
+    };
     let path = resolve_wtcli_path();
     let owned_args: Vec<String> = std::iter::once("--json".to_string())
         .chain(args.iter().cloned())
@@ -979,6 +1036,9 @@ impl WtChannel for CliChannel {
             }
             "list_panes" => {
                 let mut args = vec!["list-panes"];
+                if params.get("all").and_then(serde_json::Value::as_bool) == Some(true) {
+                    args.push("--all");
+                }
                 let wid = params
                     .get("window_id")
                     .and_then(json_id_as_str)

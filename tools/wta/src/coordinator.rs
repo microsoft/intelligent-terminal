@@ -1577,6 +1577,77 @@ fn normalize_delegate_resume_alias(
     commandline.to_string()
 }
 
+pub(crate) fn qualified_resume_launch_envelope(
+    provider: &str,
+    session_id: &str,
+    location: &crate::agent_sessions::SessionLocation,
+    cwd: &str,
+    universe: Option<&str>,
+    commandline: &str,
+) -> String {
+    let backend = match location {
+        crate::agent_sessions::SessionLocation::Wsl { distro } => {
+            format!("wsl:{distro}:{provider}")
+        }
+        _ => format!("host:{provider}"),
+    };
+    let mut envelope = String::from("intellterm-resume-v1");
+    for value in [
+        backend.as_str(),
+        session_id,
+        cwd,
+        universe.unwrap_or_default(),
+        commandline,
+    ] {
+        let quoted = quote_windows_commandline_arg(value);
+        envelope.push(' ');
+        if quoted.starts_with('"') {
+            envelope.push_str(&quoted);
+        } else {
+            envelope.push('"');
+            envelope.push_str(&quoted);
+            // Canonical envelopes quote every field, including trailing slashes.
+            envelope.push_str(&"\\".repeat(value.len() - value.trim_end_matches('\\').len()));
+            envelope.push('"');
+        }
+    }
+    envelope
+}
+
+#[cfg(test)]
+pub(crate) fn resume_envelope_arguments(command: &str) -> Vec<String> {
+    let wide: Vec<u16> = command.encode_utf16().chain(Some(0)).collect();
+    let mut count = 0;
+    // The input is NUL terminated; Windows owns the returned allocation until
+    // LocalFree, and each of its count pointers addresses a terminated argument.
+    unsafe {
+        let args = windows_sys::Win32::UI::Shell::CommandLineToArgvW(wide.as_ptr(), &mut count);
+        assert!(!args.is_null());
+        let result = std::slice::from_raw_parts(args, count as usize)
+            .iter()
+            .map(|&arg| {
+                let mut len = 0;
+                while *arg.add(len) != 0 {
+                    len += 1;
+                }
+                String::from_utf16(std::slice::from_raw_parts(arg, len)).unwrap()
+            })
+            .collect();
+        windows_sys::Win32::Foundation::LocalFree(args.cast());
+        result
+    }
+}
+
+pub(crate) fn ensure_resume_universe(universe: Option<&str>) -> Result<()> {
+    let Some(_) = universe.filter(|value| !value.trim().is_empty()) else {
+        // Registry source/store helpers use None for the source's current store.
+        return Ok(());
+    };
+    // New panes inherit Terminal's environment, not master's COPILOT_HOME.
+    // Even an explicit home matching master cannot prove the new CLI's store.
+    bail!("CLI resume cannot select the requested session universe");
+}
+
 pub(crate) fn build_delegate_resume_commandline(
     runtime: &DelegateAgentRuntime,
     session_id: &str,
@@ -3742,6 +3813,23 @@ mod tests {
         let runtime = base64_runtime("claude");
         let cmd = build_wsl_delegate_commandline(&runtime, None, None).expect("cmd");
         assert_eq!(cmd, "exec 'claude'");
+    }
+
+    #[test]
+    fn resume_universe_rejects_explicit_stores_before_launch() {
+        for universe in [None, Some(""), Some(" \t")] {
+            assert!(super::ensure_resume_universe(universe).is_ok());
+        }
+        assert!(super::ensure_resume_universe(Some("unavailable-alternate-store")).is_err());
+        for home in [
+            std::env::var_os("COPILOT_HOME"),
+            std::env::var_os("USERPROFILE"),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert!(super::ensure_resume_universe(Some(&home.to_string_lossy())).is_err());
+        }
     }
 
     #[test]

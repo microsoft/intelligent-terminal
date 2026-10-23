@@ -789,6 +789,9 @@ struct MasterStateInner {
     /// the session into `hook_owned` and out of here, after which the watcher
     /// fully backs off.
     born_bound: Mutex<HashSet<acp::schema::v1::SessionId>>,
+    /// Scoped hook ownership never aliases a different provider/store with the
+    /// same raw SID. Legacy sets remain compatibility markers for unique rows.
+    scoped_hook_ownership: Mutex<HashMap<crate::session_registry::SessionIdentity, bool>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1961,8 +1964,10 @@ impl HistoryRefreshState {
     }
 
     fn retry_due(&self) -> bool {
-        !self.startup_exhausted && self.next_refresh_at
-            .is_none_or(|at| at <= tokio::time::Instant::now())
+        !self.startup_exhausted
+            && self
+                .next_refresh_at
+                .is_none_or(|at| at <= tokio::time::Instant::now())
     }
 }
 
@@ -3383,9 +3388,8 @@ impl HelperHandler {
             None => false,
         };
         if requested_control && wta_meta.startup_intent.is_some() {
-            return Err(acp::Error::invalid_request().data(
-                "history control clients cannot request agent startup",
-            ));
+            return Err(acp::Error::invalid_request()
+                .data("history control clients cannot request agent startup"));
         }
         if wta_meta
             .startup_intent
@@ -3517,7 +3521,9 @@ impl HelperHandler {
                 .startup_registry
                 .retry(&key)
                 .await
-                .map_err(|error| helper_initialize_error(HelperInitializeFailure::AgentStartup, &error))?;
+                .map_err(|error| {
+                    helper_initialize_error(HelperInitializeFailure::AgentStartup, &error)
+                })?;
         }
         let agent = self
             .get_or_initialize_agent(|| {
@@ -4723,9 +4729,9 @@ impl HelperHandler {
             Req::SessionActivationStatus(p) => {
                 handle_session_activation_status(&self.state, &p).await
             }
-            Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
-            Req::SessionBornBound(ev, wsl_distro) => {
-                handle_session_born_bound(&self.state, ev, wsl_distro).await
+            Req::SessionHook(update) => handle_scoped_session_hook(&self.state, update).await,
+            Req::SessionBornBound(ev, wsl_distro, universe) => {
+                handle_scoped_session_born_bound(&self.state, ev, wsl_distro, universe).await
             }
             Req::SessionResumeDispatched(p) => {
                 handle_session_resume_dispatched(&self.state, &p).await
@@ -5129,6 +5135,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
+        scoped_hook_ownership: Mutex::new(HashMap::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
         retired_agent_cells: std::sync::Mutex::new(Vec::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
@@ -5737,16 +5744,14 @@ where
                 }
                 let result = match startup.begin() {
                     Ok(()) => match initialize(Arc::clone(&cell)).await {
-                        Ok(agent) => {
-                            match startup.succeeded() {
-                                Ok(()) => Ok(agent),
-                                Err(error) => {
-                                    agent.conn.shutdown();
-                                    retire_agent_history(&agent).await;
-                                    Err(error)
-                                }
+                        Ok(agent) => match startup.succeeded() {
+                            Ok(()) => Ok(agent),
+                            Err(error) => {
+                                agent.conn.shutdown();
+                                retire_agent_history(&agent).await;
+                                Err(error)
                             }
-                        }
+                        },
                         Err(error) => Err(startup.failed(error)),
                     },
                     Err(error) => Err(error),
@@ -5801,7 +5806,8 @@ async fn get_or_spawn_agent(
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
     let key = agent_cmd_key_with_provider(agent_cmd, agent_id, source, &provider_binding);
-    let admission_key = agent_admission_key_with_provider(agent_cmd, agent_id, source, &provider_binding);
+    let admission_key =
+        agent_admission_key_with_provider(agent_cmd, agent_id, source, &provider_binding);
     let initialization_key = key.clone();
     let agent = acquire_agent_from_pool_with_admission(state, &key, &admission_key, move |cell| {
         let key = initialization_key.clone();
@@ -5956,19 +5962,20 @@ async fn spawn_one_agent(
     };
     let telemetry_model_source =
         provider_binding.telemetry_model_source(&resolved_agent_id, source);
-    let prepared = match crate::agent_lifecycle::providers::prepare(agent_cmd, agent_id, source).await {
-        Ok(prepared) => prepared,
-        Err(error) => {
-        crate::telemetry::log_agent_cold_start_complete(
-            &resolved_agent_id,
-            source_kind,
-            cold_start_started.elapsed().as_secs_f64() * 1000.0,
-            false,
-            "DependencyInstallFailed",
-        );
-            return Err(error).context(crate::agent_lifecycle::StartupPhase::Preparation);
-        }
-    };
+    let prepared =
+        match crate::agent_lifecycle::providers::prepare(agent_cmd, agent_id, source).await {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                crate::telemetry::log_agent_cold_start_complete(
+                    &resolved_agent_id,
+                    source_kind,
+                    cold_start_started.elapsed().as_secs_f64() * 1000.0,
+                    false,
+                    "DependencyInstallFailed",
+                );
+                return Err(error).context(crate::agent_lifecycle::StartupPhase::Preparation);
+            }
+        };
     let startup_error = |error: anyhow::Error, phase| {
         let error = error.context(phase);
         if prepared.outcome == crate::agent_lifecycle::providers::PreparationOutcome::Ready {
@@ -5994,7 +6001,10 @@ async fn spawn_one_agent(
                 false,
                 "SpawnFailed",
             );
-            return Err(startup_error(error, crate::agent_lifecycle::StartupPhase::Spawn));
+            return Err(startup_error(
+                error,
+                crate::agent_lifecycle::StartupPhase::Spawn,
+            ));
         }
     };
     tracing::info!(
@@ -6188,7 +6198,10 @@ async fn spawn_one_agent(
                 format_startup_stderr(&stderr)
             ));
             let error = crate::agent_lifecycle::StartupDetails::attach(error, &stderr);
-            return Err(startup_error(error, crate::agent_lifecycle::StartupPhase::Initialize));
+            return Err(startup_error(
+                error,
+                crate::agent_lifecycle::StartupPhase::Initialize,
+            ));
         }
         Err(_) => {
             let stderr = stderr_log
@@ -6227,7 +6240,8 @@ async fn spawn_one_agent(
         let state = Arc::clone(state);
         let cell = Arc::clone(cell);
         let key = key.clone();
-        let admission_key = agent_admission_key_with_provider(agent_cmd, agent_id, source, provider_binding);
+        let admission_key =
+            agent_admission_key_with_provider(agent_cmd, agent_id, source, provider_binding);
         tokio::task::spawn_local(async move {
             let status = wait_for_agent_exit(&state, &key, &admission_key, &mut child).await;
             tracing::error!(
@@ -8004,7 +8018,11 @@ fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
 
 async fn retry_failed_host_history_discovery(state: &Arc<MasterStateInner>) {
     use std::sync::atomic::Ordering;
-    let stopped: Vec<_> = state.history_discovery_retries.lock().await.iter()
+    let stopped: Vec<_> = state
+        .history_discovery_retries
+        .lock()
+        .await
+        .iter()
         .filter(|(_, retry)| retry.startup_exhausted)
         .map(|(key, _)| key.clone())
         .collect();
@@ -8192,10 +8210,10 @@ where
         row.background_tab = None;
     }
 
+    let mut ownership_pending = false;
     // Enrich only the response copy; pane/window attribution is not registry state.
     if let Some(wt) = state.wt.as_ref() {
         use crate::agent_sessions::AgentStatus;
-        use futures::{stream, StreamExt};
         let panes: std::collections::HashSet<uuid::Uuid> = sessions
             .iter()
             .filter(|row| {
@@ -8213,40 +8231,57 @@ where
             .filter_map(|pane| uuid::Uuid::parse_str(pane).ok())
             .filter(|pane| !pane.is_nil())
             .collect();
-        let mut requests = stream::iter(panes)
-            .map(|pane| async move {
-                let result = wt
-                    .request(
-                        "get_pane_context",
-                        serde_json::json!({
-                            "session_id": pane.to_string(), "max_lines": 0, "max_chars": 0
-                        }),
-                    )
-                    .await;
-                (pane, result)
-            })
-            .buffer_unordered(8);
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
         let mut owners = std::collections::HashMap::new();
-        loop {
-            match tokio::time::timeout_at(deadline, requests.next()).await {
-                Ok(Some((pane, Ok(context)))) => {
-                    if let Some(window_id) = pane_context_owner_window(pane, &context) {
-                        owners.insert(
-                            pane,
-                            (window_id, pane_context_background_tab(pane, &context)),
-                        );
-                    } else {
-                        tracing::warn!(target: "master_history", %pane, "pane ownership context invalid; retaining unattributed status");
+        if !panes.is_empty() {
+            // One metadata-only query covers attached and kept-running panes in
+            // every window. Per-pane wtcli launches can exhaust the snapshot
+            // deadline before reaching a live shell pane in a busy sidebar.
+            let request = async {
+                wt.request("list_panes", serde_json::json!({ "all": true }))
+                    .await?
+                    .get("panes")
+                    .and_then(serde_json::Value::as_array)
+                    .cloned()
+                    .context("pane ownership snapshot has no panes array")
+            };
+            let started = std::time::Instant::now();
+            match tokio::time::timeout(std::time::Duration::from_secs(2), request).await {
+                Ok(Ok(metadata)) => {
+                    tracing::debug!(target: "master_history", elapsed_ms = started.elapsed().as_millis(), pane_count = metadata.len(), "pane ownership snapshot completed");
+                    for metadata in metadata {
+                        let Some(pane) = metadata
+                            .get("session_id")
+                            .and_then(serde_json::Value::as_str)
+                            .and_then(|id| uuid::Uuid::parse_str(id).ok())
+                            .filter(|pane| panes.contains(pane))
+                        else {
+                            continue;
+                        };
+                        let context = serde_json::json!({ "pane": metadata });
+                        if let Some(window_id) = pane_context_owner_window(pane, &context) {
+                            let ownership =
+                                (window_id, pane_context_background_tab(pane, &context));
+                            match owners.entry(pane) {
+                                std::collections::hash_map::Entry::Vacant(entry) => {
+                                    entry.insert(Some(ownership));
+                                }
+                                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                                    entry.insert(None);
+                                    tracing::warn!(target: "master_history", %pane, "pane ownership is ambiguous; retaining unattributed status");
+                                }
+                            }
+                        } else {
+                            tracing::warn!(target: "master_history", %pane, "pane ownership context invalid; retaining unattributed status");
+                        }
                     }
                 }
-                Ok(Some((pane, Err(error)))) => {
-                    tracing::debug!(target: "master_history", %pane, %error, "pane ownership unavailable; retaining unattributed status");
+                Ok(Err(error)) => {
+                    ownership_pending = true;
+                    tracing::warn!(target: "master_history", %error, "pane ownership snapshot unavailable; retaining unattributed statuses");
                 }
-                Ok(None) => break,
                 Err(_) => {
+                    ownership_pending = true;
                     tracing::warn!(target: "master_history", "pane ownership snapshot timed out; retaining unresolved statuses");
-                    break;
                 }
             }
         }
@@ -8266,7 +8301,7 @@ where
                 .pane_session_id
                 .as_deref()
                 .and_then(|pane| uuid::Uuid::parse_str(pane).ok())
-                .and_then(|pane| owners.get(&pane).copied())
+                .and_then(|pane| owners.get(&pane).copied().flatten())
             {
                 row.owner_window_id = Some(window_id);
                 row.background_tab = background_tab;
@@ -8280,6 +8315,7 @@ where
         sessions,
         Some(history_status.status),
         history_status.error_kind,
+        ownership_pending,
         native_pane_observations,
         state.native_observation_receiver_generation,
         state.native_observation_receiver_generation.map(|_| {
@@ -8501,13 +8537,13 @@ async fn execute_session_activation(
                 Some("Terminal activation service is unavailable.".to_string())
             );
         };
-        match wt
+        let result = wt
             .request(
                 "focus_pane",
                 serde_json::json!({ "session_id": pane_session_id }),
             )
-            .await
-        {
+            .await;
+        match result {
             Ok(_) => respond!("focus", true, None),
             Err(error) => failed("focus", error),
         }
@@ -8664,6 +8700,11 @@ async fn execute_session_activation(
             let runtimes =
                 crate::coordinator::default_delegate_agent_runtimes(Some(&provider_id), None, None);
             let runtime = &runtimes[0];
+            if let Err(error) =
+                crate::coordinator::ensure_resume_universe(row.session_universe.as_deref())
+            {
+                return failed("resume_cli", error);
+            }
             let commandline = match &row.location {
                 crate::agent_sessions::SessionLocation::Host => {
                     crate::coordinator::build_delegate_resume_commandline(
@@ -8715,9 +8756,17 @@ async fn execute_session_activation(
                 Ok(commandline) => commandline,
                 Err(error) => return failed("resume_cli", error),
             };
+            let launch_commandline = crate::coordinator::qualified_resume_launch_envelope(
+                &provider_id,
+                row.session_id.0.as_ref(),
+                &row.location,
+                &row.cwd.to_string_lossy(),
+                row.session_universe.as_deref(),
+                &commandline,
+            );
             let mut params = serde_json::json!({
                 "window_id": parsed.window_id,
-                "commandline": commandline,
+                "commandline": launch_commandline,
                 "background": true,
                 "native_agent_provider_id": provider_id,
             });
@@ -8729,7 +8778,8 @@ async fn execute_session_activation(
             if let Some(title) = row.title.as_ref().filter(|title| !title.trim().is_empty()) {
                 params["title"] = serde_json::Value::String(title.clone());
             }
-            match wt.request("create_tab", params).await {
+            let result = wt.request("create_tab", params).await;
+            match result {
                 Ok(result) => {
                     let Some(pane_session_id) = result
                         .get("session_id")
@@ -8812,6 +8862,11 @@ async fn execute_session_activation(
                     {
                         state.hook_owned.lock().await.remove(&row.session_id);
                         state.born_bound.lock().await.insert(row.session_id.clone());
+                        state
+                            .scoped_hook_ownership
+                            .lock()
+                            .await
+                            .remove(&parsed.identity);
                     }
                     drop(lifecycle_guard);
                     broadcast_session_status_change(state, None).await;
@@ -8820,19 +8875,21 @@ async fn execute_session_activation(
                         row.session_id.0.as_ref(),
                         &pane_session_id,
                         &row.location,
+                        row.session_universe.as_deref(),
+                        &commandline,
                         Some(row.cwd.to_string_lossy().as_ref()),
                     ) {
                         crate::wt_protocol_events::send(binding);
                     }
                     // Only this History activation preserves the sidebar: background
                     // creation followed by focus of the exact newly returned pane.
-                    match wt
+                    let result = wt
                         .request(
                             "focus_pane",
                             serde_json::json!({ "session_id": pane_session_id }),
                         )
-                        .await
-                    {
+                        .await;
+                    match result {
                         Ok(_) => respond!("resume_cli", true, None),
                         Err(error) => respond!(
                             "resume_cli",
@@ -8928,10 +8985,274 @@ async fn handle_session_event(
     if let Some(key) = refresh_key {
         try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key)).await;
     }
-
     Ok(crate::session_registry::build_session_hook_response(
         applied,
     ))
+}
+
+async fn handle_scoped_session_hook(
+    state: &Arc<MasterStateInner>,
+    update: crate::session_registry::SessionHookUpdate,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let key = match session_event_key(&update.event) {
+        Some(key) => key.to_owned(),
+        None => match &update.scope.identity {
+            Some(identity) => identity.session_id.to_string(),
+            None if update.scope.cli_source.is_none()
+                && update.scope.agent_source.is_none()
+                && update.scope.wsl_distro.is_none()
+                && update.scope.session_universe.is_none() =>
+            {
+                return handle_session_hook(state, update.event, false).await;
+            }
+            None => {
+                return Err(acp::Error::invalid_params()
+                    .data("scoped pane hook requires a qualified identity"));
+            }
+        },
+    };
+    let identity = resolve_hook_identity(state, &key, &update.scope)
+        .await
+        .map_err(|reason| {
+            tracing::warn!(target: "session_hook", reason, "rejected helper hook identity");
+            acp::Error::invalid_params().data(reason)
+        })?;
+    let activity_only = session_event_is_activity_only(&update.event);
+    let (applied, refresh) =
+        apply_qualified_master_session_event(state, update.event, false, &identity).await;
+    if applied {
+        broadcast_session_status_change(state, Some(key.as_str()).filter(|_| activity_only)).await;
+    }
+    if refresh.is_some() {
+        try_refresh_title_via_acp(state, &identity.session_id).await;
+    }
+    Ok(crate::session_registry::build_session_hook_response(
+        applied,
+    ))
+}
+
+async fn resolve_hook_identity(
+    state: &MasterStateInner,
+    key: &str,
+    scope: &crate::session_registry::SessionHookScope,
+) -> Result<crate::session_registry::SessionIdentity, &'static str> {
+    use crate::agent_sessions::{pane_key, SessionLocation};
+    use crate::session_registry::{HistoryRowKey, SessionIdentity};
+    let provider = scope
+        .cli_source
+        .clone()
+        .map(crate::agent_sessions::CliSource::from)
+        .and_then(|cli| cli.canonical_provider_id());
+    let source = scope
+        .agent_source
+        .as_deref()
+        .filter(|value| !value.is_empty());
+    if scope.wsl_distro.as_deref() == Some("") && source != Some("host") {
+        return Err("invalid hook execution source");
+    }
+    let location = match (
+        source,
+        scope
+            .wsl_distro
+            .as_deref()
+            .filter(|distro| !distro.is_empty()),
+    ) {
+        (Some("host"), None) => Some(SessionLocation::Host),
+        (Some("host"), Some(_)) => return Err("host hook contains WSL distro"),
+        (Some("wsl") | None, Some(distro))
+            if crate::agent_source::is_safe_wsl_distro_name(distro) =>
+        {
+            Some(SessionLocation::Wsl {
+                distro: distro.to_string(),
+            })
+        }
+        (None, None) => None,
+        _ => return Err("invalid hook execution source"),
+    };
+    let universe = scope
+        .session_universe
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+        .cloned();
+    let sid = acp::schema::v1::SessionId::new(key);
+    if let Some(identity) = &scope.identity {
+        let history = identity
+            .history_key
+            .as_ref()
+            .ok_or("hook identity must be qualified")?;
+        if identity.session_id != sid
+            || history.session_id != key
+            || HistoryRowKey::new(
+                &history.provider_id,
+                history.location.clone(),
+                key,
+                history.session_universe.clone(),
+            )
+            .as_ref()
+                != Some(history)
+            || provider
+                .as_ref()
+                .is_some_and(|id| id != &history.provider_id)
+            || location
+                .as_ref()
+                .is_some_and(|value| value != &history.location)
+            || (scope.session_universe.is_some() && universe != history.session_universe)
+        {
+            return Err("hook identity contradicts routing metadata");
+        }
+        return Ok(identity.clone());
+    }
+    let snapshot = state.registry.snapshot().await;
+    let raw: Vec<_> = snapshot
+        .iter()
+        .filter(|row| row.session_id == sid)
+        .collect();
+    let candidates: Vec<_> = raw
+        .iter()
+        .copied()
+        .filter(|row| {
+            let row_provider = row.provider_id.clone().or_else(|| {
+                row.cli_source
+                    .as_ref()
+                    .and_then(|cli| cli.canonical_provider_id())
+            });
+            provider
+                .as_ref()
+                .is_none_or(|id| row_provider.as_ref() == Some(id))
+                && location
+                    .as_ref()
+                    .is_none_or(|value| match (&row.location, value) {
+                        (
+                            SessionLocation::Wsl { distro: known },
+                            SessionLocation::Wsl { distro: incoming },
+                        ) => known.eq_ignore_ascii_case(incoming),
+                        (SessionLocation::Unknown, _) => true,
+                        (known, incoming) => known == incoming,
+                    })
+                && (scope.session_universe.is_none() || row.session_universe == universe)
+        })
+        .collect();
+    let pane = scope
+        .pane_session_id
+        .as_deref()
+        .map(pane_key)
+        .filter(|pane| !pane.is_empty());
+    if let Some(pane) = pane {
+        if let Some(owner) = state.registry.lookup_active_by_pane(&pane).await {
+            let owner = SessionIdentity::from_info(&owner);
+            if candidates
+                .iter()
+                .any(|row| SessionIdentity::from_info(row) == owner)
+            {
+                return Ok(owner);
+            }
+        }
+    }
+    if candidates.len() == 1 {
+        return Ok(SessionIdentity::from_info(candidates[0]));
+    }
+    // An explicit scope may create a new store identity, but missing scope on
+    // a collision must not mean "Host/default" or select the latest row.
+    if !raw.is_empty() && (location.is_none() || scope.session_universe.is_none()) {
+        return Err("ambiguous hook session identity");
+    }
+    let Some(provider) = provider else {
+        if raw.is_empty() && source.is_none() && scope.session_universe.is_none() {
+            return Ok(SessionIdentity::legacy(sid));
+        }
+        return Err("hook requires a known provider");
+    };
+    let history = HistoryRowKey::new(
+        provider,
+        location.unwrap_or(SessionLocation::Host),
+        key,
+        universe,
+    )
+    .ok_or("invalid hook identity")?;
+    Ok(SessionIdentity {
+        session_id: sid,
+        history_key: Some(history),
+    })
+}
+
+async fn apply_qualified_master_session_event(
+    state: &MasterStateInner,
+    event: crate::agent_sessions::SessionEvent,
+    is_born_bound: bool,
+    identity: &crate::session_registry::SessionIdentity,
+) -> (bool, Option<String>) {
+    if matches!(
+        &event,
+        crate::agent_sessions::SessionEvent::SessionRenamed { .. }
+    ) {
+        return (
+            state.registry.apply_event_identity(identity, event).await,
+            None,
+        );
+    }
+    let unique = state.registry.lookup(&identity.session_id).await;
+    if unique
+        .as_ref()
+        .is_some_and(|row| crate::session_registry::SessionIdentity::from_info(row) == *identity)
+        || (unique.is_none()
+            && state
+                .registry
+                .snapshot()
+                .await
+                .iter()
+                .all(|row| row.session_id != identity.session_id)
+            && (identity.history_key.is_none()
+                || identity.history_key.as_ref().is_some_and(|key| {
+                    key.location == crate::agent_sessions::SessionLocation::Host
+                        && key.session_universe.is_none()
+                })))
+    {
+        // Uniqueness chooses compatibility bookkeeping only. Keep the exact
+        // identity through the mutation lock even if registry membership changes.
+        let result = apply_master_session_event_inner(
+            state,
+            event,
+            is_born_bound,
+            identity.history_key.as_ref().map(|_| identity),
+            identity
+                .history_key
+                .as_ref()
+                .map(|key| key.location.clone())
+                .unwrap_or(crate::agent_sessions::SessionLocation::Host),
+        )
+        .await;
+        if result.0 {
+            state.scoped_hook_ownership.lock().await.remove(identity);
+        }
+        return result;
+    }
+    let gate = session_lifecycle_gate(state, &identity.session_id).await;
+    let _guard = gate.lock().await;
+    let binding_only = is_born_bound
+        || matches!(
+            &event,
+            crate::agent_sessions::SessionEvent::ResumeDispatched { .. }
+                | crate::agent_sessions::SessionEvent::ResumePaneAssigned { .. }
+        );
+    let failed_resume = matches!(
+        &event,
+        crate::agent_sessions::SessionEvent::ResumeFailed { .. }
+    );
+    let starts_new_generation = is_born_bound
+        || matches!(
+            &event,
+            crate::agent_sessions::SessionEvent::ResumeDispatched { .. }
+        );
+    let applied = state.registry.apply_event_identity(identity, event).await;
+    if applied || starts_new_generation {
+        let mut ownership = state.scoped_hook_ownership.lock().await;
+        if failed_resume {
+            ownership.remove(identity);
+        } else {
+            ownership.insert(identity.clone(), !binding_only);
+        }
+    }
+    (applied, applied.then(|| identity.session_id.to_string()))
 }
 
 /// Apply one session event to master's authoritative registry without
@@ -8947,11 +9268,25 @@ async fn apply_master_session_event(
     is_born_bound: bool,
     birth_location: crate::agent_sessions::SessionLocation,
 ) -> (bool, Option<String>) {
+    apply_master_session_event_inner(state, event, is_born_bound, None, birth_location).await
+}
+
+async fn apply_master_session_event_inner(
+    state: &MasterStateInner,
+    event: crate::agent_sessions::SessionEvent,
+    is_born_bound: bool,
+    identity: Option<&crate::session_registry::SessionIdentity>,
+    birth_location: crate::agent_sessions::SessionLocation,
+) -> (bool, Option<String>) {
     if matches!(
         &event,
         crate::agent_sessions::SessionEvent::SessionRenamed { .. }
     ) {
-        return (state.registry.apply_event(event).await, None);
+        let applied = match identity {
+            Some(identity) => state.registry.apply_event_identity(identity, event).await,
+            None => state.registry.apply_event(event).await,
+        };
+        return (applied, None);
     }
     // Capture the session key BEFORE moving `event` into the reducer so
     // we can dispatch the post-apply title refresh against the right
@@ -8960,6 +9295,20 @@ async fn apply_master_session_event(
     // Error, where the title is whatever it already was, so skipping
     // the refresh is fine.
     let refresh_key = session_event_key(&event).map(str::to_owned);
+    if let Some(key) = refresh_key.as_ref().filter(|_| identity.is_none()) {
+        let sid = acp::schema::v1::SessionId::new(key.clone());
+        if state.registry.lookup(&sid).await.is_none()
+            && state
+                .registry
+                .snapshot()
+                .await
+                .iter()
+                .any(|row| row.session_id == sid)
+        {
+            tracing::warn!(target: "session_hook", session_id = %sid, "rejected ambiguous legacy session event");
+            return (false, None);
+        }
+    }
 
     if matches!(
         &event,
@@ -8971,7 +9320,10 @@ async fn apply_master_session_event(
         let sid = acp::schema::v1::SessionId::new(key.clone());
         let gate = session_lifecycle_gate(state, &sid).await;
         let _gate_guard = gate.lock().await;
-        let applied = state.registry.apply_event(event).await;
+        let applied = match identity {
+            Some(identity) => state.registry.apply_event_identity(identity, event).await,
+            None => state.registry.apply_event(event).await,
+        };
         if applied {
             state.hook_owned.lock().await.remove(&sid);
             state.born_bound.lock().await.remove(&sid);
@@ -9047,11 +9399,19 @@ async fn apply_master_session_event(
             let (applied, native_pane_owned) = if is_born_bound {
                 let result = state
                     .registry
-                    .apply_born_bound_event(event, birth_location, preserve_live_binding)
+                    .apply_born_bound_event(event, birth_location, preserve_live_binding, identity)
                     .await;
                 (result.applied, result.native_pane_owned)
             } else {
-                (state.registry.apply_event(event).await, false)
+                (
+                    match identity {
+                        Some(identity) => {
+                            state.registry.apply_event_identity(identity, event).await
+                        }
+                        None => state.registry.apply_event(event).await,
+                    },
+                    false,
+                )
             };
             if preserve_live_binding {
                 return (applied, None);
@@ -9088,12 +9448,18 @@ async fn apply_master_session_event(
                 state.hook_owned.lock().await.insert(sid.clone());
                 state.born_bound.lock().await.remove(&sid);
             }
-            let applied = state.registry.apply_event(event).await;
+            let applied = match identity {
+                Some(identity) => state.registry.apply_event_identity(identity, event).await,
+                None => state.registry.apply_event(event).await,
+            };
             return (applied, refresh_key);
         }
     }
 
-    let applied = state.registry.apply_event(event).await;
+    let applied = match identity {
+        Some(identity) => state.registry.apply_event_identity(identity, event).await,
+        None => state.registry.apply_event(event).await,
+    };
     (applied, refresh_key)
 }
 
@@ -9124,6 +9490,129 @@ async fn session_event_status_key(
             })
         })
         .map(|row| row.session_id.0.to_string())
+}
+
+async fn handle_scoped_session_born_bound(
+    state: &Arc<MasterStateInner>,
+    event: crate::agent_sessions::SessionEvent,
+    wsl_distro: Option<String>,
+    universe: Option<String>,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let universe = universe.filter(|value| !value.trim().is_empty());
+    let known_provider = matches!(
+        &event,
+        crate::agent_sessions::SessionEvent::SessionStarted { cli_source, .. }
+            if !matches!(cli_source, crate::agent_sessions::CliSource::Unknown(_))
+    );
+    // Missing scope means Host/default for known providers, not a raw-SID
+    // registration that may overwrite another source or store.
+    if universe.is_none() && wsl_distro.is_none() && !known_provider {
+        return handle_session_born_bound(state, event, wsl_distro).await;
+    }
+    let crate::agent_sessions::SessionEvent::SessionStarted {
+        key,
+        cli_source,
+        pane_session_id,
+        cwd,
+        title,
+    } = event
+    else {
+        return Err(acp::Error::invalid_params().data("qualified birth requires a session start"));
+    };
+    let provider_id = cli_source.canonical_provider_id().ok_or_else(|| {
+        acp::Error::invalid_params().data("qualified birth requires a known provider")
+    })?;
+    if key.is_empty() || pane_session_id.is_empty() {
+        return Err(
+            acp::Error::invalid_params().data("qualified birth requires session and pane IDs")
+        );
+    }
+    let location = match wsl_distro {
+        Some(distro) if !distro.trim().is_empty() => {
+            crate::agent_sessions::SessionLocation::Wsl { distro }
+        }
+        Some(_) => {
+            return Err(acp::Error::invalid_params().data("qualified birth has an empty distro"))
+        }
+        None => crate::agent_sessions::SessionLocation::Host,
+    };
+    let sid = acp::schema::v1::SessionId::new(key);
+    let gate = session_lifecycle_gate(state, &sid).await;
+    let _gate_guard = gate.lock().await;
+    let mut row = crate::session_registry::SessionInfo::new(sid.clone(), cwd);
+    row.provider_id = Some(provider_id);
+    row.cli_source = Some(cli_source);
+    row.location = location;
+    row.session_universe = universe;
+    row.status = Some(crate::agent_sessions::AgentStatus::Idle);
+    row.title = (!title.is_empty()).then_some(title);
+    let identity = crate::session_registry::SessionIdentity::from_info(&row);
+    if let Some(existing) = state.registry.lookup_identity(&identity).await {
+        let same_pane = existing.pane_session_id.as_deref().is_some_and(|pane| {
+            crate::agent_sessions::pane_key(pane)
+                == crate::agent_sessions::pane_key(&pane_session_id)
+        });
+        if (same_pane
+            && matches!(
+                existing.status,
+                Some(
+                    crate::agent_sessions::AgentStatus::Idle
+                        | crate::agent_sessions::AgentStatus::Working
+                        | crate::agent_sessions::AgentStatus::Attention
+                        | crate::agent_sessions::AgentStatus::Error
+                )
+            ))
+            || (existing.origin == Some(crate::agent_sessions::SessionOrigin::AgentPane)
+                && existing.pane_session_id.is_some())
+        {
+            return Ok(crate::session_registry::build_session_hook_response(false));
+        }
+        if same_pane {
+            // Layout restore can reuse a historical pane GUID. Release its
+            // stale binding so assignment rebuilds the active index/protection.
+            let mut historical = existing;
+            historical.pane_session_id = None;
+            historical.born_bound_pane = false;
+            if historical.status.is_none() {
+                historical.status = Some(crate::agent_sessions::AgentStatus::Idle);
+            }
+            state.registry.upsert(historical).await;
+        }
+    }
+    // Never run a raw-SID reducer and then stamp its scope: that can mutate a
+    // different provider/store before the qualified identity is established.
+    state.registry.upsert_if_absent(row).await;
+    let status_changed = state
+        .registry
+        .mark_resume_dispatched_identity(&identity)
+        .await
+        .is_some_and(|(changed, _)| changed);
+    let bound = state
+        .registry
+        .assign_resume_pane_identity(&identity, pane_session_id)
+        .await;
+    if bound || status_changed {
+        state
+            .scoped_hook_ownership
+            .lock()
+            .await
+            .insert(identity.clone(), false);
+    }
+    if state
+        .registry
+        .lookup(&sid)
+        .await
+        .is_some_and(|row| crate::session_registry::SessionIdentity::from_info(&row) == identity)
+    {
+        state.hook_owned.lock().await.remove(&sid);
+        state.born_bound.lock().await.insert(sid);
+    }
+    if bound || status_changed {
+        broadcast_session_status_change(state, None).await;
+    }
+    Ok(crate::session_registry::build_session_hook_response(
+        bound || status_changed,
+    ))
 }
 
 /// Handle a #266 *born-bound* registration (delegate `?<prompt>` / resume).
@@ -9188,17 +9677,25 @@ async fn apply_watcher_event(
         // real hooks, so a watcher cannot overwrite a hook that just took over.
         let gate = session_lifecycle_gate(state, &sid).await;
         let _guard = gate.lock().await;
-        if state.hook_owned.lock().await.contains(&sid)
-            || !state.born_bound.lock().await.contains(&sid)
-        {
-            return;
-        }
-
         // Watcher records are native, provider-specific evidence. A raw ID
         // alone cannot identify a WSL, ACP, or colliding history row.
         let Some(row) = state.registry.lookup(&sid).await else {
+            tracing::debug!(target: "session_hook", session_id = %sid, "watcher event has no unique session identity");
             return;
         };
+        let identity = crate::session_registry::SessionIdentity::from_info(&row);
+        let scoped = state
+            .scoped_hook_ownership
+            .lock()
+            .await
+            .get(&identity)
+            .copied();
+        if scoped == Some(true)
+            || (scoped.is_none() && state.hook_owned.lock().await.contains(&sid))
+            || (scoped != Some(false) && !state.born_bound.lock().await.contains(&sid))
+        {
+            return;
+        }
         if row.location != crate::agent_sessions::SessionLocation::Host
             || row.session_universe.is_some()
             || row.origin == Some(crate::agent_sessions::SessionOrigin::AgentPane)
@@ -10650,11 +11147,13 @@ async fn validate_master_hook_source(
     key: &str,
     pane_id: &str,
     cli_source: &crate::agent_sessions::CliSource,
+    identity: &crate::session_registry::SessionIdentity,
 ) -> Result<Option<crate::agent_sessions::SessionLocation>, &'static str> {
     use crate::agent_sessions::{pane_key, AgentStatus, CliSource, SessionLocation, SessionOrigin};
 
     let distro = params
         .get("wsl_distro")
+        .filter(|value| value.as_str() != Some(""))
         .map(|value| {
             value
                 .as_str()
@@ -10666,6 +11165,23 @@ async fn validate_master_hook_source(
     let provider_id = cli_source.canonical_provider_id();
     let mut known_location = None;
     for row in state.registry.snapshot().await {
+        if row.session_id.0.as_ref() == key
+            && row
+                .cli_source
+                .as_ref()
+                .is_some_and(|known| known != cli_source)
+            && row
+                .pane_session_id
+                .as_deref()
+                .is_some_and(|owner| !pane.is_empty() && pane_key(owner) == pane)
+        {
+            return Err("hook pane has conflicting provider ownership");
+        }
+        if row.session_id.0.as_ref() == key
+            && crate::session_registry::SessionIdentity::from_info(&row) != *identity
+        {
+            continue;
+        }
         let same_provider = match row
             .provider_id
             .as_deref()
@@ -10819,8 +11335,7 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         .or_else(|| params.get("session_id").and_then(|v| v.as_str()))
         .unwrap_or("");
 
-    let Some((key, session_known)) =
-        resolve_master_hook_key(state, asid, pane_id, &cli_source, event).await
+    let Some((key, _)) = resolve_master_hook_key(state, asid, pane_id, &cli_source, event).await
     else {
         // No real ACP session id and no live row to attach to. The helper keeps
         // a `pane:<guid>` placeholder for its own bookkeeping, but master only
@@ -10840,12 +11355,35 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         .get("payload")
         .cloned()
         .unwrap_or(serde_json::Value::Null);
-    let rows = state.registry.snapshot().await;
     let non_binding_opencode = cli_source == CliSource::OpenCode
         && payload
             .get("pane_owner")
             .and_then(serde_json::Value::as_bool)
             == Some(false);
+    let scope =
+        match serde_json::from_value::<crate::session_registry::SessionHookScope>(params.clone()) {
+            Ok(mut scope) => {
+                scope.cli_source = Some(crate::session_registry::SessionHookCliSource::from(
+                    &cli_source,
+                ));
+                // A shared OpenCode server's inherited pane is not evidence of ownership.
+                scope.pane_session_id = (!non_binding_opencode).then(|| pane_id.to_string());
+                scope
+            }
+            Err(error) => {
+                tracing::warn!(target: "master_wt_event", %error, "rejected malformed hook scope");
+                return;
+            }
+        };
+    let identity = match resolve_hook_identity(state, &key, &scope).await {
+        Ok(identity) => identity,
+        Err(reason) => {
+            tracing::warn!(target: "master_wt_event", reason, "rejected agent hook identity");
+            return;
+        }
+    };
+    let session_known = state.registry.lookup_identity(&identity).await.is_some();
+    let rows = state.registry.snapshot().await;
     let owner_pane = if non_binding_opencode {
         if asid.is_empty()
             || !matches!(
@@ -10862,7 +11400,9 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         {
             return;
         }
-        let mut matches = rows.iter().filter(|row| row.session_id.0.as_ref() == key);
+        let mut matches = rows
+            .iter()
+            .filter(|row| crate::session_registry::SessionIdentity::from_info(row) == identity);
         let Some(row) = matches.next() else {
             tracing::debug!(target: "master_wt_event", key, event, "ignored unknown OpenCode server activity");
             return;
@@ -10888,11 +11428,8 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         {
             Some(pane) => pane.to_string(),
             None if event == "agent.session.end"
-                && state
-                    .hook_owned
-                    .lock()
-                    .await
-                    .contains(&acp::schema::v1::SessionId::new(key.clone())) =>
+                && (state.hook_owned.lock().await.contains(&identity.session_id)
+                    || state.scoped_hook_ownership.lock().await.get(&identity) == Some(&true)) =>
             {
                 String::new()
             }
@@ -10902,7 +11439,9 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         pane_id.to_string()
     };
     let location =
-        match validate_master_hook_source(state, params, &key, &owner_pane, &cli_source).await {
+        match validate_master_hook_source(state, params, &key, &owner_pane, &cli_source, &identity)
+            .await
+        {
             Ok(location) => location,
             Err(reason) => {
                 tracing::warn!(target: "master_wt_event", reason, "rejected agent hook source");
@@ -10916,9 +11455,7 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
             &cli_source,
             event,
             rows.iter()
-                .find(|row| {
-                    row.session_id.0.as_ref() == key && row.cli_source.as_ref() == Some(&cli_source)
-                })
+                .find(|row| crate::session_registry::SessionIdentity::from_info(row) == identity)
                 .and_then(|row| row.pane_session_id.as_deref()),
             pane_id,
         )
@@ -10930,8 +11467,7 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
         && event == "agent.session.end"
         && !non_binding_opencode
         && !rows.iter().any(|row| {
-            row.session_id.0.as_ref() == key
-                && row.cli_source.as_ref() == Some(&cli_source)
+            crate::session_registry::SessionIdentity::from_info(row) == identity
                 && row.pane_session_id.as_deref().is_some_and(|pane| {
                     !pane_id.is_empty()
                         && crate::agent_sessions::pane_key(pane)
@@ -10943,7 +11479,7 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
     }
     let pane_owned_by_other = !pane_key.is_empty()
         && rows.iter().any(|row| {
-            (row.session_id.0.as_ref() != key || row.cli_source.as_ref() != Some(&cli_source))
+            crate::session_registry::SessionIdentity::from_info(row) != identity
                 && matches!(
                     row.status,
                     Some(
@@ -10961,9 +11497,7 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
     let facts = crate::app::AgentEventFacts {
         session_status: rows
             .iter()
-            .find(|row| {
-                row.session_id.0.as_ref() == key && row.cli_source.as_ref() == Some(&cli_source)
-            })
+            .find(|row| crate::session_registry::SessionIdentity::from_info(row) == identity)
             .and_then(|row| row.status.clone()),
         key,
         session_known: session_known || non_binding_opencode,
@@ -10999,31 +11533,23 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
             event = ?ev,
             "received COM agent hook"
         );
-        let (applied, refresh_key) = apply_master_session_event(
-            state,
-            ev,
-            false,
-            crate::agent_sessions::SessionLocation::Host,
-        )
-        .await;
+        let (applied, refresh_key) =
+            apply_qualified_master_session_event(state, ev, false, &identity).await;
         changed |= applied;
         if let Some(key) = refresh_key {
             refresh_keys.insert(key);
         }
     }
     if let Some(location) = location {
-        changed |= state
-            .registry
-            .set_location(
-                &acp::schema::v1::SessionId::new(session_key.clone()),
-                location,
-            )
-            .await;
+        if let Some(mut row) = state.registry.lookup_identity(&identity).await {
+            if row.location != location {
+                row.location = location;
+                state.registry.upsert(row).await;
+                changed = true;
+            }
+        }
     }
-    let final_row = state
-        .registry
-        .lookup(&acp::schema::v1::SessionId::new(session_key.clone()))
-        .await;
+    let final_row = state.registry.lookup_identity(&identity).await;
     let final_status = final_row.as_ref().and_then(|row| row.status.clone());
     tracing::info!(
         target: "master_wt_event",

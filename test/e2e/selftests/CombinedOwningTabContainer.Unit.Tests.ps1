@@ -19,6 +19,84 @@ BeforeAll {
 Describe 'Combined owning-tab container selection' -Tag 'Unit' {
     AfterAll { $env:ITE2E_HISTORY_INDICATORS_ONLY = $script:originalHistoryMode }
 
+    It 'restores the tail viewport and requires the real group (<Scrollable>, <Missing>)' -ForEach @(
+        @{ Scrollable = $true; Missing = $false }
+        @{ Scrollable = $false; Missing = $false }
+        @{ Scrollable = $true; Missing = $true }
+    ) {
+        Add-Type -AssemblyName UIAutomationClient
+        $body = $script:suiteAst.Find({ param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+                $node.Name -eq 'Assert-MoveNumberKeys'
+        }, $true).Body.Extent.Text
+        $start = $body.IndexOf('# The final no-match numeric case')
+        $start | Should -BeGreaterThan 0
+        $tail = $body.Substring($start, $body.Length - $start - 1)
+        $state = @{ Scrolls = 0; Attempts = 0 }
+        $scrollPeer = [pscustomobject]@{ Current = @{ VerticallyScrollable = $Scrollable }; State = $state }
+        $scrollPeer | Add-Member ScriptMethod SetScrollPercent {
+            param($Horizontal, $Vertical)
+            $Horizontal | Should -Be ([Windows.Automation.ScrollPattern]::NoScroll)
+            $Vertical | Should -Be 100
+            ++$this.State.Scrolls
+        }
+        function Get-CombinedScroll { param($Id) $Id | Should -Be ItemsList; $scrollPeer }
+        function Get-MoveGroup {
+            ++$state.Attempts
+            if ($Missing -or $state.Attempts -eq 1) { throw 'no visible exact owning group' }
+            'exact-owning-group'
+        }
+        function Wait-Until {
+            param($TimeoutSec, $Because, $Condition)
+            $TimeoutSec | Should -Be 5
+            foreach ($attempt in 1..3) {
+                try { if (& $Condition) { return $true } } catch {}
+            }
+            throw 'bounded group readiness timeout'
+        }
+        if ($Missing) {
+            { . ([scriptblock]::Create($tail)) } | Should -Throw '*bounded group readiness timeout*'
+            $state.Attempts | Should -Be 3
+        } else {
+            . ([scriptblock]::Create($tail))
+            $state.Attempts | Should -Be 2
+        }
+        $state.Scrolls | Should -Be $(if ($Scrollable) { 1 } else { 0 })
+    }
+
+    It 'includes the native owner only in the matching fixture mode <Mode>' -ForEach @(
+        @{ Mode = 'Full'; Focused = $false; Indicators = '' }
+        @{ Mode = 'Focused'; Focused = $true; Indicators = '' }
+        @{ Mode = 'Indicators'; Focused = $false; Indicators = '1' }
+    ) {
+        $body = $script:suiteAst.Find({ param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+                $node.Name -eq 'Assert-MoveNumberKeys'
+        }, $true)
+        $guard = $body.Find({ param($node)
+            $node -is [Management.Automation.Language.IfStatementAst] -and
+                $node.Extent.Text.Contains('$qualifiedOwnerIds += $script:nativeScopeTab.session_id')
+        }, $true)
+        $guard | Should -Not -BeNullOrEmpty
+        $guard.Clauses[0].Item1.Extent.Text |
+            Should -BeExactly '-not $OwningTabMoveOnly -and $env:ITE2E_HISTORY_INDICATORS_ONLY -ne ''1'''
+        $guard.Extent.Text | Should -Not -Match 'openedFixtureOwners|FixtureSession'
+        $OwningTabMoveOnly = $Focused
+        $env:ITE2E_HISTORY_INDICATORS_ONLY = $Indicators
+        $script:marker = 'fixture'
+        $script:nativeScopeTab = if ($Mode -eq 'Full') { @{ session_id = 'native-pane' } } else { $null }
+        $qualifiedOwnerIds = @('helper-pane')
+        $fixtureOwnerTitles = @{}
+        . ([scriptblock]::Create($guard.Extent.Text))
+        if ($Mode -eq 'Full') {
+            $qualifiedOwnerIds | Should -Be @('helper-pane', 'native-pane')
+            $fixtureOwnerTitles['native-pane'] | Should -BeExactly 'fixture-open-native'
+        } else {
+            $qualifiedOwnerIds | Should -Be @('helper-pane')
+            $fixtureOwnerTitles.Count | Should -Be 0
+        }
+    }
+
     It 'settles exact search values without replay and fails closed for <Fault>' -ForEach @(
         @{ Fault = 'missing then ready' }, @{ Fault = 'old then ready' }, @{ Fault = 'empty active' },
         @{ Fault = 'missing' }, @{ Fault = 'duplicate' }, @{ Fault = 'wrong PID' },
@@ -375,7 +453,7 @@ Describe 'Combined owning-tab container selection' -Tag 'Unit' {
             $body | Should -Match '\$headers \| Should -HaveCount 1'
             (Get-CombinedModeAssignment actualOwnerTitles) | Should -Not -Match 'IsOffscreen'
             $setup = Get-Content $script:suite -Raw
-            $setup | Should -Match '(?s)Wait-AgentReady -App \$script:app -TimeoutSec 60.*?\$script:openedFixtureOwners =.*?FixtureSession = Get-AgentPaneSession'
+            $setup | Should -Match '(?s)\$ready = Test-Until -TimeoutSec 60.*?Get-AgentPaneText -App \$script:app -MaxLines 50.*?Ask anything, /.*?\$ready \| Should -BeTrue.*?\$script:openedFixtureOwners =.*?FixtureSession = Get-AgentPaneSession'
             $setup | Should -Match '(?s)\$tab \| Add-Member -NotePropertyName FixtureSession.*?\$script:openedFixtureOwners \+=.*?FixtureSession = \$pane'
             $tabSource = Get-Content (Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\Tab.cpp') -Raw
             $tabSource | Should -Match '(?s)bool Tab::IsAgentTab\(\).*?AgentPaneContent.*?AgentSessionId.*?current->IsHidden\(\)'

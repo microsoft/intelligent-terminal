@@ -132,6 +132,14 @@ Tabs heading has no activation action or keyboard focus stop. Recent-session
 loading is triggered when the section is needed by its preference or a query,
 using the existing backend and matching rules.
 
+Switching between Sidebar and horizontal tabs preserves the Sidebar search's
+open/closed state and query, along with both filter preferences. Horizontal tabs
+show all open tabs without applying or highlighting the hidden Sidebar query.
+Returning to Sidebar restores the search box and reapplies the retained query.
+Explicitly closing search still clears the query; explicitly hiding or
+collapsing Sidebar retains its existing close-search behavior. Search is
+window-local runtime state, not a new persisted setting.
+
 The default **+** action always opens a normal terminal tab using the configured
 default profile. Filters, search, and tab layout do not change its action,
 accessible name, help text, or tooltip. Creating an agent requires an explicit
@@ -183,7 +191,8 @@ last active pane. Activating another pane in a zoomed tab exits zoom first.
   known-provider shell session with no bound pane. A failed bound-pane focus
   never falls back to creating a new resumed session.
   Bare Enter activates the focused History row even with selection disabled;
-  modified Enter is ignored.
+  Ctrl/Alt/Shift+Enter is consumed without activation, including ListView's
+  default ItemClick fallback.
   Provider identity remains available through the icon tooltip, the focused
   history row's accessible name (alongside its title), and shared search.
   The working directory supports search highlighting and a full-path tooltip.
@@ -220,6 +229,11 @@ last active pane. Activating another pane in a zoomed tab exits zoom first.
   Collapsing this section does not clear shared search, delete sessions, or close
   tabs. Its action tooltip says **Expand recent agent sessions** or
   **Collapse recent agent sessions**, matching the current expanded state.
+  If a Recent row owns keyboard focus when the section collapses, move focus to
+  the heading before removing the row. Collapsing from another control must not
+  steal its focus. Tab from the last visible live row reaches the Recent heading;
+  Shift+Tab from that heading returns to the last visible live row. Neither
+  traversal selects a tab or activates a session.
   A nonempty global query expands the results and disables manual section
   collapse without changing the remembered non-search expansion preference.
   Expansion is not selection: the heading retains neutral theme styling rather
@@ -243,8 +257,9 @@ last active pane. Activating another pane in a zoomed tab exits zoom first.
   Runtime Narrator/UIA and RTL behavior remain separate validation steps.
 - Exclude only the represented history identity: provider, session ID, source
   location (host or WSL distro), and session universe. The open-pane binding
-  supplies session ID, provider (when known), and pane ID; the matching history
-  row supplies location and universe. Pane ID disambiguates colliding history
+  supplies session ID, provider (when known), and pane ID. Qualified bindings
+  also supply source, distro, and universe directly; incomplete bindings use
+  an unambiguous matching history row to fill those fields. Pane ID disambiguates colliding history
   identities, but an unambiguous session/provider remains represented after
   rebinding to a new pane even if its history row still names the old pane.
   A graceful connection close refreshes this projection even when the pane is
@@ -253,6 +268,48 @@ last active pane. Activating another pane in a zoomed tab exits zoom first.
   If colliding rows cannot be disambiguated, retain them rather than hiding
   an unrelated session. Status alone is not identity: an idle or working
   session without a representing open pane remains in the lower section.
+
+### Shared pane metadata and section membership
+
+`ContentManager` owns one application-shared `paneId -> PaneMetadata` map.
+Each terminal content creates a record; agent launch, hook, ACP, explicit
+resume, and unambiguous live-registry evidence update that record as identity
+becomes available. Session ID may be empty while an agent starts. Native launch
+provider is branding/launch provenance, not proof that the CLI still runs.
+Activity such as Idle, Working, Attention, or Error is separate from lifecycle.
+`agent.stop` ends a turn, not the agent session.
+
+The upper section projects the current window's open tabs and their eligible
+agent panes from this shared metadata. A tab with two CLI agent panes remains
+one tab row with two pane children when expanded. An independent Agent Pane
+continues to use the existing tab representation.
+
+Recent Sessions is a filtered projection of the retained global registry/history
+snapshot, not a second active-session store. Remove exactly the identities
+represented by the current window's open panes, including idle agents.
+Kept/background tabs and sessions in other windows remain eligible below.
+Determine represented identities before applying search or collapsed-row
+visibility, so hiding an upper row never creates a duplicate below.
+Hidden snapshot rows also clear stale Current highlighting, and ended pane
+metadata prevents a stale live registry row from being marked Current.
+
+Explicit shell resume associates the known target with the returned new pane
+immediately, without waiting for a hook. Host/WSL source, distro, universe, and
+the exact resume command accompany the binding; WSL persistence must not rebuild
+a host command. Live history evidence may enrich an incomplete binding only
+when the pane has one unambiguous identity and no conflicting or ended binding.
+Ambiguous evidence is retained below rather than guessed.
+
+CLI session end or return to a shell prompt clears its live association while
+retaining the pane record. Stale native branding or agent-looking titles do not
+revive an ended association. Delayed prompt/end events for superseded sessions cannot clear
+or rebind the current session, and page event fan-out cannot rewrite shared
+authoritative state. Connection failure keeps the restore association until
+the pane closes. Connection restart rekeys the content to the new pane GUID and
+starts a fresh lifecycle. Content destruction removes its metadata; late hooks
+cannot recreate it. Detach, stash, keep-running, and window transfer do not
+destroy metadata. Metadata notifications refresh the owning window on its own
+UI dispatcher.
 
 ## Recent-session preference and focus
 

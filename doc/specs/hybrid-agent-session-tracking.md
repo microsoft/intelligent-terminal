@@ -75,6 +75,24 @@ the page and shared content manager; they cannot overwrite explicit resume
 bindings or launch-owned providers. ACP helper content is explicitly marked
 and remains eligible for its direct session events.
 
+Explicit native resume ownership is retained in the shared pane metadata,
+including across window transfers. Disabling Sessions discards hook-derived
+bindings but preserves a live launch-owned pane's agent eligibility and explicit
+resume bindings. Repeating the same mode synchronization from another window
+does not retire metadata again or revive ended/closed panes. OFF observations
+use the shared launch provider, including provider refinements admitted while ON.
+Mode-only clearing does not mark the live conversation superseded: after
+OFF-to-ON, a same-conversation prompt or history enrichment can recover its
+binding without a new session-start event. An ordinary-shell launch becomes
+Unknown while its hook binding is cleared; a native launch stays Starting.
+Previously superseded identities and genuinely ended/closed panes keep their
+stale-update guards.
+Connection restarts rekey metadata before the replacement CLI starts. When the
+replacement executes the identical command, an explicit selected resume retains
+its qualified source, distro, universe, exact command and command trust in either
+mode; activity, failure/closed state and session-start confirmation reset.
+Discovered identities and bindings for a different command are not inherited.
+
 Terminal publishes raw observations through the existing COM event channel;
 no new COM interface or polling loop is introduced. WTA applies them in its
 existing registry. Tab metadata reads the registry snapshot, and known
@@ -130,7 +148,7 @@ with an existing attention reason or input-tool context; its matching completion
 or a new prompt supplies the transition. Focusing the tab only dismisses its
 bell indicator, not its registry activity. OSC 9;4;0 alone clears progress to Idle and does not
 prove that the process has ended. With Sessions OFF, only disappearance of the pane ID ends native
-ownership. OSC 133;D and a retained pane's Closed/Failed connection do not prove
+ownership. OSC 133;A, OSC 133;D, and a retained pane's Closed/Failed connection do not prove
 the agent has ended, and do not expire status, provider identity, or explicit
 resume bindings. This pane-presence status is deliberately not a process-liveness
 claim. Changing Sessions clears OFF observation ownership and invalidates queued
@@ -153,6 +171,21 @@ temporary explicit provider along with its binding. That provider is never
 promoted into independent launch ownership, so switching OFF cannot turn the
 completed resume's ordinary shell into a native agent. Independent launch
 ownership remains intact.
+OpenCode's `agent.session.unbind` releases a selected conversation (for example,
+returning to its home screen or handing ownership to another client), not the
+CLI process. It retires the old conversation and clears its resume command/trust,
+but retains the live pane's provider and agent eligibility. The released row
+returns to History; stale activity cannot rebind it, while a legitimate session
+start may select a conversation again. Ordinary-shell OpenCode panes remain
+eligible while Sessions is ON without acquiring independent launch ownership.
+Superseded identity checks also prevent stale canonical/advisory caches from
+representing or highlighting the released row, regardless of manager/page
+notification order; a confirmed new selection retains precedence.
+Real session-end and connection-close events still end pane eligibility.
+When Sessions is ON, authoritative Ended/closed metadata also releases History
+representation immediately, even while an older pane-status cache remains.
+Live Starting/Failed panes and OFF retained Closed/Failed connections keep their
+existing canonical/advisory History deduplication.
 
 The shared content factory records each connection lifetime's immutable UTC
 creation time and producer-owned monotonic creation sequence before observation admission.
@@ -306,7 +339,7 @@ title.
 
 ### Dedup: how the watcher coordinates with hooks and born-bound
 
-The master keeps **two disjoint** ownership sets (`master/mod.rs`):
+The master retains **two disjoint legacy raw-ID** ownership sets (`master/mod.rs`):
 
 - `hook_owned: Mutex<HashSet<SessionId>>` — sessions a **real** producer owns
   outright (native CLI hooks, ACP agent-pane events). Owns binding **and**
@@ -314,6 +347,11 @@ The master keeps **two disjoint** ownership sets (`master/mod.rs`):
 - `born_bound: Mutex<HashSet<SessionId>>` — #266 **born-bound** sessions
   (WTA-launched delegate `?<prompt>` and `/sessions` resume). These provide a
   pane binding but **no activity** — binding-only.
+
+`scoped_hook_ownership` additionally records real-hook versus binding-only
+ownership by `SessionIdentity` (provider, SID, source/distro and universe).
+Qualified hook transitions claim that exact identity rather than letting one
+store's raw-SID claim suppress another store's activity.
 
 `handle_session_hook` routes each inbound event: a binding-only event (the
 dedicated `intellterm.wta/session_born_bound` method, or a
@@ -331,14 +369,16 @@ every watcher status event for the resumed row was dropped and the row sat at
 `Idle` for its whole life. A real hook re-claims ownership on its very next
 event, so nothing is lost when hooks are working.
 
-Watcher processing then, in order:
+Watcher events still carry raw SIDs. Processing first requires a unique registry
+identity, then prefers its qualified ownership over any stale legacy claim:
 
-1. `hook_owned.contains(sid)` → **drop** (the hook owns binding and activity);
-2. `born_bound` → **apply status only**, never re-bind;
+1. real-hook ownership → **drop** (the hook owns binding and activity);
+2. binding-only ownership → **apply status only**, never re-bind;
 3. anything else → drop rather than guess.
 
-There is no ordering requirement and the row identity is the same session id
-throughout, so no duplicate is ever produced.
+If multiple stores/providers have the same raw SID, watcher-only activity is
+conservatively dropped: transcript events lack the provenance needed to choose
+one. Real scoped hooks continue to update the matching row independently.
 
 ### Hook-owned Copilot activity
 
@@ -369,7 +409,7 @@ it in `born_bound`. It supplies the **binding** but emits **no activity**. With
 hooks installed the CLI's hook supplies activity (and takes over); with **no**
 hooks the row would otherwise sit at `Idle` forever.
 
-Because born-bound hands us the **exact** session id, the watcher already knows
+When that SID uniquely identifies a registry row, the watcher already knows
 which transcript to read — the binding ambiguity that limits the *typed*
 Claude/Gemini path doesn't apply. So for a `born_bound` session
 `apply_watcher_event` applies the watcher's **status** event (Working / Idle /
@@ -389,9 +429,81 @@ the hook-free resume binding, so `handle_session_hook` records them in
 treated as hook-owned and its row would sit at `Idle` forever even as the watcher
 saw activity.
 
+**Terminal restore metadata.** In-band VT agent events may identify a session,
+but cannot supply an executable `resume_commandline`: the page removes that
+field before applying or forwarding the event. ContentManager also records
+command provenance from the ingress API, not from JSON. Only explicit
+out-of-band protocol ingress and application-owned bindings may retain raw
+resume wrappers (including WSL distro, cwd and session-universe selection).
+Other bindings are rebuilt with the validated native/WSL resume builder;
+failed validation leaves the original shell command unchanged. A late identity
+binding does not reset a failed connection. Pending restore replay is reconciled
+against authoritative pane identity both after manager updates and at replay,
+so independent page/manager dispatch order cannot revive an ended or replaced
+session. Retaining an existing command during identity binding retains its
+existing provenance; an empty command argument does not promote trust.
+Pane lifecycle transitions compare provider, SID, source, distro and universe.
+A start without an SID confirms an application-prebound resume while that
+binding awaits its real start; it does not retire the requested conversation.
+Once the real start has arrived, a subsequent sessionless start begins a new
+lifecycle and retires the old identity. Retired identities are scope-qualified:
+late activity, end events and History enrichment cannot resurrect them or clear
+a different store's current binding. History enrichment is not a new birth.
+Identity replacement clears the previous command, cwd and trust provenance;
+only enrichment of the same identity may inherit them.
+Native start, prompt and end hooks distinguish an omitted universe from an
+explicit empty one. Omission resolves through a confirmed binding on the same
+pane with matching SID, provider and source/distro; it preserves that binding's
+store and command provenance. Explicit empty selects the default store, and
+explicit different values retain their scope rather than borrowing the current
+store. The same resolution applies before stale-event checks and end handling.
+
+Trusted commands persist in an `intellterm-resume-v1` layout envelope containing
+the exact command, provider, SID, host/WSL backend (including distro), cwd, and
+session universe. Restoration validates it before creating settings and uses a
+separate unwrapped settings argument. The forwarding argument retains its envelope
+through automatic elevation, including split restoration; only the process that
+creates the connection unwraps it for execution and prebinding. Malformed envelopes
+fail rather than execute literally.
+StartingDirectory remains a normal layout field, and restored agent conversations
+skip saved shell-buffer replay. Pending births bind and replay the same qualified
+identity, including the expected universe; a replacement in any scope cannot
+replay the old birth. The helper-to-master birth request retains that universe;
+explicit-store births bind the qualified row without first mutating a raw-SID
+collision in another store. VT command strings never enter this envelope.
+
+**Subsequent hooks.** `SessionHookUpdate` retains routing scope across start,
+tool and end events. COM and typed helper ingress resolve validated explicit
+scope or matching authoritative pane ownership before applying a qualified
+registry transition. An omitted universe does not constrain store selection;
+a present empty universe explicitly selects the default store. A supplied full
+identity must agree with the event SID and any supplied scope. Legacy events
+remain valid when their matching identity is unique. Ambiguity is rejected and
+logged, not interpreted as an absent row that should be inserted as Host/default.
+Helper queues preserve a uniquely resolved snapshot identity instead of choosing
+arbitrarily among same-SID stores. Pane-only close and connection-failure hooks
+resolve that identity using the normalized pane ID before queueing, so a delayed
+hook cannot terminate or fail a replacement owner. Missing or ambiguous snapshot
+ownership is logged and the pane-only hook is not queued.
+
+CLI resume rejects unsupported alternate universes before creating a pane or
+marking/binding a session, both in Sidebar History and the helper picker. An empty
+universe denotes the source's current store. Explicit universes are rejected:
+new panes inherit Terminal's environment, not master's `COPILOT_HOME`, and a WSL
+login shell may also select another store. Even matching master's home cannot
+prove the new CLI's store. The helper also rejects ambiguous same-SID snapshot rows
+from different universes.
+
 **Native History resume metadata.** Explicit Sidebar activation keeps the
-selected qualified session identity and binds the pane returned by tab
-creation. Historical/Ended becomes Idle; newer live activity is retained.
+selected qualified session identity. Both the master Sidebar path and helper
+picker send the canonical qualified launch envelope before the CLI starts, so
+Terminal prebinds the actual new connection even if a bootstrap hook precedes
+the creation reply. The envelope retains the exact resolved executable,
+supported PowerShell shim wrapper, or WSL command; the completion binding still
+carries that underlying command, not a nested envelope. The stale-event guard
+continues to reject attempts to replace another selected identity.
+After tab creation the master confirms the returned pane binding.
+Historical/Ended becomes Idle; newer live activity is retained.
 After binding, the master invalidates session lists and Terminal's status
 projection through the existing structural notification, without waiting for
 a hook. An exact matching binding established by an earlier hook is successful
@@ -426,6 +538,39 @@ stayed there for the rest of the CLI's life — the watcher's status fallback
 silently dropped every event. The flag clears itself whenever the row gives up
 the pane (`SessionStopped`, `PaneClosed`, `end_entry`) or once a `SessionStarted`
 for the *same* key claims it, so the protection needs no timer.
+
+Terminal's `ContentManager` applies the same startup protection to direct resume
+prebinding and trusted WTA `pane_agent_session_changed` bindings carrying a resume
+command, even when `params.event` is absent. While awaiting the selected session's
+start, a sessionless startup preserves the binding, and a different bootstrap SID
+from the same provider and compatible source/distro/universe cannot replace it.
+An omitted universe does not change that confirmed scope; an explicit empty or
+different universe remains a different identity. Prompt activity for the selected
+SID is accepted without ending the protection. Its own Start confirms the binding
+and allows later session replacement. A delayed duplicate WTA binding cannot
+re-arm a confirmed session, and untrusted terminal output cannot establish this
+resume protection.
+
+Graceful connection closure is distinct from an agent session ending inside a
+live shell. It retires the binding even if only the provider is known, and blocks
+late hooks, resume callbacks, direct bindings, and history enrichment until
+`ResetPaneConnection` installs fresh connection metadata. Failed connections keep
+their existing failure and resume metadata.
+
+Helper-initiated resumes carry the selected qualified identity through optimistic
+dispatch and pane creation completion; they do not infer it from a possibly
+delayed sidebar snapshot or publish a second raw-ID dispatch. The new-tab command
+uses the existing `intellterm-resume-v1` envelope to carry backend, session ID,
+cwd, universe, and the trusted executable command. Terminal unwraps it and binds
+the actual new connection GUID before attaching the pane, including fresh tabs
+without a saved SessionId. Bootstrap hooks and the completion callback may arrive
+in either order without replacing the selected qualified identity.
+Helper-originated
+Host resume persistence retains the executable CMD wrapper needed by CLI shims,
+without a loading-banner shell chain; native master launch commands remain
+unchanged. Registry-only WSL bindings use their confirmed source and distro when
+constructing the safe fallback command; missing or invalid WSL qualification
+never falls back to Host.
 
 ### User-typed PowerShell resume: binding before the first conversation
 

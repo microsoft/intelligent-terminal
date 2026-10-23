@@ -44,13 +44,13 @@ namespace CombinedDisplayMock {
         . ([scriptblock]::Create($definition.Extent.Text.Replace(
             'Windows.Automation.', 'CombinedDisplayMock.').Replace(
             'ItE2E.ItWtWin32Input', 'CombinedDisplayMock.ItWtWin32Input').Replace(
-            '(Get-Module ItE2E)', '(Get-Module CombinedDisplayMock)')))
+            '(Get-Module ItE2E)', '$script:displayModule')))
         $ui = [Management.Automation.Language.Parser]::ParseFile(
             (Join-Path $PSScriptRoot '..\ItE2E\Public\Ui.ps1'), [ref]$null, [ref]$null)
         $exact = $ui.Find({ param($node)
             $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Find-ItExactTextRange'
         }, $true)
-        $script:displayModule = New-Module -Name CombinedDisplayMock -ScriptBlock {
+        $script:displayModule = New-Module -Name CombinedDisplayHelpers -ScriptBlock {
             param($text)
             . ([scriptblock]::Create($text))
             Export-ModuleMember -Function @()
@@ -93,10 +93,10 @@ namespace CombinedDisplayMock {
     }
     AfterAll { if ($script:displayModule) { Remove-Module $script:displayModule } }
     BeforeEach {
-        $script:app = @{ Pid = 42; Hwnd = 123; Launched = $true; InstallLocation = $TestDrive
+        $script:app = @{ Pid = 42; Hwnd = 123; Launched = $true; InstallLocation = (Join-Path $TestDrive 'fixture')
             OwnedProcess = @{ Id = 42; HasExited = $false; StartTime = 123 } }
         $script:launch = @{ pid = 8765 }
-        Mock Get-Process { @{ Id = 42; StartTime = 123; Path = (Join-Path $TestDrive 'WindowsTerminal.exe') } }
+        Mock Get-Process { @{ Id = 42; StartTime = 123; Path = (Join-Path $script:app.InstallLocation 'WindowsTerminal.exe') } }
         $script:peer = New-DisplayPeer 'banner PID=8765 tail'
         $script:displayWindow = [pscustomobject]@{
             Current = @{ ProcessId = 42; IsOffscreen = $false; BoundingRectangle = (New-DisplayBounds 0 0 800 600) }
@@ -390,7 +390,7 @@ Describe 'Combined filter state scoped opening' -Tag 'Unit' {
             param($Id)
             $script:statePeers.Add($Id)
             $peer = [pscustomobject]@{
-                Current = @{ ProcessId = $script:statePid; IsOffscreen = $false
+                Current = @{ ProcessId = $script:statePid; IsOffscreen = $script:stateFlyoutClosed
                     ControlType = [Windows.Automation.ControlType]::MenuItem }
                 Id = $Id
             }
@@ -405,6 +405,7 @@ Describe 'Combined filter state scoped opening' -Tag 'Unit' {
     BeforeEach {
         $script:app = @{ Pid = 42; Hwnd = 123 }
         $script:statePid = 42
+        $script:stateFlyoutClosed = $false
         $script:statePeers = [Collections.Generic.List[string]]::new()
         $script:states = @{
             AgentsOnlyFilterMenuItem = [Windows.Automation.ToggleState]::On
@@ -419,20 +420,26 @@ Describe 'Combined filter state scoped opening' -Tag 'Unit' {
             $App.Pid | Should -Be 42
             $Vk | Should -Be 0x1B
             $RequireForeground | Should -BeTrue
+            $script:stateFlyoutClosed = $true
         }
         Mock Wait-Until {
-            $TimeoutSec | Should -Be 30
-            $Because | Should -BeLike '*is visible in the owned filter flyout'
-            & $Condition
+            if ($TimeoutSec -eq 10) {
+                $Because | Should -Be 'the owned filter flyout closes before the next action'
+                & $Condition | Should -BeTrue
+            } else {
+                $TimeoutSec | Should -Be 30
+                $Because | Should -BeLike '*is visible in the owned filter flyout'
+                & $Condition
+            }
         }
     }
     It 'opens with the scoped action and reads both original toggle states before retained dismissal' {
         $state = Get-CombinedFilterState
         $state.AgentsOnlyFilterMenuItem | Should -BeTrue
         $state.RecentAgentSessionsFilterMenuItem | Should -BeFalse
-        $script:statePeers.ToArray() | Should -Be @('AgentsOnlyFilterMenuItem', 'RecentAgentSessionsFilterMenuItem')
+        $script:statePeers.ToArray() | Should -Be @('AgentsOnlyFilterMenuItem', 'RecentAgentSessionsFilterMenuItem', 'AgentsOnlyFilterMenuItem')
         Should -Invoke Invoke-UiElement -Exactly -Times 1
-        Should -Invoke Wait-Until -Exactly -Times 2
+        Should -Invoke Wait-Until -Exactly -Times 3
         Should -Invoke Send-WtWindowKey -Exactly -Times 1
     }
     It 'retains process rejection and finally dismissal' {

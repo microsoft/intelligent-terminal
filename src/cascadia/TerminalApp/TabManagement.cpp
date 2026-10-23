@@ -779,27 +779,42 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
 
-            const auto binding = _paneAgentSessions.find(terminalArgs.SessionId());
-            if (binding == _paneAgentSessions.end())
+            const auto metadata = _MetadataForPane(terminalArgs.SessionId());
+            if (!metadata || !metadata->HasSession())
             {
                 continue;
             }
 
-            // Prefer rebuilding from the agent id: it is validated, while a
-            // command line handed to us by a hook is not. Fall back to the
-            // recorded one when we cannot spell the resume ourselves — an
-            // agent absent from `ResumeInvocations`, or a session id that
-            // fails validation — rather than dropping the binding entirely.
+            // Preserve wrappers only from code-owned trusted ingress. VT
+            // command strings never enter the persisted executable envelope.
             namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
-            auto resume = binding->second.agent.empty() ?
-                              winrt::hstring{} :
-                              winrt::hstring{ Restore::BuildResumeCommandline(
-                                  binding->second.backend.empty() ? binding->second.agent : binding->second.backend,
-                                  binding->second.sessionId,
-                                  binding->second.cwd) };
-            if (resume.empty())
+            winrt::hstring resume;
+            if (metadata->resumeCommandlineTrusted && !metadata->session.resumeCommandline.empty())
             {
-                resume = binding->second.resumeCommandline;
+                namespace Model = ::Microsoft::Terminal::Settings::Model;
+                const auto backend = metadata->source == L"wsl" ?
+                                         Model::AgentPaneBackend::Wsl(metadata->wslDistro, metadata->session.agent) :
+                                         Model::AgentPaneBackend::Host(metadata->session.agent);
+                resume = winrt::hstring{ Restore::BuildPersistedResumeCommandline(
+                    { std::wstring{ metadata->session.agent }, std::wstring{ metadata->session.sessionId },
+                      backend, std::wstring{ metadata->session.cwd }, std::wstring{ metadata->universe },
+                      std::wstring{ metadata->session.resumeCommandline } }) };
+            }
+            else if (metadata->universe.empty() &&
+                     (!metadata->identityQualified || metadata->source == L"host" || metadata->source == L"wsl"))
+            {
+                namespace Model = ::Microsoft::Terminal::Settings::Model;
+                const auto backend = metadata->source == L"wsl" ?
+                                         Model::AgentPaneBackend::Wsl(metadata->wslDistro, metadata->session.agent) :
+                                     metadata->source == L"host" ?
+                                         Model::AgentPaneBackend::Host(metadata->session.agent) :
+                                     metadata->session.backend.empty() ?
+                                         std::wstring{ metadata->session.agent } :
+                                         std::wstring{ metadata->session.backend };
+                resume = winrt::hstring{ Restore::BuildResumeCommandline(
+                    backend,
+                    metadata->session.sessionId,
+                    metadata->session.cwd) };
             }
             if (!resume.empty())
             {
@@ -2288,17 +2303,56 @@ namespace winrt::TerminalApp::implementation
                 if (const auto impl = _GetTabImpl(tab); impl && impl->GetRootPane())
                 {
                     impl->GetRootPane()->WalkTree([&](const auto& pane) {
+                        const auto metadata = _MetadataForPane(pane->GetSessionId());
+                        if (metadata && (metadata->state == ContentManager::PaneAgentState::Ended || metadata->connectionClosed))
+                        {
+                            return;
+                        }
+                        if (metadata && metadata->HasSession() &&
+                            (metadata->HasAgent() || pane->IsAgentPane()))
+                        {
+                            representedSessions.push_back({ metadata->session.sessionId,
+                                                            metadata->session.agent,
+                                                            winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(pane->GetSessionId()) },
+                                                            metadata->source,
+                                                            metadata->wslDistro,
+                                                            metadata->universe,
+                                                            metadata->identityQualified });
+                            return;
+                        }
                         if (const auto control = pane->GetTerminalControl())
                         {
                             const auto canonical = _RichTabAgentInfoForControl(control);
                             const auto connection = control.Connection();
+                            if (canonical && metadata && _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+                            {
+                                const auto inferred = canonical->sessionId.empty() && canonical->inferredHistoryKey.isObject();
+                                const auto& key = canonical->inferredHistoryKey;
+                                const auto& location = inferred ? key["location"] : canonical->location;
+                                const auto host = location.isString() && location.asString() == "Host";
+                                const auto wsl = location.isObject() && location["Wsl"].isObject();
+                                if (metadata->IsSuperseded({
+                                        winrt::to_hstring(inferred ? key.get("session_id", "").asString() : canonical->sessionId),
+                                        winrt::to_hstring(inferred ? key.get("provider_id", "").asString() : canonical->providerId),
+                                        host ? L"host" : wsl ? L"wsl" : L"",
+                                        wsl ? winrt::to_hstring(location["Wsl"].get("distro", "").asString()) : winrt::hstring{},
+                                        inferred ? winrt::to_hstring(key.get("session_universe", "").asString()) : winrt::hstring{} }))
+                                {
+                                    return;
+                                }
+                            }
                             if (canonical && connection && !canonical->sessionId.empty() && !canonical->providerId.empty() &&
                                 canonical->paneSessionId == connection.SessionId() &&
                                 canonical->paneSessionId == pane->GetSessionId())
                             {
+                                const auto host = canonical->location.isString() && canonical->location.asString() == "Host";
                                 representedSessions.push_back({ winrt::to_hstring(canonical->sessionId),
                                                                 winrt::to_hstring(canonical->providerId),
-                                                                winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(connection.SessionId()) } });
+                                                                winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(connection.SessionId()) },
+                                                                host ? L"host" : L"wsl",
+                                                                host ? winrt::hstring{} : winrt::to_hstring(canonical->location["Wsl"]["distro"].asString()),
+                                                                {},
+                                                                !canonical->location.isNull() });
                                 return;
                             }
                             if (canonical && connection && canonical->sessionId.empty() &&
@@ -2312,18 +2366,12 @@ namespace winrt::TerminalApp::implementation
                                 representedSessions.push_back({ winrt::to_hstring(key["session_id"].asString()),
                                                                 winrt::to_hstring(key["provider_id"].asString()),
                                                                 winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(connection.SessionId()) },
+                                                                {}, {}, {}, false,
                                                                 host ? L"host" : L"wsl",
                                                                 host ? winrt::hstring{} : winrt::to_hstring(location["Wsl"]["distro"].asString()),
                                                                 winrt::to_hstring(key.get("session_universe", "").asString()) });
                                 return;
                             }
-                        }
-                        if (const auto binding = _paneAgentSessions.find(pane->GetSessionId());
-                            binding != _paneAgentSessions.end() && !binding->second.sessionId.empty())
-                        {
-                            representedSessions.push_back({ binding->second.sessionId,
-                                                            binding->second.agent,
-                                                            winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(pane->GetSessionId()) } });
                         }
                     });
                 }
@@ -2481,32 +2529,25 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_TabHasCliAgent(const Tab& tab) const
     {
-        // Agent CLIs set a stable, known terminal title before their first
-        // session event. Ignore user-renamed tabs so an arbitrary custom title
-        // cannot opt a normal shell into the Agent filter.
-        if (tab.GetTabText().empty() && _IsKnownAgentCliTitle(tab.Title()))
-        {
-            return true;
-        }
-
         const auto rootPane = tab.GetRootPane();
         return rootPane && rootPane->WalkTree([&](const auto& pane) {
             const auto sessionId = pane->GetSessionId();
-            return sessionId != winrt::guid{} &&
-                   (!winrt::get_self<ContentManager>(_manager)->NativeAgentProviderIdForPane(sessionId).empty() ||
-                    _activeCliAgentPanes.contains(sessionId) ||
-                    _paneAgentSessions.contains(sessionId));
+            const auto metadata = _MetadataForPane(sessionId);
+            return metadata &&
+                   (metadata->HasAgent() ||
+                    (metadata->state == ContentManager::PaneAgentState::Unknown &&
+                     pane->GetContent() && tab.GetTabText().empty() &&
+                     _IsKnownAgentCliTitle(pane->GetContent().Title())));
         });
     }
 
     bool TerminalPage::_MatchesPaneAgentScope(const Tab::VisiblePaneSnapshot& pane) const
     {
+        const auto metadata = _MetadataForPane(pane.SessionId);
         return pane.IsAgentPane ||
-               !winrt::get_self<ContentManager>(_manager)->NativeAgentProviderIdForPane(pane.SessionId).empty() ||
-               _IsKnownAgentCliTitle(std::wstring_view{ pane.Title }) ||
-               (pane.SessionId != winrt::guid{} &&
-                (_activeCliAgentPanes.contains(pane.SessionId) ||
-                 _paneAgentSessions.contains(pane.SessionId)));
+               (metadata && (metadata->HasAgent() ||
+                             (metadata->state == ContentManager::PaneAgentState::Unknown &&
+                              _IsKnownAgentCliTitle(std::wstring_view{ pane.Title }))));
     }
 
     bool TerminalPage::_IsPaneRowProjectionEligible(const Tab::VisiblePaneSnapshot& pane) const

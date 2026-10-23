@@ -63,12 +63,23 @@ pub(crate) fn resumed_pane_binding_event(
     session_id: &str,
     pane_id: &str,
     location: &crate::agent_sessions::SessionLocation,
+    universe: Option<&str>,
+    resume_commandline: &str,
     cwd: Option<&str>,
 ) -> Option<String> {
+    let (source, distro) = match location {
+        crate::agent_sessions::SessionLocation::Host => ("host", ""),
+        crate::agent_sessions::SessionLocation::Wsl { distro } => ("wsl", distro.as_str()),
+        crate::agent_sessions::SessionLocation::Unknown => ("", ""),
+    };
     let mut params = serde_json::json!({
         "agent": agent_id,
         "agent_session_id": session_id,
         "pane_id": pane_id,
+        "agent_source": source,
+        "wsl_distro": distro,
+        "session_universe": universe.unwrap_or(""),
+        "resume_commandline": resume_commandline,
     });
     if let crate::agent_sessions::SessionLocation::Wsl { distro } = location {
         params["agent_backend"] = serde_json::json!(format!("wsl:{distro}:{agent_id}"));
@@ -84,6 +95,51 @@ pub(crate) fn resumed_pane_binding_event(
         })
         .to_string(),
     )
+}
+
+#[test]
+fn resumed_pane_callback_output_preserves_provided_host_command() {
+    use crate::agent_sessions::SessionLocation;
+    let command = "copilot --resume \"session-id\"";
+    let output = resumed_pane_binding_event(
+        "copilot",
+        "session-id",
+        "pane-new",
+        &SessionLocation::Host,
+        None,
+        command,
+        None,
+    )
+    .unwrap();
+    let event: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(event["params"]["resume_commandline"], command);
+    assert!(!output.contains("Resuming"));
+}
+
+#[test]
+fn resumed_pane_binding_preserves_master_native_command_with_shell_metacharacters() {
+    let runtime = crate::coordinator::DelegateAgentRuntime {
+        id: "claude".into(),
+        name: "Claude".into(),
+        description: String::new(),
+        commandline: r"C:\tools&agents\claude.exe".into(),
+        prompt_delivery: crate::coordinator::DelegatePromptDelivery::LaunchWithStartupPrompt,
+        model: None,
+    };
+    let command = crate::coordinator::build_delegate_resume_commandline(&runtime, "abc").unwrap();
+    assert_eq!(command, r"C:\tools&agents\claude.exe --resume abc");
+    let output = resumed_pane_binding_event(
+        "claude",
+        "abc",
+        "pane-new",
+        &crate::agent_sessions::SessionLocation::Host,
+        None,
+        &command,
+        None,
+    )
+    .unwrap();
+    let event: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(event["params"]["resume_commandline"], command);
 }
 
 pub(crate) fn restart_agent_stack_event() -> String {
@@ -320,6 +376,8 @@ mod tests {
                     "new-pane",
                     &crate::agent_sessions::SessionLocation::Host,
                     None,
+                    "copilot --resume known-session",
+                    None,
                 )
                 .unwrap(),
             )
@@ -333,6 +391,10 @@ mod tests {
                         "agent": agent,
                         "agent_session_id": "known-session",
                         "pane_id": "new-pane",
+                        "agent_source": "host",
+                        "wsl_distro": "",
+                        "session_universe": "",
+                        "resume_commandline": "copilot --resume known-session",
                     },
                 })
             );
@@ -349,14 +411,43 @@ mod tests {
                 &crate::agent_sessions::SessionLocation::Wsl {
                     distro: "Ubuntu".into(),
                 },
+                Some("wsl-universe"),
+                "wsl.exe -d Ubuntu -- agy --conversation known-session",
                 Some("/home/u/project with spaces"),
             )
-            .expect("a WSL CLI resume must retain its source binding"),
+            .unwrap(),
         )
         .unwrap();
+        assert_eq!(event["params"]["agent_source"], "wsl");
+        assert_eq!(event["params"]["wsl_distro"], "Ubuntu");
+        assert_eq!(event["params"]["session_universe"], "wsl-universe");
+        assert_eq!(
+            event["params"]["resume_commandline"],
+            "wsl.exe -d Ubuntu -- agy --conversation known-session"
+        );
         assert_eq!(event["params"]["agent"], "antigravity");
         assert_eq!(event["params"]["agent_backend"], "wsl:Ubuntu:antigravity");
         assert_eq!(event["params"]["cwd"], "/home/u/project with spaces");
+    }
+
+    #[test]
+    fn resumed_pane_binding_keeps_unknown_location_unqualified() {
+        let event: serde_json::Value = serde_json::from_str(
+            &super::resumed_pane_binding_event(
+                "copilot",
+                "known-session",
+                "new-pane",
+                &crate::agent_sessions::SessionLocation::Unknown,
+                None,
+                "copilot --resume known-session",
+                None,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(event["params"]["agent_source"], "");
+        assert_eq!(event["params"]["agent_session_id"], "known-session");
+        assert_eq!(event["params"]["pane_id"], "new-pane");
     }
 
     #[test]

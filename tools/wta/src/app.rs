@@ -138,7 +138,7 @@ const MVP_SESSIONS_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
 /// bookkeeping, pane lifecycle). Agent CLI hooks are NOT queued here: master
 /// subscribes to the COM broadcast and routes them itself, so one hook produces
 /// one master-side apply regardless of helper count.
-pub type QueuedSessionHook = crate::agent_sessions::SessionEvent;
+pub type QueuedSessionHook = crate::session_registry::SessionHookUpdate;
 
 /// Resolve the `/sessions` origin filter for this process.
 ///
@@ -1707,6 +1707,19 @@ pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
 // scans on-disk history; the session view renders from master's `session/list`
 // snapshot. See doc/specs/per-cli-history-filtering.md.)
 
+fn helper_persisted_resume_commandline(
+    location: &crate::agent_sessions::SessionLocation,
+    commandline: &str,
+) -> String {
+    // Only helper CLI resumes rely on cmd's PATHEXT resolution for npm shims.
+    // Persist that wrapper without the one-shot loading banner.
+    if matches!(location, crate::agent_sessions::SessionLocation::Host) {
+        format!("cmd /d /s /c \"{commandline}\"")
+    } else {
+        commandline.to_string()
+    }
+}
+
 /// Reverse of `CliSource::from_agent_id` — yields the lowercase CLI id
 /// used by the command-synthesis template and dispatch routing.
 /// Returns `None` for `CliSource::Unknown(_)` so each call-site retains
@@ -3213,7 +3226,68 @@ impl App {
 
     fn publish_session_hook(&self, event: crate::agent_sessions::SessionEvent) {
         if let Some(tx) = &self.session_hook_tx {
-            if let Err(err) = tx.send(event) {
+            use crate::agent_sessions::SessionEvent;
+            let (key, pane) = match &event {
+                SessionEvent::SessionStarted {
+                    key,
+                    pane_session_id,
+                    ..
+                }
+                | SessionEvent::ResumePaneAssigned {
+                    key,
+                    pane_session_id,
+                } => (Some(key.as_str()), Some(pane_session_id.as_str())),
+                SessionEvent::ToolStarting { key, .. }
+                | SessionEvent::ToolCompleted { key }
+                | SessionEvent::Notification { key, .. }
+                | SessionEvent::SessionStopped { key, .. }
+                | SessionEvent::ResumeDispatched { key }
+                | SessionEvent::ResumeFailed { key, .. } => (Some(key.as_str()), None),
+                SessionEvent::PaneClosed { pane_session_id }
+                | SessionEvent::ConnectionFailed {
+                    pane_session_id, ..
+                } => (None, Some(pane_session_id.as_str())),
+                _ => (None, None),
+            };
+            let mut candidates = self
+                .tab_sessions
+                .values()
+                .filter_map(|tab| tab.agents_view.snapshot.as_ref())
+                .flatten()
+                .filter(|row| key.map_or(pane.is_some(), |key| row.session_id.0.as_ref() == key))
+                .filter(|row| {
+                    pane.is_none_or(|pane| {
+                        row.pane_session_id.as_deref().is_some_and(|owner| {
+                            crate::agent_sessions::pane_key(owner)
+                                == crate::agent_sessions::pane_key(pane)
+                        })
+                    })
+                })
+                .map(crate::session_registry::SessionIdentity::from_info)
+                .filter(|identity| identity.history_key.is_some())
+                .collect::<std::collections::HashSet<_>>();
+            let identity = if candidates.len() == 1 {
+                candidates.drain().next()
+            } else {
+                None
+            };
+            // Pane-only events must not resolve a different owner after queueing.
+            // Missing or ambiguous snapshot ownership cannot safely use legacy routing.
+            if key.is_none() && pane.is_some() && identity.is_none() {
+                tracing::warn!(target: "session_hook", "ignored pane hook without a unique qualified snapshot owner");
+                return;
+            }
+            let mut scope = crate::session_registry::SessionHookScope {
+                identity,
+                pane_session_id: pane.map(str::to_owned),
+                ..Default::default()
+            };
+            if let SessionEvent::SessionStarted { cli_source, .. } = &event {
+                scope.cli_source = Some(crate::session_registry::SessionHookCliSource::from(
+                    cli_source,
+                ));
+            }
+            if let Err(err) = tx.send(crate::session_registry::SessionHookUpdate { event, scope }) {
                 tracing::warn!(
                     target: "session_hook",
                     error = %err,
@@ -3478,6 +3552,42 @@ impl App {
             }
         };
         let profile = crate::agent_registry::lookup_profile_by_id(cli_id);
+        // AgentSession is a display projection without universe identity. Consult
+        // the full snapshot before dispatch; ambiguous same-SID rows fail closed.
+        let matching_rows: Vec<_> = self
+            .tab_sessions
+            .values()
+            .filter_map(|tab| tab.agents_view.snapshot.as_ref())
+            .flat_map(|snapshot| snapshot.iter())
+            .filter(|row| {
+                row.session_id.0.as_ref() == s.key
+                    && row.location == s.location
+                    && row.cli_source.as_ref() == Some(&s.cli_source)
+            })
+            .collect();
+        let resume_universe = matching_rows
+            .first()
+            .and_then(|row| row.session_universe.clone());
+        if matching_rows
+            .iter()
+            .any(|row| row.session_universe != resume_universe)
+        {
+            tracing::warn!(target: "agents_view", "refusing ambiguous CLI resume across session universes");
+            return;
+        }
+        if let Err(error) = crate::coordinator::ensure_resume_universe(resume_universe.as_deref()) {
+            tracing::warn!(target: "agents_view", %error, "refusing CLI resume in an unsupported session universe");
+            return;
+        }
+        let resume_identity = crate::session_registry::SessionIdentity {
+            session_id: agent_client_protocol::schema::v1::SessionId::new(s.key.clone()),
+            history_key: crate::session_registry::HistoryRowKey::new(
+                cli_id,
+                s.location.clone(),
+                &s.key,
+                resume_universe.clone(),
+            ),
+        };
         if profile.resume_flag.is_empty() {
             tracing::debug!(
                 target: "agents_view",
@@ -3600,19 +3710,6 @@ impl App {
         // need cmd.exe's PATHEXT resolution to launch from a bare name
         // (`CreateProcess` returns 0x80070002 for `.cmd` shims).
         //
-        // Loading banner (issue #135): the agent CLIs take 1–3s of
-        // Node.js cold-start + JSONL history parse before they paint
-        // anything, so the new tab was blank with no feedback. Prepend
-        // a blinking ANSI banner (`SGR 1;36;5` = bold cyan slow-blink)
-        // so the user sees immediate animated feedback in the new
-        // pane while the CLI cold-starts. The CLI's alt-screen TUI
-        // takes over once it boots and overwrites this line cleanly,
-        // so the banner leaves no residue on success. On CLI launch
-        // failure the banner stays put together with cmd.exe's error
-        // message — that's a feature, not a bug (the short id helps
-        // the user file a useful report). The trailing `\x1b[0m`
-        // reset guarantees any post-failure output isn't tinted /
-        // blinking.
         let raw_cwd_string = s.cwd.to_string_lossy().to_string();
         // Drop stale cwd so wtcli falls back to the profile default
         // rather than failing CreateProcessW with ERROR_DIRECTORY.
@@ -3630,30 +3727,17 @@ impl App {
                 "dispatch_resume: stored cwd is no longer a valid directory; falling back to profile default",
             );
         }
-        let short_key: String = key.chars().take(8).collect();
-        // Loading banner shown in the new pane while the CLI cold-starts.
-        // WSL rows also name the distro ("Resuming copilot session abc-123
-        // in Ubuntu (WSL)...") so the user can see which distro is being
-        // entered; host rows keep just the short session id. A WSL session
-        // only appears in the list because its distro was already started and
-        // scanned, so it is running at resume time — a "starting the distro…"
-        // hint would usually be wrong. (WSL2 can auto-shut-down an idle distro
-        // later, but a frequently-wrong hint is worse than none.)
-        let banner = match &s.location {
-            crate::agent_sessions::SessionLocation::Wsl { distro } => {
-                format!("Resuming {cli_id} session {short_key} in {distro} (WSL)...")
-            }
-            crate::agent_sessions::SessionLocation::Host => {
-                format!("Resuming {cli_id} session {short_key}...")
-            }
-            crate::agent_sessions::SessionLocation::Unknown => return,
-        };
-        // Keep Linux cwd metadata out of cmd.exe expansion for Antigravity.
-        let launch_commandline = if direct_wsl_resume {
-            commandline.clone()
-        } else {
-            format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}")
-        };
+        // Prebind the selected identity before bootstrap hooks can arrive.
+        // The callback remains an idempotent confirmation, not launch authority.
+        let persisted_commandline = helper_persisted_resume_commandline(&s.location, &commandline);
+        let launch_commandline = crate::coordinator::qualified_resume_launch_envelope(
+            cli_id,
+            &key,
+            &s.location,
+            &raw_cwd_string,
+            resume_universe.as_deref(),
+            &persisted_commandline,
+        );
         let mut argv = vec![
             "new-tab".to_string(),
             "--agent-provider".to_string(),
@@ -3677,9 +3761,15 @@ impl App {
         // rows). See `agent_sessions::SessionEvent::ResumeDispatched`.
         let resume_event =
             crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
-        self.agent_sessions.apply(resume_event.clone());
-        self.publish_session_hook(resume_event);
-        self.dispatch_session_resume_dispatched_rpc(&key);
+        self.handle_event(AppEvent::QualifiedAgentSessionEvent(
+            crate::session_registry::SessionHookUpdate {
+                event: resume_event,
+                scope: crate::session_registry::SessionHookScope {
+                    identity: Some(resume_identity.clone()),
+                    ..Default::default()
+                },
+            },
+        ));
         // for hook-less CLIs (Gemini) so a future `PaneClosed` can
         // transition the row to Ended; harmless duplicate work for
         // Claude/Copilot whose hooks beat us to the same binding.
@@ -3688,6 +3778,8 @@ impl App {
         // so the existing helper handles both.
         let cb_key = key.clone();
         let cb_location = s.location.clone();
+        let cb_universe = resume_universe;
+        let cb_commandline = persisted_commandline;
         let cb_cwd = s.cwd.to_string_lossy().into_owned();
         let event_tx = self.agent_event_tx.clone();
         let on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>> =
@@ -3697,16 +3789,25 @@ impl App {
                     &cb_key,
                     &pane_session_id,
                     &cb_location,
+                    cb_universe.as_deref(),
+                    &cb_commandline,
                     Some(&cb_cwd),
                 ) {
                     send_wt_protocol_event(binding);
                 }
                 if let Some(tx) = event_tx {
                     if tx
-                        .send(AppEvent::AgentSessionEvent(
-                            crate::agent_sessions::SessionEvent::ResumePaneAssigned {
-                                key: cb_key,
-                                pane_session_id,
+                        .send(AppEvent::QualifiedAgentSessionEvent(
+                            crate::session_registry::SessionHookUpdate {
+                                event: crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                                    key: cb_key,
+                                    pane_session_id: pane_session_id.clone(),
+                                },
+                                scope: crate::session_registry::SessionHookScope {
+                                    identity: Some(resume_identity),
+                                    pane_session_id: Some(pane_session_id),
+                                    ..Default::default()
+                                },
                             },
                         ))
                         .is_err()
@@ -5742,6 +5843,7 @@ impl App {
                 "agent_reconnect_preflight_complete"
             }
             AppEvent::AgentSessionEvent(_) => "agent_session_event",
+            AppEvent::QualifiedAgentSessionEvent(_) => "qualified_agent_session_event",
             AppEvent::AliveSnapshotLoaded(_) => "alive_snapshot_loaded",
             AppEvent::AliveSessionAdded(_) => "alive_session_added",
             AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
@@ -8145,3 +8247,6 @@ mod agent_markdown_tests;
 #[cfg(test)]
 #[path = "app_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+pub(crate) use tests::helper_queued_session_hook;
