@@ -28,6 +28,7 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentIconUtils.h"
 #include "../inc/AgentProfileUtils.h"
+#include "../inc/NewTabMenuUtils.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
 #include "../inc/AgentSourceUtils.h"
@@ -8628,7 +8629,7 @@ namespace winrt::TerminalApp::implementation
         // Create profile entries from the NewTabMenu configuration using a
         // recursive helper function. This returns a std::vector of FlyoutItemBases,
         // that we then add to our Flyout.
-        auto entries = _settings.GlobalSettings().NewTabMenu();
+        auto entries = ::Microsoft::Terminal::NewTabMenu::GroupDefaultProfiles(_settings.GlobalSettings().NewTabMenu());
         auto items = _CreateNewTabFlyoutItems(entries);
         for (const auto& item : items)
         {
