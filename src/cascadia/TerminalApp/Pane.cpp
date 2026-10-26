@@ -323,6 +323,7 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
 //   and decrease the size of the other.
 // - Adjusts the separation amount by 5%
 // - Does nothing if the direction doesn't match our current split direction
+//   or either child is hidden, since its separator is not in the visible layout.
 // Arguments:
 // - direction: the direction to move our separator. If it's down or right,
 //   we'll be increasing the size of the first of our children. Else, we'll be
@@ -331,7 +332,7 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
 // - false if we couldn't resize this pane in the given direction, else true.
 bool Pane::_Resize(const ResizeDirection& direction)
 {
-    if (!DirectionMatchesSplit(direction, _splitState))
+    if (!DirectionMatchesSplit(direction, _splitState) || _firstChild->_hidden || _secondChild->_hidden)
     {
         return false;
     }

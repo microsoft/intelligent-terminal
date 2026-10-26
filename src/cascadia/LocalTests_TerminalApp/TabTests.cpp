@@ -798,6 +798,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VisibleRootSplitKeepsEntranceAnimation);
         TEST_METHOD(ClosingLastNormalPaneWithAgentSkipsAnimation);
         TEST_METHOD(ClosingNormalPanePreservesSurvivingPaneAnimation);
+        TEST_METHOD(StashedPaneResizeKeepsVisiblePaneFullSize);
+        TEST_METHOD(StashedPaneResizePreservesVisibleDescendants);
+        TEST_METHOD(StashedPaneResizeFallsBackToVisibleAncestor);
         TEST_METHOD(AgentPaneTeardownAllowsSynchronousRecreation);
         TEST_METHOD(AgentPaneLifetimeMovesAndDestroysRealCoresOnce);
         TEST_METHOD(AgentPaneLifetimeReceiveClosesRealCoreOnce);
@@ -23173,6 +23176,136 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(std::isnan(sourceRoot.Height()));
             VERIFY_ARE_EQUAL(VerticalAlignment::Top, sourceRoot.VerticalAlignment());
             VERIFY_ARE_EQUAL(VerticalAlignment::Bottom, added->GetRootElement().VerticalAlignment());
+        });
+    }
+
+    void TabTests::StashedPaneResizeKeepsVisiblePaneFullSize()
+    {
+        TestOnUIThread([]() {
+            enum class HiddenPaneKind
+            {
+                Normal,
+                Agent,
+                Group
+            };
+            for (const auto split : { SplitDirection::Down, SplitDirection::Right, SplitDirection::Up, SplitDirection::Left })
+            {
+                const auto horizontal = split == SplitDirection::Down || split == SplitDirection::Up;
+                for (const auto kind : { HiddenPaneKind::Normal, HiddenPaneKind::Agent, HiddenPaneKind::Group })
+                {
+                    const auto content = winrt::make<TestSettingsPaneContent>();
+                    const auto pane = std::make_shared<Pane>(content, true);
+                    const auto hidden = std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>());
+                    hidden->IsAgentPane(kind == HiddenPaneKind::Agent);
+                    if (kind == HiddenPaneKind::Group)
+                    {
+                        hidden->AttachPane(std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>()), split, 0.5f, false);
+                    }
+                    pane->AttachPane(hidden, split, 0.3f, false);
+                    const auto splitPosition = pane->_desiredSplitPosition;
+                    pane->HidePane(hidden);
+                    const auto root = pane->GetRootElement();
+                    const auto layout = [&]() {
+                        root.Measure({ 800, 600 });
+                        root.Arrange({ 0, 0, 800, 600 });
+                        root.UpdateLayout();
+                    };
+                    layout();
+
+                    for (const auto direction : { ResizeDirection::Up, ResizeDirection::Down, ResizeDirection::Left, ResizeDirection::Right })
+                    {
+                        VERIFY_IS_FALSE(pane->ResizePane(direction));
+                        layout();
+                        VERIFY_ARE_EQUAL(splitPosition, pane->_desiredSplitPosition);
+                        VERIFY_IS_TRUE(hidden->IsHidden());
+                        VERIFY_ARE_EQUAL(1u, root.Children().Size());
+                        VERIFY_ARE_EQUAL(1u, horizontal ? root.RowDefinitions().Size() : root.ColumnDefinitions().Size());
+                        VERIFY_ARE_EQUAL(root.ActualWidth(), content.GetRoot().ActualWidth());
+                        VERIFY_ARE_EQUAL(root.ActualHeight(), content.GetRoot().ActualHeight());
+                    }
+
+                    pane->RestorePane(hidden);
+                    layout();
+                    VERIFY_ARE_EQUAL(splitPosition, pane->_desiredSplitPosition);
+                    VERIFY_IS_FALSE(hidden->IsHidden());
+                    VERIFY_ARE_EQUAL(2u, root.Children().Size());
+                    VERIFY_IS_TRUE(pane->ResizePane(horizontal ? ResizeDirection::Down : ResizeDirection::Right));
+                    VERIFY_IS_TRUE(splitPosition != pane->_desiredSplitPosition);
+                    pane->Shutdown();
+                }
+            }
+        });
+    }
+
+    void TabTests::StashedPaneResizePreservesVisibleDescendants()
+    {
+        TestOnUIThread([]() {
+            for (const auto outerSplit : { SplitDirection::Down, SplitDirection::Right, SplitDirection::Up, SplitDirection::Left })
+            {
+                const auto horizontal = outerSplit == SplitDirection::Down || outerSplit == SplitDirection::Up;
+                for (const auto innerSplit : { SplitDirection::Down, SplitDirection::Right })
+                {
+                    const auto pane = std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>(), true);
+                    pane->AttachPane(std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>()), innerSplit, 0.5f, false);
+                    const auto agent = std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>());
+                    agent->IsAgentPane(true);
+                    const auto visible = pane->AttachPane(agent, outerSplit, 0.3f, false);
+                    pane->HidePane(agent);
+                    const auto outerPosition = pane->_desiredSplitPosition;
+                    const auto innerPosition = visible->_desiredSplitPosition;
+                    const auto root = pane->GetRootElement();
+                    root.Measure({ 800, 600 });
+                    root.Arrange({ 0, 0, 800, 600 });
+                    root.UpdateLayout();
+
+                    VERIFY_IS_TRUE(pane->ResizePane(innerSplit == SplitDirection::Down ? ResizeDirection::Down : ResizeDirection::Right));
+                    VERIFY_IS_TRUE(innerPosition != visible->_desiredSplitPosition);
+                    VERIFY_IS_FALSE(pane->ResizePane(innerSplit == SplitDirection::Down ? ResizeDirection::Right : ResizeDirection::Down));
+                    root.UpdateLayout();
+
+                    VERIFY_ARE_EQUAL(outerPosition, pane->_desiredSplitPosition);
+                    VERIFY_IS_TRUE(agent->IsHidden());
+                    VERIFY_ARE_EQUAL(1u, horizontal ? root.RowDefinitions().Size() : root.ColumnDefinitions().Size());
+                    VERIFY_ARE_EQUAL(root.ActualWidth(), visible->GetRootElement().ActualWidth());
+                    VERIFY_ARE_EQUAL(root.ActualHeight(), visible->GetRootElement().ActualHeight());
+                    pane->Shutdown();
+                }
+            }
+        });
+    }
+
+    void TabTests::StashedPaneResizeFallsBackToVisibleAncestor()
+    {
+        TestOnUIThread([]() {
+            for (const auto split : { SplitDirection::Down, SplitDirection::Right, SplitDirection::Up, SplitDirection::Left })
+            {
+                const auto horizontal = split == SplitDirection::Down || split == SplitDirection::Up;
+                const auto nested = std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>(), true);
+                const auto hidden = std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>());
+                hidden->IsAgentPane(true);
+                nested->AttachPane(hidden, split, 0.3f, false);
+                nested->HidePane(hidden);
+                const auto nestedPosition = nested->_desiredSplitPosition;
+
+                const auto pane = std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>());
+                pane->AttachPane(nested, split, 0.5f, false);
+                const auto splitPosition = pane->_desiredSplitPosition;
+                const auto root = pane->GetRootElement();
+                root.Measure({ 800, 600 });
+                root.Arrange({ 0, 0, 800, 600 });
+                root.UpdateLayout();
+
+                VERIFY_IS_TRUE(pane->ResizePane(horizontal ? ResizeDirection::Down : ResizeDirection::Right));
+                root.UpdateLayout();
+
+                VERIFY_IS_TRUE(splitPosition != pane->_desiredSplitPosition);
+                VERIFY_ARE_EQUAL(nestedPosition, nested->_desiredSplitPosition);
+                VERIFY_IS_TRUE(hidden->IsHidden());
+                const auto nestedRoot = nested->GetRootElement();
+                VERIFY_ARE_EQUAL(1u, nestedRoot.Children().Size());
+                VERIFY_ARE_EQUAL(1u, horizontal ? nestedRoot.RowDefinitions().Size() : nestedRoot.ColumnDefinitions().Size());
+                pane->Shutdown();
+            }
         });
     }
 
