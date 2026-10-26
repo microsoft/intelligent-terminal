@@ -8391,11 +8391,26 @@ namespace winrt::TerminalApp::implementation
         }
         const auto target = _isVerticalLayout ?
                                 winrt::get_self<implementation::TabStrip>(_tabStrip)->SidebarIntroductionTarget() :
-                                _tabView.SelectedItem().try_as<FrameworkElement>();
+                                winrt::get_self<implementation::TabRowControl>(_tabRow)->HorizontalTabsIntroductionTarget();
         if (!target || target.Visibility() != Visibility::Visible ||
             target.ActualWidth() <= 0 || target.ActualHeight() <= 0)
         {
             return nullptr;
+        }
+        if (!_isVerticalLayout)
+        {
+            const auto items = _tabView.TabItems();
+            const auto firstTab = items.Size() ? items.GetAt(0).try_as<FrameworkElement>() : nullptr;
+            if (!firstTab || firstTab.Visibility() != Visibility::Visible ||
+                firstTab.ActualWidth() <= 0 || firstTab.ActualHeight() <= 0)
+            {
+                return nullptr;
+            }
+            const auto firstTabBounds = firstTab.TransformToVisual(target.Parent().as<UIElement>()).TransformBounds(Windows::Foundation::Rect{ 0, 0, static_cast<float>(firstTab.ActualWidth()), static_cast<float>(firstTab.ActualHeight()) });
+            Media::TranslateTransform position;
+            position.X(_isRightToLeft ? firstTabBounds.X + firstTabBounds.Width - target.ActualWidth() : firstTabBounds.X);
+            position.Y(firstTabBounds.Y + firstTabBounds.Height - target.ActualHeight());
+            target.RenderTransform(position);
         }
         const auto titleKey = _isVerticalLayout ? L"SidebarIntroductionTitle" : L"HorizontalTabsIntroductionTitle";
         const auto descriptionKey = _isVerticalLayout ? L"SidebarIntroductionDescription" : L"HorizontalTabsIntroductionDescription";

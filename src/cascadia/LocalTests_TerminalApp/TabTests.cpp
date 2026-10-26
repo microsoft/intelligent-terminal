@@ -8174,6 +8174,15 @@ namespace TerminalAppLocalTests
             {
                 page->_sidebarIntroductionTimer.Stop();
             }
+            if (!vertical)
+            {
+                const auto second = winrt::make_self<TestConnection>(
+                    winrt::guid{ L"{6239a42c-aaaa-49a3-80bd-e8fdd045185d}" },
+                    winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+                VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, *second)));
+                page->_GetFocusedTabImpl()->SuppressAgentPrewarm();
+                VERIFY_ARE_EQUAL(1, page->_tabView.SelectedIndex());
+            }
             host.UpdateLayout();
             const auto tabBar = vertical ? page->_tabStrip.as<FrameworkElement>() : page->_tabRow.as<FrameworkElement>();
             tabBar.Visibility(Visibility::Collapsed);
@@ -8209,7 +8218,7 @@ namespace TerminalAppLocalTests
             }
             VERIFY_ARE_EQUAL(RS_(L"SidebarIntroductionNewBadge"), badge.Text());
             const auto target = vertical ? page->_tabStrip.FindName(L"SidebarIntroductionTarget").as<FrameworkElement>() :
-                                           page->_tabView.SelectedItem().as<FrameworkElement>();
+                                           page->_tabRow.FindName(L"HorizontalTabsIntroductionTarget").as<FrameworkElement>();
             VERIFY_IS_TRUE(tip.Target() == target);
             tip.IsOpen(true);
         });
@@ -8252,11 +8261,17 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(badgeColor.B > badgeColor.R && badgeColor.G > badgeColor.R);
 
             Button closeButton{ nullptr };
+            FrameworkElement tipBox{ nullptr };
             std::vector<DependencyObject> pending{ popupContent };
             for (size_t visited = 0; !pending.empty() && visited < 512; ++visited)
             {
                 const auto element = pending.back();
                 pending.pop_back();
+                if (const auto frame = element.try_as<FrameworkElement>();
+                    frame && frame.Name() == L"ContentRootGrid")
+                {
+                    tipBox = frame;
+                }
                 if (const auto button = element.try_as<Button>();
                     button && button.Visibility() == Visibility::Visible && button.ActualWidth() > 0 &&
                     button.ActualHeight() > 0 && button.IsEnabled())
@@ -8270,6 +8285,18 @@ namespace TerminalAppLocalTests
                 }
             }
             VERIFY_IS_NOT_NULL(closeButton);
+            if (!vertical)
+            {
+                VERIFY_IS_NOT_NULL(tipBox);
+                const auto firstTab = page->_tabView.TabItems().GetAt(0).as<FrameworkElement>();
+                const auto firstTabBounds = firstTab.TransformToVisual(page->Root()).TransformBounds({ 0, 0, static_cast<float>(firstTab.ActualWidth()), static_cast<float>(firstTab.ActualHeight()) });
+                const auto boxBounds = tipBox.TransformToVisual(page->Root()).TransformBounds({ 0, 0, static_cast<float>(tipBox.ActualWidth()), static_cast<float>(tipBox.ActualHeight()) });
+                VERIFY_IS_TRUE(std::abs(boxBounds.X - firstTabBounds.X) <= 1.0);
+                page->_SelectTab(0);
+                host.UpdateLayout();
+                const auto selectedBoxBounds = tipBox.TransformToVisual(page->Root()).TransformBounds({ 0, 0, static_cast<float>(tipBox.ActualWidth()), static_cast<float>(tipBox.ActualHeight()) });
+                VERIFY_IS_TRUE(std::abs(selectedBoxBounds.X - firstTabBounds.X) <= 1.0);
+            }
             const auto closeBounds = closeButton.TransformToVisual(page->Root()).TransformBounds({ 0, 0, static_cast<float>(closeButton.ActualWidth()), static_cast<float>(closeButton.ActualHeight()) });
             VERIFY_IS_TRUE(closeBounds.X > badgeBounds.X + badgeBounds.Width);
             VERIFY_IS_TRUE(closeBounds.Y < titleBounds.Y + titleBounds.Height);
