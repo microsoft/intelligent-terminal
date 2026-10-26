@@ -4525,7 +4525,8 @@ namespace winrt::TerminalApp::implementation
         // session saved before sizes were persisted), so fall back to an even
         // split rather than collapsing the pane.
         const auto splitSize = initialPaneSize > 0.0f && initialPaneSize < 1.0f ? initialPaneSize : 0.5f;
-        tab->SplitPaneAtRoot(splitDirection, newPane, splitSize);
+        // A hidden prewarm must not leave a size animation running on the visible sibling.
+        tab->SplitPaneAtRoot(splitDirection, newPane, splitSize, !autoStash);
         closeOnFailure.release();
         if (!autoStash)
         {

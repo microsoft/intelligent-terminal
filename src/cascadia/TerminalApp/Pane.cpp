@@ -1410,7 +1410,7 @@ void Pane::UpdateSettings(const CascadiaSettings& settings)
 // - splitSize: the fraction of the split the *attached* pane should occupy
 // Return Value:
 // - the new reference to the child created from the current pane.
-std::shared_ptr<Pane> Pane::AttachPane(std::shared_ptr<Pane> pane, SplitDirection splitType, const float splitSize)
+std::shared_ptr<Pane> Pane::AttachPane(std::shared_ptr<Pane> pane, SplitDirection splitType, const float splitSize, const bool animate)
 {
     // `_Split` sizes the *first* child, which is the attached pane only when
     // it lands on the leading edge. Invert for the other two directions so
@@ -1419,7 +1419,7 @@ std::shared_ptr<Pane> Pane::AttachPane(std::shared_ptr<Pane> pane, SplitDirectio
                                    1.0f - splitSize :
                                    splitSize;
     // Splice the new pane into the tree
-    const auto [first, _] = _Split(splitType, requestedSize, pane);
+    const auto [first, _] = _Split(splitType, requestedSize, pane, animate);
 
     // If the new pane has a child that was the focus, re-focus it
     // to steal focus from the currently focused pane.
@@ -2559,7 +2559,8 @@ SplitState Pane::_convertAutomaticOrDirectionalSplitState(const SplitDirection& 
 // - The two newly created Panes, with the original pane as the first pane.
 std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> Pane::_Split(SplitDirection splitType,
                                                                      const float splitSize,
-                                                                     std::shared_ptr<Pane> newPane)
+                                                                     std::shared_ptr<Pane> newPane,
+                                                                     const bool animate)
 {
     auto actualSplitType = _convertAutomaticOrDirectionalSplitState(splitType);
 
@@ -2628,7 +2629,10 @@ std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> Pane::_Split(SplitDirect
 
     _lastActive = false;
 
-    _SetupEntranceAnimation();
+    if (animate)
+    {
+        _SetupEntranceAnimation();
+    }
 
     // Clear out our ID, only leaves should have IDs
     _id = {};
