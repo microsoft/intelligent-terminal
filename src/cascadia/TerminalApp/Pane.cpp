@@ -1860,11 +1860,14 @@ void Pane::_CloseChildRoutine(const bool closeFirst)
     // agent bar anyway, so dropping it for all agent-pane closes (not
     // just the rebuild path) is an acceptable trade.
     const auto closingChildIsAgent = (closeFirst ? _firstChild : _secondChild)->_isAgentPane;
+    const auto remainingChild = closeFirst ? _secondChild : _firstChild;
+    // _CloseChild retires an agent-only subtree instead of expanding the agent pane.
+    const auto remainingChildIsAgent = remainingChild->_IsLeaf() && remainingChild->_isAgentPane;
     // If animations are disabled, just skip this and go straight to
     // _CloseChild. Curiously, the pane opening animation doesn't need this,
     // and will skip straight to Completed when animations are disabled, but
     // this one doesn't seem to.
-    if (!animationsEnabledInOS || !animationsEnabledInApp || eitherChildZoomed || closingChildIsAgent)
+    if (!animationsEnabledInOS || !animationsEnabledInApp || eitherChildZoomed || closingChildIsAgent || remainingChildIsAgent)
     {
         _CloseChild(closeFirst);
         return;
@@ -1873,7 +1876,6 @@ void Pane::_CloseChildRoutine(const bool closeFirst)
     // Set up the animation
 
     auto removedChild = closeFirst ? _firstChild : _secondChild;
-    auto remainingChild = closeFirst ? _secondChild : _firstChild;
     const auto splitWidth = _splitState == SplitState::Vertical;
 
     Size removedOriginalSize{
