@@ -23201,7 +23201,7 @@ namespace TerminalAppLocalTests
                     {
                         hidden->AttachPane(std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>()), split, 0.5f, false);
                     }
-                    pane->AttachPane(hidden, split, 0.3f, false);
+                    pane->AttachPane(hidden, split, 0.3f, false)->SetActive();
                     const auto splitPosition = pane->_desiredSplitPosition;
                     pane->HidePane(hidden);
                     const auto root = pane->GetRootElement();
@@ -23246,7 +23246,7 @@ namespace TerminalAppLocalTests
                 for (const auto innerSplit : { SplitDirection::Down, SplitDirection::Right })
                 {
                     const auto pane = std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>(), true);
-                    pane->AttachPane(std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>()), innerSplit, 0.5f, false);
+                    pane->AttachPane(std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>()), innerSplit, 0.5f, false)->SetActive();
                     const auto agent = std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>());
                     agent->IsAgentPane(true);
                     const auto visible = pane->AttachPane(agent, outerSplit, 0.3f, false);
@@ -23283,7 +23283,7 @@ namespace TerminalAppLocalTests
                 const auto nested = std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>(), true);
                 const auto hidden = std::make_shared<Pane>(winrt::make<TestSettingsPaneContent>());
                 hidden->IsAgentPane(true);
-                nested->AttachPane(hidden, split, 0.3f, false);
+                nested->AttachPane(hidden, split, 0.3f, false)->SetActive();
                 nested->HidePane(hidden);
                 const auto nestedPosition = nested->_desiredSplitPosition;
 
