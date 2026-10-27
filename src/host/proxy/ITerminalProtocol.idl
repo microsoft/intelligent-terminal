@@ -51,6 +51,14 @@ import "unknwn.idl";
                              [in] boolean background,
                              [in] BSTR providerId,
                              [out, retval] BSTR* json);
+    HRESULT ResumeCustomAgentCliTab([in] unsigned hyper windowId,
+                                   [in] BSTR profile,
+                                   [in] BSTR providerId,
+                                   [in] BSTR agentSessionId,
+                                   [in] BSTR title,
+                                   [in] BSTR startingDirectory,
+                                   [in] boolean background,
+                                   [out, retval] BSTR* json);
 };
 
 // Terminal protocol — implemented by WindowsTerminal.exe, activated by the

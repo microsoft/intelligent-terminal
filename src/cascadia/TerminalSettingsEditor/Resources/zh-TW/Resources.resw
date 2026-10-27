@@ -3070,4 +3070,9 @@ Alt+Shift+/ 輸入提問；Alt+Shift+B 不帶初始提問啟動。</value><comme
     <value>重試</value>
     <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
   </data>
+  <data name="AIAgents_CustomName.Header" xml:space="preserve"><value>名稱</value><comment>Display name of a custom AI agent.</comment></data>
+  <data name="AIAgents_CustomAcp.Header" xml:space="preserve"><value>ACP 啟動命令（選用）</value><comment>{Locked="ACP"} Command used by the assistant pane, not the interactive terminal profile.</comment></data>
+  <data name="AIAgents_CustomCli.Header" xml:space="preserve"><value>互動式 CLI 命令（選用）</value><comment>{Locked="CLI"} Providing this command generates an interactive terminal profile for this custom agent.</comment></data>
+  <data name="AIAgents_CustomResume.Header" xml:space="preserve"><value>繼續工作階段命令（選用；使用 {sessionId}）</value><comment>{Locked="{sessionId}"} Requires an interactive CLI command. The placeholder must be exactly one complete argument.</comment></data>
+  <data name="AIAgents_CustomInvalid" xml:space="preserve"><value>請檢查命令中的引號，並指定 ACP 或 CLI 命令。繼續工作階段需要 CLI 命令，且必須包含恰好一個完整的 {sessionId} 引數。</value><comment>{Locked="ACP"} {Locked="CLI"} {Locked="{sessionId}"} Validation error for custom agent startup and resume commands.</comment></data>
 </root>

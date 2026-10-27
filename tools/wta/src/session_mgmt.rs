@@ -73,7 +73,8 @@ pub enum Liveness {
 /// Why a row can't be activated. Mapped to a user-visible toast/system
 /// message by the caller (the message wording lives near the dispatch
 /// code where it can reference `agent_name` and similar context).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum NotResumableReason {
     /// Live, but the row hasn't acquired a `pane_session_id` yet. Almost
     /// always a transient race; the user can retry Enter.

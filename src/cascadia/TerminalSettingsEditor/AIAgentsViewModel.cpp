@@ -12,6 +12,7 @@
 #include "../inc/AgentAvailability.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/CustomAgentId.h"
+#include "../inc/CustomAgentUtils.h"
 #include "../inc/CustomModelCredential.h"
 #include "../inc/WtaProcess.h"
 #include <til/commandline.h>
@@ -19,6 +20,7 @@
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Foundation::Collections;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
+namespace AgentRegistry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
 namespace
 {
@@ -135,7 +137,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         for (uint32_t i = 0; i < _acpAgentList.Size(); ++i)
         {
             const auto entry = _acpAgentList.GetAt(i);
-            if (!entry.IsAddNew() && entry.Id() == selectedAgent)
+            if (!entry.IsAddNew() && AgentRegistry::AgentIdEquals(entry.Id(), selectedAgent))
             {
                 return true;
             }
@@ -194,7 +196,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         const auto bareId = _DeriveId(command);
         return !bareId.empty() &&
-               winrt::hstring{ L"custom:" + std::wstring_view{ bareId } } == settingsId;
+               AgentRegistry::AgentIdEquals(L"custom:" + std::wstring_view{ bareId }, settingsId);
     }
 
     IVector<winrt::hstring> AIAgentsViewModel::_NormalizeCustomCommands(
@@ -285,8 +287,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     winrt::hstring AIAgentsViewModel::_FindCustomCommand(
         const IVector<winrt::hstring>& commands,
-        const winrt::hstring& settingsId)
+        const winrt::hstring& settingsId,
+        const bool isAcpAgent)
     {
+        if (const auto agent = isAcpAgent ? ::Microsoft::Terminal::CustomAgents::Find(_GlobalSettings, settingsId) : Model::CustomAgent{ nullptr })
+        {
+            return agent.AcpCommand();
+        }
         if (commands)
         {
             for (const auto& command : commands)
@@ -318,7 +325,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         for (uint32_t i = 0; i < list.Size(); ++i)
         {
-            if (list.GetAt(i).Id() == settingsId)
+            if (AgentRegistry::AgentIdEquals(list.GetAt(i).Id(), settingsId))
             {
                 list.SetAt(i, _CreateCustomAgentEntry(settingsId, displayName, customCommand, isAcpAgent));
                 return;
@@ -358,6 +365,27 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             for (const auto& command : commands)
             {
                 _MaybeAppendCustomEntry(list, command, isAcpAgent);
+            }
+        }
+        if (isAcpAgent)
+        {
+            for (const auto& agent : _GlobalSettings.CustomAgents())
+            {
+                auto entry = _CreateCustomAgentEntry(agent.Id(), agent.Name(), agent.AcpCommand(), true);
+                bool replaced = false;
+                for (uint32_t i = 0; i < list.Size(); ++i)
+                {
+                    if (AgentRegistry::AgentIdEquals(list.GetAt(i).Id(), agent.Id()))
+                    {
+                        list.SetAt(i, entry);
+                        replaced = true;
+                        break;
+                    }
+                }
+                if (!replaced)
+                {
+                    list.InsertAt(list.Size() && list.GetAt(list.Size() - 1).IsAddNew() ? list.Size() - 1 : list.Size(), entry);
+                }
             }
         }
     }
@@ -408,7 +436,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             const bool hasLocalLegacyCommand = _GlobalSettings.HasAcpCustomCommand();
             const bool hasLocalAgent = _GlobalSettings.HasAcpAgent();
             auto commands = _NormalizeCustomCommands(_GlobalSettings.AcpCustomCommands());
-            const auto effectiveLegacyCommand = _GlobalSettings.AcpCustomCommand();
+            const auto structuredSelection = ::Microsoft::Terminal::CustomAgents::Find(_GlobalSettings, _GlobalSettings.AcpAgent());
+            const auto effectiveLegacyCommand = structuredSelection ? winrt::hstring{} : _GlobalSettings.AcpCustomCommand();
             if (!effectiveLegacyCommand.empty())
             {
                 const auto legacyId = winrt::hstring{
@@ -541,7 +570,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 _GlobalSettings.DelegateCustomCommands(localCommands);
             }
             const auto selectedId = _GlobalSettings.DelegateAgent();
-            const auto selectedCommand = _FindCustomCommand(commands, selectedId);
+            const auto selectedCommand = _FindCustomCommand(commands, selectedId, false);
             if (!selectedCommand.empty())
             {
                 const bool hasExplicitEmptyLegacy =
@@ -995,7 +1024,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         for (uint32_t i = 0; i < list.Size(); ++i)
         {
             const auto entry = list.GetAt(i);
-            if (entry.Id() == id && !entry.IsAddNew()) return entry;
+            if (AgentRegistry::AgentIdEquals(entry.Id(), id) && !entry.IsAddNew())
+                return entry;
         }
         return nullptr;
     }
@@ -1024,7 +1054,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         for (uint32_t i = 0; i < list.Size(); ++i)
         {
             const auto entry = list.GetAt(i);
-            if (!entry.IsAddNew())
+            const auto agent = list == _acpAgentList ? ::Microsoft::Terminal::CustomAgents::Find(_GlobalSettings, entry.Id()) : Model::CustomAgent{ nullptr };
+            if (!entry.IsAddNew() && (!agent || !agent.AcpCommand().empty()))
             {
                 return entry;
             }
@@ -1046,17 +1077,38 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     winrt::hstring AIAgentsViewModel::CustomAcpCommandPreview()
     {
-        if (_GlobalSettings.IsCustomAgentPolicyLocked()) return winrt::hstring{};
-        return _StartsWithCustom(_GlobalSettings.AcpAgent()) ? _GlobalSettings.AcpCustomCommand() : winrt::hstring{};
+        if (_GlobalSettings.IsCustomAgentPolicyLocked())
+            return winrt::hstring{};
+        return _StartsWithCustom(_GlobalSettings.AcpAgent()) ?
+                   winrt::hstring{ ::Microsoft::Terminal::CustomAgents::AcpCommand(_GlobalSettings, _GlobalSettings.AcpAgent()) } :
+                   winrt::hstring{};
+    }
+
+    void AIAgentsViewModel::_LoadCustomAgentEditor(const winrt::hstring& settingsId)
+    {
+        const auto agent = ::Microsoft::Terminal::CustomAgents::Find(_GlobalSettings, settingsId);
+        CustomAgentName(agent ? agent.Name() : winrt::hstring{});
+        CustomAgentCliCommand(agent ? agent.CliCommand() : winrt::hstring{});
+        CustomAgentResumeCommand(agent ? agent.ResumeCommand() : winrt::hstring{});
+        CustomAgentSharedSessions(agent && agent.CanResumeAcpSessions());
+        CustomAgentError(L"");
+        _NotifyChanges(L"CustomAgentId");
     }
 
     void AIAgentsViewModel::EditCustomAcpAgent()
     {
-        if (_StartsWithCustom(_GlobalSettings.AcpAgent()))
+        EditCustomAcpAgent(_GlobalSettings.AcpAgent());
+    }
+
+    void AIAgentsViewModel::EditCustomAcpAgent(const winrt::hstring& settingsId)
+    {
+        if (!_GlobalSettings.IsCustomAgentPolicyLocked() && _StartsWithCustom(settingsId))
         {
             _isAddingCustomAcpAgent = true;
-            _editingCustomAcpAgentId = _GlobalSettings.AcpAgent();
-            _customAcpCommand = _GlobalSettings.AcpCustomCommand();
+            const auto agent = ::Microsoft::Terminal::CustomAgents::Find(_GlobalSettings, settingsId);
+            _editingCustomAcpAgentId = agent ? agent.Id() : settingsId;
+            _customAcpCommand = winrt::hstring{ ::Microsoft::Terminal::CustomAgents::AcpCommand(_GlobalSettings, settingsId) };
+            _LoadCustomAgentEditor(_editingCustomAcpAgentId);
             _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
         }
     }
@@ -1184,7 +1236,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     if (_acpAgentList.GetAt(i).IsAddNew()) return _acpAgentList.GetAt(i);
                 }
             }
-            const auto currentId = _GlobalSettings.AcpAgent();
+            const auto currentId = _editingCustomAcpAgentId;
             auto entry = _FindEntryById(_acpAgentList, currentId);
             if (entry) return entry;
             for (uint32_t i = 0; i < _acpAgentList.Size(); ++i)
@@ -1193,7 +1245,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             }
         }
         auto match = _FindEntryById(_acpAgentList, _GlobalSettings.AcpAgent());
-        if (match) return match;
+        if (match)
+        {
+            const auto agent = ::Microsoft::Terminal::CustomAgents::Find(_GlobalSettings, match.Id());
+            if (!agent || !agent.AcpCommand().empty())
+            {
+                return match;
+            }
+        }
 
         // Saved agent is not in the filtered list (blocked by GPO or not
         // installed). Fall back to the first real entry so the ComboBox
@@ -1201,7 +1260,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         for (uint32_t i = 0; i < _acpAgentList.Size(); ++i)
         {
             const auto entry = _acpAgentList.GetAt(i);
-            if (!entry.IsAddNew()) return entry;
+            const auto agent = ::Microsoft::Terminal::CustomAgents::Find(_GlobalSettings, entry.Id());
+            if (!entry.IsAddNew() && (!agent || !agent.AcpCommand().empty())) return entry;
         }
         return nullptr;
     }
@@ -1215,13 +1275,33 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _isAddingCustomAcpAgent = true;
             _editingCustomAcpAgentId = L"";
             _customAcpCommand = L"";
+            _LoadCustomAgentEditor(L"");
             _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage", L"AgentPaneYoloMode", L"CanEnableAgentPaneYoloMode", L"AgentPaneYoloModeVisibility", L"ShowGeminiYoloInfo");
+            return;
+        }
+        if (_isAddingCustomAcpAgent &&
+            !_editingCustomAcpAgentId.empty() &&
+            !AgentRegistry::AgentIdEquals(_editingCustomAcpAgentId, value.Id()) &&
+            AgentRegistry::AgentIdEquals(_GlobalSettings.AcpAgent(), value.Id()))
+        {
+            _editingCustomAcpAgentId = L"";
+            _customAcpCommand = L"";
+            _LoadCustomAgentEditor(L"");
+            CancelCustomAcpAgent();
+            _NotifyChanges(L"CustomAcpCommand", L"CustomAcpCommandPreview");
             return;
         }
         auto idStr = winrt::to_string(value.Id());
         if (idStr.starts_with("custom:"))
         {
-            if (_GlobalSettings.AcpAgent() == value.Id())
+            if (const auto agent = ::Microsoft::Terminal::CustomAgents::Find(_GlobalSettings, value.Id());
+                agent && agent.AcpCommand().empty())
+            {
+                EditCustomAcpAgent(agent.Id());
+                _NotifyChanges(L"CurrentAcpAgent");
+                return;
+            }
+            if (AgentRegistry::AgentIdEquals(_GlobalSettings.AcpAgent(), value.Id()))
             {
                 if (_isAddingCustomAcpAgent && _editingCustomAcpAgentId.empty())
                 {
@@ -1241,7 +1321,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 }
                 return;
             }
-            const bool agentChanged = _GlobalSettings.AcpAgent() != value.Id();
+            const bool agentChanged = !AgentRegistry::AgentIdEquals(_GlobalSettings.AcpAgent(), value.Id());
             _isAddingCustomAcpAgent = false;
             _editingCustomAcpAgentId = L"";
             _customAcpCommand = value.CustomCommand();
@@ -1269,7 +1349,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                            L"ShowGeminiYoloInfo");
             return;
         }
-        if (value.Id() == _GlobalSettings.AcpAgent())
+        if (AgentRegistry::AgentIdEquals(value.Id(), _GlobalSettings.AcpAgent()))
         {
             if (_isAddingCustomAcpAgent && _editingCustomAcpAgentId.empty())
             {
@@ -1425,38 +1505,94 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     void AIAgentsViewModel::SaveCustomAcpAgent()
     {
-        if (_GlobalSettings.IsCustomAgentPolicyLocked()) return;
-        if (_customAcpCommand.empty()) return;
-        const auto bareId = _DeriveId(_customAcpCommand);
-        // Whitespace-only / quote-only commands derive to an empty id and
-        // would otherwise be saved as a bare "custom:" entry, leaving the
-        // UI with a blank, unusable custom agent. Reject before persisting.
-        if (bareId.empty()) return;
-        _GlobalSettings.AcpCustomCommand(_customAcpCommand);
-
-        // Custom agents always carry the "custom:" discriminator — every
-        // downstream consumer (EffectiveAcpAgent policy gate, command-line
-        // resolver, custom-edit/delete UI gates) keys on this prefix.
-        // Storing a bare id silently breaks all of them and makes the page
-        // revert to the default agent on next load.
-        const auto settingsId = winrt::hstring{ L"custom:" + std::wstring_view{ bareId } };
-
-        const auto originalId = _editingCustomAcpAgentId;
-        const auto commands =
-            _UpdateCustomCommands(_GlobalSettings.AcpCustomCommands(), originalId, _customAcpCommand);
-        _GlobalSettings.AcpCustomCommands(commands);
-        _RebuildCustomEntries(_acpAgentList, commands, true);
-
-        _isAddingCustomAcpAgent = false;
-        _editingCustomAcpAgentId = L"";
-        _GlobalSettings.AcpAgent(settingsId);
-        _GlobalSettings.AcpModel(L"");
-        Model::AcpRuntimeState::Current().SetAvailableModels(
-            settingsId,
-            winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(),
-            L"");
-        _TriggerAcpModelProbe();
-        _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomAcpCommandPreview", L"AcpModel", L"CustomModelProviderUnsupportedMessage", L"AgentPaneYoloMode", L"CanEnableAgentPaneYoloMode", L"AgentPaneYoloModeVisibility", L"ShowGeminiYoloInfo");
+        if (_GlobalSettings.IsCustomAgentPolicyLocked())
+            return;
+        try
+        {
+            namespace Custom = ::Microsoft::Terminal::CustomAgents;
+            THROW_HR_IF(E_INVALIDARG, _customAcpCommand.empty() && CustomAgentCliCommand().empty());
+            if (!_customAcpCommand.empty())
+                Custom::Parse(_customAcpCommand);
+            if (!CustomAgentCliCommand().empty())
+                Custom::Parse(CustomAgentCliCommand());
+            if (!CustomAgentResumeCommand().empty())
+            {
+                THROW_HR_IF(E_INVALIDARG, CustomAgentCliCommand().empty());
+                Custom::Parse(CustomAgentResumeCommand(), true);
+            }
+            auto settingsId = _editingCustomAcpAgentId;
+            if (settingsId.empty())
+            {
+                GUID id{};
+                THROW_IF_FAILED(CoCreateGuid(&id));
+                const auto text = winrt::to_hstring(id);
+                settingsId = winrt::hstring{ L"custom:" + std::wstring{ text }.substr(1, 36) };
+            }
+            if (!Custom::IsId(settingsId))
+            {
+                THROW_HR_IF_MSG(E_INVALIDARG, !CustomAgentCliCommand().empty() || !CustomAgentResumeCommand().empty(), "Create a new custom agent to configure interactive commands for this legacy agent ID");
+                const auto bareId = _DeriveId(_customAcpCommand);
+                THROW_HR_IF(E_INVALIDARG, bareId.empty());
+                settingsId = winrt::hstring{ L"custom:" + std::wstring_view{ bareId } };
+                _GlobalSettings.AcpCustomCommands(_UpdateCustomCommands(
+                    _GlobalSettings.AcpCustomCommands(), _editingCustomAcpAgentId, _customAcpCommand));
+            }
+            else
+            {
+                auto name = CustomAgentName();
+                if (name.empty())
+                {
+                    name = _DeriveId(CustomAgentCliCommand().empty() ? _customAcpCommand : CustomAgentCliCommand());
+                }
+                Model::CustomAgent replacement{ settingsId, name };
+                replacement.AcpCommand(_customAcpCommand);
+                replacement.CliCommand(CustomAgentCliCommand());
+                replacement.ResumeCommand(CustomAgentResumeCommand());
+                replacement.CanResumeAcpSessions(CustomAgentSharedSessions() && !CustomAgentResumeCommand().empty());
+                std::vector<Model::CustomAgent> agents;
+                for (const auto& agent : _GlobalSettings.CustomAgents())
+                {
+                    if (!AgentRegistry::AgentIdEquals(agent.Id(), settingsId))
+                        agents.push_back(agent);
+                }
+                agents.push_back(replacement);
+                _GlobalSettings.CustomAgents(winrt::single_threaded_vector(std::move(agents)));
+                _GlobalSettings.AcpCustomCommands(_RemoveCustomCommand(_GlobalSettings.AcpCustomCommands(), settingsId));
+            }
+            _RebuildCustomEntries(_acpAgentList, _GlobalSettings.AcpCustomCommands(), true);
+            _isAddingCustomAcpAgent = false;
+            _editingCustomAcpAgentId = L"";
+            if (!_customAcpCommand.empty())
+            {
+                _GlobalSettings.AcpAgent(settingsId);
+                _GlobalSettings.AcpCustomCommand(_customAcpCommand);
+                _GlobalSettings.AcpModel(L"");
+            }
+            else if (AgentRegistry::AgentIdEquals(_GlobalSettings.AcpAgent(), settingsId))
+            {
+                if (const auto replacement = _FindReplacementAgent(_acpAgentList, L""))
+                {
+                    CurrentAcpAgent(replacement);
+                }
+                else
+                {
+                    _GlobalSettings.AcpAgent(L"");
+                    _GlobalSettings.AcpCustomCommand(L"");
+                    _GlobalSettings.AcpModel(L"");
+                }
+            }
+            CustomAgentError(L"");
+            Model::AcpRuntimeState::Current().SetAvailableModels(settingsId, winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(), L"");
+            _TriggerAcpModelProbe();
+            _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomAcpCommandPreview", L"AcpModel", L"CustomAgentId",
+                           L"CustomModelProviderUnsupportedMessage", L"AgentPaneYoloMode", L"CanEnableAgentPaneYoloMode", L"AgentPaneYoloModeVisibility", L"ShowGeminiYoloInfo");
+        }
+        catch (...)
+        {
+            const auto hr = wil::ResultFromCaughtException();
+            LOG_HR_MSG(hr, "Custom agent configuration is invalid");
+            CustomAgentError(RS_(L"AIAgents_CustomInvalid"));
+        }
     }
 
     void AIAgentsViewModel::SaveCustomDelegateAgent()
@@ -1485,11 +1621,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     void AIAgentsViewModel::CancelCustomAcpAgent()
     {
-        if (!_FindReplacementAgent(_acpAgentList, L""))
+        if (!_FindReplacementAgent(_acpAgentList, L"") && _GlobalSettings.CustomAgents().Size() == 0)
         {
             _isAddingCustomAcpAgent = true;
             _editingCustomAcpAgentId = L"";
             _customAcpCommand = L"";
+            _LoadCustomAgentEditor(L"");
             _NotifyChanges(L"IsAddingCustomAcpAgent",
                            L"IsCustomAcpAgentSelected",
                            L"CurrentAcpAgent",
@@ -1539,18 +1676,29 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto idStr = winrt::to_string(settingsId);
         if (_StartsWithCustom(settingsId))
         {
+            std::vector<Model::CustomAgent> agents;
+            for (const auto& agent : _GlobalSettings.CustomAgents())
+            {
+                if (!AgentRegistry::AgentIdEquals(agent.Id(), settingsId))
+                    agents.push_back(agent);
+            }
+            _GlobalSettings.CustomAgents(winrt::single_threaded_vector(std::move(agents)));
             const auto bareId = winrt::to_hstring(idStr.substr(7));
-            const bool wasSelected = _GlobalSettings.AcpAgent() == settingsId;
+            const bool wasSelected = AgentRegistry::AgentIdEquals(_GlobalSettings.AcpAgent(), settingsId);
             const auto commands =
                 _RemoveCustomCommand(_GlobalSettings.AcpCustomCommands(), settingsId);
             _GlobalSettings.AcpCustomCommands(commands);
-            if (_CustomCommandMatchesId(_GlobalSettings.AcpCustomCommand(), settingsId))
+            if (wasSelected ||
+                (!::Microsoft::Terminal::CustomAgents::Find(_GlobalSettings, _GlobalSettings.AcpAgent()) &&
+                 _CustomCommandMatchesId(_GlobalSettings.AcpCustomCommand(), settingsId)))
             {
                 _GlobalSettings.AcpCustomCommand(L"");
             }
-            if (_editingCustomAcpAgentId == settingsId)
+            if (AgentRegistry::AgentIdEquals(_editingCustomAcpAgentId, settingsId))
             {
                 _editingCustomAcpAgentId = L"";
+                _customAcpCommand = L"";
+                _LoadCustomAgentEditor(L"");
             }
             _RebuildCustomEntries(_acpAgentList, commands, true);
 
@@ -1565,6 +1713,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 _isAddingCustomAcpAgent = true;
                 _editingCustomAcpAgentId = L"";
                 _customAcpCommand = L"";
+                _LoadCustomAgentEditor(L"");
                 _GlobalSettings.AcpAgent(L"");
                 _GlobalSettings.AcpModel(L"");
                 _TriggerAcpModelProbe();
@@ -1785,11 +1934,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         if (winrt::to_string(acpAgent).starts_with("custom:"))
         {
-            const auto customCmd = _GlobalSettings.AcpCustomCommand();
-            if (!customCmd.empty())
-            {
-                return std::wstring{ customCmd };
-            }
+            return ::Microsoft::Terminal::CustomAgents::AcpCommand(_GlobalSettings, acpAgent);
         }
 
         const auto acpModel = _GlobalSettings.AcpModel();

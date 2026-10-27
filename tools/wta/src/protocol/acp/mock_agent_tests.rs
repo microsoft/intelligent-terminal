@@ -41,6 +41,9 @@ use tokio_util::{
 /// What the mock does when it receives a `prompt`.
 #[derive(Clone, Copy)]
 enum MockBehavior {
+    ActivationSuccess,
+    ActivationFailure,
+    ActivationUnknown,
     /// Stream a deterministic `MOCK_OK:<echo>` reply, then end the turn.
     Reply,
     /// Request permission (allow-once / reject-once) and record the outcome the
@@ -74,6 +77,8 @@ enum MockBehavior {
 /// stream replies / request permission, exactly like a real agent does.
 #[derive(Clone)]
 struct MockAgent {
+    activation_barrier: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
+    activation_requests: Arc<Mutex<Vec<(bool, crate::session_registry::SessionActivateParams)>>>,
     conn: Arc<OnceCell<conn::AgentLink>>,
     behavior: MockBehavior,
     /// Side-channel: every prompt's user text.
@@ -348,7 +353,10 @@ impl MockAgent {
         if let Some(conn) = self.conn.get() {
             let conn = conn.clone();
             match self.behavior {
-                MockBehavior::Reply => {
+                MockBehavior::Reply
+                | MockBehavior::ActivationSuccess
+                | MockBehavior::ActivationFailure
+                | MockBehavior::ActivationUnknown => {
                     let reply = format!("MOCK_OK:{text}");
                     tokio::task::spawn_local(async move {
                         let _ = conn
@@ -557,6 +565,8 @@ fn connect_with(
     let permission_outcome = Arc::new(Mutex::new(None));
     let conn_cell: Arc<OnceCell<conn::AgentLink>> = Arc::new(OnceCell::new());
     let mock = MockAgent {
+        activation_barrier: None,
+        activation_requests: Arc::new(Mutex::new(Vec::new())),
         conn: conn_cell.clone(),
         behavior,
         seen_prompts: seen_prompts.clone(),
@@ -712,16 +722,47 @@ fn spawn_mock_pair(
                                 m.prompt(a).await.map(R::PromptResponse),
                             ),
                             Q::ExtMethodRequest(request) => {
-                                if let crate::session_registry::WtaExtRequest::CloseTabSession(
-                                    params,
-                                ) = crate::session_registry::parse_ext_request(request)
-                                {
-                                    m.close_tab_requests.lock().unwrap().push(params.tab_id);
-                                }
+                                // ACP strips the leading `_` on receive; use the
+                                // same normalized operation classifier as master.
+                                let request = crate::session_registry::parse_ext_request(request);
+                                let request_is_activation_status = matches!(
+                                    &request,
+                                    crate::session_registry::WtaExtRequest::SessionActivationStatus(_)
+                                );
+                                let response = match request {
+                                    crate::session_registry::WtaExtRequest::CloseTabSession(params) => {
+                                        m.close_tab_requests.lock().unwrap().push(params.tab_id);
+                                        serde_json::Value::Null
+                                    }
+                                    crate::session_registry::WtaExtRequest::SessionActivate(params)
+                                    | crate::session_registry::WtaExtRequest::SessionActivationStatus(params) => {
+                                        let status_only = request_is_activation_status;
+                                        m.activation_requests.lock().unwrap().push((status_only, params.clone()));
+                                        if status_only {
+                                            if let Some((started, release)) = &m.activation_barrier {
+                                                started.notify_one();
+                                                release.notified().await;
+                                            }
+                                        }
+                                        let state = match m.behavior {
+                                            MockBehavior::ActivationUnknown => "unknown",
+                                            MockBehavior::ActivationSuccess | MockBehavior::ActivationFailure if !status_only => "pending",
+                                            _ => "complete",
+                                        };
+                                        serde_json::json!({
+                                            "activation_id": params.activation_id,
+                                            "state": state,
+                                            "action": "rejected",
+                                            "accepted": status_only && matches!(m.behavior, MockBehavior::ActivationSuccess),
+                                            "detail": "Custom agent definition was removed",
+                                        })
+                                    }
+                                    _ => serde_json::Value::Null,
+                                };
                                 conn::respond_enum(
                                     responder,
                                     Ok(R::ExtMethodResponse(acp::schema::v1::ExtResponse::new(
-                                        serde_json::value::to_raw_value(&serde_json::Value::Null)
+                                        serde_json::value::to_raw_value(&response)
                                             .unwrap()
                                             .into(),
                                     ))),
@@ -916,6 +957,7 @@ async fn happy_path_chat_round_trip_surfaces_mock_reply() {
 /// the dispatcher threads into prompt assembly. `seen_prompts` is the
 /// agent-side record of every assembled prompt that reached the wire.
 pub(crate) struct DispatchHarness {
+    activation_requests: Arc<Mutex<Vec<(bool, crate::session_registry::SessionActivateParams)>>>,
     client: WtaClient,
     pub conn: conn::ClientLink,
     pub event_tx: mpsc::UnboundedSender<AppEvent>,
@@ -960,6 +1002,13 @@ pub(crate) struct DispatchHarness {
 /// the shared `event_tx` / `shell_mgr` / `prompt_timing` so the dispatcher can
 /// be invoked with the same handles the production loop would.
 fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
+    connect_for_dispatch_with_activation_barrier(behavior, None)
+}
+
+fn connect_for_dispatch_with_activation_barrier(
+    behavior: MockBehavior,
+    activation_barrier: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
+) -> DispatchHarness {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let shell_mgr = Arc::new(ShellManager::new());
     let prompt_timing = Arc::new(PromptTimingState::default());
@@ -1005,7 +1054,10 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let native_update_started = Arc::new(tokio::sync::Notify::new());
     let native_update_release = Arc::new(tokio::sync::Notify::new());
     let conn_cell: Arc<OnceCell<conn::AgentLink>> = Arc::new(OnceCell::new());
+    let activation_requests = Arc::new(Mutex::new(Vec::new()));
     let mock = MockAgent {
+        activation_barrier,
+        activation_requests: activation_requests.clone(),
         conn: conn_cell.clone(),
         behavior,
         seen_prompts: seen_prompts.clone(),
@@ -1036,6 +1088,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let client_conn = spawn_mock_pair(wta.clone(), mock, &conn_cell);
 
     DispatchHarness {
+        activation_requests,
         client: wta,
         conn: client_conn,
         event_tx,
@@ -4668,6 +4721,348 @@ async fn dispatch_master_ext_session_focus_completes() {
                 Ok(_) => panic!("expected MasterMutationCompleted"),
                 _ => panic!("expected MasterMutationCompleted, got nothing"),
             }
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn dispatch_master_ext_session_activation_pending_alias_reconciles() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for (behavior, rejected) in [
+                (MockBehavior::ActivationSuccess, false),
+                (MockBehavior::ActivationFailure, true),
+            ] {
+                let mut h = connect_for_dispatch(behavior);
+                let sessions = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+                let request = activation_test_request(false);
+                dispatch_master_ext_request(
+                    request,
+                    &h.conn,
+                    &h.event_tx,
+                    &sessions,
+                    Arc::clone(&h.client.state),
+                )
+                .await
+                .unwrap();
+                let requests = h.activation_requests.lock().unwrap();
+                assert_eq!(requests.len(), 2);
+                assert!(!requests[0].0);
+                assert!(requests[1].0);
+                assert_eq!(
+                    requests[0].1, requests[1].1,
+                    "status must keep the qualified receipt identity"
+                );
+                if rejected {
+                    assert!(matches!(h.event_rx.try_recv(),
+                    Ok(AppEvent::SessionActivationRejected { activation_id, .. }) if activation_id == "alias-receipt"));
+                }
+                assert!(matches!(
+                    h.event_rx.try_recv(),
+                    Ok(AppEvent::SessionActivationCompleted { .. })
+                ));
+                assert!(matches!(
+                    h.event_rx.try_recv(),
+                    Ok(AppEvent::MasterMutationCompleted { request_id: 11 })
+                ));
+                assert!(h.event_rx.try_recv().is_err());
+            }
+        })
+        .await;
+}
+
+fn activation_test_request(status_only: bool) -> MasterExtRequest {
+    MasterExtRequest::SessionActivate {
+        request_id: 11,
+        identity: crate::session_registry::SessionIdentity {
+            session_id: acp::schema::v1::SessionId::new("history"),
+            history_key: None,
+        },
+        window_id: 42,
+        activation_id: "alias-receipt".into(),
+        tab_id: "origin-tab".into(),
+        status_only,
+    }
+}
+
+#[tokio::test]
+async fn session_activation_rejection_follows_pending_window_move() {
+    activation_rejection_after_window_move(false).await;
+}
+
+#[tokio::test]
+async fn session_activation_rejection_follows_window_move_and_reconnect() {
+    activation_rejection_after_window_move(true).await;
+}
+
+async fn activation_rejection_after_window_move(reconnect: bool) {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut started = Arc::new(tokio::sync::Notify::new());
+            let mut release = Arc::new(tokio::sync::Notify::new());
+            let mut h = connect_for_dispatch_with_activation_barrier(
+                MockBehavior::ActivationFailure,
+                Some((Arc::clone(&started), Arc::clone(&release))),
+            );
+            let original_requests = Arc::clone(&h.activation_requests);
+            let (master_tx, mut master_rx) = mpsc::unbounded_channel();
+            let mut app = crate::app::App::new(
+                mpsc::unbounded_channel().0,
+                mpsc::unbounded_channel().0,
+                mpsc::unbounded_channel().0,
+                mpsc::unbounded_channel().0,
+                mpsc::unbounded_channel().0,
+                mpsc::unbounded_channel().0,
+                mpsc::unbounded_channel().0,
+                mpsc::unbounded_channel().0,
+                master_tx,
+                Arc::new(AtomicBool::new(false)),
+                true,
+                false,
+                Arc::clone(&h.shell_mgr),
+                Arc::clone(&h.client.state.yolo_state),
+            );
+            app.owner_tab_id = Some("origin-tab".into());
+            app.window_id = Some("42".into());
+            app.handle_test_event(AppEvent::TabSystemMessage {
+                tab_id: "origin-tab".into(),
+                message: "existing conversation".into(),
+            });
+            let sid = acp::schema::v1::SessionId::new("existing-conversation");
+            let sessions = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "origin-tab".to_string(),
+                sid.clone(),
+            )])));
+            let aliases = Arc::new(Mutex::new(HashMap::new()));
+            let generations = Arc::new(Mutex::new(HashMap::new()));
+            let in_flight = Arc::new(Mutex::new(HashMap::from([(
+                "origin-tab".to_string(),
+                7,
+            )])));
+            app.retain_test_session_activation("alias-receipt", activation_test_request(true));
+            let task = dispatch_master_ext_request(
+                activation_test_request(false),
+                &h.conn,
+                &h.event_tx,
+                &sessions,
+                Arc::clone(&h.client.state),
+            );
+            tokio::time::timeout(std::time::Duration::from_secs(2), started.notified())
+                .await
+                .unwrap();
+            for (old, new) in [("origin-tab", "middle-tab"), ("middle-tab", "moved-tab")] {
+                app.handle_test_event(AppEvent::TabRenamed {
+                    old_tab_id: old.into(),
+                    new_tab_id: new.into(),
+                    new_window_id: Some("99".into()),
+                });
+                dispatch_rename_session_with_aliases(
+                    RenameSessionRequest {
+                        old_tab_id: old.into(),
+                        new_tab_id: new.into(),
+                    },
+                    &sessions,
+                    &in_flight,
+                    &aliases,
+                    &generations,
+                )
+                .await;
+            }
+            if reconnect {
+                let mut guard = ClientTransportGuard {
+                    conn: h.conn.clone(),
+                    suppress_transport_error: Arc::new(AtomicBool::new(true)),
+                    event_tx: h.event_tx.clone(),
+                    io_task: Some(tokio::task::spawn_local(std::future::pending::<()>())),
+                    retirement_published: false,
+                };
+                finalize_client_transport(
+                    &mut guard, true, &mut Vec::new(), &in_flight, &mut vec![task],
+                ).await;
+                while let Ok(event) = h.event_rx.try_recv() {
+                    app.handle_test_event(event);
+                }
+                started = Arc::new(tokio::sync::Notify::new());
+                release = Arc::new(tokio::sync::Notify::new());
+                h = connect_for_dispatch_with_activation_barrier(
+                    MockBehavior::ActivationFailure,
+                    Some((Arc::clone(&started), Arc::clone(&release))),
+                );
+                app.handle_test_event(AppEvent::AgentsSnapshotLoaded {
+                    request_id: 0,
+                    sessions: Vec::new(),
+                });
+                // The new connection has no previous transport routing state.
+                let task = dispatch_master_ext_request(
+                    master_rx.try_recv().unwrap(),
+                    &h.conn, &h.event_tx, &sessions, Arc::clone(&h.client.state),
+                );
+                tokio::time::timeout(std::time::Duration::from_secs(2), started.notified())
+                    .await.unwrap();
+                release.notify_one();
+                task.await.unwrap();
+            } else {
+                release.notify_one();
+                task.await.unwrap();
+            }
+            let rejection = h.event_rx.try_recv().unwrap();
+            assert!(matches!(&rejection,
+                AppEvent::SessionActivationRejected { activation_id, .. } if activation_id == "alias-receipt"));
+            app.handle_test_event(rejection);
+            assert!(!app.tab_sessions.contains_key("origin-tab"));
+            assert!(!app.tab_sessions.contains_key("middle-tab"));
+            assert_eq!(app.tab_sessions["moved-tab"].messages.len(), 2);
+            assert_eq!(app.owner_tab_id.as_deref(), Some("moved-tab"));
+            assert_eq!(app.window_id.as_deref(), Some("99"));
+            assert!(matches!(h.event_rx.try_recv(),
+                Ok(AppEvent::SessionActivationCompleted { activation_id }) if activation_id == "alias-receipt"));
+            assert!(matches!(h.event_rx.try_recv(),
+                Ok(AppEvent::MasterMutationCompleted { request_id: 11 })));
+            assert!(
+                h.event_rx.try_recv().is_err(),
+                "old owner must not receive an orphan message"
+            );
+            assert_eq!(
+                *sessions.lock().await,
+                HashMap::from([("moved-tab".to_string(), sid)])
+            );
+            if reconnect {
+                assert!(in_flight.lock().unwrap().is_empty(), "retired prompt slots must be released");
+            } else {
+                assert_eq!(
+                    *in_flight.lock().unwrap(),
+                    HashMap::from([("moved-tab".to_string(), 7)])
+                );
+            }
+
+            // A retained receipt retries status only, with the original session/window.
+            app.handle_test_event(AppEvent::AgentsSnapshotLoaded {
+                request_id: 0,
+                sessions: Vec::new(),
+            });
+            let retry = dispatch_master_ext_request(
+                master_rx.try_recv().unwrap(),
+                &h.conn,
+                &h.event_tx,
+                &sessions,
+                Arc::clone(&h.client.state),
+            );
+            tokio::time::timeout(std::time::Duration::from_secs(2), started.notified())
+                .await
+                .unwrap();
+            release.notify_one();
+            retry.await.unwrap();
+            let mut requests = original_requests.lock().unwrap().clone();
+            if reconnect {
+                requests.extend(h.activation_requests.lock().unwrap().clone());
+            }
+            assert_eq!(requests.len(), if reconnect { 4 } else { 3 });
+            assert!(!requests[0].0);
+            assert!(requests.iter().skip(1).all(|(status_only, _)| *status_only));
+            assert!(requests.iter().all(|(_, params)| params == &requests[0].1));
+            assert_eq!(requests[0].1.window_id, 42);
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn dispatch_master_ext_session_activation_unknown_only_checks_status() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::ActivationUnknown);
+            let sessions = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let retained = activation_test_request(true);
+            let cancelled = dispatch_master_ext_request(
+                retained.clone(),
+                &h.conn,
+                &h.event_tx,
+                &sessions,
+                Arc::clone(&h.client.state),
+            );
+            cancelled.abort();
+            assert!(cancelled.await.unwrap_err().is_cancelled());
+            for _ in 0..2 {
+                dispatch_master_ext_request(
+                    retained.clone(),
+                    &h.conn,
+                    &h.event_tx,
+                    &sessions,
+                    Arc::clone(&h.client.state),
+                )
+                .await
+                .unwrap();
+            }
+            let requests = h.activation_requests.lock().unwrap();
+            assert_eq!(requests.len(), 2);
+            assert!(requests.iter().all(|(status_only, _)| *status_only));
+            assert_eq!(requests[0].1, requests[1].1);
+            assert!(
+                h.event_rx.try_recv().is_err(),
+                "unknown is not completion or rejection"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn dispatch_master_ext_session_activation_rejection_preserves_existing_session() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("de-DE");
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let existing_session = acp::schema::v1::SessionId::new("existing-conversation");
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "t1".to_string(),
+                existing_session.clone(),
+            )])));
+            let mut event_rx = h.event_rx;
+
+            let task = dispatch_master_ext_request(
+                MasterExtRequest::SessionActivate {
+                    request_id: 10,
+                    identity: crate::session_registry::SessionIdentity {
+                        session_id: acp::schema::v1::SessionId::new("custom-history"),
+                        history_key: None,
+                    },
+                    window_id: 42,
+                    activation_id: "activation-1".to_string(),
+                    tab_id: "t1".to_string(),
+                    status_only: false,
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+
+            tokio::time::timeout(std::time::Duration::from_secs(5), task)
+                .await
+                .expect("activation must complete")
+                .expect("activation task must not panic");
+
+            match event_rx.try_recv().expect("rejection must be visible") {
+                AppEvent::SessionActivationRejected { activation_id, message } => {
+                    assert_eq!(activation_id, "activation-1");
+                    assert_eq!(message, rust_i18n::t!("agents.status.error").to_string());
+                    assert!(!message.contains("Custom agent definition was removed"));
+                }
+                _ => panic!("expected a non-destructive activation rejection"),
+            }
+            assert!(matches!(
+                event_rx.try_recv(),
+                Ok(AppEvent::SessionActivationCompleted { activation_id }) if activation_id == "activation-1"
+            ));
+            assert!(matches!(
+                event_rx.try_recv(),
+                Ok(AppEvent::MasterMutationCompleted { request_id: 10 })
+            ));
+            assert!(event_rx.try_recv().is_err(), "must not emit a TabError");
+            assert_eq!(
+                tab_to_session.lock().await.get("t1"),
+                Some(&existing_session)
+            );
         })
         .await;
 }

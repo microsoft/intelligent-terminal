@@ -1080,6 +1080,12 @@ impl WtChannel for CliChannel {
             }
             "create_tab" => {
                 let mut args = vec!["new-tab"];
+                if let Some(session) = params
+                    .get("custom_agent_session_id")
+                    .and_then(|value| value.as_str())
+                {
+                    args.extend(["--custom-agent-session", session]);
+                }
                 if let Some(provider) = params
                     .get("native_agent_provider_id")
                     .and_then(|value| value.as_str())

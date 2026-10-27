@@ -753,6 +753,21 @@ remain unknown, rather than being converted into a definitive rejection that
 would permit a duplicate restore. A created tab without a usable pane binding
 is likewise not safe to restore again.
 
+An elevated-profile resume reports `elevation_handoff` only after the elevation
+shim process starts. A shim launch failure remains a definitive error. Handoff
+does not prove UAC acceptance or pane creation: WTA retains an `unknown`,
+not-accepted receipt and its qualified conversation reservation, including across
+retries with a new activation ID. The shim currently has no completion callback
+to this activation receipt; UAC cancellation or eventual elevated pane creation
+cannot settle it through status polling alone. This conservative reservation is
+in-memory for the master lifetime, not a persistent cross-restart guarantee.
+Later hook or pane-binding observations can update session liveness, but do not
+carry this activation ID and do not reconcile the receipt. In particular, a
+matching live conversation alone does not prove which launch completed. The
+History client treats `unknown` separately from a completed rejection: an
+`accepted: false` unknown receipt retains the existing ID and subsequent clicks
+perform status-only queries, not a fresh resume.
+
 A client timeout does not prove that the backend took no action. After an
 unconfirmed activation response, Terminal makes one bounded, read-only
 `sessions activate --status-only` request with the original activation ID and

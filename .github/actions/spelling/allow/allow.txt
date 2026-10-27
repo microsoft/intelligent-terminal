@@ -69,6 +69,7 @@ Emacspeak
 entrancy
 ession
 extened
+Fehler
 ffi
 Fitt
 flac

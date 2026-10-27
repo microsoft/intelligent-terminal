@@ -229,6 +229,15 @@ public:
         *json = SysAllocString(L"{\"synthetic\":\"pane\",\"id\":73}");
         return *json ? S_OK : E_OUTOFMEMORY;
     }
+
+    HRESULT STDMETHODCALLTYPE ResumeCustomAgentCliTab(MIDL_uhyper windowId, BSTR profile, BSTR providerId, BSTR agentSessionId, BSTR title, BSTR startingDirectory, boolean background, BSTR* json) noexcept override
+    {
+        RETURN_HR_IF_NULL(E_POINTER, json);
+        *json = nullptr;
+        RETURN_HR_IF(E_INVALIDARG, windowId != 0x123456789abcdef0ULL || !EqualBstr(profile, L"test profile") || !EqualBstr(providerId, L"custom:WORK") || !EqualBstr(agentSessionId, L"session with spaces") || !EqualBstr(title, L"Agent \u03a9") || !EqualBstr(startingDirectory, L"C:\\synthetic directory") || background != 1);
+        *json = SysAllocString(L"{\"synthetic\":\"resume\"}");
+        return *json ? S_OK : E_OUTOFMEMORY;
+    }
 };
 
 int wmain(int argc, wchar_t** argv)
@@ -481,6 +490,11 @@ try
             THROW_IF_FAILED(nativeAgent->SplitAgentCliPane(TestSession, direction.get(), 0.375f, profile.get(), commandline.get(),
                                                          1, provider.get(), splitJson.put()));
             Check(EqualBstr(splitJson.get(), L"{\"synthetic\":\"pane\",\"id\":73}"), "Native agent pane JSON crossed apartments");
+            auto customProvider = allocate(L"custom:WORK");
+            auto agentSession = allocate(L"session with spaces");
+            wil::unique_bstr resumeJson;
+            THROW_IF_FAILED(nativeAgent->ResumeCustomAgentCliTab(0x123456789abcdef0ULL, profile.get(), customProvider.get(), agentSession.get(), title.get(), directory.get(), 1, resumeJson.put()));
+            Check(EqualBstr(resumeJson.get(), L"{\"synthetic\":\"resume\"}"), "Custom agent resume metadata crossed apartments");
             callbackResult = S_OK;
         }
         catch (...)

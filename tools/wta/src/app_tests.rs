@@ -2562,6 +2562,247 @@ pub(super) fn test_app_with_master_rx() -> (
     (app, master_rx)
 }
 
+#[test]
+fn session_activation_queued_before_shutdown_allows_retry() {
+    use crate::protocol::acp::client::{MasterExtRequest, PendingMasterRequests};
+    let (mut app, master_rx) = test_app_with_master_rx();
+    app.window_id = Some("42".into());
+    let mut info = crate::session_registry::SessionInfo::new(
+        agent_client_protocol::schema::v1::SessionId::new("history"),
+        std::path::PathBuf::from(r"C:\repo"),
+    );
+    info.cli_source = Some(crate::agent_sessions::CliSource::Custom(
+        "custom:review".into(),
+    ));
+    let session = session_info_to_agent_session(&info);
+    app.dispatch_custom_session_activation(&session);
+    let original_id = app
+        .pending_session_activations
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+    // Shutdown wins before the successful enqueue is dequeued for dispatch.
+    drop(PendingMasterRequests {
+        receiver: master_rx,
+        event_tx,
+    });
+    app.handle_event(event_rx.try_recv().unwrap());
+    assert!(app.pending_session_activations.is_empty());
+    assert!(event_rx.try_recv().is_err());
+
+    let (master_tx, mut master_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.master_request_tx = master_tx;
+    app.reconcile_session_activations();
+    assert!(master_rx.try_recv().is_err());
+    app.dispatch_custom_session_activation(&session);
+    assert!(matches!(master_rx.try_recv(),
+        Ok(MasterExtRequest::SessionActivate { activation_id, status_only: false, .. })
+        if activation_id != original_id));
+}
+
+#[test]
+fn session_activation_shutdown_retains_status_queries_and_dequeued_requests() {
+    use crate::protocol::acp::client::{MasterExtRequest, PendingMasterRequests};
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let history_key = crate::session_registry::HistoryRowKey::new(
+        "custom:review",
+        crate::agent_sessions::SessionLocation::Host,
+        "history",
+        None,
+    );
+    let request = MasterExtRequest::SessionActivate {
+        request_id: 17,
+        identity: crate::session_registry::SessionIdentity {
+            session_id: agent_client_protocol::schema::v1::SessionId::new("history"),
+            history_key: history_key.clone(),
+        },
+        window_id: 42,
+        activation_id: "retained".into(),
+        tab_id: "origin".into(),
+        status_only: false,
+    };
+    app.pending_session_activations
+        .insert("retained".into(), request.clone().into());
+    app.master_request_tx.send(request.clone()).unwrap();
+    let _dispatched = master_rx.try_recv().unwrap();
+    let mut status = request;
+    if let MasterExtRequest::SessionActivate { status_only, .. } = &mut status {
+        *status_only = true;
+    }
+    app.master_request_tx.send(status).unwrap();
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+    drop(PendingMasterRequests {
+        receiver: master_rx,
+        event_tx,
+    });
+    assert!(event_rx.try_recv().is_err());
+    assert!(app.pending_session_activations.contains_key("retained"));
+
+    app.handle_event(AppEvent::TabRenamed {
+        old_tab_id: "origin".into(),
+        new_tab_id: "moved".into(),
+        new_window_id: Some("99".into()),
+    });
+    for mismatch in 0..5 {
+        let mut identity = crate::session_registry::SessionIdentity {
+            session_id: agent_client_protocol::schema::v1::SessionId::new("history"),
+            history_key: history_key.clone(),
+        };
+        if mismatch == 0 {
+            identity.session_id = agent_client_protocol::schema::v1::SessionId::new("other");
+        }
+        if mismatch == 4 {
+            identity.history_key.as_mut().unwrap().provider_id = "custom:other".into();
+        }
+        app.handle_event(AppEvent::SessionActivationNotDispatched {
+            identity,
+            window_id: if mismatch == 1 { 43 } else { 42 },
+            activation_id: if mismatch == 2 { "other" } else { "retained" }.into(),
+            tab_id: if mismatch == 3 { "other" } else { "origin" }.into(),
+        });
+        assert!(app.pending_session_activations.contains_key("retained"));
+    }
+}
+
+#[test]
+fn session_activation_failed_enqueue_allows_retry() {
+    use crate::protocol::acp::client::MasterExtRequest;
+    let (mut app, master_rx) = test_app_with_master_rx();
+    app.window_id = Some("42".into());
+    let mut info = crate::session_registry::SessionInfo::new(
+        agent_client_protocol::schema::v1::SessionId::new("history"),
+        std::path::PathBuf::from(r"C:\repo"),
+    );
+    info.cli_source = Some(crate::agent_sessions::CliSource::Custom(
+        "custom:review".into(),
+    ));
+    let session = session_info_to_agent_session(&info);
+    drop(master_rx);
+
+    app.dispatch_custom_session_activation(&session);
+    assert!(app.pending_session_activations.is_empty());
+    let failed_request_id = app.current_tab().agents_view.next_request_id;
+
+    let (master_tx, mut master_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.master_request_tx = master_tx;
+    app.reconcile_session_activations();
+    assert!(master_rx.try_recv().is_err());
+    app.dispatch_custom_session_activation(&session);
+    let MasterExtRequest::SessionActivate {
+        request_id,
+        activation_id,
+        status_only,
+        ..
+    } = master_rx
+        .try_recv()
+        .expect("retry must enqueue an activation")
+    else {
+        panic!("expected a session activation");
+    };
+    assert!(!status_only);
+    assert_ne!(request_id, failed_request_id);
+    assert!(app.pending_session_activations.contains_key(&activation_id));
+    assert_eq!(app.pending_session_activations.len(), 1);
+}
+
+#[test]
+fn session_activation_retry_after_window_move_keeps_original_receipt() {
+    use crate::protocol::acp::client::MasterExtRequest;
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.window_id = Some("42".into());
+    app.owner_tab_id = Some("origin".into());
+    app.tab_id = Some("origin".into());
+    app.tab_mut("origin");
+    let mut info = crate::session_registry::SessionInfo::new(
+        agent_client_protocol::schema::v1::SessionId::new("history"),
+        std::path::PathBuf::from(r"C:\repo"),
+    );
+    info.cli_source = Some(crate::agent_sessions::CliSource::Custom(
+        "custom:review".into(),
+    ));
+    let session = session_info_to_agent_session(&info);
+    app.dispatch_custom_session_activation(&session);
+    let MasterExtRequest::SessionActivate {
+        request_id: original_request_id,
+        identity: original_identity,
+        activation_id: original_activation_id,
+        status_only: false,
+        ..
+    } = master_rx.try_recv().unwrap() else {
+        panic!("expected an initial activation");
+    };
+    app.handle_event(AppEvent::TabRenamed {
+        old_tab_id: "origin".into(),
+        new_tab_id: "moved".into(),
+        new_window_id: Some("99".into()),
+    });
+    app.dispatch_custom_session_activation(&session);
+    assert_eq!(app.pending_session_activations.len(), 1);
+    let retry = master_rx.try_recv().unwrap();
+    assert!(matches!(retry,
+        MasterExtRequest::SessionActivate {
+            request_id, identity, activation_id, window_id: 42,
+            tab_id, status_only: true,
+        } if request_id == original_request_id && identity == original_identity
+            && activation_id == original_activation_id && tab_id == "origin"));
+    assert!(master_rx.try_recv().is_err());
+}
+
+#[test]
+fn session_activation_receipt_survives_disconnect_and_status_retries() {
+    use crate::protocol::acp::client::MasterExtRequest;
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let request = MasterExtRequest::SessionActivate {
+        request_id: 17,
+        identity: crate::session_registry::SessionIdentity {
+            session_id: agent_client_protocol::schema::v1::SessionId::new("history"),
+            history_key: None,
+        },
+        window_id: 42,
+        activation_id: "retained-receipt".into(),
+        tab_id: "origin-tab".into(),
+        status_only: true,
+    };
+    app.pending_session_activations
+        .insert("retained-receipt".into(), request.into());
+    app.tab_mut("origin-tab");
+    app.handle_event(AppEvent::TabRenamed {
+        old_tab_id: "origin-tab".into(),
+        new_tab_id: "moved-tab".into(),
+        new_window_id: Some("99".into()),
+    });
+    app.handle_event(AppEvent::MasterDisconnected);
+    app.reconcile_session_activations();
+    app.reconcile_session_activations();
+    for _ in 0..2 {
+        assert!(matches!(master_rx.try_recv(),
+            Ok(MasterExtRequest::SessionActivate {
+                identity, window_id: 42, activation_id, tab_id, status_only: true, ..
+            }) if identity.session_id.to_string() == "history"
+                && activation_id == "retained-receipt" && tab_id == "origin-tab"));
+    }
+    assert!(app
+        .pending_session_activations
+        .contains_key("retained-receipt"));
+    drop(master_rx);
+    app.reconcile_session_activations();
+    assert!(app
+        .pending_session_activations
+        .contains_key("retained-receipt"));
+    app.handle_event(AppEvent::SessionActivationRejected {
+        activation_id: "retained-receipt".into(),
+        message: "activation rejected".into(),
+    });
+    assert!(!app.tab_sessions.contains_key("origin-tab"));
+    assert_eq!(app.tab_sessions["moved-tab"].messages.len(), 1);
+    app.handle_event(AppEvent::SessionActivationCompleted {
+        activation_id: "retained-receipt".into(),
+    });
+    assert!(app.pending_session_activations.is_empty());
+}
+
 // ─── word boundary helpers ──────────────────────────────────────────────
 
 #[test]

@@ -317,6 +317,45 @@ pub(crate) fn spawn_agent_process_with_provider(
     )
 }
 
+fn split_agent_commandline(commandline: &str) -> Result<Vec<String>> {
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::UI::Shell::CommandLineToArgvW;
+
+    anyhow::ensure!(!commandline.contains('\0'), "agent command contains NUL");
+    // A dummy argv[0] makes every configured token use argument escaping,
+    // matching join_windows_commandline, rather than argv[0]'s special rules.
+    let commandline: Vec<u16> = format!("wta {commandline}")
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut count = 0;
+    // SAFETY: commandline is NUL-terminated and count is a valid output pointer.
+    let argv = unsafe { CommandLineToArgvW(commandline.as_ptr(), &mut count) };
+    anyhow::ensure!(
+        !argv.is_null(),
+        "failed to parse agent command: {}",
+        std::io::Error::last_os_error()
+    );
+    // SAFETY: Windows returns count NUL-terminated strings in one allocation.
+    // Copy them before releasing that allocation with LocalFree.
+    let args = unsafe {
+        let args = std::slice::from_raw_parts(argv, count as usize)
+            .iter()
+            .skip(1)
+            .map(|&arg| {
+                let mut len = 0;
+                while *arg.add(len) != 0 {
+                    len += 1;
+                }
+                String::from_utf16_lossy(std::slice::from_raw_parts(arg, len))
+            })
+            .collect();
+        LocalFree(argv.cast());
+        args
+    };
+    Ok(args)
+}
+
 fn spawn_host_agent_process(
     agent_cmd: &str,
     cwd: Option<&Path>,
@@ -324,12 +363,12 @@ fn spawn_host_agent_process(
     environment_policy: ChildEnvironmentPolicy,
     provider_selection: SharedProviderSelection<'_>,
 ) -> Result<AgentSpawn> {
-    let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
+    let parts = split_agent_commandline(agent_cmd)?;
     let raw_program = parts
         .first()
-        .copied()
+        .map(String::as_str)
         .ok_or_else(|| anyhow!("empty agent command"))?;
-    let args: Vec<&str> = parts[1..].to_vec();
+    let args = &parts[1..];
     let resolved_program = if resolve_spawn_profile(agent_cmd, agent_id).id
         == crate::agent_registry::ANTIGRAVITY_AGENT_ID
         && raw_program.eq_ignore_ascii_case("agy_acp_server.exe")
@@ -339,7 +378,9 @@ fn spawn_host_agent_process(
     } else {
         crate::agent_registry::resolve_bare_agent_name(raw_program)
     };
-    let needs_cmd = crate::coordinator::needs_shell_launch(&resolved_program);
+    let needs_cmd = crate::coordinator::needs_shell_launch(
+        &crate::coordinator::quote_windows_commandline_arg(&resolved_program),
+    );
 
     let is_npx = resolved_program.eq_ignore_ascii_case("npx")
         || resolved_program.eq_ignore_ascii_case("npx.cmd")
@@ -352,15 +393,18 @@ fn spawn_host_agent_process(
         None
     };
 
-    let program = if needs_cmd {
-        "cmd"
-    } else {
-        resolved_program.as_str()
-    };
-    let mut cmd = tokio::process::Command::new(program);
-    if needs_cmd {
-        cmd.arg("/c").arg(&resolved_program);
+    let mut launch_args = Vec::new();
+    if is_npx && should_omit_optional_dependencies(agent_cmd, agent_id) {
+        launch_args.push("--omit=optional".to_string());
     }
+    launch_args.extend_from_slice(args);
+    let mut cmd = if needs_cmd {
+        batch_companion_command(&resolved_program, &launch_args, cwd)?
+    } else {
+        let mut cmd = tokio::process::Command::new(&resolved_program);
+        cmd.args(&launch_args);
+        cmd
+    };
 
     // The claude-code-acp adapter refuses to start when its recursion-
     // guard env var is set — that guard exists to block recursive
@@ -374,9 +418,6 @@ fn spawn_host_agent_process(
         environment_policy,
         provider_selection,
     )?;
-    if is_npx && should_omit_optional_dependencies(agent_cmd, agent_id) {
-        cmd.arg("--omit=optional");
-    }
 
     // Give the agent CLI a fresh PATH and make this package's `wta.exe`
     // App Execution Alias the first match. The package-specific alias directory
@@ -451,8 +492,7 @@ fn spawn_host_agent_process(
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
-    cmd.args(&args)
-        .stdin(std::process::Stdio::piped())
+    cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
@@ -465,6 +505,71 @@ fn spawn_host_agent_process(
         resolved_program,
         adapter_package,
     })
+}
+
+fn batch_companion_command(
+    program: &str,
+    args: &[String],
+    cwd: Option<&Path>,
+) -> Result<tokio::process::Command> {
+    // PS 5.1's native binder cannot round-trip these shapes through npm's
+    // .ps1 -> node.exe hop. Reject them before starting any process.
+    anyhow::ensure!(
+        args.iter().all(|arg| !arg.is_empty()
+            && !arg.contains(['"', '\0'])
+            && !(arg.ends_with('\\') && arg.chars().any(char::is_whitespace))),
+        "ACP batch launch is unsupported for arguments that Windows PowerShell cannot preserve"
+    );
+    let path = Path::new(program);
+    anyhow::ensure!(
+        path.extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("cmd") || ext.eq_ignore_ascii_case("bat")),
+        "ACP batch launch is unsupported: expected a batch shim"
+    );
+    let base = std::env::current_dir()?.join(cwd.unwrap_or_else(|| Path::new("")));
+    let shim = if path.is_absolute() {
+        path.to_path_buf()
+    } else if program.contains(['\\', '/']) || base.join(path).is_file() {
+        base.join(path)
+    } else {
+        crate::agent_check::spawn_path()
+            .map(std::ffi::OsString::from)
+            .or_else(|| std::env::var_os("PATH"))
+            .and_then(|paths| {
+                std::env::split_paths(&paths)
+                    .map(|directory| base.join(directory).join(path))
+                    .find(|candidate| candidate.is_file())
+            })
+            .context("ACP batch launch is unsupported: shim not found")?
+    };
+    let companion = shim.with_extension("ps1");
+    anyhow::ensure!(
+        shim.is_file() && companion.is_file(),
+        "ACP batch launch is unsupported without an adjacent PowerShell companion"
+    );
+    let quote = crate::coordinator::ps_single_quote;
+    let call = std::iter::once(quote(&companion.to_string_lossy()))
+        .chain(args.iter().map(|arg| quote(arg)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let script = format!("$ErrorActionPreference='Stop'; & {call}; exit $LASTEXITCODE");
+    let encoded: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let powershell = PathBuf::from(
+        std::env::var_os("SystemRoot").context("SystemRoot is required for ACP batch launch")?,
+    )
+    .join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+    let mut command = tokio::process::Command::new(powershell);
+    command.args([
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        // Process-only policy; MachinePolicy and UserPolicy still take precedence.
+        "-ExecutionPolicy",
+        "Bypass",
+        "-EncodedCommand",
+        &crate::osc52::base64_encode(&encoded),
+    ]);
+    Ok(command)
 }
 
 pub(crate) fn wta_cli_directory() -> Result<PathBuf> {
@@ -626,7 +731,7 @@ fn spawn_wsl_agent_process(
     agent_id: Option<&str>,
     environment_policy: ChildEnvironmentPolicy,
 ) -> Result<AgentSpawn> {
-    let parts = crate::coordinator::split_windows_commandline(agent_cmd);
+    let parts = split_agent_commandline(agent_cmd)?;
     let raw_program = parts
         .first()
         .cloned()
@@ -804,6 +909,393 @@ fn canonicalize_posix_locale(tag: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agent_commandline_round_trips_windows_arguments() {
+        let args = [
+            r"C:\Program Files\Custom Agent\agent.exe",
+            "--config",
+            "",
+            "--stdio",
+            r"C:\directory with spaces\",
+            r#"embedded "quotes" and \"escaped quotes\""#,
+            "tab\tseparated",
+            r"\\server\share\",
+        ];
+        assert_eq!(
+            split_agent_commandline(&crate::coordinator::join_windows_commandline(&args)).unwrap(),
+            args
+        );
+        assert!(split_agent_commandline(" \t ").unwrap().is_empty());
+        assert!(split_agent_commandline("agent\0ignored").is_err());
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn host_batch_and_native_spawns_preserve_native_argv() {
+        use tokio::io::AsyncReadExt;
+
+        // Restrict only an isolated test process, not parallel tests in this process.
+        const ISOLATED_TEST: &str = "WTA_TEST_RESTRICTED_BATCH_ARGV";
+        let test_name = concat!(
+            module_path!(),
+            "::host_batch_and_native_spawns_preserve_native_argv"
+        )
+        .split_once("::")
+        .unwrap()
+        .1;
+        if std::env::var(ISOLATED_TEST).as_deref() != Ok(test_name) {
+            let output = tokio::time::timeout(
+                Duration::from_secs(60),
+                tokio::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", test_name, "--nocapture", "--test-threads=1"])
+                    .env(ISOLATED_TEST, test_name)
+                    .env("PSExecutionPolicyPreference", "Restricted")
+                    // Restricted must probe Windows PowerShell's own policy module, not PS7's.
+                    .env_remove("PSModulePath")
+                    .kill_on_drop(true)
+                    .output(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert!(
+                output.status.success(),
+                "isolated Restricted test failed: {output:?}"
+            );
+            assert!(
+                String::from_utf8_lossy(&output.stdout).contains("1 passed;"),
+                "the isolated subprocess must run the selected test: {output:?}"
+            );
+            return;
+        }
+
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!(
+                "batch O\u{2019}Brien \u{2018}\u{201a}\u{201b} argv {}",
+                uuid::Uuid::new_v4()
+            ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let source = directory.join("argv.cs");
+        let executable = directory.join("native argv.exe");
+        std::fs::write(
+            &source,
+            r#"using System; using System.Text;
+class Probe { static void Main(string[] args) {
+foreach (string arg in args) Console.WriteLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(arg)));
+} }"#,
+        )
+        .unwrap();
+        let compiler = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join(r"Microsoft.NET\Framework64\v4.0.30319\csc.exe");
+        let output = std::process::Command::new(compiler)
+            .arg("/nologo")
+            .arg(format!("/out:{}", executable.display()))
+            .arg(&source)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let shim = directory.join("npm agent.cmd");
+        let marker = directory.join("batch must not run");
+        std::fs::write(&shim, format!("@echo bad > \"{}\"\r\n", marker.display())).unwrap();
+        std::fs::write(
+            shim.with_extension("ps1"),
+            "& \"$PSScriptRoot\\native argv.exe\" @args\r\nexit $LASTEXITCODE\r\n",
+        )
+        .unwrap();
+        let launcher =
+            batch_companion_command(shim.to_str().unwrap(), &[], Some(&directory)).unwrap();
+        let launcher = launcher.as_std();
+        let policy = std::process::Command::new(launcher.get_program())
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Get-ExecutionPolicy; Get-ExecutionPolicy -Scope Process",
+            ])
+            .output()
+            .unwrap();
+        assert!(policy.status.success(), "{policy:?}");
+        assert_eq!(
+            String::from_utf8(policy.stdout)
+                .unwrap()
+                .lines()
+                .map(str::trim)
+                .collect::<Vec<_>>(),
+            ["Restricted", "Restricted"],
+            "the isolated child must actually enforce Restricted"
+        );
+        // Reproduce the old launcher, without its new process-scoped override.
+        let old_launcher = std::process::Command::new(launcher.get_program())
+            .args(launcher.get_args().filter(|arg| {
+                *arg != std::ffi::OsStr::new("-ExecutionPolicy")
+                    && *arg != std::ffi::OsStr::new("Bypass")
+            }))
+            .output()
+            .unwrap();
+        assert!(!old_launcher.status.success(), "{old_launcher:?}");
+        assert!(
+            String::from_utf8_lossy(&old_launcher.stderr).contains("UnauthorizedAccess"),
+            "old launcher must fail because script execution is restricted: {old_launcher:?}"
+        );
+        assert!(old_launcher.stdout.is_empty());
+        assert!(!marker.exists(), "batch shell must never run");
+        let safe = [
+            "argument with spaces",
+            "a&b",
+            "%SystemRoot%",
+            "it's literal",
+            "don\u{2019}t \u{2018}\u{201a}\u{201b} $env:PATH $(throw 'not literal')",
+        ];
+        let native_only = ["", r#"embedded "quotes""#, r"C:\space here\"];
+        for program in [&shim, &executable] {
+            for history_only in [false, true] {
+                let mut values = safe.to_vec();
+                if program == &executable {
+                    values.extend(native_only);
+                }
+                let mut args = vec![program.to_str().unwrap()];
+                args.extend(values.iter().copied());
+                let command = crate::coordinator::join_windows_commandline(&args);
+                let mut spawned = if history_only {
+                    spawn_history_agent_process(
+                        &command,
+                        "custom:batch-test",
+                        &crate::agent_source::AgentSource::Host,
+                        SharedProviderSelection::Disabled,
+                    )
+                } else {
+                    spawn_agent_process_with_provider(
+                        &command,
+                        Some(&directory),
+                        Some("custom:batch-test"),
+                        ChildEnvironmentPolicy::CleanCloudDiscovery,
+                        SharedProviderSelection::Disabled,
+                    )
+                }
+                .unwrap();
+                let mut stdout = String::new();
+                tokio::time::timeout(
+                    Duration::from_secs(10),
+                    spawned
+                        .child
+                        .take_stdout()
+                        .await
+                        .unwrap()
+                        .read_to_string(&mut stdout),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                assert!(spawned.child.wait().await.unwrap().success());
+                let actual: Vec<&str> = stdout.lines().collect();
+                let expected: Vec<String> = values
+                    .iter()
+                    .map(|arg| crate::osc52::base64_encode(arg.as_bytes()))
+                    .collect();
+                assert_eq!(actual, expected, "history_only={history_only}, {program:?}");
+                assert!(!marker.exists(), "batch shell must never run");
+            }
+        }
+        for arg in native_only {
+            for history_only in [false, true] {
+                let command =
+                    crate::coordinator::join_windows_commandline(&[shim.to_str().unwrap(), arg]);
+                let result = if history_only {
+                    spawn_history_agent_process(
+                        &command,
+                        "custom:batch-test",
+                        &crate::agent_source::AgentSource::Host,
+                        SharedProviderSelection::Disabled,
+                    )
+                } else {
+                    spawn_agent_process_with_provider(
+                        &command,
+                        Some(&directory),
+                        Some("custom:batch-test"),
+                        ChildEnvironmentPolicy::CleanCloudDiscovery,
+                        SharedProviderSelection::Disabled,
+                    )
+                };
+                assert!(result.err().unwrap().to_string().contains("unsupported"));
+                assert!(!marker.exists());
+            }
+        }
+        std::fs::remove_file(shim.with_extension("ps1")).unwrap();
+        let command = crate::coordinator::join_windows_commandline(&[shim.to_str().unwrap()]);
+        for history_only in [false, true] {
+            let result = if history_only {
+                spawn_history_agent_process(
+                    &command,
+                    "custom:batch-test",
+                    &crate::agent_source::AgentSource::Host,
+                    SharedProviderSelection::Disabled,
+                )
+            } else {
+                spawn_agent_process_with_provider(
+                    &command,
+                    Some(&directory),
+                    Some("custom:batch-test"),
+                    ChildEnvironmentPolicy::CleanCloudDiscovery,
+                    SharedProviderSelection::Disabled,
+                )
+            };
+            assert!(result.err().unwrap().to_string().contains("companion"));
+        }
+        assert!(!marker.exists());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn host_spawns_round_trip_windows_arguments() {
+        use tokio::io::AsyncReadExt;
+
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("Generated Files")
+            .join(format!("agent argv {}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let script = directory.join("echo arguments.ps1");
+        std::fs::write(
+            &script,
+            "[Console]::WriteLine((ConvertTo-Json -Compress -InputObject @($args)))",
+        )
+        .unwrap();
+        let expected = [
+            "--config",
+            "",
+            "--stdio",
+            r"C:\directory with spaces\",
+            r#"embedded "quotes" and \"escaped quotes\""#,
+            "argument with spaces",
+        ];
+        let mut args = vec![
+            "pwsh.exe",
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            script.to_str().unwrap(),
+        ];
+        args.extend(expected);
+        let command = crate::coordinator::join_windows_commandline(&args);
+        for history_only in [false, true] {
+            let mut spawned = if history_only {
+                spawn_history_agent_process(
+                    &command,
+                    "custom:argv-test",
+                    &crate::agent_source::AgentSource::Host,
+                    SharedProviderSelection::Disabled,
+                )
+            } else {
+                spawn_agent_process_with_provider(
+                    &command,
+                    Some(&directory),
+                    Some("custom:argv-test"),
+                    ChildEnvironmentPolicy::CleanCloudDiscovery,
+                    SharedProviderSelection::Disabled,
+                )
+            }
+            .unwrap();
+            let mut stdout = String::new();
+            tokio::time::timeout(
+                Duration::from_secs(10),
+                spawned
+                    .child
+                    .take_stdout()
+                    .await
+                    .unwrap()
+                    .read_to_string(&mut stdout),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert!(spawned.child.wait().await.unwrap().success());
+            let actual: Vec<String> = serde_json::from_str(stdout.trim()).unwrap();
+            assert_eq!(actual, expected, "history_only={history_only}");
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn host_spawns_preserve_quoted_executable_and_argument_paths() {
+        use tokio::io::AsyncReadExt;
+
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("Generated Files")
+            .join(format!("agent with spaces {}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let executable = directory.join("custom agent.exe");
+        let marker = directory.join("argument with spaces.txt");
+        let system_root = std::env::var_os("SystemRoot").unwrap();
+        std::fs::copy(
+            PathBuf::from(system_root)
+                .join("System32")
+                .join("where.exe"),
+            &executable,
+        )
+        .unwrap();
+        std::fs::write(&marker, "").unwrap();
+        let pattern = format!("{}:argument with spaces.txt", directory.display());
+        let command = crate::coordinator::join_windows_commandline(&[
+            executable.to_str().unwrap(),
+            "/F",
+            &pattern,
+        ]);
+
+        for history_only in [false, true] {
+            let mut spawned = if history_only {
+                spawn_history_agent_process(
+                    &command,
+                    "custom:spawn-test",
+                    &crate::agent_source::AgentSource::Host,
+                    SharedProviderSelection::Disabled,
+                )
+            } else {
+                spawn_agent_process_with_provider(
+                    &command,
+                    Some(&directory),
+                    Some("custom:spawn-test"),
+                    ChildEnvironmentPolicy::CleanCloudDiscovery,
+                    SharedProviderSelection::Disabled,
+                )
+            }
+            .unwrap();
+            assert_eq!(spawned.raw_program, executable.to_str().unwrap());
+            assert_eq!(spawned.resolved_program, executable.to_str().unwrap());
+            let mut stdout = String::new();
+            tokio::time::timeout(
+                Duration::from_secs(10),
+                spawned
+                    .child
+                    .take_stdout()
+                    .await
+                    .unwrap()
+                    .read_to_string(&mut stdout),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            let status = spawned.child.wait().await.unwrap();
+            assert!(
+                status.success(),
+                "history_only={history_only}, status={status}, stdout={stdout}",
+            );
+            assert_eq!(stdout.trim().trim_matches('"'), marker.to_str().unwrap());
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[tokio::test]
     async fn failed_acp_startup_reclaims_the_owned_descendant_before_returning() {

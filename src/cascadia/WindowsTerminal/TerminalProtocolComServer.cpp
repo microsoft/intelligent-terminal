@@ -12,6 +12,7 @@
 #include <til/io.h>
 #include "../inc/TerminalProtocolProxyRegistration.h"
 #include "../TerminalProtocol/ProtocolParsing.h"
+#include "../TerminalProtocol/ProtocolTabCreation.h"
 #include "../inc/AgentRegistry.h"
 
 #include <algorithm>
@@ -597,6 +598,7 @@ try
         "create_tab",
         "split_pane",
         "create_agent_cli_tab",
+        "resume_custom_agent_cli_tab",
         "split_agent_cli_pane",
         "close_pane",
         "send_input",
@@ -991,7 +993,16 @@ try
 }
 CATCH_RETURN()
 
-HRESULT TerminalProtocolComServer::_CreateTab(unsigned __int64 windowId, BSTR profile, BSTR commandline, BSTR title, BSTR startingDirectory, boolean suppressAppTitle, boolean background, const winrt::hstring& nativeAgentProviderId, BSTR* json)
+STDMETHODIMP TerminalProtocolComServer::ResumeCustomAgentCliTab(unsigned __int64 windowId, BSTR profile, BSTR providerId, BSTR agentSessionId, BSTR title, BSTR startingDirectory, boolean background, BSTR* json)
+try
+{
+    const auto session = _hstr(agentSessionId);
+    RETURN_HR_IF(E_INVALIDARG, session.empty());
+    return _CreateTab(windowId, profile, nullptr, title, startingDirectory, false, background, _CanonicalNativeAgentProviderId(_hstr(providerId)), json, session);
+}
+CATCH_RETURN()
+
+HRESULT TerminalProtocolComServer::_CreateTab(unsigned __int64 windowId, BSTR profile, BSTR commandline, BSTR title, BSTR startingDirectory, boolean suppressAppTitle, boolean background, const winrt::hstring& nativeAgentProviderId, BSTR* json, const winrt::hstring& customAgentSessionId)
 try
 {
     RETURN_HR_IF_NULL(E_POINTER, json);
@@ -1027,6 +1038,7 @@ try
     // Build NewTerminalArgs.
     winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs newTermArgs;
     newTermArgs.NativeAgentProviderId(nativeAgentProviderId);
+    newTermArgs.CustomAgentSessionId(customAgentSessionId);
     const auto profileH = _hstr(profile);
     const auto commandlineH = _hstr(commandline);
     const auto titleH = _hstr(title);
@@ -1044,7 +1056,22 @@ try
             newTermArgs.SuppressApplicationTitle(true);
     }
 
-    auto cr = page.CreateProtocolTab(newTermArgs, background != 0).get();
+    Protocol::TabCreationResult cr{};
+    try
+    {
+        cr = page.CreateProtocolTab(newTermArgs, background != 0).get();
+    }
+    catch (const winrt::hresult_error& error)
+    {
+        if (error.code() != ::Microsoft::Terminal::Protocol::ElevationHandoff)
+        {
+            throw;
+        }
+        Json::Value result{ Json::objectValue };
+        result["outcome"] = "elevation_handoff";
+        *json = _bstrFromJson(result);
+        return S_OK;
+    }
     RETURN_HR_IF(E_FAIL, cr.SessionId == winrt::guid{});
 
     const auto& props = targetHost->Logic().WindowProperties();

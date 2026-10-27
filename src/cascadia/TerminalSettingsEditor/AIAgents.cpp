@@ -7,6 +7,7 @@
 #include <winrt/Windows.UI.Xaml.Documents.h>
 
 #include "AIAgents.h"
+#include "AIAgentsViewModel.h"
 #include "AIAgents.g.cpp"
 
 using namespace winrt::Windows::UI::Xaml;
@@ -249,7 +250,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (owner == AcpAgentComboBox())
         {
             viewModel.CurrentAcpAgent(entry);
-            viewModel.EditCustomAcpAgent();
+            winrt::get_self<AIAgentsViewModel>(viewModel)->EditCustomAcpAgent(entry.Id());
             CustomAcpCommandBox().Focus(FocusState::Programmatic);
         }
         else
@@ -257,6 +258,32 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             viewModel.CurrentDelegateAgent(entry);
             viewModel.EditCustomDelegateAgent();
             CustomDelegateCommandBox().Focus(FocusState::Programmatic);
+        }
+    }
+
+    void AIAgents::CustomAcpAgentSave_Click(const IInspectable&, const RoutedEventArgs&)
+    {
+        const auto viewModel = ViewModel();
+        if (viewModel.IsCustomAgentPolicyLocked())
+        {
+            return;
+        }
+
+        viewModel.SaveCustomAcpAgent();
+        const auto error = viewModel.CustomAgentError();
+        if (!error.empty())
+        {
+            const auto text = CustomAgentErrorText();
+            // Update the UIA name before announcing, even when the error is unchanged.
+            text.Text(error);
+            if (const auto peer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(text))
+            {
+                peer.RaiseNotificationEvent(
+                    Automation::Peers::AutomationNotificationKind::ActionAborted,
+                    Automation::Peers::AutomationNotificationProcessing::All,
+                    error,
+                    L"CustomAgentSaveError");
+            }
         }
     }
 

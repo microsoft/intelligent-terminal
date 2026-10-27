@@ -373,6 +373,14 @@ pub enum MasterExtRequest {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
     },
+    SessionActivate {
+        request_id: u64,
+        identity: crate::session_registry::SessionIdentity,
+        window_id: u64,
+        activation_id: String,
+        tab_id: String,
+        status_only: bool,
+    },
     /// Hot-swap the ACP model on this helper's live session(s) via
     /// `set_session_model`, without restarting anything. Two callers:
     /// * settings hot-reload (`acpModel` changed) and the per-pane `/model`
@@ -3036,7 +3044,7 @@ pub async fn run_acp_client_over_pipe(
     mut rename_session_rx: mpsc::UnboundedReceiver<RenameSessionRequest>,
     mut restart_rx: mpsc::UnboundedReceiver<AgentLifecycleRequest>,
     mut session_hook_rx: mpsc::UnboundedReceiver<crate::app::QueuedSessionHook>,
-    mut master_ext_rx: mpsc::UnboundedReceiver<MasterExtRequest>,
+    master_ext_rx: mpsc::UnboundedReceiver<MasterExtRequest>,
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     post_login_reconnect: bool,
@@ -3046,6 +3054,10 @@ pub async fn run_acp_client_over_pipe(
     >,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) -> Result<AcpClientExit> {
+    let mut master_ext_rx = PendingMasterRequests {
+        receiver: master_ext_rx,
+        event_tx: event_tx.clone(),
+    };
     let startup_probe = StartupProbe::new();
     let usage_family_id = agent_id.as_deref().and_then(|agent_id| {
         let family_id = agent_id.trim().to_ascii_lowercase();
@@ -3958,7 +3970,7 @@ pub async fn run_acp_client_over_pipe(
                     }
                 }));
             }
-            Some(req) = master_ext_rx.recv() => {
+            Some(req) = master_ext_rx.receiver.recv() => {
                 lifecycle_tasks.retain(|task| !task.is_finished());
                 lifecycle_tasks.push(dispatch_master_ext_request(
                     req,
@@ -4144,6 +4156,44 @@ pub async fn run_acp_client_over_pipe(
     Ok(AcpClientExit::ChannelsClosed)
 }
 
+fn session_activation_rejection_message(
+    response: &crate::session_registry::SessionActivateResponse,
+    session_id: &str,
+) -> String {
+    use crate::session_mgmt::NotResumableReason;
+
+    // Receipt details are diagnostic-only, including errors from external providers.
+    tracing::warn!(
+        target: "agents_view",
+        activation_id = %response.activation_id,
+        action = %response.action,
+        reason = ?response.rejection_reason,
+        detail = ?response.detail,
+        "session activation rejected"
+    );
+    match response.rejection_reason {
+        Some(NotResumableReason::LiveWithoutPane) => {
+            t!("system.cannot_focus_session", session_id = session_id).to_string()
+        }
+        Some(NotResumableReason::LoadSessionNotSupported) => t!(
+            "system.cannot_resume_no_load_session",
+            agent = t!("system.fallback.this_agent")
+        )
+        .to_string(),
+        Some(NotResumableReason::CliHasNoResumeFlag) => t!(
+            "system.cannot_resume_no_resume_flag",
+            agent = t!("system.fallback.this_agent")
+        )
+        .to_string(),
+        Some(NotResumableReason::UnknownCli) => t!(
+            "system.cannot_resume_unknown_agent",
+            session_id = session_id
+        )
+        .to_string(),
+        None => t!("agents.status.error").to_string(),
+    }
+}
+
 /// Spawn a per-prompt task that resolves the tab's ACP session (lazily
 /// creating one if needed), instruments timing, runs `conn.prompt`, and
 /// cleans up state on completion. Extracted from the old inline body in
@@ -4302,6 +4352,71 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                     }
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
+            }
+            MasterExtRequest::SessionActivate {
+                request_id,
+                identity,
+                window_id,
+                activation_id,
+                tab_id: _,
+                status_only,
+            } => {
+                use crate::session_registry::SessionActivationState;
+                let mut status_only = status_only;
+                loop {
+                    let request = crate::session_registry::build_session_activate_request(
+                        identity.clone(),
+                        window_id,
+                        activation_id.clone(),
+                        status_only,
+                    );
+                    let response = match tokio::time::timeout(
+                        std::time::Duration::from_secs(8),
+                        conn.ext_method(request),
+                    )
+                    .await
+                    {
+                        Ok(Ok(raw)) => crate::session_registry::parse_session_activate_response(&raw.0),
+                        error => {
+                            tracing::warn!(target: "agents_view", request_id, ?error, "session activation outcome ambiguous; retaining receipt");
+                            break;
+                        }
+                    };
+                    let response = match response {
+                        Ok(response) if response.activation_id == activation_id => response,
+                        _ => {
+                            tracing::warn!(target: "agents_view", request_id, "invalid session activation receipt; retaining identity");
+                            break;
+                        }
+                    };
+                    match response.state {
+                        SessionActivationState::Pending => {
+                            // Coalesced aliases are pending with accepted=false.
+                            // Never execute again, even if this task is aborted.
+                            if status_only {
+                                break;
+                            }
+                            status_only = true;
+                        }
+                        SessionActivationState::Unknown => break,
+                        SessionActivationState::Complete => {
+                            if !response.accepted {
+                                let _ = event_tx.send(AppEvent::SessionActivationRejected {
+                                    activation_id: activation_id.clone(),
+                                    message: session_activation_rejection_message(
+                                        &response,
+                                        identity.session_id.0.as_ref(),
+                                    ),
+                                });
+                            }
+                            let _ = event_tx.send(AppEvent::SessionActivationCompleted {
+                                activation_id,
+                            });
+                            let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
+                            break;
+                        }
+                    }
+                }
             }
             MasterExtRequest::SetSessionModel {
                 request_id,
@@ -5397,6 +5512,45 @@ fn retire_queued_prompt_submissions(prompt_rx: &mut mpsc::UnboundedReceiver<Prom
     }
 }
 
+// Own the queue across startup errors, normal teardown, and task cancellation.
+// Only requests still in this queue are definitely never dispatched.
+pub(crate) struct PendingMasterRequests {
+    pub(crate) receiver: mpsc::UnboundedReceiver<MasterExtRequest>,
+    pub(crate) event_tx: mpsc::UnboundedSender<AppEvent>,
+}
+
+impl PendingMasterRequests {
+    fn close(&mut self) {
+        self.receiver.close();
+        while let Ok(request) = self.receiver.try_recv() {
+            if let MasterExtRequest::SessionActivate {
+                identity,
+                window_id,
+                activation_id,
+                tab_id,
+                status_only: false,
+                ..
+            } = request
+            {
+                let _ = self
+                    .event_tx
+                    .send(AppEvent::SessionActivationNotDispatched {
+                        identity,
+                        window_id,
+                        activation_id,
+                        tab_id,
+                    });
+            }
+        }
+    }
+}
+
+impl Drop for PendingMasterRequests {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn close_client_receivers(
     prompt_rx: &mut mpsc::UnboundedReceiver<PromptSubmission>,
@@ -5406,7 +5560,7 @@ fn close_client_receivers(
     rename_session_rx: &mut mpsc::UnboundedReceiver<RenameSessionRequest>,
     restart_rx: &mut mpsc::UnboundedReceiver<AgentLifecycleRequest>,
     session_hook_rx: &mut mpsc::UnboundedReceiver<crate::agent_sessions::SessionEvent>,
-    master_ext_rx: &mut mpsc::UnboundedReceiver<MasterExtRequest>,
+    master_ext_rx: &mut PendingMasterRequests,
 ) {
     retire_queued_prompt_submissions(prompt_rx);
     new_session_rx.close();
@@ -6308,6 +6462,98 @@ mod tests {
     use std::time::Duration;
     use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
+
+    #[test]
+    fn session_activation_rejection_localizes_and_logs_diagnostics_separately() {
+        use crate::session_mgmt::NotResumableReason;
+        use crate::session_registry::{SessionActivateResponse, SessionActivationState};
+        use std::io::{self, Write};
+
+        struct LogWriter(Arc<Mutex<Vec<u8>>>);
+        impl Write for LogWriter {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("de-DE");
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let writer = Arc::clone(&output);
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .without_time()
+            .with_writer(move || LogWriter(Arc::clone(&writer)))
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, || {
+            for (reason, expected) in [
+                (
+                    Some(NotResumableReason::UnknownCli),
+                    t!(
+                        "system.cannot_resume_unknown_agent",
+                        session_id = "session-1"
+                    )
+                    .to_string(),
+                ),
+                (
+                    Some(NotResumableReason::LiveWithoutPane),
+                    t!("system.cannot_focus_session", session_id = "session-1").to_string(),
+                ),
+                (
+                    Some(NotResumableReason::LoadSessionNotSupported),
+                    t!(
+                        "system.cannot_resume_no_load_session",
+                        agent = t!("system.fallback.this_agent")
+                    )
+                    .to_string(),
+                ),
+                (
+                    Some(NotResumableReason::CliHasNoResumeFlag),
+                    t!(
+                        "system.cannot_resume_no_resume_flag",
+                        agent = t!("system.fallback.this_agent")
+                    )
+                    .to_string(),
+                ),
+                (None, "Fehler".to_string()),
+            ] {
+                for detail in [
+                    Some("The custom agent definition is no longer configured.".to_string()),
+                    Some("PROVIDER_TRANSPORT_DIAGNOSTIC".to_string()),
+                    None,
+                ] {
+                    let receipt = SessionActivateResponse {
+                        activation_id: "activation-1".to_string(),
+                        state: SessionActivationState::Complete,
+                        action: "not_resumable".to_string(),
+                        accepted: false,
+                        detail,
+                        rejection_reason: reason,
+                    };
+                    let wire = serde_json::value::to_raw_value(&receipt).unwrap();
+                    let parsed =
+                        crate::session_registry::parse_session_activate_response(&wire).unwrap();
+                    let message = super::session_activation_rejection_message(&parsed, "session-1");
+                    assert_eq!(message, expected);
+                    assert!(!message.contains("Cannot"));
+                    assert!(!message.contains("no longer configured"));
+                    assert!(!message.contains("PROVIDER_TRANSPORT_DIAGNOSTIC"));
+                }
+            }
+        });
+        let log = String::from_utf8(output.lock().unwrap().clone()).unwrap();
+        assert!(log.contains("session activation rejected"));
+        assert!(log.contains("activation-1"));
+        assert!(log.contains("The custom agent definition is no longer configured."));
+        assert!(log.contains("PROVIDER_TRANSPORT_DIAGNOSTIC"));
+        assert!(!log.contains("Fehler"));
+    }
 
     #[test]
     fn provider_disable_pending_localizes_reason() {

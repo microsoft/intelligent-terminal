@@ -1370,6 +1370,27 @@ pub struct DispatchedCommand {
 
 // --- App ---
 
+struct PendingSessionActivation {
+    request: crate::protocol::acp::client::MasterExtRequest,
+    delivery_tab_id: String,
+}
+
+#[cfg(test)]
+impl From<crate::protocol::acp::client::MasterExtRequest> for PendingSessionActivation {
+    fn from(request: crate::protocol::acp::client::MasterExtRequest) -> Self {
+        let delivery_tab_id = match &request {
+            crate::protocol::acp::client::MasterExtRequest::SessionActivate { tab_id, .. } => {
+                tab_id.clone()
+            }
+            _ => unreachable!("only activation requests have receipts"),
+        };
+        Self {
+            request,
+            delivery_tab_id,
+        }
+    }
+}
+
 pub struct App {
     pub mode: AppMode,
     pub setup: Option<SetupState>,
@@ -1488,6 +1509,8 @@ pub struct App {
     rename_session_tx: mpsc::UnboundedSender<RenameSessionRequest>,
     restart_tx: mpsc::UnboundedSender<AgentLifecycleRequest>,
     master_request_tx: mpsc::UnboundedSender<crate::protocol::acp::client::MasterExtRequest>,
+    /// Survives ACP task cancellation/reconnect; retained requests are status-only.
+    pending_session_activations: HashMap<String, PendingSessionActivation>,
     debug_capture_enabled: Arc<AtomicBool>,
     /// Cached for creating DeferredAcpParams after auth-error recovery.
     shell_mgr: Arc<crate::shell::ShellManager>,
@@ -1721,7 +1744,7 @@ pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'s
         CliSource::Gemini => Some("gemini"),
         CliSource::OpenCode => Some("opencode"),
         CliSource::Antigravity => Some("antigravity"),
-        CliSource::Unknown(_) => None,
+        CliSource::Custom(_) | CliSource::Unknown(_) => None,
     }
 }
 
@@ -1857,6 +1880,7 @@ impl App {
             rename_session_tx,
             restart_tx,
             master_request_tx,
+            pending_session_activations: HashMap::new(),
             debug_capture_enabled,
             next_yolo_reconcile_id: 0,
             pending_yolo_reconciles: HashMap::new(),
@@ -3294,6 +3318,10 @@ impl App {
     /// discovered in a shell pane comes back in a shell pane via the
     /// CLI's own resume flag/verb.
     fn activate_agent_session_routed(&mut self, s: &crate::agent_sessions::AgentSession) {
+        if matches!(s.cli_source, crate::agent_sessions::CliSource::Custom(_)) {
+            self.dispatch_custom_session_activation(s);
+            return;
+        }
         use crate::session_mgmt::{
             decide_enter_action, liveness_from_status, EnterAction, LoadSessionCapability,
             NotResumableReason, RowSnapshot,
@@ -3936,6 +3964,90 @@ impl App {
         tab.agents_view.next_request_id
     }
 
+    fn dispatch_custom_session_activation(
+        &mut self,
+        session: &crate::agent_sessions::AgentSession,
+    ) {
+        let Some(window_id) = self
+            .window_id
+            .as_deref()
+            .and_then(|id| id.parse::<u64>().ok())
+            .filter(|id| *id != 0)
+        else {
+            tracing::warn!(target: "agents_view", "custom session activation has no owner window");
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!(
+                    "system.cannot_resume_unknown_agent",
+                    session_id = session.key.as_str()
+                )
+                .into_owned(),
+            ));
+            return;
+        };
+        let identity = match crate::custom_agents::activation_identity(
+            session,
+            self.current_tab().agents_view.snapshot.as_deref(),
+        ) {
+            Ok(identity) => identity,
+            Err(error) => {
+                tracing::warn!(target: "agents_view", %error, "custom session identity is unavailable");
+                self.current_tab_mut().messages.push(ChatMessage::warning(
+                    t!(
+                        "system.cannot_resume_unknown_agent",
+                        session_id = session.key.as_str()
+                    )
+                    .into_owned(),
+                ));
+                return;
+            }
+        };
+        let tab_id = self.active_tab_key().to_string();
+        if let Some(pending) = self.pending_session_activations.values().find(|pending| {
+            pending.delivery_tab_id == tab_id && matches!(&pending.request,
+                crate::protocol::acp::client::MasterExtRequest::SessionActivate {
+                    identity: pending_identity, ..
+                } if pending_identity == &identity)
+        }) {
+            let _ = self.master_request_tx.send(pending.request.clone());
+            return;
+        }
+        let request_id = self.next_agents_rpc_request_id();
+        let activation_id = uuid::Uuid::new_v4().to_string();
+        let request = crate::protocol::acp::client::MasterExtRequest::SessionActivate {
+            request_id,
+            identity,
+            window_id,
+            activation_id: activation_id.clone(),
+            tab_id: tab_id.clone(),
+            status_only: false,
+        };
+        let mut retained = request.clone();
+        if let crate::protocol::acp::client::MasterExtRequest::SessionActivate {
+            status_only, ..
+        } = &mut retained
+        {
+            *status_only = true;
+        }
+        self.pending_session_activations.insert(
+            activation_id.clone(),
+            PendingSessionActivation {
+                request: retained,
+                delivery_tab_id: tab_id,
+            },
+        );
+        if self.master_request_tx.send(request).is_err() {
+            self.pending_session_activations.remove(&activation_id);
+            tracing::warn!(target: "agents_view", "custom session activation channel is unavailable");
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!(
+                    "system.cannot_resume_unknown_agent",
+                    session_id = session.key.as_str()
+                )
+                .into_owned(),
+            ));
+        }
+    }
+
     fn dispatch_session_focus_rpc(&mut self, sid: &str) {
         let request_id = self.next_agents_rpc_request_id();
         let sid = agent_client_protocol::schema::v1::SessionId::new(sid.to_string());
@@ -3956,6 +4068,13 @@ impl App {
                     sid.0.to_string(),
                 ],
             });
+        }
+
+    }
+
+    fn reconcile_session_activations(&self) {
+        for pending in self.pending_session_activations.values() {
+            let _ = self.master_request_tx.send(pending.request.clone());
         }
     }
 
@@ -5690,6 +5809,7 @@ impl App {
             AppEvent::SessionConfigSetFailed { .. } => "session_config_set_failed",
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::PromptError { .. } => "prompt_error",
+            #[cfg(test)]
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
             AppEvent::AgentPasteReady { .. } => "agent_paste_ready",
             AppEvent::AgentPasteFailed { .. } => "agent_paste_failed",
@@ -5741,6 +5861,9 @@ impl App {
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
+            AppEvent::SessionActivationCompleted { .. } => "session_activation_completed",
+            AppEvent::SessionActivationRejected { .. } => "session_activation_rejected",
+            AppEvent::SessionActivationNotDispatched { .. } => "session_activation_not_dispatched",
             AppEvent::DirectTerminalActionProposal { .. } => "direct_terminal_action_proposal",
             AppEvent::DirectTerminalActionProposalCommit { .. } => {
                 "direct_terminal_action_proposal_commit"
@@ -7432,6 +7555,11 @@ impl App {
         if self.pending_yolo_session_tabs.remove(old_tab_id) {
             self.pending_yolo_session_tabs
                 .insert(new_tab_id.to_string());
+        }
+        for pending in self.pending_session_activations.values_mut() {
+            if pending.delivery_tab_id == old_tab_id {
+                pending.delivery_tab_id = new_tab_id.to_string();
+            }
         }
         let had_session = if let Some(mut entry) = self.tab_sessions.remove(old_tab_id) {
             // Preserve target slot's TabSession if one was lazily

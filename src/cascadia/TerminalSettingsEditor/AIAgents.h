@@ -19,6 +19,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void CustomAgentEdit_Click(
             const winrt::Windows::Foundation::IInspectable& sender,
             const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
+        void CustomAcpAgentSave_Click(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
         void InlineLinkText_Loaded(
             const winrt::Windows::Foundation::IInspectable& sender,
             const winrt::Windows::UI::Xaml::RoutedEventArgs& e);

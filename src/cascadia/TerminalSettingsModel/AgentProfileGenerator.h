@@ -14,6 +14,11 @@ namespace winrt::Microsoft::Terminal::Settings::Model
     class AgentProfileGenerator final : public IDynamicProfileGenerator
     {
     public:
+        explicit AgentProfileGenerator(winrt::Windows::Foundation::Collections::IVector<Model::CustomAgent> customAgents = nullptr) :
+            _customAgents{ std::move(customAgents) }
+        {
+        }
+
         class DiscoveryCache
         {
         public:
@@ -29,5 +34,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model
         std::wstring_view GetDisplayName() const noexcept override;
         std::wstring_view GetIcon() const noexcept override;
         void GenerateProfiles(std::vector<winrt::com_ptr<implementation::Profile>>& profiles) const override;
+
+    private:
+        winrt::Windows::Foundation::Collections::IVector<Model::CustomAgent> _customAgents;
     };
 }

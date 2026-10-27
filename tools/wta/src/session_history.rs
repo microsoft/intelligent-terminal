@@ -76,7 +76,7 @@ pub(crate) fn classify_and_map(
         .collect()
 }
 
-pub(crate) fn cli_label(cli: &CliSource) -> &'static str {
+pub(crate) fn cli_label(cli: &CliSource) -> &str {
     match cli {
         CliSource::Copilot => "copilot",
         CliSource::Claude => "claude",
@@ -84,6 +84,7 @@ pub(crate) fn cli_label(cli: &CliSource) -> &'static str {
         CliSource::Gemini => "gemini",
         CliSource::OpenCode => "opencode",
         CliSource::Antigravity => "antigravity",
+        CliSource::Custom(id) => id,
         CliSource::Unknown(_) => "agent",
     }
 }

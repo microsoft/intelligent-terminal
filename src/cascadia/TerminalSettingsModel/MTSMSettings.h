@@ -89,6 +89,7 @@ Author(s):
     X(bool, ShowTokenUsageAndCost, "showTokenUsageAndCost", true)                                                                                                                                       \
     X(bool, RenderAgentMarkdown, "renderAgentMarkdown", true)                                                                                                                                           \
     X(hstring, AcpCustomCommand, "acpCustomCommand", L"")                                                                                                                                              \
+    X(winrt::Windows::Foundation::Collections::IVector<Model::CustomAgent>, CustomAgents, "customAgents", winrt::single_threaded_vector<Model::CustomAgent>())                                        \
     X(winrt::Windows::Foundation::Collections::IVector<winrt::hstring>, AcpCustomCommands, "acpCustomCommands", winrt::single_threaded_vector<winrt::hstring>())                                         \
     X(hstring, DelegateCustomCommand, "delegateCustomCommand", L"")                                                                                                                                    \
     X(winrt::Windows::Foundation::Collections::IVector<winrt::hstring>, DelegateCustomCommands, "delegateCustomCommands", winrt::single_threaded_vector<winrt::hstring>())                               \

@@ -1234,6 +1234,8 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring resumeCommandline;
             winrt::hstring backend;
             winrt::hstring cwd;
+            // Captured when bound, so deleting a definition cannot revive an expanded command.
+            bool structuredCustomResume{ false };
         };
         // Most recent resumable agent session observed in each shell pane.
         // Retained after the CLI exits so a persisted-layout restore can
@@ -1491,10 +1493,12 @@ namespace winrt::TerminalApp::implementation
         TerminalApp::IPaneContent _makeSettingsContent();
         std::shared_ptr<Pane> _MakeTerminalPane(const Microsoft::Terminal::Settings::Model::NewTerminalArgs& newTerminalArgs = nullptr,
                                                 const winrt::TerminalApp::Tab& sourceTab = nullptr,
-                                                winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection existingConnection = nullptr);
+                                                winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection existingConnection = nullptr,
+                                                bool* elevationHandedOff = nullptr);
         std::shared_ptr<Pane> _MakePane(const Microsoft::Terminal::Settings::Model::INewContentArgs& newContentArgs = nullptr,
                                         const winrt::TerminalApp::Tab& sourceTab = nullptr,
-                                        winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection existingConnection = nullptr);
+                                        winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection existingConnection = nullptr,
+                                        bool* elevationHandedOff = nullptr);
 
         void _RefreshUIForSettingsReload();
 
@@ -1541,6 +1545,7 @@ namespace winrt::TerminalApp::implementation
                            const winrt::Microsoft::Terminal::Settings::TerminalSettingsCreateResult& controlSettings,
                            const winrt::Microsoft::Terminal::Settings::Model::Profile& profile);
         void _OpenElevatedWT(winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs newTerminalArgs);
+        std::function<void(const Microsoft::Terminal::Settings::Model::NewTerminalArgs&)> _elevatedLaunchTestHook;
 
         safe_void_coroutine _ConnectionStateChangedHandler(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::Foundation::IInspectable& args);
         void _CloseOnExitInfoDismissHandler(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::Foundation::IInspectable& args) const;

@@ -622,13 +622,14 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
     if !surface {
         return String::new();
     }
-    let cli = match s.cli_source {
+    let cli = match &s.cli_source {
         CliSource::Claude => Some("claude"),
         CliSource::Codex => Some("codex"),
         CliSource::Copilot => Some("copilot"),
         CliSource::Gemini => Some("gemini"),
         CliSource::OpenCode => Some("opencode"),
         CliSource::Antigravity => Some("antigravity"),
+        CliSource::Custom(id) => Some(id.as_str()),
         CliSource::Unknown(_) => None,
     };
     let distro = match &s.location {

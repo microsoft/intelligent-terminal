@@ -1149,6 +1149,55 @@ async fn discovery_rejects_failure_from_before_external_retry() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn custom_selection_resolves_only_trusted_settings_commands() {
+    let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+        "customAgents": [
+            {"id": "custom:work", "acp": {"command": "adapter.exe", "args": ["--stdio", "C:\\config dir\\agent.json"]}},
+            {"id": "custom:cli-only", "cli": {"command": "work.exe"}}
+        ]
+    })));
+    let state = make_state_with_wt(mock.clone());
+    let mut metadata = crate::session_registry::WtaMeta {
+        agent_id: Some("custom:work".into()),
+        agent_cmd: Some("untrusted-pipe-command.exe".into()),
+        ..Default::default()
+    };
+    let selected = resolve_custom_agent_selection(&state, &metadata, HelperId(42))
+        .await
+        .unwrap();
+    assert_eq!(
+        selected.command,
+        r#"adapter.exe --stdio "C:\config dir\agent.json""#
+    );
+    assert_eq!(selected.agent_id.as_deref(), Some("custom:work"));
+    assert_eq!(
+        selected.explicit_selection,
+        ExplicitAgentSelection::Accepted
+    );
+    for id in ["custom:missing", "custom:cli-only"] {
+        metadata.agent_id = Some(id.into());
+        assert!(
+            resolve_custom_agent_selection(&state, &metadata, HelperId(42))
+                .await
+                .is_err()
+        );
+    }
+    metadata.agent_id = Some("custom:work".into());
+    metadata.agent_source = Some("wsl".into());
+    metadata.wsl_distro = Some("Ubuntu".into());
+    assert!(
+        resolve_custom_agent_selection(&state, &metadata, HelperId(42))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        mock.calls().len(),
+        3,
+        "a rejected source must not query settings"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn session_telemetry_binding_survives_initialize_without_model_catalog() {
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -1209,14 +1258,14 @@ async fn model_scoped_agent_retires_only_after_its_final_helper_unbinds() {
             assert!(bind_helper_to_agent(&state, &agent, helper_a).await);
             assert!(bind_helper_to_agent(&state, &agent, helper_b).await);
             agent.bound_helpers.lock().await.remove(&helper_a);
-            retire_unbound_model_agent(&state, &agent).await;
+            retire_unbound_agent(&state, &agent).await;
             assert!(
                 state.agents.lock().await.contains_key(&key),
                 "one remaining helper must keep the model generation alive"
             );
 
             agent.bound_helpers.lock().await.remove(&helper_b);
-            retire_unbound_model_agent(&state, &agent).await;
+            retire_unbound_agent(&state, &agent).await;
             assert!(
                 !state.agents.lock().await.contains_key(&key),
                 "the final helper disconnect must retire the model generation"
@@ -1720,7 +1769,7 @@ async fn history_refresh_pool_admission_retires_empty_cell_reaper_results() {
                 .unwrap();
                 assert!(Arc::ptr_eq(&acquired, &fresh));
                 assert!(stale.history_refresh.retired.load(Ordering::Acquire));
-                assert!(stale.history_refresh.cancelled.is_cancelled());
+                assert!(stale.history_refresh.cancellation_token().is_cancelled());
                 assert!(!stale.history_refresh.worker_started.load(Ordering::Acquire));
                 start_agent_history_worker(&state, &stale);
                 assert_eq!(
@@ -2852,6 +2901,7 @@ fn make_state_with_retirement_pending_timeout(
         history_discovery_state: std::sync::atomic::AtomicU8::new(0),
         history_discovery_errors: Mutex::new(HashMap::new()),
         history_discovery_retries: Mutex::new(HashMap::new()),
+        custom_history_keys: Mutex::new(None),
         history_queries: Mutex::new(HashMap::new()),
         history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading.into())
             .0,
@@ -12661,6 +12711,7 @@ async fn sidebar_activation_external_history_does_not_require_ownership_verifica
             assert_eq!(calls[0].0, "create_tab");
             assert_eq!(calls[0].1["window_id"], 42);
             assert_eq!(calls[0].1["native_agent_provider_id"], "copilot");
+            assert!(calls[0].1.get("custom_agent_session_id").is_none());
             assert_eq!(
                 calls[0].1["commandline"],
                 crate::coordinator::build_delegate_resume_commandline(
@@ -12750,6 +12801,120 @@ async fn sidebar_activation_native_hook_unset_origin_resumes_without_reclassifyi
 }
 
 #[tokio::test]
+async fn sidebar_activation_custom_agent_uses_configured_resume_and_preserves_identity() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use std::path::PathBuf;
+
+    for (session_id, has_resume, location, accepted) in [
+        ("session-123", true, SessionLocation::Host, true),
+        ("session-123", false, SessionLocation::Host, false),
+        ("-option", true, SessionLocation::Host, false),
+        (
+            "session-123",
+            true,
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+            false,
+        ),
+    ] {
+        let mut definition = serde_json::json!({
+            "id": "custom:work",
+            "cli": {"command": "work.exe", "args": ["--startup-only"]}
+        });
+        if has_resume {
+            definition["resume"] = serde_json::json!({
+                "command": "resume-work.exe", "args": ["--config", "C:\\config dir\\work.json", "{sessionId}"]
+            });
+        }
+        let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+            "customAgents": [definition],
+            "session_id": "custom-resumed-pane"
+        })));
+        let mut state = make_state_with_wt(mock.clone());
+        Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+        let mut row = SessionInfo::new(SessionId::new(session_id), PathBuf::from("C:\\repo"));
+        row.provider_id = Some("custom:work".into());
+        row.cli_source = Some(CliSource::Custom("custom:work".into()));
+        row.location = location;
+        row.origin = Some(SessionOrigin::Unknown);
+        row.status = Some(AgentStatus::Historical);
+        let identity = SessionIdentity::from_info(&row);
+        state.registry.upsert(row.clone()).await;
+        let response = execute_session_activation(
+            &state,
+            &SessionActivateParams {
+                identity: identity.clone(),
+                window_id: 42,
+                activation_id: "custom-activation".into(),
+            },
+        )
+        .await;
+        assert_eq!(response.accepted, accepted, "{response:?}");
+        let calls = mock.calls();
+        assert_eq!(calls[0].0, "get_settings");
+        if accepted {
+            assert_eq!(calls[1].0, "create_tab");
+            assert_eq!(calls[1].1["native_agent_provider_id"], "custom:work");
+            assert_eq!(calls[1].1["custom_agent_session_id"], session_id);
+            assert_eq!(
+                calls[1].1["commandline"],
+                r#"resume-work.exe --config "C:\config dir\work.json" session-123"#
+            );
+            let resumed = state.registry.lookup_identity(&identity).await.unwrap();
+            assert_eq!(resumed.provider_id, row.provider_id);
+            assert_eq!(
+                resumed.pane_session_id.as_deref(),
+                Some("custom-resumed-pane")
+            );
+        } else {
+            assert_eq!(calls.len(), 1);
+            assert_eq!(
+                state.registry.lookup_identity(&identity).await.unwrap(),
+                row
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn sidebar_activation_missing_custom_definition_has_structured_rejection() {
+    use crate::agent_sessions::{CliSource, SessionLocation};
+    use crate::session_mgmt::NotResumableReason;
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+
+    let mock = Arc::new(MockWtChannel::responding(
+        serde_json::json!({"customAgents": []}),
+    ));
+    let state = make_state_with_wt(mock.clone());
+    let mut row = SessionInfo::new(SessionId::new("missing-definition"), "C:\\repo".into());
+    row.provider_id = Some("custom:removed".into());
+    row.cli_source = Some(CliSource::Custom("custom:removed".into()));
+    row.location = SessionLocation::Host;
+    let params = SessionActivateParams {
+        identity: SessionIdentity::from_info(&row),
+        window_id: 42,
+        activation_id: "missing-definition".into(),
+    };
+    state.registry.upsert(row).await;
+
+    let response = execute_session_activation(&state, &params).await;
+
+    assert!(!response.accepted);
+    assert_eq!(
+        response.rejection_reason,
+        Some(NotResumableReason::UnknownCli)
+    );
+    assert_eq!(
+        response.detail.as_deref(),
+        Some("The custom agent definition is no longer configured.")
+    );
+    assert_eq!(mock.calls().len(), 1);
+    assert_eq!(mock.calls()[0].0, "get_settings");
+}
+
+#[tokio::test]
 async fn sidebar_activation_unknown_provider_or_location_never_creates_tab() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
@@ -12789,6 +12954,11 @@ async fn sidebar_activation_unknown_provider_or_location_never_creates_tab() {
         .await;
         assert!(!response.accepted);
         assert_eq!(response.action, action);
+        assert_eq!(
+            response.rejection_reason,
+            (action == "not_resumable")
+                .then_some(crate::session_mgmt::NotResumableReason::UnknownCli)
+        );
         assert!(mock.calls().is_empty());
         assert_eq!(
             state.registry.lookup_identity(&identity).await.unwrap(),
@@ -13395,6 +13565,15 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
             _params: serde_json::Value,
         ) -> anyhow::Result<serde_json::Value> {
             self.calls.fetch_add(1, Ordering::SeqCst);
+            if method == "get_settings" {
+                return Ok(serde_json::json!({
+                    "customAgents": [{
+                        "id": "custom:work",
+                        "cli": {"command": "work.exe", "args": []},
+                        "resume": {"command": "work.exe", "args": ["--resume", "{sessionId}"]}
+                    }]
+                }));
+            }
             if method == "create_tab" {
                 self.entered.notify_one();
                 tokio::time::timeout(Duration::from_secs(5), self.release.notified())
@@ -13419,9 +13598,9 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
             });
             let state = make_state_with_wt(wt.clone());
             let mut row = SessionInfo::new(SessionId::new("history"), "C:\\repo".into());
-            row.provider_id = Some("copilot".to_string());
+            row.provider_id = Some("custom:work".to_string());
             row.location = SessionLocation::Host;
-            row.cli_source = Some(CliSource::Copilot);
+            row.cli_source = Some(CliSource::Custom("custom:work".into()));
             row.origin = Some(SessionOrigin::Unknown);
             row.status = Some(AgentStatus::Historical);
             let params = SessionActivateParams {
@@ -13459,7 +13638,14 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
                 assert_eq!(receipt.state, SessionActivationState::Pending);
                 assert!(!receipt.accepted);
             }
-            assert_eq!(wt.calls.load(Ordering::SeqCst), 1);
+            let mut repeated = params.clone();
+            repeated.activation_id = "another-enter-press".into();
+            repeated.window_id = 43;
+            let repeated_response = handle_session_activate(&state, &repeated).await.unwrap();
+            let repeated_receipt = parse_session_activate_response(&repeated_response.0).unwrap();
+            assert_eq!(repeated_receipt.activation_id, repeated.activation_id);
+            assert_eq!(repeated_receipt.state, SessionActivationState::Pending);
+            assert_eq!(wt.calls.load(Ordering::SeqCst), 2);
 
             let mut different_window = params.clone();
             different_window.window_id = 43;
@@ -13494,13 +13680,20 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
             .expect("master finishes after caller cancellation");
             assert!(completed.accepted);
             assert_eq!(completed.action, "resume_cli");
-            assert_eq!(wt.calls.load(Ordering::SeqCst), 2);
+            assert_eq!(wt.calls.load(Ordering::SeqCst), 3);
+            let repeated_response = handle_session_activation_status(&state, &repeated)
+                .await
+                .unwrap();
+            let repeated_receipt = parse_session_activate_response(&repeated_response.0).unwrap();
+            assert!(repeated_receipt.accepted);
+            assert_eq!(repeated_receipt.state, SessionActivationState::Complete);
+            assert_eq!(repeated_receipt.activation_id, repeated.activation_id);
             let replay = handle_session_activate(&state, &params).await.unwrap();
             assert_eq!(
                 parse_session_activate_response(&replay.0).unwrap(),
                 completed
             );
-            assert_eq!(wt.calls.load(Ordering::SeqCst), 2);
+            assert_eq!(wt.calls.load(Ordering::SeqCst), 3);
 
             // Eviction or master restart must never turn a status lookup into a restore.
             state.session_activation_receipts.lock().await.clear();
@@ -13511,11 +13704,104 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
                 parse_session_activate_response(&response.0).unwrap().state,
                 SessionActivationState::Unknown
             );
-            assert_eq!(wt.calls.load(Ordering::SeqCst), 2);
+            assert_eq!(wt.calls.load(Ordering::SeqCst), 3);
         }),
     )
     .await
     .expect("disconnect/retry test finishes within 15 seconds");
+}
+
+#[tokio::test]
+async fn sidebar_activation_reservation_preserves_unknown_retries_and_provider_identity() {
+    use crate::agent_sessions::{CliSource, SessionLocation};
+    use crate::session_registry::{
+        parse_session_activate_response, SessionActivateParams, SessionActivateResponse,
+        SessionActivationState, SessionIdentity, SessionInfo,
+    };
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let wt = Arc::new(MockWtChannel::failing("settings unavailable"));
+            let state = make_state_with_wt(wt.clone());
+            let mut row = SessionInfo::new(SessionId::new("retryable"), "C:\\repo".into());
+            row.provider_id = Some("custom:work".into());
+            row.cli_source = Some(CliSource::Custom("custom:work".into()));
+            row.location = SessionLocation::Host;
+            let identity = SessionIdentity::from_info(&row);
+            state.registry.upsert(row).await;
+            for activation_id in ["first-failure", "retry-failure"] {
+                let response = handle_session_activate(
+                    &state,
+                    &SessionActivateParams {
+                        identity: identity.clone(),
+                        window_id: 42,
+                        activation_id: activation_id.into(),
+                    },
+                )
+                .await
+                .unwrap();
+                let receipt = parse_session_activate_response(&response.0).unwrap();
+                assert_eq!(receipt.state, SessionActivationState::Complete);
+                assert!(!receipt.accepted);
+                assert_eq!(receipt.detail.as_deref(), Some("settings unavailable"));
+            }
+            assert_eq!(wt.calls().len(), 2, "definitive failures allow a retry");
+
+            for previous_state in [
+                SessionActivationState::Complete,
+                SessionActivationState::Unknown,
+            ] {
+                for provider in ["custom:work", "custom:other"] {
+                    let state = make_state();
+                    let mut row = SessionInfo::new(SessionId::new("same-id"), "C:\\repo".into());
+                    row.provider_id = Some("custom:work".into());
+                    row.cli_source = Some(CliSource::Custom("custom:work".into()));
+                    row.location = SessionLocation::Host;
+                    let original = SessionActivateParams {
+                        identity: SessionIdentity::from_info(&row),
+                        window_id: 42,
+                        activation_id: "original".into(),
+                    };
+                    state.session_activation_receipts.lock().await.insert(
+                        original.activation_id.clone(),
+                        SessionActivationReceipt {
+                            params: original.clone(),
+                            response: SessionActivateResponse {
+                                activation_id: original.activation_id.clone(),
+                                state: previous_state.clone(),
+                                action: "resume_cli".into(),
+                                accepted: false,
+                                detail: Some("original failure".into()),
+                                rejection_reason: None,
+                            },
+                        },
+                    );
+                    row.provider_id = Some(provider.into());
+                    row.cli_source = Some(CliSource::Custom(provider.into()));
+                    let retry = SessionActivateParams {
+                        identity: SessionIdentity::from_info(&row),
+                        activation_id: "retry".into(),
+                        ..original
+                    };
+                    let response = handle_session_activate(&state, &retry).await.unwrap();
+                    let receipt = parse_session_activate_response(&response.0).unwrap();
+                    assert_eq!(receipt.activation_id, "retry");
+                    assert!(!receipt.accepted);
+                    if previous_state == SessionActivationState::Unknown
+                        && provider == "custom:work"
+                    {
+                        assert_eq!(receipt.state, SessionActivationState::Unknown);
+                        assert_eq!(receipt.detail.as_deref(), Some("original failure"));
+                    } else {
+                        // A definitive rejection releases the reservation; another
+                        // provider's identical session ID is a separate conversation.
+                        assert_eq!(receipt.state, SessionActivationState::Complete);
+                        assert_eq!(receipt.action, "not_found");
+                    }
+                }
+            }
+        })
+        .await;
 }
 
 #[tokio::test]
@@ -13543,6 +13829,7 @@ async fn sidebar_activation_receipt_capacity_preserves_pending_operations() {
                         action: String::new(),
                         accepted: false,
                         detail: None,
+                        rejection_reason: None,
                     },
                     params: pending,
                 },
@@ -13576,6 +13863,12 @@ async fn sidebar_cli_resume_reports_creation_and_focus_failures() {
     for (response, fail_method, detail, call_count) in [
         (serde_json::json!({}), Some("create_tab"), "test failure", 1),
         (serde_json::json!({}), None, "did not return a pane ID", 1),
+        (
+            serde_json::json!({"outcome": "elevation_handoff"}),
+            None,
+            "Elevation was handed off",
+            1,
+        ),
         (
             serde_json::json!({"session_id": " {} "}),
             None,
@@ -13628,6 +13921,26 @@ async fn sidebar_cli_resume_reports_creation_and_focus_failures() {
             }
         );
         assert_eq!(mock.calls().len(), call_count);
+        if response.state == crate::session_registry::SessionActivationState::Unknown {
+            let mut retry = params.clone();
+            retry.activation_id = "new-id-same-conversation".to_string();
+            let receipt = handle_session_activate(&state, &retry).await.unwrap();
+            let receipt =
+                crate::session_registry::parse_session_activate_response(&receipt.0).unwrap();
+            assert_eq!(
+                receipt.state,
+                crate::session_registry::SessionActivationState::Unknown
+            );
+            assert!(!receipt.accepted);
+            assert_eq!(mock.calls().len(), call_count);
+            assert!(handle_session_activation_status(&state, &retry)
+                .await
+                .is_ok());
+            retry.window_id += 1;
+            assert!(handle_session_activation_status(&state, &retry)
+                .await
+                .is_err());
+        }
         let events: Vec<serde_json::Value> =
             crate::wt_protocol_events::take_test_published_events()
                 .into_iter()
@@ -14299,6 +14612,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         history_discovery_state: std::sync::atomic::AtomicU8::new(0),
         history_discovery_errors: Mutex::new(HashMap::new()),
         history_discovery_retries: Mutex::new(HashMap::new()),
+        custom_history_keys: Mutex::new(None),
         history_queries: Mutex::new(HashMap::new()),
         history_status: watch::channel(crate::session_registry::HistoryLoadStatus::Loading.into())
             .0,
@@ -14988,6 +15302,301 @@ fn sidebar_history_discovery_checks_policy_before_installation() {
 }
 
 #[tokio::test]
+async fn sidebar_custom_history_discovery_checks_policy_before_reading_settings() {
+    let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+        "customAgents": [
+            {"id": "custom:unselected", "acp": {"command": "adapter.exe", "args": ["--stdio"]}},
+            {"id": "custom:cli-only", "cli": {"command": "interactive.exe"}}
+        ]
+    })));
+    let mut state = make_state_with_wt(mock.clone());
+    Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+    assert!(configured_custom_history_agents(&state, false)
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(mock.calls().is_empty());
+    let agents = configured_custom_history_agents(&state, true)
+        .await
+        .unwrap();
+    assert_eq!(agents.len(), 1);
+    assert_eq!(agents[0].id, "custom:unselected");
+    assert_eq!(agents[0].command, "adapter.exe --stdio");
+    assert_eq!(state.default_agent_id.as_deref(), Some("copilot"));
+    assert_eq!(
+        mock.calls(),
+        [("get_settings".into(), serde_json::Value::Null)]
+    );
+}
+
+#[tokio::test]
+async fn sidebar_custom_history_discovery_lists_all_providers_without_helpers() {
+    use crate::agent_sessions::CliSource;
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+                "customAgents": [
+                    {"id": "custom:one", "acp": {"command": "adapter.exe", "args": ["--profile", "one"]}},
+                    {"id": "custom:two", "acp": {"command": "adapter.exe", "args": ["--profile", "two"]}},
+                    {"id": "custom:cli-only", "cli": {"command": "interactive.exe"}}
+                ]
+            })));
+            let mut state = make_state_with_wt(mock);
+            Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+            let launches = configured_custom_history_agents(&state, true).await.unwrap();
+            let mut agents = Vec::new();
+            for launch in &launches {
+                let mut agent = listing_agent(CliSource::Custom(launch.id.clone()), &["shared-id"]);
+                Arc::get_mut(&mut agent).unwrap().cmd_key =
+                    agent_cmd_key(&launch.command, Some(&launch.id), &agent.source);
+                add_test_agent_to_pool(&state, &agent).await;
+                agents.push(agent);
+            }
+            for _ in 0..2 {
+                request_host_history_refresh(&state);
+                let _finished = state.history_refresh.lock().await;
+                let response = handle_sessions_list(&state, None, &Default::default()).await.unwrap();
+                let snapshot = crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
+                assert_eq!(snapshot.sessions.len(), 2);
+                let providers: std::collections::BTreeSet<_> = snapshot.sessions.iter()
+                    .map(|row| row.provider_id.as_deref().unwrap()).collect();
+                assert_eq!(providers, std::collections::BTreeSet::from(["custom:one", "custom:two"]));
+                assert_eq!(state.default_agent_id.as_deref(), Some("copilot"));
+                assert!(state.session_to_helper.lock().await.is_empty());
+                let pool = state.agents.lock().await;
+                assert_eq!(pool.len(), 2);
+                for agent in &agents {
+                    assert!(Arc::ptr_eq(pool[&agent.cmd_key].get().unwrap(), agent));
+                    assert!(agent.bound_helpers.lock().await.is_empty());
+                }
+            }
+        }).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn sidebar_custom_history_discovery_retries_settings_without_losing_existing_rows() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mock = Arc::new(MockWtChannel::failing("settings temporarily unavailable"));
+            let mut state = make_state_with_wt(mock.clone());
+            Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+            let row = crate::session_registry::SessionInfo::new(
+                SessionId::new("existing-history"),
+                PathBuf::from("C:\\repo"),
+            );
+            state.registry.upsert(row.clone()).await;
+            let existing_agent = listing_agent(
+                crate::agent_sessions::CliSource::Custom("custom:existing".into()),
+                &[],
+            );
+            add_test_agent_to_pool(&state, &existing_agent).await;
+            for _ in 0..2 {
+                request_host_history_refresh(&state);
+                let _finished = state.history_refresh.lock().await;
+                assert_eq!(state.registry.snapshot().await, [row.clone()]);
+                assert!(!state.history_discovery_errors.lock().await.is_empty());
+                assert!(!existing_agent
+                    .history_refresh
+                    .retired
+                    .load(std::sync::atomic::Ordering::Acquire));
+                assert!(state
+                    .agents
+                    .lock()
+                    .await
+                    .contains_key(&existing_agent.cmd_key));
+            }
+            assert_eq!(
+                mock.calls().len(),
+                1,
+                "explicit refresh requests honor settings retry backoff"
+            );
+            tokio::time::advance(std::time::Duration::from_secs(5)).await;
+            Arc::get_mut(&mut state).unwrap().wt =
+                Some(Arc::new(MockWtChannel::responding(serde_json::json!({}))));
+            request_host_history_refresh(&state);
+            let _finished = state.history_refresh.lock().await;
+            assert!(state.history_discovery_errors.lock().await.is_empty());
+            assert!(state.history_discovery_retries.lock().await.is_empty());
+            assert_eq!(state.registry.snapshot().await, [row]);
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn sidebar_custom_history_discovery_reclaims_only_obsolete_unbound_connections() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for replacement in [Some("new-adapter.exe"), None] {
+                let state = make_state();
+                let mut old = listing_agent(
+                    crate::agent_sessions::CliSource::Custom("custom:edited".into()),
+                    &[],
+                );
+                Arc::get_mut(&mut old).unwrap().cmd_key =
+                    agent_cmd_key("old-adapter.exe", Some("custom:edited"), &old.source);
+                add_test_agent_to_pool(&state, &old).await;
+                let builtin = listing_agent(crate::agent_sessions::CliSource::Copilot, &[]);
+                add_test_agent_to_pool(&state, &builtin).await;
+                let launches: Vec<_> = replacement
+                    .into_iter()
+                    .map(|command| HistoryAgentLaunch {
+                        id: "custom:edited".into(),
+                        command: command.into(),
+                    })
+                    .collect();
+                reconcile_custom_history_agents(&state, &launches).await;
+                assert!(!state.agents.lock().await.contains_key(&old.cmd_key));
+                assert!(state.agents.lock().await.contains_key(&builtin.cmd_key));
+                assert!(!bind_helper_to_agent(&state, &old, HelperId(81)).await);
+                let mut next = listing_agent(
+                    crate::agent_sessions::CliSource::Custom("custom:edited".into()),
+                    &[],
+                );
+                Arc::get_mut(&mut next).unwrap().cmd_key = old.cmd_key.clone();
+                add_test_agent_to_pool(&state, &next).await;
+                retire_unbound_agent(&state, &old).await;
+                assert!(Arc::ptr_eq(
+                    state.agents.lock().await[&old.cmd_key].get().unwrap(),
+                    &next,
+                ));
+            }
+
+            let state = make_state();
+            let mut agent = listing_agent(
+                crate::agent_sessions::CliSource::Custom("custom:shared".into()),
+                &[],
+            );
+            Arc::get_mut(&mut agent).unwrap().cmd_key =
+                agent_cmd_key("adapter.exe", Some("custom:shared"), &agent.source);
+            add_test_agent_to_pool(&state, &agent).await;
+            let a = HelperId(82);
+            let b = HelperId(83);
+            assert!(bind_helper_to_agent(&state, &agent, a).await);
+            assert!(bind_helper_to_agent(&state, &agent, b).await);
+            reconcile_custom_history_agents(&state, &[]).await;
+            agent.bound_helpers.lock().await.remove(&a);
+            retire_unbound_agent(&state, &agent).await;
+            assert!(state.agents.lock().await.contains_key(&agent.cmd_key));
+            assert!(agent
+                .conn
+                .list_sessions(acp::schema::v1::ListSessionsRequest::new())
+                .await
+                .is_ok());
+            agent.bound_helpers.lock().await.remove(&b);
+            retire_unbound_agent(&state, &agent).await;
+            assert!(!state.agents.lock().await.contains_key(&agent.cmd_key));
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn sidebar_custom_history_discovery_retires_obsolete_queries_without_touching_chat() {
+    use std::sync::atomic::Ordering;
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for replacement in [Some("new-adapter.exe"), None] {
+                let state = make_state();
+                let (mut old, mut requests) = controlled_history_agent(
+                    "custom:edited",
+                    crate::agent_source::AgentSource::Host,
+                );
+                Arc::get_mut(&mut old).unwrap().cmd_key =
+                    agent_cmd_key("old-adapter.exe", Some("custom:edited"), &old.source);
+                let helper = HelperId(77);
+                old.bound_helpers.lock().await.insert(helper);
+                add_test_agent_to_pool(&state, &old).await;
+                let builtin = listing_agent(crate::agent_sessions::CliSource::Copilot, &[]);
+                add_test_agent_to_pool(&state, &builtin).await;
+                let launches: Vec<_> = replacement
+                    .into_iter()
+                    .map(|command| HistoryAgentLaunch {
+                        id: "custom:edited".into(),
+                        command: command.into(),
+                    })
+                    .collect();
+                start_agent_history_worker(&state, &old);
+                let reply = requests.recv().await.unwrap();
+                let old_cancelled = old.history_refresh.cancellation_token();
+                reconcile_custom_history_agents(&state, &launches).await;
+                assert!(state.registry.snapshot().await.is_empty());
+                assert!(old.history_refresh.retired.load(Ordering::Acquire));
+                assert!(old.history_refresh.cancellation_token().is_cancelled());
+                assert!(!old.history_refresh.worker_started.load(Ordering::Acquire));
+                assert!(!builtin.history_refresh.retired.load(Ordering::Acquire));
+                assert!(old.bound_helpers.lock().await.contains(&helper));
+                assert!(old
+                    .conn
+                    .list_sessions(acp::schema::v1::ListSessionsRequest::new())
+                    .await
+                    .is_ok());
+                assert!(Arc::ptr_eq(
+                    state.agents.lock().await[&old.cmd_key].get().unwrap(),
+                    &old,
+                ));
+                if let Some(command) = replacement {
+                    let mut new = listing_agent(
+                        crate::agent_sessions::CliSource::Custom("custom:edited".into()),
+                        &["new-store"],
+                    );
+                    Arc::get_mut(&mut new).unwrap().cmd_key =
+                        agent_cmd_key(command, Some("custom:edited"), &new.source);
+                    add_test_agent_to_pool(&state, &new).await;
+                    assert_eq!(
+                        refresh_agent_history(&state, &new, HistoryRefreshTrigger::Immediate).await,
+                        Some(1),
+                    );
+                    reconcile_custom_history_agents(
+                        &state,
+                        &[HistoryAgentLaunch {
+                            id: "custom:edited".into(),
+                            command: "old-adapter.exe".into(),
+                        }],
+                    )
+                    .await;
+                    assert!(!old.history_refresh.retired.load(Ordering::Acquire));
+                    assert!(old_cancelled.is_cancelled());
+                    assert!(!old.history_refresh.cancellation_token().is_cancelled());
+                    assert!(new.history_refresh.retired.load(Ordering::Acquire));
+                    assert!(!state.agents.lock().await.contains_key(&new.cmd_key));
+                    old.bound_helpers.lock().await.remove(&helper);
+                    retire_unbound_agent(&state, &old).await;
+                    assert!(state.agents.lock().await.contains_key(&old.cmd_key));
+                    old.history_refresh.gate.lock().await.query =
+                        history::HistoryQuery::mock(client_connection_to_listing_agent(vec![
+                            "restored-store".into(),
+                        ]));
+                    let generation = old.history_refresh.generation.load(Ordering::Acquire);
+                    start_agent_history_worker(&state, &old);
+                    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                        while old.history_refresh.generation.load(Ordering::Acquire) == generation {
+                            tokio::task::yield_now().await;
+                        }
+                    })
+                    .await
+                    .expect("restored command starts a fresh history worker");
+                    assert_eq!(old.history_refresh.gate.lock().await.last_count, Some(1));
+                }
+                let _ = reply.send(Ok(vec![acp::schema::v1::SessionInfo::new(
+                    "stale-store",
+                    "C:\\repo",
+                )]));
+                tokio::task::yield_now().await;
+                let rows = state.registry.snapshot().await;
+                assert!(rows
+                    .iter()
+                    .all(|row| row.session_id.0.as_ref() != "stale-store"));
+                assert_eq!(
+                    rows.iter()
+                        .any(|row| row.session_id.0.as_ref() == "restored-store"),
+                    replacement.is_some(),
+                );
+                retire_agent_history(&old).await;
+            }
+        })
+        .await;
+}
+
+#[tokio::test]
 async fn sidebar_history_discovery_keeps_registered_gemini_sessions() {
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -15202,7 +15811,7 @@ async fn sidebar_history_discovery_reuses_resident_agents_and_preserves_live_row
             state.registry.upsert(live.clone()).await;
             let ids = ["copilot", "claude", "codex", "opencode"];
             for _ in 0..2 {
-                assert!(refresh_host_history_agents(&state, &ids).await);
+                assert!(refresh_host_history_agents(&state, &native_history_launches(&ids)).await);
                 let rows = state.registry.snapshot().await;
                 assert_eq!(
                     rows.len(),
@@ -15245,7 +15854,7 @@ async fn sidebar_history_discovery_isolates_failed_and_unsupported_agents() {
             let state = make_state();
             let failed =
                 add_sidebar_listing_agent(&state, CliSource::Claude, &["kept-history"]).await;
-            assert!(refresh_host_history_agents(&state, &["claude"]).await);
+            assert!(refresh_host_history_agents(&state, &native_history_launches(&["claude"])).await);
             failed.conn.shutdown();
             *failed.history_refresh.gate.lock().await = HistoryRefreshState::default();
             add_sidebar_listing_agent(&state, CliSource::Copilot, &["healthy-history"]).await;
@@ -15264,9 +15873,9 @@ async fn sidebar_history_discovery_isolates_failed_and_unsupported_agents() {
                 .list = None;
             add_test_agent_to_pool(&state, &unsupported).await;
 
-            assert!(!refresh_host_history_agents(&state, &["claude", "copilot", "gemini"]).await);
+            assert!(!refresh_host_history_agents(&state, &native_history_launches(&["claude", "copilot", "gemini"])).await);
             assert!(
-                refresh_host_history_agents(&state, &["gemini"]).await,
+                refresh_host_history_agents(&state, &native_history_launches(&["gemini"])).await,
                 "unsupported session listing is not a load failure"
             );
             let rows = state.registry.snapshot().await;
@@ -17327,7 +17936,7 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
                 .await
                 .is_ok());
             agent.history_refresh.retired.store(true, Ordering::Release);
-            agent.history_refresh.cancelled.cancel();
+            agent.history_refresh.cancellation_token().cancel();
             tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 while agent.history_refresh.worker_started.load(Ordering::Acquire) {
                     tokio::task::yield_now().await;
@@ -18045,7 +18654,8 @@ async fn history_refresh_timeout_kind_distinguishes_mixed_failures_and_recovery(
             );
             add_test_agent_to_pool(&state, &other_agent).await;
 
-            let refresh = refresh_host_history_agents(&state, &["copilot"]);
+            let launches = native_history_launches(&["copilot"]);
+            let refresh = refresh_host_history_agents(&state, &launches);
             tokio::pin!(refresh);
             let late_reply = tokio::select! {
                 request = timeout_requests.recv() => request.unwrap(),
@@ -18661,7 +19271,10 @@ fn listing_agent_from(
         Some(crate::agent_sessions::CliSource::Gemini) => "gemini".to_string(),
         Some(crate::agent_sessions::CliSource::OpenCode) => "opencode".to_string(),
         Some(crate::agent_sessions::CliSource::Antigravity) => "antigravity".to_string(),
-        Some(crate::agent_sessions::CliSource::Unknown(id)) => id.clone(),
+        Some(
+            crate::agent_sessions::CliSource::Custom(id)
+            | crate::agent_sessions::CliSource::Unknown(id),
+        ) => id.clone(),
         None => "unknown".to_string(),
     };
     let mut cached_init_resp =

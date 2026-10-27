@@ -832,7 +832,7 @@ int wmain(int argc, wchar_t** argv)
     });
 
     // ── new-tab ──
-    std::string newTabCommand, newTabTitle, newTabCwd, newTabProfile, newTabAgentProvider;
+    std::string newTabCommand, newTabTitle, newTabCwd, newTabProfile, newTabAgentProvider, newTabCustomAgentSession;
     uint64_t newTabWindowId = 0;
     bool newTabBackground = false;
     auto* newTabCmd = app.add_subcommand("new-tab", "Create a new tab")->alias("neww");
@@ -841,6 +841,7 @@ int wmain(int argc, wchar_t** argv)
     newTabCmd->add_option("-d,--cwd", newTabCwd, "Starting directory");
     newTabCmd->add_option("-p,--profile", newTabProfile, "Profile");
     newTabCmd->add_option("--agent-provider", newTabAgentProvider, "Native interactive agent CLI provider ID");
+    newTabCmd->add_option("--custom-agent-session", newTabCustomAgentSession, "Custom interactive agent session ID")->needs("--agent-provider");
     newTabCmd->add_option("-w,--window-id", newTabWindowId, "Target window ID (0 uses the most recent window)");
     newTabCmd->add_flag("--background", newTabBackground, "Create the tab without selecting it");
     newTabCmd->callback([&]() {
@@ -857,6 +858,14 @@ int wmain(int argc, wchar_t** argv)
                 winrt::com_ptr<ITerminalProtocolNativeAgent> nativeAgent;
                 RETURN_IF_FAILED(server->QueryInterface(__uuidof(ITerminalProtocolNativeAgent), nativeAgent.put_void()));
                 wil::unique_bstr provider{ Bstr(newTabAgentProvider) };
+                if (newTabCmd->get_option("--custom-agent-session")->count())
+                {
+                    const auto resumeSupport = SupportsCapability(server.get(), "resume_custom_agent_cli_tab");
+                    RETURN_IF_FAILED(resumeSupport);
+                    RETURN_HR_IF(E_NOINTERFACE, resumeSupport != S_OK);
+                    wil::unique_bstr session{ Bstr(newTabCustomAgentSession) };
+                    return nativeAgent->ResumeCustomAgentCliTab(newTabWindowId, profile.get(), provider.get(), session.get(), title.get(), cwd.get(), newTabBackground, j);
+                }
                 return nativeAgent->CreateAgentCliTab(newTabWindowId, profile.get(), command.get(), title.get(), cwd.get(), false, newTabBackground, provider.get(), j);
             }
             return server->CreateTab(newTabWindowId, profile.get(), command.get(), title.get(), cwd.get(), false, newTabBackground, j);

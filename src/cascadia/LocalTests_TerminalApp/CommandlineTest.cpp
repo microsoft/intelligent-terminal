@@ -52,6 +52,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ParseBasicCommandlineIntoArgs);
         TEST_METHOD(ParseNewTabCommand);
         TEST_METHOD(ParseNativeAgentProviderAcrossElevation);
+        TEST_METHOD(ParseCustomAgentResumeAcrossElevation);
+        TEST_METHOD(ParseLegacyCommandlineAcrossElevation);
         TEST_METHOD(ParseSplitPaneIntoArgs);
         TEST_METHOD(ParseComboCommandlineIntoArgs);
         TEST_METHOD(ParseFocusTabArgs);
@@ -138,6 +140,68 @@ namespace TerminalAppLocalTests
     void CommandlineTest::ParseNativeAgentProviderAcrossElevation()
     {
         _NativeAgentProviderAcrossElevation();
+    }
+
+    void CommandlineTest::ParseCustomAgentResumeAcrossElevation()
+    {
+        NewTerminalArgs original;
+        original.Profile(L"{12345678-1234-1234-1234-123456789abc}");
+        original.NativeAgentProviderId(L"custom:batch fixture");
+        original.CustomAgentSessionId(L"conversation-123");
+        original.CustomAgentBackend(L"host:custom:batch fixture");
+        original.StartingDirectory(L"C:\\Working Directory");
+        original.SessionId(winrt::guid{ L"{87654321-4321-4321-4321-cba987654321}" });
+        original.Elevate(winrt::box_value(true).as<winrt::Windows::Foundation::IReference<bool>>());
+        original.Commandline(LR"(powershell.exe -NoProfile -Command "& 'C:\Agent Tools\agent.cmd' --resume conversation-123; exit $LASTEXITCODE")");
+
+        const auto commandline = L"wt.exe new-tab " + std::wstring{ original.ToCommandline() };
+        int argc = 0;
+        const wil::unique_hlocal_ptr<PWSTR[]> argv{ ::CommandLineToArgvW(commandline.c_str(), &argc) };
+        VERIFY_IS_NOT_NULL(argv.get());
+        std::vector<const wchar_t*> rawCommands;
+        for (int i = 0; i < argc; ++i)
+        {
+            rawCommands.push_back(argv[i]);
+        }
+        AppCommandlineArgs appArgs{};
+        _buildCommandlinesHelper(appArgs, 1u, rawCommands);
+        VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
+        const auto restored = appArgs._startupActions.at(0).Args().as<NewTabArgs>().ContentArgs().as<NewTerminalArgs>();
+        VERIFY_ARE_EQUAL(original.Profile(), restored.Profile());
+        VERIFY_ARE_EQUAL(original.NativeAgentProviderId(), restored.NativeAgentProviderId());
+        VERIFY_ARE_EQUAL(original.CustomAgentSessionId(), restored.CustomAgentSessionId());
+        VERIFY_ARE_EQUAL(original.StartingDirectory(), restored.StartingDirectory());
+        VERIFY_ARE_EQUAL(original.SessionId(), restored.SessionId());
+        VERIFY_IS_TRUE(restored.Commandline().empty());
+
+        original.CustomAgentBackend(L"wsl:Ubuntu:custom:batch fixture");
+        VERIFY_THROWS(original.ToCommandline(), winrt::hresult_error);
+    }
+
+    void CommandlineTest::ParseLegacyCommandlineAcrossElevation()
+    {
+        for (const auto provider : { L"", L"custom:legacy" })
+        {
+            NewTerminalArgs original;
+            original.NativeAgentProviderId(provider);
+            original.Commandline(L"cmd.exe");
+            const auto commandline = L"wt.exe new-tab " + std::wstring{ original.ToCommandline() };
+            int argc = 0;
+            const wil::unique_hlocal_ptr<PWSTR[]> argv{ ::CommandLineToArgvW(commandline.c_str(), &argc) };
+            VERIFY_IS_NOT_NULL(argv.get());
+            std::vector<const wchar_t*> rawCommands;
+            for (int i = 0; i < argc; ++i)
+            {
+                rawCommands.push_back(argv[i]);
+            }
+            AppCommandlineArgs appArgs{};
+            _buildCommandlinesHelper(appArgs, 1u, rawCommands);
+            VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
+            const auto restored = appArgs._startupActions.at(0).Args().as<NewTabArgs>().ContentArgs().as<NewTerminalArgs>();
+            VERIFY_ARE_EQUAL(original.Commandline(), restored.Commandline());
+            VERIFY_ARE_EQUAL(original.NativeAgentProviderId(), restored.NativeAgentProviderId());
+            VERIFY_IS_TRUE(restored.CustomAgentSessionId().empty());
+        }
     }
 
     void CommandlineTest::ParseSimpleCommandline()

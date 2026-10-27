@@ -23,6 +23,7 @@
 #include <wil/resource.h>
 #include <json/json.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
+#include "../TerminalProtocol/ProtocolTabCreation.h"
 
 namespace ProtocolParsing = Microsoft::Terminal::Protocol::Parsing;
 
@@ -797,7 +798,7 @@ namespace winrt::TerminalApp::implementation
         // or index must keep it — so those are left untouched. If the resolved
         // GUID somehow can't be matched, GetProfileForArgs falls back to the
         // same "Defaults" profile as before (no regression).
-        if (args && !args.Commandline().empty() && args.Profile().empty() && !args.ProfileIndex())
+        if (args && (!args.Commandline().empty() || !args.CustomAgentSessionId().empty()) && args.Profile().empty() && !args.ProfileIndex())
         {
             auto profileGuid = _settings.GlobalSettings().DefaultProfile();
             if (const auto sourceProfile = _SourceTerminalProfileForTab(_GetFocusedTabImpl()))
@@ -807,7 +808,11 @@ namespace winrt::TerminalApp::implementation
             args.Profile(::Microsoft::Console::Utils::GuidToString(profileGuid));
         }
 
-        auto pane = _MakePane(args, nullptr);
+        bool elevationHandedOff = false;
+        auto pane = _MakePane(args, nullptr, nullptr, &elevationHandedOff);
+        // This HRESULT denotes a dispatched shim, not a created pane. It is
+        // translated into an explicit JSON outcome by the COM boundary.
+        THROW_HR_IF(::Microsoft::Terminal::Protocol::ElevationHandoff, elevationHandedOff);
         if (!pane)
             co_return result;
 

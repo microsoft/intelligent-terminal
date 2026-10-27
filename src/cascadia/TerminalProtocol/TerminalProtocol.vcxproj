@@ -25,6 +25,7 @@
   <ItemGroup>
     <ClInclude Include="pch.h" />
     <ClInclude Include="ProtocolParsing.h" />
+    <ClInclude Include="ProtocolTabCreation.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">

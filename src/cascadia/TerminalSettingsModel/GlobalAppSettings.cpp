@@ -106,6 +106,14 @@ winrt::com_ptr<GlobalAppSettings> GlobalAppSettings::Copy() const
             globals->_CustomModelProviders->Append(get_self<CustomModelProvider>(provider)->Copy());
         }
     }
+    if (_CustomAgents)
+    {
+        globals->_CustomAgents = winrt::single_threaded_vector<Model::CustomAgent>();
+        for (const auto& agent : *_CustomAgents)
+        {
+            globals->_CustomAgents->Append(get_self<CustomAgent>(agent)->Copy());
+        }
+    }
     if (_DisabledProfileSources)
     {
         globals->_DisabledProfileSources = winrt::single_threaded_vector<hstring>();
@@ -213,6 +221,18 @@ void GlobalAppSettings::LayerJson(const Json::Value& json, const OriginTag origi
 
     MTSM_GLOBAL_SETTINGS(GLOBAL_SETTINGS_LAYER_JSON)
 #undef GLOBAL_SETTINGS_LAYER_JSON
+
+    if (_CustomAgents)
+    {
+        std::set<std::wstring> ids;
+        for (const auto& agent : *_CustomAgents)
+        {
+            get_self<CustomAgent>(agent)->Validate();
+            auto id = std::wstring{ agent.Id() };
+            std::ranges::transform(id, id.begin(), [](const wchar_t ch) -> wchar_t { return ch >= L'A' && ch <= L'Z' ? static_cast<wchar_t>(ch + (L'a' - L'A')) : ch; });
+            THROW_HR_IF_MSG(E_INVALIDARG, !ids.insert(std::move(id)).second, "Duplicate custom agent ID");
+        }
+    }
 
     // GH#11975 We only want to allow sensible values and prevent crashes, so we are clamping those values
     // We only want to assign if the value did change through clamping,

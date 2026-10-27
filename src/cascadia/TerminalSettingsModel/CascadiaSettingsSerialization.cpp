@@ -125,9 +125,11 @@ SettingsLoader SettingsLoader::Default(const std::string_view& userJSON, const s
     return loader;
 }
 
-std::vector<Model::ExtensionPackage> SettingsLoader::LoadExtensionPackages()
+std::vector<Model::ExtensionPackage> SettingsLoader::LoadExtensionPackages(const Windows::Foundation::Collections::IVector<Model::CustomAgent>& customAgents)
 {
     SettingsLoader loader{};
+    loader.userSettings.globals = winrt::make_self<GlobalAppSettings>();
+    loader.userSettings.globals->CustomAgents(customAgents);
     loader.GenerateExtensionPackagesFromProfileGenerators();
     loader.FindFragmentsAndMergeIntoUserSettings(true /*generateExtensionPackages*/);
 
@@ -231,7 +233,9 @@ void SettingsLoader::GenerateProfiles()
     generateProfiles(WslDistroGenerator{});
     generateProfiles(AzureCloudShellGenerator{});
     generateProfiles(VisualStudioGenerator{});
-    generateProfiles(AgentProfileGenerator{});
+    generateProfiles(AgentProfileGenerator{ userSettings.globals->HasCustomAgents() ?
+                                                userSettings.globals->CustomAgents() :
+                                                inboxSettings.globals->CustomAgents() });
     if constexpr (Feature_DynamicSSHProfiles::IsEnabled())
     {
         sshProfilesGenerated = generateProfiles(SshHostGenerator{});
@@ -274,7 +278,7 @@ void SettingsLoader::GenerateExtensionPackagesFromProfileGenerators()
     generateExtensionPackages(WslDistroGenerator{});
     generateExtensionPackages(AzureCloudShellGenerator{});
     generateExtensionPackages(VisualStudioGenerator{});
-    generateExtensionPackages(AgentProfileGenerator{});
+    generateExtensionPackages(AgentProfileGenerator{ userSettings.globals->CustomAgents() });
     if constexpr (Feature_DynamicSSHProfiles::IsEnabled())
     {
         generateExtensionPackages(SshHostGenerator{});

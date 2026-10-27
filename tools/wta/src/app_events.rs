@@ -495,6 +495,21 @@ impl App {
         self.capture_pending_autofix_snapshots().await;
     }
 
+    #[cfg(test)]
+    pub(crate) fn handle_test_event(&mut self, event: AppEvent) {
+        self.handle_event(event);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn retain_test_session_activation(
+        &mut self,
+        activation_id: &str,
+        request: crate::protocol::acp::client::MasterExtRequest,
+    ) {
+        self.pending_session_activations
+            .insert(activation_id.into(), request.into());
+    }
+
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         self.sync_agent_markdown_selection();
         // Async cards can take and release draft ownership without a key/focus event.
@@ -1045,6 +1060,7 @@ impl App {
                 session_capabilities_ready,
                 telemetry_byok_binding,
             } => {
+                self.reconcile_session_activations();
                 self.cancel_acp_authentication();
                 self.telemetry_byok_binding = telemetry_byok_binding;
                 self.initial_startup_presentation_eligible = false;
@@ -1659,6 +1675,7 @@ impl App {
                 tab.scroll_to_bottom();
                 self.project_tab_state(&tab_id);
             }
+            #[cfg(test)]
             AppEvent::TabSystemMessage { tab_id, message } => {
                 let tab = self.tab_mut(&tab_id);
                 tab.messages.push(ChatMessage::info(message));
@@ -2769,6 +2786,7 @@ impl App {
                 self.schedule_agents_refetch_for_open_views();
             }
             AppEvent::SessionsFallbackTick => {
+                self.reconcile_session_activations();
                 if !self.sessions_in_sidebar {
                     self.schedule_agents_refetch_for_open_views();
                 }
@@ -2806,6 +2824,7 @@ impl App {
                 request_id,
                 sessions,
             } => {
+                self.reconcile_session_activations();
                 self.handle_agents_snapshot_loaded(request_id, sessions);
             }
             AppEvent::AgentsSnapshotFailed { request_id } => {
@@ -2817,6 +2836,42 @@ impl App {
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
+            }
+            AppEvent::SessionActivationCompleted { activation_id } => {
+                self.pending_session_activations.remove(&activation_id);
+            }
+            AppEvent::SessionActivationRejected {
+                activation_id,
+                message,
+            } => {
+                if let Some(tab) = self
+                    .pending_session_activations
+                    .get(&activation_id)
+                    .and_then(|pending| self.tab_sessions.get_mut(&pending.delivery_tab_id))
+                {
+                    tab.messages.push(ChatMessage::info(message));
+                }
+            }
+            AppEvent::SessionActivationNotDispatched {
+                identity,
+                window_id,
+                activation_id,
+                tab_id,
+            } => {
+                if self
+                    .pending_session_activations
+                    .get(&activation_id)
+                    .is_some_and(|pending| {
+                        matches!(&pending.request,
+                        crate::protocol::acp::client::MasterExtRequest::SessionActivate {
+                            identity: pending_identity, window_id: pending_window,
+                            activation_id: pending_id, tab_id: pending_tab, ..
+                        } if pending_identity == &identity && *pending_window == window_id
+                            && pending_id == &activation_id && pending_tab == &tab_id)
+                    })
+                {
+                    self.pending_session_activations.remove(&activation_id);
+                }
             }
             AppEvent::WtEvent {
                 method,

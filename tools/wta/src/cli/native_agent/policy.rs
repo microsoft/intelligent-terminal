@@ -95,6 +95,48 @@ pub(super) fn read() -> Result<Policy> {
     resolve(read_value)
 }
 
+pub(crate) fn custom_agents_allowed() -> Result<bool> {
+    use windows_sys::Win32::System::Registry::RRF_RT_REG_DWORD;
+    let value = match read_value(Hive::Machine, "AllowCustomAgents", RRF_RT_REG_DWORD)? {
+        Some(value) => Some(value),
+        None => read_value(Hive::User, "AllowCustomAgents", RRF_RT_REG_DWORD)?,
+    };
+    if let Some(bytes) = value {
+        let value: [u8; 4] = bytes
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid AllowCustomAgents DWORD"))?;
+        return Ok(u32::from_le_bytes(value) != 0);
+    }
+    Ok(true)
+}
+
+pub(crate) fn check_custom(automatic_approval: bool) -> Result<()> {
+    ensure_custom_allowed(custom_agents_allowed()?)?;
+    if automatic_approval && read()?.automatic_approval_blocked {
+        bail!(
+            "{}",
+            t!(
+                "system.provider_command_blocked_by_policy",
+                command = "launch-agent"
+            )
+        );
+    }
+    Ok(())
+}
+
+fn ensure_custom_allowed(allowed: bool) -> Result<()> {
+    if !allowed {
+        bail!(
+            "{}",
+            t!(
+                "system.provider_command_blocked_by_policy",
+                command = "custom"
+            )
+        );
+    }
+    Ok(())
+}
+
 fn read_value(hive: Hive, name: &str, kind: u32) -> Result<Option<Vec<u8>>> {
     use windows_sys::Win32::Foundation::{
         ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS,

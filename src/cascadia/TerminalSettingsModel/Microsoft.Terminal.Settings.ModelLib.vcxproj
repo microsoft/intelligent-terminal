@@ -28,6 +28,7 @@
     <ClInclude Include="CustomModelProvider.h">
       <DependentUpon>CustomModelProvider.idl</DependentUpon>
     </ClInclude>
+    <ClInclude Include="CustomAgent.h" />
     <ClInclude Include="SeparatorEntry.h">
       <DependentUpon>NewTabMenuEntry.idl</DependentUpon>
     </ClInclude>
@@ -196,6 +197,7 @@
     <ClCompile Include="CustomModelProvider.cpp">
       <DependentUpon>CustomModelProvider.idl</DependentUpon>
     </ClCompile>
+    <ClCompile Include="CustomAgent.cpp" />
     <ClCompile Include="SeparatorEntry.cpp">
       <DependentUpon>NewTabMenuEntry.idl</DependentUpon>
     </ClCompile>
@@ -237,6 +239,7 @@
     <Midl Include="ColorScheme.idl" />
     <Midl Include="NewTabMenuEntry.idl" />
     <Midl Include="CustomModelProvider.idl" />
+    <Midl Include="CustomAgent.idl" />
     <Midl Include="Theme.idl" />
     <Midl Include="Command.idl" />
     <Midl Include="DefaultTerminal.idl" />

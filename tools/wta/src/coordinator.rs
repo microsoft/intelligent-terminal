@@ -1169,10 +1169,18 @@ fn build_windows_powershell_base64_launch(
     )
 }
 
-/// Quote a string as a PowerShell single-quoted literal (only `'` is special,
-/// doubled).
-fn ps_single_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "''"))
+/// Double every delimiter recognized by PowerShell's IsSingleQuote, preserving
+/// the original character rather than normalizing typographic apostrophes.
+pub(crate) fn ps_single_quote(s: &str) -> String {
+    let mut literal = String::from("'");
+    for ch in s.chars() {
+        literal.push(ch);
+        if matches!(ch, '\'' | '\u{2018}'..='\u{201b}') {
+            literal.push(ch);
+        }
+    }
+    literal.push('\'');
+    literal
 }
 
 /// Whether PowerShell 7 (`pwsh.exe`) is available on `PATH`. The host base64
