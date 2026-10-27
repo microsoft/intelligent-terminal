@@ -278,8 +278,13 @@ namespace TerminalAppUnitTests
     void SharedWtaTests::StatusPollingCannotRestartExhaustedService()
     {
         SharedWta owner;
+        VERIFY_IS_TRUE(owner.CanStart());
+        owner._spawnSuppressed = true;
+        VERIFY_IS_FALSE(owner.CanStart());
+        owner._spawnSuppressed = false;
         owner._serviceRequested = true;
         owner._cachedWtaPath = L"previous-wta.exe";
+        VERIFY_IS_FALSE(owner.CanStart());
         VERIFY_IS_FALSE(owner.EnsureStarted(L"unused-wta.exe"));
         VERIFY_IS_FALSE(owner.EnsureStarted(L"unused-wta.exe"));
         VERIFY_ARE_EQUAL(std::wstring{ L"previous-wta.exe" }, owner._cachedWtaPath);
@@ -298,6 +303,7 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(DWORD{ WAIT_OBJECT_0 }, WaitForSingleObject(observer.get(), 0));
         VERIFY_IS_FALSE(owner.IsRunning());
         VERIFY_IS_FALSE(owner._serviceRequested);
+        VERIFY_IS_FALSE(owner.CanStart());
         VERIFY_IS_FALSE(owner.EnsureStarted(L"unused-wta.exe"));
         VERIFY_IS_FALSE(static_cast<bool>(owner.AcquirePane(L"unused-wta.exe")));
         VERIFY_IS_FALSE(owner.Restart());
@@ -307,6 +313,7 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(owner._serviceEnabled);
         VERIFY_IS_FALSE(owner._shuttingDown);
         VERIFY_IS_FALSE(owner.IsRunning());
+        VERIFY_IS_TRUE(owner.CanStart());
     }
 
     void SharedWtaTests::ProcessShutdownCannotBeReenabled()
@@ -319,6 +326,7 @@ namespace TerminalAppUnitTests
         owner.SetEnabled(true);
         VERIFY_IS_FALSE(owner.IsRunning());
         VERIFY_IS_FALSE(owner._serviceRequested);
+        VERIFY_IS_FALSE(owner.CanStart());
         VERIFY_IS_FALSE(owner.EnsureStarted(L"unused-wta.exe"));
         VERIFY_IS_FALSE(owner.Restart(L"unused-wta.exe", {}));
         pane.Reset();

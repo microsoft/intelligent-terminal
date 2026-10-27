@@ -716,6 +716,12 @@ namespace winrt::TerminalApp::implementation
         return _masterGeneration;
     }
 
+    bool SharedWta::CanStart() const noexcept
+    {
+        std::lock_guard lock{ _mtx };
+        return !_process.is_valid() && !_serviceRequested && _serviceEnabled && !_shuttingDown && !_spawnSuppressed;
+    }
+
     bool SharedWta::EnsureStarted(
         const std::wstring_view wtaPath,
         std::span<const std::wstring> extraArgs,

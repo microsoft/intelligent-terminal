@@ -275,6 +275,9 @@ namespace winrt::TerminalApp::implementation
                            std::span<const std::wstring> extraArgs = {},
                            std::span<const std::pair<std::wstring, std::wstring>> environment = {});
 
+        /// Check before resolving launch arguments; EnsureStarted rechecks under its lock.
+        bool CanStart() const noexcept;
+
         /// Policy may stop the service; re-enabling it permits lazy startup.
         void SetEnabled(bool enabled) noexcept;
 
