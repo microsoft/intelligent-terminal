@@ -673,6 +673,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
         TEST_METHOD(CopilotForkRebindsPaneWithoutPrompt);
         TEST_METHOD(CopilotForkRejectsPromptRetiredSource);
+        TEST_METHOD(CopilotForkRetiresAtShellPromptBeforeDelayedSuccessor);
         TEST_METHOD(CopilotForkAfterHookFreeResumeRetainsOriginalBinding);
         TEST_METHOD(CopilotForkAfterNativeResumeIgnoresProviderOnlyObservation);
         TEST_METHOD(CopilotForkRejectsSupersededOwner);
@@ -1868,6 +1869,54 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::CopilotForkRetiresAtShellPromptBeforeDelayedSuccessor()
+    {
+        const auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const std::string original{ "11111111-1111-4111-8111-111111111111" };
+            const std::string fork{ "22222222-2222-4222-8222-222222222222" };
+            const std::string successor{ "33333333-3333-4333-8333-333333333333" };
+            const auto control = page->_GetFocusedTabImpl()->GetRootPane()->GetTerminalControl();
+            const auto paneId = control.Connection().SessionId();
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            const auto started = _keepRunningHook(paneId, "agent.session.start", original);
+            page->_manager.OnPaneAgentSessionChanged(started);
+            page->OnPaneAgentSessionChanged(started);
+            page->OnPaneAgentSessionChanged(_copilotForkEvent(paneId, original, fork));
+            VERIFY_ARE_EQUAL(winrt::to_hstring(fork), page->_paneAgentSessions.at(paneId).sessionId);
+            VERIFY_ARE_EQUAL(winrt::to_hstring(fork), page->_activeCliAgentPanes.at(paneId).sessionId);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, manager->NativeAgentProviderId(control.ContentId()));
+            VERIFY_IS_FALSE(manager->IsNativeAgentCliContent(control.ContentId()));
+            const auto retained = page->_manager.AgentSessionEvent(control.ContentId());
+
+            page->_ReconcileShellPromptAgentExit(control);
+            VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(paneId));
+            VERIFY_ARE_EQUAL(fork, page->_richTabEndedSessionByPaneId.at(paneId));
+
+            bool acknowledged = false;
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                Json::Value event;
+                Json::CharReaderBuilder reader;
+                std::istringstream stream{ winrt::to_string(payload) };
+                std::string errors;
+                if (Json::parseFromStream(reader, stream, &event, &errors) &&
+                    event["method"].asString() == "agent_session_forked")
+                {
+                    acknowledged = true;
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+            page->OnPaneAgentSessionChanged(_copilotForkEvent(paneId, fork, successor));
+            VERIFY_IS_FALSE(acknowledged);
+            VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(paneId));
+            VERIFY_ARE_EQUAL(fork, page->_richTabEndedSessionByPaneId.at(paneId));
+            VERIFY_ARE_EQUAL(winrt::to_hstring(fork), page->_paneAgentSessions.at(paneId).sessionId);
+            VERIFY_ARE_EQUAL(retained, page->_manager.AgentSessionEvent(control.ContentId()));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, manager->NativeAgentProviderId(control.ContentId()));
+            VERIFY_ARE_EQUAL(paneId, control.Connection().SessionId());
+        });
+    }
+
     void TabTests::CopilotForkAfterHookFreeResumeRetainsOriginalBinding()
     {
         const auto page = _commonSetup();
@@ -2000,6 +2049,10 @@ namespace TerminalAppLocalTests
             page->OnPaneAgentSessionChanged(request);
             VERIFY_ARE_EQUAL(winrt::to_hstring(fork), page->_paneAgentSessions.at(paneId).sessionId);
             VERIFY_IS_TRUE(winrt::to_string(page->_manager.AgentSessionEvent(control.ContentId())).find(fork) != std::string::npos);
+            VERIFY_IS_TRUE(manager->IsNativeAgentCliContent(control.ContentId()));
+            page->_ReconcileShellPromptAgentExit(control);
+            VERIFY_ARE_EQUAL(winrt::to_hstring(fork), page->_activeCliAgentPanes.at(paneId).sessionId);
+            VERIFY_IS_FALSE(page->_richTabEndedSessionByPaneId.contains(paneId));
         });
     }
 

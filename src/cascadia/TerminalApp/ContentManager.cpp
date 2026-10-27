@@ -69,6 +69,13 @@ namespace winrt::TerminalApp::implementation
                    it->second.explicitNativeAgentProviderId : it->second.nativeAgentProviderId;
     }
 
+    bool ContentManager::IsNativeAgentCliContent(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _content.find(contentId);
+        return it != _content.end() && !it->second.nativeAgentProviderId.empty();
+    }
+
     winrt::hstring ContentManager::NativeAgentProviderIdForPane(const winrt::guid& paneId) const
     {
         std::lock_guard lock{ _mutex };

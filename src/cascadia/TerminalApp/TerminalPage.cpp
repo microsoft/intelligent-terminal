@@ -11241,7 +11241,7 @@ namespace winrt::TerminalApp::implementation
         }
         const auto active = _activeCliAgentPanes.find(*paneId);
         if (active == _activeCliAgentPanes.end() ||
-            !winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId()).empty())
+            winrt::get_self<ContentManager>(_manager)->IsNativeAgentCliContent(control.ContentId()))
         {
             return;
         }
