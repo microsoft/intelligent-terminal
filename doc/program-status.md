@@ -94,6 +94,31 @@ if the message is empty, the title is the fallback. An unread Error suppresses
 the percentage. The other-window suffix keeps its existing eligibility rules.
 Directory/repository/branch metadata remains in its existing separate fields.
 
+## Shell command fallback
+
+Dev connections export `INTELLIGENT_TERMINAL_PROGRAM_STATUS=1`, including into
+WSL. Updated PowerShell and Bash integration scripts use that capability marker
+without reading terminal input. Other branding configurations export `0`.
+PowerShell needs its existing FullLanguage PSReadLine wrapper; Bash needs 4.4+
+for `PS0`. Older or restricted shells keep their existing OSC 133 integration.
+
+The scripts report `working` after OSC 133 C, then `done` or `error` before the
+next OSC 133 A, followed by `idle`. Initialization, empty input and prompt
+redraws do not manufacture command results. Bash treats exit 130 as cancellation;
+PowerShell treats an observed `PipelineStoppedException` as cancellation.
+Reports contain no command text, arguments, working directory or output.
+The stable record ID is `it-shell/<shell-process-id>/command`, with `app=bash`,
+`pwsh` or `powershell`. Changing foreground shells replaces the shell fallback
+instead of leaving an outer shell permanently Working.
+
+TerminalCore reserves that ID shape for presentation-only fallback reports.
+Any valid non-shell report, including Idle or Clear, takes over the foreground
+command and removes the shell fallback. Subsequent shell completion and Idle
+reports stay suppressed until the next OSC 133 C. Queries and rejected reports
+do not take over. RIS, connection replacement and disabling the feature reset
+this arbitration. The ID convention is not authenticated and grants no agent
+identity or permissions.
+
 ## Hooks and sessions
 
 OSC status is an additive facet of an already admitted native agent pane. It

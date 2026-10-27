@@ -110,6 +110,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
     TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
     TEST_METHOD(PowerShell_ResumeCommand_EmitsOscBeforeExecution);
+    TEST_METHOD(PowerShell_ProgramStatus_ReportsOnlySubmittedCommands);
     TEST_METHOD(PowerShell_ScriptContent_GatesRestrictedLanguageFeatures);
     TEST_METHOD(PowerShell_ScriptContent_ReArmsFromReadLineBoundary);
     TEST_METHOD(PowerShell_ScriptContent_ReArmIsBestEffortAndSkipsWithoutWrapper);
@@ -192,6 +193,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Bash_BuildBlock_UsesHomeAndGuardsOnBashVersion);
     TEST_METHOD(Bash_ScriptContent_HasIdempotencyGuardAndOscSequences);
     TEST_METHOD(Bash_ScriptContent_GatesAndRepairsPromptMarks);
+    TEST_METHOD(Bash_ProgramStatus_PreservesPreexecAndReportsResults);
 
     // InstallBash / UninstallBash scenarios.
     TEST_METHOD(Bash_Install_EmptyProfilePath_Fails);
@@ -580,6 +582,7 @@ void ShellIntegrationTests::PowerShell_ResumeCommand_EmitsOscBeforeExecution()
     const auto runner = _scratchDir / L"resume-test.ps1";
     const auto script = std::string{ "\xef\xbb\xbf" } +
                         R"($ErrorActionPreference = 'Stop'
+$env:INTELLIGENT_TERMINAL_PROGRAM_STATUS = '0'
 function Global:PSConsoleHostReadLine { return $Global:__ResumeTestLine }
 )" +
                         ShellIntegrationScriptContent() +
@@ -691,6 +694,84 @@ foreach ($case in $cases) {
             host.c_str(), L"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + runner.wstring() + L"\"");
         VERIFY_ARE_EQUAL(DWORD{ ERROR_SUCCESS }, result.error);
         VERIFY_IS_TRUE(result.launched);
+        VERIFY_IS_FALSE(result.timedOut);
+        if (result.exitCode != 0)
+        {
+            Log::Comment(result.output.c_str());
+        }
+        VERIFY_ARE_EQUAL(DWORD{ 0 }, result.exitCode);
+        VERIFY_ARE_EQUAL(std::wstring{ L"passed" }, result.output);
+    }
+}
+
+void ShellIntegrationTests::PowerShell_ProgramStatus_ReportsOnlySubmittedCommands()
+{
+    const auto runner = _scratchDir / L"program-status-test.ps1";
+    const auto script = std::string{ "\xef\xbb\xbf" } +
+                        R"($env:INTELLIGENT_TERMINAL_PROGRAM_STATUS = '1'
+function Global:prompt { 'test> ' }
+function Global:PSConsoleHostReadLine { return $Global:__StatusTestLine }
+)" +
+                        ShellIntegrationScriptContent() +
+                        R"PS(
+$E = [char]0x1B
+$B = [char]0x07
+$id = "it-shell/$PID/command"
+$initial = prompt
+if ($initial -notlike "*]7501;id=$id`:state=idle:*" -or $initial -like '*:state=done:*') {
+    throw 'Initial prompt fabricated a completion'
+}
+foreach ($case in @(
+    @{ Line = 'Write-Output secret-token'; Exit = 0; State = 'done' }
+    @{ Line = 'cmd /c exit 7'; Exit = 7; State = 'error' }
+    @{ Line = 'if ('; Exit = 0; State = 'error' }
+    @{ Line = ' '; Exit = 0; State = '' }
+    @{ Line = '# comment only'; Exit = 0; State = '' }
+)) {
+    $Global:__StatusTestLine = $case.Line
+    $output = New-Object System.IO.StringWriter
+    $original = [Console]::Out
+    [Console]::SetOut($output)
+    try { $returned = PSConsoleHostReadLine }
+    finally { [Console]::SetOut($original) }
+    if ($returned -cne $case.Line) { throw 'ReadLine changed the command' }
+    $expected = if ($case.State) {
+        "$E]133;C$B$E]7501;id=$id`:state=working:app=$Global:__ShellInteg_ProgramStatusApp$B"
+    } else { '' }
+    if ($output.ToString() -cne $expected) { throw 'Incorrect command-start reports' }
+    if ($case.Exit) { cmd /c exit 7 } else { $null = 0 }
+    $rendered = prompt
+    if ($case.State -and $rendered -notlike "*]7501;id=$id`:state=$($case.State):*") {
+        throw "Missing $($case.State) report"
+    }
+    if ($rendered -like '*secret-token*') { throw 'Command text leaked into reports' }
+    $again = prompt
+    if ($again -like '*:state=done:*' -or $again -like '*:state=error:*') {
+        throw 'Prompt redraw fabricated a completion'
+    }
+}
+$Global:__ShellInteg_ProgramStatusEnabled = $false
+$Global:__StatusTestLine = 'Write-Output disabled'
+$output = New-Object System.IO.StringWriter
+$original = [Console]::Out
+[Console]::SetOut($output)
+try { $null = PSConsoleHostReadLine } finally { [Console]::SetOut($original) }
+if ($output.ToString() -ne '' -or (prompt) -like '*]7501;*') { throw 'Disabled host emitted program status' }
+'passed'
+)PS";
+    _WriteFile(runner, script);
+    std::vector<std::wstring> hosts{
+        wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    };
+    if (auto pwsh = Powershell::details::ResolvePwshExecutableFromExplicitPath(); !pwsh.empty())
+    {
+        hosts.emplace_back(std::move(pwsh));
+    }
+    for (const auto& host : hosts)
+    {
+        const auto result = Powershell::details::RunPowerShellCommand(
+            host.c_str(), L"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + runner.wstring() + L"\"");
+        VERIFY_ARE_EQUAL(DWORD{ ERROR_SUCCESS }, result.error);
         VERIFY_IS_FALSE(result.timedOut);
         if (result.exitCode != 0)
         {
@@ -1884,6 +1965,59 @@ void ShellIntegrationTests::Bash_ScriptContent_GatesAndRepairsPromptMarks()
 
     VERIFY_IS_TRUE(_Contains(script, "*\"$__it_suffix\") printf '\\033]133;A\\007'"),
                    L"OSC 133;A must be guarded by a check for the matching PS1 suffix");
+}
+
+void ShellIntegrationTests::Bash_ProgramStatus_PreservesPreexecAndReportsResults()
+{
+    const auto bash = wil::ExpandEnvironmentStringsW<std::wstring>(L"%ProgramFiles%\\Git\\bin\\bash.exe");
+    if (!std::filesystem::exists(bash))
+    {
+        Log::Result(TestResults::Skipped, L"Git Bash is not installed.");
+        return;
+    }
+    const auto runner = _scratchDir / L"program-status-test.sh";
+    _WriteFile(runner, std::string{ "set -u\n"
+                                    "INTELLIGENT_TERMINAL=1\n"
+                                    "INTELLIGENT_TERMINAL_PROGRAM_STATUS=1\n"
+                                    "PS0='user-preexec:'\n" } +
+                           ShellIntegrationBashScriptContent() +
+                           R"SH(
+if [ -z "$__IT_SHELLINTEG_PROGRAM_STATUS" ]; then
+    printf 'passed'
+    exit 0
+fi
+output=$(mktemp)
+trap 'rm -f -- "$output"' EXIT
+fail() { printf '%s\n' "$1" >&2; exit 1; }
+true
+__it_shellinteg_prompt > "$output"
+rendered=$(cat "$output")
+case "$rendered" in *:state=done:*|*:state=error:*) fail 'Initial prompt fabricated a result' ;; esac
+for code in 0 7 130; do
+    begin=${PS0@P}
+    [ "$begin" = "user-preexec:$__IT_SHELLINTEG_COMMAND_MARK" ] || fail 'PS0 was not preserved'
+    [ -n "$__IT_SHELLINTEG_COMMAND_STARTED" ] || fail 'PS0 did not mark the parent shell'
+    (exit "$code")
+    __it_shellinteg_prompt > "$output"
+    rendered=$(cat "$output")
+    case "$code" in 0) state=done ;; 7) state=error ;; 130) state=idle ;; esac
+    case "$rendered" in *":state=$state:app=bash"*) ;; *) fail 'Missing command result' ;; esac
+    [ -z "$__IT_SHELLINTEG_COMMAND_STARTED" ] || fail 'Command was not consumed'
+    __it_shellinteg_prompt > "$output"
+    rendered=$(cat "$output")
+    case "$rendered" in *:state=done:*|*:state=error:*) fail 'Prompt redraw fabricated a result' ;; esac
+done
+printf 'passed'
+)SH");
+    const auto result = Powershell::details::RunPowerShellCommand(
+        bash.c_str(), L"--noprofile --norc -i \"" + runner.wstring() + L"\"");
+    VERIFY_ARE_EQUAL(DWORD{ ERROR_SUCCESS }, result.error);
+    VERIFY_IS_FALSE(result.timedOut);
+    if (result.exitCode != 0)
+    {
+        Log::Comment(result.output.c_str());
+    }
+    VERIFY_ARE_EQUAL(DWORD{ 0 }, result.exitCode);
 }
 
 // ─── InstallBash ──────────────────────────────────────────────────────────────

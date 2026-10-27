@@ -63,12 +63,58 @@ void Terminal::ProgramStatusChangedCallback(std::function<void()> pfn) noexcept
 
 void Terminal::ApplyProgramStatus(const ProgramStatus::Command& command)
 {
-    if (_programStatusEnabled && _programStatus.Apply(command) && _pfnProgramStatusChanged)
+    if (!_programStatusEnabled || command.operation == ProgramStatus::Command::Operation::Query)
+    {
+        return;
+    }
+
+    const auto id = std::string_view{ command.record.id };
+    constexpr std::string_view shellPrefix{ "it-shell/" };
+    constexpr std::string_view shellSuffix{ "/command" };
+    const auto shellReport = id.starts_with(shellPrefix) && id.ends_with(shellSuffix) &&
+                             id.size() > shellPrefix.size() + shellSuffix.size() &&
+                             id.substr(shellPrefix.size(), id.size() - shellPrefix.size() - shellSuffix.size()).find('/') == std::string_view::npos;
+    bool changed = false;
+    if (shellReport)
+    {
+        if (_shellProgramStatusOverridden)
+        {
+            return;
+        }
+        if (!_shellProgramStatusId.empty() && _shellProgramStatusId != id)
+        {
+            ProgramStatus::Command clear;
+            clear.operation = ProgramStatus::Command::Operation::Clear;
+            clear.record.id = _shellProgramStatusId;
+            changed = _programStatus.Apply(clear);
+        }
+        _shellProgramStatusId = id;
+    }
+    else
+    {
+        // A producer owns the whole foreground command, including after Idle
+        // or Clear. Shell completion must not resurrect its fallback activity.
+        _shellProgramStatusOverridden = true;
+        if (!_shellProgramStatusId.empty())
+        {
+            ProgramStatus::Command clear;
+            clear.operation = ProgramStatus::Command::Operation::Clear;
+            clear.record.id = _shellProgramStatusId;
+            changed = _programStatus.Apply(clear);
+        }
+    }
+    changed = _programStatus.Apply(command) || changed;
+    if (changed && _pfnProgramStatusChanged)
     {
         // Like other Core callbacks, this runs in stream order under the
         // terminal lock. Consumers must only enqueue a nonblocking invalidation.
         _pfnProgramStatusChanged();
     }
+}
+
+void Terminal::ProgramStatusCommandStarted()
+{
+    _shellProgramStatusOverridden = false;
 }
 
 void Terminal::ProgramStatusPromptStarted()
@@ -96,6 +142,8 @@ void Terminal::AcknowledgeProgramStatus(const uint64_t observedRevision)
 
 void Terminal::ResetProgramStatus()
 {
+    _shellProgramStatusId.clear();
+    _shellProgramStatusOverridden = false;
     if (_programStatus.Reset())
     {
         // The protocol invalidation also updates the taskbar, without bypassing

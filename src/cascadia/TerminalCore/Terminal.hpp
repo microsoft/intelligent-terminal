@@ -151,6 +151,7 @@ public:
     bool IsConPTY() const noexcept override;
     bool SupportsProgramStatus() const noexcept override;
     void ApplyProgramStatus(const Microsoft::Console::VirtualTerminal::ProgramStatus::Command& command) override;
+    void ProgramStatusCommandStarted() override;
     void ProgramStatusPromptStarted() override;
     void ResetProgramStatus() override;
     Microsoft::Console::VirtualTerminal::StateMachine& GetStateMachine() noexcept override;
@@ -363,6 +364,8 @@ private:
     std::function<void()> _pfnTaskbarProgressChanged;
     std::function<void()> _pfnProgramStatusChanged;
     Microsoft::Console::VirtualTerminal::ProgramStatus::Store _programStatus;
+    std::string _shellProgramStatusId;
+    bool _shellProgramStatusOverridden = false;
     bool _programStatusEnabled = false;
     std::function<void(bool)> _pfnShowWindowChanged;
     std::function<void(const int, const int, const std::chrono::microseconds)> _pfnPlayMidiNote;

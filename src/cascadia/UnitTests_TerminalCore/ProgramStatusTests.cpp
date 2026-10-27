@@ -260,6 +260,93 @@ namespace TerminalCoreUnitTests
             VERIFY_IS_TRUE(find(snapshot, "old/child").id == "old/child");
         }
 
+        TEST_METHOD(ShellCommandResultsSurvivePromptAndIdle)
+        {
+            Fixture f;
+            f.Report(L"state=idle:id=it-shell/123/command:app=pwsh");
+            VERIFY_IS_TRUE(f.terminal.GetProgramStatusSnapshot().results.empty());
+            for (const auto state : { L"done", L"error" })
+            {
+                f.terminal.GetStateMachine().ProcessString(L"\x1b]133;C\a");
+                f.Report(L"state=working:id=it-shell/123/command:app=pwsh");
+                VERIFY_IS_TRUE(f.terminal.GetProgramStatusSnapshot().records[0].state == PS::State::Working);
+                f.terminal.GetStateMachine().ProcessString(L"\x1b]133;D;0\a");
+                f.Report(std::wstring{ L"state=" } + state + L":id=it-shell/123/command:app=pwsh");
+                const auto result = f.terminal.GetProgramStatusSnapshot();
+                f.terminal.GetStateMachine().ProcessString(L"\x1b]133;A\a");
+                f.Report(L"state=idle:id=it-shell/123/command:app=pwsh");
+                const auto idle = f.terminal.GetProgramStatusSnapshot();
+                VERIFY_ARE_EQUAL(size_t{ 1 }, idle.records.size());
+                VERIFY_IS_TRUE(idle.records[0].state == PS::State::Idle);
+                VERIFY_ARE_EQUAL(size_t{ 1 }, idle.results.size());
+                VERIFY_IS_TRUE(idle.results[0].record.state == result.results[0].record.state);
+                VERIFY_IS_TRUE(idle.results[0].unread);
+                f.terminal.AcknowledgeProgramStatus(idle.revision);
+                VERIFY_IS_FALSE(f.terminal.GetProgramStatusSnapshot().results[0].unread);
+            }
+        }
+
+        TEST_METHOD(ProgramOwnsShellCommandThroughIdleAndClear)
+        {
+            for (const auto report : { L"state=working", L"state=blocked:kind=question", L"state=done", L"state=error", L"state=idle", L"state=clear" })
+            {
+                Fixture f;
+                f.terminal.GetStateMachine().ProcessString(L"\x1b]133;C\a");
+                f.Report(L"state=working:id=it-shell/123/command:app=bash");
+                f.Report(report);
+                auto snapshot = f.terminal.GetProgramStatusSnapshot();
+                VERIFY_IS_TRUE(std::none_of(snapshot.records.begin(), snapshot.records.end(), [](const auto& record) {
+                    return record.id.starts_with("it-shell/");
+                }));
+                const auto revision = snapshot.revision;
+                f.Report(L"state=working:id=it-shell/123/command:app=bash");
+                f.terminal.GetStateMachine().ProcessString(L"\x1b]133;D;0\a");
+                f.Report(L"state=done:id=it-shell/123/command:app=bash");
+                VERIFY_ARE_EQUAL(revision, f.terminal.GetProgramStatusSnapshot().revision);
+                f.terminal.GetStateMachine().ProcessString(L"\x1b]133;A\a");
+                f.Report(L"state=idle:id=it-shell/123/command:app=bash");
+                snapshot = f.terminal.GetProgramStatusSnapshot();
+                VERIFY_IS_TRUE(std::none_of(snapshot.records.begin(), snapshot.records.end(), [](const auto& record) {
+                    return record.id.starts_with("it-shell/");
+                }));
+                VERIFY_IS_TRUE(std::none_of(snapshot.results.begin(), snapshot.results.end(), [](const auto& result) {
+                    return result.record.id.starts_with("it-shell/");
+                }));
+                f.terminal.GetStateMachine().ProcessString(L"\x1b]133;C\a");
+                f.Report(L"state=working:id=it-shell/123/command:app=bash");
+                snapshot = f.terminal.GetProgramStatusSnapshot();
+                VERIFY_IS_TRUE(std::any_of(snapshot.records.begin(), snapshot.records.end(), [](const auto& record) {
+                    return record.id == "it-shell/123/command" && record.state == PS::State::Working;
+                }));
+            }
+        }
+
+        TEST_METHOD(ShellHandoffDoesNotTreatQueriesOrMalformedReportsAsProducers)
+        {
+            Fixture f;
+            f.terminal.GetStateMachine().ProcessString(L"\x1b]133;C\a");
+            f.Report(L"state=working:id=it-shell/123/command:app=pwsh");
+            f.Report(L"?");
+            f.Report(L"state=working:id=invalid!");
+            f.Report(L"state=done:id=it-shell/123/command:app=pwsh");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, f.terminal.GetProgramStatusSnapshot().results.size());
+            f.Report(L"state=idle:id=it-shell/456/command:app=bash");
+            auto snapshot = f.terminal.GetProgramStatusSnapshot();
+            VERIFY_ARE_EQUAL(size_t{ 1 }, snapshot.records.size());
+            VERIFY_IS_TRUE(snapshot.records[0].id == "it-shell/456/command");
+            f.Report(L"state=working:id=it-shell/not/a-shell/command");
+            snapshot = f.terminal.GetProgramStatusSnapshot();
+            VERIFY_ARE_EQUAL(size_t{ 1 }, snapshot.records.size());
+            VERIFY_IS_TRUE(snapshot.records[0].id == "it-shell/not/a-shell/command");
+            f.terminal.ResetProgramStatusForConnection();
+            f.Report(L"state=idle:id=it-shell/789/command:app=bash");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, f.terminal.GetProgramStatusSnapshot().records.size());
+            f.Report(L"state=clear");
+            f.terminal.GetStateMachine().ProcessString(L"\033c");
+            f.Report(L"state=idle:id=it-shell/789/command:app=bash");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, f.terminal.GetProgramStatusSnapshot().records.size());
+        }
+
         TEST_METHOD(LifecycleAndResultAcknowledgment)
         {
             Fixture f;

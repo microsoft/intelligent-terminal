@@ -871,7 +871,8 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // options also establish the binding before the first conversation,
     // including Antigravity, while rejecting option-shaped session IDs.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 11;
+    // v12: report foreground shell commands through OSC 7501 when enabled by the host.
+    inline constexpr int kVersion = 12;
 
     inline std::wstring ScriptFileName()
     {
@@ -931,9 +932,24 @@ if (-not $Global:__ShellInteg_Installed) {
     $Global:__ShellInteg_LastSubmittedLine = $null
     $Global:__ShellInteg_PrevPrompt = $null
     $Global:__ShellInteg_Rendering = $false
+    $Global:__ShellInteg_ProgramStatusEnabled = $env:INTELLIGENT_TERMINAL_PROGRAM_STATUS -eq '1'
+    $Global:__ShellInteg_CommandStarted = $false
+    $Global:__ShellInteg_ProgramStatusId = "it-shell/$PID/command"
+    $Global:__ShellInteg_ProgramStatusApp =
+        if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
     $Global:__ShellInteg_CanInspectErrors =
         $ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'
     $Global:__ShellInteg_Installed      = $true
+
+    function Global:__ShellInteg_ProgramStatus {
+        param([string]$state)
+        if ($Global:__ShellInteg_ProgramStatusEnabled) {
+            return ('{0}]7501;id={1}:state={2}:app={3}{4}' -f
+                $Global:__ShellInteg_ESC, $Global:__ShellInteg_ProgramStatusId,
+                $state, $Global:__ShellInteg_ProgramStatusApp, $Global:__ShellInteg_BEL)
+        }
+        return ''
+    }
 
     # PowerShell 7 drops parser failures before prompt runs, leaving no
     # observable status there. Retain the submitted line at the PSReadLine
@@ -1016,6 +1032,20 @@ if (-not $Global:__ShellInteg_Installed) {
                         $Global:__ShellInteg_BEL
                     [Console]::Write($resumeMark)
                 }
+                if ($Global:__ShellInteg_ProgramStatusEnabled -and -not [string]::IsNullOrWhiteSpace($line)) {
+                    $tokens = $null
+                    $parseErrors = $null
+                    $ast = [System.Management.Automation.Language.Parser]::ParseInput(
+                        $line, [ref]$tokens, [ref]$parseErrors)
+                    if ($parseErrors.Count -gt 0 -or
+                        ($ast.EndBlock -and $ast.EndBlock.Statements.Count -gt 0) -or
+                        $ast.BeginBlock -or $ast.ProcessBlock -or $ast.ParamBlock) {
+                        $Global:__ShellInteg_CommandStarted = $true
+                        [Console]::Write(('{0}]133;C{1}' -f
+                            $Global:__ShellInteg_ESC, $Global:__ShellInteg_BEL) +
+                            (__ShellInteg_ProgramStatus 'working'))
+                    }
+                }
             }
             return $line
         }
@@ -1091,9 +1121,17 @@ if (-not $Global:__ShellInteg_Installed) {
             if ($historyAdvanced -or $newUntrackedError -or $inputHadParserError) {
                 $prefix += "${E}]133;D;${gle}${B}"
             }
+            if ($Global:__ShellInteg_CommandStarted) {
+                $state = if ($newErrorRecord -and
+                    $errorRecord.Exception -is [System.Management.Automation.PipelineStoppedException]) { 'idle' }
+                    elseif ($gle -eq 0) { 'done' } else { 'error' }
+                $prefix += __ShellInteg_ProgramStatus $state
+                $Global:__ShellInteg_CommandStarted = $false
+            }
 
             # ── Prompt started (OSC 133;A) ──
             $prefix += "${E}]133;A${B}"
+            $prefix += __ShellInteg_ProgramStatus 'idle'
 
             # ── Report current working directory (OSC 9;9) ──
             $prefix += "${E}]9;9;`"${loc}`"${B}"

@@ -38,7 +38,8 @@ namespace Microsoft::Terminal::ShellIntegration::Bash
     // OSC 133;A/B pair after the user's PROMPT_COMMAND rebuilds PS1. The
     // version bump rewrites existing v2 profile blocks; WSL inherits this
     // version via WslBashFlavor.
-    inline constexpr int kVersion = 3;
+    // v4: add opt-in OSC 7501 command reports using Bash 4.4+ PS0.
+    inline constexpr int kVersion = 4;
 
     inline std::wstring ScriptFileName()
     {
@@ -107,6 +108,18 @@ case "${-:-}" in *i*) ;; *) return 0 2>/dev/null ;; esac
 [ -n "${__IT_SHELLINTEG_INSTALLED:-}" ] && return 0 2>/dev/null
 __IT_SHELLINTEG_INSTALLED=1
 
+__IT_SHELLINTEG_PROGRAM_STATUS=
+__IT_SHELLINTEG_COMMAND_STARTED=
+if [ "${INTELLIGENT_TERMINAL_PROGRAM_STATUS:-}" = "1" ] &&
+    (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then
+    __IT_SHELLINTEG_PROGRAM_STATUS=1
+    __IT_SHELLINTEG_PROGRAM_STATUS_ID="it-shell/${BASHPID:-$$}/command"
+    __IT_SHELLINTEG_COMMAND_MARK=$'\033]133;C\007\033]7501;id='"$__IT_SHELLINTEG_PROGRAM_STATUS_ID"$':state=working:app=bash\007'
+    # PS0 expands once per submitted command, not once per simple command like
+    # a DEBUG trap. Parameter assignment also marks it in the parent shell.
+    PS0="${PS0:-}"'${__IT_SHELLINTEG_COMMAND_STARTED:=$__IT_SHELLINTEG_COMMAND_MARK}'
+fi
+
 # Snapshot the user's PROMPT_COMMAND once; we re-run it from our wrapper
 # so we don't clobber any existing hook (starship, oh-my-bash, etc).
 # Walk the array element-by-element and join the NON-EMPTY entries
@@ -144,6 +157,15 @@ __it_shellinteg_prompt() {
 
     # Finish the previous command before running prompt hooks.
     printf '\033]133;D;%s\007' "$__ec"
+    if [ -n "${__IT_SHELLINTEG_COMMAND_STARTED:-}" ]; then
+        local __it_state=error
+        case "$__ec" in
+            0) __it_state=done ;;
+            130) __it_state=idle ;;
+        esac
+        printf '\033]7501;id=%s:state=%s:app=bash\007' "$__IT_SHELLINTEG_PROGRAM_STATUS_ID" "$__it_state"
+        __IT_SHELLINTEG_COMMAND_STARTED=
+    fi
 
     # Remove our previous suffix before the user's hook sees PS1. Prompt
     # frameworks may then freely rebuild PS1 before we append a fresh suffix.
@@ -189,6 +211,9 @@ __it_shellinteg_prompt() {
     case "${PS1:-}" in
         *"$__it_suffix") printf '\033]133;A\007' ;;
     esac
+    if [ -n "${__IT_SHELLINTEG_PROGRAM_STATUS:-}" ]; then
+        printf '\033]7501;id=%s:state=idle:app=bash\007' "$__IT_SHELLINTEG_PROGRAM_STATUS_ID"
+    fi
 }
 PROMPT_COMMAND=__it_shellinteg_prompt
 )"

@@ -69,6 +69,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             // needs an explicit host marker to avoid emitting our OSC sequences
             // in other terminals that launch the same shell.
             environment.as_map().insert_or_assign(L"INTELLIGENT_TERMINAL", L"1");
+            environment.as_map().insert_or_assign(L"INTELLIGENT_TERMINAL_PROGRAM_STATUS", Feature_ProgramStatusProtocol::IsEnabled() ? L"1" : L"0");
 
             // Directory hook integrations may write diagnostics into.
             //
@@ -139,6 +140,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
                 L"WT_PROFILE_ID",
                 L"WT_COM_CLSID",
                 L"INTELLIGENT_TERMINAL",
+                L"INTELLIGENT_TERMINAL_PROGRAM_STATUS",
             };
             // Misdiagnosis in MSVC 14.44.35207. No pointer arithmetic in sight.
 #pragma warning(suppress : 26481) // Don't use pointer arithmetic. Use span instead (bounds.1).

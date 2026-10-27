@@ -3714,6 +3714,10 @@ void AdaptDispatch::DoITerm2Action(const std::wstring_view string)
 // - string: contains the parameters that define which action we do
 void AdaptDispatch::DoFinalTermAction(const std::wstring_view string)
 {
+    if (string == L"C" || string.starts_with(L"C;"))
+    {
+        _api.ProgramStatusCommandStarted();
+    }
     if (string == L"A" || string.starts_with(L"A;"))
     {
         _api.ProgramStatusPromptStarted();
