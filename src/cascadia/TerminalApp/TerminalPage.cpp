@@ -11361,28 +11361,31 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
             const auto previous = _paneAgentSessions.find(*paneSessionId);
-            if (previous == _paneAgentSessions.end() ||
-                previous->second.agent != L"copilot" ||
-                previous->second.sessionId != previousId ||
-                std::wstring_view{ previous->second.backend }.starts_with(L"wsl:"))
-            {
-                return;
-            }
-            // A shell prompt retires activity while retaining the resumable binding.
-            if (const auto retired = _richTabEndedSessionByPaneId.find(*paneSessionId);
-                retired != _richTabEndedSessionByPaneId.end() && retired->second == winrt::to_string(previousId))
-            {
-                return;
-            }
             for (const auto& tab : _RuntimeTabs())
             {
                 const auto tabImpl = _GetTabImpl(tab);
                 const auto root = tabImpl ? tabImpl->GetRootPane() : nullptr;
                 const auto pane = root ? root->FindPaneBySessionId(*paneSessionId) : nullptr;
-                const auto control = pane && !pane->IsAgentPane() ? pane->GetTerminalControl() : nullptr;
-                if (!control || std::wstring_view{ control.ShellName() }.starts_with(L"wsl:"))
+                if (!pane)
                 {
                     continue;
+                }
+                const auto reject = [&]() { _RaiseProtocolEvent("agent_session_fork_rejected", params); };
+                const auto control = !pane->IsAgentPane() ? pane->GetTerminalControl() : nullptr;
+                if (!control || std::wstring_view{ control.ShellName() }.starts_with(L"wsl:") ||
+                    previous == _paneAgentSessions.end() || previous->second.agent != L"copilot" ||
+                    previous->second.sessionId != previousId ||
+                    std::wstring_view{ previous->second.backend }.starts_with(L"wsl:"))
+                {
+                    reject();
+                    return;
+                }
+                // A shell prompt retires activity while retaining the resumable binding.
+                if (const auto retired = _richTabEndedSessionByPaneId.find(*paneSessionId);
+                    retired != _richTabEndedSessionByPaneId.end() && retired->second == winrt::to_string(previousId))
+                {
+                    reject();
+                    return;
                 }
                 auto binding = previous->second;
                 binding.sessionId = winrt::to_hstring(agentSessionId);
@@ -11392,6 +11395,7 @@ namespace winrt::TerminalApp::implementation
                     std::wstring_view{ binding.cwd });
                 if (resume.empty())
                 {
+                    reject();
                     return;
                 }
                 binding.resumeCommandline = winrt::hstring{ resume };
@@ -11407,6 +11411,7 @@ namespace winrt::TerminalApp::implementation
                     retained["params"].get("agent_session_id", "").asString() != agentSessionId)
                 {
                     _agentPaneLog("OnPaneAgentSessionChanged: rejected superseded Copilot fork");
+                    reject();
                     return;
                 }
                 auto marker = _ActiveCliAgentPane{ binding.sessionId };

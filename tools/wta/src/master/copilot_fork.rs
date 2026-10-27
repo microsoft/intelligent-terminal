@@ -408,6 +408,20 @@ async fn publish(
     Ok(())
 }
 
+pub(super) async fn reject(state: &Arc<MasterStateInner>, params: &serde_json::Value) {
+    let pane = pane_key(params["pane_id"].as_str().unwrap_or(""));
+    let mut pending = state.pending_copilot_forks.lock().await;
+    if pending.get(&pane).is_some_and(|plan| {
+        params["operation_id"].as_str() == Some(plan.operation_id.as_str())
+            && params["previous_agent_session_id"].as_str()
+                == Some(plan.source.session_id.0.as_ref())
+            && params["agent_session_id"].as_str() == Some(plan.target.0.as_ref())
+    }) {
+        pending.remove(&pane);
+        tracing::debug!(target: "copilot_fork", pane, "Terminal rejected foreground Copilot fork binding");
+    }
+}
+
 pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::Value) {
     let _admission = state.copilot_fork_admission.lock().await;
     let pane = pane_key(params["pane_id"].as_str().unwrap_or(""));

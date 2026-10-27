@@ -26,6 +26,9 @@ Sidebars and helpers share pre-launch admission for native Host Copilot
 resumes: a pending fork target returns a retry response rather than opening
 a competing pane. Published operations remain reserved until acknowledgment
 or explicit cancellation; their age is diagnostic, not an expiration gate.
+The owning page explicitly rejects a superseded or retired operation using
+its operation ID and expected source/target; only that matching reservation
+is canceled, so an older rejection cannot clear a newer transition.
 Confirmed helper resume success settles that exact attempt without waiting
 for a live snapshot, while pending or indeterminate attempts remain suppressed.
 Reverse file notifications retain bounded, short-lived

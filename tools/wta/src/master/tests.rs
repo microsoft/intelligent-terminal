@@ -14372,6 +14372,99 @@ async fn copilot_fork_helper_resume_keeps_cmd_shims_banner_and_stale_cwd_fallbac
 }
 
 #[tokio::test]
+async fn copilot_fork_rejection_settles_only_the_matching_operation() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{HistoryRowKey, SessionIdentity};
+    use crate::session_watcher::copilot_fork::CopilotFork;
+    let wt = Arc::new(MockWtChannel::ok());
+    let state = make_state_with_wt(wt.clone());
+    state
+        .registry
+        .apply_event(SessionEvent::SessionStarted {
+            key: "fork-a".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "fork-pane".into(),
+            cwd: PathBuf::new(),
+            title: String::new(),
+        })
+        .await;
+    let fork = CopilotFork {
+        source: "fork-a".into(),
+        target: "fork-b".into(),
+    };
+    let identity = |target: &str| SessionIdentity {
+        session_id: SessionId::new(target.to_string()),
+        history_key: HistoryRowKey::new("copilot", SessionLocation::Host, target, None),
+    };
+    copilot_fork::request(&state, &fork).await.unwrap();
+    let first = wt.calls()[0].1["params"].clone();
+    let mut wrong = first.clone();
+    wrong["agent_session_id"] = serde_json::json!("fork-c");
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_session_fork_rejected", "params": wrong,
+        }),
+    )
+    .await;
+    assert!(copilot_fork::is_reserved(&state, &identity("fork-b")).await);
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_session_fork_rejected", "params": first,
+        }),
+    )
+    .await;
+    assert!(!copilot_fork::is_reserved(&state, &identity("fork-b")).await);
+    copilot_fork::confirm(&state, &first).await;
+    assert!(state
+        .registry
+        .lookup(&SessionId::new("fork-b"))
+        .await
+        .is_none());
+
+    copilot_fork::request(
+        &state,
+        &CopilotFork {
+            source: "fork-a".into(),
+            target: "fork-c".into(),
+        },
+    )
+    .await
+    .unwrap();
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_session_fork_rejected", "params": first,
+        }),
+    )
+    .await;
+    assert!(copilot_fork::is_reserved(&state, &identity("fork-c")).await);
+    let second = wt.calls()[1].1["params"].clone();
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_session_fork_rejected", "params": second,
+        }),
+    )
+    .await;
+    assert!(!copilot_fork::is_reserved(&state, &identity("fork-c")).await);
+    let source = state
+        .registry
+        .lookup(&SessionId::new("fork-a"))
+        .await
+        .unwrap();
+    assert_eq!(source.status, Some(AgentStatus::Idle));
+    assert_eq!(source.pane_session_id.as_deref(), Some("fork-pane"));
+    copilot_fork::request(&state, &fork).await.unwrap();
+    assert_eq!(
+        wt.calls().len(),
+        3,
+        "a rejected plan cannot block a later fork"
+    );
+}
+
+#[tokio::test]
 async fn copilot_fork_published_reservation_survives_late_acknowledgment() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
     use crate::session_registry::{HistoryRowKey, SessionIdentity};

@@ -2129,6 +2129,22 @@ namespace TerminalAppLocalTests
             const std::string newer{ "55555555-5555-4555-8555-555555555555" };
             const auto control = page->_GetFocusedTabImpl()->GetRootPane()->GetTerminalControl();
             const auto paneId = control.Connection().SessionId();
+            unsigned rejections = 0;
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                Json::Value event;
+                Json::CharReaderBuilder reader;
+                std::istringstream stream{ winrt::to_string(payload) };
+                std::string errors;
+                if (Json::parseFromStream(reader, stream, &event, &errors) &&
+                    event["method"].asString() == "agent_session_fork_rejected")
+                {
+                    VERIFY_ARE_EQUAL(original, event["params"]["previous_agent_session_id"].asString());
+                    VERIFY_ARE_EQUAL(fork, event["params"]["agent_session_id"].asString());
+                    VERIFY_ARE_EQUAL(std::string{ "44444444-4444-4444-8444-444444444444" }, event["params"]["operation_id"].asString());
+                    ++rejections;
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
             const auto started = _keepRunningHook(paneId, "agent.session.start", original);
             page->_manager.OnPaneAgentSessionChanged(started);
             page->OnPaneAgentSessionChanged(started);
@@ -2138,6 +2154,14 @@ namespace TerminalAppLocalTests
             const auto retained = winrt::to_string(page->_manager.AgentSessionEvent(control.ContentId()));
             VERIFY_IS_TRUE(retained.find(newer) != std::string::npos);
             VERIFY_IS_TRUE(retained.find(fork) == std::string::npos);
+            VERIFY_ARE_EQUAL(1u, rejections);
+            page->OnPaneAgentSessionChanged(_keepRunningHook(paneId, "agent.session.start", newer));
+            page->OnPaneAgentSessionChanged(_copilotForkEvent(paneId, original, fork));
+            VERIFY_ARE_EQUAL(2u, rejections);
+            VERIFY_ARE_EQUAL(winrt::to_hstring(newer), page->_paneAgentSessions.at(paneId).sessionId);
+            page->OnPaneAgentSessionChanged(_copilotForkEvent(
+                winrt::guid{ L"{99999999-9999-4999-8999-999999999999}" }, original, fork));
+            VERIFY_ARE_EQUAL(2u, rejections);
         });
     }
 

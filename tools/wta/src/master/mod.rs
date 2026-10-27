@@ -11303,6 +11303,10 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         copilot_fork::confirm(state, &params).await;
         return;
     }
+    if method == "agent_session_fork_rejected" {
+        copilot_fork::reject(state, &params).await;
+        return;
+    }
 
     if method == "wt_listener_ready" {
         state
