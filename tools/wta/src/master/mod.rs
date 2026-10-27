@@ -5196,11 +5196,14 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
                     crate::session_watcher::WatchEvent::Activity(event) => {
                         apply_watcher_event(&inner_for_watch, event).await;
                     }
+                    crate::session_watcher::WatchEvent::FreshCopilotActivity(event) => {
+                        if !copilot_fork::buffer_activity(&inner_for_watch, &event).await {
+                            apply_watcher_event(&inner_for_watch, event).await;
+                        }
+                    }
                     crate::session_watcher::WatchEvent::CopilotFork(fork) => {
-                        tokio::task::spawn_local(copilot_fork::observe(
-                            Arc::clone(&inner_for_watch),
-                            fork,
-                        ));
+                        // Register before consuming the following activity record.
+                        copilot_fork::observe(Arc::clone(&inner_for_watch), fork).await;
                     }
                 }
             }

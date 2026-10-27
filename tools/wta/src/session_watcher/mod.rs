@@ -47,6 +47,7 @@ pub struct Emitted {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WatchEvent {
     Activity(Emitted),
+    FreshCopilotActivity(Emitted),
     CopilotFork(copilot_fork::CopilotFork),
 }
 
@@ -199,11 +200,27 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                     _ => Vec::new(),
                 };
                 for event in events {
-                    out.push(WatchEvent::Activity(Emitted {
+                    let emitted = Emitted {
                         cli: disc.cli.clone(),
                         key: disc.key.clone(),
                         event,
-                    }));
+                    };
+                    if matches!(disc.cli, CliSource::Copilot) {
+                        if !entry.copilot_replay
+                            || entry
+                                .copilot_birth_at
+                                .zip(copilot_record_time(&val))
+                                .is_some_and(|(birth, event)| event >= birth)
+                        {
+                            out.push(WatchEvent::FreshCopilotActivity(emitted));
+                        } else if entry.copilot_birth_at.is_none() {
+                            // Unknown provenance retains the existing fallback path,
+                            // but is never admitted to a pending fork's replay buffer.
+                            out.push(WatchEvent::Activity(emitted));
+                        }
+                    } else {
+                        out.push(WatchEvent::Activity(emitted));
+                    }
                 }
             }
         }
@@ -358,7 +375,9 @@ mod tests {
         super::process_change(path, progress)
             .into_iter()
             .filter_map(|event| match event {
-                WatchEvent::Activity(event) => Some(event),
+                WatchEvent::Activity(event) | WatchEvent::FreshCopilotActivity(event) => {
+                    Some(event)
+                }
                 WatchEvent::CopilotFork(_) => None,
             })
             .collect()
@@ -424,7 +443,8 @@ mod tests {
         };
         std::fs::write(
             &path,
-            format!("{header}\n{}\n", fork_record("2026-10-25T00:00:00Z")),
+            format!("{header}\n{}\n{}\n", fork_record("2026-10-25T00:00:00Z"),
+                serde_json::json!({"type":"assistant.turn_start","timestamp":"2026-10-25T00:00:00Z"})),
         )
         .unwrap();
         let mut progress = HashMap::new();
@@ -445,6 +465,19 @@ mod tests {
                 target: target.into(),
             }),]
         );
+        writeln!(
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap(),
+            "{}",
+            serde_json::json!({"type":"assistant.turn_start","timestamp":"2026-10-26T08:53:34Z"})
+        )
+        .unwrap();
+        assert!(matches!(
+            super::process_change(&path, &mut progress).as_slice(),
+            [WatchEvent::FreshCopilotActivity(_)]
+        ));
         std::fs::remove_dir_all(root).unwrap();
     }
 

@@ -11368,6 +11368,12 @@ namespace winrt::TerminalApp::implementation
             {
                 return;
             }
+            // A shell prompt retires activity while retaining the resumable binding.
+            if (const auto retired = _richTabEndedSessionByPaneId.find(*paneSessionId);
+                retired != _richTabEndedSessionByPaneId.end() && retired->second == winrt::to_string(previousId))
+            {
+                return;
+            }
             for (const auto& tab : _RuntimeTabs())
             {
                 const auto tabImpl = _GetTabImpl(tab);

@@ -9,6 +9,36 @@ pub(super) struct PendingFork {
     operation_id: String,
     source: SessionIdentity,
     target: acp::schema::v1::SessionId,
+    dependent: std::collections::VecDeque<CopilotFork>,
+    activity: std::collections::VecDeque<crate::session_watcher::Emitted>,
+    created: std::time::Instant,
+}
+
+const MAX_DEPENDENTS: usize = 16;
+const MAX_ACTIVITY: usize = 128;
+const MAX_PENDING_AGE: std::time::Duration = std::time::Duration::from_secs(30);
+
+pub(super) async fn buffer_activity(
+    state: &Arc<MasterStateInner>,
+    emitted: &crate::session_watcher::Emitted,
+) -> bool {
+    if emitted.cli != CliSource::Copilot || !session_event_is_activity_only(&emitted.event) {
+        return false;
+    }
+    let mut pending = state.pending_copilot_forks.lock().await;
+    pending.retain(|_, plan| plan.created.elapsed() < MAX_PENDING_AGE);
+    for plan in pending.values_mut() {
+        if plan.target.0.as_ref() == emitted.key
+            || plan.dependent.iter().any(|fork| fork.target == emitted.key)
+        {
+            if plan.activity.len() == MAX_ACTIVITY {
+                plan.activity.pop_front();
+            }
+            plan.activity.push_back(emitted.clone());
+            return true;
+        }
+    }
+    false
 }
 
 fn eligible(row: &SessionInfo) -> bool {
@@ -50,6 +80,25 @@ pub(super) async fn observe(state: Arc<MasterStateInner>, fork: CopilotFork) {
 }
 
 pub(super) async fn request(state: &Arc<MasterStateInner>, fork: &CopilotFork) -> Result<bool> {
+    let mut pending = state.pending_copilot_forks.lock().await;
+    pending.retain(|_, plan| plan.created.elapsed() < MAX_PENDING_AGE);
+    // Only an outstanding, verified chain can admit an otherwise historical source.
+    for plan in pending.values_mut() {
+        let tail = plan
+            .dependent
+            .back()
+            .map_or(plan.target.0.as_ref(), |f| f.target.as_str());
+        if tail == fork.source {
+            if plan.dependent.len() < MAX_DEPENDENTS
+                && fork.target != plan.source.session_id.0.as_ref()
+                && fork.target != plan.target.0.as_ref()
+                && !plan.dependent.iter().any(|f| f.target == fork.target)
+            {
+                plan.dependent.push_back(fork.clone());
+            }
+            return Ok(true);
+        }
+    }
     let sid = acp::schema::v1::SessionId::new(fork.source.clone());
     let Some(row) = state.registry.lookup(&sid).await else {
         return Ok(false);
@@ -93,11 +142,10 @@ pub(super) async fn request(state: &Arc<MasterStateInner>, fork: &CopilotFork) -
             .as_deref()
             .context("fork source pane missing")?,
     );
-    let Some(wt) = state.wt.as_ref().filter(|wt| wt.is_available()) else {
+    if !state.wt.as_ref().is_some_and(|wt| wt.is_available()) {
         return Ok(true);
-    };
+    }
     let source = SessionIdentity::from_info(&row);
-    let mut pending = state.pending_copilot_forks.lock().await;
     if pending
         .get(&pane)
         .is_some_and(|plan| plan.source == source && plan.target.to_string() == fork.target)
@@ -111,9 +159,25 @@ pub(super) async fn request(state: &Arc<MasterStateInner>, fork: &CopilotFork) -
             operation_id: operation_id.clone(),
             source,
             target,
+            dependent: Default::default(),
+            activity: Default::default(),
+            created: std::time::Instant::now(),
         },
     );
     drop(pending);
+    publish(state, &pane, &operation_id, fork).await?;
+    Ok(true)
+}
+
+async fn publish(
+    state: &Arc<MasterStateInner>,
+    pane: &str,
+    operation_id: &str,
+    fork: &CopilotFork,
+) -> Result<()> {
+    let Some(wt) = state.wt.as_ref().filter(|wt| wt.is_available()) else {
+        return Ok(());
+    };
     let result = wt
         .request(
             "publish",
@@ -134,20 +198,21 @@ pub(super) async fn request(state: &Arc<MasterStateInner>, fork: &CopilotFork) -
     if let Err(error) = result {
         let mut pending = state.pending_copilot_forks.lock().await;
         if pending
-            .get(&pane)
+            .get(pane)
             .is_some_and(|plan| plan.operation_id == operation_id)
         {
-            pending.remove(&pane);
+            pending.remove(pane);
         }
         return Err(error).context("publish verified fork binding");
     }
-    Ok(true)
+    Ok(())
 }
 
 pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::Value) {
     let pane = pane_key(params["pane_id"].as_str().unwrap_or(""));
+    let mut pending = state.pending_copilot_forks.lock().await;
+    pending.retain(|_, plan| plan.created.elapsed() < MAX_PENDING_AGE);
     let plan = {
-        let mut pending = state.pending_copilot_forks.lock().await;
         let Some(plan) = pending.get(&pane) else {
             return;
         };
@@ -160,7 +225,7 @@ pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::
         }
         pending.remove(&pane)
     };
-    let Some(plan) = plan else { return };
+    let Some(mut plan) = plan else { return };
     let (first, second) = if plan.source.session_id.0 < plan.target.0 {
         (&plan.source.session_id, &plan.target)
     } else {
@@ -186,6 +251,79 @@ pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::
     drop(second_guard);
     drop(first_guard);
     if applied {
+        // Keep the pending lock through replay so subsequent watcher activity
+        // cannot overtake the records consumed before Terminal's acknowledgement.
+        let mut remaining = std::collections::VecDeque::new();
+        for event in plan.activity {
+            if event.key == plan.target.0.as_ref() {
+                apply_watcher_event(state, event).await;
+            } else {
+                remaining.push_back(event);
+            }
+        }
+        let successor = if let Some(fork) = plan.dependent.pop_front() {
+            let row = state.registry.lookup(&plan.target).await;
+            let target = acp::schema::v1::SessionId::new(fork.target.clone());
+            let target_row = state
+                .registry
+                .lookup_identity(&SessionIdentity {
+                    session_id: target.clone(),
+                    history_key: crate::session_registry::HistoryRowKey::new(
+                        "copilot",
+                        SessionLocation::Host,
+                        &fork.target,
+                        None,
+                    ),
+                })
+                .await;
+            let source = row
+                .as_ref()
+                .filter(|row| {
+                    eligible(row)
+                        && row.pane_session_id.as_deref().map(pane_key).as_deref()
+                            == Some(pane.as_str())
+                })
+                .map(|row| SessionIdentity::from_info(row));
+            if let Some(source) = source.filter(|_| {
+                !target_row.as_ref().is_some_and(|row| {
+                    row.origin == Some(SessionOrigin::AgentPane)
+                        || (row.pane_session_id.is_some()
+                            && matches!(
+                                row.status,
+                                Some(
+                                    AgentStatus::Idle
+                                        | AgentStatus::Working
+                                        | AgentStatus::Attention
+                                        | AgentStatus::Error
+                                )
+                            ))
+                })
+            }) {
+                let operation_id = uuid::Uuid::new_v4().to_string();
+                pending.insert(
+                    pane.clone(),
+                    PendingFork {
+                        operation_id: operation_id.clone(),
+                        source,
+                        target,
+                        dependent: plan.dependent,
+                        activity: remaining,
+                        created: plan.created,
+                    },
+                );
+                Some((operation_id, fork))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        drop(pending);
+        if let Some((operation_id, fork)) = successor {
+            if let Err(error) = publish(state, &pane, &operation_id, &fork).await {
+                tracing::warn!(target: "copilot_fork", %error, "could not publish dependent fork binding");
+            }
+        }
         tracing::info!(target: "copilot_fork", pane, "confirmed foreground Copilot fork binding");
         broadcast_session_status_change(state, None).await;
         try_refresh_title_via_acp(state, &plan.target).await;

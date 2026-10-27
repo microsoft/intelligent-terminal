@@ -14140,6 +14140,189 @@ async fn copilot_fork_does_not_publish_for_unknown_or_acp_owned_sources() {
 }
 
 #[tokio::test]
+async fn copilot_fork_delayed_ack_retains_historical_successor_chain_and_cancellation() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_watcher::copilot_fork::CopilotFork;
+    for (cancel, failed) in [(false, false), (true, false), (false, true)] {
+        let wt = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(wt.clone());
+        state
+            .registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: "fork-a".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "fork-pane".into(),
+                cwd: PathBuf::new(),
+                title: String::new(),
+            })
+            .await;
+        let mut historical = state
+            .registry
+            .lookup(&SessionId::new("fork-a"))
+            .await
+            .unwrap();
+        historical.session_id = SessionId::new("fork-b");
+        historical.pane_session_id = None;
+        historical.status = Some(AgentStatus::Historical);
+        state.registry.upsert(historical).await;
+        assert!(copilot_fork::request(
+            &state,
+            &CopilotFork {
+                source: "fork-b".into(),
+                target: "unrelated".into(),
+            }
+        )
+        .await
+        .unwrap());
+        assert!(
+            wt.calls().is_empty(),
+            "unrelated historical sources stay excluded"
+        );
+        for (source, target) in [("fork-a", "fork-b"), ("fork-b", "fork-c")] {
+            assert!(copilot_fork::request(
+                &state,
+                &CopilotFork {
+                    source: source.into(),
+                    target: target.into(),
+                }
+            )
+            .await
+            .unwrap());
+        }
+        assert_eq!(wt.calls().len(), 1);
+        assert!(
+            copilot_fork::buffer_activity(
+                &state,
+                &crate::session_watcher::Emitted {
+                    cli: CliSource::Copilot,
+                    key: "fork-c".into(),
+                    event: SessionEvent::ToolStarting {
+                        key: "fork-c".into(),
+                        tool_name: String::new(),
+                    },
+                }
+            )
+            .await
+        );
+        let first = wt.calls()[0].1["params"].clone();
+        if cancel {
+            state.pending_copilot_forks.lock().await.remove("fork-pane");
+        }
+        if failed {
+            state
+                .registry
+                .apply_event(SessionEvent::PaneClosed {
+                    pane_session_id: "fork-pane".into(),
+                })
+                .await;
+        }
+        copilot_fork::confirm(&state, &first).await;
+        assert_eq!(wt.calls().len(), if cancel || failed { 1 } else { 2 });
+        if !cancel && !failed {
+            let second = wt.calls()[1].1["params"].clone();
+            assert_eq!(second["previous_agent_session_id"], "fork-b");
+            copilot_fork::confirm(&state, &second).await;
+            assert_eq!(
+                state
+                    .registry
+                    .lookup(&SessionId::new("fork-c"))
+                    .await
+                    .unwrap()
+                    .status,
+                Some(AgentStatus::Working)
+            );
+        }
+        if failed {
+            assert!(state
+                .registry
+                .lookup_active_by_pane("fork-pane")
+                .await
+                .is_none());
+        } else {
+            assert_eq!(
+                state
+                    .registry
+                    .lookup_active_by_pane("fork-pane")
+                    .await
+                    .unwrap()
+                    .session_id,
+                SessionId::new(if cancel { "fork-a" } else { "fork-c" })
+            );
+        }
+        assert!(state.pending_copilot_forks.lock().await.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn copilot_fork_replays_pending_activity_in_order_and_drops_it_on_cancellation() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_watcher::{copilot_fork::CopilotFork, Emitted};
+    for (end, cancel) in [(false, false), (true, false), (false, true)] {
+        let wt = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(wt.clone());
+        state
+            .registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: "fork-a".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "fork-pane".into(),
+                cwd: PathBuf::new(),
+                title: String::new(),
+            })
+            .await;
+        copilot_fork::request(
+            &state,
+            &CopilotFork {
+                source: "fork-a".into(),
+                target: "fork-b".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let mut events = vec![SessionEvent::ToolStarting {
+            key: "fork-b".into(),
+            tool_name: String::new(),
+        }];
+        if end {
+            events.push(SessionEvent::ToolCompleted {
+                key: "fork-b".into(),
+            });
+        }
+        for event in events {
+            assert!(
+                copilot_fork::buffer_activity(
+                    &state,
+                    &Emitted {
+                        cli: CliSource::Copilot,
+                        key: "fork-b".into(),
+                        event,
+                    }
+                )
+                .await
+            );
+        }
+        if cancel {
+            state.pending_copilot_forks.lock().await.remove("fork-pane");
+        }
+        copilot_fork::confirm(&state, &wt.calls()[0].1["params"]).await;
+        let target = state.registry.lookup(&SessionId::new("fork-b")).await;
+        if cancel {
+            assert!(target.is_none());
+        } else {
+            assert_eq!(
+                target.unwrap().status,
+                Some(if end {
+                    AgentStatus::Idle
+                } else {
+                    AgentStatus::Working
+                })
+            );
+        }
+        assert!(state.pending_copilot_forks.lock().await.is_empty());
+    }
+}
+
+#[tokio::test]
 async fn copilot_fork_does_not_dispatch_to_an_already_bound_target() {
     let wt = Arc::new(MockWtChannel::ok());
     let state = make_state_with_wt(wt.clone());

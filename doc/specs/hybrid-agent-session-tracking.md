@@ -16,6 +16,10 @@ identity. Terminal compares its retained pane binding, updates the resume and
 layout identity, and acknowledges the operation. Only that acknowledgement
 lets WTA atomically detach the original as history and bind the fork to the
 same pane. Duplicate, closed-pane, or superseded operations cannot reclaim a pane.
+Returning to a shell prompt retires the foreground source before an in-flight
+fork can change retained bindings. Consecutive forks wait for their predecessor's
+acknowledgement; bounded queues retain only newly appended successor activity
+and discard dependent work when the transition is canceled or superseded.
 For hook-free resumes, the owning page verifies its existing original binding
 before the shared manager accepts the fork. An unmarked resume event still
 cannot establish a shared hook binding, and prompt/subagent events cannot
