@@ -2326,7 +2326,7 @@ namespace TerminalAppLocalTests
                         const auto position = badge.TransformToVisual(layout).TransformPoint({ 0, 0 });
                         const auto titlePosition = title.TransformToVisual(layout).TransformPoint({ 0, 0 });
                         VERIFY_IS_TRUE(badge.ActualHeight() > 0);
-                        VERIFY_IS_TRUE(std::abs(position.X - titlePosition.X - title.ActualWidth() - 6) <= tolerance);
+                        VERIFY_IS_TRUE(std::abs(position.X - titlePosition.X - title.ActualWidth() - 12) <= tolerance);
                         VERIFY_IS_TRUE(std::abs(position.Y + badge.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= tolerance);
                         VERIFY_IS_TRUE(position.X + badge.ActualWidth() <= layout.ActualWidth() + tolerance);
                         if (titleText == L"Tab")
@@ -14616,7 +14616,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(text.IsTextTrimmed());
             const auto titlePosition = title.TransformToVisual(row).TransformPoint({ 0, 0 });
             const auto iconPosition = icon.TransformToVisual(row).TransformPoint({ 0, 0 });
-            VERIFY_IS_TRUE(std::abs(iconPosition.X - titlePosition.X - title.ActualWidth() - 6) <= 1);
+            VERIFY_IS_TRUE(std::abs(iconPosition.X - titlePosition.X - title.ActualWidth() - 12) <= 1);
             VERIFY_IS_TRUE(iconPosition.X + icon.ActualWidth() <= row.ActualWidth() - row.Padding().Right + 1);
             const auto center = titlePosition.Y + title.ActualHeight() / 2;
             VERIFY_IS_TRUE(std::abs(iconPosition.Y + icon.ActualHeight() / 2 - center) <= 1);
@@ -14625,7 +14625,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(text.IsTextTrimmed());
             const auto shortTitlePosition = title.TransformToVisual(row).TransformPoint({ 0, 0 });
             const auto shortIconPosition = icon.TransformToVisual(row).TransformPoint({ 0, 0 });
-            VERIFY_IS_TRUE(std::abs(shortIconPosition.X - shortTitlePosition.X - title.ActualWidth() - 6) <= 1);
+            VERIFY_IS_TRUE(std::abs(shortIconPosition.X - shortTitlePosition.X - title.ActualWidth() - 12) <= 1);
             VERIFY_IS_TRUE(shortIconPosition.X < iconPosition.X - 20);
             enabled = false;
             impl->UpdateHistoryKeepRunning([&](const auto&) { return enabled; }, [](const auto&) { return false; });
