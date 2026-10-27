@@ -1,8 +1,8 @@
 # OSC 7501 program status
 
-The Dev build recognizes revision 0.4 of the
+The Dev and Release builds recognize revision 0.4 of the
 [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status).
-Preview, Release and Windows Inbox builds do not advertise this experimental
+Preview and Windows Inbox builds do not advertise this experimental
 capability.
 
 Programs report `idle`, `working`, `blocked`, `done` or `error`. `clear` removes
@@ -96,7 +96,7 @@ Directory/repository/branch metadata remains in its existing separate fields.
 
 ## Shell command fallback
 
-Dev connections export `INTELLIGENT_TERMINAL_PROGRAM_STATUS=1`, including into
+Dev and Release connections export `INTELLIGENT_TERMINAL_PROGRAM_STATUS=1`, including into
 WSL. Updated PowerShell and Bash integration scripts use that capability marker
 without reading terminal input. Other branding configurations export `0`.
 PowerShell needs its existing FullLanguage PSReadLine wrapper; Bash needs 4.4+
