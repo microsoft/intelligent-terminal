@@ -5202,20 +5202,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         let inner_for_watch = Arc::clone(&inner);
         tokio::task::spawn_local(async move {
             while let Some(emitted) = async_rx.recv().await {
-                match emitted {
-                    crate::session_watcher::WatchEvent::Activity(event) => {
-                        apply_watcher_event(&inner_for_watch, event).await;
-                    }
-                    crate::session_watcher::WatchEvent::FreshCopilotActivity(event) => {
-                        if !copilot_fork::buffer_activity(&inner_for_watch, &event).await {
-                            apply_watcher_event(&inner_for_watch, event).await;
-                        }
-                    }
-                    crate::session_watcher::WatchEvent::CopilotFork(fork) => {
-                        // Register before consuming the following activity record.
-                        copilot_fork::observe(Arc::clone(&inner_for_watch), fork).await;
-                    }
-                }
+                handle_session_watcher_event(&inner_for_watch, emitted).await;
             }
         });
     }
@@ -9257,6 +9244,26 @@ async fn handle_session_born_bound(
                 }
             });
     handle_session_event(state, event, true, location).await
+}
+
+async fn handle_session_watcher_event(
+    state: &Arc<MasterStateInner>,
+    event: crate::session_watcher::WatchEvent,
+) {
+    match event {
+        crate::session_watcher::WatchEvent::Activity(event) => {
+            apply_watcher_event(state, event).await;
+        }
+        crate::session_watcher::WatchEvent::FreshCopilotActivity(event) => {
+            if !copilot_fork::buffer_activity(state, &event).await {
+                apply_watcher_event(state, event).await;
+            }
+        }
+        crate::session_watcher::WatchEvent::CopilotFork(fork) => {
+            // Register before consuming the following activity record.
+            copilot_fork::observe(Arc::clone(state), fork).await;
+        }
+    }
 }
 
 /// Apply one watcher-emitted session event to master's registry and, if it

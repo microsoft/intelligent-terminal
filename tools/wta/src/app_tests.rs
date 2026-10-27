@@ -8987,7 +8987,7 @@ fn copilot_fork_native_resume_uses_master_activation_before_any_local_launch() {
         rx.try_recv().is_err(),
         "pending or indeterminate attempts suppress Enter"
     );
-    app.handle_event(AppEvent::NativeResumeRejected {
+    app.handle_event(AppEvent::NativeResumeSettled {
         identity: identity.clone(),
         activation_id: "stale-attempt".into(),
     });
@@ -8996,7 +8996,7 @@ fn copilot_fork_native_resume_uses_master_activation_before_any_local_launch() {
         rx.try_recv().is_err(),
         "late results cannot clear another attempt"
     );
-    app.handle_event(AppEvent::NativeResumeRejected {
+    app.handle_event(AppEvent::NativeResumeSettled {
         identity,
         activation_id: activation_id.clone(),
     });
@@ -9012,6 +9012,66 @@ fn copilot_fork_native_resume_uses_master_activation_before_any_local_launch() {
         panic!("a later real exit permits another resume");
     };
     assert_ne!(later.activation_id, params.activation_id);
+}
+
+#[test]
+fn copilot_fork_native_resume_success_settles_without_intervening_live_snapshot() {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+    use crate::protocol::acp::client::MasterExtRequest;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let (mut app, mut requests) = test_app_with_master_rx();
+    app.window_id = Some("42".into());
+    app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
+    let MasterExtRequest::SessionsList { request_id, .. } = requests.try_recv().unwrap() else {
+        panic!("opening sessions must request history");
+    };
+    let mut historical = session_info_for_test("fork-parent");
+    historical.cli_source = Some(CliSource::Copilot);
+    historical.provider_id = Some("copilot".into());
+    historical.status = Some(AgentStatus::Historical);
+    app.handle_agents_snapshot_loaded(request_id, vec![historical.clone()]);
+    app.current_tab_mut().agents_list_state.select(Some(0));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let MasterExtRequest::SessionActivate { params: first, .. } = requests.try_recv().unwrap() else {
+        panic!("historical A must resume through master");
+    };
+
+    // Master has resumed A and forked B before the helper ever saw live A.
+    let mut fork = historical.clone();
+    fork.session_id = agent_client_protocol::schema::v1::SessionId::new("fork-child");
+    fork.status = Some(AgentStatus::Idle);
+    fork.pane_session_id = Some("fork-pane".into());
+    app.handle_agents_snapshot_loaded(request_id, vec![historical, fork]);
+    app.handle_event(AppEvent::NativeResumeSettled {
+        identity: first.identity.clone(),
+        activation_id: "stale-attempt".into(),
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(
+        requests.try_recv().is_err(),
+        "stale completion cannot settle A"
+    );
+
+    app.handle_event(AppEvent::NativeResumeSettled {
+        identity: first.identity.clone(),
+        activation_id: first.activation_id.clone(),
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let MasterExtRequest::SessionActivate { params: second, .. } = requests.try_recv().unwrap() else {
+        panic!("confirmed success must allow historical A to resume after its fork");
+    };
+    assert_eq!(second.identity, first.identity);
+    assert_ne!(second.activation_id, first.activation_id);
+    app.handle_event(AppEvent::NativeResumeSettled {
+        identity: first.identity,
+        activation_id: first.activation_id,
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(
+        requests.try_recv().is_err(),
+        "late successful response cannot clear the newer attempt"
+    );
 }
 
 #[test]

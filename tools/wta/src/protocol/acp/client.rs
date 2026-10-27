@@ -4298,15 +4298,18 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         if let Ok(result) =
                             crate::session_registry::parse_session_activate_response(&response.0)
                         {
+                            // A confirmed completion settles only its exact attempt,
+                            // even if the resumed CLI forked before a live snapshot.
+                            if result.state
+                                == crate::session_registry::SessionActivationState::Complete
+                                && result.activation_id == params.activation_id
+                            {
+                                let _ = event_tx.send(AppEvent::NativeResumeSettled {
+                                    identity: params.identity,
+                                    activation_id: result.activation_id,
+                                });
+                            }
                             if !result.accepted {
-                                if result.state
-                                    == crate::session_registry::SessionActivationState::Complete
-                                {
-                                    let _ = event_tx.send(AppEvent::NativeResumeRejected {
-                                        identity: params.identity,
-                                        activation_id: params.activation_id,
-                                    });
-                                }
                                 if let Some(message) = result.detail {
                                     let _ = event_tx.send(AppEvent::TabSystemMessage {
                                         tab_id: tab_id.clone(),

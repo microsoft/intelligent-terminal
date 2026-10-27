@@ -24,7 +24,11 @@ Retained fork metadata replayed after a pane transfer preserves matching
 shell-prompt retirement instead of restarting foreground activity.
 Sidebars and helpers share pre-launch admission for native Host Copilot
 resumes: a pending fork target returns a retry response rather than opening
-a competing pane. Reverse file notifications retain bounded, short-lived
+a competing pane. Published operations remain reserved until acknowledgment
+or explicit cancellation; their age is diagnostic, not an expiration gate.
+Confirmed helper resume success settles that exact attempt without waiting
+for a live snapshot, while pending or indeterminate attempts remain suppressed.
+Reverse file notifications retain bounded, short-lived
 unmatched fork/activity evidence in memory; only a verified predecessor can
 promote that evidence into a binding transition.
 For hook-free resumes, the owning page verifies its existing original binding

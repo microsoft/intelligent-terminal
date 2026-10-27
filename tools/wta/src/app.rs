@@ -5828,7 +5828,7 @@ impl App {
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
-            AppEvent::NativeResumeRejected { .. } => "native_resume_rejected",
+            AppEvent::NativeResumeSettled { .. } => "native_resume_settled",
             AppEvent::DirectTerminalActionProposal { .. } => "direct_terminal_action_proposal",
             AppEvent::DirectTerminalActionProposalCommit { .. } => {
                 "direct_terminal_action_proposal_commit"

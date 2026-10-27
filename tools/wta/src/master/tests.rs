@@ -14372,6 +14372,72 @@ async fn copilot_fork_helper_resume_keeps_cmd_shims_banner_and_stale_cwd_fallbac
 }
 
 #[tokio::test]
+async fn copilot_fork_published_reservation_survives_late_acknowledgment() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{HistoryRowKey, SessionIdentity};
+    use crate::session_watcher::{copilot_fork::CopilotFork, Emitted};
+    let wt = Arc::new(MockWtChannel::ok());
+    let state = make_state_with_wt(wt.clone());
+    state
+        .registry
+        .apply_event(SessionEvent::SessionStarted {
+            key: "fork-a".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "fork-pane".into(),
+            cwd: PathBuf::new(),
+            title: String::new(),
+        })
+        .await;
+    let fork = CopilotFork {
+        source: "fork-a".into(),
+        target: "fork-b".into(),
+    };
+    copilot_fork::request(&state, &fork).await.unwrap();
+    state
+        .pending_copilot_forks
+        .lock()
+        .await
+        .get_mut("fork-pane")
+        .unwrap()
+        .published_at = std::time::Instant::now() - std::time::Duration::from_secs(60);
+    let target = SessionIdentity {
+        session_id: SessionId::new("fork-b"),
+        history_key: HistoryRowKey::new("copilot", SessionLocation::Host, "fork-b", None),
+    };
+    assert!(copilot_fork::is_reserved(&state, &target).await);
+    assert!(
+        copilot_fork::buffer_activity(
+            &state,
+            &Emitted {
+                cli: CliSource::Copilot,
+                key: "fork-b".into(),
+                event: SessionEvent::ToolStarting {
+                    key: "fork-b".into(),
+                    tool_name: String::new()
+                },
+            }
+        )
+        .await
+    );
+    copilot_fork::request(&state, &fork).await.unwrap();
+    assert_eq!(wt.calls().len(), 1);
+    copilot_fork::confirm(&state, &wt.calls()[0].1["params"]).await;
+    assert!(!copilot_fork::is_reserved(&state, &target).await);
+    let row = state.registry.lookup_identity(&target).await.unwrap();
+    assert_eq!(row.pane_session_id.as_deref(), Some("fork-pane"));
+    assert_eq!(row.status, Some(AgentStatus::Working));
+    assert_eq!(
+        state
+            .registry
+            .lookup(&SessionId::new("fork-a"))
+            .await
+            .unwrap()
+            .status,
+        Some(AgentStatus::Historical)
+    );
+}
+
+#[tokio::test]
 async fn copilot_fork_reserves_target_before_resume_and_respects_resume_first() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
     use crate::session_registry::{SessionActivateParams, SessionIdentity};
@@ -19673,6 +19739,97 @@ async fn native_off_watcher_admits_exact_copilot_input_activity() {
             .status,
         Some(AgentStatus::Idle)
     );
+}
+
+#[tokio::test]
+async fn copilot_fork_watcher_dispatch_keeps_qualified_native_activity_without_pending_fork() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+    use crate::session_watcher::{Emitted, WatchEvent};
+    for (provider, location) in [
+        ("claude", SessionLocation::Host),
+        (
+            "copilot",
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        ),
+    ] {
+        let state = make_state();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let sid = SessionId::new("qualified-native-watcher");
+        let mut row = SessionInfo::new(sid.clone(), "C:\\repo".into());
+        row.provider_id = Some("copilot".into());
+        row.cli_source = Some(CliSource::Copilot);
+        row.location = SessionLocation::Host;
+        row.status = Some(AgentStatus::Historical);
+        let identity = SessionIdentity::from_info(&row);
+        state.registry.upsert(row).await;
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method":"native_agent_observation", "params":{
+                    "pane_id":"00112233-4455-6677-8899-aabbccddeeff", "provider_id":"copilot",
+                    "agent_session_id":"qualified-native-watcher", "location":"Host",
+                    "window_id":0, "tab_id":"native-tab", "mode_epoch":1,
+                    "kind":"reset", "tracking_enabled":false
+                }
+            }),
+        )
+        .await;
+        let mut collision = SessionInfo::new(sid.clone(), "/other".into());
+        collision.provider_id = Some(provider.into());
+        collision.location = location;
+        collision.status = Some(AgentStatus::Historical);
+        let other = SessionIdentity::from_info(&collision);
+        state.registry.upsert(collision.clone()).await;
+        assert!(state.registry.lookup(&sid).await.is_none());
+        assert!(state.hook_owned.lock().await.is_empty());
+        assert!(state.born_bound.lock().await.is_empty());
+        for (event, expected) in [
+            (
+                SessionEvent::ToolStarting {
+                    key: sid.to_string(),
+                    tool_name: String::new(),
+                },
+                AgentStatus::Working,
+            ),
+            (
+                SessionEvent::ToolCompleted {
+                    key: sid.to_string(),
+                },
+                AgentStatus::Idle,
+            ),
+        ] {
+            handle_session_watcher_event(
+                &state,
+                WatchEvent::FreshCopilotActivity(Emitted {
+                    cli: CliSource::Copilot,
+                    key: sid.to_string(),
+                    event,
+                }),
+            )
+            .await;
+            assert_eq!(
+                state
+                    .registry
+                    .lookup_identity(&identity)
+                    .await
+                    .unwrap()
+                    .status,
+                Some(expected.clone())
+            );
+            assert_eq!(
+                state.registry.native_pane_observations().await[0].status,
+                expected
+            );
+            assert_eq!(
+                state.registry.lookup_identity(&other).await,
+                Some(collision.clone())
+            );
+        }
+        assert!(state.pending_copilot_forks.lock().await.is_empty());
+    }
 }
 
 #[tokio::test]

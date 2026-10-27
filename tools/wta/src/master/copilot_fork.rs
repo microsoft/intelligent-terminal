@@ -11,12 +11,12 @@ pub(super) struct PendingFork {
     target: acp::schema::v1::SessionId,
     dependent: std::collections::VecDeque<CopilotFork>,
     activity: std::collections::VecDeque<(std::time::Instant, crate::session_watcher::Emitted)>,
-    created: std::time::Instant,
+    pub(super) published_at: std::time::Instant,
 }
 
 const MAX_DEPENDENTS: usize = 16;
 const MAX_ACTIVITY: usize = 128;
-const MAX_PENDING_AGE: std::time::Duration = std::time::Duration::from_secs(30);
+const MAX_ORPHAN_AGE: std::time::Duration = std::time::Duration::from_secs(30);
 const MAX_ORPHANS: usize = 256;
 
 #[derive(Default)]
@@ -32,7 +32,7 @@ enum OrphanWork {
 impl Orphans {
     fn prune(&mut self) {
         self.records
-            .retain(|(created, _)| created.elapsed() < MAX_PENDING_AGE);
+            .retain(|(created, _)| created.elapsed() < MAX_ORPHAN_AGE);
     }
 
     fn push(&mut self, work: OrphanWork) {
@@ -58,8 +58,7 @@ pub(super) async fn is_reserved(state: &MasterStateInner, identity: &SessionIden
     if !is_host_identity(identity) {
         return false;
     }
-    let mut pending = state.pending_copilot_forks.lock().await;
-    pending.retain(|_, plan| plan.created.elapsed() < MAX_PENDING_AGE);
+    let pending = state.pending_copilot_forks.lock().await;
     pending.values().any(|plan| {
         plan.target == identity.session_id
             || plan
@@ -118,7 +117,7 @@ async fn attach_orphans(
         else {
             break;
         };
-        let Some((created, OrphanWork::Fork(fork))) = orphans.records.remove(index) else {
+        let Some((_, OrphanWork::Fork(fork))) = orphans.records.remove(index) else {
             break;
         };
         if plan.dependent.len() == MAX_DEPENDENTS {
@@ -132,7 +131,6 @@ async fn attach_orphans(
         {
             continue;
         }
-        plan.created = plan.created.min(created);
         plan.dependent.push_back(fork);
     }
     let mut index = 0;
@@ -142,7 +140,6 @@ async fn attach_orphans(
                 || plan.dependent.iter().any(|fork| fork.target == event.key));
         if matches {
             if let Some((created, OrphanWork::Activity(event))) = orphans.records.remove(index) {
-                plan.created = plan.created.min(created);
                 let position = plan
                     .activity
                     .iter()
@@ -167,7 +164,6 @@ pub(super) async fn buffer_activity(
         return false;
     }
     let mut pending = state.pending_copilot_forks.lock().await;
-    pending.retain(|_, plan| plan.created.elapsed() < MAX_PENDING_AGE);
     for plan in pending.values_mut() {
         if plan.target.0.as_ref() == emitted.key
             || plan.dependent.iter().any(|fork| fork.target == emitted.key)
@@ -185,18 +181,30 @@ pub(super) async fn buffer_activity(
     let sid = acp::schema::v1::SessionId::new(emitted.key.clone());
     let activity_owned = state.hook_owned.lock().await.contains(&sid)
         || state.born_bound.lock().await.contains(&sid)
-        || state.registry.lookup(&sid).await.is_some_and(|row| {
-            row.origin == Some(SessionOrigin::AgentPane)
-                || matches!(
-                    row.status,
-                    Some(
-                        AgentStatus::Idle
-                            | AgentStatus::Working
-                            | AgentStatus::Attention
-                            | AgentStatus::Error
+        || state
+            .registry
+            .lookup_identity(&SessionIdentity {
+                session_id: sid,
+                history_key: crate::session_registry::HistoryRowKey::new(
+                    "copilot",
+                    SessionLocation::Host,
+                    &emitted.key,
+                    None,
+                ),
+            })
+            .await
+            .is_some_and(|row| {
+                row.origin == Some(SessionOrigin::AgentPane)
+                    || matches!(
+                        row.status,
+                        Some(
+                            AgentStatus::Idle
+                                | AgentStatus::Working
+                                | AgentStatus::Attention
+                                | AgentStatus::Error
+                        )
                     )
-                )
-        });
+            });
     if !activity_owned {
         state
             .copilot_fork_orphans
@@ -257,7 +265,6 @@ pub(super) async fn observe(state: Arc<MasterStateInner>, fork: CopilotFork) {
 pub(super) async fn request(state: &Arc<MasterStateInner>, fork: &CopilotFork) -> Result<bool> {
     let _admission = state.copilot_fork_admission.lock().await;
     let mut pending = state.pending_copilot_forks.lock().await;
-    pending.retain(|_, plan| plan.created.elapsed() < MAX_PENDING_AGE);
     let reserved: HashSet<_> = pending
         .values()
         .flat_map(|plan| {
@@ -350,7 +357,7 @@ pub(super) async fn request(state: &Arc<MasterStateInner>, fork: &CopilotFork) -
         target,
         dependent: Default::default(),
         activity: Default::default(),
-        created: std::time::Instant::now(),
+        published_at: std::time::Instant::now(),
     };
     attach_orphans(state, &mut plan, &reserved).await;
     pending.insert(pane.clone(), plan);
@@ -405,7 +412,6 @@ pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::
     let _admission = state.copilot_fork_admission.lock().await;
     let pane = pane_key(params["pane_id"].as_str().unwrap_or(""));
     let mut pending = state.pending_copilot_forks.lock().await;
-    pending.retain(|_, plan| plan.created.elapsed() < MAX_PENDING_AGE);
     let plan = {
         let Some(plan) = pending.get(&pane) else {
             return;
@@ -503,7 +509,7 @@ pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::
                         target,
                         dependent: plan.dependent,
                         activity: remaining,
-                        created: plan.created,
+                        published_at: std::time::Instant::now(),
                     },
                 );
                 Some((operation_id, fork))
@@ -520,7 +526,7 @@ pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::
                 tracing::warn!(target: "copilot_fork", %error, "could not publish dependent fork binding");
             }
         }
-        tracing::info!(target: "copilot_fork", pane, "confirmed foreground Copilot fork binding");
+        tracing::info!(target: "copilot_fork", pane, acknowledgment_delay_ms = plan.published_at.elapsed().as_millis() as u64, "confirmed foreground Copilot fork binding");
         broadcast_session_status_change(state, None).await;
         try_refresh_title_via_acp(state, &plan.target).await;
     } else {
@@ -542,7 +548,7 @@ mod tests {
             }));
         }
         assert_eq!(orphans.records.len(), MAX_ORPHANS);
-        orphans.records.front_mut().unwrap().0 = std::time::Instant::now() - MAX_PENDING_AGE;
+        orphans.records.front_mut().unwrap().0 = std::time::Instant::now() - MAX_ORPHAN_AGE;
         orphans.prune();
         assert_eq!(orphans.records.len(), MAX_ORPHANS - 1);
     }

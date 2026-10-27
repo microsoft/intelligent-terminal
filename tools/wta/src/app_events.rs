@@ -2818,7 +2818,7 @@ impl App {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
             }
-            AppEvent::NativeResumeRejected {
+            AppEvent::NativeResumeSettled {
                 identity,
                 activation_id,
             } => {
