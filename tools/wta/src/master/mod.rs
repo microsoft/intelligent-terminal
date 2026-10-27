@@ -591,6 +591,8 @@ struct MasterStateInner {
     pub(crate) registry: Arc<dyn crate::session_registry::SessionRegistry>,
     session_activation_receipts: Mutex<HashMap<String, SessionActivationReceipt>>,
     pending_copilot_forks: Mutex<HashMap<String, copilot_fork::PendingFork>>,
+    copilot_fork_admission: Mutex<()>,
+    copilot_fork_orphans: Mutex<copilot_fork::Orphans>,
     /// Per-helper subscribers for `intellterm.wta/*` ExtNotifications
     /// fanned out from master. Populated by `serve_helper` on connect
     /// and removed on disconnect (or whenever a send fails). Keyed by
@@ -4721,7 +4723,13 @@ impl HelperHandler {
                 let agent = self.agent.get().cloned();
                 handle_sessions_list(&self.state, agent.as_ref(), &p).await
             }
-            Req::SessionActivate(p) => handle_session_activate(&self.state, &p).await,
+            Req::SessionActivate(p) => {
+                if is_control {
+                    handle_session_activate(&self.state, &p).await
+                } else {
+                    handle_session_activate_with_helper_mode(&self.state, &p, true).await
+                }
+            }
             Req::SessionActivationStatus(p) => {
                 handle_session_activation_status(&self.state, &p).await
             }
@@ -5088,6 +5096,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         registry: crate::session_registry::InMemoryRegistry::shared(),
         session_activation_receipts: Mutex::new(HashMap::new()),
         pending_copilot_forks: Mutex::new(HashMap::new()),
+        copilot_fork_admission: Mutex::new(()),
+        copilot_fork_orphans: Mutex::new(Default::default()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         agent_authentication: Mutex::new(HashMap::new()),
         wt,
@@ -8419,6 +8429,14 @@ async fn handle_session_activate(
     state: &Arc<MasterStateInner>,
     parsed: &crate::session_registry::SessionActivateParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
+    handle_session_activate_with_helper_mode(state, parsed, false).await
+}
+
+async fn handle_session_activate_with_helper_mode(
+    state: &Arc<MasterStateInner>,
+    parsed: &crate::session_registry::SessionActivateParams,
+    helper_resume: bool,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
     use crate::session_registry::{SessionActivateResponse, SessionActivationState};
 
     let mut receipts = state.session_activation_receipts.lock().await;
@@ -8461,7 +8479,11 @@ async fn handle_session_activate(
     let parsed = parsed.clone();
     let (sender, receiver) = tokio::sync::oneshot::channel();
     tokio::task::spawn_local(async move {
-        let response = execute_session_activation(&state, &parsed).await;
+        let response = if helper_resume {
+            execute_session_activation_with_helper_mode(&state, &parsed, true).await
+        } else {
+            execute_session_activation(&state, &parsed).await
+        };
         state.session_activation_receipts.lock().await.insert(
             parsed.activation_id.clone(),
             SessionActivationReceipt {
@@ -8482,6 +8504,14 @@ async fn handle_session_activate(
 async fn execute_session_activation(
     state: &MasterStateInner,
     parsed: &crate::session_registry::SessionActivateParams,
+) -> crate::session_registry::SessionActivateResponse {
+    execute_session_activation_with_helper_mode(state, parsed, false).await
+}
+
+async fn execute_session_activation_with_helper_mode(
+    state: &MasterStateInner,
+    parsed: &crate::session_registry::SessionActivateParams,
+    helper_resume: bool,
 ) -> crate::session_registry::SessionActivateResponse {
     use crate::agent_sessions::{AgentStatus, SessionOrigin};
     use crate::session_mgmt::{
@@ -8529,6 +8559,28 @@ async fn execute_session_activation(
         }
     };
 
+    // Admission covers preflight through pane assignment, not the Terminal ACK.
+    // A resume that wins admission establishes its owner before fork preflight.
+    let Some(initial_row) = state.registry.lookup_identity(&parsed.identity).await else {
+        return respond!(
+            "not_found",
+            false,
+            Some("The selected session is no longer available.".to_string())
+        );
+    };
+    let qualified_identity = crate::session_registry::SessionIdentity::from_info(&initial_row);
+    let _fork_admission = if copilot_fork::is_host_identity(&qualified_identity) {
+        Some(state.copilot_fork_admission.lock().await)
+    } else {
+        None
+    };
+    if copilot_fork::is_reserved(state, &qualified_identity).await {
+        return respond!(
+            "retry",
+            false,
+            Some("The selected session is changing identity. Please retry.".to_string())
+        );
+    }
     let Some(row) = state.registry.lookup_identity(&parsed.identity).await else {
         return respond!(
             "not_found",
@@ -8680,7 +8732,32 @@ async fn execute_session_activation(
             let runtimes =
                 crate::coordinator::default_delegate_agent_runtimes(Some(&provider_id), None, None);
             let runtime = &runtimes[0];
+            let native_helper_resume = helper_resume
+                && provider_id == "copilot"
+                && row.location == crate::agent_sessions::SessionLocation::Host;
             let commandline = match &row.location {
+                crate::agent_sessions::SessionLocation::Host if native_helper_resume => {
+                    if !crate::agent_sessions::is_safe_cli_resume_id(row.session_id.0.as_ref()) {
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some(
+                                "The selected session has an invalid CLI resume identifier."
+                                    .to_string()
+                            )
+                        );
+                    }
+                    // Preserve the helper's cmd/PATHEXT launch, including cmd-only
+                    // shims that the sidebar's stricter delegate builder excludes.
+                    let short_key: String = row.session_id.0.chars().take(8).collect();
+                    let profile = crate::agent_registry::lookup_profile_by_id(&provider_id);
+                    Ok(format!(
+                        "cmd /c echo \x1b[2;37mResuming {provider_id} session {short_key}...\x1b[0m && {} {} {}",
+                        profile.cli_executable,
+                        profile.resume_flag,
+                        row.session_id
+                    ))
+                }
                 crate::agent_sessions::SessionLocation::Host => {
                     crate::coordinator::build_delegate_resume_commandline(
                         runtime,
@@ -8740,7 +8817,14 @@ async fn execute_session_activation(
             if matches!(row.location, crate::agent_sessions::SessionLocation::Host)
                 && !row.cwd.as_os_str().is_empty()
             {
-                params["cwd"] = serde_json::Value::String(row.cwd.to_string_lossy().to_string());
+                if native_helper_resume {
+                    if let Some(cwd) = crate::cwd_util::validate_starting_directory(&row.cwd) {
+                        params["cwd"] = serde_json::Value::String(cwd);
+                    }
+                } else {
+                    params["cwd"] =
+                        serde_json::Value::String(row.cwd.to_string_lossy().to_string());
+                }
             }
             if let Some(title) = row.title.as_ref().filter(|title| !title.trim().is_empty()) {
                 params["title"] = serde_json::Value::String(title.clone());
@@ -8830,6 +8914,7 @@ async fn execute_session_activation(
                         state.born_bound.lock().await.insert(row.session_id.clone());
                     }
                     drop(lifecycle_guard);
+                    drop(_fork_admission);
                     broadcast_session_status_change(state, None).await;
                     if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
                         &provider_id,

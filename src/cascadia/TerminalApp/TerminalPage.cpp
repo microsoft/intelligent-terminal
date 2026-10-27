@@ -11488,7 +11488,10 @@ namespace winrt::TerminalApp::implementation
                     const bool replayedFork = eventName.empty() && params["fork_operation_id"].isString() &&
                                               !params["fork_operation_id"].asString().empty() && retainedControl &&
                                               _manager.AgentSessionEvent(retainedControl.ContentId()) == eventJson;
-                    const bool bindingStarted = sessionStarted || replayedFork;
+                    const auto retired = _richTabEndedSessionByPaneId.find(*paneSessionId);
+                    const bool retiredFork = replayedFork && retired != _richTabEndedSessionByPaneId.end() &&
+                                             retired->second == agentSessionId;
+                    const bool bindingStarted = sessionStarted || (replayedFork && !retiredFork);
                     const auto clearExplicitResume = [&]() {
                         _explicitNativeAgentSessions.erase(*paneSessionId);
                         _interactiveResumeSessions.erase(*paneSessionId);

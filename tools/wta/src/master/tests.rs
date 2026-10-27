@@ -2845,6 +2845,8 @@ fn make_state_with_retirement_pending_timeout(
         registry: crate::session_registry::InMemoryRegistry::shared(),
         session_activation_receipts: Mutex::new(HashMap::new()),
         pending_copilot_forks: Mutex::new(HashMap::new()),
+        copilot_fork_admission: Mutex::new(()),
+        copilot_fork_orphans: Mutex::new(Default::default()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         agent_authentication: Mutex::new(HashMap::new()),
         wt: None,
@@ -13948,6 +13950,8 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         registry: crate::session_registry::InMemoryRegistry::shared(),
         session_activation_receipts: Mutex::new(HashMap::new()),
         pending_copilot_forks: Mutex::new(HashMap::new()),
+        copilot_fork_admission: Mutex::new(()),
+        copilot_fork_orphans: Mutex::new(Default::default()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         agent_authentication: Mutex::new(HashMap::new()),
         wt: Some(wt),
@@ -14017,7 +14021,11 @@ async fn copilot_fork_without_a_prompt_or_target_lease_waits_only_for_terminal_c
         target: target.into(),
     };
     assert!(copilot_fork::request(&state, &fork).await.unwrap());
-    assert_eq!(wt.calls().len(), 1, "only the guarded binding update is needed");
+    assert_eq!(
+        wt.calls().len(),
+        1,
+        "only the guarded binding update is needed"
+    );
     let request = wt
         .calls()
         .into_iter()
@@ -14319,6 +14327,216 @@ async fn copilot_fork_replays_pending_activity_in_order_and_drops_it_on_cancella
             );
         }
         assert!(state.pending_copilot_forks.lock().await.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn copilot_fork_helper_resume_keeps_cmd_shims_banner_and_stale_cwd_fallback() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    let _resolver = crate::coordinator::override_test_executable_resolver(|_| {
+        panic!("helper resume must preserve cmd/PATHEXT instead of requiring a ps1 companion")
+    });
+    let wt = Arc::new(MockWtChannel::responding(serde_json::json!({
+        "session_id": "helper-resume-pane"
+    })));
+    let state = make_state_with_wt(wt.clone());
+    let mut row = SessionInfo::new(
+        SessionId::new("helper-resume"),
+        PathBuf::from("C:\\wta-missing-cwd\\nonexistent-project"),
+    );
+    row.provider_id = Some("copilot".into());
+    row.cli_source = Some(CliSource::Copilot);
+    row.location = SessionLocation::Host;
+    row.origin = Some(SessionOrigin::Unknown);
+    row.status = Some(AgentStatus::Historical);
+    let params = SessionActivateParams {
+        identity: SessionIdentity::from_info(&row),
+        window_id: 42,
+        activation_id: "helper-resume-parity".into(),
+    };
+    state.registry.upsert(row).await;
+    let response = execute_session_activation_with_helper_mode(&state, &params, true).await;
+    assert!(response.accepted, "{response:?}");
+    let calls = wt.calls();
+    let create = &calls
+        .iter()
+        .find(|(method, _)| method == "create_tab")
+        .unwrap()
+        .1;
+    assert!(create.get("cwd").is_none());
+    let command = create["commandline"].as_str().unwrap();
+    assert!(command.starts_with("cmd /c echo "));
+    assert!(command.contains("Resuming copilot session"));
+    assert!(command.ends_with("copilot --resume helper-resume"));
+}
+
+#[tokio::test]
+async fn copilot_fork_reserves_target_before_resume_and_respects_resume_first() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity};
+    use crate::session_watcher::copilot_fork::CopilotFork;
+    let _resolver = mock_native_delegate_executables();
+    for resume_first in [false, true] {
+        let wt = Arc::new(MockWtChannel::responding(
+            serde_json::json!({"session_id": "resume-pane"}),
+        ));
+        let state = make_state_with_wt(wt.clone());
+        state
+            .registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: "fork-a".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "fork-pane".into(),
+                cwd: PathBuf::new(),
+                title: String::new(),
+            })
+            .await;
+        let mut target = state
+            .registry
+            .lookup(&SessionId::new("fork-a"))
+            .await
+            .unwrap();
+        target.session_id = SessionId::new("fork-b");
+        target.pane_session_id = None;
+        target.status = Some(AgentStatus::Historical);
+        let params = SessionActivateParams {
+            identity: SessionIdentity::from_info(&target),
+            window_id: 1,
+            activation_id: "fork-resume-race".into(),
+        };
+        state.registry.upsert(target).await;
+        let fork = CopilotFork {
+            source: "fork-a".into(),
+            target: "fork-b".into(),
+        };
+        if resume_first {
+            assert!(execute_session_activation(&state, &params).await.accepted);
+        }
+        assert!(copilot_fork::request(&state, &fork).await.unwrap());
+        if resume_first {
+            assert!(!wt.calls().iter().any(|(method, _)| method == "publish"));
+        } else {
+            let response = execute_session_activation(&state, &params).await;
+            assert!(!response.accepted);
+            assert_eq!(response.action, "retry");
+            assert!(!wt.calls().iter().any(|(method, _)| method == "create_tab"));
+            let ack = wt.calls()[0].1["params"].clone();
+            copilot_fork::confirm(&state, &ack).await;
+            assert!(execute_session_activation(&state, &params).await.accepted);
+            assert!(!wt.calls().iter().any(|(method, _)| method == "create_tab"));
+        }
+        assert_eq!(
+            state
+                .registry
+                .lookup(&SessionId::new("fork-b"))
+                .await
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some(if resume_first {
+                "resume-pane"
+            } else {
+                "fork-pane"
+            })
+        );
+    }
+}
+
+#[tokio::test]
+async fn copilot_fork_reverse_notifications_attach_only_fresh_unowned_work() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_watcher::{copilot_fork::CopilotFork, Emitted};
+    for cancel in [false, true] {
+        let wt = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(wt.clone());
+        for (key, pane) in [("fork-a", "fork-pane"), ("unrelated", "other-pane")] {
+            state
+                .registry
+                .apply_event(SessionEvent::SessionStarted {
+                    key: key.into(),
+                    cli_source: CliSource::Copilot,
+                    pane_session_id: pane.into(),
+                    cwd: PathBuf::new(),
+                    title: String::new(),
+                })
+                .await;
+        }
+        let activity = |key: &str| Emitted {
+            cli: CliSource::Copilot,
+            key: key.into(),
+            event: SessionEvent::ToolStarting {
+                key: key.into(),
+                tool_name: String::new(),
+            },
+        };
+        assert!(!copilot_fork::buffer_activity(&state, &activity("unrelated")).await);
+        copilot_fork::observe(
+            state.clone(),
+            CopilotFork {
+                source: "fork-b".into(),
+                target: "fork-c".into(),
+            },
+        )
+        .await;
+        assert!(copilot_fork::buffer_activity(&state, &activity("fork-c")).await);
+        assert!(state
+            .registry
+            .lookup(&SessionId::new("fork-c"))
+            .await
+            .is_none());
+        copilot_fork::observe(
+            state.clone(),
+            CopilotFork {
+                source: "fork-a".into(),
+                target: "fork-b".into(),
+            },
+        )
+        .await;
+        let first = wt.calls()[0].1["params"].clone();
+        if cancel {
+            state.pending_copilot_forks.lock().await.remove("fork-pane");
+        }
+        copilot_fork::confirm(&state, &first).await;
+        if cancel {
+            assert_eq!(wt.calls().len(), 1);
+            assert!(state
+                .registry
+                .lookup(&SessionId::new("fork-c"))
+                .await
+                .is_none());
+            // Attached orphan evidence was consumed and cannot reappear.
+            copilot_fork::observe(
+                state.clone(),
+                CopilotFork {
+                    source: "fork-a".into(),
+                    target: "fork-b".into(),
+                },
+            )
+            .await;
+            copilot_fork::confirm(&state, &wt.calls()[1].1["params"]).await;
+            assert_eq!(wt.calls().len(), 2);
+        } else {
+            assert_eq!(wt.calls().len(), 2);
+            copilot_fork::confirm(&state, &wt.calls()[1].1["params"]).await;
+            let target = state
+                .registry
+                .lookup(&SessionId::new("fork-c"))
+                .await
+                .unwrap();
+            assert_eq!(target.status, Some(AgentStatus::Working));
+            assert_eq!(target.pane_session_id.as_deref(), Some("fork-pane"));
+        }
+        assert_eq!(
+            state
+                .registry
+                .lookup(&SessionId::new("unrelated"))
+                .await
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some("other-pane")
+        );
     }
 }
 

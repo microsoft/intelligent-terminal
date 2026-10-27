@@ -10,13 +10,154 @@ pub(super) struct PendingFork {
     source: SessionIdentity,
     target: acp::schema::v1::SessionId,
     dependent: std::collections::VecDeque<CopilotFork>,
-    activity: std::collections::VecDeque<crate::session_watcher::Emitted>,
+    activity: std::collections::VecDeque<(std::time::Instant, crate::session_watcher::Emitted)>,
     created: std::time::Instant,
 }
 
 const MAX_DEPENDENTS: usize = 16;
 const MAX_ACTIVITY: usize = 128;
 const MAX_PENDING_AGE: std::time::Duration = std::time::Duration::from_secs(30);
+const MAX_ORPHANS: usize = 256;
+
+#[derive(Default)]
+pub(super) struct Orphans {
+    records: std::collections::VecDeque<(std::time::Instant, OrphanWork)>,
+}
+
+enum OrphanWork {
+    Fork(CopilotFork),
+    Activity(crate::session_watcher::Emitted),
+}
+
+impl Orphans {
+    fn prune(&mut self) {
+        self.records
+            .retain(|(created, _)| created.elapsed() < MAX_PENDING_AGE);
+    }
+
+    fn push(&mut self, work: OrphanWork) {
+        self.prune();
+        if self.records.len() == MAX_ORPHANS {
+            self.records.pop_front();
+        }
+        self.records.push_back((std::time::Instant::now(), work));
+    }
+}
+
+pub(super) fn is_host_identity(identity: &SessionIdentity) -> bool {
+    identity.history_key
+        == crate::session_registry::HistoryRowKey::new(
+            "copilot",
+            SessionLocation::Host,
+            identity.session_id.0.as_ref(),
+            None,
+        )
+}
+
+pub(super) async fn is_reserved(state: &MasterStateInner, identity: &SessionIdentity) -> bool {
+    if !is_host_identity(identity) {
+        return false;
+    }
+    let mut pending = state.pending_copilot_forks.lock().await;
+    pending.retain(|_, plan| plan.created.elapsed() < MAX_PENDING_AGE);
+    pending.values().any(|plan| {
+        plan.target == identity.session_id
+            || plan
+                .dependent
+                .iter()
+                .any(|fork| fork.target == identity.session_id.0.as_ref())
+    })
+}
+
+fn owns_live_pane(row: &SessionInfo) -> bool {
+    row.origin == Some(SessionOrigin::AgentPane)
+        || (row.pane_session_id.is_some()
+            && matches!(
+                row.status,
+                Some(
+                    AgentStatus::Idle
+                        | AgentStatus::Working
+                        | AgentStatus::Attention
+                        | AgentStatus::Error
+                )
+            ))
+}
+
+async fn target_owned(state: &MasterStateInner, key: &str) -> bool {
+    state
+        .registry
+        .lookup_identity(&SessionIdentity {
+            session_id: acp::schema::v1::SessionId::new(key.to_string()),
+            history_key: crate::session_registry::HistoryRowKey::new(
+                "copilot",
+                SessionLocation::Host,
+                key,
+                None,
+            ),
+        })
+        .await
+        .is_some_and(|row| owns_live_pane(&row))
+}
+
+async fn attach_orphans(
+    state: &MasterStateInner,
+    plan: &mut PendingFork,
+    reserved: &HashSet<String>,
+) {
+    let mut orphans = state.copilot_fork_orphans.lock().await;
+    orphans.prune();
+    loop {
+        let tail = plan
+            .dependent
+            .back()
+            .map_or(plan.target.0.as_ref(), |fork| fork.target.as_str());
+        let Some(index) = orphans
+            .records
+            .iter()
+            .position(|(_, work)| matches!(work, OrphanWork::Fork(fork) if fork.source == tail))
+        else {
+            break;
+        };
+        let Some((created, OrphanWork::Fork(fork))) = orphans.records.remove(index) else {
+            break;
+        };
+        if plan.dependent.len() == MAX_DEPENDENTS {
+            break;
+        }
+        if fork.target == plan.source.session_id.0.as_ref()
+            || fork.target == plan.target.0.as_ref()
+            || plan.dependent.iter().any(|f| f.target == fork.target)
+            || reserved.contains(&fork.target)
+            || target_owned(state, &fork.target).await
+        {
+            continue;
+        }
+        plan.created = plan.created.min(created);
+        plan.dependent.push_back(fork);
+    }
+    let mut index = 0;
+    while index < orphans.records.len() {
+        let matches = matches!(&orphans.records[index].1, OrphanWork::Activity(event)
+            if event.key == plan.target.0.as_ref()
+                || plan.dependent.iter().any(|fork| fork.target == event.key));
+        if matches {
+            if let Some((created, OrphanWork::Activity(event))) = orphans.records.remove(index) {
+                plan.created = plan.created.min(created);
+                let position = plan
+                    .activity
+                    .iter()
+                    .position(|(received, _)| *received > created)
+                    .unwrap_or(plan.activity.len());
+                plan.activity.insert(position, (created, event));
+                if plan.activity.len() > MAX_ACTIVITY {
+                    plan.activity.pop_front();
+                }
+            }
+        } else {
+            index += 1;
+        }
+    }
+}
 
 pub(super) async fn buffer_activity(
     state: &Arc<MasterStateInner>,
@@ -34,9 +175,35 @@ pub(super) async fn buffer_activity(
             if plan.activity.len() == MAX_ACTIVITY {
                 plan.activity.pop_front();
             }
-            plan.activity.push_back(emitted.clone());
+            plan.activity
+                .push_back((std::time::Instant::now(), emitted.clone()));
             return true;
         }
+    }
+    // Only the watcher's fresh suffix reaches this boundary. Unowned activity
+    // is evidence, never authority to create or move a registry binding.
+    let sid = acp::schema::v1::SessionId::new(emitted.key.clone());
+    let activity_owned = state.hook_owned.lock().await.contains(&sid)
+        || state.born_bound.lock().await.contains(&sid)
+        || state.registry.lookup(&sid).await.is_some_and(|row| {
+            row.origin == Some(SessionOrigin::AgentPane)
+                || matches!(
+                    row.status,
+                    Some(
+                        AgentStatus::Idle
+                            | AgentStatus::Working
+                            | AgentStatus::Attention
+                            | AgentStatus::Error
+                    )
+                )
+        });
+    if !activity_owned {
+        state
+            .copilot_fork_orphans
+            .lock()
+            .await
+            .push(OrphanWork::Activity(emitted.clone()));
+        return true;
     }
     false
 }
@@ -63,25 +230,41 @@ fn eligible(row: &SessionInfo) -> bool {
 }
 
 pub(super) async fn observe(state: Arc<MasterStateInner>, fork: CopilotFork) {
-    for attempt in 0..4 {
-        if attempt != 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-        match request(&state, &fork).await {
-            Ok(true) => return,
-            Ok(false) => {}
-            Err(error) => {
-                tracing::warn!(target: "copilot_fork", %error, "could not publish fork binding");
-                return;
-            }
+    match request(&state, &fork).await {
+        Ok(_) => {}
+        Err(error) => {
+            tracing::warn!(target: "copilot_fork", %error, "could not publish fork binding");
+            return;
         }
     }
-    tracing::debug!(target: "copilot_fork", "fork source has no live binding in this Terminal");
+    let pending = state.pending_copilot_forks.lock().await;
+    if pending.values().any(|plan| {
+        plan.source.session_id.0.as_ref() == fork.source
+            || plan.target.0.as_ref() == fork.source
+            || plan.dependent.iter().any(|f| f.target == fork.source)
+    }) {
+        return;
+    }
+    if !target_owned(&state, &fork.source).await {
+        state
+            .copilot_fork_orphans
+            .lock()
+            .await
+            .push(OrphanWork::Fork(fork));
+    }
 }
 
 pub(super) async fn request(state: &Arc<MasterStateInner>, fork: &CopilotFork) -> Result<bool> {
+    let _admission = state.copilot_fork_admission.lock().await;
     let mut pending = state.pending_copilot_forks.lock().await;
     pending.retain(|_, plan| plan.created.elapsed() < MAX_PENDING_AGE);
+    let reserved: HashSet<_> = pending
+        .values()
+        .flat_map(|plan| {
+            std::iter::once(plan.target.to_string())
+                .chain(plan.dependent.iter().map(|fork| fork.target.clone()))
+        })
+        .collect();
     // Only an outstanding, verified chain can admit an otherwise historical source.
     for plan in pending.values_mut() {
         let tail = plan
@@ -93,8 +276,11 @@ pub(super) async fn request(state: &Arc<MasterStateInner>, fork: &CopilotFork) -
                 && fork.target != plan.source.session_id.0.as_ref()
                 && fork.target != plan.target.0.as_ref()
                 && !plan.dependent.iter().any(|f| f.target == fork.target)
+                && !reserved.contains(&fork.target)
+                && !target_owned(state, &fork.target).await
             {
                 plan.dependent.push_back(fork.clone());
+                attach_orphans(state, plan, &reserved).await;
             }
             return Ok(true);
         }
@@ -146,25 +332,30 @@ pub(super) async fn request(state: &Arc<MasterStateInner>, fork: &CopilotFork) -
         return Ok(true);
     }
     let source = SessionIdentity::from_info(&row);
+    // Never replace an outstanding operation: its target may already be
+    // published to Terminal and must stay reserved until that exact ACK.
+    if pending.contains_key(&pane) {
+        return Ok(true);
+    }
     if pending
-        .get(&pane)
-        .is_some_and(|plan| plan.source == source && plan.target.to_string() == fork.target)
+        .values()
+        .any(|plan| plan.target == target || plan.dependent.iter().any(|f| f.target == fork.target))
     {
         return Ok(true);
     }
     let operation_id = uuid::Uuid::new_v4().to_string();
-    pending.insert(
-        pane.clone(),
-        PendingFork {
-            operation_id: operation_id.clone(),
-            source,
-            target,
-            dependent: Default::default(),
-            activity: Default::default(),
-            created: std::time::Instant::now(),
-        },
-    );
+    let mut plan = PendingFork {
+        operation_id: operation_id.clone(),
+        source,
+        target,
+        dependent: Default::default(),
+        activity: Default::default(),
+        created: std::time::Instant::now(),
+    };
+    attach_orphans(state, &mut plan, &reserved).await;
+    pending.insert(pane.clone(), plan);
     drop(pending);
+    drop(_admission);
     publish(state, &pane, &operation_id, fork).await?;
     Ok(true)
 }
@@ -175,11 +366,8 @@ async fn publish(
     operation_id: &str,
     fork: &CopilotFork,
 ) -> Result<()> {
-    let Some(wt) = state.wt.as_ref().filter(|wt| wt.is_available()) else {
-        return Ok(());
-    };
-    let result = wt
-        .request(
+    let result = if let Some(wt) = state.wt.as_ref().filter(|wt| wt.is_available()) {
+        wt.request(
             "publish",
             serde_json::json!({
                 "type": "event",
@@ -194,7 +382,12 @@ async fn publish(
                 },
             }),
         )
-        .await;
+        .await
+    } else {
+        Err(anyhow::anyhow!(
+            "Terminal fork binding service is unavailable"
+        ))
+    };
     if let Err(error) = result {
         let mut pending = state.pending_copilot_forks.lock().await;
         if pending
@@ -209,6 +402,7 @@ async fn publish(
 }
 
 pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::Value) {
+    let _admission = state.copilot_fork_admission.lock().await;
     let pane = pane_key(params["pane_id"].as_str().unwrap_or(""));
     let mut pending = state.pending_copilot_forks.lock().await;
     pending.retain(|_, plan| plan.created.elapsed() < MAX_PENDING_AGE);
@@ -223,6 +417,7 @@ pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::
         {
             return;
         }
+
         pending.remove(&pane)
     };
     let Some(mut plan) = plan else { return };
@@ -254,11 +449,11 @@ pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::
         // Keep the pending lock through replay so subsequent watcher activity
         // cannot overtake the records consumed before Terminal's acknowledgement.
         let mut remaining = std::collections::VecDeque::new();
-        for event in plan.activity {
+        for (created, event) in plan.activity {
             if event.key == plan.target.0.as_ref() {
                 apply_watcher_event(state, event).await;
             } else {
-                remaining.push_back(event);
+                remaining.push_back((created, event));
             }
         }
         let successor = if let Some(fork) = plan.dependent.pop_front() {
@@ -319,6 +514,7 @@ pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::
             None
         };
         drop(pending);
+        drop(_admission);
         if let Some((operation_id, fork)) = successor {
             if let Err(error) = publish(state, &pane, &operation_id, &fork).await {
                 tracing::warn!(target: "copilot_fork", %error, "could not publish dependent fork binding");
@@ -329,5 +525,25 @@ pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::
         try_refresh_title_via_acp(state, &plan.target).await;
     } else {
         tracing::debug!(target: "copilot_fork", pane, "fork source binding was superseded before confirmation");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn copilot_fork_orphans_are_bounded_and_keep_original_expiry() {
+        let mut orphans = Orphans::default();
+        for index in 0..MAX_ORPHANS + 1 {
+            orphans.push(OrphanWork::Fork(CopilotFork {
+                source: index.to_string(),
+                target: (index + 1).to_string(),
+            }));
+        }
+        assert_eq!(orphans.records.len(), MAX_ORPHANS);
+        orphans.records.front_mut().unwrap().0 = std::time::Instant::now() - MAX_PENDING_AGE;
+        orphans.prune();
+        assert_eq!(orphans.records.len(), MAX_ORPHANS - 1);
     }
 }

@@ -20,6 +20,13 @@ Returning to a shell prompt retires the foreground source before an in-flight
 fork can change retained bindings. Consecutive forks wait for their predecessor's
 acknowledgement; bounded queues retain only newly appended successor activity
 and discard dependent work when the transition is canceled or superseded.
+Retained fork metadata replayed after a pane transfer preserves matching
+shell-prompt retirement instead of restarting foreground activity.
+Sidebars and helpers share pre-launch admission for native Host Copilot
+resumes: a pending fork target returns a retry response rather than opening
+a competing pane. Reverse file notifications retain bounded, short-lived
+unmatched fork/activity evidence in memory; only a verified predecessor can
+promote that evidence into a binding transition.
 For hook-free resumes, the owning page verifies its existing original binding
 before the shared manager accepts the fork. An unmarked resume event still
 cannot establish a shared hook binding, and prompt/subagent events cannot

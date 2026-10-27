@@ -2818,6 +2818,18 @@ impl App {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
             }
+            AppEvent::NativeResumeRejected {
+                identity,
+                activation_id,
+            } => {
+                if self
+                    .native_resume_attempts
+                    .get(&identity)
+                    .is_some_and(|(current, _)| *current == activation_id)
+                {
+                    self.native_resume_attempts.remove(&identity);
+                }
+            }
             AppEvent::WtEvent {
                 method,
                 pane_id,
