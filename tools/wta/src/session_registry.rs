@@ -1738,6 +1738,15 @@ pub fn agent_session_to_session_info(s: &AgentSession) -> SessionInfo {
 #[allow(dead_code)] // Task B wires hook RPCs into these reducer methods.
 #[async_trait::async_trait]
 pub trait SessionRegistry: Send + Sync {
+    /// Activity only; the caller must first admit legacy born-bound ownership.
+    async fn apply_bound_watcher_activity(
+        &self,
+        _identity: &SessionIdentity,
+        _event: SessionEvent,
+    ) -> bool {
+        false
+    }
+
     /// Some means an active native OFF owner claims this id, including rejected
     /// provider/backend or non-activity events. None leaves legacy gates intact.
     async fn apply_native_watcher_activity(
@@ -2321,6 +2330,38 @@ impl SessionRegistry for InMemoryRegistry {
             mode_epoch,
             predecessor,
         )
+    }
+
+    async fn apply_bound_watcher_activity(
+        &self,
+        identity: &SessionIdentity,
+        event: SessionEvent,
+    ) -> bool {
+        let event_key = match &event {
+            SessionEvent::ToolStarting { key, .. }
+            | SessionEvent::ToolReturned { key, .. }
+            | SessionEvent::ToolCompleted { key }
+            | SessionEvent::Notification { key, .. } => key,
+            _ => return false,
+        };
+        if identity.history_key.is_none() || event_key != identity.session_id.0.as_ref() {
+            return false;
+        }
+        let mut state = self.inner.lock().await;
+        let Some(row) = state.sessions.get(identity) else {
+            return false;
+        };
+        if row.location != SessionLocation::Host
+            || row.session_universe.is_some()
+            || row.origin == Some(SessionOrigin::AgentPane)
+            || !row
+                .pane_session_id
+                .as_ref()
+                .is_some_and(|pane| state.active_by_pane.get(&pane_key(pane)) == Some(identity))
+        {
+            return false;
+        }
+        apply_event_locked(&mut state, event, Some(identity))
     }
 
     async fn apply_native_watcher_activity(

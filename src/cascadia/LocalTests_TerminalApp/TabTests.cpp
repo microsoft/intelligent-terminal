@@ -1893,6 +1893,14 @@ namespace TerminalAppLocalTests
             page->_ReconcileShellPromptAgentExit(control);
             VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(paneId));
             VERIFY_ARE_EQUAL(fork, page->_richTabEndedSessionByPaneId.at(paneId));
+            Json::Value delayedResume;
+            delayedResume["method"] = "pane_agent_session_changed";
+            delayedResume["params"]["pane_id"] = _formatPaneId(paneId);
+            delayedResume["params"]["agent"] = "copilot";
+            delayedResume["params"]["agent_session_id"] = original;
+            page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, delayedResume)));
+            VERIFY_ARE_EQUAL(winrt::to_hstring(fork), page->_paneAgentSessions.at(paneId).sessionId);
+            VERIFY_ARE_EQUAL(fork, page->_richTabEndedSessionByPaneId.at(paneId));
 
             bool acknowledged = false;
             const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
@@ -2044,6 +2052,9 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_richTabEndedSessionByPaneId.contains(paneId));
             VERIFY_ARE_EQUAL(winrt::to_hstring(fork), page->_paneAgentSessions.at(paneId).sessionId);
             VERIFY_IS_TRUE(winrt::to_string(page->_manager.AgentSessionEvent(control.ContentId())).find(fork) != std::string::npos);
+            page->OnPaneAgentSessionChanged(birth);
+            VERIFY_ARE_EQUAL(winrt::to_hstring(fork), page->_paneAgentSessions.at(paneId).sessionId);
+            VERIFY_ARE_EQUAL(winrt::to_hstring(fork), page->_activeCliAgentPanes.at(paneId).sessionId);
 
             const auto prompt = _keepRunningHook(paneId, "agent.prompt.submit", nested);
             page->_manager.OnPaneAgentSessionChanged(prompt);

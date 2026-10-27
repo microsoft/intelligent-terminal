@@ -8546,7 +8546,7 @@ async fn execute_session_activation_with_helper_mode(
         }
     };
 
-    // Admission covers preflight through pane assignment, not the Terminal ACK.
+    // Admission covers preflight through source binding submission, not the Terminal ACK.
     // A resume that wins admission establishes its owner before fork preflight.
     let Some(initial_row) = state.registry.lookup_identity(&parsed.identity).await else {
         return respond!(
@@ -8890,19 +8890,18 @@ async fn execute_session_activation_with_helper_mode(
                         && row.session_universe.is_none()
                         && state
                             .registry
-                            .lookup(&row.session_id)
+                            .lookup_identity(&qualified_identity)
                             .await
                             .is_some_and(|current| {
                                 crate::session_registry::SessionIdentity::from_info(&current)
-                                    == parsed.identity
+                                    == qualified_identity
                             })
                     {
                         state.hook_owned.lock().await.remove(&row.session_id);
                         state.born_bound.lock().await.insert(row.session_id.clone());
                     }
                     drop(lifecycle_guard);
-                    drop(_fork_admission);
-                    broadcast_session_status_change(state, None).await;
+                    let mut publication_error = None;
                     if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
                         &provider_id,
                         row.session_id.0.as_ref(),
@@ -8910,7 +8909,28 @@ async fn execute_session_activation_with_helper_mode(
                         &row.location,
                         Some(row.cwd.to_string_lossy().as_ref()),
                     ) {
-                        crate::wt_protocol_events::send(binding);
+                        if copilot_fork::is_host_identity(&qualified_identity) {
+                            // SendEvent queues the UI work before returning. Submit the
+                            // source on the same path as forks before admitting one.
+                            publication_error = match serde_json::from_str(&binding) {
+                                Ok(binding) => wt.request("publish", binding).await.err(),
+                                Err(error) => Some(error.into()),
+                            };
+                        } else {
+                            crate::wt_protocol_events::send(binding);
+                        }
+                    }
+                    drop(_fork_admission);
+                    broadcast_session_status_change(state, None).await;
+                    if let Some(error) = publication_error {
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some(format!(
+                                "The session was created but its pane binding could not be published: {error}"
+                            )),
+                            Unknown
+                        );
                     }
                     // Only this History activation preserves the sidebar: background
                     // creation followed by focus of the exact newly returned pane.
@@ -9311,7 +9331,25 @@ async fn apply_watcher_event(
 
         // Watcher records are native, provider-specific evidence. A raw ID
         // alone cannot identify a WSL, ACP, or colliding history row.
-        let Some(row) = state.registry.lookup(&sid).await else {
+        let identity = if emitted.cli == crate::agent_sessions::CliSource::Copilot {
+            crate::session_registry::SessionIdentity {
+                session_id: sid.clone(),
+                history_key: crate::session_registry::HistoryRowKey::new(
+                    "copilot",
+                    crate::agent_sessions::SessionLocation::Host,
+                    &emitted.key,
+                    None,
+                ),
+            }
+        } else {
+            crate::session_registry::SessionIdentity::legacy(sid.clone())
+        };
+        let row = if emitted.cli == crate::agent_sessions::CliSource::Copilot {
+            state.registry.lookup_identity(&identity).await
+        } else {
+            state.registry.lookup(&sid).await
+        };
+        let Some(row) = row else {
             return;
         };
         if row.location != crate::agent_sessions::SessionLocation::Host
@@ -9321,7 +9359,14 @@ async fn apply_watcher_event(
         {
             return;
         }
-        state.registry.apply_event(emitted.event).await
+        if copilot_fork::is_host_identity(&identity) {
+            state
+                .registry
+                .apply_bound_watcher_activity(&identity, emitted.event)
+                .await
+        } else {
+            state.registry.apply_event(emitted.event).await
+        }
     };
     if applied {
         broadcast_session_status_change(

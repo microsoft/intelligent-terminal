@@ -11490,9 +11490,26 @@ namespace winrt::TerminalApp::implementation
                     rootPane && rootPane->FindPaneBySessionId(*paneSessionId))
                 {
                     const auto retainedControl = rootPane->FindPaneBySessionId(*paneSessionId)->GetTerminalControl();
+                    const auto retainedEvent = retainedControl ? _manager.AgentSessionEvent(retainedControl.ContentId()) : winrt::hstring{};
                     const bool replayedFork = eventName.empty() && params["fork_operation_id"].isString() &&
                                               !params["fork_operation_id"].asString().empty() && retainedControl &&
-                                              _manager.AgentSessionEvent(retainedControl.ContentId()) == eventJson;
+                                              retainedEvent == eventJson;
+                    if (const auto current = _paneAgentSessions.find(*paneSessionId);
+                        eventName.empty() && agent == "copilot" && current != _paneAgentSessions.end() &&
+                        current->second.sessionId != winrt::to_hstring(agentSessionId))
+                    {
+                        Json::Value retained;
+                        Json::CharReaderBuilder retainedReader;
+                        std::istringstream retainedStream{ winrt::to_string(retainedEvent) };
+                        std::string retainedErrors;
+                        if (Json::parseFromStream(retainedReader, retainedStream, &retained, &retainedErrors) &&
+                            !retained["params"].get("fork_operation_id", "").asString().empty() &&
+                            retained["params"].get("agent_session_id", "").asString() != agentSessionId)
+                        {
+                            _agentPaneLog("OnPaneAgentSessionChanged: ignored superseded Copilot resume binding");
+                            return;
+                        }
+                    }
                     const auto retired = _richTabEndedSessionByPaneId.find(*paneSessionId);
                     const bool retiredFork = replayedFork && retired != _richTabEndedSessionByPaneId.end() &&
                                              retired->second == agentSessionId;

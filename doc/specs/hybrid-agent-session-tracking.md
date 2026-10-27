@@ -7,6 +7,9 @@ changing the Terminal connection GUID. The watcher recognizes Copilot's
 `session.info` fork record appended to the original session before another
 prompt is submitted. That record carries the new session ID and migrates an
 already-known pane binding; it does not discover an unknown session's pane.
+Native Host Copilot resume metadata is submitted before fork publication is
+admitted, and delayed source metadata cannot overwrite a confirmed fork's
+retained identity.
 Copied target logs and fork records older than their rewritten session.start
 header cannot migrate bindings. Names and working directories never establish
 ownership, and the transition does not wait for an SDK lease or another hook.
