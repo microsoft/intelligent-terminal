@@ -14372,6 +14372,84 @@ async fn copilot_fork_helper_resume_keeps_cmd_shims_banner_and_stale_cwd_fallbac
 }
 
 #[tokio::test]
+async fn copilot_fork_uncertain_publication_retains_reservation_for_late_ack() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{HistoryRowKey, SessionIdentity};
+    use crate::session_watcher::copilot_fork::CopilotFork;
+    struct PublishFailure {
+        observed: Arc<MockWtChannel>,
+        uncertain: bool,
+    }
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for PublishFailure {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            crate::shell::wt_channel::WtChannel::request(self.observed.as_ref(), method, params)
+                .await?;
+            if self.uncertain {
+                Err(anyhow::Error::new(
+                    serde_json::from_str::<serde_json::Value>("{").unwrap_err(),
+                ))
+            } else {
+                Err(anyhow::anyhow!("publish rejected"))
+            }
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+    for uncertain in [false, true] {
+        let observed = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(Arc::new(PublishFailure {
+            observed: observed.clone(),
+            uncertain,
+        }));
+        state
+            .registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: "fork-a".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "fork-pane".into(),
+                cwd: PathBuf::new(),
+                title: String::new(),
+            })
+            .await;
+        let fork = CopilotFork {
+            source: "fork-a".into(),
+            target: "fork-b".into(),
+        };
+        assert!(copilot_fork::request(&state, &fork).await.is_err());
+        let target = SessionIdentity {
+            session_id: SessionId::new("fork-b"),
+            history_key: HistoryRowKey::new("copilot", SessionLocation::Host, "fork-b", None),
+        };
+        assert_eq!(copilot_fork::is_reserved(&state, &target).await, uncertain);
+        let ack = observed.calls()[0].1["params"].clone();
+        copilot_fork::confirm(&state, &ack).await;
+        assert!(!copilot_fork::is_reserved(&state, &target).await);
+        if uncertain {
+            let row = state.registry.lookup_identity(&target).await.unwrap();
+            assert_eq!(row.pane_session_id.as_deref(), Some("fork-pane"));
+            assert_eq!(row.status, Some(AgentStatus::Idle));
+        } else {
+            assert!(state.registry.lookup_identity(&target).await.is_none());
+            assert_eq!(
+                state
+                    .registry
+                    .lookup_active_by_pane("fork-pane")
+                    .await
+                    .unwrap()
+                    .session_id,
+                SessionId::new("fork-a")
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn copilot_fork_rejection_settles_only_the_matching_operation() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
     use crate::session_registry::{HistoryRowKey, SessionIdentity};

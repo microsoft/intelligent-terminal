@@ -396,12 +396,14 @@ async fn publish(
         ))
     };
     if let Err(error) = result {
-        let mut pending = state.pending_copilot_forks.lock().await;
-        if pending
-            .get(pane)
-            .is_some_and(|plan| plan.operation_id == operation_id)
-        {
-            pending.remove(pane);
+        if !crate::shell::wt_channel::request_outcome_unknown(&error) {
+            let mut pending = state.pending_copilot_forks.lock().await;
+            if pending
+                .get(pane)
+                .is_some_and(|plan| plan.operation_id == operation_id)
+            {
+                pending.remove(pane);
+            }
         }
         return Err(error).context("publish verified fork binding");
     }

@@ -29,6 +29,9 @@ or explicit cancellation; their age is diagnostic, not an expiration gate.
 The owning page explicitly rejects a superseded or retired operation using
 its operation ID and expected source/target; only that matching reservation
 is canceled, so an older rejection cannot clear a newer transition.
+An uncertain publish timeout or response failure also retains the operation,
+because Terminal may already have queued its update; a late acknowledgment
+can still commit it, while a definite publication failure cancels the plan.
 Confirmed helper resume success settles that exact attempt without waiting
 for a live snapshot, while pending or indeterminate attempts remain suppressed.
 Reverse file notifications retain bounded, short-lived
