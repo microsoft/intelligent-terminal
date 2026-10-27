@@ -857,7 +857,9 @@ namespace TerminalAppUnitTests
         state.snapshot->agentStatus = "Working";
         const auto refreshed = broker._UpdateFor(session.context.sessionId, session);
         VERIFY_IS_TRUE(refreshed.presentation.has_value());
-        VERIFY_ARE_EQUAL(std::wstring{ L"Failed\nterminal" }, refreshed.presentation->text);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Failed\n"
+                                       L"terminal" },
+                         refreshed.presentation->text);
         VERIFY_ARE_EQUAL(std::string{ "Error" }, refreshed.presentation->agentStatus);
 
         broker.UpdateFirstPartyFields(1, {});
