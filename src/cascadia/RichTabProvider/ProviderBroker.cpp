@@ -1121,6 +1121,26 @@ namespace Microsoft::Terminal::RichTab::Provider
                 snapshots.emplace(id, *provider.snapshot);
             }
         }
+        for (const auto& provider : _providers)
+        {
+            if (_IsBuiltInGitStatus(provider))
+            {
+                // Host-owned status must not disappear while Git refreshes or fails.
+                auto& snapshot = snapshots[provider.manifest.id];
+                snapshot.fields.erase("agentStatus");
+                snapshot.agentStatus.clear();
+                if (const auto status = state.context.firstPartyFields.find("agentStatus");
+                    status != state.context.firstPartyFields.end() && !status->second.empty())
+                {
+                    snapshot.fields.emplace("agentStatus", status->second);
+                    if (const auto id = state.context.firstPartyFields.find("agentStatusId");
+                        id != state.context.firstPartyFields.end())
+                    {
+                        snapshot.agentStatus = id->second;
+                    }
+                }
+            }
+        }
         return BrokerUpdate{
             sessionId,
             state.sessionIncarnation,
