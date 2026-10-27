@@ -2603,6 +2603,7 @@ impl SessionRegistry for InMemoryRegistry {
                 let mut row = SessionInfo::new(target.clone(), source_row.cwd.clone());
                 row.provider_id = Some("copilot".into());
                 row.cli_source = Some(CliSource::Copilot);
+                row.location = SessionLocation::Host;
                 row.origin = source_row.origin.clone();
                 row
             });
@@ -7075,6 +7076,41 @@ mod tests {
                 .session_id,
             target
         );
+    }
+
+    #[tokio::test]
+    async fn copilot_fork_before_history_discovery_retains_host_identity() {
+        let registry = InMemoryRegistry::new();
+        let source = acp::schema::v1::SessionId::new("11111111-1111-4111-8111-111111111111");
+        let target = acp::schema::v1::SessionId::new("22222222-2222-4222-8222-222222222222");
+        registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: source.to_string(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: NATIVE_PANE.into(),
+                cwd: PathBuf::from("C:\\repo"),
+                title: "Original".into(),
+            })
+            .await;
+        let identity = SessionIdentity::from_info(&registry.lookup(&source).await.unwrap());
+        assert!(
+            registry
+                .rebind_copilot_fork(&identity, NATIVE_PANE, &target)
+                .await
+        );
+        let target_identity = SessionIdentity {
+            session_id: target.clone(),
+            history_key: HistoryRowKey::new(
+                "copilot",
+                SessionLocation::Host,
+                target.to_string(),
+                None,
+            ),
+        };
+        let fork = registry.lookup_identity(&target_identity).await.unwrap();
+        assert_eq!(fork.location, SessionLocation::Host);
+        assert_eq!(fork.pane_session_id.as_deref(), Some(NATIVE_PANE));
+        assert_eq!(SessionIdentity::from_info(&fork), target_identity);
     }
 
     #[tokio::test]

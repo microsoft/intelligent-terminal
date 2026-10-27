@@ -16,6 +16,11 @@ if (-not $Canonical -or -not $Resume -or $External -or
 $directory = Split-Path $LogPath -Parent
 $testHome = Join-Path (Split-Path $directory -Parent) 'home'
 $transcript = Join-Path $testHome ".copilot\session-state\$SessionId\events.jsonl"
+if (-not (Test-Path -LiteralPath $transcript)) {
+    New-Item -ItemType Directory -Path (Split-Path $transcript -Parent) -Force | Out-Null
+    @{ type = 'session.start'; timestamp = [DateTimeOffset]::UtcNow.ToString('o'); data = @{ sessionId = $SessionId } } |
+        ConvertTo-Json -Compress | Set-Content -LiteralPath $transcript -Encoding utf8
+}
 $unrelatedId = [guid]::NewGuid().ToString()
 $forkId = [guid]::NewGuid().ToString()
 $unrelatedTranscript = Join-Path $testHome ".copilot\session-state\$unrelatedId\events.jsonl"

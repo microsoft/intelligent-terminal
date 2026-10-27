@@ -83,6 +83,8 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
         New-Item -ItemType Directory -Path (Join-Path $script:sandboxHome '.copilot\session-state') -Force | Out-Null
         $profileId = '{907421A8-B17A-469F-8837-9FC25EE81151}'
         $script:app = Start-Terminal -Package $script:package -TimeoutSec 90 -State @{
+            featureRolloutId = '{00000000-0000-0000-0000-000000000001}'
+            sidebarRolloutVersion = 1; sidebarRolloutAssignment = 'Sidebar'
             sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
         } -Settings @{
             language = 'en-US'; tabLayout = 'vertical'; tabLayoutVerticalWidth = 420
@@ -104,7 +106,9 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
             Should -BeNullOrEmpty -Because 'a settings-error fallback is not a valid test configuration'
         Get-WtSettingsObject -App $script:app | ConvertTo-Json -Depth 32 |
             Set-Content (Join-Path $script:evidence 'settings-after-launch.json')
-        Invoke-WtCli -App $script:app -Arguments @('get-settings') | ConvertTo-Json -Depth 32 |
+        $effectiveSettings = Invoke-WtCli -App $script:app -Arguments @('get-settings')
+        $effectiveSettings.tabLayout | Should -Be 'vertical' -Because 'the fixture must exercise the actual Sidebar resume path'
+        $effectiveSettings | ConvertTo-Json -Depth 32 |
             Set-Content (Join-Path $script:evidence 'settings-product.json')
         $script:pipe = Get-WtaMasterPipe -App $script:app -TimeoutSec 60
         $masters = @(Get-CimInstance Win32_Process -Filter "Name='wta.exe'" | Where-Object {
@@ -315,11 +319,14 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
             $context = Invoke-WtCli -App $script:app -Arguments @(
                 'get-pane-context', '--target', $receipt.pane_session_id, '--max-lines', '0', '--max-chars', '0')
             $context.pane.native_agent_provider_id | Should -Be 'copilot'
+            (Get-Content -LiteralPath $receipt.transcript -TotalCount 1 | ConvertFrom-Json).data.sessionId |
+                Should -Be $script:sid -Because 'a real Copilot transcript begins with its matching session.start header'
             $listener = Start-WtEventListener -App $script:app -ExistingOnly -WaitForReady
             Send-WatcherRecord $receipt fork
+            $sourceId = $script:sid
             $ack = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate ({
                 $_.method -eq 'agent_session_forked' -and
-                $_.params.previous_agent_session_id -eq $script:sid -and
+                $_.params.previous_agent_session_id -eq $sourceId -and
                 $_.params.agent_session_id -eq $receipt.fork_session_id
             }.GetNewClosure())
             $ack.params.pane_id.Trim('{}') | Should -Be $receipt.pane_session_id.Trim('{}')
@@ -376,6 +383,15 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
             $target[0].pane_session_id.Trim('{}') | Should -Be $receipt.pane_session_id.Trim('{}')
             @{ acknowledgment = $ack; fork = $fork; original = $restored } | ConvertTo-Json -Depth 16 |
                 Set-Content -LiteralPath (Join-Path $script:evidence 'fork-binding-and-activation.json')
+        }
+        catch {
+            if ($listener) {
+                @(Get-WtEvents -Listener $listener) | ConvertTo-Json -Depth 20 |
+                    Set-Content -LiteralPath (Join-Path $script:evidence 'fork-failure-events.json')
+            }
+            @(Read-WatcherSessions) | ConvertTo-Json -Depth 16 |
+                Set-Content -LiteralPath (Join-Path $script:evidence 'fork-failure-snapshot.json')
+            throw
         }
         finally {
             if ($originalPane) { Close-WtPane -App $script:app -SessionId $originalPane }
