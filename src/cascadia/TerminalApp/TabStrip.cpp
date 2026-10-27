@@ -2016,10 +2016,19 @@ namespace winrt::TerminalApp::implementation
             {
                 winrt::get_self<TabStripHistoryItem>(item)->UpdateStatusText(item.StatusText());
             }
+            const auto wasCurrent = item.IsCurrent();
             item.IsCurrent(false);
             item.CurrentBackground(nullptr);
             item.CurrentForeground(nullptr);
             _updateHistoryCompletionPresentation(item);
+            if (wasCurrent)
+            {
+                if (const auto container = ItemsList().ContainerFromItem(item).try_as<ListViewItem>())
+                {
+                    _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), item);
+                    _applyHistoryRowAutomation(container, item);
+                }
+            }
             auto iconKey = box_value(L"AgentIcon." + item.AgentId());
             if (!Resources().HasKey(iconKey))
             {
@@ -2124,19 +2133,39 @@ namespace winrt::TerminalApp::implementation
     {
         WUX::Media::Brush background{ nullptr };
         WUX::Media::Brush foreground{ nullptr };
-        if (const auto color = _tabSelectionBrush(tab, true))
+        if (const auto color = current ? _tabSelectionBrush(tab, true) : nullptr)
         {
             background = WUX::Media::SolidColorBrush{ color.Color() };
             background.as<WUX::Media::SolidColorBrush>().Opacity(color.Opacity());
             foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(color, _sidebarBackdropColor(Background(), ActualTheme())) };
         }
+        const auto sameBrush = [](const WUX::Media::Brush& left, const WUX::Media::Brush& right) {
+            if (left == right)
+            {
+                return true;
+            }
+            const auto leftSolid = left.try_as<WUX::Media::SolidColorBrush>();
+            const auto rightSolid = right.try_as<WUX::Media::SolidColorBrush>();
+            return leftSolid && rightSolid &&
+                   leftSolid.Color() == rightSolid.Color() &&
+                   leftSolid.Opacity() == rightSolid.Opacity();
+        };
         for (uint32_t index = 0; index < _historyItems.Size(); ++index)
         {
             const auto item = _historyItems.GetAt(index);
             const auto isCurrent = item == current;
+            const auto itemBackground = isCurrent ? background : nullptr;
+            const auto itemForeground = isCurrent ? foreground : nullptr;
+            // Status/projection changes and container realization update unrelated row visuals.
+            if (item.IsCurrent() == isCurrent &&
+                sameBrush(item.CurrentBackground(), itemBackground) &&
+                sameBrush(item.CurrentForeground(), itemForeground))
+            {
+                continue;
+            }
             item.IsCurrent(isCurrent);
-            item.CurrentBackground(isCurrent ? background : nullptr);
-            item.CurrentForeground(isCurrent ? foreground : nullptr);
+            item.CurrentBackground(itemBackground);
+            item.CurrentForeground(itemForeground);
             if (const auto container = ItemsList().ContainerFromItem(item).try_as<ListViewItem>())
             {
                 _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), item);

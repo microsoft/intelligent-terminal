@@ -226,6 +226,10 @@ namespace winrt::TerminalApp::implementation
             const auto tab = weakTab.get();
             if (page && tab && page->_isVerticalLayout)
             {
+                if (page->_DeferSidebarUpdates())
+                {
+                    return;
+                }
                 winrt::get_self<implementation::TabStrip>(page->_tabStrip)->RefreshTabColor(tab->TabViewItem());
                 page->_UpdateSidebarHistoryCurrentSession();
             }
@@ -2175,7 +2179,114 @@ namespace winrt::TerminalApp::implementation
         _OnSelectionChangedCore();
     }
 
+    TerminalPage::SidebarUpdateBatch::SidebarUpdateBatch(TerminalPage& page, const bool enabled) noexcept :
+        _page{ enabled ? &page : nullptr }
+    {
+        if (_page)
+        {
+            ++_page->_sidebarUpdateBatchDepth;
+        }
+    }
+
+    TerminalPage::SidebarUpdateBatch::~SidebarUpdateBatch() noexcept
+    {
+        if (_page)
+        {
+            --_page->_sidebarUpdateBatchDepth;
+            _page->_QueueSidebarUpdateFlush();
+        }
+    }
+
+    void TerminalPage::SidebarUpdateBatch::Commit()
+    {
+        if (const auto page = std::exchange(_page, nullptr))
+        {
+            --page->_sidebarUpdateBatchDepth;
+            page->_FlushSidebarUpdates();
+        }
+    }
+
+    bool TerminalPage::_DeferSidebarUpdates()
+    {
+        if (_sidebarUpdateBatchDepth || _flushingSidebarUpdates)
+        {
+            _pendingSidebarUpdates = true;
+            return true;
+        }
+        if (_pendingSidebarUpdates)
+        {
+            _FlushSidebarUpdates();
+        }
+        return false;
+    }
+
+    void TerminalPage::_QueueSidebarUpdateFlush() noexcept
+    {
+        if (_sidebarUpdateBatchDepth || !_pendingSidebarUpdates || _sidebarUpdateFlushQueued)
+        {
+            return;
+        }
+        try
+        {
+            _sidebarUpdateFlushQueued = true;
+            auto resetQueued = wil::scope_exit([&]() noexcept {
+                _sidebarUpdateFlushQueued = false;
+            });
+            const auto dispatcher = DispatcherQueue::GetForCurrentThread();
+            THROW_HR_IF(E_UNEXPECTED, !dispatcher);
+            THROW_HR_IF(E_ABORT, !dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakThis = get_weak()]() {
+                if (const auto page = weakThis.get())
+                {
+                    // Release this callback's ownership before a failed flush queues a retry.
+                    page->_sidebarUpdateFlushQueued = false;
+                    try
+                    {
+                        page->_FlushSidebarUpdates();
+                    }
+                    CATCH_LOG()
+                }
+            }));
+            resetQueued.release();
+        }
+        CATCH_LOG()
+    }
+
+    void TerminalPage::_FlushSidebarUpdates()
+    {
+        if (_sidebarUpdateBatchDepth || _flushingSidebarUpdates || !_pendingSidebarUpdates)
+        {
+            return;
+        }
+        _flushingSidebarUpdates = true;
+        auto resetFlushing = wil::scope_exit([&]() noexcept {
+            _flushingSidebarUpdates = false;
+        });
+        while (std::exchange(_pendingSidebarUpdates, false))
+        {
+            auto retryOnFailure = wil::scope_exit([&]() noexcept {
+                _pendingSidebarUpdates = true;
+                _QueueSidebarUpdateFlush();
+            });
+            // A full projection subsumes every deferred request, including
+            // pane-row, presentation and color updates for other tabs.
+            _ApplyTabListProjectionCore(nullptr, true, false);
+            _UpdateSidebarHistoryCurrentSessionCore();
+            retryOnFailure.release();
+        }
+    }
+
     void TerminalPage::_ApplyTabListProjection(
+        const TerminalApp::Tab& changedTab,
+        const bool refreshPaneItems,
+        const bool updateBookkeeping)
+    {
+        if (!_DeferSidebarUpdates())
+        {
+            _ApplyTabListProjectionCore(changedTab, refreshPaneItems, updateBookkeeping);
+        }
+    }
+
+    void TerminalPage::_ApplyTabListProjectionCore(
         const TerminalApp::Tab& changedTab,
         const bool refreshPaneItems,
         const bool updateBookkeeping)
@@ -2222,7 +2333,7 @@ namespace winrt::TerminalApp::implementation
             const auto tabImpl = _GetTabImpl(tab);
             if (tabImpl && _isVerticalLayout && refreshPaneItems)
             {
-                _RefreshTabStripPaneItems(tabImpl, display);
+                _RefreshTabStripPaneItemsCore(tabImpl, display);
             }
         };
         if (!refreshAll)

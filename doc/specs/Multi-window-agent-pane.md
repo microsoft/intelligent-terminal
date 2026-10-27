@@ -670,6 +670,18 @@ calls `Tab::StashAgentPane()`, `true` calls `Tab::RestoreStashedAgentPane`
 if the pane is stashed; otherwise `_AutoCreateHiddenAgentPaneShared`
 (first-open).
 
+Automatic prewarm in the vertical layout batches explicit sidebar refreshes
+across helper creation, root split, synchronous layout, and stash. Pane models,
+semantic events, theme/resource initialization, connection startup, and focus
+bookkeeping still run immediately. The outermost batch commits one full sidebar
+projection from the live model, followed by current-history bookkeeping; a full
+projection also refreshes pane rows, presentation, and colors, so a later lighter
+request cannot overwrite an earlier refresh requirement. Real changes raised
+during commit receive a subsequent pass rather than a recursive refresh.
+Uncommitted scopes queue recovery after cleanup, and failed commits retain the
+pending refresh. Outside the batch, including manual stash/restore, updates
+remain immediate.
+
 ### 9. Per-tab independent agents
 
 The master maintains a lazy agent CLI pool keyed by the master-resolved agent

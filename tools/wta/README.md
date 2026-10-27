@@ -342,7 +342,7 @@ other-window action. Missing or malformed membership is unknown, not evidence
 that the pane is attached elsewhere. These fields are refreshed per response,
 not stored as registry ownership or lifecycle state.
 
-Sessions registered as live in master keep their detailed Idle, Active,
+Sessions registered as live in master keep their detailed Idle, Working,
 Waiting for input, or Error status. Historical/Ended native host Copilot rows
 are not live IT registrations; they may instead receive the response-only
 `InUse` status, displayed as **In use**, from their exact default-universe SDK
@@ -352,7 +352,7 @@ and an actively held `inuse.<pid>.hold` lease (observed with Copilot SDK
 1.0.80). A stale marker, released lease, inaccessible process,
 or nonmatching provider/source/universe leaves the original status unchanged.
 External sessions do not expose detailed activity: this probe does not read
-`events.jsonl` or infer Idle/Active from turns. Marker and lease reads have a
+`events.jsonl` or infer Idle/Working from turns. Marker and lease reads have a
 two-second budget and share one process-wide nonblocking admission gate.
 The gate remains occupied until the blocking file operation finishes, even
 when its caller times out or disconnects. Busy list reads retain the original
