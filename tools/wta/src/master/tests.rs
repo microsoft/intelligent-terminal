@@ -14149,7 +14149,8 @@ async fn copilot_fork_does_not_publish_for_unknown_or_acp_owned_sources() {
 
 #[tokio::test]
 async fn copilot_fork_delayed_ack_retains_historical_successor_chain_and_cancellation() {
-    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
     use crate::session_watcher::copilot_fork::CopilotFork;
     for (cancel, failed) in [(false, false), (true, false), (false, true)] {
         let wt = Arc::new(MockWtChannel::ok());
@@ -14173,6 +14174,28 @@ async fn copilot_fork_delayed_ack_retains_historical_successor_chain_and_cancell
         historical.pane_session_id = None;
         historical.status = Some(AgentStatus::Historical);
         state.registry.upsert(historical).await;
+        let mut collisions = Vec::new();
+        for key in ["fork-a", "fork-b"] {
+            for (provider, cli, location) in [
+                ("claude", CliSource::Claude, SessionLocation::Host),
+                (
+                    "copilot",
+                    CliSource::Copilot,
+                    SessionLocation::Wsl {
+                        distro: "Ubuntu".into(),
+                    },
+                ),
+            ] {
+                let mut other = SessionInfo::new(SessionId::new(key), "C:\\other".into());
+                other.provider_id = Some(provider.into());
+                other.cli_source = Some(cli);
+                other.location = location;
+                other.status = Some(AgentStatus::Historical);
+                state.registry.upsert(other.clone()).await;
+                collisions.push(other);
+            }
+            assert!(state.registry.lookup(&SessionId::new(key)).await.is_none());
+        }
         assert!(copilot_fork::request(
             &state,
             &CopilotFork {
@@ -14258,6 +14281,15 @@ async fn copilot_fork_delayed_ack_retains_historical_successor_chain_and_cancell
             );
         }
         assert!(state.pending_copilot_forks.lock().await.is_empty());
+        for other in collisions {
+            assert_eq!(
+                state
+                    .registry
+                    .lookup_identity(&SessionIdentity::from_info(&other))
+                    .await,
+                Some(other)
+            );
+        }
     }
 }
 

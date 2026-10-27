@@ -293,7 +293,16 @@ pub(super) async fn request(state: &Arc<MasterStateInner>, fork: &CopilotFork) -
         }
     }
     let sid = acp::schema::v1::SessionId::new(fork.source.clone());
-    let Some(row) = state.registry.lookup(&sid).await else {
+    let source_identity = SessionIdentity {
+        session_id: sid,
+        history_key: crate::session_registry::HistoryRowKey::new(
+            "copilot",
+            SessionLocation::Host,
+            &fork.source,
+            None,
+        ),
+    };
+    let Some(row) = state.registry.lookup_identity(&source_identity).await else {
         return Ok(false);
     };
     if !eligible(&row) {
@@ -479,7 +488,18 @@ pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::
             }
         }
         let successor = if let Some(fork) = plan.dependent.pop_front() {
-            let row = state.registry.lookup(&plan.target).await;
+            let row = state
+                .registry
+                .lookup_identity(&SessionIdentity {
+                    session_id: plan.target.clone(),
+                    history_key: crate::session_registry::HistoryRowKey::new(
+                        "copilot",
+                        SessionLocation::Host,
+                        plan.target.0.as_ref(),
+                        None,
+                    ),
+                })
+                .await;
             let target = acp::schema::v1::SessionId::new(fork.target.clone());
             let target_row = state
                 .registry
