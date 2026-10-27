@@ -20515,6 +20515,186 @@ async fn master_com_hook_source_checks_pane_context_without_requiring_shell_meta
     }
 }
 
+fn copilot_prompt_recovery_row() -> crate::session_registry::SessionInfo {
+    let mut row = crate::session_registry::SessionInfo::new(
+        SessionId::new("aaaaaaaa-1111-2222-3333-444444444444"),
+        PathBuf::from("C:\\old"),
+    );
+    row.provider_id = Some("copilot".into());
+    row.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
+    row.location = crate::agent_sessions::SessionLocation::Host;
+    row.status = Some(crate::agent_sessions::AgentStatus::Historical);
+    row.title = Some("Durable root session".into());
+    row
+}
+
+fn copilot_prompt_recovery_context() -> serde_json::Value {
+    serde_json::json!({
+        "pane": {
+            "session_id": "bbbbbbbb-1111-2222-3333-444444444444",
+            "native_agent_provider_id": "copilot",
+            "is_agent_pane": false,
+            "pid": 42
+        }
+    })
+}
+
+#[tokio::test]
+async fn copilot_prompt_recovery_after_missing_start_publishes_full_binding() {
+    let wt = Arc::new(MockWtChannel::responding(copilot_prompt_recovery_context()));
+    let state = make_state_with_wt(wt.clone());
+    let expected = copilot_prompt_recovery_row();
+    let pane = "bbbbbbbb-1111-2222-3333-444444444444";
+    state.registry.upsert(expected.clone()).await;
+    state.registry.record_pane_connected(pane).await;
+    let (tx, mut notifications) = mpsc::unbounded_channel();
+    state
+        .helper_ext_subscribers
+        .lock()
+        .await
+        .insert(HelperId(1), tx);
+
+    handle_master_agent_event_with_probe(
+        &state,
+        &serde_json::json!({
+            "event": "agent.prompt.submit",
+            "cli_source": "copilot",
+            "agent_session_id": expected.session_id,
+            "pane_id": pane,
+            "payload": { "cwd": "C:\\current" }
+        }),
+        |row, pid| async move {
+            assert_eq!(
+                row.session_id.0.as_ref(),
+                "aaaaaaaa-1111-2222-3333-444444444444"
+            );
+            assert_eq!(pid, 42);
+            Ok(true)
+        },
+    )
+    .await;
+    let recovered = state.registry.lookup(&expected.session_id).await.unwrap();
+    assert_eq!(
+        recovered.status,
+        Some(crate::agent_sessions::AgentStatus::Working)
+    );
+    assert_eq!(recovered.pane_session_id.as_deref(), Some(pane));
+    assert_eq!(recovered.cwd, PathBuf::from("C:\\current"));
+    assert_eq!(recovered.title, expected.title);
+    assert!(state.hook_owned.lock().await.contains(&expected.session_id));
+    assert!(matches!(
+        crate::session_registry::parse_ext_notification(&notifications.try_recv().unwrap()),
+        crate::session_registry::WtaExtNotification::SessionsChanged
+    ));
+    assert_eq!(
+        wt.calls(),
+        vec![(
+            "get_pane_context".into(),
+            serde_json::json!({ "session_id": pane, "max_lines": 0, "max_chars": 0 })
+        )]
+    );
+}
+
+#[tokio::test]
+async fn copilot_prompt_recovery_rejects_unverified_native_context_and_lease() {
+    for case in [
+        "other-pane",
+        "other-provider",
+        "helper-pane",
+        "missing-pid",
+        "other-lease",
+        "probe-error",
+    ] {
+        let mut context = copilot_prompt_recovery_context();
+        match case {
+            "other-pane" => {
+                context["pane"]["session_id"] =
+                    serde_json::json!("cccccccc-1111-2222-3333-444444444444")
+            }
+            "other-provider" => {
+                context["pane"]["native_agent_provider_id"] = serde_json::json!("claude")
+            }
+            "helper-pane" => context["pane"]["is_agent_pane"] = serde_json::json!(true),
+            "missing-pid" => context["pane"]["pid"] = serde_json::Value::Null,
+            _ => {}
+        }
+        let wt = Arc::new(MockWtChannel::responding(context));
+        let state = make_state_with_wt(wt);
+        let expected = copilot_prompt_recovery_row();
+        let pane = "bbbbbbbb-1111-2222-3333-444444444444";
+        state.registry.upsert(expected.clone()).await;
+        state.registry.record_pane_connected(pane).await;
+        handle_master_agent_event_with_probe(
+            &state,
+            &serde_json::json!({
+                "event": "agent.prompt.submit",
+                "cli_source": "copilot",
+                "agent_session_id": expected.session_id,
+                "pane_id": pane,
+                "payload": { "cwd": "C:\\current" }
+            }),
+            |_, _| async move {
+                match case {
+                    "other-lease" => Ok(false),
+                    "probe-error" => {
+                        Err(crate::session_watcher::copilot_status::ProbeError::Unavailable)
+                    }
+                    _ => panic!("unverified context must not reach the lease probe"),
+                }
+            },
+        )
+        .await;
+        assert_eq!(
+            state.registry.lookup(&expected.session_id).await.unwrap(),
+            expected,
+            "{case}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn copilot_prompt_recovery_is_not_triggered_by_other_hook_events() {
+    for event in [
+        "agent.tool.starting",
+        "agent.tool.finished",
+        "agent.notification",
+        "agent.stop",
+        "agent.session.end",
+    ] {
+        let wt = Arc::new(MockWtChannel::responding(copilot_prompt_recovery_context()));
+        let state = make_state_with_wt(wt.clone());
+        let expected = copilot_prompt_recovery_row();
+        state.registry.upsert(expected.clone()).await;
+        state
+            .registry
+            .record_pane_connected("bbbbbbbb-1111-2222-3333-444444444444")
+            .await;
+        handle_master_agent_event_with_probe(
+            &state,
+            &serde_json::json!({
+                "event": event,
+                "cli_source": "copilot",
+                "agent_session_id": expected.session_id,
+                "pane_id": "bbbbbbbb-1111-2222-3333-444444444444",
+                "payload": { "cwd": "C:\\current", "tool_name": "read_file" }
+            }),
+            |_, _| async { panic!("only a prompt may recover a missing binding") },
+        )
+        .await;
+        assert!(wt.calls().is_empty(), "{event}");
+        assert!(
+            state
+                .registry
+                .lookup(&expected.session_id)
+                .await
+                .unwrap()
+                .pane_session_id
+                .is_none(),
+            "{event}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn master_com_hook_source_preserves_known_wsl_without_external_lookup() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};

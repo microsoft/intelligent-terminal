@@ -1634,6 +1634,19 @@ impl PartialEq for SessionInfo {
 impl Eq for SessionInfo {}
 
 impl SessionInfo {
+    pub(crate) fn can_recover_copilot_prompt(&self) -> bool {
+        self.provider_id.as_deref() == Some("copilot")
+            && self.cli_source == Some(CliSource::Copilot)
+            && self.location == SessionLocation::Host
+            && self.session_universe.is_none()
+            && self.origin != Some(SessionOrigin::AgentPane)
+            && self.status == Some(AgentStatus::Historical)
+            && self.pane_session_id.is_none()
+            && !self.born_bound_pane
+            && self.last_error.is_none()
+            && uuid::Uuid::parse_str(self.session_id.0.as_ref()).is_ok()
+    }
+
     pub(crate) fn cwd_revision(&self) -> u64 {
         self.cwd_evidence.revision
     }
@@ -1861,6 +1874,14 @@ pub trait SessionRegistry: Send + Sync {
 
     /// Apply a helper-observed session event to the master-side reducer state.
     async fn apply_event(&self, ev: SessionEvent) -> bool;
+    /// Recover only unchanged history on a connected, unowned native pane.
+    /// The caller must first verify that the pane root holds this Copilot lease.
+    async fn recover_copilot_prompt(
+        &self,
+        expected: &SessionInfo,
+        pane_session_id: &str,
+        cwd: PathBuf,
+    ) -> bool;
     /// Record lifecycle evidence only from master's ordered WT event stream.
     async fn record_pane_connected(&self, pane_session_id: &str);
     /// Record trusted failure evidence and reconcile the owner atomically.
@@ -2576,6 +2597,61 @@ impl SessionRegistry for InMemoryRegistry {
     async fn apply_event(&self, ev: SessionEvent) -> bool {
         let mut guard = self.inner.lock().await;
         apply_event_locked(&mut guard, ev, None)
+    }
+
+    async fn recover_copilot_prompt(
+        &self,
+        expected: &SessionInfo,
+        pane_session_id: &str,
+        cwd: PathBuf,
+    ) -> bool {
+        if !expected.can_recover_copilot_prompt()
+            || uuid::Uuid::parse_str(pane_session_id).is_err()
+            || cwd.as_os_str().is_empty()
+        {
+            return false;
+        }
+        let mut state = self.inner.lock().await;
+        let pane = pane_key(pane_session_id);
+        let identity = SessionIdentity::from_info(expected);
+        if unique_identity_for_raw(&state, &expected.session_id).as_ref() != Some(&identity)
+            || state.sessions.get(&identity) != Some(expected)
+            || state.active_by_pane.contains_key(&pane)
+            || state.native_panes.contains_key(&pane)
+            || state
+                .failed_resume_assignments
+                .contains(&(identity, pane.clone()))
+            || !matches!(
+                state.pane_connections.get(&pane),
+                Some(PaneConnectionState::Connected)
+            )
+        {
+            return false;
+        }
+        // Check and claim under one lock: synthetic recovery must never perform
+        // the ordinary SessionStarted handoff that can evict another owner.
+        let now = now_ms();
+        let key = expected.session_id.to_string();
+        apply_event_qualified_at_ms(
+            &mut state,
+            SessionEvent::SessionStarted {
+                key: key.clone(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: pane,
+                cwd,
+                title: String::new(),
+            },
+            None,
+            now,
+        ) && apply_event_qualified_at_ms(
+            &mut state,
+            SessionEvent::ToolStarting {
+                key,
+                tool_name: "prompt".into(),
+            },
+            None,
+            now,
+        )
     }
 
     async fn record_pane_connected(&self, pane_session_id: &str) {
@@ -7581,6 +7657,143 @@ mod tests {
             if mutation == "start" {
                 assert!(reg.lookup_active_by_pane("pane-new").await.is_some());
             }
+        }
+    }
+
+    fn copilot_prompt_history() -> SessionInfo {
+        let mut row = SessionInfo::new(
+            acp::schema::v1::SessionId::new("aaaaaaaa-1111-2222-3333-444444444444"),
+            PathBuf::from("C:\\old"),
+        );
+        row.provider_id = Some("copilot".into());
+        row.cli_source = Some(CliSource::Copilot);
+        row.location = SessionLocation::Host;
+        row.status = Some(AgentStatus::Historical);
+        row.title = Some("Durable session title".into());
+        row
+    }
+
+    #[tokio::test]
+    async fn copilot_prompt_recovery_is_atomic_idempotent_and_preserves_title() {
+        let reg = InMemoryRegistry::new();
+        let expected = copilot_prompt_history();
+        let pane = "bbbbbbbb-1111-2222-3333-444444444444";
+        reg.upsert(expected.clone()).await;
+        reg.record_pane_connected(pane).await;
+        assert!(
+            reg.recover_copilot_prompt(&expected, pane, PathBuf::from("C:\\current"))
+                .await
+        );
+        let recovered = reg.lookup(&expected.session_id).await.unwrap();
+        assert_eq!(recovered.status, Some(AgentStatus::Working));
+        assert_eq!(recovered.current_tool.as_deref(), Some("prompt"));
+        assert_eq!(recovered.pane_session_id.as_deref(), Some(pane));
+        assert_eq!(recovered.cwd, PathBuf::from("C:\\current"));
+        assert_eq!(recovered.title, expected.title);
+        assert!(
+            !reg.recover_copilot_prompt(&expected, pane, PathBuf::from("C:\\stale"))
+                .await
+        );
+        assert_eq!(reg.lookup(&expected.session_id).await.unwrap(), recovered);
+
+        assert!(
+            reg.apply_event(SessionEvent::SessionStarted {
+                key: expected.session_id.to_string(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: pane.into(),
+                cwd: PathBuf::from("C:\\current"),
+                title: String::new(),
+            })
+            .await
+        );
+        let late_start = reg.lookup(&expected.session_id).await.unwrap();
+        assert_eq!(late_start.status, Some(AgentStatus::Working));
+        assert_eq!(late_start.title, expected.title);
+    }
+
+    #[tokio::test]
+    async fn copilot_prompt_recovery_rechecks_lifecycle_identity_and_owner() {
+        let pane = "bbbbbbbb-1111-2222-3333-444444444444";
+        for case in [
+            "unknown-pane",
+            "closed-pane",
+            "failed-pane",
+            "other-owner",
+            "ended",
+            "changed-row",
+            "removed-row",
+            "colliding-id",
+            "agent-pane",
+            "wsl",
+            "universe",
+            "failed-resume",
+            "invalid-session",
+        ] {
+            let reg = InMemoryRegistry::new();
+            let mut expected = copilot_prompt_history();
+            match case {
+                "ended" => expected.status = Some(AgentStatus::Ended),
+                "agent-pane" => expected.origin = Some(SessionOrigin::AgentPane),
+                "wsl" => {
+                    expected.location = SessionLocation::Wsl {
+                        distro: "Ubuntu".into(),
+                    }
+                }
+                "universe" => expected.session_universe = Some("acp".into()),
+                "failed-resume" => expected.last_error = Some("resume failed".into()),
+                "invalid-session" => {
+                    expected.session_id = acp::schema::v1::SessionId::new("sidekick-child")
+                }
+                _ => {}
+            }
+            reg.upsert(expected.clone()).await;
+            if case != "unknown-pane" {
+                reg.record_pane_connected(pane).await;
+            }
+            match case {
+                "closed-pane" => {
+                    reg.apply_event(SessionEvent::PaneClosed {
+                        pane_session_id: pane.into(),
+                    })
+                    .await;
+                }
+                "failed-pane" => {
+                    reg.record_pane_connection_failure(pane, "closed", Some(true))
+                        .await;
+                }
+                "other-owner" => {
+                    reg.apply_event(SessionEvent::SessionStarted {
+                        key: "real-owner".into(),
+                        cli_source: CliSource::Copilot,
+                        pane_session_id: pane.into(),
+                        cwd: PathBuf::from("C:\\owner"),
+                        title: "owner".into(),
+                    })
+                    .await;
+                }
+                "changed-row" => {
+                    let mut changed = expected.clone();
+                    changed.title = Some("newer metadata".into());
+                    reg.upsert(changed).await;
+                }
+                "removed-row" => {
+                    reg.remove(&expected.session_id).await;
+                }
+                "colliding-id" => {
+                    let mut other = expected.clone();
+                    other.provider_id = Some("claude".into());
+                    other.cli_source = Some(CliSource::Claude);
+                    reg.upsert(other).await;
+                }
+                _ => {}
+            }
+            let before = reg.snapshot().await;
+            assert!(
+                !reg.recover_copilot_prompt(&expected, pane, PathBuf::from("C:\\current"))
+                    .await,
+                "{case}"
+            );
+            assert_eq!(reg.snapshot().await, before, "{case}");
         }
     }
 
