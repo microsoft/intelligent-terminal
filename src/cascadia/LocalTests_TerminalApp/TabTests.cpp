@@ -589,6 +589,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentReceiverSnapshotsRequireReadyGeneration);
         TEST_METHOD(NativeAgentReceiverReplayIsPageLocalAndOrdered);
         TEST_METHOD(MasterRecoveryReplaysOnlyConfirmedLiveCliBindings);
+        TEST_METHOD(SharedWtaTrackingOnlyLaunchHasNoDefaultAgent);
         TEST_METHOD(AgentSnapshotSelectionIsIndependentOfRowOrder);
         TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
         TEST_METHOD(BottomBarSessionsButtonDispatchesExistingAction);
@@ -10616,6 +10617,22 @@ namespace TerminalAppLocalTests
         VERIFY_IS_FALSE(Page::_NativeAgentReceiverSnapshotReady(response, 7, 7));
         response.removeMember("native_observation_receiver_generation");
         VERIFY_IS_FALSE(Page::_NativeAgentReceiverSnapshotReady(response, 7, 7));
+    }
+
+    void TabTests::SharedWtaTrackingOnlyLaunchHasNoDefaultAgent()
+    {
+        auto page = _restoreBindingsSetup();
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().AcpAgent(L"");
+            auto fallbackCalled = false;
+            const auto arguments = page->_BuildSharedWtaExtraArgs([&]() {
+                fallbackCalled = true;
+                return winrt::hstring{};
+            });
+            VERIFY_IS_TRUE(fallbackCalled);
+            VERIFY_IS_TRUE(std::ranges::find(arguments, L"--agent=") != arguments.end());
+            VERIFY_IS_TRUE(std::ranges::find(arguments, L"--agent") == arguments.end());
+        });
     }
 
     void TabTests::MasterRecoveryReplaysOnlyConfirmedLiveCliBindings()

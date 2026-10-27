@@ -2432,6 +2432,11 @@ namespace winrt::TerminalApp::implementation
             std::wstring{ _settings.ProfileDefaults().AgentPaneBackend() });
         snapshot.agentSessionManagementEnabled =
             globals.EffectiveAgentSessionManagementEnabled();
+        for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::FilteredAcpAgents())
+        {
+            snapshot.allowedAgentIds.emplace_back(agent.id);
+        }
+        snapshot.customAgentsAllowed = AgentPolicy::IsCustomAgentAllowed();
         return snapshot;
     }
 
@@ -2441,6 +2446,12 @@ namespace winrt::TerminalApp::implementation
         identity["acp_agent"] = winrt::to_string(winrt::hstring{ snapshot.acpAgent });
         identity["acp_custom_command"] = winrt::to_string(winrt::hstring{ snapshot.acpCustomCommand });
         identity["acp_model"] = winrt::to_string(winrt::hstring{ snapshot.acpModel });
+        identity["allowed_agent_ids"] = Json::arrayValue;
+        for (const auto& id : snapshot.allowedAgentIds)
+        {
+            identity["allowed_agent_ids"].append(winrt::to_string(winrt::hstring{ id }));
+        }
+        identity["custom_agents_allowed"] = snapshot.customAgentsAllowed;
         if (snapshot.customModelLaunch)
         {
             const auto& custom = *snapshot.customModelLaunch;
@@ -2470,6 +2481,11 @@ namespace winrt::TerminalApp::implementation
         const AgentSettingsSnapshot& previous,
         const AgentSettingsSnapshot& current)
     {
+        if (previous.allowedAgentIds != current.allowedAgentIds ||
+            previous.customAgentsAllowed != current.customAgentsAllowed)
+        {
+            return AgentSettingsChangeKind::RecreatePane;
+        }
         const bool changed =
             previous.acpAgent != current.acpAgent ||
             previous.acpCustomCommand != current.acpCustomCommand ||
@@ -4087,7 +4103,15 @@ namespace winrt::TerminalApp::implementation
             extraArgs.emplace_back(flag);
             extraArgs.emplace_back(value);
         };
-        pushFlagValue(L"--agent", agentCliPath);
+        if (agentCliPath.empty())
+        {
+            // Omitting this flag restores WTA's executable Copilot default.
+            extraArgs.emplace_back(L"--agent=");
+        }
+        else
+        {
+            pushFlagValue(L"--agent", agentCliPath);
+        }
         pushFlagValue(L"--agent-id", globals.EffectiveAcpAgent());
         // Pass the GPO-filtered set of allowed agent ids to the master.
         // A per-tab helper declares the agent it wants by *id* over the
@@ -5283,10 +5307,14 @@ namespace winrt::TerminalApp::implementation
             _lastAgentSettings.customModelLaunch != current.customModelLaunch;
         const bool cloudModelChanged =
             _lastAgentSettings.acpModel != current.acpModel;
+        const bool agentPolicyChanged =
+            _lastAgentSettings.allowedAgentIds != current.allowedAgentIds ||
+            _lastAgentSettings.customAgentsAllowed != current.customAgentsAllowed;
         const bool masterConfigurationChanged =
-            !modelHotUpdate &&
-            (customMasterArgsChanged ||
-             (!rebindAgentInPlace && (cloudModelChanged || customModelLaunchChanged)));
+            agentPolicyChanged ||
+            (!modelHotUpdate &&
+             (customMasterArgsChanged ||
+              (!rebindAgentInPlace && (cloudModelChanged || customModelLaunchChanged))));
         const bool globalModelBindingChanged =
             cloudModelChanged || customModelLaunchChanged;
         const bool globalAgentChanged =

@@ -525,6 +525,8 @@ namespace winrt::TerminalApp::implementation
             std::optional<::Microsoft::Terminal::CustomModels::LaunchConfiguration> customModelLaunch;
             std::vector<std::pair<winrt::guid, std::wstring>> profileBackends;
             bool agentSessionManagementEnabled{ true };
+            std::vector<std::wstring> allowedAgentIds;
+            bool customAgentsAllowed{ true };
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
