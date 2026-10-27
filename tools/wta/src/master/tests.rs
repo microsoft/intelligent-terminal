@@ -20652,6 +20652,66 @@ async fn copilot_prompt_recovery_rejects_unverified_native_context_and_lease() {
     }
 }
 
+#[tokio::test(start_paused = true)]
+async fn copilot_prompt_recovery_waits_for_bounded_pane_context() {
+    struct DelayedContext(std::time::Duration);
+
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for DelayedContext {
+        async fn request(
+            &self,
+            _method: &str,
+            _params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            tokio::time::sleep(self.0).await;
+            Ok(copilot_prompt_recovery_context())
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    for (delay, recovered) in [
+        (std::time::Duration::from_millis(300), true),
+        (std::time::Duration::from_secs(3), false),
+    ] {
+        let state = make_state_with_wt(Arc::new(DelayedContext(delay)));
+        let expected = copilot_prompt_recovery_row();
+        let pane = "bbbbbbbb-1111-2222-3333-444444444444";
+        state.registry.upsert(expected.clone()).await;
+        state.registry.record_pane_connected(pane).await;
+        handle_master_agent_event_with_probe(
+            &state,
+            &serde_json::json!({
+                "event": "agent.prompt.submit",
+                "cli_source": "copilot",
+                "agent_session_id": expected.session_id,
+                "pane_id": pane,
+                "payload": { "cwd": "C:\\current" }
+            }),
+            |_, _| async move {
+                assert!(
+                    recovered,
+                    "timed-out metadata must not reach the lease probe"
+                );
+                Ok(true)
+            },
+        )
+        .await;
+        let row = state.registry.lookup(&expected.session_id).await.unwrap();
+        assert_eq!(
+            row.status,
+            Some(if recovered {
+                crate::agent_sessions::AgentStatus::Working
+            } else {
+                crate::agent_sessions::AgentStatus::Historical
+            })
+        );
+        assert_eq!(row.pane_session_id.is_some(), recovered);
+    }
+}
+
 #[tokio::test]
 async fn copilot_prompt_recovery_is_not_triggered_by_other_hook_events() {
     for event in [

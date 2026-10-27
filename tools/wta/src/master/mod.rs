@@ -10844,7 +10844,7 @@ where
         return false;
     };
     let context = match tokio::time::timeout(
-        std::time::Duration::from_millis(250),
+        std::time::Duration::from_secs(2),
         wt.request(
             "get_pane_context",
             serde_json::json!({ "session_id": pane_id, "max_lines": 0, "max_chars": 0 }),
@@ -10853,8 +10853,12 @@ where
     .await
     {
         Ok(Ok(context)) => context,
-        _ => {
-            tracing::debug!(target: "master_wt_event", "prompt recovery pane context unavailable");
+        Ok(Err(error)) => {
+            tracing::debug!(target: "master_wt_event", %error, "prompt recovery pane context unavailable");
+            return false;
+        }
+        Err(_) => {
+            tracing::debug!(target: "master_wt_event", "prompt recovery pane context timed out");
             return false;
         }
     };
