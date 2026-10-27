@@ -463,18 +463,14 @@ namespace winrt::TerminalApp::implementation
             else
             {
                 const auto native = NativeAgentObservationForContent(contentId);
-                if (native)
-                {
-                    matches = native->providerId == L"copilot" &&
-                              !native->location.starts_with("wsl:") &&
-                              (native->agentSessionId == previous || native->qualifiedSessionId == previous);
-                }
-                else
-                {
-                    // The owning page validates the existing resume binding before this fork-only path.
-                    matches = _nativeAgentSessionEventsEnabled &&
-                              event.get("method", "").asString() == "pane_agent_session_changed";
-                }
+                const auto nativeCopilot = native && native->providerId == L"copilot" &&
+                                           !native->location.starts_with("wsl:");
+                const auto providerOnly = !native ||
+                                          (nativeCopilot && native->agentSessionId.empty() && native->qualifiedSessionId.empty());
+                // Provider-only launch metadata is not a conflicting conversation; the owning page verified the source.
+                matches = (nativeCopilot && (native->agentSessionId == previous || native->qualifiedSessionId == previous)) ||
+                          (providerOnly && _nativeAgentSessionEventsEnabled &&
+                           event.get("method", "").asString() == "pane_agent_session_changed");
             }
             if (!matches)
             {
