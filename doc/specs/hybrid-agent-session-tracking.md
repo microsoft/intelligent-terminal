@@ -408,6 +408,16 @@ ownership remain authoritative. No helper subscription or hook installation is
 required for this native activity fallback; saved-layout restore routing is
 unchanged.
 
+Connection failure returns a born-bound resume to Historical only with positive
+evidence that its process never launched. ConPTY retains `ProcessStarted` for
+each connection even after process-handle cleanup, and its failed
+`connection_state` event includes `process_started`. Missing fields from older
+or other connection producers mean unknown, not a startup failure; a missed
+Connected broadcast therefore preserves Error and the live pane binding.
+Consumed failed assignments cannot roll back a later retry, including before
+that retry receives its pane. Native OFF Reset uses the resulting actual
+binding rather than assuming assignment succeeded.
+
 Watcher ownership checks and activity updates share that lifecycle gate too.
 Native file records only update a unique row for the matching CLI, never a WSL,
 agent-pane, alternate-universe, or ambiguous raw-ID row.

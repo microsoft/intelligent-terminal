@@ -232,6 +232,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             &siEx.StartupInfo, // lpStartupInfo
             &_piClient // lpProcessInformation
             ));
+        _processStarted.store(true, std::memory_order_release);
 
         DeleteProcThreadAttributeList(siEx.lpAttributeList);
 
@@ -418,6 +419,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         ownedSignal.release();
 
         _piClient.hProcess = ownedClient.release();
+        _processStarted.store(true, std::memory_order_release);
 
         _startupInfo.title = winrt::hstring{ startupInfo->pszTitle, SysStringLen(startupInfo->pszTitle) };
         _startupInfo.iconPath = winrt::hstring{ startupInfo->pszIconPath, SysStringLen(startupInfo->pszIconPath) };
@@ -727,6 +729,12 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
     {
 #pragma warning(disable : 26490) // Don't use reinterpret_cast (type.1).
         return reinterpret_cast<uint64_t>(_piClient.hProcess);
+    }
+
+    bool ConptyConnection::ProcessStarted() const noexcept
+    {
+        // Process cleanup precedes Failed; retain launch evidence for this connection.
+        return _processStarted.load(std::memory_order_acquire);
     }
 
     void ConptyConnection::Close() noexcept

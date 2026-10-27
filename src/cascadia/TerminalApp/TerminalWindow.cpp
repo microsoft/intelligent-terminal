@@ -435,6 +435,14 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalWindow::WindowMoved()
+    {
+        if (_root)
+        {
+            _root->WindowMoved();
+        }
+    }
+
     // Method Description:
     // - Displays a dialog for errors found while loading or validating the
     //   settings. Uses the resources under the provided  title and content keys

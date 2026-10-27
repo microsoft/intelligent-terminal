@@ -146,7 +146,7 @@ agent.custom.auth_hint: "ખાતરી કરો કે %{name} ઇન્સ�
 agents.loading: "લોડ થઈ રહ્યું છે..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - કી સંયોજનો, અનુવાદ કરશો નહીં
 agents.footer_hint: "(↑ ↓ નેવિગેટ કરો • Enter સત્ર શરૂ કરો • Esc બહાર નીકળો • F5 તાજું કરો • / શોધો)"
-agents.status.active: "સક્રિય"
+agents.status.active: "કામ કરી રહ્યું છે"
 agents.status.waiting_for_input: "ઇનપુટની રાહ"
 agents.status.error: "ભૂલ"
 agents.status.idle: "નિષ્ક્રિય"

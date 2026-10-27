@@ -8757,26 +8757,38 @@ async fn execute_session_activation(
                     };
                     let lifecycle_gate = session_lifecycle_gate(state, &row.session_id).await;
                     let lifecycle_guard = lifecycle_gate.lock().await;
-                    if state
-                        .registry
-                        .mark_resume_dispatched_identity(&parsed.identity)
-                        .await
-                        .is_none()
-                    {
-                        return respond!(
-                            "resume_cli",
-                            false,
-                            Some(
-                                "The selected session changed before it could be resumed."
-                                    .to_string()
-                            ),
-                            Unknown
-                        );
-                    }
                     let binding_changed = state
                         .registry
                         .assign_resume_pane_identity(&parsed.identity, pane_session_id.clone())
                         .await;
+                    if let Some(current) = state
+                        .registry
+                        .lookup_identity(&parsed.identity)
+                        .await
+                        .filter(|current| {
+                            current.status == Some(AgentStatus::Historical)
+                                && current.pane_session_id.is_none()
+                        })
+                    {
+                        state.hook_owned.lock().await.remove(&row.session_id);
+                        state.born_bound.lock().await.remove(&row.session_id);
+                        drop(lifecycle_guard);
+                        tracing::warn!(
+                            target: "master",
+                            session_id = %row.session_id,
+                            pane_session_id,
+                            "resume pane failed before the session started"
+                        );
+                        broadcast_session_status_change(state, None).await;
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some(format!(
+                                "The session could not be resumed: {}",
+                                current.last_error.as_deref().unwrap_or("connection failed")
+                            ))
+                        );
+                    }
                     // No change can mean a real hook already established the exact binding.
                     if !binding_changed
                         && !state
@@ -9053,6 +9065,9 @@ async fn apply_master_session_event(
                     .registry
                     .apply_born_bound_event(event, birth_location, preserve_live_binding)
                     .await;
+                if result.rejected {
+                    return (false, None);
+                }
                 (result.applied, result.native_pane_owned)
             } else {
                 (state.registry.apply_event(event).await, false)
@@ -11573,20 +11588,35 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         return;
     }
     let pane_state = params.get("state").and_then(|v| v.as_str()).unwrap_or("");
-    let event = match pane_state {
-        "closed" => crate::agent_sessions::SessionEvent::PaneClosed {
-            pane_session_id: pane_id.clone(),
-        },
+    if pane_state == "connected" {
+        state.registry.record_pane_connected(&pane_id).await;
+        return;
+    }
+    let applied = match pane_state {
+        "closed" => {
+            state
+                .registry
+                .apply_event(crate::agent_sessions::SessionEvent::PaneClosed {
+                    pane_session_id: pane_id.clone(),
+                })
+                .await
+        }
         "failed" => {
             let reason = params
                 .get("reason")
                 .and_then(|v| v.as_str())
                 .unwrap_or("connection failed")
                 .to_string();
-            crate::agent_sessions::SessionEvent::ConnectionFailed {
-                pane_session_id: pane_id.clone(),
-                reason,
-            }
+            state
+                .registry
+                .record_pane_connection_failure(
+                    &pane_id,
+                    &reason,
+                    params
+                        .get("process_started")
+                        .and_then(|value| value.as_bool()),
+                )
+                .await
         }
         _ => return,
     };
@@ -11594,10 +11624,8 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         target: "master_wt_event",
         pane_id = %pane_id,
         state = %pane_state,
-        event = ?event,
         "applying WT connection_state event to master registry"
     );
-    let applied = state.registry.apply_event(event).await;
     if applied {
         tracing::info!(
             target: "master_wt_event",

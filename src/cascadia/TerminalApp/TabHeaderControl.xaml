@@ -68,14 +68,6 @@
                           Glyph="&#xEA8F;"
                           Visibility="{x:Bind TabStatus.BellIndicator, Mode=OneWay}" />
             </Grid>
-            <Grid Visibility="{x:Bind ShowPinnedIcon, Mode=OneWay}">
-                <FontIcon x:Name="HeaderPinnedIcon"
-                          Margin="0,0,8,0"
-                          FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                          FontSize="12"
-                          Glyph="&#xE718;"
-                          Visibility="{x:Bind TabStatus.IsPinned, Mode=OneWay}" />
-            </Grid>
             <FontIcon x:Name="HeaderZoomIcon"
                       Margin="0,0,8,0"
                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
@@ -101,33 +93,50 @@
                       Glyph="&#xEC05;"
                       Visibility="{x:Bind TabStatus.IsInputBroadcastActive, Mode=OneWay}" />
         </StackPanel>
-        <local:HighlightedTextControl x:Name="HeaderTextBlock"
-                                      Grid.Column="1"
-                                      SearchText="{x:Bind SearchText, Mode=OneWay}"
-                                      Text="{x:Bind Title, Mode=OneWay}"
-                                      Visibility="Visible">
-            <local:HighlightedTextControl.TextBlockStyle>
-                <Style TargetType="TextBlock">
-                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                </Style>
-            </local:HighlightedTextControl.TextBlockStyle>
-        </local:HighlightedTextControl>
-        <TextBox x:Name="HeaderRenamerTextBox"
-                 Grid.Column="1"
-                 Height="24"
-                 MinHeight="0"
-                 MaxWidth="{x:Bind RenamerMaxWidth, Mode=OneWay}"
-                 Padding="4,4,4,3"
-                 HorizontalAlignment="Left"
-                 FontSize="12"
-                 IsSpellCheckEnabled="False"
-                 LostFocus="RenameBoxLostFocusHandler"
-                 MaxLength="1024"
-                 Visibility="Collapsed">
-            <TextBox.ContextFlyout>
-                <mtu:TextMenuFlyout />
-            </TextBox.ContextFlyout>
-        </TextBox>
+        <Grid Grid.Column="1"
+              MinWidth="0"
+              HorizontalAlignment="Left">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <local:HighlightedTextControl x:Name="HeaderTextBlock"
+                                          MinWidth="0"
+                                          SearchText="{x:Bind SearchText, Mode=OneWay}"
+                                          Text="{x:Bind Title, Mode=OneWay}"
+                                          Visibility="Visible">
+                <local:HighlightedTextControl.TextBlockStyle>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                    </Style>
+                </local:HighlightedTextControl.TextBlockStyle>
+            </local:HighlightedTextControl>
+            <TextBox x:Name="HeaderRenamerTextBox"
+                     Height="24"
+                     MinHeight="0"
+                     MaxWidth="{x:Bind RenamerMaxWidth, Mode=OneWay}"
+                     Padding="4,4,4,3"
+                     HorizontalAlignment="Left"
+                     FontSize="12"
+                     IsSpellCheckEnabled="False"
+                     LostFocus="RenameBoxLostFocusHandler"
+                     MaxLength="1024"
+                     Visibility="Collapsed">
+                <TextBox.ContextFlyout>
+                    <mtu:TextMenuFlyout />
+                </TextBox.ContextFlyout>
+            </TextBox>
+            <Grid Grid.Column="1"
+                  VerticalAlignment="Center"
+                  Visibility="{x:Bind ShowPinnedIcon, Mode=OneWay}">
+                <PathIcon x:Name="HeaderPinnedIcon"
+                          Width="12"
+                          Height="12"
+                          Margin="8,0,0,0"
+                          Data="M8.05892 0.441444C7.34701 -0.273032 6.14697 -0.0953711 5.67261 0.794731L3.6526 4.58511L0.841896 5.52202C0.6775 5.57681 0.553199 5.71283 0.513385 5.88148C0.473572 6.05013 0.523923 6.22738 0.646457 6.34991L2.79287 8.49632L0.146371 11.1428L0 11.9964L0.853478 11.8499L3.49998 9.20343L5.64646 11.3499C5.76899 11.4724 5.94623 11.5228 6.11489 11.483C6.28354 11.4432 6.41955 11.3189 6.47435 11.1545L7.41143 8.34325L11.1897 6.32057C12.0759 5.84616 12.2538 4.65144 11.5443 3.93939L8.05892 0.441444Z"
+                          Visibility="{x:Bind TabStatus.IsPinned, Mode=OneWay}" />
+            </Grid>
+        </Grid>
         <FontIcon x:Name="HeaderKeepRunningIcon"
                   Grid.RowSpan="2"
                   Grid.Column="2"

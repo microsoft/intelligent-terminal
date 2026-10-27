@@ -147,7 +147,7 @@ agent.custom.auth_hint: "%{name} quraşdırıldığına və PATH-də olduğuna �
 agents.loading: "Yüklənir..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ naviqasiya üçün • Enter sessiya açmaq üçün • Esc çıxmaq üçün • F5 yeniləmək üçün • / axtarmaq üçün)"
-agents.status.active: "Aktiv"
+agents.status.active: "İşləyir"
 agents.status.waiting_for_input: "Giriş gözlənilir"
 agents.status.error: "Xəta"
 agents.status.idle: "Boş"

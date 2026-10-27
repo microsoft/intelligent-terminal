@@ -3212,6 +3212,8 @@ impl App {
     }
 
     fn publish_session_hook(&self, event: crate::agent_sessions::SessionEvent) {
+        // ResumeDispatched uses only this route: a second dispatch RPC could
+        // arrive after startup-failure recovery and revive an unbound row.
         if let Some(tx) = &self.session_hook_tx {
             if let Err(err) = tx.send(event) {
                 tracing::warn!(
@@ -3679,7 +3681,6 @@ impl App {
             crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
         self.agent_sessions.apply(resume_event.clone());
         self.publish_session_hook(resume_event);
-        self.dispatch_session_resume_dispatched_rpc(&key);
         // for hook-less CLIs (Gemini) so a future `PaneClosed` can
         // transition the row to Ended; harmless duplicate work for
         // Claude/Copilot whose hooks beat us to the same binding.
@@ -3849,7 +3850,6 @@ impl App {
             crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
         self.agent_sessions.apply(resume_event.clone());
         self.publish_session_hook(resume_event);
-        self.dispatch_session_resume_dispatched_rpc(&key);
 
         let mut params = serde_json::Map::new();
         params.insert(
@@ -3957,17 +3957,6 @@ impl App {
                 ],
             });
         }
-    }
-
-    fn dispatch_session_resume_dispatched_rpc(&mut self, sid: &str) {
-        let request_id = self.next_agents_rpc_request_id();
-        let sid = agent_client_protocol::schema::v1::SessionId::new(sid.to_string());
-        let _ = self.master_request_tx.send(
-            crate::protocol::acp::client::MasterExtRequest::SessionResumeDispatched {
-                request_id,
-                sid,
-            },
-        );
     }
 
     pub(crate) fn open_agents_view_for_tab(&mut self, tab_id: String) {

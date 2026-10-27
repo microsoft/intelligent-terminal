@@ -134,7 +134,7 @@ agent.custom.auth_hint: "Stellen Sie sicher, dass %{name} installiert und im PAT
 agents.loading: "Laden..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - Tastenkombinationen, nicht übersetzen
 agents.footer_hint: "(↑ ↓ navigieren • Enter Sitzung starten • Esc beenden • F5 aktualisieren • / suchen)"
-agents.status.active: "Aktiv"
+agents.status.active: "Arbeitet"
 agents.status.waiting_for_input: "Wartet auf Eingabe"
 agents.status.error: "Fehler"
 agents.status.idle: "Inaktiv"

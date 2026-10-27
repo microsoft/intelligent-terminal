@@ -1069,6 +1069,14 @@ impl AgentSessionRegistry {
                 key,
                 pane_session_id,
             } => {
+                // A late callback cannot reopen an attempt that has ended.
+                // A new resume must first deliver ResumeDispatched.
+                if matches!(
+                    self.sessions.get(&key).map(|entry| &entry.status),
+                    Some(AgentStatus::Historical | AgentStatus::Ended)
+                ) {
+                    return;
+                }
                 // Same orphan-handover as SessionStarted: if another session
                 // currently holds this pane, demote it first. In practice
                 // ResumePaneAssigned binds a freshly-created pane, so this
@@ -2797,6 +2805,47 @@ mod tests {
         );
         assert!(s.pane_session_id.is_none());
         assert!(reg.active_by_pane.is_empty());
+    }
+
+    #[test]
+    fn resume_pane_callback_after_started_then_closed_does_not_rebind() {
+        let mut reg = AgentSessionRegistry::new();
+        let pane_id = "{ABCDEFAB-1234-5678-9ABC-DEFABCDEFABC}";
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("resumed"),
+            cli_source: CliSource::Copilot,
+            pane_session_id: pane_id.into(),
+            cwd: PathBuf::from("C:\\repo"),
+            title: "Resumed session".into(),
+        });
+        reg.apply(SessionEvent::PaneClosed {
+            pane_session_id: pane_id.to_ascii_lowercase(),
+        });
+        let ended_at = reg.sessions.get("resumed").unwrap().last_activity_at;
+        let _ = reg.take_dirty();
+        reg.apply(SessionEvent::ResumePaneAssigned {
+            key: k("resumed"),
+            pane_session_id: pane_id.trim_matches(['{', '}']).into(),
+        });
+        let ended = reg.sessions.get("resumed").unwrap();
+        assert_eq!(ended.status, AgentStatus::Ended);
+        assert!(ended.pane_session_id.is_none());
+        assert_eq!(ended.last_activity_at, ended_at);
+        assert!(reg.active_by_pane.is_empty());
+        assert!(!reg.take_dirty());
+
+        reg.apply(SessionEvent::ResumeDispatched { key: k("resumed") });
+        reg.apply(SessionEvent::ResumePaneAssigned {
+            key: k("resumed"),
+            pane_session_id: "FRESH-PANE".into(),
+        });
+        let retried = reg.sessions.get("resumed").unwrap();
+        assert_eq!(retried.status, AgentStatus::Idle);
+        assert_eq!(retried.pane_session_id.as_deref(), Some("fresh-pane"));
+        assert_eq!(
+            reg.active_by_pane.get("fresh-pane").map(String::as_str),
+            Some("resumed")
+        );
     }
 
     #[test]

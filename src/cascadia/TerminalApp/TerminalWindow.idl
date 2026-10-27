@@ -159,5 +159,6 @@ namespace TerminalApp
                                   Windows.Foundation.IReference<Windows.Foundation.Rect> bounds);
 
         Microsoft.Terminal.Settings.Model.WindowLayout GetStartupRestoreLayout();
+        void WindowMoved();
     }
 }

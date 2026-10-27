@@ -424,11 +424,10 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             [math]::Abs($iconBounds.Height - $iconBounds.Width) | Should -BeLessOrEqual 1
             $dpiScale | Should -BeGreaterOrEqual 1
             if ($Status) {
-                $statusLabel = if ($Status -eq 'Working') { 'Active' } else { $Status }
-                $statuses = @($textLeaves | Where-Object { $_.Current.Name -eq $statusLabel })
+                $statuses = @($textLeaves | Where-Object { $_.Current.Name -eq $Status })
                 $statuses.Count | Should -Be 1 -Because 'the history row must expose one unambiguous meaningful status'
                 $statusPart = $statuses[0]
-                $statusPart.Current.Name | Should -Be $statusLabel
+                $statusPart.Current.Name | Should -Be $Status
                 $detailPart = $statusPart
             } else {
                 @($textLeaves | Where-Object {

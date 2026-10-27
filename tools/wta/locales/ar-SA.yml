@@ -147,7 +147,7 @@ agent.custom.auth_hint: "تأكد من أن %{name} مثبّت وموجود في
 agents.loading: "جارٍ التحميل..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - مجموعات المفاتيح، لا تترجمها
 agents.footer_hint: "(↑ ↓ للتنقل • Enter لبدء جلسة • Esc للخروج • F5 للتحديث • / للبحث)"
-agents.status.active: "نشط"
+agents.status.active: "جارٍ العمل"
 agents.status.waiting_for_input: "في انتظار الإدخال"
 agents.status.error: "خطأ"
 agents.status.idle: "خامل"

@@ -392,6 +392,7 @@
         <mux:TeachingTip x:Name="SidebarIntroductionTip"
                          AutomationProperties.AutomationId="SidebarIntroductionTip"
                          x:Load="False"
+                         CloseButtonClick="_OnSidebarIntroductionCloseButtonClick"
                          Closed="_OnSidebarIntroductionClosed"
                          IsLightDismissEnabled="False"
                          PreferredPlacement="Right">

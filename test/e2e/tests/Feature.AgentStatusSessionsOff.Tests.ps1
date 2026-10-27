@@ -451,7 +451,7 @@ catch {
         function Assert-Status {
             param($Fixture, [string]$Expected)
             try {
-                $registryStatus = @{ Active = 'Working'; Idle = 'Idle'; Error = 'Error'; 'Waiting for input' = 'Attention' }[$Expected]
+                $registryStatus = @{ Working = 'Working'; Idle = 'Idle'; Error = 'Error'; 'Waiting for input' = 'Attention' }[$Expected]
                 Assert-RegistryObservation $Fixture $registryStatus
                 $text = Wait-Until -TimeoutSec 10 -Because "native metadata reaches $Expected" -Condition {
                     $value = Get-StatusText $Fixture
@@ -471,7 +471,7 @@ catch {
             do {
                 $text = Get-StatusText $Fixture
                 $text | Should -Not -BeNullOrEmpty -Because 'suppression requires a realized owned row'
-                $text | Should -Not -Match '(?m)(^|[ ,·])(Active|Idle|Error|Paused|Attention requested|Waiting for input)($|[ ,·])'
+                $text | Should -Not -Match '(?m)(^|[ ,·])(Active|Working|Idle|Error|Paused|Attention requested|Waiting for input)($|[ ,·])'
                 Start-Sleep -Milliseconds 100
             } while ([DateTime]::UtcNow -lt $deadline)
             $snapshot = Get-StatusRegistrySnapshot
@@ -667,7 +667,7 @@ catch {
     It 'Sessions off native OSC and BEL report truthful status without shell false positives' {
         Send-StatusSignal $script:otherNative -State 4
         Assert-Status $script:otherNative Idle
-        foreach ($step in @(@{ State = 1; Text = 'Active' }, @{ State = 3; Text = 'Active' },
+        foreach ($step in @(@{ State = 1; Text = 'Working' }, @{ State = 3; Text = 'Working' },
             @{ State = 2; Text = 'Error' }, @{ State = 4; Text = 'Idle' }, @{ State = 0; Text = 'Idle' })) {
             Send-StatusSignal $script:native -State $step.State
             Assert-Status $script:native $step.Text
@@ -690,7 +690,7 @@ catch {
         Assert-NoFabricatedBinding $script:otherNative
         Assert-NoFabricatedBinding $script:shell
         Send-StatusSignal $script:native -State 1
-        Assert-Status $script:native Active
+        Assert-Status $script:native Working
         Assert-BellRequestsInput $script:native
         Send-StatusSignal $script:native -State 0
         Assert-Status $script:native Idle
@@ -698,12 +698,12 @@ catch {
         Assert-Status $script:otherNative Idle
         $restarted = New-StatusFixture native
         Send-StatusSignal $restarted -State 1
-        Assert-Status $restarted Active
+        Assert-Status $restarted Working
         $afterRestart = Restart-StatusFixture $restarted
         $afterRestart.agent_session_id | Should -BeNullOrEmpty
         Assert-Status $restarted Idle
         Send-StatusSignal $restarted -State 1
-        Assert-Status $restarted Active
+        Assert-Status $restarted Working
         Assert-BellRequestsInput $restarted
         Assert-Status $script:otherNative Idle
     }
@@ -883,7 +883,7 @@ catch {
         Wait-Until -TimeoutSec 15 -Because 'the product clears OFF metadata on the effective mode change' -Condition {
             $text = Get-StatusText $script:native
             $otherText = Get-StatusText $script:otherNative
-            $statusPattern = '(?m)(^|[ ,·])(Active|Idle|Error|Paused|Attention requested|Waiting for input)($|[ ,·])'
+            $statusPattern = '(?m)(^|[ ,·])(Active|Working|Idle|Error|Paused|Attention requested|Waiting for input)($|[ ,·])'
             $text -and $otherText -and $text -notmatch $statusPattern -and $otherText -notmatch $statusPattern
         } | Out-Null
         $onSnapshot = Get-StatusRegistrySnapshot
@@ -931,7 +931,7 @@ catch {
             $observation[0].mode_epoch | Should -BeGreaterThan $initialEpochs[$fixture.Pane.session_id]
         }
         Send-StatusSignal $script:native -State 1
-        Assert-Status $script:native Active
+        Assert-Status $script:native Working
         Send-StatusSignal $script:native -State 0
         Assert-Status $script:native Idle
         Assert-NoFabricatedBinding $script:native
@@ -1096,7 +1096,7 @@ class CopilotFixture {
             Signal = $signal; Receipt = $receipt; Kind = 'native'
         }
         $script:fixtures += $native
-        foreach ($step in @(@{ State = 1; Status = 'Working'; Text = 'Active' }, @{ State = 0; Status = 'Idle'; Text = 'Idle' },
+        foreach ($step in @(@{ State = 1; Status = 'Working'; Text = 'Working' }, @{ State = 0; Status = 'Idle'; Text = 'Idle' },
             @{ State = -1; Status = 'Attention'; Text = 'Waiting for input' })) {
             if ($step.State -eq -1) { Send-StatusSignal $native -Kind bell } else { Send-StatusSignal $native -State $step.State }
             $current = Wait-Until -TimeoutSec 10 -Because 'one canonical Copilot/Host binding and native observation share status' -Condition {
@@ -1216,7 +1216,7 @@ class CopilotFixture {
             Should -HaveCount 1
         $afterRestart = Restart-StatusFixture $native
         $afterRestart.agent_session_id | Should -BeExactly $sid
-        foreach ($step in @(@{ State = 1; Status = 'Working'; Text = 'Active' },
+        foreach ($step in @(@{ State = 1; Status = 'Working'; Text = 'Working' },
             @{ State = -1; Status = 'Attention'; Text = 'Waiting for input' })) {
             if ($step.State -eq -1) { Send-StatusSignal $native -Kind bell } else { Send-StatusSignal $native -State $step.State }
             Wait-Until -TimeoutSec 10 -Because 'the restarted exact resume keeps its canonical identity and truthful status' -Condition {
@@ -1293,7 +1293,7 @@ class CopilotFixture {
             Get-UiElement -App $script:app -Selector ShowTokenUsageAndCostToggle |
                 ConvertTo-Json -Depth 8 | Set-Content (Join-Path $script:evidence 'fulltrust-settings-toggled.json')
             Send-StatusSignal $script:native -State 1
-            Assert-Status $script:native Active
+            Assert-Status $script:native Working
             Send-StatusSignal $script:native -Kind bell
             Assert-Status $script:native 'Waiting for input'
             Invoke-UiElement -App $script:app -Selector ShowTokenUsageAndCostToggle -TimeoutSec 5 | Out-Null

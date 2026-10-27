@@ -25,6 +25,7 @@ Abstract:
 #pragma once
 
 #include <mutex>
+#include <string_view>
 #include "ContentManager.g.h"
 #include "SharedWta.h"
 
@@ -71,6 +72,31 @@ namespace winrt::TerminalApp::implementation
         void SetNativeAgentSessionEventsEnabled(bool enabled);
         void MarkAgentHelper(uint64_t contentId);
         bool AcceptsAgentSessionEvents(const winrt::guid& paneId) const;
+        struct AgentCompletionState
+        {
+            winrt::guid paneId{};
+            std::string sessionId;
+            std::string providerId;
+            bool wasActive{ false };
+            bool unread{ false };
+
+            bool Update(const winrt::guid& pane, const std::string_view session, const std::string_view provider,
+                        const std::string_view status, const bool focused)
+            {
+                const auto wasUnread = unread;
+                if (paneId != pane || sessionId != session || providerId != provider)
+                {
+                    *this = { pane, std::string{ session }, std::string{ provider } };
+                }
+                unread = status == "Idle" && !focused && (unread || wasActive);
+                wasActive = status == "Working" || status == "Attention";
+                return wasUnread != unread;
+            }
+        };
+        void UpdateAgentCompletion(uint64_t contentId, const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId, std::string_view status, bool focused);
+        bool HasUnreadAgentCompletion(const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId) const;
+        void MarkAgentCompletionRead(uint64_t contentId);
+        void ResetAgentCompletion(uint64_t contentId);
 
         void Detach(const Microsoft::Terminal::Control::TermControl& control);
 
@@ -98,6 +124,7 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeepRunningTabsChanged;
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::hstring> DetachedSessionEvent;
         til::event<winrt::delegate<winrt::guid, uint64_t>> PaneWindowChanged;
+        til::event<winrt::delegate<winrt::guid>> AgentCompletionChanged;
 
     private:
         mutable std::mutex _mutex;
@@ -112,6 +139,7 @@ namespace winrt::TerminalApp::implementation
             NativeAgentObservationIdentity observation;
             bool observationAdmitted{ false };
             bool agentHelper{ false };
+            AgentCompletionState completion;
         };
         std::unordered_map<uint64_t, TerminalContent> _content;
         bool _nativeAgentSessionEventsEnabled{ true };

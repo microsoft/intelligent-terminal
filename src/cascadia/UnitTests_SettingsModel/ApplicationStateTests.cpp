@@ -36,6 +36,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(SidebarMigrationFailedStateSaveRestoresLayout);
         TEST_METHOD(SidebarMigrationFreshAndAlreadySidebar);
         TEST_METHOD(SidebarIntroductionDeferralAndDuplicateWindows);
+        TEST_METHOD(SidebarIntroductionDoesNotBlockSettingsStateLock);
         TEST_METHOD(SidebarStaleStateCannotEraseCompletion);
         TEST_METHOD(SidebarIntroductionFailedPersistenceRemainsEligible);
         TEST_METHOD(SidebarFlagsAreSharedNotElevatedLocal);
@@ -329,6 +330,25 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(uint64_t{ 0 }, restarted->TryBeginSidebarIntroduction());
     }
 
+    void ApplicationStateTests::SidebarIntroductionDoesNotBlockSettingsStateLock()
+    {
+        const auto root = _sidebarRoot();
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        auto first = winrt::make_self<implementation::ApplicationState>(root);
+        auto second = winrt::make_self<implementation::ApplicationState>(root);
+        const auto claim = first->TryBeginSidebarIntroduction();
+        VERIFY_IS_TRUE(claim != 0);
+        {
+            const auto settingsLock = second->LockSidebarState(false);
+            VERIFY_IS_TRUE(static_cast<bool>(settingsLock));
+            second->RefreshSidebarState();
+            VERIFY_IS_FALSE(second->SidebarIntroductionShown());
+        }
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, second->TryBeginSidebarIntroduction());
+        first->EndSidebarIntroduction(claim, true);
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, second->TryBeginSidebarIntroduction());
+    }
+
     void ApplicationStateTests::SidebarStaleStateCannotEraseCompletion()
     {
         const auto root = _sidebarRoot();
@@ -398,7 +418,7 @@ namespace SettingsModelUnitTests
         denyStateWrite.reset();
         VERIFY_IS_FALSE(_readFixture(root / L"state.json")["sidebarIntroductionShown"].asBool());
         VERIFY_ARE_EQUAL(uint64_t{ 0 }, second->TryBeginSidebarIntroduction());
-        VERIFY_IS_FALSE(static_cast<bool>(second->LockSidebarState(false)));
+        VERIFY_IS_TRUE(static_cast<bool>(second->LockSidebarState(false)));
         state->EndSidebarIntroduction(claim, true);
         VERIFY_IS_TRUE(_readFixture(root / L"state.json")["sidebarIntroductionShown"].asBool());
         VERIFY_IS_TRUE(static_cast<bool>(second->LockSidebarState(false)));
@@ -491,12 +511,17 @@ namespace SettingsModelUnitTests
         first->Flush();
         denyStateWrite.reset();
         VERIFY_IS_FALSE(_readFixture(root / L"state.json")["sidebarIntroductionShown"].asBool());
-        VERIFY_IS_FALSE(static_cast<bool>(second->LockSidebarState(false)));
+        first->RefreshSidebarState();
+        VERIFY_IS_FALSE(first->SidebarIntroductionShown());
+        VERIFY_IS_TRUE(static_cast<bool>(second->LockSidebarState(false)));
         VERIFY_ARE_EQUAL(uint64_t{ 0 }, second->TryBeginSidebarIntroduction());
         first->Flush();
         VERIFY_IS_TRUE(_readFixture(root / L"state.json")["sidebarIntroductionShown"].asBool());
+        VERIFY_IS_TRUE(first->SidebarIntroductionShown());
         VERIFY_IS_TRUE(static_cast<bool>(second->LockSidebarState(false)));
         VERIFY_ARE_EQUAL(uint64_t{ 0 }, second->TryBeginSidebarIntroduction());
+        auto restarted = winrt::make_self<implementation::ApplicationState>(root);
+        VERIFY_IS_TRUE(restarted->SidebarIntroductionShown());
         // A page retaining the token can acknowledge writer completion safely.
         first->EndSidebarIntroduction(claim, false);
     }

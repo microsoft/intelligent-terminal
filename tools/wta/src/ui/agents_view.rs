@@ -406,9 +406,9 @@ fn row_for(
     // look faded compared to a normal pane).
     //
     // Only the selection cursor is colored: cyan accent on the keyboard-
-    // selected row. The status badge after the title (Active / Waiting for
+    // selected row. The status badge after the title (Working / Waiting for
     // input / Error) carries its own color, independent of selection — so
-    // an unselected Working session still gets a cyan "Active" badge but
+    // an unselected Working session still gets a cyan "Working" badge but
     // its title stays the default foreground.
     let title_style = if selected {
         if pane_focused {
@@ -678,14 +678,14 @@ fn status_badge(s: &AgentSession) -> String {
 
 fn badge_style(s: &AgentSession) -> Style {
     match s.status {
-        // "Active" reads as a healthy / running state, so green — leaving
+        // "Working" reads as a healthy / running state, so green — leaving
         // cyan as the dedicated "selection cursor" color so the two don't
         // collide visually when a non-selected row is running a tool.
         AgentStatus::Working => Style::default().fg(ACCENT_GREEN),
         AgentStatus::Attention => Style::default().fg(ACCENT_YELLOW),
         AgentStatus::Error => Style::default().fg(ACCENT_RED),
         // Idle: muted off-white so it reads as a real status badge but
-        // stays visually quieter than the colored Active/Waiting tags.
+        // stays visually quieter than the colored Working/Waiting tags.
         AgentStatus::Idle | AgentStatus::InUse => Style::default().fg(SOFT_WHITE),
         AgentStatus::Ended | AgentStatus::Historical => Style::default(),
     }
@@ -1276,7 +1276,7 @@ mod tests {
     /// the badge TEXT is locked down here instead.
     ///
     /// Contract (status_badge):
-    ///   Working  -> "Active"            (running/working state)
+    ///   Working  -> "Working"           (running/working state)
     ///   Attention-> "Waiting for input" (waiting-for-input state)
     ///   Idle     -> "Idle"              (live, ready-for-next-prompt state)
     ///   Error    -> "Error"
@@ -1308,7 +1308,7 @@ mod tests {
             origin: SessionOrigin::default(),
             location: crate::agent_sessions::SessionLocation::Host,
         };
-        assert_eq!(status_badge(&mk(AgentStatus::Working)), "Active");
+        assert_eq!(status_badge(&mk(AgentStatus::Working)), "Working");
         assert_eq!(
             status_badge(&mk(AgentStatus::Attention)),
             "Waiting for input"
@@ -1335,9 +1335,9 @@ mod tests {
         .unwrap();
         assert_eq!(program_status_badge(&pane).unwrap().0, "Completed");
         pane.canonical_working = true;
-        assert_eq!(program_status_badge(&pane).unwrap().0, "Active");
+        assert_eq!(program_status_badge(&pane).unwrap().0, "Working");
         pane.program_status.as_mut().unwrap().unseen_error = 1;
-        assert_eq!(program_status_badge(&pane).unwrap().0, "Active");
+        assert_eq!(program_status_badge(&pane).unwrap().0, "Working");
         pane.program_status.as_mut().unwrap().unseen_error = 0;
         pane.canonical_error = true;
         assert_eq!(program_status_badge(&pane).unwrap().0, "Error");
@@ -1364,7 +1364,7 @@ mod tests {
         set_test_locale();
         for (state, label) in [
             ("idle", "Idle"),
-            ("working", "Active"),
+            ("working", "Working"),
             ("blocked", "Waiting for input"),
             ("done", "Completed"),
             ("error", "Error"),

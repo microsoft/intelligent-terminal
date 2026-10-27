@@ -133,7 +133,7 @@ agent.custom.auth_hint: "Asegúrate de que %{name} esté instalado y en el PATH.
 agents.loading: "Cargando..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - combinaciones de teclas, no traducir
 agents.footer_hint: "(↑ ↓ navegar • Enter iniciar sesión • Esc salir • F5 actualizar • / buscar)"
-agents.status.active: "Activo"
+agents.status.active: "Trabajando"
 agents.status.waiting_for_input: "Esperando entrada"
 agents.status.error: "Error"
 agents.status.idle: "Inactivo"

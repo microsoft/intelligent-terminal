@@ -205,7 +205,7 @@ agents.loading: "Loading..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh • / to search)"
 # Status badge when agent session is actively processing
-agents.status.active: "Active"
+agents.status.active: "Working"
 agents.status.waiting_for_input: "Waiting for input"
 # Status badge when agent session encountered an error
 agents.status.error: "Error"

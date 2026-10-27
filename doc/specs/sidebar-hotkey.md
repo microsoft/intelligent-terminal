@@ -135,6 +135,10 @@ already selected sidebar row. Preserve the search query, active pane within each
 tab, session identities, drafts and filter preferences. These actions do not use
 the tab switcher and leave horizontal-layout input unhandled.
 
+When navigation selects an offscreen tab, the expanded Sidebar brings its header
+into view without taking focus from the terminal. It does not expand a collapsed
+Sidebar or reset manual scrolling when the selection is unchanged.
+
 The default command IDs are `Terminal.NextSidebarTab` and
 `Terminal.PrevSidebarTab`. User rebinding, command overrides and explicit
 unbinding retain normal action-map precedence. Existing `nextTab`/`prevTab`,

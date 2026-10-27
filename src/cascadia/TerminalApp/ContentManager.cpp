@@ -191,6 +191,7 @@ namespace winrt::TerminalApp::implementation
             it->second.paneCreationSequence = ++_nativeAgentPaneCreationSequence;
             it->second.observation = {};
             it->second.observationAdmitted = false;
+            it->second.completion = {};
             if (!_nativeAgentSessionEventsEnabled)
             {
                 it->second.explicitNativeAgentProviderId = winrt::hstring{};
@@ -208,6 +209,7 @@ namespace winrt::TerminalApp::implementation
             for (auto& [id, content] : _content)
             {
                 content.observation = {};
+                content.completion = {};
             }
         }
         _nativeAgentSessionEventsEnabled = enabled;
@@ -245,6 +247,92 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return false;
+    }
+
+    void ContentManager::UpdateAgentCompletion(
+        const uint64_t contentId,
+        const winrt::guid& paneId,
+        const std::string_view sessionId,
+        const std::string_view providerId,
+        const std::string_view status,
+        const bool focused)
+    {
+        _CheckThread();
+        bool changed = false;
+        {
+            std::lock_guard lock{ _mutex };
+            const auto it = _content.find(contentId);
+            if (it == _content.end())
+            {
+                return;
+            }
+            const auto connection = it->second.core.Core().Connection();
+            if (!connection || connection.SessionId() != paneId)
+            {
+                return;
+            }
+            changed = it->second.completion.Update(paneId, sessionId, providerId, status, focused);
+        }
+        if (changed)
+        {
+            AgentCompletionChanged.raise(paneId);
+        }
+    }
+
+    bool ContentManager::HasUnreadAgentCompletion(
+        const winrt::guid& paneId, const std::string_view sessionId, const std::string_view providerId) const
+    {
+        std::lock_guard lock{ _mutex };
+        for (const auto& [id, content] : _content)
+        {
+            const auto& completion = content.completion;
+            if (completion.unread && completion.paneId == paneId &&
+                completion.sessionId == sessionId && completion.providerId == providerId)
+            {
+                const auto connection = content.core.Core().Connection();
+                return connection && connection.SessionId() == paneId;
+            }
+        }
+        return false;
+    }
+
+    void ContentManager::MarkAgentCompletionRead(const uint64_t contentId)
+    {
+        _CheckThread();
+        std::optional<winrt::guid> changed;
+        {
+            std::lock_guard lock{ _mutex };
+            if (const auto it = _content.find(contentId); it != _content.end() && it->second.completion.unread)
+            {
+                it->second.completion.unread = false;
+                changed = it->second.completion.paneId;
+            }
+        }
+        if (changed)
+        {
+            AgentCompletionChanged.raise(*changed);
+        }
+    }
+
+    void ContentManager::ResetAgentCompletion(const uint64_t contentId)
+    {
+        _CheckThread();
+        std::optional<winrt::guid> changed;
+        {
+            std::lock_guard lock{ _mutex };
+            if (const auto it = _content.find(contentId); it != _content.end())
+            {
+                if (it->second.completion.unread)
+                {
+                    changed = it->second.completion.paneId;
+                }
+                it->second.completion = {};
+            }
+        }
+        if (changed)
+        {
+            AgentCompletionChanged.raise(*changed);
+        }
     }
 
     void ContentManager::UpdateKeepRunningTab(const winrt::TerminalApp::Tab& tab)
@@ -311,13 +399,19 @@ namespace winrt::TerminalApp::implementation
         {
             const auto& contentId{ content.Id() };
             std::optional<NativeAgentObservationIdentity> retired;
+            std::optional<winrt::guid> unreadPane;
             {
                 std::lock_guard lock{ _mutex };
-                if (const auto found = _content.find(contentId);
-                    found != _content.end() && !_nativeAgentSessionEventsEnabled &&
-                    !found->second.agentHelper && found->second.observation.modeEpoch != 0)
+                if (const auto found = _content.find(contentId); found != _content.end())
                 {
-                    retired = found->second.observation;
+                    if (!_nativeAgentSessionEventsEnabled && !found->second.agentHelper && found->second.observation.modeEpoch != 0)
+                    {
+                        retired = found->second.observation;
+                    }
+                    if (found->second.completion.unread)
+                    {
+                        unreadPane = found->second.completion.paneId;
+                    }
                 }
                 _content.erase(contentId);
             }
@@ -354,10 +448,14 @@ namespace winrt::TerminalApp::implementation
                 writer["indentation"] = "";
                 DetachedSessionEvent.raise(*this, winrt::to_hstring(Json::writeString(writer, event)));
             }
-            LOG_HR_IF(E_ABORT, !_dispatcher.TryEnqueue([weak = get_weak(), contentId]() {
+            LOG_HR_IF(E_ABORT, !_dispatcher.TryEnqueue([weak = get_weak(), contentId, unreadPane]() {
                 if (const auto self = weak.get())
                 {
                     self->_agentBindings.erase(contentId);
+                    if (unreadPane)
+                    {
+                        self->AgentCompletionChanged.raise(*unreadPane);
+                    }
                 }
             }));
         }
@@ -446,6 +544,7 @@ namespace winrt::TerminalApp::implementation
             if (agent == L"opencode" && policy.agent == agent && policy.agentSessionId == agentSessionId)
             {
                 policy = {};
+                ResetAgentCompletion(contentId);
             }
         }
         else if (ended)
@@ -453,6 +552,7 @@ namespace winrt::TerminalApp::implementation
             if (agentSessionId.empty() || agentSessionId == policy.agentSessionId)
             {
                 policy = {};
+                ResetAgentCompletion(contentId);
             }
         }
         else if (!(prompt && agent == L"copilot" && !policy.agentSessionId.empty()))
