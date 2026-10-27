@@ -376,4 +376,8 @@ pub enum AppEvent {
     MasterMutationCompleted {
         request_id: u64,
     },
+    NativeResumeSettled {
+        identity: crate::session_registry::SessionIdentity,
+        activation_id: String,
+    },
 }

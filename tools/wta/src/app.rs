@@ -1488,6 +1488,8 @@ pub struct App {
     rename_session_tx: mpsc::UnboundedSender<RenameSessionRequest>,
     restart_tx: mpsc::UnboundedSender<AgentLifecycleRequest>,
     master_request_tx: mpsc::UnboundedSender<crate::protocol::acp::client::MasterExtRequest>,
+    native_resume_attempts:
+        HashMap<crate::session_registry::SessionIdentity, (String, std::time::SystemTime)>,
     debug_capture_enabled: Arc<AtomicBool>,
     /// Cached for creating DeferredAcpParams after auth-error recovery.
     shell_mgr: Arc<crate::shell::ShellManager>,
@@ -1857,6 +1859,7 @@ impl App {
             rename_session_tx,
             restart_tx,
             master_request_tx,
+            native_resume_attempts: HashMap::new(),
             debug_capture_enabled,
             next_yolo_reconcile_id: 0,
             pending_yolo_reconciles: HashMap::new(),
@@ -3673,6 +3676,64 @@ impl App {
             argv.push("-d".to_string());
             argv.push(cwd.clone());
         }
+        // Native Copilot resumes share master's pre-launch admission with
+        // sidebar activation and pending foreground fork reconciliation.
+        if s.cli_source == crate::agent_sessions::CliSource::Copilot
+            && s.location == crate::agent_sessions::SessionLocation::Host
+        {
+            let request_id = self.next_agents_rpc_request_id();
+            let identity = crate::session_registry::SessionIdentity {
+                session_id: agent_client_protocol::schema::v1::SessionId::new(key.clone()),
+                history_key: crate::session_registry::HistoryRowKey::new(
+                    "copilot",
+                    s.location.clone(),
+                    &key,
+                    None,
+                ),
+            };
+            if self
+                .native_resume_attempts
+                .get(&identity)
+                .is_some_and(|(_, baseline)| {
+                    s.status == crate::agent_sessions::AgentStatus::Ended
+                        && s.last_activity_at > *baseline
+                })
+            {
+                self.native_resume_attempts.remove(&identity);
+            }
+            if self.native_resume_attempts.contains_key(&identity) {
+                return;
+            }
+            let activation_id = self
+                .native_resume_attempts
+                .entry(identity.clone())
+                .or_insert_with(|| (uuid::Uuid::new_v4().to_string(), s.last_activity_at))
+                .0
+                .clone();
+            let dispatched = self.master_request_tx.send(
+                crate::protocol::acp::client::MasterExtRequest::SessionActivate {
+                    request_id,
+                    tab_id: self.active_tab_key().to_string(),
+                    params: crate::session_registry::SessionActivateParams {
+                        identity: identity.clone(),
+                        window_id,
+                        activation_id,
+                    },
+                },
+            );
+            if dispatched.is_err() {
+                self.native_resume_attempts.remove(&identity);
+            }
+            #[cfg(test)]
+            {
+                self.last_dispatched_command = Some(DispatchedCommand {
+                    kind: DispatchedCommandKind::NewTabResume,
+                    session_id: None,
+                    argv,
+                });
+            }
+            return;
+        }
         // Optimistic state flip: bump Historical/Ended -> Idle so a rapid
         // second Enter on the same row sees a non-terminal status and
         // skips this branch (idempotent: ResumeDispatched no-ops on live
@@ -4050,6 +4111,21 @@ impl App {
         request_id: u64,
         sessions: Vec<crate::session_registry::SessionInfo>,
     ) {
+        self.native_resume_attempts.retain(|identity, _| {
+            !sessions.iter().any(|row| {
+                crate::session_registry::SessionIdentity::from_info(row) == *identity
+                    && row.pane_session_id.is_some()
+                    && matches!(
+                        row.status,
+                        Some(
+                            crate::agent_sessions::AgentStatus::Idle
+                                | crate::agent_sessions::AgentStatus::Working
+                                | crate::agent_sessions::AgentStatus::Attention
+                                | crate::agent_sessions::AgentStatus::Error
+                        )
+                    )
+            })
+        });
         let tabs: Vec<String> = self
             .tab_sessions
             .iter()
@@ -5741,6 +5817,7 @@ impl App {
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
+            AppEvent::NativeResumeSettled { .. } => "native_resume_settled",
             AppEvent::DirectTerminalActionProposal { .. } => "direct_terminal_action_proposal",
             AppEvent::DirectTerminalActionProposalCommit { .. } => {
                 "direct_terminal_action_proposal_commit"

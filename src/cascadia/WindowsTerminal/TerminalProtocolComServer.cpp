@@ -1345,7 +1345,7 @@ try
         _dispatchResumeInNewAgentTabToPage(eventH);
         return S_OK;
     case ProtocolParsing::SendEventRoute::PaneAgentSession:
-        _dispatchPaneAgentSessionToPage(eventH);
+        _dispatchPaneAgentSessionToPage(eventH, evt["params"].get("event", "").asString() == "agent.session.fork");
         return S_OK;
     case ProtocolParsing::SendEventRoute::AgentChipTarget:
         // Helper override for which pane gets the "Agent" chip; null
@@ -1797,13 +1797,16 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
     }
 }
 
-void TerminalProtocolComServer::_dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson)
+void TerminalProtocolComServer::_dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson, const bool verifyOwnerFirst)
 {
     if (!s_emperor)
     {
         return;
     }
-    s_emperor->TrackPaneAgentSession(eventJson);
+    if (!verifyOwnerFirst)
+    {
+        s_emperor->TrackPaneAgentSession(eventJson);
+    }
     for (const auto& page : s_emperor->GetProtocolPages())
     {
         if (!page)

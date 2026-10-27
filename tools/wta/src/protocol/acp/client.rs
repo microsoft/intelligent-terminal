@@ -369,6 +369,11 @@ pub enum MasterExtRequest {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
     },
+    SessionActivate {
+        request_id: u64,
+        tab_id: String,
+        params: crate::session_registry::SessionActivateParams,
+    },
     SessionFocus {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
@@ -4276,6 +4281,53 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         "born-bound registration timed out"
                     ),
                 }
+            }
+            MasterExtRequest::SessionActivate {
+                request_id,
+                tab_id,
+                params,
+            } => {
+                let wire = crate::session_registry::build_session_activate_request(
+                    params.identity.clone(),
+                    params.window_id,
+                    params.activation_id.clone(),
+                    false,
+                );
+                match conn.ext_method(wire).await {
+                    Ok(response) => {
+                        if let Ok(result) =
+                            crate::session_registry::parse_session_activate_response(&response.0)
+                        {
+                            // A confirmed completion settles only its exact attempt,
+                            // even if the resumed CLI forked before a live snapshot.
+                            if result.state
+                                == crate::session_registry::SessionActivationState::Complete
+                                && result.activation_id == params.activation_id
+                            {
+                                let _ = event_tx.send(AppEvent::NativeResumeSettled {
+                                    identity: params.identity,
+                                    activation_id: result.activation_id,
+                                });
+                            }
+                            if !result.accepted {
+                                if let Some(message) = result.detail {
+                                    let _ = event_tx.send(AppEvent::TabSystemMessage {
+                                        tab_id: tab_id.clone(),
+                                        message,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        tracing::warn!(target: "agents_view", request_id, ?error, "native resume activation failed");
+                        let _ = event_tx.send(AppEvent::TabSystemMessage {
+                            tab_id,
+                            message: error.to_string(),
+                        });
+                    }
+                }
+                let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
             }
             MasterExtRequest::SessionResumeDispatched { request_id, sid } => {
                 let wire = crate::session_registry::build_session_resume_dispatched_request(&sid);

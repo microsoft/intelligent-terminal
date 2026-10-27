@@ -2844,6 +2844,9 @@ fn make_state_with_retirement_pending_timeout(
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
         session_activation_receipts: Mutex::new(HashMap::new()),
+        pending_copilot_forks: Mutex::new(HashMap::new()),
+        copilot_fork_admission: Mutex::new(()),
+        copilot_fork_orphans: Mutex::new(Default::default()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         agent_authentication: Mutex::new(HashMap::new()),
         wt: None,
@@ -12101,14 +12104,15 @@ async fn sidebar_activation_host_shim_capabilities_are_explicit_and_replayed() {
             assert_eq!(receipt.accepted, companion, "{cli:?}: {receipt:?}");
             let calls = mock.calls();
             if companion {
-                assert_eq!(calls.len(), 2);
+                assert_eq!(calls.len(), if cli == CliSource::Copilot { 3 } else { 2 });
                 assert_eq!(calls[0].0, "create_tab");
                 assert!(calls[0].1["commandline"]
                     .as_str()
                     .unwrap()
                     .starts_with("powershell.exe -NoLogo -NoProfile -EncodedCommand "));
-                assert_eq!(calls[1].0, "focus_pane");
-                assert_eq!(calls[1].1["session_id"], "shim-resumed-pane");
+                let focus = calls.last().unwrap();
+                assert_eq!(focus.0, "focus_pane");
+                assert_eq!(focus.1["session_id"], "shim-resumed-pane");
             } else {
                 let detail = if exists {
                     "without an adjacent PowerShell companion"
@@ -12199,7 +12203,7 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
             assert_eq!(response.action, "resume_cli");
             supported_cases += 1;
             assert!(response.accepted, "{cli:?} {status:?}: {response:?}");
-            let expected_calls = vec![
+            let mut expected_calls = vec![
                 (
                     "create_tab".to_string(),
                     serde_json::json!({
@@ -12217,6 +12221,25 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
                     }),
                 ),
             ];
+            if cli == CliSource::Copilot {
+                expected_calls.insert(
+                    1,
+                    (
+                        "publish".to_string(),
+                        serde_json::from_str(
+                            &crate::wt_protocol_events::resumed_pane_binding_event(
+                                "copilot",
+                                "live-unbound",
+                                "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+                                &SessionLocation::Host,
+                                Some("C:\\repo"),
+                            )
+                            .unwrap(),
+                        )
+                        .unwrap(),
+                    ),
+                );
+            }
             assert_eq!(mock.calls(), expected_calls);
             let resumed = state.registry.lookup_identity(&identity).await.unwrap();
             assert_eq!(resumed.session_id, identity.session_id);
@@ -12321,12 +12344,14 @@ async fn sidebar_activation_resume_quotes_session_and_wsl_distro_through_registe
             supported_cases += 1;
             assert!(response.accepted, "{cli:?} {location:?}: {response:?}");
             let calls = mock.calls();
-            assert_eq!(calls.len(), 2);
+            let direct_binding = cli == CliSource::Copilot && location == SessionLocation::Host;
+            assert_eq!(calls.len(), if direct_binding { 3 } else { 2 });
             assert_eq!(calls[0].0, "create_tab");
             assert_eq!(calls[0].1["commandline"], expected);
             assert_eq!(calls[0].1["window_id"], 42);
-            assert_eq!(calls[1].0, "focus_pane");
-            assert_eq!(calls[1].1["session_id"], "resumed-quoted-pane");
+            let focus = calls.last().unwrap();
+            assert_eq!(focus.0, "focus_pane");
+            assert_eq!(focus.1["session_id"], "resumed-quoted-pane");
             if matches!(location, SessionLocation::Host) {
                 assert_eq!(calls[0].1["cwd"], "C:\\repo");
             } else {
@@ -12657,7 +12682,7 @@ async fn sidebar_activation_external_history_does_not_require_ownership_verifica
             assert!(response.accepted, "{response:?}");
             assert_eq!(response.action, "resume_cli");
             let calls = mock.calls();
-            assert_eq!(calls.len(), 2);
+            assert_eq!(calls.len(), 3);
             assert_eq!(calls[0].0, "create_tab");
             assert_eq!(calls[0].1["window_id"], 42);
             assert_eq!(calls[0].1["native_agent_provider_id"], "copilot");
@@ -12673,8 +12698,9 @@ async fn sidebar_activation_external_history_does_not_require_ownership_verifica
                 )
                 .unwrap()
             );
-            assert_eq!(calls[1].0, "focus_pane");
-            assert_eq!(calls[1].1["session_id"], "external-resume-pane");
+            assert_eq!(calls[1].0, "publish");
+            assert_eq!(calls[2].0, "focus_pane");
+            assert_eq!(calls[2].1["session_id"], "external-resume-pane");
             let resumed = state.registry.lookup_identity(&identity).await.unwrap();
             assert_eq!(resumed.origin, origin);
             assert_eq!(resumed.bound_pid, row.bound_pid);
@@ -12730,14 +12756,15 @@ async fn sidebar_activation_native_hook_unset_origin_resumes_without_reclassifyi
     assert!(response.accepted, "{response:?}");
     assert_eq!(response.action, "resume_cli");
     let calls = mock.calls();
-    assert_eq!(calls.len(), 2);
+    assert_eq!(calls.len(), 3);
     assert_eq!(calls[0].0, "create_tab");
     assert_eq!(calls[0].1["window_id"], 42);
     assert!(calls[0].1["commandline"]
         .as_str()
         .unwrap()
         .contains("--resume"));
-    assert_eq!(calls[1].0, "focus_pane");
+    assert_eq!(calls[1].0, "publish");
+    assert_eq!(calls[2].0, "focus_pane");
     let resumed = state.registry.lookup_identity(&identity).await.unwrap();
     assert_eq!(resumed.origin, None);
     assert_eq!(resumed.bound_pid, row.bound_pid);
@@ -12903,9 +12930,11 @@ async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
         1,
         "Terminal must refresh the resumed tab's known status without a hook"
     );
-    let binding = events
+    let calls = mock.calls();
+    let binding = calls
         .iter()
-        .find(|event| event["method"] == "pane_agent_session_changed")
+        .find(|(method, _)| method == "publish")
+        .map(|(_, binding)| binding)
         .expect("created pane binding is published to Terminal");
     assert_eq!(binding["params"]["agent"], "copilot");
     assert_eq!(binding["params"]["agent_session_id"], "copilot-history");
@@ -12914,13 +12943,12 @@ async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
         "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
     );
 
-    let calls = mock.calls();
-    assert_eq!(calls.len(), 2);
+    assert_eq!(calls.len(), 3);
     assert_eq!(calls[0].0, "create_tab");
     assert_eq!(calls[0].1["background"], true);
     assert_eq!(calls[0].1["window_id"], 42);
     assert_eq!(
-        calls[1],
+        calls[2],
         (
             "focus_pane".to_string(),
             serde_json::json!({ "session_id": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE" })
@@ -12933,7 +12961,7 @@ async fn sidebar_cli_resume_binds_created_pane_for_agent_filtering() {
         response,
         crate::session_registry::parse_session_activate_response(&replay.0).unwrap()
     );
-    assert_eq!(mock.calls().len(), 2);
+    assert_eq!(mock.calls().len(), 3);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -13494,13 +13522,13 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
             .expect("master finishes after caller cancellation");
             assert!(completed.accepted);
             assert_eq!(completed.action, "resume_cli");
-            assert_eq!(wt.calls.load(Ordering::SeqCst), 2);
+            assert_eq!(wt.calls.load(Ordering::SeqCst), 3);
             let replay = handle_session_activate(&state, &params).await.unwrap();
             assert_eq!(
                 parse_session_activate_response(&replay.0).unwrap(),
                 completed
             );
-            assert_eq!(wt.calls.load(Ordering::SeqCst), 2);
+            assert_eq!(wt.calls.load(Ordering::SeqCst), 3);
 
             // Eviction or master restart must never turn a status lookup into a restore.
             state.session_activation_receipts.lock().await.clear();
@@ -13511,7 +13539,7 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
                 parse_session_activate_response(&response.0).unwrap().state,
                 SessionActivationState::Unknown
             );
-            assert_eq!(wt.calls.load(Ordering::SeqCst), 2);
+            assert_eq!(wt.calls.load(Ordering::SeqCst), 3);
         }),
     )
     .await
@@ -13586,7 +13614,7 @@ async fn sidebar_cli_resume_reports_creation_and_focus_failures() {
             serde_json::json!({"sessionId": "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"}),
             Some("focus_pane"),
             "created but could not be focused: test failure",
-            2,
+            3,
         ),
     ] {
         let mock = Arc::new(MockWtChannel {
@@ -13642,13 +13670,13 @@ async fn sidebar_cli_resume_reports_creation_and_focus_failures() {
                 .iter()
                 .filter(|event| event["method"] == "session_registry_changed")
                 .count(),
-            usize::from(call_count == 2),
+            usize::from(call_count == 3),
             "only successful creation and binding publishes metadata, even if focus fails"
         );
         let row = state.registry.lookup_identity(&identity).await.unwrap();
-        if call_count == 2 {
+        if call_count == 3 {
             assert_eq!(
-                mock.calls()[1].1["session_id"],
+                mock.calls()[2].1["session_id"],
                 "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
             );
             assert_eq!(
@@ -13665,7 +13693,7 @@ async fn sidebar_cli_resume_reports_creation_and_focus_failures() {
                 .lock()
                 .await
                 .contains(&params.identity.session_id),
-            call_count == 2,
+            call_count == 3,
             "a created and bound pane keeps watcher fallback even if focus fails"
         );
         let replay = handle_session_activate(&state, &params).await.unwrap();
@@ -13903,7 +13931,36 @@ async fn sidebar_cli_resume_updates_only_selected_collision_identity() {
         "qualified collisions require structural invalidation, not a raw-ID status delta"
     );
     assert!(state.hook_owned.lock().await.is_empty());
-    assert!(state.born_bound.lock().await.is_empty());
+    assert!(state.born_bound.lock().await.contains(&sid));
+    apply_watcher_event(
+        &state,
+        crate::session_watcher::Emitted {
+            cli: CliSource::Copilot,
+            key: sid.to_string(),
+            event: crate::agent_sessions::SessionEvent::ToolStarting {
+                key: sid.to_string(),
+                tool_name: String::new(),
+            },
+        },
+    )
+    .await;
+    assert_eq!(
+        state
+            .registry
+            .lookup_identity(&target_identity)
+            .await
+            .unwrap()
+            .status,
+        Some(AgentStatus::Working)
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup_identity(&other_identity)
+            .await
+            .unwrap(),
+        other
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -13934,7 +13991,7 @@ async fn sidebar_cli_resume_accepts_a_matching_hook_binding_without_resetting_ac
                 tokio::time::timeout(Duration::from_secs(5), self.release.notified())
                     .await
                     .context("test did not release native resume creation")?;
-            } else {
+            } else if method == "focus_pane" {
                 assert_eq!(method, "focus_pane");
                 self.focused.lock().unwrap().push(params);
             }
@@ -14291,6 +14348,9 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
         session_activation_receipts: Mutex::new(HashMap::new()),
+        pending_copilot_forks: Mutex::new(HashMap::new()),
+        copilot_fork_admission: Mutex::new(()),
+        copilot_fork_orphans: Mutex::new(Default::default()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         agent_authentication: Mutex::new(HashMap::new()),
         wt: Some(wt),
@@ -14334,6 +14394,1119 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         retired_agent_cells: std::sync::Mutex::new(Vec::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
     })
+}
+
+#[tokio::test]
+async fn copilot_fork_without_a_prompt_or_target_lease_waits_only_for_terminal_confirmation() {
+    let source = "11111111-1111-4111-8111-111111111111";
+    let target = "22222222-2222-4222-8222-222222222222";
+    let pane = "33333333-3333-4333-8333-333333333333";
+    let wt = Arc::new(MockWtChannel::ok());
+    let state = make_state_with_wt(wt.clone());
+    state
+        .registry
+        .apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+            key: source.into(),
+            cli_source: crate::agent_sessions::CliSource::Copilot,
+            pane_session_id: pane.into(),
+            cwd: PathBuf::from("C:\\repo"),
+            title: "Original".into(),
+        })
+        .await;
+    let source_id = SessionId::new(source);
+    state.hook_owned.lock().await.insert(source_id.clone());
+    let fork = crate::session_watcher::copilot_fork::CopilotFork {
+        source: source.into(),
+        target: target.into(),
+    };
+    assert!(copilot_fork::request(&state, &fork).await.unwrap());
+    assert_eq!(
+        wt.calls().len(),
+        1,
+        "only the guarded binding update is needed"
+    );
+    let request = wt
+        .calls()
+        .into_iter()
+        .find(|(method, _)| method == "publish")
+        .unwrap()
+        .1;
+    assert_eq!(request["method"], "pane_agent_session_changed");
+    assert_eq!(
+        state
+            .registry
+            .lookup(&source_id)
+            .await
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some(pane)
+    );
+    assert!(state
+        .registry
+        .lookup(&SessionId::new(target))
+        .await
+        .is_none());
+    let mut wrong = request["params"].clone();
+    wrong["operation_id"] = serde_json::json!("wrong-operation");
+    copilot_fork::confirm(&state, &wrong).await;
+    assert!(state
+        .registry
+        .lookup(&SessionId::new(target))
+        .await
+        .is_none());
+    copilot_fork::confirm(&state, &request["params"]).await;
+    assert_eq!(
+        state.registry.lookup(&source_id).await.unwrap().status,
+        Some(crate::agent_sessions::AgentStatus::Historical)
+    );
+    assert!(state
+        .registry
+        .lookup(&source_id)
+        .await
+        .unwrap()
+        .pane_session_id
+        .is_none());
+    assert_eq!(
+        state
+            .registry
+            .lookup(&SessionId::new(target))
+            .await
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some(pane)
+    );
+    assert!(!state.hook_owned.lock().await.contains(&source_id));
+    assert!(state
+        .born_bound
+        .lock()
+        .await
+        .contains(&SessionId::new(target)));
+    copilot_fork::confirm(&state, &request["params"]).await;
+    assert_eq!(
+        state
+            .registry
+            .lookup_active_by_pane(pane)
+            .await
+            .unwrap()
+            .session_id,
+        SessionId::new(target)
+    );
+    assert!(
+        handle_focus_session(
+            &state,
+            &crate::session_registry::FocusSessionParams {
+                session_id: source_id,
+            }
+        )
+        .await
+        .is_err(),
+        "the original must not focus its fork's pane"
+    );
+    assert!(handle_focus_session(
+        &state,
+        &crate::session_registry::FocusSessionParams {
+            session_id: SessionId::new(target),
+        }
+    )
+    .await
+    .is_ok());
+}
+
+#[tokio::test]
+async fn copilot_fork_does_not_publish_for_unknown_or_acp_owned_sources() {
+    let pane = "33333333-3333-4333-8333-333333333333";
+    let wt = Arc::new(MockWtChannel::ok());
+    let state = make_state_with_wt(wt.clone());
+    let fork = crate::session_watcher::copilot_fork::CopilotFork {
+        source: "11111111-1111-4111-8111-111111111111".into(),
+        target: "22222222-2222-4222-8222-222222222222".into(),
+    };
+    assert!(!copilot_fork::request(&state, &fork).await.unwrap());
+    state
+        .registry
+        .apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+            key: fork.source.clone(),
+            cli_source: crate::agent_sessions::CliSource::Copilot,
+            pane_session_id: pane.into(),
+            cwd: PathBuf::new(),
+            title: String::new(),
+        })
+        .await;
+    state
+        .registry
+        .set_origin(
+            &SessionId::new(fork.source.clone()),
+            crate::agent_sessions::SessionOrigin::AgentPane,
+        )
+        .await;
+    assert!(copilot_fork::request(&state, &fork).await.unwrap());
+    assert!(wt.calls().iter().all(|(method, _)| method != "publish"));
+    assert!(state.pending_copilot_forks.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn copilot_fork_delayed_ack_retains_historical_successor_chain_and_cancellation() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+    use crate::session_watcher::copilot_fork::CopilotFork;
+    for (cancel, failed) in [(false, false), (true, false), (false, true)] {
+        let wt = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(wt.clone());
+        state
+            .registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: "fork-a".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "fork-pane".into(),
+                cwd: PathBuf::new(),
+                title: String::new(),
+            })
+            .await;
+        let mut historical = state
+            .registry
+            .lookup(&SessionId::new("fork-a"))
+            .await
+            .unwrap();
+        historical.session_id = SessionId::new("fork-b");
+        historical.pane_session_id = None;
+        historical.status = Some(AgentStatus::Historical);
+        state.registry.upsert(historical).await;
+        let mut collisions = Vec::new();
+        for key in ["fork-a", "fork-b"] {
+            for (provider, cli, location) in [
+                ("claude", CliSource::Claude, SessionLocation::Host),
+                (
+                    "copilot",
+                    CliSource::Copilot,
+                    SessionLocation::Wsl {
+                        distro: "Ubuntu".into(),
+                    },
+                ),
+            ] {
+                let mut other = SessionInfo::new(SessionId::new(key), "C:\\other".into());
+                other.provider_id = Some(provider.into());
+                other.cli_source = Some(cli);
+                other.location = location;
+                other.status = Some(AgentStatus::Historical);
+                state.registry.upsert(other.clone()).await;
+                collisions.push(other);
+            }
+            assert!(state.registry.lookup(&SessionId::new(key)).await.is_none());
+        }
+        assert!(copilot_fork::request(
+            &state,
+            &CopilotFork {
+                source: "fork-b".into(),
+                target: "unrelated".into(),
+            }
+        )
+        .await
+        .unwrap());
+        assert!(
+            wt.calls().is_empty(),
+            "unrelated historical sources stay excluded"
+        );
+        for (source, target) in [("fork-a", "fork-b"), ("fork-b", "fork-c")] {
+            assert!(copilot_fork::request(
+                &state,
+                &CopilotFork {
+                    source: source.into(),
+                    target: target.into(),
+                }
+            )
+            .await
+            .unwrap());
+        }
+        assert_eq!(wt.calls().len(), 1);
+        assert!(
+            copilot_fork::buffer_activity(
+                &state,
+                &crate::session_watcher::Emitted {
+                    cli: CliSource::Copilot,
+                    key: "fork-c".into(),
+                    event: SessionEvent::ToolStarting {
+                        key: "fork-c".into(),
+                        tool_name: String::new(),
+                    },
+                }
+            )
+            .await
+        );
+        let first = wt.calls()[0].1["params"].clone();
+        if cancel {
+            state.pending_copilot_forks.lock().await.remove("fork-pane");
+        }
+        if failed {
+            state
+                .registry
+                .apply_event(SessionEvent::PaneClosed {
+                    pane_session_id: "fork-pane".into(),
+                })
+                .await;
+        }
+        copilot_fork::confirm(&state, &first).await;
+        assert_eq!(wt.calls().len(), if cancel || failed { 1 } else { 2 });
+        if !cancel && !failed {
+            let second = wt.calls()[1].1["params"].clone();
+            assert_eq!(second["previous_agent_session_id"], "fork-b");
+            copilot_fork::confirm(&state, &second).await;
+            assert_eq!(
+                state
+                    .registry
+                    .lookup(&SessionId::new("fork-c"))
+                    .await
+                    .unwrap()
+                    .status,
+                Some(AgentStatus::Working)
+            );
+        }
+        if failed {
+            assert!(state
+                .registry
+                .lookup_active_by_pane("fork-pane")
+                .await
+                .is_none());
+        } else {
+            assert_eq!(
+                state
+                    .registry
+                    .lookup_active_by_pane("fork-pane")
+                    .await
+                    .unwrap()
+                    .session_id,
+                SessionId::new(if cancel { "fork-a" } else { "fork-c" })
+            );
+        }
+        assert!(state.pending_copilot_forks.lock().await.is_empty());
+        for other in collisions {
+            assert_eq!(
+                state
+                    .registry
+                    .lookup_identity(&SessionIdentity::from_info(&other))
+                    .await,
+                Some(other)
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn copilot_fork_replays_pending_activity_in_order_and_drops_it_on_cancellation() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_watcher::{copilot_fork::CopilotFork, Emitted};
+    for (end, cancel) in [(false, false), (true, false), (false, true)] {
+        let wt = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(wt.clone());
+        state
+            .registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: "fork-a".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "fork-pane".into(),
+                cwd: PathBuf::new(),
+                title: String::new(),
+            })
+            .await;
+        copilot_fork::request(
+            &state,
+            &CopilotFork {
+                source: "fork-a".into(),
+                target: "fork-b".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let mut events = vec![SessionEvent::ToolStarting {
+            key: "fork-b".into(),
+            tool_name: String::new(),
+        }];
+        if end {
+            events.push(SessionEvent::ToolCompleted {
+                key: "fork-b".into(),
+            });
+        }
+        for event in events {
+            assert!(
+                copilot_fork::buffer_activity(
+                    &state,
+                    &Emitted {
+                        cli: CliSource::Copilot,
+                        key: "fork-b".into(),
+                        event,
+                    }
+                )
+                .await
+            );
+        }
+        if cancel {
+            state.pending_copilot_forks.lock().await.remove("fork-pane");
+        }
+        copilot_fork::confirm(&state, &wt.calls()[0].1["params"]).await;
+        let target = state.registry.lookup(&SessionId::new("fork-b")).await;
+        if cancel {
+            assert!(target.is_none());
+        } else {
+            assert_eq!(
+                target.unwrap().status,
+                Some(if end {
+                    AgentStatus::Idle
+                } else {
+                    AgentStatus::Working
+                })
+            );
+        }
+        assert!(state.pending_copilot_forks.lock().await.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn copilot_fork_source_publication_precedes_concurrent_fork() {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use crate::session_watcher::copilot_fork::CopilotFork;
+    struct PausedPublish {
+        entered: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+        calls: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
+    }
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for PausedPublish {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((method.into(), params.clone()));
+            if method == "publish" && params["params"]["agent_session_id"] == "source" {
+                self.entered.notify_one();
+                self.release.notified().await;
+            }
+            Ok(serde_json::json!({"session_id": "resume-pane"}))
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+    let _resolver = mock_native_delegate_executables();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        let wt = Arc::new(PausedPublish {
+            entered: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+            calls: std::sync::Mutex::new(Vec::new()),
+        });
+        let state = make_state_with_wt(wt.clone());
+        let mut row = SessionInfo::new(SessionId::new("source"), PathBuf::new());
+        row.provider_id = Some("copilot".into());
+        row.cli_source = Some(CliSource::Copilot);
+        row.location = crate::agent_sessions::SessionLocation::Host;
+        row.status = Some(AgentStatus::Historical);
+        let params = SessionActivateParams {
+            identity: SessionIdentity::from_info(&row),
+            activation_id: "source-order".into(),
+            window_id: 1,
+        };
+        state.registry.upsert(row).await;
+        let resume = execute_session_activation(&state, &params);
+        tokio::pin!(resume);
+        tokio::select! {
+            _ = wt.entered.notified() => {}
+            result = &mut resume => panic!("resume finished before publication: {result:?}"),
+        }
+        assert!(state.copilot_fork_admission.try_lock().is_err());
+        let fork = CopilotFork {
+            source: "source".into(),
+            target: "target".into(),
+        };
+        let request = copilot_fork::request(&state, &fork);
+        tokio::pin!(request);
+        assert!(futures::poll!(&mut request).is_pending());
+        assert_eq!(wt.calls.lock().unwrap().len(), 2);
+        assert!(state.pending_copilot_forks.lock().await.is_empty());
+        wt.release.notify_one();
+        let (resumed, forked) = tokio::join!(resume, request);
+        assert!(resumed.accepted, "{resumed:?}");
+        assert!(forked.unwrap());
+        let published: Vec<_> = wt
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(method, _)| method == "publish")
+            .map(|(_, params)| params.clone())
+            .collect();
+        assert_eq!(published.len(), 2);
+        assert_eq!(published[0]["params"]["agent_session_id"], "source");
+        assert_eq!(
+            published[1]["params"]["previous_agent_session_id"],
+            "source"
+        );
+        assert_eq!(published[1]["params"]["agent_session_id"], "target");
+        assert_eq!(state.pending_copilot_forks.lock().await.len(), 1);
+        copilot_fork::confirm(&state, &published[1]["params"]).await;
+        assert_eq!(
+            state
+                .registry
+                .lookup_active_by_pane("resume-pane")
+                .await
+                .unwrap()
+                .session_id,
+            SessionId::new("target")
+        );
+    })
+    .await
+    .expect("source submission releases fork admission");
+}
+
+#[tokio::test]
+async fn copilot_fork_source_publication_failure_keeps_created_resume_unknown_and_deduplicated() {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+    use crate::session_registry::{
+        SessionActivateParams, SessionActivationState, SessionIdentity, SessionInfo,
+    };
+    struct PublishFailure(std::sync::Mutex<Vec<String>>);
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for PublishFailure {
+        async fn request(
+            &self,
+            method: &str,
+            _params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.0.lock().unwrap().push(method.into());
+            if method == "publish" {
+                anyhow::bail!("definite publication failure");
+            }
+            Ok(serde_json::json!({"session_id": "created-pane"}))
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+    let _resolver = mock_native_delegate_executables();
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let wt = Arc::new(PublishFailure(std::sync::Mutex::new(Vec::new())));
+            let state = make_state_with_wt(wt.clone());
+            let mut row = SessionInfo::new(SessionId::new("source"), PathBuf::new());
+            row.provider_id = Some("copilot".into());
+            row.cli_source = Some(CliSource::Copilot);
+            row.location = crate::agent_sessions::SessionLocation::Host;
+            row.status = Some(AgentStatus::Historical);
+            let params = SessionActivateParams {
+                identity: SessionIdentity::from_info(&row),
+                activation_id: "failed-source-publication".into(),
+                window_id: 1,
+            };
+            state.registry.upsert(row).await;
+            let first = handle_session_activate(&state, &params).await.unwrap();
+            let receipt =
+                crate::session_registry::parse_session_activate_response(&first.0).unwrap();
+            assert_eq!(receipt.state, SessionActivationState::Unknown);
+            assert!(!receipt.accepted);
+            assert!(receipt
+                .detail
+                .as_ref()
+                .unwrap()
+                .contains("definite publication failure"));
+            let replay = handle_session_activate(&state, &params).await.unwrap();
+            assert_eq!(
+                receipt,
+                crate::session_registry::parse_session_activate_response(&replay.0).unwrap()
+            );
+            assert_eq!(*wt.0.lock().unwrap(), ["create_tab", "publish"]);
+            assert_eq!(
+                state
+                    .registry
+                    .lookup_identity(&params.identity)
+                    .await
+                    .unwrap()
+                    .pane_session_id
+                    .as_deref(),
+                Some("created-pane")
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn copilot_fork_buffered_and_subsequent_activity_uses_qualified_host_identity() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+    use crate::session_watcher::{copilot_fork::CopilotFork, Emitted};
+    let wt = Arc::new(MockWtChannel::ok());
+    let state = make_state_with_wt(wt.clone());
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    state
+        .registry
+        .apply_event(SessionEvent::SessionStarted {
+            key: "source".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "pane".into(),
+            cwd: PathBuf::new(),
+            title: String::new(),
+        })
+        .await;
+    let mut foreign = Vec::new();
+    for (provider, cli, location) in [
+        ("claude", CliSource::Claude, SessionLocation::Host),
+        (
+            "copilot",
+            CliSource::Copilot,
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        ),
+    ] {
+        let mut row = SessionInfo::new(SessionId::new("target"), "C:\\foreign".into());
+        row.provider_id = Some(provider.into());
+        row.cli_source = Some(cli);
+        row.location = location;
+        row.status = Some(AgentStatus::Historical);
+        foreign.push((SessionIdentity::from_info(&row), row.clone()));
+        state.registry.upsert(row).await;
+    }
+    copilot_fork::request(
+        &state,
+        &CopilotFork {
+            source: "source".into(),
+            target: "target".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let start = Emitted {
+        cli: CliSource::Copilot,
+        key: "target".into(),
+        event: SessionEvent::ToolStarting {
+            key: "target".into(),
+            tool_name: String::new(),
+        },
+    };
+    assert!(copilot_fork::buffer_activity(&state, &start).await);
+    copilot_fork::confirm(&state, &wt.calls()[0].1["params"]).await;
+    assert_eq!(
+        state
+            .registry
+            .lookup_active_by_pane("pane")
+            .await
+            .unwrap()
+            .status,
+        Some(AgentStatus::Working)
+    );
+    crate::wt_protocol_events::take_test_published_events();
+    apply_watcher_event(
+        &state,
+        Emitted {
+            cli: CliSource::Copilot,
+            key: "target".into(),
+            event: SessionEvent::ToolCompleted {
+                key: "target".into(),
+            },
+        },
+    )
+    .await;
+    assert_eq!(
+        state
+            .registry
+            .lookup_active_by_pane("pane")
+            .await
+            .unwrap()
+            .status,
+        Some(AgentStatus::Idle)
+    );
+    for (identity, row) in foreign {
+        assert_eq!(
+            state.registry.lookup_identity(&identity).await.unwrap(),
+            row
+        );
+    }
+    let events = crate::wt_protocol_events::take_test_published_events();
+    assert_eq!(events.len(), 1);
+    let event: serde_json::Value = serde_json::from_str(&events[0]).unwrap();
+    assert_eq!(event["method"], "session_registry_changed");
+    assert!(
+        event["params"].get("session_id").is_none(),
+        "ambiguous raw ID requires a snapshot"
+    );
+}
+
+#[tokio::test]
+async fn copilot_fork_helper_resume_keeps_cmd_shims_banner_and_stale_cwd_fallback() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    let _resolver = crate::coordinator::override_test_executable_resolver(|_| {
+        panic!("helper resume must preserve cmd/PATHEXT instead of requiring a ps1 companion")
+    });
+    let wt = Arc::new(MockWtChannel::responding(serde_json::json!({
+        "session_id": "helper-resume-pane"
+    })));
+    let state = make_state_with_wt(wt.clone());
+    let mut row = SessionInfo::new(
+        SessionId::new("helper-resume"),
+        PathBuf::from("C:\\wta-missing-cwd\\nonexistent-project"),
+    );
+    row.provider_id = Some("copilot".into());
+    row.cli_source = Some(CliSource::Copilot);
+    row.location = SessionLocation::Host;
+    row.origin = Some(SessionOrigin::Unknown);
+    row.status = Some(AgentStatus::Historical);
+    let params = SessionActivateParams {
+        identity: SessionIdentity::from_info(&row),
+        window_id: 42,
+        activation_id: "helper-resume-parity".into(),
+    };
+    state.registry.upsert(row).await;
+    let response = execute_session_activation_with_helper_mode(&state, &params, true).await;
+    assert!(response.accepted, "{response:?}");
+    let calls = wt.calls();
+    let create = &calls
+        .iter()
+        .find(|(method, _)| method == "create_tab")
+        .unwrap()
+        .1;
+    assert!(create.get("cwd").is_none());
+    let command = create["commandline"].as_str().unwrap();
+    assert!(command.starts_with("cmd /c echo "));
+    assert!(command.contains("Resuming copilot session"));
+    assert!(command.ends_with("copilot --resume helper-resume"));
+}
+
+#[tokio::test]
+async fn copilot_fork_uncertain_publication_retains_reservation_for_late_ack() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{HistoryRowKey, SessionIdentity};
+    use crate::session_watcher::copilot_fork::CopilotFork;
+    struct PublishFailure {
+        observed: Arc<MockWtChannel>,
+        uncertain: bool,
+    }
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for PublishFailure {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            crate::shell::wt_channel::WtChannel::request(self.observed.as_ref(), method, params)
+                .await?;
+            if self.uncertain {
+                Err(anyhow::Error::new(
+                    serde_json::from_str::<serde_json::Value>("{").unwrap_err(),
+                ))
+            } else {
+                Err(anyhow::anyhow!("publish rejected"))
+            }
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+    for uncertain in [false, true] {
+        let observed = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(Arc::new(PublishFailure {
+            observed: observed.clone(),
+            uncertain,
+        }));
+        state
+            .registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: "fork-a".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "fork-pane".into(),
+                cwd: PathBuf::new(),
+                title: String::new(),
+            })
+            .await;
+        let fork = CopilotFork {
+            source: "fork-a".into(),
+            target: "fork-b".into(),
+        };
+        assert!(copilot_fork::request(&state, &fork).await.is_err());
+        let target = SessionIdentity {
+            session_id: SessionId::new("fork-b"),
+            history_key: HistoryRowKey::new("copilot", SessionLocation::Host, "fork-b", None),
+        };
+        assert_eq!(copilot_fork::is_reserved(&state, &target).await, uncertain);
+        let ack = observed.calls()[0].1["params"].clone();
+        copilot_fork::confirm(&state, &ack).await;
+        assert!(!copilot_fork::is_reserved(&state, &target).await);
+        if uncertain {
+            let row = state.registry.lookup_identity(&target).await.unwrap();
+            assert_eq!(row.pane_session_id.as_deref(), Some("fork-pane"));
+            assert_eq!(row.status, Some(AgentStatus::Idle));
+        } else {
+            assert!(state.registry.lookup_identity(&target).await.is_none());
+            assert_eq!(
+                state
+                    .registry
+                    .lookup_active_by_pane("fork-pane")
+                    .await
+                    .unwrap()
+                    .session_id,
+                SessionId::new("fork-a")
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn copilot_fork_rejection_settles_only_the_matching_operation() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{HistoryRowKey, SessionIdentity};
+    use crate::session_watcher::copilot_fork::CopilotFork;
+    let wt = Arc::new(MockWtChannel::ok());
+    let state = make_state_with_wt(wt.clone());
+    state
+        .registry
+        .apply_event(SessionEvent::SessionStarted {
+            key: "fork-a".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "fork-pane".into(),
+            cwd: PathBuf::new(),
+            title: String::new(),
+        })
+        .await;
+    let fork = CopilotFork {
+        source: "fork-a".into(),
+        target: "fork-b".into(),
+    };
+    let identity = |target: &str| SessionIdentity {
+        session_id: SessionId::new(target.to_string()),
+        history_key: HistoryRowKey::new("copilot", SessionLocation::Host, target, None),
+    };
+    copilot_fork::request(&state, &fork).await.unwrap();
+    let first = wt.calls()[0].1["params"].clone();
+    let mut wrong = first.clone();
+    wrong["agent_session_id"] = serde_json::json!("fork-c");
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_session_fork_rejected", "params": wrong,
+        }),
+    )
+    .await;
+    assert!(copilot_fork::is_reserved(&state, &identity("fork-b")).await);
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_session_fork_rejected", "params": first,
+        }),
+    )
+    .await;
+    assert!(!copilot_fork::is_reserved(&state, &identity("fork-b")).await);
+    copilot_fork::confirm(&state, &first).await;
+    assert!(state
+        .registry
+        .lookup(&SessionId::new("fork-b"))
+        .await
+        .is_none());
+
+    copilot_fork::request(
+        &state,
+        &CopilotFork {
+            source: "fork-a".into(),
+            target: "fork-c".into(),
+        },
+    )
+    .await
+    .unwrap();
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_session_fork_rejected", "params": first,
+        }),
+    )
+    .await;
+    assert!(copilot_fork::is_reserved(&state, &identity("fork-c")).await);
+    let second = wt.calls()[1].1["params"].clone();
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_session_fork_rejected", "params": second,
+        }),
+    )
+    .await;
+    assert!(!copilot_fork::is_reserved(&state, &identity("fork-c")).await);
+    let source = state
+        .registry
+        .lookup(&SessionId::new("fork-a"))
+        .await
+        .unwrap();
+    assert_eq!(source.status, Some(AgentStatus::Idle));
+    assert_eq!(source.pane_session_id.as_deref(), Some("fork-pane"));
+    copilot_fork::request(&state, &fork).await.unwrap();
+    assert_eq!(
+        wt.calls().len(),
+        3,
+        "a rejected plan cannot block a later fork"
+    );
+}
+
+#[tokio::test]
+async fn copilot_fork_published_reservation_survives_late_acknowledgment() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{HistoryRowKey, SessionIdentity};
+    use crate::session_watcher::{copilot_fork::CopilotFork, Emitted};
+    let wt = Arc::new(MockWtChannel::ok());
+    let state = make_state_with_wt(wt.clone());
+    state
+        .registry
+        .apply_event(SessionEvent::SessionStarted {
+            key: "fork-a".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "fork-pane".into(),
+            cwd: PathBuf::new(),
+            title: String::new(),
+        })
+        .await;
+    let fork = CopilotFork {
+        source: "fork-a".into(),
+        target: "fork-b".into(),
+    };
+    copilot_fork::request(&state, &fork).await.unwrap();
+    state
+        .pending_copilot_forks
+        .lock()
+        .await
+        .get_mut("fork-pane")
+        .unwrap()
+        .published_at = std::time::Instant::now() - std::time::Duration::from_secs(60);
+    let target = SessionIdentity {
+        session_id: SessionId::new("fork-b"),
+        history_key: HistoryRowKey::new("copilot", SessionLocation::Host, "fork-b", None),
+    };
+    assert!(copilot_fork::is_reserved(&state, &target).await);
+    assert!(
+        copilot_fork::buffer_activity(
+            &state,
+            &Emitted {
+                cli: CliSource::Copilot,
+                key: "fork-b".into(),
+                event: SessionEvent::ToolStarting {
+                    key: "fork-b".into(),
+                    tool_name: String::new()
+                },
+            }
+        )
+        .await
+    );
+    copilot_fork::request(&state, &fork).await.unwrap();
+    assert_eq!(wt.calls().len(), 1);
+    copilot_fork::confirm(&state, &wt.calls()[0].1["params"]).await;
+    assert!(!copilot_fork::is_reserved(&state, &target).await);
+    let row = state.registry.lookup_identity(&target).await.unwrap();
+    assert_eq!(row.pane_session_id.as_deref(), Some("fork-pane"));
+    assert_eq!(row.status, Some(AgentStatus::Working));
+    assert_eq!(
+        state
+            .registry
+            .lookup(&SessionId::new("fork-a"))
+            .await
+            .unwrap()
+            .status,
+        Some(AgentStatus::Historical)
+    );
+}
+
+#[tokio::test]
+async fn copilot_fork_reserves_target_before_resume_and_respects_resume_first() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity};
+    use crate::session_watcher::copilot_fork::CopilotFork;
+    let _resolver = mock_native_delegate_executables();
+    for resume_first in [false, true] {
+        let wt = Arc::new(MockWtChannel::responding(
+            serde_json::json!({"session_id": "resume-pane"}),
+        ));
+        let state = make_state_with_wt(wt.clone());
+        state
+            .registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: "fork-a".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "fork-pane".into(),
+                cwd: PathBuf::new(),
+                title: String::new(),
+            })
+            .await;
+        let mut target = state
+            .registry
+            .lookup(&SessionId::new("fork-a"))
+            .await
+            .unwrap();
+        target.session_id = SessionId::new("fork-b");
+        target.pane_session_id = None;
+        target.status = Some(AgentStatus::Historical);
+        let params = SessionActivateParams {
+            identity: SessionIdentity::from_info(&target),
+            window_id: 1,
+            activation_id: "fork-resume-race".into(),
+        };
+        state.registry.upsert(target).await;
+        let fork = CopilotFork {
+            source: "fork-a".into(),
+            target: "fork-b".into(),
+        };
+        if resume_first {
+            assert!(execute_session_activation(&state, &params).await.accepted);
+        }
+        assert!(copilot_fork::request(&state, &fork).await.unwrap());
+        if resume_first {
+            assert!(
+                !wt.calls().iter().any(|(method, params)| method == "publish"
+                    && params["params"]["event"] == "agent.session.fork")
+            );
+        } else {
+            let response = execute_session_activation(&state, &params).await;
+            assert!(!response.accepted);
+            assert_eq!(response.action, "retry");
+            assert!(!wt.calls().iter().any(|(method, _)| method == "create_tab"));
+            let ack = wt.calls()[0].1["params"].clone();
+            copilot_fork::confirm(&state, &ack).await;
+            assert!(execute_session_activation(&state, &params).await.accepted);
+            assert!(!wt.calls().iter().any(|(method, _)| method == "create_tab"));
+        }
+        assert_eq!(
+            state
+                .registry
+                .lookup(&SessionId::new("fork-b"))
+                .await
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some(if resume_first {
+                "resume-pane"
+            } else {
+                "fork-pane"
+            })
+        );
+    }
+}
+
+#[tokio::test]
+async fn copilot_fork_reverse_notifications_attach_only_fresh_unowned_work() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_watcher::{copilot_fork::CopilotFork, Emitted};
+    for cancel in [false, true] {
+        let wt = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(wt.clone());
+        for (key, pane) in [("fork-a", "fork-pane"), ("unrelated", "other-pane")] {
+            state
+                .registry
+                .apply_event(SessionEvent::SessionStarted {
+                    key: key.into(),
+                    cli_source: CliSource::Copilot,
+                    pane_session_id: pane.into(),
+                    cwd: PathBuf::new(),
+                    title: String::new(),
+                })
+                .await;
+        }
+        let activity = |key: &str| Emitted {
+            cli: CliSource::Copilot,
+            key: key.into(),
+            event: SessionEvent::ToolStarting {
+                key: key.into(),
+                tool_name: String::new(),
+            },
+        };
+        assert!(!copilot_fork::buffer_activity(&state, &activity("unrelated")).await);
+        copilot_fork::observe(
+            state.clone(),
+            CopilotFork {
+                source: "fork-b".into(),
+                target: "fork-c".into(),
+            },
+        )
+        .await;
+        assert!(copilot_fork::buffer_activity(&state, &activity("fork-c")).await);
+        assert!(state
+            .registry
+            .lookup(&SessionId::new("fork-c"))
+            .await
+            .is_none());
+        copilot_fork::observe(
+            state.clone(),
+            CopilotFork {
+                source: "fork-a".into(),
+                target: "fork-b".into(),
+            },
+        )
+        .await;
+        let first = wt.calls()[0].1["params"].clone();
+        if cancel {
+            state.pending_copilot_forks.lock().await.remove("fork-pane");
+        }
+        copilot_fork::confirm(&state, &first).await;
+        if cancel {
+            assert_eq!(wt.calls().len(), 1);
+            assert!(state
+                .registry
+                .lookup(&SessionId::new("fork-c"))
+                .await
+                .is_none());
+            // Attached orphan evidence was consumed and cannot reappear.
+            copilot_fork::observe(
+                state.clone(),
+                CopilotFork {
+                    source: "fork-a".into(),
+                    target: "fork-b".into(),
+                },
+            )
+            .await;
+            copilot_fork::confirm(&state, &wt.calls()[1].1["params"]).await;
+            assert_eq!(wt.calls().len(), 2);
+        } else {
+            assert_eq!(wt.calls().len(), 2);
+            copilot_fork::confirm(&state, &wt.calls()[1].1["params"]).await;
+            let target = state
+                .registry
+                .lookup(&SessionId::new("fork-c"))
+                .await
+                .unwrap();
+            assert_eq!(target.status, Some(AgentStatus::Working));
+            assert_eq!(target.pane_session_id.as_deref(), Some("fork-pane"));
+        }
+        assert_eq!(
+            state
+                .registry
+                .lookup(&SessionId::new("unrelated"))
+                .await
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some("other-pane")
+        );
+    }
+}
+
+#[tokio::test]
+async fn copilot_fork_does_not_dispatch_to_an_already_bound_target() {
+    let wt = Arc::new(MockWtChannel::ok());
+    let state = make_state_with_wt(wt.clone());
+    let fork = crate::session_watcher::copilot_fork::CopilotFork {
+        source: "11111111-1111-4111-8111-111111111111".into(),
+        target: "22222222-2222-4222-8222-222222222222".into(),
+    };
+    for (key, pane) in [(&fork.source, "source-pane"), (&fork.target, "target-pane")] {
+        state
+            .registry
+            .apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+                key: key.clone(),
+                cli_source: crate::agent_sessions::CliSource::Copilot,
+                pane_session_id: pane.into(),
+                cwd: PathBuf::new(),
+                title: String::new(),
+            })
+            .await;
+    }
+    assert!(copilot_fork::request(&state, &fork).await.unwrap());
+    assert!(wt.calls().is_empty());
+    assert!(state.pending_copilot_forks.lock().await.is_empty());
 }
 
 #[tokio::test]
@@ -19444,6 +20617,143 @@ async fn native_off_watcher_admits_exact_copilot_input_activity() {
             .status,
         Some(AgentStatus::Idle)
     );
+}
+
+#[tokio::test]
+async fn copilot_fork_watcher_dispatch_keeps_qualified_native_activity_without_pending_fork() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+    use crate::session_watcher::{Emitted, WatchEvent};
+    for (provider, location) in [
+        ("claude", SessionLocation::Host),
+        (
+            "copilot",
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        ),
+    ] {
+        let state = make_state();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        let sid = SessionId::new("qualified-native-watcher");
+        let mut row = SessionInfo::new(sid.clone(), "C:\\repo".into());
+        row.provider_id = Some("copilot".into());
+        row.cli_source = Some(CliSource::Copilot);
+        row.location = SessionLocation::Host;
+        row.status = Some(AgentStatus::Historical);
+        let identity = SessionIdentity::from_info(&row);
+        state.registry.upsert(row).await;
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method":"native_agent_observation", "params":{
+                    "pane_id":"00112233-4455-6677-8899-aabbccddeeff", "provider_id":"copilot",
+                    "agent_session_id":"qualified-native-watcher", "location":"Host",
+                    "window_id":0, "tab_id":"native-tab", "mode_epoch":1,
+                    "kind":"reset", "tracking_enabled":false
+                }
+            }),
+        )
+        .await;
+        let mut collision = SessionInfo::new(sid.clone(), "/other".into());
+        collision.provider_id = Some(provider.into());
+        collision.location = location;
+        collision.status = Some(AgentStatus::Historical);
+        let other = SessionIdentity::from_info(&collision);
+        state.registry.upsert(collision.clone()).await;
+        assert!(state.registry.lookup(&sid).await.is_none());
+        assert!(state.hook_owned.lock().await.is_empty());
+        assert!(state.born_bound.lock().await.is_empty());
+        for (event, expected) in [
+            (
+                SessionEvent::ToolStarting {
+                    key: sid.to_string(),
+                    tool_name: String::new(),
+                },
+                AgentStatus::Working,
+            ),
+            (
+                SessionEvent::ToolCompleted {
+                    key: sid.to_string(),
+                },
+                AgentStatus::Idle,
+            ),
+        ] {
+            handle_session_watcher_event(
+                &state,
+                WatchEvent::FreshCopilotActivity(Emitted {
+                    cli: CliSource::Copilot,
+                    key: sid.to_string(),
+                    event,
+                }),
+            )
+            .await;
+            assert_eq!(
+                state
+                    .registry
+                    .lookup_identity(&identity)
+                    .await
+                    .unwrap()
+                    .status,
+                Some(expected.clone())
+            );
+            assert_eq!(
+                state.registry.native_pane_observations().await[0].status,
+                expected
+            );
+            assert_eq!(
+                state.registry.lookup_identity(&other).await,
+                Some(collision.clone())
+            );
+        }
+        assert!(state.pending_copilot_forks.lock().await.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn watcher_dispatch_preserves_other_provider_born_bound_activity() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_watcher::{Emitted, WatchEvent};
+    for cli in [CliSource::Claude, CliSource::Codex, CliSource::Gemini] {
+        let state = make_state();
+        let sid = SessionId::new("other-provider-watcher");
+        handle_session_born_bound(
+            &state,
+            SessionEvent::SessionStarted {
+                key: sid.to_string(),
+                cli_source: cli.clone(),
+                pane_session_id: "other-pane".into(),
+                cwd: PathBuf::new(),
+                title: String::new(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(state
+            .registry
+            .lookup(&sid)
+            .await
+            .unwrap()
+            .history_row_key()
+            .is_some());
+        handle_session_watcher_event(
+            &state,
+            WatchEvent::Activity(Emitted {
+                cli,
+                key: sid.to_string(),
+                event: SessionEvent::ToolStarting {
+                    key: sid.to_string(),
+                    tool_name: String::new(),
+                },
+            }),
+        )
+        .await;
+        assert_eq!(
+            state.registry.lookup(&sid).await.unwrap().status,
+            Some(AgentStatus::Working)
+        );
+    }
 }
 
 #[tokio::test]

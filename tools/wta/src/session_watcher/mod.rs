@@ -11,12 +11,14 @@ pub mod classify_claude;
 pub mod classify_codex;
 pub mod classify_copilot;
 pub mod classify_gemini;
+pub mod copilot_fork;
 pub(crate) mod copilot_status;
 pub mod discover;
 
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 /// Read the bytes appended to `path` since byte offset `from`, returning the
 /// decoded text and the new end offset. Used for the append-only CLIs.
@@ -42,6 +44,13 @@ pub struct Emitted {
     pub event: SessionEvent,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WatchEvent {
+    Activity(Emitted),
+    FreshCopilotActivity(Emitted),
+    CopilotFork(copilot_fork::CopilotFork),
+}
+
 /// Per-file progress so we only classify new records.
 #[derive(Default)]
 pub(crate) struct Progress {
@@ -53,15 +62,26 @@ pub(crate) struct Progress {
     /// until first read; falls back to the path-derived key if the header is
     /// unreadable.
     gemini_key: Option<String>,
+    /// A newly copied Copilot log can contain old fork records. Its rewritten
+    /// session.start timestamp separates those from new identity transitions.
+    copilot_birth_at: Option<SystemTime>,
+    copilot_replay: bool,
     /// Set once if this file is a Codex multi-agent subagent fork — its records
     /// are then ignored wholesale (it inherits the parent's history and is not a
     /// user-facing session, so surfacing it would duplicate the parent's row).
     ignored: bool,
 }
 
+fn copilot_record_time(record: &serde_json::Value) -> Option<SystemTime> {
+    record
+        .get("timestamp")?
+        .as_str()
+        .and_then(crate::session_history::parse_iso_to_system_time)
+}
+
 /// Process one changed file path into emitted events, advancing `progress`.
 /// Pure w.r.t. everything except the on-disk file and the passed-in map.
-pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) -> Vec<Emitted> {
+pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) -> Vec<WatchEvent> {
     let Some(disc) = discover::identify(path) else {
         return Vec::new();
     };
@@ -107,11 +127,11 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                     continue;
                 };
                 for event in classify_gemini::classify_record(&val, &key) {
-                    out.push(Emitted {
+                    out.push(WatchEvent::Activity(Emitted {
                         cli: CliSource::Gemini,
                         key: key.clone(),
                         event,
-                    });
+                    }));
                 }
             }
         }
@@ -125,6 +145,9 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                 // further this tick.
                 entry.offset = len;
                 return out;
+            }
+            if from == 0 && matches!(disc.cli, CliSource::Copilot) {
+                entry.copilot_replay = true;
             }
             // Only consume through the last newline; a trailing partial line is
             // a record still being written — leave its bytes for the next tick.
@@ -148,6 +171,28 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                     entry.ignored = true;
                     return Vec::new();
                 }
+                if matches!(disc.cli, CliSource::Copilot) {
+                    if entry.copilot_replay
+                        && entry.copilot_birth_at.is_none()
+                        && val["type"].as_str() == Some("session.start")
+                        && val["data"]["sessionId"]
+                            .as_str()
+                            .and_then(|id| uuid::Uuid::parse_str(id).ok())
+                            .is_some_and(|id| Some(id) == uuid::Uuid::parse_str(&disc.key).ok())
+                    {
+                        entry.copilot_birth_at = copilot_record_time(&val);
+                    }
+                    if let Some(fork) = copilot_fork::classify(&val, &disc.key) {
+                        if !entry.copilot_replay
+                            || entry
+                                .copilot_birth_at
+                                .zip(copilot_record_time(&val))
+                                .is_some_and(|(birth, event)| event >= birth)
+                        {
+                            out.push(WatchEvent::CopilotFork(fork));
+                        }
+                    }
+                }
                 let events = match disc.cli {
                     CliSource::Copilot => classify_copilot::classify(&val, &disc.key),
                     CliSource::Claude => classify_claude::classify(&val, &disc.key),
@@ -155,11 +200,27 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                     _ => Vec::new(),
                 };
                 for event in events {
-                    out.push(Emitted {
+                    let emitted = Emitted {
                         cli: disc.cli.clone(),
                         key: disc.key.clone(),
                         event,
-                    });
+                    };
+                    if matches!(disc.cli, CliSource::Copilot) {
+                        if !entry.copilot_replay
+                            || entry
+                                .copilot_birth_at
+                                .zip(copilot_record_time(&val))
+                                .is_some_and(|(birth, event)| event >= birth)
+                        {
+                            out.push(WatchEvent::FreshCopilotActivity(emitted));
+                        } else if entry.copilot_birth_at.is_none() {
+                            // Unknown provenance retains the existing fallback path,
+                            // but is never admitted to a pending fork's replay buffer.
+                            out.push(WatchEvent::Activity(emitted));
+                        }
+                    } else {
+                        out.push(WatchEvent::Activity(emitted));
+                    }
                 }
             }
         }
@@ -258,7 +319,7 @@ fn read_gemini_session_id(path: &Path) -> Option<String> {
 /// (e.g. Codex `task_complete`), which may briefly leave a fallback row on its
 /// last status until the next file write; that imperfection is acceptable for a
 /// fallback.
-pub fn watch(tx: Sender<Emitted>) -> notify::Result<()> {
+pub fn watch(tx: Sender<WatchEvent>) -> notify::Result<()> {
     use notify::{RecursiveMode, Watcher};
 
     let (raw_tx, raw_rx) = std::sync::mpsc::channel::<notify::Result<notify::Event>>();
@@ -309,6 +370,116 @@ pub fn watch(tx: Sender<Emitted>) -> notify::Result<()> {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) -> Vec<Emitted> {
+        super::process_change(path, progress)
+            .into_iter()
+            .filter_map(|event| match event {
+                WatchEvent::Activity(event) | WatchEvent::FreshCopilotActivity(event) => {
+                    Some(event)
+                }
+                WatchEvent::CopilotFork(_) => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn newly_appended_copilot_fork_is_emitted_without_turn_or_prompt_activity() {
+        let root = std::env::current_dir()
+            .unwrap()
+            .join("scratch")
+            .join(format!("fork-watch-{}", uuid::Uuid::new_v4()));
+        let source = "11111111-1111-4111-8111-111111111111";
+        let target = "22222222-2222-4222-8222-222222222222";
+        let directory = root.join("session-state").join(source);
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("events.jsonl");
+        std::fs::write(&path, b"{\"type\":\"assistant.turn_end\"}\n").unwrap();
+        let mut progress = HashMap::new();
+        seed_existing_progress_in(std::slice::from_ref(&root), &mut progress);
+        let record = serde_json::json!({
+            "type": "session.info",
+            "data": { "infoType": "fork", "message": format!("Forked this session into \"Copy\" ({target}).") }
+        });
+        writeln!(
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap(),
+            "{record}"
+        )
+        .unwrap();
+        assert_eq!(
+            super::process_change(&path, &mut progress),
+            vec![WatchEvent::CopilotFork(copilot_fork::CopilotFork {
+                source: source.into(),
+                target: target.into(),
+            }),]
+        );
+        assert!(super::process_change(&path, &mut progress).is_empty());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn copied_copilot_history_cannot_replay_an_old_fork_but_new_forks_still_work() {
+        let root = std::env::current_dir()
+            .unwrap()
+            .join("scratch")
+            .join(format!("fork-copy-{}", uuid::Uuid::new_v4()));
+        let current = "22222222-2222-4222-8222-222222222222";
+        let target = "33333333-3333-4333-8333-333333333333";
+        let directory = root.join("session-state").join(current);
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("events.jsonl");
+        let header = serde_json::json!({
+            "type": "session.start", "timestamp": "2026-10-26T08:53:32Z",
+            "data": { "sessionId": current }
+        });
+        let fork_record = |timestamp| {
+            serde_json::json!({
+                "type": "session.info", "timestamp": timestamp,
+                "data": { "infoType": "fork", "message": format!("Forked this session into \"Copy\" ({target}).") }
+            })
+        };
+        std::fs::write(
+            &path,
+            format!("{header}\n{}\n{}\n", fork_record("2026-10-25T00:00:00Z"),
+                serde_json::json!({"type":"assistant.turn_start","timestamp":"2026-10-25T00:00:00Z"})),
+        )
+        .unwrap();
+        let mut progress = HashMap::new();
+        assert!(super::process_change(&path, &mut progress).is_empty());
+        writeln!(
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap(),
+            "{}",
+            fork_record("2026-10-26T08:53:33Z"),
+        )
+        .unwrap();
+        assert_eq!(
+            super::process_change(&path, &mut progress),
+            vec![WatchEvent::CopilotFork(copilot_fork::CopilotFork {
+                source: current.into(),
+                target: target.into(),
+            }),]
+        );
+        writeln!(
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap(),
+            "{}",
+            serde_json::json!({"type":"assistant.turn_start","timestamp":"2026-10-26T08:53:34Z"})
+        )
+        .unwrap();
+        assert!(matches!(
+            super::process_change(&path, &mut progress).as_slice(),
+            [WatchEvent::FreshCopilotActivity(_)]
+        ));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn read_appended_returns_only_new_bytes() {

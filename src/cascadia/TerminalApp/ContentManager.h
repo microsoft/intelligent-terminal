@@ -46,6 +46,7 @@ namespace winrt::TerminalApp::implementation
                                                                               const winrt::hstring& providerId,
                                                                               const std::string& nativeAgentLaunchLocation = {});
         winrt::hstring NativeAgentProviderId(uint64_t contentId) const;
+        bool IsNativeAgentCliContent(uint64_t contentId) const;
         winrt::hstring NativeAgentProviderIdForPane(const winrt::guid& paneId) const;
         struct NativeAgentObservationIdentity
         {

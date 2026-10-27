@@ -8929,6 +8929,152 @@ fn esc_reuses_latest_snapshot_after_fold_from_session_view() {
 }
 
 #[test]
+fn copilot_fork_native_resume_uses_master_activation_before_any_local_launch() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::protocol::acp::client::MasterExtRequest;
+    use std::path::PathBuf;
+    let mut app = test_app();
+    app.window_id = Some("42".into());
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.master_request_tx = tx;
+    app.agent_sessions.apply(SessionEvent::SessionStarted {
+        key: "fork-resume".into(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: "old-pane".into(),
+        cwd: PathBuf::new(),
+        title: String::new(),
+    });
+    app.agent_sessions.apply(SessionEvent::SessionStopped {
+        key: "fork-resume".into(),
+        reason: "user_exit".into(),
+    });
+    let row = app
+        .agent_sessions
+        .get(&"fork-resume".to_string())
+        .unwrap()
+        .clone();
+    app.dispatch_resume(&row);
+    let MasterExtRequest::SessionActivate { params, .. } = rx.try_recv().unwrap() else {
+        panic!("native resume must use authoritative master activation");
+    };
+    let identity = params.identity.clone();
+    let activation_id = params.activation_id.clone();
+    assert_eq!(params.window_id, 42);
+    assert_eq!(params.identity.session_id.0.as_ref(), "fork-resume");
+    assert_eq!(
+        params.identity.history_key,
+        crate::session_registry::HistoryRowKey::new(
+            "copilot",
+            crate::agent_sessions::SessionLocation::Host,
+            "fork-resume",
+            None,
+        )
+    );
+    assert!(
+        rx.try_recv().is_err(),
+        "no fire-and-forget resume bookkeeping"
+    );
+    assert_eq!(
+        app.agent_sessions
+            .get(&"fork-resume".to_string())
+            .unwrap()
+            .status,
+        AgentStatus::Ended,
+        "master, not helper, owns admission and lifecycle changes"
+    );
+    app.dispatch_resume(&row);
+    assert!(
+        rx.try_recv().is_err(),
+        "pending or indeterminate attempts suppress Enter"
+    );
+    app.handle_event(AppEvent::NativeResumeSettled {
+        identity: identity.clone(),
+        activation_id: "stale-attempt".into(),
+    });
+    app.dispatch_resume(&row);
+    assert!(
+        rx.try_recv().is_err(),
+        "late results cannot clear another attempt"
+    );
+    app.handle_event(AppEvent::NativeResumeSettled {
+        identity,
+        activation_id: activation_id.clone(),
+    });
+    app.dispatch_resume(&row);
+    let MasterExtRequest::SessionActivate { params, .. } = rx.try_recv().unwrap() else {
+        panic!("a definite rejection permits retry");
+    };
+    assert_ne!(params.activation_id, activation_id);
+    let mut exited = row;
+    exited.last_activity_at += std::time::Duration::from_secs(1);
+    app.dispatch_resume(&exited);
+    let MasterExtRequest::SessionActivate { params: later, .. } = rx.try_recv().unwrap() else {
+        panic!("a later real exit permits another resume");
+    };
+    assert_ne!(later.activation_id, params.activation_id);
+}
+
+#[test]
+fn copilot_fork_native_resume_success_settles_without_intervening_live_snapshot() {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+    use crate::protocol::acp::client::MasterExtRequest;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let (mut app, mut requests) = test_app_with_master_rx();
+    app.window_id = Some("42".into());
+    app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
+    let MasterExtRequest::SessionsList { request_id, .. } = requests.try_recv().unwrap() else {
+        panic!("opening sessions must request history");
+    };
+    let mut historical = session_info_for_test("fork-parent");
+    historical.cli_source = Some(CliSource::Copilot);
+    historical.provider_id = Some("copilot".into());
+    historical.status = Some(AgentStatus::Historical);
+    app.handle_agents_snapshot_loaded(request_id, vec![historical.clone()]);
+    app.current_tab_mut().agents_list_state.select(Some(0));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let MasterExtRequest::SessionActivate { params: first, .. } = requests.try_recv().unwrap() else {
+        panic!("historical A must resume through master");
+    };
+
+    // Master has resumed A and forked B before the helper ever saw live A.
+    let mut fork = historical.clone();
+    fork.session_id = agent_client_protocol::schema::v1::SessionId::new("fork-child");
+    fork.status = Some(AgentStatus::Idle);
+    fork.pane_session_id = Some("fork-pane".into());
+    app.handle_agents_snapshot_loaded(request_id, vec![historical, fork]);
+    app.handle_event(AppEvent::NativeResumeSettled {
+        identity: first.identity.clone(),
+        activation_id: "stale-attempt".into(),
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(
+        requests.try_recv().is_err(),
+        "stale completion cannot settle A"
+    );
+
+    app.handle_event(AppEvent::NativeResumeSettled {
+        identity: first.identity.clone(),
+        activation_id: first.activation_id.clone(),
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let MasterExtRequest::SessionActivate { params: second, .. } = requests.try_recv().unwrap() else {
+        panic!("confirmed success must allow historical A to resume after its fork");
+    };
+    assert_eq!(second.identity, first.identity);
+    assert_ne!(second.activation_id, first.activation_id);
+    app.handle_event(AppEvent::NativeResumeSettled {
+        identity: first.identity,
+        activation_id: first.activation_id,
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(
+        requests.try_recv().is_err(),
+        "late successful response cannot clear the newer attempt"
+    );
+}
+
+#[test]
 fn enter_on_history_row_dispatches_new_tab_with_resume() {
     use crate::agent_sessions::{CliSource, SessionEvent};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

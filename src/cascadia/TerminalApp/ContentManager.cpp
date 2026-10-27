@@ -6,6 +6,7 @@
 #include "ContentManager.g.cpp"
 #include "TerminalPage.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentSessionId.h"
 
 #include <wil/token_helpers.h>
 #include <json/json.h>
@@ -66,6 +67,13 @@ namespace winrt::TerminalApp::implementation
         return it == _content.end() ? winrt::hstring{} :
                !it->second.explicitNativeAgentProviderId.empty() ?
                    it->second.explicitNativeAgentProviderId : it->second.nativeAgentProviderId;
+    }
+
+    bool ContentManager::IsNativeAgentCliContent(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _content.find(contentId);
+        return it != _content.end() && !it->second.nativeAgentProviderId.empty();
     }
 
     winrt::hstring ContentManager::NativeAgentProviderIdForPane(const winrt::guid& paneId) const
@@ -490,7 +498,8 @@ namespace winrt::TerminalApp::implementation
         const auto started = name == "agent.session.start" || name == "agent.session.started";
         const auto prompt = name == "agent.prompt.submit";
         const auto unbound = name == "agent.session.unbind";
-        if (!ended && !started && !prompt && !unbound)
+        const auto forked = name == "agent.session.fork";
+        if (!ended && !started && !prompt && !unbound && !forked)
         {
             return;
         }
@@ -510,7 +519,7 @@ namespace winrt::TerminalApp::implementation
         const winrt::guid sessionId = paneId.starts_with('{') ?
                                           ::Microsoft::Console::Utils::GuidFromString(text.c_str()) :
                                           ::Microsoft::Console::Utils::GuidFromPlainString(text.c_str());
-        if (!AcceptsAgentSessionEvents(sessionId))
+        if (!forked && !AcceptsAgentSessionEvents(sessionId))
         {
             return;
         }
@@ -536,6 +545,51 @@ namespace winrt::TerminalApp::implementation
         }
         if (!contentId)
         {
+            return;
+        }
+        if (forked)
+        {
+            const auto previous = params.get("previous_agent_session_id", "").asString();
+            const auto operation = params.get("operation_id", "").asString();
+            if (agent != L"copilot" || operation.empty() || previous.empty() ||
+                previous == winrt::to_string(agentSessionId) ||
+                !::Microsoft::Terminal::AgentSessionId::IsSafeForCliResume(std::string_view{ previous }) ||
+                !::Microsoft::Terminal::AgentSessionId::IsSafeForCliResume(std::wstring_view{ agentSessionId }))
+            {
+                return;
+            }
+            bool matches = false;
+            if (const auto binding = _agentBindings.find(contentId);
+                binding != _agentBindings.end() && !binding->second.agentSessionId.empty())
+            {
+                matches = binding->second.agent == L"copilot" &&
+                          binding->second.agentSessionId == winrt::to_hstring(previous);
+            }
+            else
+            {
+                const auto native = NativeAgentObservationForContent(contentId);
+                const auto nativeCopilot = native && native->providerId == L"copilot" &&
+                                           !native->location.starts_with("wsl:");
+                const auto providerOnly = !native ||
+                                          (nativeCopilot && native->agentSessionId.empty() && native->qualifiedSessionId.empty());
+                // Provider-only launch metadata is not a conflicting conversation; the owning page verified the source.
+                matches = (nativeCopilot && (native->agentSessionId == previous || native->qualifiedSessionId == previous)) ||
+                          (providerOnly && _nativeAgentSessionEventsEnabled &&
+                           event.get("method", "").asString() == "pane_agent_session_changed");
+            }
+            if (!matches)
+            {
+                return;
+            }
+            auto retained = event;
+            retained["method"] = "pane_agent_session_changed";
+            retained["params"].removeMember("event");
+            retained["params"]["fork_operation_id"] = operation;
+            _agentBindings.insert_or_assign(
+                contentId,
+                AgentBinding{ agentSessionId,
+                              winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, retained)),
+                              agent });
             return;
         }
         auto& policy = _agentBindings[contentId];

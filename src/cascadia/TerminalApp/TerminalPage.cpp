@@ -11360,7 +11360,7 @@ namespace winrt::TerminalApp::implementation
         }
         const auto active = _activeCliAgentPanes.find(*paneId);
         if (active == _activeCliAgentPanes.end() ||
-            !winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId()).empty())
+            winrt::get_self<ContentManager>(_manager)->IsNativeAgentCliContent(control.ContentId()))
         {
             return;
         }
@@ -11469,6 +11469,102 @@ namespace winrt::TerminalApp::implementation
         }
 
         _SyncNativeAgentStatusMode();
+        if (params.get("event", "").asString() == "agent.session.fork")
+        {
+            const auto previousId = winrt::to_hstring(params.get("previous_agent_session_id", "").asString());
+            const auto operationId = params.get("operation_id", "").asString();
+            if (params.get("agent", "").asString() != "copilot" || previousId.empty() ||
+                agentSessionId.empty() || operationId.empty() ||
+                winrt::to_hstring(agentSessionId) == previousId)
+            {
+                return;
+            }
+            const auto previous = _paneAgentSessions.find(*paneSessionId);
+            for (const auto& tab : _RuntimeTabs())
+            {
+                const auto tabImpl = _GetTabImpl(tab);
+                const auto root = tabImpl ? tabImpl->GetRootPane() : nullptr;
+                const auto pane = root ? root->FindPaneBySessionId(*paneSessionId) : nullptr;
+                if (!pane)
+                {
+                    continue;
+                }
+                const auto reject = [&]() { _RaiseProtocolEvent("agent_session_fork_rejected", params); };
+                const auto control = !pane->IsAgentPane() ? pane->GetTerminalControl() : nullptr;
+                if (!control || std::wstring_view{ control.ShellName() }.starts_with(L"wsl:") ||
+                    previous == _paneAgentSessions.end() || previous->second.agent != L"copilot" ||
+                    previous->second.sessionId != previousId ||
+                    std::wstring_view{ previous->second.backend }.starts_with(L"wsl:"))
+                {
+                    reject();
+                    return;
+                }
+                // A shell prompt retires activity while retaining the resumable binding.
+                if (const auto retired = _richTabEndedSessionByPaneId.find(*paneSessionId);
+                    retired != _richTabEndedSessionByPaneId.end() && retired->second == winrt::to_string(previousId))
+                {
+                    reject();
+                    return;
+                }
+                auto binding = previous->second;
+                binding.sessionId = winrt::to_hstring(agentSessionId);
+                const auto resume = ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(
+                    binding.backend.empty() ? std::wstring_view{ binding.agent } : std::wstring_view{ binding.backend },
+                    std::wstring_view{ binding.sessionId },
+                    std::wstring_view{ binding.cwd });
+                if (resume.empty())
+                {
+                    reject();
+                    return;
+                }
+                binding.resumeCommandline = winrt::hstring{ resume };
+
+                // The shared manager may already have observed a newer owner.
+                _manager.OnPaneAgentSessionChanged(eventJson);
+                Json::Value retained;
+                Json::CharReaderBuilder retainedReader;
+                std::istringstream retainedStream{ winrt::to_string(_manager.AgentSessionEvent(control.ContentId())) };
+                std::string retainedErrors;
+                if (!Json::parseFromStream(retainedReader, retainedStream, &retained, &retainedErrors) ||
+                    retained["params"].get("fork_operation_id", "").asString() != operationId ||
+                    retained["params"].get("agent_session_id", "").asString() != agentSessionId)
+                {
+                    _agentPaneLog("OnPaneAgentSessionChanged: rejected superseded Copilot fork");
+                    reject();
+                    return;
+                }
+                auto marker = _ActiveCliAgentPane{ binding.sessionId };
+                if (const auto active = _activeCliAgentPanes.find(*paneSessionId);
+                    active != _activeCliAgentPanes.end())
+                {
+                    marker.supersededSessionIds = std::move(active->second.supersededSessionIds);
+                }
+                marker.supersededSessionIds.emplace_back(previousId);
+                _activeCliAgentPanes.insert_or_assign(*paneSessionId, std::move(marker));
+                _paneAgentSessions.insert_or_assign(*paneSessionId, binding);
+                if (auto interactive = _interactiveResumeSessions.find(*paneSessionId);
+                    interactive != _interactiveResumeSessions.end() && interactive->second.sessionId == previousId)
+                {
+                    interactive->second = binding;
+                }
+                _pendingRestoredSessionBindings.erase(*paneSessionId);
+                _richTabEndedSessionByPaneId.erase(*paneSessionId);
+                _explicitNativeAgentSessions.insert(*paneSessionId);
+                winrt::get_self<ContentManager>(_manager)->SetExplicitNativeAgentProvider(control.ContentId(), L"copilot");
+
+                auto confirmed = params;
+                confirmed["tab_id"] = winrt::to_string(tabImpl->StableId());
+                confirmed["window_id"] = std::to_string(_WindowProperties.WindowId());
+                _RaiseProtocolEvent("agent_session_forked", confirmed);
+                _PublishNativeAgentObservation(control, "reset", true, std::nullopt, !_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled());
+                _UpdateRichTabFirstPartyFields(control);
+                _RequestAgentSnapshotRefresh();
+                _UpdateTabIcon(*tabImpl);
+                _ApplyTabListProjection(tab);
+                return;
+            }
+            return;
+        }
         if (!winrt::get_self<ContentManager>(_manager)->AcceptsAgentSessionEvents(*paneSessionId))
         {
             return;
@@ -11512,6 +11608,31 @@ namespace winrt::TerminalApp::implementation
                 if (const auto rootPane = tabImpl->GetRootPane();
                     rootPane && rootPane->FindPaneBySessionId(*paneSessionId))
                 {
+                    const auto retainedControl = rootPane->FindPaneBySessionId(*paneSessionId)->GetTerminalControl();
+                    const auto retainedEvent = retainedControl ? _manager.AgentSessionEvent(retainedControl.ContentId()) : winrt::hstring{};
+                    const bool replayedFork = eventName.empty() && params["fork_operation_id"].isString() &&
+                                              !params["fork_operation_id"].asString().empty() && retainedControl &&
+                                              retainedEvent == eventJson;
+                    if (const auto current = _paneAgentSessions.find(*paneSessionId);
+                        eventName.empty() && agent == "copilot" && current != _paneAgentSessions.end() &&
+                        current->second.sessionId != winrt::to_hstring(agentSessionId))
+                    {
+                        Json::Value retained;
+                        Json::CharReaderBuilder retainedReader;
+                        std::istringstream retainedStream{ winrt::to_string(retainedEvent) };
+                        std::string retainedErrors;
+                        if (Json::parseFromStream(retainedReader, retainedStream, &retained, &retainedErrors) &&
+                            !retained["params"].get("fork_operation_id", "").asString().empty() &&
+                            retained["params"].get("agent_session_id", "").asString() != agentSessionId)
+                        {
+                            _agentPaneLog("OnPaneAgentSessionChanged: ignored superseded Copilot resume binding");
+                            return;
+                        }
+                    }
+                    const auto retired = _richTabEndedSessionByPaneId.find(*paneSessionId);
+                    const bool retiredFork = replayedFork && retired != _richTabEndedSessionByPaneId.end() &&
+                                             retired->second == agentSessionId;
+                    const bool bindingStarted = sessionStarted || (replayedFork && !retiredFork);
                     const auto clearExplicitResume = [&]() {
                         _explicitNativeAgentSessions.erase(*paneSessionId);
                         _interactiveResumeSessions.erase(*paneSessionId);
@@ -11594,10 +11715,10 @@ namespace winrt::TerminalApp::implementation
                             }
                         }
                     }
-                    else if ((sessionStarted || promptSubmitted) && !agent.empty())
+                    else if ((bindingStarted || promptSubmitted) && !agent.empty())
                     {
                         const auto sessionId = winrt::to_hstring(agentSessionId);
-                        if (sessionStarted)
+                        if (bindingStarted)
                         {
                             auto marker = _ActiveCliAgentPane{ sessionId };
                             if (const auto active = _activeCliAgentPanes.find(*paneSessionId);
@@ -11646,7 +11767,7 @@ namespace winrt::TerminalApp::implementation
                          agentSessionId.starts_with("sidekick-") ||
                          (agent.empty() && resumeCommandline.empty())))
                     {
-                        if (sessionStarted)
+                        if (bindingStarted)
                         {
                             _richTabEndedSessionByPaneId.erase(*paneSessionId);
                             if (_RichTabCwdDependentFieldsVisible())
@@ -11747,7 +11868,7 @@ namespace winrt::TerminalApp::implementation
                                     ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(
                                         bindingBackend, winrt::to_hstring(agentSessionId), bindingCwd) });
                             }
-                            if (sessionStarted)
+                            if (bindingStarted)
                             {
                                 _pendingRestoredSessionBindings.erase(*paneSessionId);
                             }
@@ -11773,7 +11894,7 @@ namespace winrt::TerminalApp::implementation
                             _agentPaneLog("OnPaneAgentSessionChanged: ignored prompt session " + agentSessionId + " for already-bound pane " + paneId);
                         }
                     }
-                    if (sessionStarted)
+                    if (bindingStarted)
                     {
                         _richTabEndedSessionByPaneId.erase(*paneSessionId);
                     }

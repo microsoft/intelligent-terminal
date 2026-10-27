@@ -70,6 +70,7 @@ use crate::protocol::acp::spawn::{
 };
 
 pub(crate) mod config;
+mod copilot_fork;
 mod history;
 mod session_mcp;
 
@@ -589,6 +590,9 @@ struct MasterStateInner {
     /// Route reads do not need the lifecycle gate.
     pub(crate) registry: Arc<dyn crate::session_registry::SessionRegistry>,
     session_activation_receipts: Mutex<HashMap<String, SessionActivationReceipt>>,
+    pending_copilot_forks: Mutex<HashMap<String, copilot_fork::PendingFork>>,
+    copilot_fork_admission: Mutex<()>,
+    copilot_fork_orphans: Mutex<copilot_fork::Orphans>,
     /// Per-helper subscribers for `intellterm.wta/*` ExtNotifications
     /// fanned out from master. Populated by `serve_helper` on connect
     /// and removed on disconnect (or whenever a send fails). Keyed by
@@ -4719,7 +4723,13 @@ impl HelperHandler {
                 let agent = self.agent.get().cloned();
                 handle_sessions_list(&self.state, agent.as_ref(), &p).await
             }
-            Req::SessionActivate(p) => handle_session_activate(&self.state, &p).await,
+            Req::SessionActivate(p) => {
+                if is_control {
+                    handle_session_activate(&self.state, &p).await
+                } else {
+                    handle_session_activate_with_helper_mode(&self.state, &p, true).await
+                }
+            }
             Req::SessionActivationStatus(p) => {
                 handle_session_activation_status(&self.state, &p).await
             }
@@ -5085,6 +5095,9 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
         session_activation_receipts: Mutex::new(HashMap::new()),
+        pending_copilot_forks: Mutex::new(HashMap::new()),
+        copilot_fork_admission: Mutex::new(()),
+        copilot_fork_orphans: Mutex::new(Default::default()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         agent_authentication: Mutex::new(HashMap::new()),
         wt,
@@ -5151,7 +5164,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     // forwards emitted events into this LocalSet via a tokio channel, where
     // they're applied to master's registry (same reducer as session_hook).
     {
-        let (sync_tx, sync_rx) = std::sync::mpsc::channel::<crate::session_watcher::Emitted>();
+        let (sync_tx, sync_rx) = std::sync::mpsc::channel::<crate::session_watcher::WatchEvent>();
         if let Err(err) = std::thread::Builder::new()
             .name("wta-session-watch".into())
             .spawn(move || {
@@ -5168,7 +5181,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         }
 
         let (async_tx, mut async_rx) =
-            tokio::sync::mpsc::unbounded_channel::<crate::session_watcher::Emitted>();
+            tokio::sync::mpsc::unbounded_channel::<crate::session_watcher::WatchEvent>();
         if let Err(err) = std::thread::Builder::new()
             .name("wta-session-watch-bridge".into())
             .spawn(move || {
@@ -5189,7 +5202,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         let inner_for_watch = Arc::clone(&inner);
         tokio::task::spawn_local(async move {
             while let Some(emitted) = async_rx.recv().await {
-                apply_watcher_event(&inner_for_watch, emitted).await;
+                handle_session_watcher_event(&inner_for_watch, emitted).await;
             }
         });
     }
@@ -8403,6 +8416,14 @@ async fn handle_session_activate(
     state: &Arc<MasterStateInner>,
     parsed: &crate::session_registry::SessionActivateParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
+    handle_session_activate_with_helper_mode(state, parsed, false).await
+}
+
+async fn handle_session_activate_with_helper_mode(
+    state: &Arc<MasterStateInner>,
+    parsed: &crate::session_registry::SessionActivateParams,
+    helper_resume: bool,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
     use crate::session_registry::{SessionActivateResponse, SessionActivationState};
 
     let mut receipts = state.session_activation_receipts.lock().await;
@@ -8445,7 +8466,11 @@ async fn handle_session_activate(
     let parsed = parsed.clone();
     let (sender, receiver) = tokio::sync::oneshot::channel();
     tokio::task::spawn_local(async move {
-        let response = execute_session_activation(&state, &parsed).await;
+        let response = if helper_resume {
+            execute_session_activation_with_helper_mode(&state, &parsed, true).await
+        } else {
+            execute_session_activation(&state, &parsed).await
+        };
         state.session_activation_receipts.lock().await.insert(
             parsed.activation_id.clone(),
             SessionActivationReceipt {
@@ -8466,6 +8491,14 @@ async fn handle_session_activate(
 async fn execute_session_activation(
     state: &MasterStateInner,
     parsed: &crate::session_registry::SessionActivateParams,
+) -> crate::session_registry::SessionActivateResponse {
+    execute_session_activation_with_helper_mode(state, parsed, false).await
+}
+
+async fn execute_session_activation_with_helper_mode(
+    state: &MasterStateInner,
+    parsed: &crate::session_registry::SessionActivateParams,
+    helper_resume: bool,
 ) -> crate::session_registry::SessionActivateResponse {
     use crate::agent_sessions::{AgentStatus, SessionOrigin};
     use crate::session_mgmt::{
@@ -8513,6 +8546,28 @@ async fn execute_session_activation(
         }
     };
 
+    // Admission covers preflight through source binding submission, not the Terminal ACK.
+    // A resume that wins admission establishes its owner before fork preflight.
+    let Some(initial_row) = state.registry.lookup_identity(&parsed.identity).await else {
+        return respond!(
+            "not_found",
+            false,
+            Some("The selected session is no longer available.".to_string())
+        );
+    };
+    let qualified_identity = crate::session_registry::SessionIdentity::from_info(&initial_row);
+    let _fork_admission = if copilot_fork::is_host_identity(&qualified_identity) {
+        Some(state.copilot_fork_admission.lock().await)
+    } else {
+        None
+    };
+    if copilot_fork::is_reserved(state, &qualified_identity).await {
+        return respond!(
+            "retry",
+            false,
+            Some("The selected session is changing identity. Please retry.".to_string())
+        );
+    }
     let Some(row) = state.registry.lookup_identity(&parsed.identity).await else {
         return respond!(
             "not_found",
@@ -8664,7 +8719,32 @@ async fn execute_session_activation(
             let runtimes =
                 crate::coordinator::default_delegate_agent_runtimes(Some(&provider_id), None, None);
             let runtime = &runtimes[0];
+            let native_helper_resume = helper_resume
+                && provider_id == "copilot"
+                && row.location == crate::agent_sessions::SessionLocation::Host;
             let commandline = match &row.location {
+                crate::agent_sessions::SessionLocation::Host if native_helper_resume => {
+                    if !crate::agent_sessions::is_safe_cli_resume_id(row.session_id.0.as_ref()) {
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some(
+                                "The selected session has an invalid CLI resume identifier."
+                                    .to_string()
+                            )
+                        );
+                    }
+                    // Preserve the helper's cmd/PATHEXT launch, including cmd-only
+                    // shims that the sidebar's stricter delegate builder excludes.
+                    let short_key: String = row.session_id.0.chars().take(8).collect();
+                    let profile = crate::agent_registry::lookup_profile_by_id(&provider_id);
+                    Ok(format!(
+                        "cmd /c echo \x1b[2;37mResuming {provider_id} session {short_key}...\x1b[0m && {} {} {}",
+                        profile.cli_executable,
+                        profile.resume_flag,
+                        row.session_id
+                    ))
+                }
                 crate::agent_sessions::SessionLocation::Host => {
                     crate::coordinator::build_delegate_resume_commandline(
                         runtime,
@@ -8724,7 +8804,14 @@ async fn execute_session_activation(
             if matches!(row.location, crate::agent_sessions::SessionLocation::Host)
                 && !row.cwd.as_os_str().is_empty()
             {
-                params["cwd"] = serde_json::Value::String(row.cwd.to_string_lossy().to_string());
+                if native_helper_resume {
+                    if let Some(cwd) = crate::cwd_util::validate_starting_directory(&row.cwd) {
+                        params["cwd"] = serde_json::Value::String(cwd);
+                    }
+                } else {
+                    params["cwd"] =
+                        serde_json::Value::String(row.cwd.to_string_lossy().to_string());
+                }
             }
             if let Some(title) = row.title.as_ref().filter(|title| !title.trim().is_empty()) {
                 params["title"] = serde_json::Value::String(title.clone());
@@ -8815,18 +8902,18 @@ async fn execute_session_activation(
                         && row.session_universe.is_none()
                         && state
                             .registry
-                            .lookup(&row.session_id)
+                            .lookup_identity(&qualified_identity)
                             .await
                             .is_some_and(|current| {
                                 crate::session_registry::SessionIdentity::from_info(&current)
-                                    == parsed.identity
+                                    == qualified_identity
                             })
                     {
                         state.hook_owned.lock().await.remove(&row.session_id);
                         state.born_bound.lock().await.insert(row.session_id.clone());
                     }
                     drop(lifecycle_guard);
-                    broadcast_session_status_change(state, None).await;
+                    let mut publication_error = None;
                     if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
                         &provider_id,
                         row.session_id.0.as_ref(),
@@ -8834,7 +8921,28 @@ async fn execute_session_activation(
                         &row.location,
                         Some(row.cwd.to_string_lossy().as_ref()),
                     ) {
-                        crate::wt_protocol_events::send(binding);
+                        if copilot_fork::is_host_identity(&qualified_identity) {
+                            // SendEvent queues the UI work before returning. Submit the
+                            // source on the same path as forks before admitting one.
+                            publication_error = match serde_json::from_str(&binding) {
+                                Ok(binding) => wt.request("publish", binding).await.err(),
+                                Err(error) => Some(error.into()),
+                            };
+                        } else {
+                            crate::wt_protocol_events::send(binding);
+                        }
+                    }
+                    drop(_fork_admission);
+                    broadcast_session_status_change(state, None).await;
+                    if let Some(error) = publication_error {
+                        return respond!(
+                            "resume_cli",
+                            false,
+                            Some(format!(
+                                "The session was created but its pane binding could not be published: {error}"
+                            )),
+                            Unknown
+                        );
                     }
                     // Only this History activation preserves the sidebar: background
                     // creation followed by focus of the exact newly returned pane.
@@ -8959,6 +9067,13 @@ async fn apply_master_session_event(
     is_born_bound: bool,
     birth_location: crate::agent_sessions::SessionLocation,
 ) -> (bool, Option<String>) {
+    if let crate::agent_sessions::SessionEvent::PaneClosed { pane_session_id } = &event {
+        state
+            .pending_copilot_forks
+            .lock()
+            .await
+            .remove(&crate::agent_sessions::pane_key(pane_session_id));
+    }
     if matches!(
         &event,
         crate::agent_sessions::SessionEvent::SessionRenamed { .. }
@@ -9166,6 +9281,26 @@ async fn handle_session_born_bound(
     handle_session_event(state, event, true, location).await
 }
 
+async fn handle_session_watcher_event(
+    state: &Arc<MasterStateInner>,
+    event: crate::session_watcher::WatchEvent,
+) {
+    match event {
+        crate::session_watcher::WatchEvent::Activity(event) => {
+            apply_watcher_event(state, event).await;
+        }
+        crate::session_watcher::WatchEvent::FreshCopilotActivity(event) => {
+            if !copilot_fork::buffer_activity(state, &event).await {
+                apply_watcher_event(state, event).await;
+            }
+        }
+        crate::session_watcher::WatchEvent::CopilotFork(fork) => {
+            // Register before consuming the following activity record.
+            copilot_fork::observe(Arc::clone(state), fork).await;
+        }
+    }
+}
+
 /// Apply one watcher-emitted session event to master's registry and, if it
 /// changed state, broadcast `sessions/changed` so helpers refetch.
 ///
@@ -9211,7 +9346,25 @@ async fn apply_watcher_event(
 
         // Watcher records are native, provider-specific evidence. A raw ID
         // alone cannot identify a WSL, ACP, or colliding history row.
-        let Some(row) = state.registry.lookup(&sid).await else {
+        let identity = if emitted.cli == crate::agent_sessions::CliSource::Copilot {
+            crate::session_registry::SessionIdentity {
+                session_id: sid.clone(),
+                history_key: crate::session_registry::HistoryRowKey::new(
+                    "copilot",
+                    crate::agent_sessions::SessionLocation::Host,
+                    &emitted.key,
+                    None,
+                ),
+            }
+        } else {
+            crate::session_registry::SessionIdentity::legacy(sid.clone())
+        };
+        let row = if emitted.cli == crate::agent_sessions::CliSource::Copilot {
+            state.registry.lookup_identity(&identity).await
+        } else {
+            state.registry.lookup(&sid).await
+        };
+        let Some(row) = row else {
             return;
         };
         if row.location != crate::agent_sessions::SessionLocation::Host
@@ -9221,7 +9374,14 @@ async fn apply_watcher_event(
         {
             return;
         }
-        state.registry.apply_event(emitted.event).await
+        if copilot_fork::is_host_identity(&identity) {
+            state
+                .registry
+                .apply_bound_watcher_activity(&identity, emitted.event)
+                .await
+        } else {
+            state.registry.apply_event(emitted.event).await
+        }
     };
     if applied {
         broadcast_session_status_change(
@@ -11199,6 +11359,15 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
 
+    if method == "agent_session_forked" {
+        copilot_fork::confirm(state, &params).await;
+        return;
+    }
+    if method == "agent_session_fork_rejected" {
+        copilot_fork::reject(state, &params).await;
+        return;
+    }
+
     if method == "wt_listener_ready" {
         state
             .native_observation_listener_ready
@@ -11517,6 +11686,13 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         .to_string();
     if pane_id.is_empty() {
         return;
+    }
+    if shell_prompt || matches!(params["state"].as_str(), Some("closed" | "failed")) {
+        state
+            .pending_copilot_forks
+            .lock()
+            .await
+            .remove(&crate::agent_sessions::pane_key(&pane_id));
     }
     if shell_prompt {
         // A helper's exit inference can overtake the session-start hook queued

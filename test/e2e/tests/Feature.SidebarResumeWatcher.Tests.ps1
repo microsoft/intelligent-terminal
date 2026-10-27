@@ -83,6 +83,8 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
         New-Item -ItemType Directory -Path (Join-Path $script:sandboxHome '.copilot\session-state') -Force | Out-Null
         $profileId = '{907421A8-B17A-469F-8837-9FC25EE81151}'
         $script:app = Start-Terminal -Package $script:package -TimeoutSec 90 -State @{
+            featureRolloutId = '{00000000-0000-0000-0000-000000000001}'
+            sidebarRolloutVersion = 1; sidebarRolloutAssignment = 'Sidebar'
             sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
         } -Settings @{
             language = 'en-US'; tabLayout = 'vertical'; tabLayoutVerticalWidth = 420
@@ -104,7 +106,9 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
             Should -BeNullOrEmpty -Because 'a settings-error fallback is not a valid test configuration'
         Get-WtSettingsObject -App $script:app | ConvertTo-Json -Depth 32 |
             Set-Content (Join-Path $script:evidence 'settings-after-launch.json')
-        Invoke-WtCli -App $script:app -Arguments @('get-settings') | ConvertTo-Json -Depth 32 |
+        $effectiveSettings = Invoke-WtCli -App $script:app -Arguments @('get-settings')
+        $effectiveSettings.tabLayout | Should -Be 'vertical' -Because 'the fixture must exercise the actual Sidebar resume path'
+        $effectiveSettings | ConvertTo-Json -Depth 32 |
             Set-Content (Join-Path $script:evidence 'settings-product.json')
         $script:pipe = Get-WtaMasterPipe -App $script:app -TimeoutSec 60
         $masters = @(Get-CimInstance Win32_Process -Filter "Name='wta.exe'" | Where-Object {
@@ -189,6 +193,9 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
         function Resume-WatcherHistory {
             param([int]$Generation)
             $script:generation = $Generation
+            $previousReceipts = if (Test-Path -LiteralPath $script:launchLog) {
+                @(Get-Content -LiteralPath $script:launchLog).Count
+            } else { 0 }
             Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
             $item = Wait-Until -TimeoutSec 10 -Condition {
                 $element = Get-WatcherElement RecentAgentSessionsFilterMenuItem
@@ -208,7 +215,7 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
             $receipt = Wait-Until -TimeoutSec 30 -Because 'Sidebar Enter launches the real owned native resume process' -Condition {
                 if (Test-Path $script:launchLog) {
                     $records = @(Get-Content $script:launchLog | ForEach-Object { $_ | ConvertFrom-Json })
-                    if ($records.Count -eq $Generation) { $records[-1] }
+                    if ($records.Count -eq $previousReceipts + 1) { $records[-1] }
                 }
             }
             $receipt.session_id | Should -Be $script:sid
@@ -296,5 +303,100 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
         Wait-WatcherStatus Working $resumed.pane_session_id -Rendered | Out-Null
         Send-WatcherRecord $resumed idle
         Wait-WatcherStatus Idle $resumed.pane_session_id -Rendered | Out-Null
+        Close-WtPane -App $script:app -SessionId $resumed.pane_session_id
+        Wait-WatcherStatus Ended | Out-Null
+    }
+
+    It 'Copilot fork moves the native pane binding before another prompt' {
+        $listener = $null
+        $receipt = $null
+        $originalPane = $null
+        try {
+            Send-WatcherHook agent.session.start
+            Send-WatcherHook agent.session.end
+            Wait-WatcherStatus Ended | Out-Null
+            $receipt = Resume-WatcherHistory 3
+            $context = Invoke-WtCli -App $script:app -Arguments @(
+                'get-pane-context', '--target', $receipt.pane_session_id, '--max-lines', '0', '--max-chars', '0')
+            $context.pane.native_agent_provider_id | Should -Be 'copilot'
+            (Get-Content -LiteralPath $receipt.transcript -TotalCount 1 | ConvertFrom-Json).data.sessionId |
+                Should -Be $script:sid -Because 'a real Copilot transcript begins with its matching session.start header'
+            $listener = Start-WtEventListener -App $script:app -ExistingOnly -WaitForReady
+            Send-WatcherRecord $receipt fork
+            $sourceId = $script:sid
+            $ack = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate ({
+                $_.method -eq 'agent_session_forked' -and
+                $_.params.previous_agent_session_id -eq $sourceId -and
+                $_.params.agent_session_id -eq $receipt.fork_session_id
+            }.GetNewClosure())
+            $ack.params.pane_id.Trim('{}') | Should -Be $receipt.pane_session_id.Trim('{}')
+            $fork = Wait-Until -TimeoutSec 20 -Because 'the source becomes historical and the fork owns its unchanged native pane' -Condition {
+                $rows = @(Read-WatcherSessions)
+                $source = @($rows | Where-Object session_id -EQ $script:sid)
+                $target = @($rows | Where-Object session_id -EQ $receipt.fork_session_id)
+                if ($source.Count -eq 1 -and $source[0].status -eq 'Historical' -and
+                    -not $source[0].pane_session_id -and $target.Count -eq 1 -and
+                    $target[0].status -eq 'Idle' -and $target[0].pane_session_id -and
+                    $target[0].pane_session_id.Trim('{}') -ieq $receipt.pane_session_id.Trim('{}')) {
+                    $target[0]
+                }
+            }
+            $before = @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId).Count
+            Set-WtPaneFocus -App $script:app -SessionId $script:shell
+            $activated = Invoke-Wta -App $script:app -Arguments @(
+                'sessions', 'activate', '--master', $script:pipe,
+                '--session-id', $receipt.fork_session_id, '--provider', 'copilot',
+                '--location', 'host', '--window-id', [string]$script:app.WindowId,
+                '--activation-id', [guid]::NewGuid().ToString('D'), '--json')
+            $activated.accepted | Should -BeTrue
+            Wait-Until -TimeoutSec 15 -Because 'activating the fork focuses the original pane without creating another tab' -Condition {
+                (Get-ActivePane -App $script:app).session_id.Trim('{}') -ieq $receipt.pane_session_id.Trim('{}')
+            } | Out-Null
+            @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId).Count | Should -Be $before
+
+            Send-WatcherRecord $receipt working
+            Wait-Until -TimeoutSec 15 -Because 'the same watcher supplies activity to the newly bound fork' -Condition {
+                @(Read-WatcherSessions | Where-Object {
+                    $_.session_id -eq $receipt.fork_session_id -and $_.status -eq 'Working' -and $_.pane_session_id -and
+                    $_.pane_session_id.Trim('{}') -ieq $receipt.pane_session_id.Trim('{}')
+                }).Count -eq 1
+            } | Out-Null
+
+            $activated = Invoke-Wta -App $script:app -Arguments @(
+                'sessions', 'activate', '--master', $script:pipe,
+                '--session-id', $script:sid, '--provider', 'copilot',
+                '--location', 'host', '--window-id', [string]$script:app.WindowId,
+                '--activation-id', [guid]::NewGuid().ToString('D'), '--json')
+            $activated.accepted | Should -BeTrue
+            $restored = Wait-Until -TimeoutSec 30 -Because 'activating the original resumes A in a different native pane' -Condition {
+                $row = @(Read-WatcherSessions | Where-Object session_id -EQ $script:sid)
+                if ($row.Count -eq 1 -and $row[0].pane_session_id -and
+                    $row[0].pane_session_id.Trim('{}') -ine $receipt.pane_session_id.Trim('{}')) { $row[0] }
+            }
+            $originalPane = $restored.pane_session_id
+            Wait-Until -TimeoutSec 15 -Condition {
+                (Get-ActivePane -App $script:app).session_id.Trim('{}') -ieq $originalPane.Trim('{}')
+            } | Out-Null
+            @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId).Count | Should -Be ($before + 1)
+            $target = @(Read-WatcherSessions | Where-Object session_id -EQ $receipt.fork_session_id)
+            $target | Should -HaveCount 1
+            $target[0].pane_session_id.Trim('{}') | Should -Be $receipt.pane_session_id.Trim('{}')
+            @{ acknowledgment = $ack; fork = $fork; original = $restored } | ConvertTo-Json -Depth 16 |
+                Set-Content -LiteralPath (Join-Path $script:evidence 'fork-binding-and-activation.json')
+        }
+        catch {
+            if ($listener) {
+                @(Get-WtEvents -Listener $listener) | ConvertTo-Json -Depth 20 |
+                    Set-Content -LiteralPath (Join-Path $script:evidence 'fork-failure-events.json')
+            }
+            @(Read-WatcherSessions) | ConvertTo-Json -Depth 16 |
+                Set-Content -LiteralPath (Join-Path $script:evidence 'fork-failure-snapshot.json')
+            throw
+        }
+        finally {
+            if ($originalPane) { Close-WtPane -App $script:app -SessionId $originalPane }
+            if ($receipt) { Close-WtPane -App $script:app -SessionId $receipt.pane_session_id }
+            if ($listener) { Stop-WtEventListener -Listener $listener }
+        }
     }
 }

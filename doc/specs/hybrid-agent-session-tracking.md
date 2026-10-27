@@ -1,5 +1,53 @@
 # Hooks-Fallback Agent Session Watcher (Hybrid Tracking)
 
+## Copilot foreground forks
+
+For a native Host Copilot CLI, `/fork` changes the conversation identity without
+changing the Terminal connection GUID. The watcher recognizes Copilot's
+`session.info` fork record appended to the original session before another
+prompt is submitted. That record carries the new session ID and migrates an
+already-known pane binding; it does not discover an unknown session's pane.
+Native Host Copilot resume metadata is submitted before fork publication is
+admitted, and delayed source metadata cannot overwrite a confirmed fork's
+retained identity.
+Copied target logs and fork records older than their rewritten session.start
+header cannot migrate bindings. Names and working directories never establish
+ownership, and the transition does not wait for an SDK lease or another hook.
+
+WTA sends the transition to Terminal with the expected old session
+identity. Terminal compares its retained pane binding, updates the resume and
+layout identity, and acknowledges the operation. Only that acknowledgement
+lets WTA atomically detach the original as history and bind the fork to the
+same pane. Duplicate, closed-pane, or superseded operations cannot reclaim a pane.
+Returning to a shell prompt retires the foreground source before an in-flight
+fork can change retained bindings. Consecutive forks wait for their predecessor's
+acknowledgement; bounded queues retain only newly appended successor activity
+and discard dependent work when the transition is canceled or superseded.
+Retained fork metadata replayed after a pane transfer preserves matching
+shell-prompt retirement instead of restarting foreground activity.
+Sidebars and helpers share pre-launch admission for native Host Copilot
+resumes: a pending fork target returns a retry response rather than opening
+a competing pane. Published operations remain reserved until acknowledgment
+or explicit cancellation; their age is diagnostic, not an expiration gate.
+The owning page explicitly rejects a superseded or retired operation using
+its operation ID and expected source/target; only that matching reservation
+is canceled, so an older rejection cannot clear a newer transition.
+An uncertain publish timeout or response failure also retains the operation,
+because Terminal may already have queued its update; a late acknowledgment
+can still commit it, while a definite publication failure cancels the plan.
+Confirmed helper resume success settles that exact attempt without waiting
+for a live snapshot, while pending or indeterminate attempts remain suppressed.
+Reverse file notifications retain bounded, short-lived
+unmatched fork/activity evidence in memory; only a verified predecessor can
+promote that evidence into a binding transition.
+For hook-free resumes, the owning page verifies its existing original binding
+before the shared manager accepts the fork. An unmarked resume event still
+cannot establish a shared hook binding, and prompt/subagent events cannot
+replace an established Copilot owner. Retained fork metadata does not synthesize
+a SessionStart hook.
+Normal hook activity and hook-free born-bound activity keep their existing
+precedence. This fallback does not infer WSL or ACP agent-pane ownership.
+
 ## Shared read model: pane metadata and Recent conversations
 
 Pane identity and conversation identity have different lifetimes. A live agent
