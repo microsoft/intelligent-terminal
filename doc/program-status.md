@@ -1,8 +1,8 @@
 # OSC 7501 program status
 
-The Dev build recognizes revision 0.4 of the
+The Dev and Release builds recognize revision 0.4 of the
 [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status).
-Preview, Release and Windows Inbox builds do not advertise this experimental
+Preview and Windows Inbox builds do not advertise this experimental
 capability.
 
 Programs report `idle`, `working`, `blocked`, `done` or `error`. `clear` removes
