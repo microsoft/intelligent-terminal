@@ -10809,6 +10809,115 @@ async fn validate_master_hook_source(
 /// [`crate::app::plan_agent_event`], so the two can never disagree about what a
 /// hook means.
 async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde_json::Value) {
+    handle_master_agent_event_with_probe(
+        state,
+        params,
+        crate::session_watcher::copilot_status::owned_by_process,
+    )
+    .await;
+}
+
+async fn recover_copilot_prompt<F, Fut>(
+    state: &MasterStateInner,
+    row: crate::session_registry::SessionInfo,
+    pane_id: &str,
+    payload: &serde_json::Value,
+    probe: F,
+) -> bool
+where
+    F: FnOnce(crate::session_registry::SessionInfo, u32) -> Fut,
+    Fut: std::future::Future<
+        Output = Result<bool, crate::session_watcher::copilot_status::ProbeError>,
+    >,
+{
+    if !row.can_recover_copilot_prompt() || uuid::Uuid::parse_str(pane_id).is_err() {
+        return false;
+    }
+    let Some(cwd) = payload
+        .get("cwd")
+        .and_then(serde_json::Value::as_str)
+        .filter(|cwd| !cwd.trim().is_empty())
+    else {
+        return false;
+    };
+    let Some(wt) = state.wt.as_ref().filter(|wt| wt.is_available()) else {
+        return false;
+    };
+    let context = match tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        wt.request(
+            "get_pane_context",
+            serde_json::json!({ "session_id": pane_id, "max_lines": 0, "max_chars": 0 }),
+        ),
+    )
+    .await
+    {
+        Ok(Ok(context)) => context,
+        Ok(Err(error)) => {
+            tracing::debug!(target: "master_wt_event", %error, "prompt recovery pane context unavailable");
+            return false;
+        }
+        Err(_) => {
+            tracing::debug!(target: "master_wt_event", "prompt recovery pane context timed out");
+            return false;
+        }
+    };
+    let pane = &context["pane"];
+    if pane["session_id"]
+        .as_str()
+        .map(crate::agent_sessions::pane_key)
+        .as_deref()
+        != Some(crate::agent_sessions::pane_key(pane_id).as_str())
+        || pane["native_agent_provider_id"].as_str() != Some("copilot")
+        || pane["is_agent_pane"].as_bool() != Some(false)
+    {
+        return false;
+    }
+    let Some(pid) = pane["pid"]
+        .as_u64()
+        .and_then(|pid| u32::try_from(pid).ok())
+        .filter(|pid| *pid != 0)
+    else {
+        return false;
+    };
+    match probe(row.clone(), pid).await {
+        Ok(true) => {}
+        Ok(false) => return false,
+        Err(error) => {
+            tracing::debug!(target: "master_wt_event", ?error, "prompt recovery lease unavailable");
+            return false;
+        }
+    }
+    let gate = session_lifecycle_gate(state, &row.session_id).await;
+    let _guard = gate.lock().await;
+    if !state
+        .registry
+        .recover_copilot_prompt(&row, pane_id, std::path::PathBuf::from(cwd))
+        .await
+    {
+        return false;
+    }
+    state.hook_owned.lock().await.insert(row.session_id.clone());
+    state.born_bound.lock().await.remove(&row.session_id);
+    tracing::info!(
+        target: "master_wt_event",
+        session_key = %row.session_id,
+        pane_id,
+        "recovered missing Copilot session-start from verified root prompt"
+    );
+    true
+}
+
+async fn handle_master_agent_event_with_probe<F, Fut>(
+    state: &Arc<MasterStateInner>,
+    params: &serde_json::Value,
+    probe: F,
+) where
+    F: FnOnce(crate::session_registry::SessionInfo, u32) -> Fut,
+    Fut: std::future::Future<
+        Output = Result<bool, crate::session_watcher::copilot_status::ProbeError>,
+    >,
+{
     use crate::agent_sessions::CliSource;
 
     let event = params.get("event").and_then(|v| v.as_str()).unwrap_or("");
@@ -10989,9 +11098,22 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
     if plan.events.is_empty() {
         return;
     }
-    let activity_only = plan.events.iter().all(session_event_is_activity_only);
-
     let mut changed = false;
+    if event == "agent.prompt.submit"
+        && cli_source == CliSource::Copilot
+        && session_known
+        && !pane_owned_by_other
+    {
+        if let Some(row) = rows
+            .iter()
+            .find(|row| row.session_id.0.as_ref() == session_key)
+        {
+            changed =
+                recover_copilot_prompt(state, row.clone(), &owner_pane, &payload, probe).await;
+        }
+    }
+    let activity_only = !changed && plan.events.iter().all(session_event_is_activity_only);
+
     let mut refresh_keys = HashSet::new();
     let transition_count = plan.events.len();
     for ev in plan.events {
