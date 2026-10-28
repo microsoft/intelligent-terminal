@@ -8,6 +8,7 @@
 #include "TabHeaderControl.h"
 #include "CommandPalette.h"
 
+#include <filesystem>
 #include <iomanip>
 #include <icu.h>
 #include <winrt/Windows.Globalization.NumberFormatting.h>
@@ -9394,9 +9395,10 @@ namespace winrt::TerminalApp::implementation
             // process until later, on another thread, after we've already
             // restored the CWD to its original value.
             auto newWorkingDirectory{ _evaluatePathForCwd(settings.StartingDirectory()) };
-            if (newWorkingDirectory.empty() && settingsInternal->UsesManagedAgentCommand())
+            if (settingsInternal->UsesManagedAgentCommand())
             {
-                newWorkingDirectory = wil::GetCurrentDirectoryW<std::wstring>();
+                const std::filesystem::path path{ newWorkingDirectory.empty() ? L"." : newWorkingDirectory };
+                newWorkingDirectory = std::filesystem::absolute(path).wstring();
             }
             connection = TerminalConnection::ConptyConnection{};
             valueSet = TerminalConnection::ConptyConnection::CreateSettings(settings.Commandline(),

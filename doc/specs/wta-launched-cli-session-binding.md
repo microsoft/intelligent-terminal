@@ -264,6 +264,9 @@ pane-only metadata for the native status fallback. This supplies an initial cwd
 for Codex, Antigravity, and OpenCode without inventing a conversation ID or
 binding a history row. Empty managed starting directories use the window's
 virtual cwd or capture the inherited host cwd before delayed connection startup.
+Relative managed Host directories are resolved to absolute Windows paths at
+connection creation, so bindings and saved layouts do not depend on a later
+launcher's directory.
 A confirmed session cwd takes precedence where supported;
 Antigravity's existing shell-session cwd suppression remains unchanged, with the
 Terminal-authored launch directory available as a fallback.

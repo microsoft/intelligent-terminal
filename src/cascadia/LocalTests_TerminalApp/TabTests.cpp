@@ -7465,6 +7465,22 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_FALSE(page->_pendingRestoredSessionBindings.contains(launch.SessionId()));
                 }
                 profile.AgentProfileId(L"copilot");
+                page->_WindowProperties.VirtualWorkingDirectory(L"");
+                const auto hostCwd = wil::GetCurrentDirectoryW<std::wstring>();
+                for (const auto relative : { L".", L".\\relative" })
+                {
+                    profile.StartingDirectory(relative);
+                    const auto expected = std::wstring_view{ relative } == L"." ?
+                                              hostCwd :
+                                              (std::filesystem::path{ hostCwd } / L"relative").wstring();
+                    const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(page->_settings, profile);
+                    const auto launch = page->_CreateConnectionFromSettings(profile, *settings.DefaultSettings(), false);
+                    const auto cwd = launch.as<Conpty>().StartingDirectory();
+                    VERIFY_IS_TRUE(std::filesystem::path{ std::wstring_view{ cwd } }.is_absolute());
+                    VERIFY_ARE_EQUAL(winrt::hstring{ expected }, cwd);
+                    VERIFY_ARE_EQUAL(cwd, page->_paneAgentSessions.at(launch.SessionId()).cwd);
+                    VERIFY_ARE_EQUAL(cwd, page->_pendingRestoredSessionBindings.at(launch.SessionId()).cwd);
+                }
                 for (const auto argument : { L"--resume", L"--continue", L"--version" })
                 {
                     profile.AgentProfileArguments(argument);
@@ -7474,10 +7490,12 @@ namespace TerminalAppLocalTests
                 }
                 profile.AgentProfileArguments(L"");
                 profile.Commandline(L"copilot --custom-option");
+                profile.StartingDirectory(L".");
                 const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(page->_settings, profile);
                 const auto launch = page->_CreateConnectionFromSettings(profile, *settings.DefaultSettings(), false);
                 VERIFY_IS_FALSE(page->_pendingRestoredSessionBindings.contains(launch.SessionId()));
                 VERIFY_ARE_EQUAL(profile.Commandline(), launch.as<Conpty>().Commandline());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"." }, launch.as<Conpty>().StartingDirectory());
             });
         }
     }
